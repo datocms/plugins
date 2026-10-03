@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
 import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
@@ -22,9 +22,20 @@ type Props = {
   ctx: RenderPageCtx;
 };
 
+function isImportCancelled(error: unknown) {
+  return error instanceof Error && error.message === 'Import cancelled';
+}
+
+function importFailureMessage(error: unknown) {
+  const detail = error instanceof Error ? error.message : '';
+  return `Import could not be completed. Changes already applied remain in the project. ${detail}`;
+}
+
 type ImportModeState = {
   exportSchema: [string, ExportSchema] | undefined;
   conflicts: ReturnType<typeof useConflictsBuilder>['conflicts'];
+  conflictsError: Error | undefined;
+  refreshConflicts: () => void;
   loadingRecipe: boolean;
   handleDrop: (filename: string, doc: ExportDoc) => Promise<void>;
   handleImport: (resolutions: Resolutions) => Promise<void>;
@@ -45,11 +56,17 @@ function useImportMode({
 }): ImportModeState {
   const importTask = useLongTask();
   const conflictsTask = useLongTask();
+  const importingRef = useRef(false);
   const [exportSchema, setExportSchema] = useState<
     [string, ExportSchema] | undefined
   >();
 
-  const { conflicts, setConflicts } = useConflictsBuilder({
+  const {
+    conflicts,
+    setConflicts,
+    refresh: refreshConflicts,
+    error: conflictsError,
+  } = useConflictsBuilder({
     exportSchema: exportSchema?.[1],
     projectSchema,
     task: conflictsTask.controller,
@@ -93,9 +110,12 @@ function useImportMode({
 
   const handleImport = useCallback(
     async (resolutions: Resolutions) => {
+      if (importingRef.current) return;
       if (!exportSchema || !conflicts) {
         throw new Error('Invariant');
       }
+
+      importingRef.current = true;
 
       try {
         importTask.controller.start({
@@ -131,28 +151,38 @@ function useImportMode({
           throw new Error('Import cancelled');
         }
 
-        importTask.controller.complete({
-          done: importTask.state.progress.total,
-          total: importTask.state.progress.total,
-          label: 'Import completed',
-        });
+        importTask.controller.complete({ label: 'Import completed' });
         ctx.notice('Import completed successfully.');
         setExportSchema(undefined);
         setConflicts(undefined);
       } catch (error) {
         console.error(error);
-        if (error instanceof Error && error.message === 'Import cancelled') {
+        if (isImportCancelled(error)) {
           importTask.controller.complete({ label: 'Import cancelled' });
-          ctx.notice('Import canceled');
+          ctx.notice(
+            'Import canceled. Changes already applied remain in the project.',
+          );
         } else {
           importTask.controller.fail(error);
-          ctx.alert('Import could not be completed successfully.');
+          ctx.alert(importFailureMessage(error));
         }
       } finally {
+        importingRef.current = false;
+        projectSchema.invalidate();
+        refreshConflicts();
         importTask.controller.reset();
       }
     },
-    [client, conflicts, ctx, exportSchema, importTask, setConflicts],
+    [
+      client,
+      conflicts,
+      ctx,
+      exportSchema,
+      importTask,
+      setConflicts,
+      projectSchema,
+      refreshConflicts,
+    ],
   );
 
   useEffect(() => {
@@ -195,6 +225,8 @@ function useImportMode({
   return {
     exportSchema,
     conflicts,
+    conflictsError,
+    refreshConflicts,
     loadingRecipe,
     handleDrop,
     handleImport,
@@ -255,6 +287,8 @@ export function ImportPage({ ctx }: Props) {
               exportSchema={importMode.exportSchema}
               loadingRecipe={importMode.loadingRecipe}
               conflicts={importMode.conflicts}
+              conflictsError={importMode.conflictsError}
+              onRetryConflicts={importMode.refreshConflicts}
               onDrop={importMode.handleDrop}
               onImport={importMode.handleImport}
             />
@@ -300,7 +334,7 @@ function buildImportOverlay(
         const result = await ctx.openConfirm({
           title: 'Cancel import in progress?',
           content:
-            'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. You can run the import again to finish or manually clean up. Are you sure you want to cancel?',
+            'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. Changes already applied will remain, and conflicts will be refreshed. Are you sure you want to cancel?',
           choices: [
             {
               label: 'Yes, cancel the import',

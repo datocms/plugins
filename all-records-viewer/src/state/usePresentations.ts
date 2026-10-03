@@ -29,11 +29,18 @@ export function usePresentations(
       return;
     }
 
+    const controller = new AbortController();
+    const visibleIds = new Set(items.map((item) => item.id));
     resolver.primeItems(items);
-    setState((current) => ({ ...current, loading: true }));
+    setState((current) => ({
+      byItemId: new Map(
+        [...current.byItemId].filter(([id]) => visibleIds.has(id)),
+      ),
+      loading: true,
+    }));
 
     void resolver
-      .resolveMany(items)
+      .resolveMany(items, { signal: controller.signal })
       .then((presentations) => {
         if (requestSequence.current !== sequence) {
           return;
@@ -55,6 +62,7 @@ export function usePresentations(
       });
 
     return () => {
+      controller.abort();
       if (requestSequence.current === sequence) {
         requestSequence.current += 1;
       }

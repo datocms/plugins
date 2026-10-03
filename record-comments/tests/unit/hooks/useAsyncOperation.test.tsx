@@ -7,12 +7,12 @@ import { flushPromises, renderHook } from '../testUtils/react';
 
 describe('useAsyncOperation', () => {
   it('clears loading when the hook is disabled while work is in flight', async () => {
-    let resolvePromise: ((value: string) => void) | null = null;
+    const completion: { resolve?: (value: string) => void } = {};
     let enabled = true;
 
     const asyncFn = () =>
       new Promise<string>((resolve) => {
-        resolvePromise = resolve;
+        completion.resolve = resolve;
       });
 
     const { result, rerender, unmount } = renderHook(() =>
@@ -29,7 +29,7 @@ describe('useAsyncOperation', () => {
 
     expect(result.current?.isLoading).toBe(false);
 
-    resolvePromise?.('done');
+    completion.resolve?.('done');
     await flushPromises();
     unmount();
   });

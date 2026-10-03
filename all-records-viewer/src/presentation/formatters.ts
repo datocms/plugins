@@ -60,40 +60,70 @@ function textFromMarkdown(value: string): string {
     .trim();
 }
 
-function structuredTextStrings(value: unknown, output: string[]): void {
-  if (typeof value === 'string') {
-    output.push(value);
-    return;
-  }
+function* structuredTextStrings(value: unknown): Generator<string> {
+  const visited = new WeakSet<object>();
+  const stack: Iterator<unknown>[] = [[value][Symbol.iterator]()];
 
-  if (Array.isArray(value)) {
-    for (const child of value) {
-      structuredTextStrings(child, output);
+  while (stack.length > 0) {
+    const iterator = stack[stack.length - 1];
+    const next = iterator.next();
+    if (next.done) {
+      stack.pop();
+      continue;
     }
-    return;
-  }
-
-  if (!isRecord(value)) {
-    return;
-  }
-
-  if (typeof value.value === 'string') {
-    output.push(value.value);
-  }
-
-  if ('document' in value) {
-    structuredTextStrings(value.document, output);
-  }
-
-  if ('children' in value) {
-    structuredTextStrings(value.children, output);
+    const node = next.value;
+    if (typeof node === 'string') {
+      yield node;
+      continue;
+    }
+    if (!isRecord(node) || visited.has(node)) continue;
+    visited.add(node);
+    if (Array.isArray(node)) {
+      stack.push(node[Symbol.iterator]());
+      continue;
+    }
+    if (typeof node.value === 'string') yield node.value;
+    stack.push([node.document, node.children][Symbol.iterator]());
   }
 }
 
-export function extractStructuredText(value: unknown): string {
-  const strings: string[] = [];
-  structuredTextStrings(value, strings);
-  return strings.join(' ').replace(/\s+/g, ' ').trim();
+function appendTitleFragment(
+  text: string,
+  fragment: string,
+  maxLength: number,
+): string {
+  let needsSpace = text.length > 0;
+  for (const character of fragment) {
+    if (/\s/.test(character)) {
+      needsSpace = text.length > 0;
+    } else {
+      if (needsSpace) text += ' ';
+      text += character;
+      needsSpace = false;
+      // Keep one extra character so truncate() can distinguish a full title.
+      if (text.length > maxLength) return text;
+    }
+  }
+  return text;
+}
+
+export function extractStructuredText(
+  value: unknown,
+  maxLength = Number.POSITIVE_INFINITY,
+): string {
+  if (!Number.isFinite(maxLength)) {
+    return [...structuredTextStrings(value)]
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  let text = '';
+  for (const fragment of structuredTextStrings(value)) {
+    text = appendTitleFragment(text, fragment, maxLength);
+    if (text.length > maxLength) return text;
+  }
+  return text;
 }
 
 export function isRgbaColor(value: unknown): value is RgbaColor {
@@ -194,7 +224,7 @@ const formatStructuredTextTitle: FieldTitleFormatter = ({
   value,
   maxLength,
 }) => {
-  const text = extractStructuredText(value);
+  const text = extractStructuredText(value, maxLength);
   return text ? truncate(text, maxLength) : null;
 };
 

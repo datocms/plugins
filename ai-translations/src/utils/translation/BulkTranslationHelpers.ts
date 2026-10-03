@@ -152,9 +152,11 @@ export function resolveTargetLocales(
     : selectedValues.filter((value) => value !== ALL_LOCALES_VALUE);
 
   const seen = new Set<string>();
+  const configuredLocales = new Set(allLocales);
   const ordered: string[] = [];
   for (const locale of candidates) {
     if (locale === sourceLocale) continue;
+    if (!configuredLocales.has(locale)) continue;
     if (seen.has(locale)) continue;
     seen.add(locale);
     ordered.push(locale);

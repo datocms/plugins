@@ -26,6 +26,8 @@ export type ResolvedCommentType = {
   id: string;
   dateISO: string;
   content: CommentSegment[];
+  /** Exact persisted content used to detect edits made after editing began. */
+  storedContent?: StoredCommentSegment[];
   author: ResolvedAuthor;
   upvoters: ResolvedAuthor[];
   replies?: ResolvedCommentType[];
@@ -39,25 +41,38 @@ export type QueryResult = {
   }>;
 };
 
-function normalizeParsedComment(comment: CommentType): CommentType {
-  const normalizedReplies = comment.replies?.map(normalizeParsedComment);
-  const isTopLevelComment = comment.parentCommentId == null;
-
-  return {
-    ...comment,
-    ...(normalizedReplies ? { replies: normalizedReplies } : {}),
-    ...(isTopLevelComment ? { replies: normalizedReplies ?? [] } : {}),
-  };
-}
-
 function normalizeParsedComments(comments: CommentType[]): CommentType[] {
-  return comments.map(normalizeParsedComment);
+  const normalized: CommentType[] = [];
+  const stack: {
+    source: CommentType[];
+    target: CommentType[];
+    index: number;
+  }[] = [{ source: comments, target: normalized, index: 0 }];
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    if (frame.index >= frame.source.length) {
+      stack.pop();
+      continue;
+    }
+    const comment = frame.source[frame.index++];
+    const copy = { ...comment };
+    frame.target.push(copy);
+    if (comment.replies || comment.parentCommentId == null) {
+      copy.replies = [];
+      if (comment.replies?.length) {
+        stack.push({ source: comment.replies, target: copy.replies, index: 0 });
+      }
+    }
+  }
+  return normalized;
 }
 
 export const COMMENTS_QUERY = `
   query CommentsQuery($modelId: String!, $recordId: String!) {
-    allProjectComments(filter: { modelId: { eq: $modelId }, recordId: { eq: $recordId } }, first: 1) {
+    allProjectComments(filter: { modelId: { eq: $modelId }, recordId: { eq: $recordId } }, first: 2) {
       id
+      modelId
+      recordId
       content
     }
   }

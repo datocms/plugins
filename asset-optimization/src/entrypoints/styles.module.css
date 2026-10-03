@@ -1122,7 +1122,8 @@
   margin-left: -5px;
   border-width: 5px;
   border-style: solid;
-  border-color: var(--color--tooltip--surface) transparent transparent transparent;
+  border-color: var(--color--tooltip--surface) transparent transparent
+    transparent;
 }
 
 .buttonTooltip:hover .tooltipText {

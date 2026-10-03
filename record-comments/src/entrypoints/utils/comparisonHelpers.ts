@@ -1,5 +1,9 @@
 import type { ResolvedAuthor, ResolvedCommentType } from '@ctypes/comments';
-import type { CommentSegment, Mention } from '@ctypes/mentions';
+import type {
+  CommentSegment,
+  Mention,
+  StoredCommentSegment,
+} from '@ctypes/mentions';
 import {
   isAssetMention,
   isFieldMention,
@@ -144,6 +148,14 @@ export function areUpvotersEqual(
   return true;
 }
 
+/** Display resolution can hide changes to the persisted mention references. */
+export function areStoredSegmentsEqual(
+  a: StoredCommentSegment[] | undefined,
+  b: StoredCommentSegment[] | undefined,
+): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
 // Stack overflow protection for deeply nested replies (returns false if exceeded)
 const MAX_REPLY_RECURSION_DEPTH = 20;
 
@@ -154,6 +166,8 @@ function areSingleRepliesEqual(
 ): boolean {
   if (replyA.id !== replyB.id) return false;
   if (!areSegmentsEqual(replyA.content, replyB.content)) return false;
+  if (!areStoredSegmentsEqual(replyA.storedContent, replyB.storedContent))
+    return false;
   if (!areUpvotersEqual(replyA.upvoters, replyB.upvoters)) return false;
   return areRepliesEqual(replyA.replies, replyB.replies, depth + 1);
 }
@@ -189,6 +203,7 @@ export function areCommentsEqual(
   if (a.id !== b.id) return false;
   if (a.author.email !== b.author.email) return false;
   if (!areSegmentsEqual(a.content, b.content)) return false;
+  if (!areStoredSegmentsEqual(a.storedContent, b.storedContent)) return false;
   if (!areUpvotersEqual(a.upvoters, b.upvoters)) return false;
   if (!areRepliesEqual(a.replies, b.replies)) return false;
   return true;

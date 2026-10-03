@@ -1,18 +1,20 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { SelectField, TextField } from 'datocms-react-ui';
-import { useId } from 'react';
+import { useId, useMemo } from 'react';
 import { Field } from 'react-final-form';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
+import { PaginatedEntries } from '@/components/SchemaOverview/PaginatedEntries';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
-import { IdCollisionFallback } from './IdCollisionFallback';
 import type {
   FieldIdCollision,
   FieldLegacyIdIssue,
   FieldsetIdCollision,
   FieldsetLegacyIdIssue,
+  IdReplacementIssue,
   ItemTypeIdCollision,
   ItemTypeLegacyIdIssue,
 } from './buildConflicts';
+import { IdCollisionFallback } from './IdCollisionFallback';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {
@@ -31,6 +33,53 @@ type Props = {
   fieldsetLegacyIdIssues: FieldsetLegacyIdIssue[];
   hasUnresolvedIdCollision: boolean;
 };
+
+function IdReplacementList({
+  issues,
+  title,
+}: {
+  issues: IdReplacementIssue[];
+  title: string;
+}) {
+  if (issues.length === 0) return null;
+  return (
+    <div className="form__item">
+      <div style={{ fontWeight: 600 }}>{title}</div>
+      <PaginatedEntries entries={issues}>
+        {(collision) => (
+          <IdCollisionFallback key={collision.exportId} collision={collision} />
+        )}
+      </PaginatedEntries>
+    </div>
+  );
+}
+
+function getConflictState(
+  resolution: ReturnType<typeof useResolutionStatusForItemType>,
+  projectItemType: SchemaTypes.ItemType | undefined,
+  hasUnresolvedIdCollision: boolean,
+  hasIdIssue: boolean,
+) {
+  const values = resolution?.values;
+  const renameReady =
+    values?.strategy === 'rename' &&
+    Boolean(values.name && values.apiKey) &&
+    !resolution?.invalid;
+  const reuseReady =
+    values?.strategy === 'reuseExisting' && !resolution?.invalid;
+  const hasSemanticConflict =
+    Boolean(projectItemType) && !(renameReady || reuseReady);
+  const itemTypeWillBeCreated = values?.strategy !== 'reuseExisting';
+  return {
+    resolutionStrategyIsRename: values?.strategy === 'rename',
+    itemTypeWillBeCreated,
+    hasActiveIdCollision: itemTypeWillBeCreated && hasIdIssue,
+    hasConflict: hasSemanticConflict || hasUnresolvedIdCollision,
+    isInvalid:
+      (hasSemanticConflict && Boolean(resolution?.invalid)) ||
+      hasUnresolvedIdCollision,
+  };
+}
 
 /**
  * Renders the resolution UI for a conflicting model/block, including rename inputs.
@@ -51,6 +100,14 @@ export function ItemTypeConflict({
   const apiKeyId = useId();
   const fieldPrefix = `itemType-${exportItemType.id}`;
   const resolution = useResolutionStatusForItemType(exportItemType.id);
+  const fieldReplacements = useMemo(
+    () => [...fieldIdCollisions, ...fieldLegacyIdIssues],
+    [fieldIdCollisions, fieldLegacyIdIssues],
+  );
+  const fieldsetReplacements = useMemo(
+    () => [...fieldsetIdCollisions, ...fieldsetLegacyIdIssues],
+    [fieldsetIdCollisions, fieldsetLegacyIdIssues],
+  );
 
   const exportType = exportItemType.attributes.modular_block
     ? 'block'
@@ -59,40 +116,23 @@ export function ItemTypeConflict({
     ? 'block'
     : 'model';
 
-  const resolutionValues = resolution?.values;
-  const resolutionStrategy = resolutionValues?.strategy;
-
-  const resolutionStrategyIsRename = resolutionStrategy === 'rename';
-  const resolutionStrategyIsReuseExisting =
-    resolutionStrategy === 'reuseExisting';
-
-  const renameReady =
-    resolutionStrategyIsRename &&
-    !!resolutionValues?.name &&
-    !!resolutionValues?.apiKey &&
-    !resolution?.invalid;
-
-  const reuseReady = resolutionStrategyIsReuseExisting && !resolution?.invalid;
-
-  const semanticConflictResolved =
-    Boolean(projectItemType) && (renameReady || reuseReady);
-
-  const hasSemanticConflict =
-    Boolean(projectItemType) && !semanticConflictResolved;
-
-  const itemTypeWillBeCreated = !resolutionStrategyIsReuseExisting;
-  const hasActiveIdCollision =
-    itemTypeWillBeCreated &&
-    Boolean(
-      idCollision ||
-        legacyIdIssue ||
-        fieldIdCollisions.length > 0 ||
-        fieldLegacyIdIssues.length > 0 ||
-        fieldsetIdCollisions.length > 0 ||
-        fieldsetLegacyIdIssues.length > 0,
-    );
-
-  const hasConflict = hasSemanticConflict || hasUnresolvedIdCollision;
+  const {
+    resolutionStrategyIsRename,
+    itemTypeWillBeCreated,
+    hasActiveIdCollision,
+    hasConflict,
+    isInvalid,
+  } = getConflictState(
+    resolution,
+    projectItemType,
+    hasUnresolvedIdCollision,
+    [
+      idCollision,
+      legacyIdIssue,
+      fieldReplacements.length,
+      fieldsetReplacements.length,
+    ].some(Boolean),
+  );
 
   // Base strategy options; reuse is only valid for matching model/block types.
   const options: Option[] = [];
@@ -113,10 +153,6 @@ export function ItemTypeConflict({
       });
     }
   }
-
-  const isInvalid =
-    (hasSemanticConflict && Boolean(resolution?.invalid)) ||
-    hasUnresolvedIdCollision;
 
   return (
     <Collapsible
@@ -205,36 +241,17 @@ export function ItemTypeConflict({
           active={itemTypeWillBeCreated}
         />
       )}
-      {itemTypeWillBeCreated &&
-        (fieldIdCollisions.length > 0 || fieldLegacyIdIssues.length > 0) && (
-        <div className="form__item">
-          <div style={{ fontWeight: 600 }}>Field ID replacements</div>
-          {fieldIdCollisions.map((collision) => (
-            <IdCollisionFallback
-              key={collision.exportId}
-              collision={collision}
-            />
-          ))}
-          {fieldLegacyIdIssues.map((issue) => (
-            <IdCollisionFallback key={issue.exportId} collision={issue} />
-          ))}
-        </div>
+      {itemTypeWillBeCreated && (
+        <IdReplacementList
+          issues={fieldReplacements}
+          title="Field ID replacements"
+        />
       )}
-      {itemTypeWillBeCreated &&
-        (fieldsetIdCollisions.length > 0 ||
-          fieldsetLegacyIdIssues.length > 0) && (
-        <div className="form__item">
-          <div style={{ fontWeight: 600 }}>Fieldset ID replacements</div>
-          {fieldsetIdCollisions.map((collision) => (
-            <IdCollisionFallback
-              key={collision.exportId}
-              collision={collision}
-            />
-          ))}
-          {fieldsetLegacyIdIssues.map((issue) => (
-            <IdCollisionFallback key={issue.exportId} collision={issue} />
-          ))}
-        </div>
+      {itemTypeWillBeCreated && (
+        <IdReplacementList
+          issues={fieldsetReplacements}
+          title="Fieldset ID replacements"
+        />
       )}
     </Collapsible>
   );

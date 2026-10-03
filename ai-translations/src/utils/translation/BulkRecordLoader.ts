@@ -4,6 +4,8 @@ import type { DatoCMSRecordFromAPI } from './ItemsDropdownUtils';
 /** Nested CMA responses support at most 30 records per page. */
 export const BULK_RECORD_BATCH_SIZE = 30;
 const RECORD_ID_PAGE_SIZE = 500;
+const DISCOVERY_RESPONSE_BUDGET = 4 * 1024 * 1024;
+const MAX_DISCOVERY_PASSES = 3;
 
 type CancellationOptions = {
   checkCancellation?: () => boolean;
@@ -43,17 +45,30 @@ function recordLoadingError(error: unknown): Error {
   });
 }
 
+function validateRecordCount(count: number): number {
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw recordLoadingError(
+      new Error('Invalid record count returned by DatoCMS.'),
+    );
+  }
+  return count;
+}
+
 async function loadRecordIdPage(
   client: ReturnType<typeof buildClient>,
   modelId: string,
   offset: number,
   limit: number,
+  createdBefore: string,
   options: CancellationOptions,
 ) {
   throwIfCancelled(options);
   try {
     const response = await client.items.rawList({
-      filter: { type: modelId },
+      filter: {
+        type: modelId,
+        fields: { _created_at: { lte: createdBefore } },
+      },
       version: 'current',
       order_by: 'id_ASC',
       page: { offset, limit },
@@ -69,6 +84,7 @@ async function loadRecordIdPage(
 async function loadModelCounts(
   client: ReturnType<typeof buildClient>,
   modelIds: string[],
+  createdBefore: string,
   options: RecordDiscoveryOptions,
 ) {
   const modelTotals = new Map<string, number>();
@@ -76,10 +92,96 @@ async function loadModelCounts(
     throwIfCancelled(options);
     options.onProgress?.({ loaded: 0, modelId });
     // biome-ignore lint/performance/noAwaitInLoops: Sequential counts avoid a burst of CMA traffic.
-    const response = await loadRecordIdPage(client, modelId, 0, 1, options);
-    modelTotals.set(modelId, response.meta.total_count);
+    const response = await loadRecordIdPage(
+      client,
+      modelId,
+      0,
+      1,
+      createdBefore,
+      options,
+    );
+    modelTotals.set(modelId, validateRecordCount(response.meta.total_count));
   }
   return modelTotals;
+}
+
+type ModelDiscoveryOptions = RecordDiscoveryOptions & {
+  expectedTotal?: number;
+  onModelProgress: (total: number, loaded: number) => void;
+};
+
+function discoveryPageSize(records: Array<{ id: string }>): number {
+  // CMA does not project fields. Start small and adapt to the actual regular
+  // response rather than requesting 500 content-heavy records immediately.
+  // Two bytes per UTF-16 code unit conservatively estimates string storage.
+  const serializedSize = JSON.stringify(records).length * 2;
+  const recordSize = Math.max(1, serializedSize / records.length);
+  return Math.max(
+    1,
+    Math.min(
+      RECORD_ID_PAGE_SIZE,
+      Math.floor(DISCOVERY_RESPONSE_BUDGET / recordSize),
+    ),
+  );
+}
+
+async function scanModelRecordIds(
+  client: ReturnType<typeof buildClient>,
+  modelId: string,
+  createdBefore: string,
+  options: ModelDiscoveryOptions,
+) {
+  const recordIds = new Set<string>();
+  let offset = 0;
+  let expectedTotal = options.expectedTotal;
+  let changed = false;
+  let pageSize = BULK_RECORD_BATCH_SIZE;
+  while (true) {
+    // biome-ignore lint/performance/noAwaitInLoops: Sequential pages keep only one response of content in flight.
+    const response = await loadRecordIdPage(
+      client,
+      modelId,
+      offset,
+      pageSize,
+      createdBefore,
+      options,
+    );
+    const total = validateRecordCount(response.meta.total_count);
+    if (expectedTotal !== undefined && expectedTotal !== total) changed = true;
+    expectedTotal = total;
+    const previousSize = recordIds.size;
+    for (const record of response.data) recordIds.add(record.id);
+    if (recordIds.size - previousSize !== response.data.length) changed = true;
+    options.onModelProgress(total, recordIds.size);
+    offset += response.data.length;
+    if (response.data.length === 0 || offset >= total) {
+      return { recordIds, total, stable: !changed && recordIds.size === total };
+    }
+    pageSize = discoveryPageSize(response.data);
+  }
+}
+
+async function loadStableModelRecordIds(
+  client: ReturnType<typeof buildClient>,
+  modelId: string,
+  createdBefore: string,
+  options: ModelDiscoveryOptions,
+): Promise<Set<string>> {
+  let expectedTotal = options.expectedTotal;
+  for (let pass = 0; pass < MAX_DISCOVERY_PASSES; pass++) {
+    // biome-ignore lint/performance/noAwaitInLoops: Automatically restart an unstable offset scan without parallel listings.
+    const result = await scanModelRecordIds(client, modelId, createdBefore, {
+      ...options,
+      expectedTotal,
+    });
+    if (result.stable) return result.recordIds;
+    expectedTotal = result.total;
+  }
+  throw recordLoadingError(
+    new Error(
+      `Record selection for model ${modelId} kept changing during discovery. No translation was started.`,
+    ),
+  );
 }
 
 function discoveryTotal(
@@ -106,52 +208,46 @@ export async function collectRecordIds(
 ): Promise<string[]> {
   const uniqueModelIds = [...new Set(modelIds)];
   const recordIds = new Set<string>();
+  // Freeze additions at the start of discovery. The CMA only offers offset
+  // pagination, so deletions still require a fresh, bounded reconciliation.
+  const createdBefore = new Date().toISOString();
   // For multiple models, obtain the complete denominator before draining any
   // large listing. A single model gets its count in the first real page.
   const modelTotals =
     uniqueModelIds.length > 1
-      ? await loadModelCounts(client, uniqueModelIds, options)
+      ? await loadModelCounts(client, uniqueModelIds, createdBefore, options)
       : new Map<string, number>();
 
   for (const modelId of uniqueModelIds) {
     throwIfCancelled(options);
-    let offset = 0;
     options.onProgress?.({
       loaded: recordIds.size,
       total: discoveryTotal(modelTotals, uniqueModelIds.length, recordIds.size),
       modelId,
     });
-    if (modelTotals.get(modelId) === 0) continue;
-
-    while (true) {
-      throwIfCancelled(options);
-      // biome-ignore lint/performance/noAwaitInLoops: Sequential pages limit CMA traffic and expose cancellable progress.
-      const response = await loadRecordIdPage(
-        client,
-        modelId,
-        offset,
-        RECORD_ID_PAGE_SIZE,
-        options,
-      );
-
-      for (const record of response.data) recordIds.add(record.id);
-      const modelTotal = response.meta.total_count;
-      modelTotals.set(modelId, modelTotal);
-      options.onProgress?.({
-        loaded: recordIds.size,
-        total: discoveryTotal(
-          modelTotals,
-          uniqueModelIds.length,
-          recordIds.size,
-        ),
-        modelId,
-      });
-
-      offset += RECORD_ID_PAGE_SIZE;
-      if (response.data.length === 0 || offset >= modelTotal) {
-        break;
-      }
-    }
+    // biome-ignore lint/performance/noAwaitInLoops: Complete one model selection before requesting the next.
+    const modelRecordIds = await loadStableModelRecordIds(
+      client,
+      modelId,
+      createdBefore,
+      {
+        ...options,
+        expectedTotal: modelTotals.get(modelId),
+        onModelProgress: (modelTotal, modelLoaded) => {
+          modelTotals.set(modelId, modelTotal);
+          options.onProgress?.({
+            loaded: recordIds.size + modelLoaded,
+            total: discoveryTotal(
+              modelTotals,
+              uniqueModelIds.length,
+              recordIds.size + modelLoaded,
+            ),
+            modelId,
+          });
+        },
+      },
+    );
+    for (const id of modelRecordIds) recordIds.add(id);
   }
 
   return [...recordIds];

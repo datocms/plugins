@@ -12,6 +12,7 @@ import {
   readLastAssetExportSnapshot,
   SIZE_SAFETY_FACTOR,
 } from './assetExport';
+import { mapWithConcurrency, throwIfAborted } from './exportRuntime';
 
 export const RECORD_EXPORT_VERSION = '2.1.0';
 
@@ -129,6 +130,13 @@ export type BlockReference = {
   synthetic: boolean;
 };
 
+export type RecordExportPartition = {
+  exportId: string;
+  index: number;
+  recordOffset: number;
+  isLast: boolean;
+};
+
 export type RecordExportEnvelope = {
   manifest: {
     exportVersion: string;
@@ -140,6 +148,7 @@ export type RecordExportEnvelope = {
     locales: string[];
     scope: ExportScope;
     filtersUsed: ExportFilters;
+    partition?: RecordExportPartition;
     configurationExport: {
       includedResources: ConfigurationResourceName[];
       warningCount: number;
@@ -205,6 +214,10 @@ type ReferenceContext = {
 };
 
 type ReferenceCollector = {
+  maxEntries: number;
+  entryCount: number;
+  maxBytes: number;
+  estimatedBytes: number;
   recordRefs: RecordReference[];
   uploadRefs: UploadReference[];
   structuredTextRefs: StructuredTextReference[];
@@ -299,23 +312,43 @@ function extractUploadId(value: unknown): string | null {
 }
 
 function extractItemTypeId(entity: JsonObject): string | null {
+  const relationships = asJsonObject(entity.relationships);
+  const itemTypeRelationship = relationships
+    ? asJsonObject(relationships.item_type)
+    : null;
   return (
     extractEntityId(entity.item_type) ??
+    extractEntityId(itemTypeRelationship?.data) ??
     (isObject(entity.meta) ? extractEntityId(entity.meta.item_type) : null)
   );
 }
 
-function appendPath(basePath: string, segment: string): string {
-  if (segment.startsWith('[')) {
-    return `${basePath}${segment}`;
+function entityAttributes(entity: JsonObject): JsonObject {
+  // Nested blocks retain the JSON:API shape even when items.list() returns
+  // deserialized top-level records. Keep the original payload and its paths.
+  return !('item_type' in entity) &&
+    isObject(entity.attributes) &&
+    isObject(entity.relationships)
+    ? entity.attributes
+    : entity;
+}
+
+function entityAttributesPath(entity: JsonObject, jsonPath: string): string {
+  return entityAttributes(entity) === entity
+    ? jsonPath
+    : appendPath(jsonPath, 'attributes');
+}
+
+function appendPath(basePath: string, segment: string | number): string {
+  if (typeof segment === 'number') {
+    return `${basePath}[${segment}]`;
   }
 
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(segment)) {
     return `${basePath}.${segment}`;
   }
 
-  const escaped = segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  return `${basePath}["${escaped}"]`;
+  return `${basePath}[${JSON.stringify(segment)}]`;
 }
 
 function createSyntheticBlockId(
@@ -325,8 +358,34 @@ function createSyntheticBlockId(
   return `synthetic::${recordSourceId}::${jsonPath}`;
 }
 
-function createReferenceCollector(): ReferenceCollector {
+export class ReferenceIndexLimitError extends Error {
+  constructor(
+    readonly limit: number,
+    readonly unit: 'entries' | 'bytes' = 'entries',
+  ) {
+    super(`Reference index exceeds ${limit} ${unit} in one export part.`);
+    this.name = 'ReferenceIndexLimitError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+function createReferenceCollector(
+  maxEntries = 50_000,
+  maxBytes = 16 * 1024 * 1024,
+): ReferenceCollector {
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new Error('The reference index limit must be a positive integer.');
+  }
+  if (!Number.isInteger(maxBytes) || maxBytes < 1) {
+    throw new Error(
+      'The reference index byte budget must be a positive integer.',
+    );
+  }
   return {
+    maxEntries,
+    entryCount: 0,
+    maxBytes,
+    estimatedBytes: 0,
     recordRefs: [],
     uploadRefs: [],
     structuredTextRefs: [],
@@ -338,19 +397,34 @@ function createReferenceCollector(): ReferenceCollector {
   };
 }
 
+function reserveReferenceEntry(collector: ReferenceCollector, key: string) {
+  if (collector.entryCount >= collector.maxEntries) {
+    throw new ReferenceIndexLimitError(collector.maxEntries);
+  }
+  // Budget both the deduplication key and the retained reference/context.
+  // Four bytes per character conservatively covers their string storage and
+  // prevents a few unusually deep JSON paths from defeating the entry cap.
+  const estimatedBytes = 256 + key.length * 4;
+  if (collector.estimatedBytes + estimatedBytes > collector.maxBytes) {
+    throw new ReferenceIndexLimitError(collector.maxBytes, 'bytes');
+  }
+  collector.estimatedBytes += estimatedBytes;
+  collector.entryCount++;
+}
+
 function getContextKey(
   context: Pick<
     ReferenceContext,
     'recordSourceId' | 'sourceBlockId' | 'fieldApiKey' | 'locale' | 'jsonPath'
   >,
 ): string {
-  return [
+  return JSON.stringify([
     context.recordSourceId,
     context.sourceBlockId ?? '',
     context.fieldApiKey,
     context.locale ?? '',
     context.jsonPath,
-  ].join('|');
+  ]);
 }
 
 function addRecordReference(
@@ -364,6 +438,7 @@ function addRecordReference(
     return;
   }
 
+  reserveReferenceEntry(collector, key);
   collector.recordRefKeys.add(key);
   collector.recordRefs.push({
     ...context,
@@ -383,6 +458,7 @@ function addUploadReference(
     return;
   }
 
+  reserveReferenceEntry(collector, key);
   collector.uploadRefKeys.add(key);
   collector.uploadRefs.push({
     ...context,
@@ -403,6 +479,7 @@ function addStructuredTextReference(
     return;
   }
 
+  reserveReferenceEntry(collector, key);
   collector.structuredTextRefKeys.add(key);
   collector.structuredTextRefs.push({
     ...context,
@@ -429,6 +506,7 @@ function addBlockReference(
     return;
   }
 
+  reserveReferenceEntry(collector, key);
   collector.blockRefKeys.add(key);
   collector.blockRefs.push({
     ...context,
@@ -444,11 +522,12 @@ function normalizeFieldDefinitions(fields: JsonObject[]): FieldDefinition[] {
   const definitions: FieldDefinition[] = [];
 
   for (const field of fields) {
+    const attributes = entityAttributes(field);
     const fieldId = asString(field.id);
-    const itemTypeId = extractEntityId(field.item_type);
-    const apiKey = asString(field.api_key);
-    const fieldType = asString(field.field_type) ?? 'unknown';
-    const localized = asBoolean(field.localized);
+    const itemTypeId = extractItemTypeId(field);
+    const apiKey = asString(attributes.api_key);
+    const fieldType = asString(attributes.field_type) ?? 'unknown';
+    const localized = asBoolean(attributes.localized);
 
     if (!fieldId || !itemTypeId || !apiKey) {
       continue;
@@ -466,701 +545,487 @@ function normalizeFieldDefinitions(fields: JsonObject[]): FieldDefinition[] {
   return definitions;
 }
 
+type FieldDefinitionsByItemType = Map<string, Map<string, FieldDefinition>>;
+
 function indexFieldsByItemType(
   fields: FieldDefinition[],
-): Map<string, FieldDefinition[]> {
-  const byItemType = new Map<string, FieldDefinition[]>();
+): FieldDefinitionsByItemType {
+  const byItemType: FieldDefinitionsByItemType = new Map();
 
   for (const field of fields) {
-    const existing = byItemType.get(field.itemTypeId) ?? [];
-    existing.push(field);
-    byItemType.set(field.itemTypeId, existing);
+    let definitions = byItemType.get(field.itemTypeId);
+    if (!definitions) {
+      definitions = new Map();
+      byItemType.set(field.itemTypeId, definitions);
+    }
+    definitions.set(field.apiKey, field);
   }
 
   return byItemType;
 }
 
-function inspectLinkValue(
-  value: unknown,
-  context: ReferenceContext,
-  collector: ReferenceCollector,
-  kind: string,
-) {
-  const targetSourceId = extractEntityId(value);
-  if (!targetSourceId) {
-    return;
-  }
+type ReferenceTaskBase = {
+  value: unknown;
+  context: ReferenceContext;
+  parentBlockSourceId: string | null;
+  index?: number;
+};
 
-  addRecordReference(collector, context, targetSourceId, kind);
-}
-
-function inspectLinksValue(
-  value: unknown,
-  context: ReferenceContext,
-  collector: ReferenceCollector,
-  kind: string,
-) {
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => {
-      inspectLinkValue(
-        entry,
-        { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
-        collector,
-        kind,
-      );
-    });
-    return;
-  }
-
-  inspectLinkValue(value, context, collector, kind);
-}
-
-function inspectUploadValue(
-  value: unknown,
-  context: ReferenceContext,
-  collector: ReferenceCollector,
-  kind: string,
-) {
-  const targetSourceId = extractUploadId(value);
-  if (!targetSourceId) {
-    return;
-  }
-
-  addUploadReference(collector, context, targetSourceId, kind);
-}
-
-function inspectUploadsValue(
-  value: unknown,
-  context: ReferenceContext,
-  collector: ReferenceCollector,
-  kind: string,
-) {
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => {
-      inspectUploadValue(
-        entry,
-        { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
-        collector,
-        kind,
-      );
-    });
-    return;
-  }
-
-  inspectUploadValue(value, context, collector, kind);
-}
-
-function inspectUnknownValue(
-  value: unknown,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  parentBlockSourceId: string | null,
-) {
-  if (value === null || typeof value === 'undefined') {
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => {
-      inspectUnknownValue(
-        entry,
-        { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
-        fieldDefinitionsByItemType,
-        collector,
-        parentBlockSourceId,
-      );
-    });
-    return;
-  }
-
-  if (!isObject(value)) {
-    return;
-  }
-
-  const nestedItemTypeId = extractItemTypeId(value);
-  const nestedId = extractEntityId(value);
-  const knownModel =
-    nestedItemTypeId && fieldDefinitionsByItemType.has(nestedItemTypeId);
-
-  if (nestedId && knownModel) {
-    inspectBlockObject(
-      value,
-      context,
-      fieldDefinitionsByItemType,
-      collector,
-      'nested_block',
-      parentBlockSourceId,
-    );
-    return;
-  }
-
-  const uploadLikeId = extractUploadId(value);
-  const typeHint = asString(value.type)?.toLowerCase() ?? null;
-
-  if (uploadLikeId && typeHint?.includes('upload')) {
-    addUploadReference(collector, context, uploadLikeId, 'unknown_upload');
-  }
-
-  if (nestedId && typeHint?.includes('item')) {
-    addRecordReference(collector, context, nestedId, 'unknown_item');
-  }
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    inspectUnknownValue(
-      nestedValue,
-      { ...context, jsonPath: appendPath(context.jsonPath, key) },
-      fieldDefinitionsByItemType,
-      collector,
-      parentBlockSourceId,
-    );
-  }
-}
-
-function handleItemLinkOrInlineItemNode(
-  nodeType: string,
-  nodeItem: unknown,
-  context: ReferenceContext,
-  collector: ReferenceCollector,
-) {
-  const targetSourceId = extractEntityId(nodeItem);
-  if (!targetSourceId) {
-    return;
-  }
-  addRecordReference(
-    collector,
-    context,
-    targetSourceId,
-    `structured_text_${nodeType}`,
+type ReferenceTask = ReferenceTaskBase &
+  (
+    | { mode: 'unknown' | 'structured-node' | 'structured-value' }
+    | { mode: 'field'; definition: FieldDefinition }
+    | { mode: 'block' | 'block-collection'; kind: string }
+    | {
+        mode: 'object-children';
+        entries: [string, unknown][];
+        entryMode: 'unknown' | 'structured-node';
+        ignoredKey?: string;
+      }
   );
-  addStructuredTextReference(
-    collector,
-    context,
-    targetSourceId,
-    'record',
-    'link',
-  );
-}
 
-function handleBlockNode(
-  nodeItem: unknown,
+const ENTITY_METADATA_KEYS = new Set([
+  'id',
+  'type',
+  'item_type',
+  'meta',
+  'relationships',
+  '__itemTypeId',
+  'created_at',
+  'updated_at',
+  'is_valid',
+  'position',
+  'stage',
+  'creator',
+]);
+
+function pushEntityFieldTasks(
+  tasks: ReferenceTask[],
+  entity: JsonObject,
   context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  parentBlockSourceId: string | null,
+  fieldDefinitionsByItemType: FieldDefinitionsByItemType,
+  sourceBlockId: string | null,
 ) {
-  const blockSourceId = extractEntityId(nodeItem);
-  if (blockSourceId) {
-    addBlockReference(
-      collector,
-      context,
-      blockSourceId,
-      null,
-      parentBlockSourceId,
-      'structured_text_block',
-      false,
-    );
-    addStructuredTextReference(
-      collector,
-      context,
-      blockSourceId,
-      'block',
-      'block',
-    );
-  }
+  const itemTypeId = extractItemTypeId(entity);
+  const definitions = itemTypeId
+    ? fieldDefinitionsByItemType.get(itemTypeId)
+    : undefined;
+  const attributes = entityAttributes(entity);
+  const attributesPath = entityAttributesPath(entity, context.jsonPath);
+  const entries = Object.entries(attributes);
 
-  if (isObject(nodeItem)) {
-    inspectBlockObject(
-      nodeItem,
-      { ...context, jsonPath: appendPath(context.jsonPath, 'item') },
-      fieldDefinitionsByItemType,
-      collector,
-      'structured_text_block',
-      parentBlockSourceId,
-    );
-  }
-}
-
-function inspectStructuredTextNode(
-  node: unknown,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  parentBlockSourceId: string | null,
-) {
-  if (node === null || typeof node === 'undefined') {
-    return;
-  }
-
-  if (Array.isArray(node)) {
-    node.forEach((entry, index) => {
-      inspectStructuredTextNode(
-        entry,
-        { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
-        fieldDefinitionsByItemType,
-        collector,
-        parentBlockSourceId,
-      );
-    });
-    return;
-  }
-
-  if (!isObject(node)) {
-    return;
-  }
-
-  const nodeType = asString(node.type);
-  const nodeItem = node.item;
-
-  if (nodeType === 'itemLink' || nodeType === 'inlineItem') {
-    handleItemLinkOrInlineItemNode(nodeType, nodeItem, context, collector);
-  }
-
-  if (nodeType === 'block') {
-    handleBlockNode(
-      nodeItem,
-      context,
-      fieldDefinitionsByItemType,
-      collector,
-      parentBlockSourceId,
-    );
-  }
-
-  for (const [key, value] of Object.entries(node)) {
-    if (key === 'item') {
+  // A LIFO work stack visits fields in their payload order without recursive
+  // calls, including deeply nested blocks and Structured Text documents.
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const [apiKey, value] = entries[index];
+    const definition = definitions?.get(apiKey);
+    if (
+      !definition &&
+      attributes === entity &&
+      ENTITY_METADATA_KEYS.has(apiKey)
+    ) {
       continue;
     }
-
-    inspectStructuredTextNode(
+    const task = {
       value,
-      { ...context, jsonPath: appendPath(context.jsonPath, key) },
-      fieldDefinitionsByItemType,
-      collector,
-      parentBlockSourceId,
+      context: {
+        ...context,
+        sourceBlockId,
+        fieldApiKey: apiKey,
+        jsonPath: appendPath(attributesPath, apiKey),
+      },
+      parentBlockSourceId: sourceBlockId,
+    };
+    tasks.push(
+      definition
+        ? { ...task, mode: 'field', definition }
+        : { ...task, mode: 'unknown' },
     );
   }
 }
 
-function inspectStructuredTextValue(
-  value: unknown,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  parentBlockSourceId: string | null,
-) {
-  if (!isObject(value)) {
-    return;
-  }
+type ReferenceTraversal = {
+  tasks: ReferenceTask[];
+  collector: ReferenceCollector;
+  fieldsByItemType: FieldDefinitionsByItemType;
+};
 
-  if (Array.isArray(value.links)) {
-    value.links.forEach((entry, index) => {
-      const targetSourceId = extractEntityId(entry);
-      if (!targetSourceId) {
-        return;
-      }
+type FieldReferenceTask = ReferenceTaskBase & {
+  mode: 'field';
+  definition: FieldDefinition;
+};
+type BlockReferenceTask = ReferenceTaskBase & {
+  mode: 'block' | 'block-collection';
+  kind: string;
+};
+type ChildrenReferenceTask = ReferenceTaskBase & {
+  mode: 'object-children';
+  entries: [string, unknown][];
+  entryMode: 'unknown' | 'structured-node';
+  ignoredKey?: string;
+};
 
-      const refContext = {
-        ...context,
-        jsonPath: appendPath(
-          appendPath(context.jsonPath, 'links'),
-          `[${index}]`,
-        ),
-      };
-
-      addRecordReference(
-        collector,
-        refContext,
-        targetSourceId,
-        'structured_text_links_array',
-      );
-      addStructuredTextReference(
-        collector,
-        refContext,
-        targetSourceId,
-        'record',
-        'link',
-      );
-    });
-  }
-
-  if (Array.isArray(value.blocks)) {
-    value.blocks.forEach((entry, index) => {
-      const refContext = {
-        ...context,
-        jsonPath: appendPath(
-          appendPath(context.jsonPath, 'blocks'),
-          `[${index}]`,
-        ),
-      };
-
-      const blockSourceId = extractEntityId(entry);
-      if (blockSourceId) {
-        addBlockReference(
-          collector,
-          refContext,
-          blockSourceId,
-          null,
-          parentBlockSourceId,
-          'structured_text_blocks_array',
-          false,
-        );
-        addStructuredTextReference(
-          collector,
-          refContext,
-          blockSourceId,
-          'block',
-          'block',
-        );
-      }
-
-      if (isObject(entry)) {
-        inspectBlockObject(
-          entry,
-          refContext,
-          fieldDefinitionsByItemType,
-          collector,
-          'structured_text_block',
-          parentBlockSourceId,
-        );
-      }
-    });
-  }
-
-  if ('document' in value) {
-    inspectStructuredTextNode(
-      value.document,
-      { ...context, jsonPath: appendPath(context.jsonPath, 'document') },
-      fieldDefinitionsByItemType,
-      collector,
-      parentBlockSourceId,
-    );
-  } else {
-    inspectStructuredTextNode(
-      value,
-      context,
-      fieldDefinitionsByItemType,
-      collector,
-      parentBlockSourceId,
-    );
+function inspectLinkField(task: FieldReferenceTask, state: ReferenceTraversal) {
+  const { value, context } = task;
+  const fieldType = task.definition.fieldType;
+  const values =
+    (fieldType === 'links' || fieldType === 'gallery') && Array.isArray(value)
+      ? value
+      : [value];
+  const upload = fieldType === 'file' || fieldType === 'gallery';
+  for (let index = 0; index < values.length; index++) {
+    const referenceContext =
+      values === value
+        ? { ...context, jsonPath: appendPath(context.jsonPath, index) }
+        : context;
+    const target = upload
+      ? extractUploadId(values[index])
+      : extractEntityId(values[index]);
+    if (!target) continue;
+    if (upload) {
+      addUploadReference(state.collector, referenceContext, target, fieldType);
+    } else {
+      addRecordReference(state.collector, referenceContext, target, fieldType);
+    }
   }
 }
 
-function inspectFieldValue(
-  value: unknown,
-  fieldDefinition: FieldDefinition,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  parentBlockSourceId: string | null,
-) {
-  if (value === null || typeof value === 'undefined') {
-    return;
-  }
-
-  if (fieldDefinition.localized && isObject(value)) {
-    for (const [locale, localizedValue] of Object.entries(value)) {
-      inspectFieldValue(
-        localizedValue,
-        { ...fieldDefinition, localized: false },
-        {
-          ...context,
+function inspectFieldTask(task: FieldReferenceTask, state: ReferenceTraversal) {
+  if (task.definition.localized && isObject(task.value)) {
+    const locales = Object.entries(task.value);
+    for (let index = locales.length - 1; index >= 0; index--) {
+      const [locale, value] = locales[index];
+      state.tasks.push({
+        ...task,
+        value,
+        definition: { ...task.definition, localized: false },
+        context: {
+          ...task.context,
           locale,
-          jsonPath: appendPath(context.jsonPath, locale),
+          jsonPath: appendPath(task.context.jsonPath, locale),
         },
-        fieldDefinitionsByItemType,
-        collector,
-        parentBlockSourceId,
-      );
+      });
     }
     return;
   }
-
-  switch (fieldDefinition.fieldType) {
+  switch (task.definition.fieldType) {
+    case 'json':
+      // Arbitrary JSON has no CMA reference semantics, even when it contains
+      // objects shaped like items, uploads or blocks.
+      return;
     case 'link':
-      inspectLinkValue(value, context, collector, 'link');
-      break;
     case 'links':
-      inspectLinksValue(value, context, collector, 'links');
-      break;
     case 'file':
-      inspectUploadValue(value, context, collector, 'file');
-      break;
     case 'gallery':
-      inspectUploadsValue(value, context, collector, 'gallery');
-      break;
+      inspectLinkField(task, state);
+      return;
     case 'structured_text':
+      state.tasks.push({ ...task, mode: 'structured-value' });
+      return;
     case 'rich_text':
-      inspectStructuredTextValue(
-        value,
-        context,
-        fieldDefinitionsByItemType,
-        collector,
-        parentBlockSourceId,
-      );
-      break;
     case 'modular_content':
-      inspectBlockCollection(
-        value,
-        context,
-        fieldDefinitionsByItemType,
-        collector,
-        'modular_content',
-        parentBlockSourceId,
-      );
-      break;
     case 'single_block':
-      inspectBlockCollection(
-        value,
-        context,
-        fieldDefinitionsByItemType,
-        collector,
-        'single_block',
-        parentBlockSourceId,
-      );
-      break;
+      state.tasks.push({
+        ...task,
+        mode: 'block-collection',
+        kind: task.definition.fieldType,
+      });
+      return;
     default:
-      inspectUnknownValue(
-        value,
-        context,
-        fieldDefinitionsByItemType,
-        collector,
-        parentBlockSourceId,
-      );
-      break;
+      state.tasks.push({ ...task, mode: 'unknown' });
   }
 }
 
-function inspectBlockObject(
-  value: JsonObject,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  kind: string,
-  parentBlockSourceId: string | null,
+function inspectBlockCollectionTask(
+  task: BlockReferenceTask,
+  state: ReferenceTraversal,
 ) {
+  if (!Array.isArray(task.value)) {
+    state.tasks.push({ ...task, mode: 'block' });
+    return;
+  }
+  const index = task.index ?? 0;
+  if (index >= task.value.length) return;
+  state.tasks.push({ ...task, index: index + 1 });
+  state.tasks.push({
+    ...task,
+    mode: 'block',
+    index: undefined,
+    value: task.value[index],
+    context: {
+      ...task.context,
+      jsonPath: appendPath(task.context.jsonPath, index),
+    },
+  });
+}
+
+function inspectBlockTask(task: BlockReferenceTask, state: ReferenceTraversal) {
+  const { value, context } = task;
   const existingId = extractEntityId(value);
+  if (!existingId && !isObject(value)) return;
   const blockSourceId =
     existingId ??
     createSyntheticBlockId(context.recordSourceId, context.jsonPath);
-  const blockModelId = extractItemTypeId(value);
-  const synthetic = !existingId;
-
+  const blockModelId = isObject(value) ? extractItemTypeId(value) : null;
   addBlockReference(
-    collector,
+    state.collector,
     context,
     blockSourceId,
     blockModelId,
-    parentBlockSourceId,
-    kind,
-    synthetic,
+    task.parentBlockSourceId,
+    task.kind,
+    !existingId,
   );
-
-  if (!blockModelId) {
-    inspectUnknownValue(
-      value,
-      { ...context, sourceBlockId: blockSourceId },
-      fieldDefinitionsByItemType,
-      collector,
+  if (task.kind.startsWith('structured_text_')) {
+    addStructuredTextReference(
+      state.collector,
+      context,
       blockSourceId,
-    );
-    return;
-  }
-
-  const fieldDefinitions = fieldDefinitionsByItemType.get(blockModelId) ?? [];
-  const processedFieldKeys = new Set<string>();
-
-  for (const fieldDefinition of fieldDefinitions) {
-    if (!(fieldDefinition.apiKey in value)) {
-      continue;
-    }
-
-    const blockFieldContext: ReferenceContext = {
-      ...context,
-      sourceBlockId: blockSourceId,
-      fieldApiKey: fieldDefinition.apiKey,
-      jsonPath: appendPath(context.jsonPath, fieldDefinition.apiKey),
-    };
-
-    inspectFieldValue(
-      value[fieldDefinition.apiKey],
-      fieldDefinition,
-      blockFieldContext,
-      fieldDefinitionsByItemType,
-      collector,
-      blockSourceId,
-    );
-
-    processedFieldKeys.add(fieldDefinition.apiKey);
-  }
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (processedFieldKeys.has(key) || key === 'id' || key === 'item_type') {
-      continue;
-    }
-
-    inspectUnknownValue(
-      nestedValue,
-      {
-        ...context,
-        sourceBlockId: blockSourceId,
-        fieldApiKey: key,
-        jsonPath: appendPath(context.jsonPath, key),
-      },
-      fieldDefinitionsByItemType,
-      collector,
-      blockSourceId,
+      'block',
+      'block',
     );
   }
-}
-
-function inspectBlockCollection(
-  value: unknown,
-  context: ReferenceContext,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
-  collector: ReferenceCollector,
-  kind: string,
-  parentBlockSourceId: string | null,
-) {
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => {
-      const blockContext = {
-        ...context,
-        jsonPath: appendPath(context.jsonPath, `[${index}]`),
-      };
-
-      if (isObject(entry)) {
-        inspectBlockObject(
-          entry,
-          blockContext,
-          fieldDefinitionsByItemType,
-          collector,
-          kind,
-          parentBlockSourceId,
-        );
-        return;
-      }
-
-      const blockSourceId = extractEntityId(entry);
-      if (blockSourceId) {
-        addBlockReference(
-          collector,
-          blockContext,
-          blockSourceId,
-          null,
-          parentBlockSourceId,
-          kind,
-          false,
-        );
-      }
-    });
-    return;
-  }
-
   if (isObject(value)) {
-    inspectBlockObject(
+    pushEntityFieldTasks(
+      state.tasks,
       value,
       context,
-      fieldDefinitionsByItemType,
-      collector,
-      kind,
-      parentBlockSourceId,
+      state.fieldsByItemType,
+      blockSourceId,
     );
   }
 }
 
-function inspectSingleRecord(
-  record: JsonObject,
-  recordIndex: number,
-  ignoredKeys: Set<string>,
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
+function inspectStructuredTextLinks(
+  value: unknown[],
+  context: ReferenceContext,
   collector: ReferenceCollector,
 ) {
-  const recordSourceId = extractEntityId(record.id);
-  if (!recordSourceId) {
+  for (let index = 0; index < value.length; index++) {
+    const target = extractEntityId(value[index]);
+    if (!target) continue;
+    const linkContext = {
+      ...context,
+      jsonPath: appendPath(appendPath(context.jsonPath, 'links'), index),
+    };
+    addRecordReference(
+      collector,
+      linkContext,
+      target,
+      'structured_text_links_array',
+    );
+    addStructuredTextReference(
+      collector,
+      linkContext,
+      target,
+      'record',
+      'link',
+    );
+  }
+}
+
+function inspectStructuredValueTask(
+  task: ReferenceTaskBase,
+  state: ReferenceTraversal,
+) {
+  const { value, context } = task;
+  if (!isObject(value)) return;
+  if (Array.isArray(value.links)) {
+    inspectStructuredTextLinks(value.links, context, state.collector);
+  }
+  if (Array.isArray(value.blocks)) {
+    state.tasks.push({
+      ...task,
+      mode: 'block-collection',
+      kind: 'structured_text_blocks_array',
+      value: value.blocks,
+      context: { ...context, jsonPath: appendPath(context.jsonPath, 'blocks') },
+    });
+  }
+  state.tasks.push({
+    ...task,
+    mode: 'structured-node',
+    value: 'document' in value ? value.document : value,
+    context:
+      'document' in value
+        ? { ...context, jsonPath: appendPath(context.jsonPath, 'document') }
+        : context,
+  });
+}
+
+function pushObjectChildren(
+  task: ReferenceTaskBase,
+  value: JsonObject,
+  state: ReferenceTraversal,
+  mode: 'unknown' | 'structured-node',
+  ignoredKey?: string,
+) {
+  state.tasks.push({
+    ...task,
+    mode: 'object-children',
+    entries: Object.entries(value),
+    entryMode: mode,
+    ignoredKey,
+    index: 0,
+  });
+}
+
+function inspectObjectChildrenTask(
+  task: ChildrenReferenceTask,
+  state: ReferenceTraversal,
+) {
+  const index = task.index ?? 0;
+  if (index >= task.entries.length) return;
+  state.tasks.push({ ...task, index: index + 1 });
+  const [key, value] = task.entries[index];
+  if (key === task.ignoredKey) return;
+  state.tasks.push({
+    mode: task.entryMode,
+    value,
+    parentBlockSourceId: task.parentBlockSourceId,
+    context: {
+      ...task.context,
+      jsonPath: appendPath(task.context.jsonPath, key),
+    },
+  });
+}
+
+function inspectStructuredNodeTask(
+  task: ReferenceTaskBase,
+  value: JsonObject,
+  state: ReferenceTraversal,
+) {
+  const nodeType = asString(value.type);
+  const context = {
+    ...task.context,
+    jsonPath: appendPath(task.context.jsonPath, 'item'),
+  };
+  if (nodeType === 'itemLink' || nodeType === 'inlineItem') {
+    const target = extractEntityId(value.item);
+    if (target) {
+      addRecordReference(
+        state.collector,
+        context,
+        target,
+        `structured_text_${nodeType}`,
+      );
+      addStructuredTextReference(
+        state.collector,
+        context,
+        target,
+        'record',
+        'link',
+      );
+    }
+  } else if (nodeType === 'block' || nodeType === 'inlineBlock') {
+    state.tasks.push({
+      ...task,
+      mode: 'block',
+      value: value.item,
+      context,
+      kind:
+        nodeType === 'block'
+          ? 'structured_text_block'
+          : 'structured_text_inline_block',
+    });
+  }
+  pushObjectChildren(task, value, state, 'structured-node', 'item');
+}
+
+function inspectUnknownTask(
+  task: ReferenceTaskBase,
+  value: JsonObject,
+  state: ReferenceTraversal,
+) {
+  const modelId = extractItemTypeId(value);
+  if (modelId && state.fieldsByItemType.has(modelId)) {
+    state.tasks.push({ ...task, mode: 'block', kind: 'nested_block' });
     return;
   }
-
-  const itemTypeId = extractItemTypeId(record);
-  const recordPath = `$.records[${recordIndex}]`;
-  const fieldDefinitions = itemTypeId
-    ? (fieldDefinitionsByItemType.get(itemTypeId) ?? [])
-    : [];
-  const processedFieldKeys = new Set<string>();
-
-  for (const fieldDefinition of fieldDefinitions) {
-    if (!(fieldDefinition.apiKey in record)) {
-      continue;
-    }
-
-    const context: ReferenceContext = {
-      recordSourceId,
-      sourceBlockId: null,
-      fieldApiKey: fieldDefinition.apiKey,
-      locale: null,
-      jsonPath: appendPath(recordPath, fieldDefinition.apiKey),
-    };
-
-    inspectFieldValue(
-      record[fieldDefinition.apiKey],
-      fieldDefinition,
-      context,
-      fieldDefinitionsByItemType,
-      collector,
-      null,
-    );
-
-    processedFieldKeys.add(fieldDefinition.apiKey);
+  const type = asString(value.type);
+  const target = extractEntityId(value);
+  if (target && type === 'upload') {
+    addUploadReference(state.collector, task.context, target, 'unknown_upload');
+  } else if (target && type === 'item') {
+    addRecordReference(state.collector, task.context, target, 'unknown_item');
   }
+  pushObjectChildren(task, value, state, 'unknown');
+}
 
-  for (const [key, value] of Object.entries(record)) {
-    if (processedFieldKeys.has(key) || ignoredKeys.has(key)) {
-      continue;
-    }
+function inspectArrayTask(task: ReferenceTask, state: ReferenceTraversal) {
+  if (!Array.isArray(task.value)) return;
+  const index = task.index ?? 0;
+  if (index >= task.value.length) return;
+  state.tasks.push({ ...task, index: index + 1 });
+  state.tasks.push({
+    ...task,
+    index: undefined,
+    value: task.value[index],
+    context: {
+      ...task.context,
+      jsonPath: appendPath(task.context.jsonPath, index),
+    },
+  });
+}
 
-    inspectUnknownValue(
-      value,
-      {
-        recordSourceId,
-        sourceBlockId: null,
-        fieldApiKey: key,
-        locale: null,
-        jsonPath: appendPath(recordPath, key),
-      },
-      fieldDefinitionsByItemType,
-      collector,
-      null,
-    );
+function inspectReferenceTask(task: ReferenceTask, state: ReferenceTraversal) {
+  if (task.value === null || task.value === undefined) return;
+  switch (task.mode) {
+    case 'field':
+      return inspectFieldTask(task, state);
+    case 'block':
+      return inspectBlockTask(task, state);
+    case 'block-collection':
+      return inspectBlockCollectionTask(task, state);
+    case 'structured-value':
+      return inspectStructuredValueTask(task, state);
+    case 'object-children':
+      return inspectObjectChildrenTask(task, state);
+    default:
+      if (Array.isArray(task.value)) return inspectArrayTask(task, state);
+      if (!isObject(task.value)) return;
+      if (task.mode === 'structured-node') {
+        inspectStructuredNodeTask(task, task.value, state);
+      } else {
+        inspectUnknownTask(task, task.value, state);
+      }
   }
 }
 
 function collectReferenceIndex(
   records: JsonObject[],
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
+  fieldsByItemType: FieldDefinitionsByItemType,
+  maxReferenceEntries?: number,
+  maxReferenceBytes?: number,
 ) {
-  const collector = createReferenceCollector();
-  const ignoredKeys = new Set([
-    'id',
-    'item_type',
-    'meta',
-    'created_at',
-    'updated_at',
-    'is_valid',
-    'position',
-    'stage',
-    'creator',
-  ]);
-
+  const state: ReferenceTraversal = {
+    tasks: [],
+    collector: createReferenceCollector(maxReferenceEntries, maxReferenceBytes),
+    fieldsByItemType,
+  };
   for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
     const record = records[recordIndex];
-    inspectSingleRecord(
+    const recordSourceId = extractEntityId(record);
+    if (!recordSourceId) continue;
+    pushEntityFieldTasks(
+      state.tasks,
       record,
-      recordIndex,
-      ignoredKeys,
-      fieldDefinitionsByItemType,
-      collector,
+      {
+        recordSourceId,
+        sourceBlockId: null,
+        fieldApiKey: '',
+        locale: null,
+        jsonPath: `$.records[${recordIndex}]`,
+      },
+      fieldsByItemType,
+      null,
     );
+    while (state.tasks.length > 0) {
+      const task = state.tasks.pop();
+      if (task) inspectReferenceTask(task, state);
+    }
   }
-
+  const { collector } = state;
   return {
     recordRefs: collector.recordRefs,
     uploadRefs: collector.uploadRefs,
@@ -1178,7 +1043,7 @@ function extractSiteManifestInfoFromSitePayload(
 
   const attributes = isObject(sitePayload.attributes)
     ? sitePayload.attributes
-    : {};
+    : sitePayload;
 
   const locales = Array.isArray(attributes.locales)
     ? attributes.locales.filter(
@@ -1206,7 +1071,7 @@ function getScheduledTimestamp(
   record: JsonObject,
   key: 'publication_scheduled_at' | 'unpublishing_scheduled_at',
 ): string | null {
-  const directValue = asString(record[key]);
+  const directValue = asString(entityAttributes(record)[key]);
   if (directValue) {
     return directValue;
   }
@@ -1219,30 +1084,34 @@ function getScheduledTimestamp(
   return asString(meta[key]);
 }
 
-function collectScheduledActions(
+export function appendScheduledActions(
+  configuration: Pick<
+    ProjectConfigurationExport,
+    'scheduledPublications' | 'scheduledUnpublishings'
+  >,
   records: JsonObject[],
-  key: 'publication_scheduled_at' | 'unpublishing_scheduled_at',
-): ScheduledActionSummary[] {
-  const actions: ScheduledActionSummary[] = [];
-
+) {
   for (const record of records) {
-    const itemId = extractEntityId(record.id);
-    const scheduledAt = getScheduledTimestamp(record, key);
-
-    if (!itemId || !scheduledAt) {
+    const itemId = extractEntityId(record);
+    if (!itemId) {
       continue;
     }
-
     const meta = asJsonObject(record.meta);
-    actions.push({
-      itemId,
-      itemTypeId: extractItemTypeId(record),
-      scheduledAt,
-      currentVersion: meta ? asString(meta.current_version) : null,
-    });
+    for (const [key, actions] of [
+      ['publication_scheduled_at', configuration.scheduledPublications],
+      ['unpublishing_scheduled_at', configuration.scheduledUnpublishings],
+    ] as const) {
+      const scheduledAt = getScheduledTimestamp(record, key);
+      if (scheduledAt) {
+        actions.push({
+          itemId,
+          itemTypeId: extractItemTypeId(record),
+          scheduledAt,
+          currentVersion: meta ? asString(meta.current_version) : null,
+        });
+      }
+    }
   }
-
-  return actions;
 }
 
 async function fetchResourceWithWarning<T>(args: {
@@ -1250,10 +1119,18 @@ async function fetchResourceWithWarning<T>(args: {
   warnings: ConfigurationExportWarning[];
   operation: () => Promise<T>;
   fallback: T;
+  signal?: AbortSignal;
 }): Promise<T> {
+  throwIfAborted(args.signal);
   try {
-    return await args.operation();
+    const result = await args.operation();
+    throwIfAborted(args.signal);
+    return result;
   } catch (error) {
+    throwIfAborted(args.signal);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     args.warnings.push({
       resource: args.resource,
       message: normalizeErrorMessage(error),
@@ -1281,6 +1158,7 @@ export async function fetchProjectConfigurationExport(args: {
   client: ProjectConfigurationClient;
   itemTypes: JsonObject[];
   records: JsonObject[];
+  signal?: AbortSignal;
 }): Promise<{
   projectConfiguration: ProjectConfigurationExport;
   siteInfo: SiteManifestInfo;
@@ -1292,109 +1170,89 @@ export async function fetchProjectConfigurationExport(args: {
     warnings,
     operation: () => args.client.site.find(),
     fallback: null,
+    signal: args.signal,
   });
   const site = asJsonObject(sitePayload);
 
-  const itemTypeIds = args.itemTypes
-    .map((itemType) => asString(itemType.id))
-    .filter((itemTypeId): itemTypeId is string => Boolean(itemTypeId));
-
-  const fieldsetGroups = await Promise.all(
-    itemTypeIds.map(async (itemTypeId) => {
-      try {
-        const rawFieldsets = await args.client.fieldsets.list(itemTypeId);
-        return normalizeJsonObjectArray(rawFieldsets);
-      } catch (error) {
-        warnings.push({
-          resource: 'fieldsets',
-          message: `Item type ${itemTypeId}: ${normalizeErrorMessage(error)}`,
-        });
-        return [];
-      }
-    }),
+  const itemTypeIds = Array.from(
+    new Set(
+      args.itemTypes
+        .map((itemType) => asString(itemType.id))
+        .filter((itemTypeId): itemTypeId is string => Boolean(itemTypeId)),
+    ),
   );
 
-  const [
-    menuItems,
-    schemaMenuItems,
-    modelFilters,
-    plugins,
-    workflows,
-    roles,
-    webhooks,
-    buildTriggers,
-  ] = await Promise.all([
-    fetchResourceWithWarning({
-      resource: 'menuItems',
-      warnings,
-      operation: () => args.client.menuItems.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'schemaMenuItems',
-      warnings,
-      operation: () => args.client.schemaMenuItems.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'modelFilters',
-      warnings,
-      operation: () => args.client.itemTypeFilters.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'plugins',
-      warnings,
-      operation: () => args.client.plugins.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'workflows',
-      warnings,
-      operation: () => args.client.workflows.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'roles',
-      warnings,
-      operation: () => args.client.roles.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'webhooks',
-      warnings,
-      operation: () => args.client.webhooks.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-    fetchResourceWithWarning({
-      resource: 'buildTriggers',
-      warnings,
-      operation: () => args.client.buildTriggers.list(),
-      fallback: [],
-    }).then(normalizeJsonObjectArray),
-  ]);
+  const fieldsetGroups = await mapWithConcurrency(
+    itemTypeIds,
+    3,
+    async (itemTypeId) =>
+      normalizeJsonObjectArray(
+        await fetchResourceWithWarning({
+          resource: 'fieldsets',
+          warnings,
+          operation: async () => {
+            try {
+              return await args.client.fieldsets.list(itemTypeId);
+            } catch (error) {
+              throwIfAborted(args.signal);
+              throw new Error(
+                `Item type ${itemTypeId}: ${normalizeErrorMessage(error)}`,
+              );
+            }
+          },
+          fallback: [],
+          signal: args.signal,
+        }),
+      ),
+  );
 
-  const projectConfiguration: ProjectConfigurationExport = {
-    site,
-    scheduledPublications: collectScheduledActions(
-      args.records,
-      'publication_scheduled_at',
-    ),
-    scheduledUnpublishings: collectScheduledActions(
-      args.records,
-      'unpublishing_scheduled_at',
-    ),
-    fieldsets: fieldsetGroups.flat(),
-    menuItems,
-    schemaMenuItems,
-    modelFilters,
-    plugins,
-    workflows,
-    roles,
-    webhooks,
-    buildTriggers,
-    warnings,
-  };
+  const resources: {
+    resource: Exclude<
+      ConfigurationResourceName,
+      'site' | 'fieldsets' | 'scheduledPublications' | 'scheduledUnpublishings'
+    >;
+    operation: () => Promise<unknown>;
+  }[] = [
+    { resource: 'menuItems', operation: () => args.client.menuItems.list() },
+    {
+      resource: 'schemaMenuItems',
+      operation: () => args.client.schemaMenuItems.list(),
+    },
+    {
+      resource: 'modelFilters',
+      operation: () => args.client.itemTypeFilters.list(),
+    },
+    { resource: 'plugins', operation: () => args.client.plugins.list() },
+    { resource: 'workflows', operation: () => args.client.workflows.list() },
+    { resource: 'roles', operation: () => args.client.roles.list() },
+    { resource: 'webhooks', operation: () => args.client.webhooks.list() },
+    {
+      resource: 'buildTriggers',
+      operation: () => args.client.buildTriggers.list(),
+    },
+  ];
+  const results = await mapWithConcurrency(
+    resources,
+    3,
+    async ({ resource, operation }) =>
+      normalizeJsonObjectArray(
+        await fetchResourceWithWarning({
+          resource,
+          operation,
+          warnings,
+          fallback: [],
+          signal: args.signal,
+        }),
+      ),
+  );
+  const projectConfiguration = defaultProjectConfigurationExport();
+  projectConfiguration.site = site;
+  projectConfiguration.fieldsets = fieldsetGroups.flat();
+  projectConfiguration.warnings = warnings;
+  for (let index = 0; index < resources.length; index++) {
+    projectConfiguration[resources[index].resource] = results[index];
+  }
+  appendScheduledActions(projectConfiguration, args.records);
 
   return {
     projectConfiguration,
@@ -1423,6 +1281,9 @@ export function buildRecordExportEnvelope(args: {
   projectConfiguration?: ProjectConfigurationExport;
   filtersUsed: ExportFilters;
   scope: ExportScope;
+  partition?: RecordExportPartition;
+  maxReferenceEntries?: number;
+  maxReferenceBytes?: number;
 }): RecordExportEnvelope {
   const normalizedFields = normalizeFieldDefinitions(args.fields);
   const fieldsByItemTypeIndex = indexFieldsByItemType(normalizedFields);
@@ -1432,7 +1293,7 @@ export function buildRecordExportEnvelope(args: {
   const itemTypeIdToApiKey = args.itemTypes.reduce<Record<string, string>>(
     (acc, itemType) => {
       const id = asString(itemType.id);
-      const apiKey = asString(itemType.api_key);
+      const apiKey = asString(entityAttributes(itemType).api_key);
 
       if (id && apiKey) {
         acc[id] = apiKey;
@@ -1479,6 +1340,7 @@ export function buildRecordExportEnvelope(args: {
       locales: args.siteInfo.locales,
       scope: args.scope,
       filtersUsed: args.filtersUsed,
+      ...(args.partition ? { partition: args.partition } : {}),
       configurationExport: {
         includedResources: CONFIGURATION_RESOURCE_NAMES,
         warningCount: projectConfiguration.warnings.length,
@@ -1493,7 +1355,12 @@ export function buildRecordExportEnvelope(args: {
     },
     projectConfiguration,
     records: args.records,
-    referenceIndex: collectReferenceIndex(args.records, fieldsByItemTypeIndex),
+    referenceIndex: collectReferenceIndex(
+      args.records,
+      fieldsByItemTypeIndex,
+      args.maxReferenceEntries,
+      args.maxReferenceBytes,
+    ),
     assetPackageInfo: {
       packageVersion: ASSET_EXPORT_VERSION,
       zipNamingConvention: ASSET_ZIP_FILENAME_TEMPLATE,
@@ -1504,7 +1371,10 @@ export function buildRecordExportEnvelope(args: {
         maxFilesPerZip: MAX_FILES_PER_ZIP,
         sizeSafetyFactor: SIZE_SAFETY_FACTOR,
       },
-      lastAssetExportSnapshot: readLastAssetExportSnapshot(),
+      lastAssetExportSnapshot: readLastAssetExportSnapshot(
+        args.siteInfo.sourceProjectId,
+        args.siteInfo.sourceEnvironment,
+      ),
     },
   };
 }

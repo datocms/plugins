@@ -10,6 +10,10 @@ type CommentsModel = Awaited<
 type CommentsField = Awaited<
   ReturnType<CommentsStorageClient['fields']['list']>
 >[number];
+type CommentStorageField = Pick<
+  CommentsField,
+  'api_key' | 'localized' | 'field_type' | 'validators'
+>;
 
 const REQUIRED_COMMENT_FIELDS = [
   {
@@ -32,6 +36,42 @@ const REQUIRED_COMMENT_FIELDS = [
   },
 ] as const;
 
+function assertCommentFieldCompatible(
+  field: CommentStorageField,
+  fieldDefinition: (typeof REQUIRED_COMMENT_FIELDS)[number],
+): void {
+  const requiresUnique = fieldDefinition.api_key === COMMENT_FIELDS.RECORD_ID;
+  const hasUniqueValidator =
+    field.validators != null &&
+    'unique' in field.validators &&
+    !!field.validators.unique;
+  if (
+    field.localized ||
+    field.field_type !== fieldDefinition.field_type ||
+    (requiresUnique && !hasUniqueValidator)
+  ) {
+    throw new Error(
+      `Comment storage field "${fieldDefinition.api_key}" must be a non-localized ${fieldDefinition.field_type} field${requiresUnique ? ' with a unique validator' : ''}. Existing fields were preserved.`,
+    );
+  }
+}
+
+/** Checks storage used by a cached model ID without changing its schema. */
+export function validateCommentsStorageFields(
+  fields: CommentStorageField[],
+): void {
+  for (const definition of REQUIRED_COMMENT_FIELDS) {
+    const field = fields.find(
+      (candidate) => candidate.api_key === definition.api_key,
+    );
+    if (!field)
+      throw new Error(
+        `Comment storage field "${definition.api_key}" is missing.`,
+      );
+    assertCommentFieldCompatible(field, definition);
+  }
+}
+
 async function findCommentsModel(
   client: CommentsStorageClient,
 ): Promise<CommentsModel | null> {
@@ -48,20 +88,25 @@ async function ensureCommentField(
   fieldDefinition: (typeof REQUIRED_COMMENT_FIELDS)[number],
   existingFields: CommentsField[],
 ): Promise<CommentsField[]> {
-  if (
-    existingFields.some((field) => field.api_key === fieldDefinition.api_key)
-  ) {
+  const existingField = existingFields.find(
+    (field) => field.api_key === fieldDefinition.api_key,
+  );
+  if (existingField) {
+    assertCommentFieldCompatible(existingField, fieldDefinition);
     return existingFields;
   }
 
   try {
     const createdField = await client.fields.create(modelId, fieldDefinition);
+    assertCommentFieldCompatible(createdField, fieldDefinition);
     return [...existingFields, createdField];
   } catch (error) {
     const refreshedFields = await client.fields.list(modelId);
-    if (
-      refreshedFields.some((field) => field.api_key === fieldDefinition.api_key)
-    ) {
+    const refreshedField = refreshedFields.find(
+      (field) => field.api_key === fieldDefinition.api_key,
+    );
+    if (refreshedField) {
+      assertCommentFieldCompatible(refreshedField, fieldDefinition);
       return refreshedFields;
     }
 
@@ -74,6 +119,14 @@ async function ensureRequiredCommentFields(
   modelId: string,
 ): Promise<void> {
   const initialFields = await client.fields.list(modelId);
+
+  // Reject incompatible existing fields before creating any missing fields.
+  for (const definition of REQUIRED_COMMENT_FIELDS) {
+    const field = initialFields.find(
+      (candidate) => candidate.api_key === definition.api_key,
+    );
+    if (field) assertCommentFieldCompatible(field, definition);
+  }
 
   // Each field creation depends on the result of the previous (updated field list),
   // so we chain sequentially using reduce rather than awaiting inside a loop.

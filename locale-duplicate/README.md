@@ -52,8 +52,8 @@ This can be useful when you need to:
     current locale.
 - The button is hidden on records that only have a single locale.
 - Supports string, text, structured text, JSON, SEO, and slug field types.
-- Nested block IDs are stripped from the copied value so the
-  duplicated structured/block content gets new IDs on save.
+- Copied editor blocks receive new IDs/Slate keys while links to existing
+  records and assets remain intact.
 
 ## Configuration
 
@@ -100,7 +100,7 @@ directly to the Mass Locale Duplication page.
    You can **Abort Process** at any time; in-flight changes are kept but no
    further records are touched.
 9. Once finished, review the summary view with success/failure counts and
-   record IDs grouped by model.
+   model totals, publication outcomes, and sampled error details.
 
 ### Field-Level Copy
 
@@ -146,3 +146,80 @@ propagate only those changes:
 2. On a configured field, use **Copy to all locales** (from the main locale)
    or **Copy from `<main-locale>`** (from any other locale) to sync the
    field's localized values without leaving the editor.
+
+## Large projects and reliability
+
+Bulk duplication runs continuously. It discovers record IDs in stable `id_ASC`
+order using non-nested pages of 100, then consumes expanded content in pages of
+30 with at most three concurrent updates. Discovery retains IDs rather than full
+payloads; copying retains one page plus the active workers' payloads. IDs,
+publication versions and compact model/schema metadata grow with the selection.
+Assets are referenced by ID and metadata, without enumerating or uploading
+the asset collection. Each update overwrites only the target locale and preserves
+the current values of other locales, including when the source is a published
+version. Adding a record locale includes every localized field as required by
+the CMA.
+
+Schema-aware copying creates independent nested blocks and preserves record
+references, JSON IDs, upload metadata and Structured Text links. Repeating a
+copy whose target already matches the source performs no write, even when the
+two locales' equivalent blocks have different IDs.
+
+The editor addon checks the record, block, field and editing context before
+each locale write. Switching records/blocks or removing a locale stops the
+remaining writes. The SDK cannot distinguish two new root forms without IDs
+when their other context metadata is identical.
+
+All bulk-run CMA traffic, including asynchronous job polling, shares a 150 ms request
+interval. Reads retry transient failures up to four attempts. Writes retry only
+explicit rate-limit rejections; a lost or uncertain response is read back rather
+than blindly resubmitted. Updates use `meta.current_version` and rebuild after
+a stale-version rejection. Publication occurs after copying, in batches of up
+to 200, and uses the job's actual successful/failed totals. Changed drafts are
+excluded before publication. Jobs are observed for up to ten minutes; outcomes
+that cannot be confirmed remain explicitly uncertain.
+
+Abort stops new work and lets active operations settle. The summary retains
+confirmed counters, unprocessed records, and pending/uncertain publication
+outcomes. Long runs show the latest 500 log entries and the first 100 errors;
+total counters remain exact. Large select menus limit rendered search results,
+selections above 50 models show a compact count, and large model summaries show
+100 rows per page.
+
+The plugin must remain open during a run. The CMA does not provide an atomic
+collection snapshot or a publication version lock: collection changes during
+discovery can fail a model, and an edit between the publication precheck and the
+server operation remains a race. A timed-out server write/job can still finish
+after observation ends. Memory for IDs/versions is linear in the selected record
+count. API limits still apply, including record size and nested block limits;
+copying another locale can exceed those limits. Field addon configuration also
+remains subject to the plugin parameter limit of 10 KB.
+
+Official contracts: [CMA limits](https://www.datocms.com/docs/content-management-api/technical-limits),
+[nested listing](https://www.datocms.com/docs/content-management-api/resources/item/instances),
+[bulk publication](https://www.datocms.com/docs/content-management-api/resources/item/bulk_publish),
+[localized updates and locking](https://www.datocms.com/docs/content-management-api/resources/item/update),
+and [editor form values](https://www.datocms.com/docs/plugin-sdk/working-with-form-values).
+
+## Development validation
+
+Run from this plugin directory:
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run check` aggregates typecheck, tests and build. Lint touched files using
+the repository's Biome configuration. The tests use Node 22.15+ (or Node 24)
+and the existing TypeScript compiler; no additional test package is required.
+
+Deterministic mocks cover 200,000 IDs/streamed records, 200,001 publication
+references, 10,000 asset references, large locale/model selections, deeply
+nested values, Slate/DAST integrity, rate limits, timeouts, partial publication,
+stale versions, uncertain outcomes and cancellation. These fixtures validate
+control flow and internal bounds; they do not prove production performance.
+Verify both Settings duplication and the editor addon in a dedicated DatoCMS
+test project before release, including permissions and validation failures.

@@ -6,7 +6,8 @@ import type { ContentField, ContentModel, ContentSchema } from '../types';
 import { type FormReadContext, readFormRecord } from './formRecord';
 
 const { rawFind } = vi.hoisted(() => ({ rawFind: vi.fn() }));
-vi.mock('@datocms/cma-client-browser', () => ({
+vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datocms/cma-client-browser')>()),
   buildClient: vi.fn(() => ({ items: { rawFind } })),
 }));
 
@@ -165,6 +166,9 @@ describe('readFormRecord', () => {
       apiToken: 'test-user-token',
       environment: 'main',
       baseUrl: 'https://cma.example',
+      autoRetry: false,
+      requestTimeout: 31_000,
+      fetchFn: expect.any(Function),
     });
   });
 

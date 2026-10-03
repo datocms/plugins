@@ -64,6 +64,8 @@ export async function mapAppearanceToProject(
         next = {
           ...next,
           editor: mappedEditorId,
+          parameters: original.parameters,
+          field_extension: original.field_extension,
         };
       }
     }

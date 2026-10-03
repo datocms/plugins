@@ -1,16 +1,14 @@
 import {
   getModelLabel,
-  hasImageFamilySignal,
   isGoogleImageGenerationModel,
-  isGooglePredictImageModel,
   isOpenAiImageGenerationModel,
   normalizeModelSignal,
 } from './catalog';
-import type {
-  GoogleGenerationMethod,
-  ProviderId,
-  SelectOption,
-} from './types';
+import {
+  createDiscoveryHttpClient,
+  type DiscoveryHttpOptions,
+} from './discoveryHttp';
+import type { GoogleGenerationMethod, ProviderId, SelectOption } from './types';
 
 export type ProviderModelOption = SelectOption<string>;
 
@@ -18,18 +16,13 @@ export type ModelDiscoveryResult = {
   options: ProviderModelOption[];
 };
 
-type DiscoveryOptions = {
-  signal?: AbortSignal;
+export type DiscoveryOptions = DiscoveryHttpOptions & {
   selectedModel?: string;
 };
 
 type OpenAiModel = {
   id?: unknown;
   created?: unknown;
-};
-
-type OpenAiModelsResponse = {
-  data?: unknown;
 };
 
 type GoogleModel = {
@@ -41,17 +34,16 @@ type GoogleModel = {
   supportedGenerationMethods?: unknown;
 };
 
-type GoogleModelsResponse = {
-  models?: unknown;
-  nextPageToken?: unknown;
-};
-
 type SortableModelOption = ProviderModelOption & {
   created?: number;
   version?: string;
 };
 
 const pinnedOpenAiModel = 'gpt-image-2';
+const MAX_MODEL_PAGES = 100;
+const MAX_MODEL_ENTRIES = 100_000;
+
+type DiscoveryHttpClient = ReturnType<typeof createDiscoveryHttpClient>;
 
 export async function loadProviderModelOptions(
   provider: ProviderId,
@@ -64,37 +56,39 @@ export async function loadProviderModelOptions(
     return { options: withSelectedFallback([], options.selectedModel) };
   }
 
-  const discoveredOptions =
-    provider === 'openai'
-      ? await loadOpenAiModels(trimmedApiKey, options.signal)
-      : await loadGoogleModels(trimmedApiKey, options.signal);
+  const client = createDiscoveryHttpClient(options);
+  try {
+    const discoveredOptions =
+      provider === 'openai'
+        ? await loadOpenAiModels(trimmedApiKey, client)
+        : await loadGoogleModels(trimmedApiKey, client);
 
-  return {
-    options: withSelectedFallback(discoveredOptions, options.selectedModel),
-  };
+    return {
+      options: withSelectedFallback(discoveredOptions, options.selectedModel),
+    };
+  } finally {
+    client.dispose();
+  }
 }
 
 async function loadOpenAiModels(
   apiKey: string,
-  signal?: AbortSignal,
+  client: DiscoveryHttpClient,
 ): Promise<ProviderModelOption[]> {
-  const response = await fetch('https://api.openai.com/v1/models', {
-    headers: {
+  // OpenAI's list endpoint returns the complete catalog without pagination args.
+  const payload = await client.readJson(
+    'OpenAI',
+    'https://api.openai.com/v1/models',
+    {
       Authorization: `Bearer ${apiKey}`,
     },
-    signal,
-  });
-
-  const payload = (await readJsonResponse(response)) as OpenAiModelsResponse;
-
-  if (!response.ok) {
-    throw createDiscoveryError('OpenAI', response, payload);
+  );
+  const models = readModelList(payload, 'data', 'OpenAI');
+  if (models.length > MAX_MODEL_ENTRIES) {
+    throw catalogLimitError('OpenAI');
   }
-
-  const models = Array.isArray(payload.data) ? payload.data : [];
   const options = models
     .map(readOpenAiModel)
-    .filter(isDefined)
     .filter((model) => isOpenAiImageGenerationModel(model.id))
     .map<SortableModelOption>((model) => ({
       value: model.id,
@@ -102,112 +96,129 @@ async function loadOpenAiModels(
       created: model.created,
     }));
 
-  return prependPinnedOpenAiModel(sortModelOptions(options));
+  return prependPinnedOpenAiModel(sortModelOptions(dedupeOptions(options)));
 }
 
 async function loadGoogleModels(
   apiKey: string,
-  signal?: AbortSignal,
+  client: DiscoveryHttpClient,
 ): Promise<ProviderModelOption[]> {
-  const options: SortableModelOption[] = [];
+  const options = new Map<string, SortableModelOption>();
+  const seenPageTokens = new Set<string>();
+  let pages = 0;
+  let entries = 0;
   let pageToken = '';
 
   do {
-    const url = new URL('https://generativelanguage.googleapis.com/v1beta/models');
-    url.searchParams.set('key', apiKey);
+    if (pages >= MAX_MODEL_PAGES) {
+      throw catalogLimitError('Google');
+    }
+    pages += 1;
+    const url = new URL(
+      'https://generativelanguage.googleapis.com/v1beta/models',
+    );
     url.searchParams.set('pageSize', '1000');
 
     if (pageToken) {
       url.searchParams.set('pageToken', pageToken);
     }
 
-    const response = await fetch(url, { signal });
-    const payload = (await readJsonResponse(response)) as GoogleModelsResponse;
-
-    if (!response.ok) {
-      throw createDiscoveryError('Google', response, payload);
+    // biome-ignore lint/performance/noAwaitInLoops: each page token comes from the preceding response.
+    const payload = await client.readJson('Google', url, {
+      'x-goog-api-key': apiKey,
+    });
+    const models = readModelList(payload, 'models', 'Google');
+    entries += models.length;
+    if (entries > MAX_MODEL_ENTRIES) {
+      throw catalogLimitError('Google');
     }
 
-    const models = Array.isArray(payload.models) ? payload.models : [];
+    mergeGoogleOptions(options, models);
 
-    for (const entry of models) {
-      const model = readGoogleModel(entry);
-
-      if (!model || !isGoogleImageModelEntry(model)) {
-        continue;
-      }
-
-      const value = stripModelResourcePrefix(model.name);
-      const label = model.displayName
-        ? `${model.displayName} (${value})`
-        : getModelLabel(value);
-
-      options.push({
-        value,
-        label,
-        generationMethod: resolveGoogleGenerationMethod(model),
-        version: model.version,
-      });
+    pageToken = readNextPageToken(payload);
+    if (pageToken && seenPageTokens.has(pageToken)) {
+      throw new Error('Google returned a repeated model catalog page token.');
     }
-
-    pageToken =
-      typeof payload.nextPageToken === 'string' ? payload.nextPageToken : '';
+    seenPageTokens.add(pageToken);
   } while (pageToken);
 
-  return sortModelOptions(dedupeOptions(options));
+  return sortModelOptions(Array.from(options.values()));
 }
 
-function readOpenAiModel(entry: unknown):
-  | {
-      id: string;
-      created?: number;
+function mergeGoogleOptions(
+  options: Map<string, SortableModelOption>,
+  entries: unknown[],
+) {
+  for (const entry of entries) {
+    const model = readGoogleModel(entry);
+    if (!isGoogleImageModelEntry(model)) {
+      continue;
     }
-  | undefined {
+    const value = stripModelResourcePrefix(model.name);
+    if (options.has(value)) {
+      continue;
+    }
+    options.set(value, {
+      value,
+      label: model.displayName
+        ? `${model.displayName} (${value})`
+        : getModelLabel(value),
+      generationMethod: resolveGoogleGenerationMethod(model),
+      version: model.version,
+    });
+  }
+}
+
+function readOpenAiModel(entry: unknown): {
+  id: string;
+  created?: number;
+} {
   if (!entry || typeof entry !== 'object') {
-    return undefined;
+    throw new Error('OpenAI returned an invalid model catalog entry.');
   }
 
   const model = entry as OpenAiModel;
 
-  if (typeof model.id !== 'string') {
-    return undefined;
+  if (typeof model.id !== 'string' || !model.id.trim()) {
+    throw new Error('OpenAI returned a model without a valid identifier.');
   }
 
   return {
-    id: model.id,
+    id: model.id.trim(),
     created: typeof model.created === 'number' ? model.created : undefined,
   };
 }
 
-function readGoogleModel(entry: unknown):
-  | {
-      name: string;
-      baseModelId?: string;
-      version?: string;
-      displayName?: string;
-      description?: string;
-      supportedGenerationMethods: string[];
-    }
-  | undefined {
+function readGoogleModel(entry: unknown): {
+  name: string;
+  version?: string;
+  displayName?: string;
+  supportedGenerationMethods: string[];
+} {
   if (!entry || typeof entry !== 'object') {
-    return undefined;
+    throw new Error('Google returned an invalid model catalog entry.');
   }
 
   const model = entry as GoogleModel;
 
-  if (typeof model.name !== 'string') {
-    return undefined;
+  if (typeof model.name !== 'string' || !model.name.trim()) {
+    throw new Error('Google returned a model without a valid identifier.');
+  }
+  if (
+    model.supportedGenerationMethods !== undefined &&
+    (!Array.isArray(model.supportedGenerationMethods) ||
+      model.supportedGenerationMethods.some(
+        (method) => typeof method !== 'string',
+      ))
+  ) {
+    throw new Error('Google returned invalid model generation methods.');
   }
 
   return {
-    name: model.name,
-    baseModelId:
-      typeof model.baseModelId === 'string' ? model.baseModelId : undefined,
+    name: model.name.trim(),
     version: typeof model.version === 'string' ? model.version : undefined,
     displayName:
       typeof model.displayName === 'string' ? model.displayName : undefined,
-    description:
-      typeof model.description === 'string' ? model.description : undefined,
     supportedGenerationMethods: Array.isArray(model.supportedGenerationMethods)
       ? model.supportedGenerationMethods.filter(
           (method): method is string => typeof method === 'string',
@@ -218,27 +229,11 @@ function readGoogleModel(entry: unknown):
 
 function isGoogleImageModelEntry(model: {
   name: string;
-  baseModelId?: string;
-  displayName?: string;
-  description?: string;
   supportedGenerationMethods: string[];
 }): boolean {
-  const method = resolveGoogleGenerationMethod(model);
-
-  if (!method) {
-    return false;
-  }
-
-  const modelIdentifierText = [model.name, model.baseModelId]
-    .filter(isDefined)
-    .join(' ');
-  const modelDescriptionText = [model.displayName, model.description]
-    .filter(isDefined)
-    .join(' ');
-
   return (
-    isGoogleImageGenerationModel(modelIdentifierText) ||
-    hasImageFamilySignal(modelDescriptionText)
+    isGoogleImageGenerationModel(model.name) &&
+    Boolean(resolveGoogleGenerationMethod(model))
   );
 }
 
@@ -246,19 +241,8 @@ function resolveGoogleGenerationMethod(model: {
   name: string;
   supportedGenerationMethods: string[];
 }): GoogleGenerationMethod | undefined {
-  if (
-    model.supportedGenerationMethods.includes('predict') &&
-    isGooglePredictImageModel(model.name)
-  ) {
-    return 'predict';
-  }
-
   if (model.supportedGenerationMethods.includes('generateContent')) {
     return 'generateContent';
-  }
-
-  if (model.supportedGenerationMethods.includes('predict')) {
-    return 'predict';
   }
 
   return undefined;
@@ -291,11 +275,14 @@ function withSelectedFallback(
 function prependPinnedOpenAiModel(
   options: ProviderModelOption[],
 ): ProviderModelOption[] {
+  const pinnedOption = options.find(
+    (option) => option.value === pinnedOpenAiModel,
+  );
+  if (!pinnedOption) {
+    return options;
+  }
   return [
-    {
-      value: pinnedOpenAiModel,
-      label: getModelLabel(pinnedOpenAiModel),
-    },
+    pinnedOption,
     ...options.filter((option) => option.value !== pinnedOpenAiModel),
   ];
 }
@@ -388,49 +375,38 @@ function dedupeOptions<T extends ProviderModelOption>(options: T[]): T[] {
   return dedupedOptions;
 }
 
-async function readJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return {};
-  }
-}
-
-function createDiscoveryError(
-  providerLabel: string,
-  response: Response,
+function readModelList(
   payload: unknown,
-): Error {
-  const message = readProviderErrorMessage(payload);
-  const error = new Error(
-    message || `${providerLabel} returned ${response.status}.`,
-  ) as Error & { status?: number };
-
-  error.status = response.status;
-
-  return error;
+  field: 'data' | 'models',
+  provider: string,
+): unknown[] {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !Array.isArray((payload as Record<string, unknown>)[field])
+  ) {
+    throw new Error(`${provider} returned an invalid model catalog response.`);
+  }
+  return (payload as Record<'data' | 'models', unknown[]>)[field];
 }
 
-function readProviderErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object') {
-    return undefined;
+function readNextPageToken(payload: unknown): string {
+  const token = (payload as { nextPageToken?: unknown }).nextPageToken;
+  if (token === undefined || token === '') {
+    return '';
   }
-
-  const error = (payload as { error?: unknown }).error;
-
-  if (!error || typeof error !== 'object') {
-    return undefined;
+  if (typeof token !== 'string' || !token.trim()) {
+    throw new Error('Google returned an invalid model catalog page token.');
   }
+  return token;
+}
 
-  const message = (error as { message?: unknown }).message;
-
-  return typeof message === 'string' ? message : undefined;
+function catalogLimitError(provider: string): Error {
+  return new Error(
+    `${provider} model catalog exceeded the safety limit of ${MAX_MODEL_PAGES} pages or ${MAX_MODEL_ENTRIES} entries.`,
+  );
 }
 
 function stripModelResourcePrefix(model: string): string {
   return model.replace(/^models\//, '');
-}
-
-function isDefined<T>(value: T | undefined): value is T {
-  return value !== undefined;
 }

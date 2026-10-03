@@ -1,14 +1,17 @@
-import { formatDistanceStrict } from 'date-fns';
+import { formatDistanceStrict } from 'date-fns/formatDistanceStrict';
 import type {
   BackupCadence,
   BackupOverviewRow,
   BackupScheduleConfig,
   LambdaBackupStatus,
+  LambdaBackupStatusSlot,
 } from '../types/types';
+import { isValidBackupTimestamp } from './backupSchedule';
 
 type BuildBackupOverviewRowsInput = {
   scheduleConfig: BackupScheduleConfig;
   lambdaStatus?: LambdaBackupStatus;
+  /** Only environments whose CMA status is ready; undefined means the read failed. */
   availableEnvironmentIds?: readonly string[];
   now?: Date;
 };
@@ -17,12 +20,15 @@ const formatRelativeDateTime = (
   value: Date | string | undefined,
   now: Date,
 ): string => {
-  if (!value) {
+  if (value === undefined) {
     return 'Never';
   }
 
   const parsedDate = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) {
+  if (
+    (typeof value === 'string' && !isValidBackupTimestamp(value)) ||
+    !Number.isFinite(parsedDate.getTime())
+  ) {
     return 'Unavailable';
   }
 
@@ -59,6 +65,37 @@ const toLambdaEnvironmentName = (
   return `${prefix}-${parsed.toISOString().slice(0, 10)}`;
 };
 
+const buildEnvironmentDetails = (
+  cadence: BackupCadence,
+  slot: LambdaBackupStatusSlot,
+): Pick<
+  BackupOverviewRow,
+  'environmentName' | 'environmentLinked' | 'environmentStatusNote'
+> => {
+  if (slot.lastBackupAt === null) {
+    return { environmentName: 'Not yet created', environmentLinked: false };
+  }
+
+  if (!isValidBackupTimestamp(slot.lastBackupAt)) {
+    return { environmentName: 'Unavailable', environmentLinked: false };
+  }
+
+  if (slot.lastManagedEnvironmentId === null) {
+    return {
+      environmentName: 'Not confirmed ready',
+      environmentLinked: false,
+      environmentStatusNote: 'Backup environment is not confirmed ready.',
+    };
+  }
+
+  return {
+    environmentName:
+      slot.lastManagedEnvironmentId?.trim() ||
+      toLambdaEnvironmentName(cadence, slot.lastBackupAt),
+    environmentLinked: true,
+  };
+};
+
 const buildLambdaRows = (
   lambdaStatus: LambdaBackupStatus | undefined,
   scheduleConfig: BackupScheduleConfig,
@@ -78,18 +115,16 @@ const buildLambdaRows = (
 
     return {
       scope: cadence,
-      lastBackup: slot.lastBackupAt
-        ? formatRelativeDateTime(slot.lastBackupAt, now)
-        : 'Never',
+      lastBackup:
+        slot.lastBackupAt !== null
+          ? formatRelativeDateTime(slot.lastBackupAt, now)
+          : 'Never',
       nextBackup: slot.dueNow
         ? 'Due now'
         : slot.nextBackupAt
           ? formatRelativeDateTime(slot.nextBackupAt, now)
           : 'Unavailable',
-      environmentName: slot.lastBackupAt
-        ? toLambdaEnvironmentName(cadence, slot.lastBackupAt)
-        : 'Not yet created',
-      environmentLinked: Boolean(slot.lastBackupAt),
+      ...buildEnvironmentDetails(cadence, slot),
     };
   });
 };
@@ -97,22 +132,35 @@ const buildLambdaRows = (
 const toAvailableEnvironmentIdsSet = (
   availableEnvironmentIds: readonly string[] | undefined,
 ): Set<string> | undefined => {
-  if (!availableEnvironmentIds || availableEnvironmentIds.length === 0) {
+  if (availableEnvironmentIds === undefined) {
     return undefined;
   }
 
-  const normalizedIds = availableEnvironmentIds
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-  return normalizedIds.length > 0 ? new Set(normalizedIds) : undefined;
+  const normalizedIds = new Set<string>();
+  for (const value of availableEnvironmentIds) {
+    const normalized = value.trim();
+    if (normalized) {
+      normalizedIds.add(normalized);
+    }
+  }
+  return normalizedIds;
 };
 
 const annotateMissingEnvironment = (
   row: BackupOverviewRow,
   availableEnvironmentIdsSet: Set<string> | undefined,
 ): BackupOverviewRow => {
-  if (!availableEnvironmentIdsSet || !row.environmentLinked) {
+  if (!row.environmentLinked) {
     return row;
+  }
+
+  if (!availableEnvironmentIdsSet) {
+    return {
+      ...row,
+      environmentLinked: false,
+      environmentStatusNote:
+        'Could not verify against the current environments list.',
+    };
   }
 
   if (availableEnvironmentIdsSet.has(row.environmentName)) {
@@ -123,7 +171,7 @@ const annotateMissingEnvironment = (
     ...row,
     environmentLinked: false,
     environmentStatusNote:
-      'Missing in current environments list (deleted or renamed).',
+      'Not found among ready environments (still creating, deleted or renamed).',
   };
 };
 

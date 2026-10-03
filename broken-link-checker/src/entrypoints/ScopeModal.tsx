@@ -1,6 +1,6 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Canvas, Form, SelectField, SwitchField } from 'datocms-react-ui';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ALL_SCOPE, isScope, type Scope } from '../report/scope';
 import { Button } from '../ui/Button';
 
@@ -45,7 +45,8 @@ function isModalParams(value: unknown): value is ScopeModalParams {
 /** The listed IDs that are still offered; `'all'` starts with nothing picked. */
 function knownIds(ids: Scope['modelIds'], options: readonly Option[]) {
   if (ids === 'all') return [];
-  return ids.filter((id) => options.some((option) => option.value === id));
+  const available = new Set(options.map((option) => option.value));
+  return ids.filter((id) => available.has(id));
 }
 
 const REQUIRED = 'Field is required';
@@ -77,9 +78,14 @@ function ScopeSelect({
   error,
   onChange,
 }: ScopeSelectProps) {
-  const selected = value.flatMap((picked) =>
-    options.filter((option) => option.value === picked),
+  const byId = useMemo(
+    () => new Map(options.map((option) => [option.value, option])),
+    [options],
   );
+  const selected = value.flatMap((picked) => {
+    const option = byId.get(picked);
+    return option ? [option] : [];
+  });
   return (
     <SelectField
       id={id}

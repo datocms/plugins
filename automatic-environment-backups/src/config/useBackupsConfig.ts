@@ -1,4 +1,3 @@
-import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -7,22 +6,30 @@ import type {
   LambdaBackupStatus,
 } from '../types/types';
 import {
+  type BackupEnvironment,
+  enrichBackupStatusWithEnvironments,
+  getBackupEnvironmentProgress,
+  getCreatingBackupCadences,
+} from '../utils/backupEnvironments';
+import {
+  type BackupCadencesResult,
+  executeBackupCadences,
+} from '../utils/backupExecution';
+import {
   BACKUP_CADENCES,
   BACKUP_SCHEDULE_VERSION,
   getCadenceLabel,
   normalizeBackupScheduleConfig,
   toLocalDateKey,
 } from '../utils/backupSchedule';
+import { readCma } from '../utils/cmaRead';
 import { createDebugLogger } from '../utils/debugLogger';
 import { fetchLambdaBackupStatus } from '../utils/fetchLambdaBackupStatus';
 import {
-  mergePluginParameterUpdates,
+  createPluginParameterPersister,
   toPluginParameterRecord,
 } from '../utils/pluginParameterMerging';
-import {
-  LambdaBackupNowError,
-  triggerLambdaBackupNow,
-} from '../utils/triggerLambdaBackupNow';
+import { triggerLambdaBackupNow } from '../utils/triggerLambdaBackupNow';
 import {
   buildConnectedLambdaConnectionState,
   buildDisconnectedLambdaConnectionState,
@@ -39,24 +46,24 @@ import {
   isConnectionHealthy,
   readAuthSecret,
   readConnection,
-  readDeploymentUrl,
   readDebug,
+  readDeploymentUrl,
   readEnabledCadences,
 } from './pluginParams';
 
 const MISSING_AUTH_SECRET_MESSAGE =
   'Save a shared secret before using the backup service.';
-const BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS = 1200;
 
 /** Extract a human-readable message from an unknown thrown value. */
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unknown error';
 
-/** Resolve after `ms` milliseconds (used to space out backup-now retries). */
-const delay = (ms: number): Promise<void> =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
+/** Apply asynchronous results only while their request still owns the UI. */
+const commitIfActive = (controller: AbortController, commit: () => void) => {
+  if (!controller.signal.aborted) {
+    commit();
+  }
+};
 
 /** The plugin's id from ctx, or undefined when it is missing/blank. */
 const getPluginIdFromCtx = (ctx: RenderConfigScreenCtx): string | undefined => {
@@ -70,6 +77,24 @@ const getPluginIdFromCtx = (ctx: RenderConfigScreenCtx): string | undefined => {
 export type ConnectionTestError = {
   summary: string;
   details: string[];
+};
+
+const getConnectionPreflightError = (
+  candidateUrl: string,
+  secret: string,
+): ConnectionTestError | undefined => {
+  if (!candidateUrl) {
+    return { summary: 'Save a deployment URL in step 2 first.', details: [] };
+  }
+  if (!secret) {
+    return {
+      summary: MISSING_AUTH_SECRET_MESSAGE,
+      details: [
+        'Save a shared secret in step 1 first, and configure the matching secret on your deployment.',
+      ],
+    };
+  }
+  return undefined;
 };
 
 /**
@@ -115,6 +140,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   // Connect-step transient error (pre-flight validation not written to params).
   const [connectionTestError, setConnectionTestError] =
     useState<ConnectionTestError | null>(null);
+
   const [deploymentUrlError, setDeploymentUrlError] = useState<string | null>(
     null,
   );
@@ -128,6 +154,16 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   >(undefined);
   const [overviewError, setOverviewError] = useState('');
   const [isLoadingOverview, setIsLoadingOverview] = useState(false);
+  const [hasUncertainBackup, setHasUncertainBackup] = useState(false);
+
+  // Imperative locks take effect before React's next render, preventing double
+  // clicks and overlapping connect/save/manual actions from dispatching twice.
+  const actionInFlightRef = useRef(false);
+  const backupRunRef = useRef<AbortController | null>(null);
+  const uncertainBackupRef = useRef(false);
+  const overviewRequestRef = useRef<AbortController | null>(null);
+  const latestCtxRef = useRef(ctx);
+  latestCtxRef.current = ctx;
 
   const debugLogger = useMemo(
     () => createDebugLogger(debugEnabled, 'ConfigScreen'),
@@ -136,17 +172,8 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   const debugLoggerRef = useRef(debugLogger);
   debugLoggerRef.current = debugLogger;
 
-  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
   const hasRunMountCheckRef = useRef(false);
   const isMountCheckUnmountedRef = useRef(false);
-  // Merge base for the persist queue. Accumulates every write so sequential
-  // persists compose, even without a CMA token to re-read authoritative params
-  // (the frozen mount closure would otherwise merge each write against the stale
-  // first-render params and silently drop the previous write).
-  const latestPersistedParamsRef = useRef<Record<string, unknown>>(
-    toPluginParameterRecord(params),
-  );
-
   // Snapshot of the first-render params so the run-once mount effect always
   // validates against the values present at load, regardless of later persists.
   const initialMountRef = useRef<{
@@ -167,65 +194,110 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     };
   }
 
-  /**
-   * Persist a partial parameter update. Serializes concurrent saves through a
-   * promise queue and re-reads the authoritative parameters from the CMA before
-   * merging, so unrelated keys are never clobbered by a stale local copy.
-   */
-  const persistPluginParameters = useCallback(
-    async (updates: Record<string, unknown>) => {
-      const persistTask = async () => {
-        // Default merge base is the running accumulator so writes compose in
-        // order regardless of token availability.
-        let latestParameters = latestPersistedParamsRef.current;
-        const pluginId = getPluginIdFromCtx(ctx);
-
-        if (pluginId && ctx.currentUserAccessToken) {
-          try {
-            const client = buildClient({
-              apiToken: ctx.currentUserAccessToken,
-              environment: ctx.environment,
-              baseUrl: ctx.cmaBaseUrl,
-            });
-            const plugin = await client.plugins.find(pluginId);
-            // Authoritative read also picks up any external changes.
-            latestParameters = toPluginParameterRecord(plugin.parameters);
-          } catch (error) {
-            debugLogger.warn(
-              'Falling back to accumulated plugin parameters because authoritative read failed',
-              { pluginId, error: getErrorMessage(error) },
-            );
-          }
+  const persistRef = useRef<ReturnType<
+    typeof createPluginParameterPersister
+  > | null>(null);
+  if (!persistRef.current) {
+    persistRef.current = createPluginParameterPersister({
+      initialParameters: params,
+      readLatest: async () => {
+        const currentCtx = latestCtxRef.current;
+        const pluginId = getPluginIdFromCtx(currentCtx);
+        if (!pluginId || !currentCtx.currentUserAccessToken) {
+          return undefined;
         }
+        const plugin = await readCma(
+          {
+            apiToken: currentCtx.currentUserAccessToken,
+            environment: currentCtx.environment,
+            baseUrl: currentCtx.cmaBaseUrl,
+          },
+          (client) => client.plugins.find(pluginId),
+        );
+        return toPluginParameterRecord(plugin.parameters);
+      },
+      write: (parameters) =>
+        latestCtxRef.current.updatePluginParameters(parameters),
+    });
+  }
+  // The queue always reads current credentials and returns the parameters it
+  // actually saved. A failed authoritative read blocks the write.
+  const persistPluginParameters = persistRef.current;
 
-        const merged = mergePluginParameterUpdates(latestParameters, updates);
-        latestPersistedParamsRef.current = merged;
-        await ctx.updatePluginParameters(merged);
-      };
+  const fetchBackupEnvironments = useCallback(async (signal?: AbortSignal) => {
+    const currentCtx = latestCtxRef.current;
+    if (!currentCtx.currentUserAccessToken) {
+      throw new Error(
+        'Environment read access is required to verify backup completion.',
+      );
+    }
+    return readCma(
+      {
+        apiToken: currentCtx.currentUserAccessToken,
+        environment: currentCtx.environment,
+        baseUrl: currentCtx.cmaBaseUrl,
+        signal,
+      },
+      (client) => client.environments.list(),
+    );
+  }, []);
 
-      const queuedPersist = persistQueueRef.current.then(
-        persistTask,
-        persistTask,
+  const readVerifiedBackupStatus = useCallback(
+    async (baseUrl: string, secret: string, signal?: AbortSignal) => {
+      const status = await fetchLambdaBackupStatus({
+        baseUrl,
+        environment: latestCtxRef.current.environment,
+        lambdaAuthSecret: secret,
+        signal,
+      });
+      const environments: BackupEnvironment[] =
+        await fetchBackupEnvironments(signal);
+      if (signal?.aborted) {
+        throw new DOMException('Backup observation aborted.', 'AbortError');
+      }
+      const readyIds = environments
+        .filter((environment) => environment.meta.status === 'ready')
+        .map((environment) => environment.id);
+      // Reconcile snapshots: cron may start a fork after the service read but
+      // before the CMA read. Creation timestamps still require readiness.
+      const verifiedStatus = enrichBackupStatusWithEnvironments(
+        status,
+        environments,
       );
-      persistQueueRef.current = queuedPersist.then(
-        () => undefined,
-        () => undefined,
-      );
-      return queuedPersist;
+      if (backupRunRef.current) {
+        const creating = getCreatingBackupCadences(environments);
+        if (creating.length > 0) {
+          setProgressMessage(
+            creating
+              .map((cadence) => {
+                const percentage = getBackupEnvironmentProgress(
+                  cadence,
+                  environments,
+                );
+                return `Cloning ${getCadenceLabel(cadence).toLowerCase()} backup${percentage === undefined ? '…' : `: ${percentage}%`}`;
+              })
+              .join(' | '),
+          );
+        }
+      }
+      setAvailableEnvironmentIds(readyIds);
+      return verifiedStatus;
     },
-    [ctx, debugLogger],
+    [fetchBackupEnvironments],
   );
 
   const refreshLambdaBackupOverview = useCallback(
-    async (baseUrl?: string) => {
+    async (baseUrl?: string, authSecret?: string) => {
+      overviewRequestRef.current?.abort();
+      const controller = new AbortController();
+      overviewRequestRef.current = controller;
       const candidateUrl = (baseUrl || savedUrl).trim();
-      const secret = savedSecret.trim();
-      const shouldFetch = candidateUrl.length > 0 && secret.length > 0;
-
-      if (!shouldFetch) {
+      const secret = (authSecret ?? savedSecret).trim();
+      if (!candidateUrl || !secret) {
         setLambdaBackupStatus(undefined);
+        setAvailableEnvironmentIds(undefined);
         setOverviewError(
-          candidateUrl.length === 0
+          !candidateUrl
             ? 'Backup status is unavailable until a deployment URL is saved.'
             : 'Backup status is unavailable until the shared secret is saved.',
         );
@@ -234,198 +306,168 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       }
 
       setIsLoadingOverview(true);
-      setOverviewError('');
-
       try {
-        const status = await fetchLambdaBackupStatus({
-          baseUrl: candidateUrl,
-          environment: ctx.environment,
-          lambdaAuthSecret: secret,
-        });
-        setLambdaBackupStatus(status);
-      } catch (error) {
-        setLambdaBackupStatus(undefined);
-        setOverviewError(
-          error instanceof Error
-            ? error.message
-            : 'Could not load backup status from the deployed service.',
+        const status = await readVerifiedBackupStatus(
+          candidateUrl,
+          secret,
+          controller.signal,
         );
-      } finally {
-        setIsLoadingOverview(false);
-      }
-    },
-    [ctx.environment, savedSecret, savedUrl],
-  );
-
-  const fetchAvailableEnvironmentIds = useCallback(async () => {
-    if (!ctx.currentUserAccessToken) {
-      return undefined;
-    }
-
-    try {
-      const client = buildClient({
-        apiToken: ctx.currentUserAccessToken,
-        environment: ctx.environment,
-        baseUrl: ctx.cmaBaseUrl,
-      });
-      const environments = await client.environments.list();
-      return environments
-        .map((environment) => environment.id)
-        .filter((id) => typeof id === 'string' && id.trim().length > 0);
-    } catch {
-      return undefined;
-    }
-  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
-
-  const refreshAvailableEnvironments = useCallback(async () => {
-    const environmentIds = await fetchAvailableEnvironmentIds();
-    setAvailableEnvironmentIds(environmentIds);
-  }, [fetchAvailableEnvironmentIds]);
-
-  const triggerBackupForSingleCadence = useCallback(
-    async ({
-      baseUrl,
-      lambdaAuthSecret,
-      cadence,
-    }: {
-      baseUrl: string;
-      lambdaAuthSecret: string;
-      cadence: BackupCadence;
-    }): Promise<{
-      success: boolean;
-      environmentId?: string;
-      errorMessage?: string;
-    }> => {
-      setBackupNowInFlightCadence(cadence);
-      try {
-        const result = await triggerLambdaBackupNow({
-          baseUrl,
-          environment: ctx.environment,
-          scope: cadence,
-          lambdaAuthSecret,
-        });
-        return { success: true, environmentId: result.createdEnvironmentId };
+        commitIfActive(controller, () => setLambdaBackupStatus(status));
       } catch (error) {
-        // A freshly-persisted schedule can race the lambda's own run; a 409
-        // means "already creating" — retry once after a short delay.
-        const isRaceCondition =
-          error instanceof LambdaBackupNowError &&
-          error.code === 'HTTP' &&
-          error.httpStatus === 409;
-
-        if (isRaceCondition) {
-          try {
-            await delay(BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS);
-            const retryResult = await triggerLambdaBackupNow({
-              baseUrl,
-              environment: ctx.environment,
-              scope: cadence,
-              lambdaAuthSecret,
-            });
-            return {
-              success: true,
-              environmentId: retryResult.createdEnvironmentId,
-            };
-          } catch (retryError) {
-            return {
-              success: false,
-              errorMessage: `${getCadenceLabel(cadence)}: ${getErrorMessage(retryError)}`,
-            };
-          }
-        }
-
-        return {
-          success: false,
-          errorMessage: `${getCadenceLabel(cadence)}: ${getErrorMessage(error)}`,
-        };
+        commitIfActive(controller, () => {
+          setLambdaBackupStatus(undefined);
+          setAvailableEnvironmentIds(undefined);
+          setOverviewError(getErrorMessage(error));
+        });
+      } finally {
+        commitIfActive(controller, () => setIsLoadingOverview(false));
       }
     },
-    [ctx.environment],
+    [readVerifiedBackupStatus, savedSecret, savedUrl],
   );
 
-  const ensureBackupsExistForCadences = useCallback(
+  const reportBackupOutcome = useCallback(
+    async (
+      outcome: BackupCadencesResult,
+      baseUrl: string,
+      lambdaAuthSecret: string,
+    ) => {
+      uncertainBackupRef.current = outcome.uncertain;
+      setHasUncertainBackup(outcome.uncertain);
+      if (outcome.completed.length > 0) {
+        const plural = outcome.completed.length > 1 ? 's' : '';
+        latestCtxRef.current.notice(
+          `Backup environments are ready for ${outcome.completed.length} cadence${plural}.`,
+        );
+      }
+      // Refresh first: a successful read must not erase partial execution errors.
+      await refreshLambdaBackupOverview(baseUrl, lambdaAuthSecret);
+      if (outcome.failures.length > 0) {
+        setOverviewError(outcome.failures.join(' | '));
+      }
+    },
+    [refreshLambdaBackupOverview],
+  );
+
+  const runBackupCadences = useCallback(
     async ({
       baseUrl,
       lambdaAuthSecret,
       cadences,
+      onlyMissing,
     }: {
       baseUrl: string;
       lambdaAuthSecret: string;
       cadences: BackupCadence[];
+      onlyMissing: boolean;
     }) => {
-      if (cadences.length === 0) {
+      if (backupRunRef.current || uncertainBackupRef.current) {
         return;
       }
-
+      const controller = new AbortController();
+      backupRunRef.current = controller;
+      overviewRequestRef.current?.abort();
+      setIsLoadingOverview(false);
+      setOverviewError('');
+      setBackupNowInFlightCadence(cadences[0] ?? null);
+      setProgressMessage('Checking backup environments…');
+      const environment = latestCtxRef.current.environment;
       try {
-        const status = await fetchLambdaBackupStatus({
-          baseUrl,
-          environment: ctx.environment,
-          lambdaAuthSecret,
+        const outcome = await executeBackupCadences({
+          cadences,
+          onlyMissing,
+          continuousObservation: true,
+          signal: controller.signal,
+          readStatus: () =>
+            readVerifiedBackupStatus(
+              baseUrl,
+              lambdaAuthSecret,
+              controller.signal,
+            ),
+          confirmCompletion: async (cadence, status) =>
+            Boolean(status.slots[cadence]?.lastManagedEnvironmentId),
+          trigger: (scope) =>
+            triggerLambdaBackupNow({
+              baseUrl,
+              environment,
+              scope,
+              lambdaAuthSecret,
+              signal: controller.signal,
+            }),
+          onCadence: setBackupNowInFlightCadence,
+          onProgress: setProgressMessage,
+          onStatus: setLambdaBackupStatus,
         });
-
-        const missing = cadences.filter(
-          (cadence) => !status.slots[cadence]?.lastBackupAt,
-        );
-
-        if (missing.length === 0) {
-          await refreshLambdaBackupOverview(baseUrl);
-          await refreshAvailableEnvironments();
+        if (controller.signal.aborted) {
           return;
         }
-
-        setProgressMessage('Creating initial backups…');
-
-        const createdEnvironmentIds: string[] = [];
-        const failedCadences: string[] = [];
-
-        for (const cadence of missing) {
-          setProgressMessage(
-            `Creating ${getCadenceLabel(cadence).toLowerCase()} backup…`,
-          );
-          const outcome = await triggerBackupForSingleCadence({
-            baseUrl,
-            lambdaAuthSecret,
-            cadence,
-          });
-          if (outcome.success && outcome.environmentId) {
-            createdEnvironmentIds.push(outcome.environmentId);
-          } else if (outcome.errorMessage) {
-            failedCadences.push(outcome.errorMessage);
-          }
-        }
-
-        if (createdEnvironmentIds.length > 0) {
-          const plural = createdEnvironmentIds.length > 1 ? 's' : '';
-          ctx.notice(
-            `Created ${createdEnvironmentIds.length} backup environment${plural} for the saved schedule.`,
-          );
-        }
-        if (failedCadences.length > 0) {
-          setOverviewError(
-            `Some automatic backup creations failed: ${failedCadences.join(' | ')}`,
-          );
-        }
-
-        await refreshLambdaBackupOverview(baseUrl);
-        await refreshAvailableEnvironments();
+        await reportBackupOutcome(outcome, baseUrl, lambdaAuthSecret);
       } catch (error) {
-        setOverviewError(
-          error instanceof Error
-            ? error.message
-            : 'Could not automatically create missing backup environments.',
+        commitIfActive(controller, () =>
+          setOverviewError(getErrorMessage(error)),
         );
       } finally {
-        setProgressMessage(null);
-        setBackupNowInFlightCadence(null);
+        if (backupRunRef.current === controller) {
+          backupRunRef.current = null;
+        }
+        commitIfActive(controller, () => {
+          setProgressMessage(null);
+          setBackupNowInFlightCadence(null);
+        });
+        controller.abort();
       }
     },
-    [
-      ctx,
-      refreshAvailableEnvironments,
-      refreshLambdaBackupOverview,
-      triggerBackupForSingleCadence,
-    ],
+    [readVerifiedBackupStatus, reportBackupOutcome],
+  );
+
+  const ensureBackupsExistForCadences = useCallback(
+    (input: {
+      baseUrl: string;
+      lambdaAuthSecret: string;
+      cadences: BackupCadence[];
+    }) => runBackupCadences({ ...input, onlyMissing: true }),
+    [runBackupCadences],
+  );
+
+  /** Mount migrations and failure reports remain best-effort. */
+  const persistMountParameters = useCallback(
+    async (
+      updates: Record<string, unknown>,
+      expectedConnection?: { secret: string; url: string },
+    ) => {
+      try {
+        await persistPluginParameters(updates, expectedConnection);
+      } catch {
+        // Ignore persistence errors on mount.
+      }
+    },
+    [persistPluginParameters],
+  );
+
+  const reportMissingMountSecret = useCallback(
+    async (url: string, secret: string, isCancelled: () => boolean) => {
+      const disconnectedState = buildDisconnectedLambdaConnectionState(
+        new LambdaHealthCheckError({
+          code: 'MISSING_AUTH_SECRET',
+          message: MISSING_AUTH_SECRET_MESSAGE,
+          phase: 'config_mount',
+          endpoint: `${url.replace(/\/+$/, '')}/api/datocms/plugin-health`,
+        }),
+        url,
+        'config_mount',
+      );
+      await persistMountParameters(
+        {
+          lambdaConnection: disconnectedState,
+          connectionValidationMode: null,
+        },
+        { secret, url },
+      );
+      if (!isCancelled()) {
+        setIsMountChecking(false);
+      }
+    },
+    [persistMountParameters],
   );
 
   const runMountHealthCheck = useCallback(
@@ -437,29 +479,21 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       isCancelled: () => boolean;
     }) => {
       const secret = (initialMountRef.current?.secret ?? '').trim();
+      const currentConnectionMatches = () => {
+        const currentParams = latestCtxRef.current.plugin.attributes
+          .parameters as BackupsParameters;
+        return (
+          readAuthSecret(currentParams) === secret &&
+          readDeploymentUrl(currentParams) === configuredDeploymentUrl
+        );
+      };
 
       if (!secret) {
-        const disconnectedState = buildDisconnectedLambdaConnectionState(
-          new LambdaHealthCheckError({
-            code: 'MISSING_AUTH_SECRET',
-            message: MISSING_AUTH_SECRET_MESSAGE,
-            phase: 'config_mount',
-            endpoint: `${configuredDeploymentUrl.replace(/\/+$/, '')}/api/datocms/plugin-health`,
-          }),
+        await reportMissingMountSecret(
           configuredDeploymentUrl,
-          'config_mount',
+          secret,
+          isCancelled,
         );
-        try {
-          await persistPluginParameters({
-            lambdaConnection: disconnectedState,
-            connectionValidationMode: null,
-          });
-        } catch {
-          // Ignore persistence failure on mount.
-        }
-        if (!isCancelled()) {
-          setIsMountChecking(false);
-        }
         return;
       }
 
@@ -476,7 +510,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
           lambdaAuthSecret: secret,
         });
 
-        if (isCancelled()) {
+        if (isCancelled() || !currentConnectionMatches()) {
           return;
         }
 
@@ -492,12 +526,15 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         // Persist ONLY the connection result. The secret and URL are already
         // saved; re-writing them from the frozen first-render snapshot would
         // clobber a secret the user saves while this check is in flight.
-        await persistPluginParameters({
-          lambdaConnection: connectedState,
-          connectionValidationMode: 'health',
-        });
+        await persistPluginParameters(
+          {
+            lambdaConnection: connectedState,
+            connectionValidationMode: 'health',
+          },
+          { secret, url: configuredDeploymentUrl },
+        );
       } catch (error) {
-        if (isCancelled()) {
+        if (isCancelled() || !currentConnectionMatches()) {
           return;
         }
 
@@ -508,14 +545,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         );
         debugLogger.warn('Mount health check failed', disconnectedState);
 
-        try {
-          await persistPluginParameters({
+        await persistMountParameters(
+          {
             lambdaConnection: disconnectedState,
             connectionValidationMode: null,
-          });
-        } catch {
-          // Ignore persistence failure on mount.
-        }
+          },
+          { secret, url: configuredDeploymentUrl },
+        );
       } finally {
         if (!isCancelled()) {
           setIsMountChecking(false);
@@ -523,7 +559,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         }
       }
     },
-    [ctx.environment, debugLogger, persistPluginParameters],
+    [
+      ctx.environment,
+      debugLogger,
+      persistPluginParameters,
+      persistMountParameters,
+      reportMissingMountSecret,
+    ],
   );
 
   const runMigrateAndCheck = useCallback(
@@ -540,13 +582,9 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         snapshot.hasStoredSchedule &&
         snapshot.scheduleNormalization.requiresMigration
       ) {
-        try {
-          await persistPluginParameters({
-            backupSchedule: snapshot.scheduleNormalization.config,
-          });
-        } catch {
-          // Best-effort schedule migration.
-        }
+        await persistMountParameters({
+          backupSchedule: snapshot.scheduleNormalization.config,
+        });
       }
 
       const configuredDeploymentUrl = snapshot.url;
@@ -561,23 +599,23 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
           setIsMountChecking(false);
         }
 
-        try {
-          await persistPluginParameters({
+        await persistMountParameters(
+          {
             lambdaConnection: null,
             connectionValidationMode: null,
-          });
-        } catch {
-          // Ignore persistence errors on mount.
-        }
+          },
+          { secret: snapshot.secret, url: snapshot.url },
+        );
 
         return;
       }
 
       await runMountHealthCheck({ configuredDeploymentUrl, isCancelled });
     },
-    [debugLogger, persistPluginParameters, runMountHealthCheck],
+    [debugLogger, persistMountParameters, runMountHealthCheck],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Mount health must run once despite changing SDK ctx identities (see AGENTS.md).
   useEffect(() => {
     // A StrictMode remount re-enters this effect on the same fiber, so reset the
     // unmount flag here; a genuine unmount sets it again via the cleanup below
@@ -604,25 +642,15 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
   useEffect(() => {
     void refreshLambdaBackupOverview();
+    return () => overviewRequestRef.current?.abort();
   }, [refreshLambdaBackupOverview]);
 
-  useEffect(() => {
-    let isCancelled = false;
-
-    const loadAvailableEnvironments = async () => {
-      const environmentIds = await fetchAvailableEnvironmentIds();
-      if (isCancelled) {
-        return;
-      }
-      setAvailableEnvironmentIds(environmentIds);
-    };
-
-    void loadAvailableEnvironments();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [fetchAvailableEnvironmentIds]);
+  useEffect(
+    () => () => {
+      backupRunRef.current?.abort();
+    },
+    [],
+  );
 
   const handleUrlChange = useCallback((value: string) => {
     setUrlInput(value);
@@ -668,43 +696,38 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   }, [savedSecret, writeSecretToClipboard]);
 
   const saveSecret = useCallback(async () => {
+    if (actionInFlightRef.current || backupRunRef.current) {
+      return false;
+    }
     const nextSecret = secretInput.trim();
     if (!nextSecret) {
       await ctx.alert('Enter or generate an auth secret before saving.');
       return false;
     }
 
+    actionInFlightRef.current = true;
     setIsSavingSecret(true);
     try {
-      const previousSecret = readAuthSecret(params);
-      const secretChanged = nextSecret !== previousSecret;
-
-      const updates: Record<string, unknown> = { lambdaAuthSecret: nextSecret };
-      // Any secret change invalidates the recorded connection state (healthy or
-      // failed): clear it so the Connect step re-gates and the user re-tests
-      // against the new secret, instead of showing a stale error/OK.
-      if (secretChanged) {
-        updates.lambdaConnection = null;
-        updates.connectionValidationMode = null;
-      }
-
-      await persistPluginParameters(updates);
-      debugLogger.log('Auth secret saved', { secretChanged });
+      // The persister decides whether to invalidate the connection against the
+      // authoritative secret, since this screen's saved snapshot may be stale.
+      await persistPluginParameters({ lambdaAuthSecret: nextSecret });
+      debugLogger.log('Auth secret saved');
       return true;
     } catch (error) {
       debugLogger.error('Could not save auth secret', error);
       await ctx.alert('Could not save the auth secret.');
       return false;
     } finally {
+      actionInFlightRef.current = false;
       setIsSavingSecret(false);
     }
-  }, [ctx, debugLogger, params, persistPluginParameters, secretInput]);
+  }, [ctx, debugLogger, persistPluginParameters, secretInput]);
 
   /**
    * Persist the edited secret and immediately copy it to the clipboard so the
    * user can paste it into their deployment's `DATOCMS_BACKUPS_SHARED_SECRET`
-   * env var in one action. The clipboard write only happens after persistence
-   * succeeds, so the copied value is always the saved value.
+   * env var in one action. Reuses {@link saveSecret} (validates + persists) and
+   * {@link copySecret} (clipboard + notice/alert).
    */
   const saveAndCopySecret = useCallback(async () => {
     const didSave = await saveSecret();
@@ -724,33 +747,29 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   }, [savedSecret]);
 
   const saveDeploymentUrl = useCallback(async () => {
+    if (actionInFlightRef.current || backupRunRef.current || !canEdit) return;
     const candidateUrl = urlInput.trim();
     if (!candidateUrl) {
       setDeploymentUrlError('Enter the public URL for your deployment.');
       return;
     }
 
+    actionInFlightRef.current = true;
     setIsSavingDeployment(true);
     setDeploymentUrlError(null);
 
     try {
       const normalizedUrl = normalizeLambdaBaseUrl(candidateUrl);
-      const urlChanged = normalizedUrl !== readDeploymentUrl(params);
       const updates: Record<string, unknown> = {
         deploymentURL: normalizedUrl,
         netlifyURL: normalizedUrl,
         vercelURL: normalizedUrl,
       };
 
-      if (urlChanged) {
-        updates.lambdaConnection = null;
-        updates.connectionValidationMode = null;
-      }
-
       await persistPluginParameters(updates);
       setUrlInput(normalizedUrl);
       setConnectionTestError(null);
-      debugLogger.log('Deployment URL saved', { urlChanged });
+      debugLogger.log('Deployment URL saved');
       ctx.notice('Deployment URL saved.');
     } catch (error) {
       const message =
@@ -760,31 +779,69 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       setDeploymentUrlError(message);
       debugLogger.error('Could not save deployment URL', error);
     } finally {
+      actionInFlightRef.current = false;
       setIsSavingDeployment(false);
     }
-  }, [ctx, debugLogger, params, persistPluginParameters, urlInput]);
+  }, [canEdit, ctx, debugLogger, persistPluginParameters, urlInput]);
+
+  const reportConnectionFailure = useCallback(
+    async (
+      error: unknown,
+      candidateUrl: string,
+      expectedConnection: { secret: string; url: string },
+    ) => {
+      if (!(error instanceof LambdaHealthCheckError)) {
+        debugLogger.error('Unexpected error while connecting lambda', error);
+        setConnectionTestError({
+          summary: 'Unexpected error while connecting lambda.',
+          details: [`Failure details: ${getErrorMessage(error)}`],
+        });
+        return;
+      }
+
+      const disconnectedState = buildDisconnectedLambdaConnectionState(
+        error,
+        candidateUrl,
+        'config_connect',
+      );
+      debugLogger.warn('Lambda health check failed during connect', error);
+      // Always surface the failure in the UI, independent of persistence.
+      setConnectionTestError({
+        summary: error.message || 'Connection test failed.',
+        details: getLambdaConnectionErrorDetails(disconnectedState),
+      });
+      try {
+        await persistPluginParameters(
+          {
+            deploymentURL: candidateUrl,
+            netlifyURL: candidateUrl,
+            vercelURL: candidateUrl,
+            lambdaConnection: disconnectedState,
+            connectionValidationMode: null,
+          },
+          expectedConnection,
+        );
+      } catch {
+        // Error already surfaced via connectionTestError above.
+      }
+    },
+    [debugLogger, persistPluginParameters],
+  );
 
   const testConnection = useCallback(async () => {
+    if (actionInFlightRef.current || backupRunRef.current) {
+      return;
+    }
     const candidateUrl = readDeploymentUrl(params);
-    if (!candidateUrl) {
-      setConnectionTestError({
-        summary: 'Save a deployment URL in step 2 first.',
-        details: [],
-      });
-      return;
-    }
-
     const secret = readAuthSecret(params);
-    if (!secret) {
-      setConnectionTestError({
-        summary: MISSING_AUTH_SECRET_MESSAGE,
-        details: [
-          'Save an auth secret in step 1 first, and set the same value as DATOCMS_BACKUPS_SHARED_SECRET on your deployment.',
-        ],
-      });
+    const preflightError = getConnectionPreflightError(candidateUrl, secret);
+    if (preflightError) {
+      setConnectionTestError(preflightError);
       return;
     }
 
+    const expectedConnection = { secret, url: readDeploymentUrl(params) };
+    actionInFlightRef.current = true;
     setIsConnecting(true);
     setConnectionTestError(null);
 
@@ -802,64 +859,51 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         'config_connect',
       );
 
-      // Keep the legacy URL keys in lockstep while persisting the connection
-      // result. The secret is already saved and is never re-written here.
-      await persistPluginParameters({
-        deploymentURL: verificationResult.normalizedBaseUrl,
-        netlifyURL: verificationResult.normalizedBaseUrl,
-        vercelURL: verificationResult.normalizedBaseUrl,
-        lambdaConnection: connectedState,
-        connectionValidationMode: 'health',
-      });
+      // Persist the deployment URL triplet (legacy netlify/vercel keys kept in
+      // lockstep) together with the resulting connection state. The secret is
+      // not re-written here — it is already saved, and re-persisting a value
+      // captured before this multi-second request risks clobbering a concurrent
+      // secret save.
+      const persisted = await persistPluginParameters(
+        {
+          deploymentURL: verificationResult.normalizedBaseUrl,
+          netlifyURL: verificationResult.normalizedBaseUrl,
+          vercelURL: verificationResult.normalizedBaseUrl,
+          lambdaConnection: connectedState,
+          connectionValidationMode: 'health',
+        },
+        expectedConnection,
+      );
+      if (!persisted) {
+        setConnectionTestError({
+          summary:
+            'The saved connection changed during the test. Test the current values again.',
+          details: [],
+        });
+        return;
+      }
 
       setUrlInput(verificationResult.normalizedBaseUrl);
-      debugLogger.log('Backup service connected successfully', {
+      debugLogger.log('Lambda connected successfully', {
         endpoint: verificationResult.endpoint,
       });
-      ctx.notice('Connection verified.');
+      ctx.notice('Lambda function connected successfully.');
 
       // If a schedule is already saved (e.g. reconnecting to a fresh
       // deployment), create any missing backup environments now — matching the
       // old connect behavior. Fresh installs have no stored schedule yet, so
-      // creation stays step 4's responsibility.
-      if (hasStoredBackupSchedule(params)) {
+      // creation stays the Schedule step's responsibility.
+      if (hasStoredBackupSchedule(persisted)) {
         await ensureBackupsExistForCadences({
           baseUrl: verificationResult.normalizedBaseUrl,
           lambdaAuthSecret: secret,
-          cadences: readEnabledCadences(params, projectTimezone),
+          cadences: readEnabledCadences(persisted, projectTimezone),
         });
       }
     } catch (error) {
-      if (error instanceof LambdaHealthCheckError) {
-        const disconnectedState = buildDisconnectedLambdaConnectionState(
-          error,
-          candidateUrl,
-          'config_connect',
-        );
-        debugLogger.warn('Lambda health check failed during connect', error);
-        // Always surface the failure in the UI, independent of persistence.
-        setConnectionTestError({
-          summary: error.message || 'Connection test failed.',
-          details: getLambdaConnectionErrorDetails(disconnectedState),
-        });
-        // The URL was already explicitly saved in the Deploy step, so a failed
-        // test is authoritative and should replace any stale healthy state.
-        try {
-          await persistPluginParameters({
-            lambdaConnection: disconnectedState,
-            connectionValidationMode: null,
-          });
-        } catch {
-          // Error already surfaced via connectionTestError above.
-        }
-      } else {
-        debugLogger.error('Unexpected error while testing connection', error);
-        setConnectionTestError({
-          summary: 'Unexpected error while testing the connection.',
-          details: [`Failure details: ${getErrorMessage(error)}`],
-        });
-      }
+      await reportConnectionFailure(error, candidateUrl, expectedConnection);
     } finally {
+      actionInFlightRef.current = false;
       setIsConnecting(false);
     }
   }, [
@@ -869,9 +913,14 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     params,
     persistPluginParameters,
     projectTimezone,
+    reportConnectionFailure,
   ]);
 
   const removeDeployment = useCallback(async () => {
+    if (actionInFlightRef.current || backupRunRef.current) {
+      return;
+    }
+    actionInFlightRef.current = true;
     setIsDisconnecting(true);
     setConnectionTestError(null);
     setDeploymentUrlError(null);
@@ -888,14 +937,15 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       setUrlInput('');
       setLambdaBackupStatus(undefined);
       setOverviewError(
-        'Backup status is unavailable until a deployment is connected.',
+        'Backup status is unavailable until a deployment URL is saved.',
       );
       debugLogger.log('Deployment removed');
       ctx.notice('Saved deployment removed.');
     } catch (error) {
-      debugLogger.error('Could not remove deployment', error);
+      debugLogger.error('Could not disconnect current lambda', error);
       await ctx.alert('Could not remove the saved deployment.');
     } finally {
+      actionInFlightRef.current = false;
       setIsDisconnecting(false);
     }
   }, [ctx, debugLogger, persistPluginParameters]);
@@ -943,6 +993,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   );
 
   const saveSchedule = useCallback(async () => {
+    if (
+      actionInFlightRef.current ||
+      backupRunRef.current ||
+      uncertainBackupRef.current
+    ) {
+      return false;
+    }
     const normalized = BACKUP_CADENCES.filter((cadence) =>
       cadenceSelection.includes(cadence),
     );
@@ -951,18 +1008,21 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       return false;
     }
 
+    actionInFlightRef.current = true;
     setIsSavingSchedule(true);
     try {
       const persistedSchedule = buildPersistedBackupSchedule(normalized);
-      await persistPluginParameters({ backupSchedule: persistedSchedule });
+      const persisted = await persistPluginParameters({
+        backupSchedule: persistedSchedule,
+      });
       debugLogger.log('Backup schedule saved', {
         enabledCadences: normalized,
       });
       ctx.notice('Backup schedule saved.');
 
-      const baseUrl = readDeploymentUrl(params);
-      const secret = readAuthSecret(params);
-      if (baseUrl && secret) {
+      const baseUrl = readDeploymentUrl(persisted);
+      const secret = readAuthSecret(persisted);
+      if (baseUrl && secret && isConnectionHealthy(persisted)) {
         await ensureBackupsExistForCadences({
           baseUrl,
           lambdaAuthSecret: secret,
@@ -975,6 +1035,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       await ctx.alert('Could not save the backup schedule.');
       return false;
     } finally {
+      actionInFlightRef.current = false;
       setIsSavingSchedule(false);
     }
   }, [
@@ -983,7 +1044,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     ctx,
     debugLogger,
     ensureBackupsExistForCadences,
-    params,
     persistPluginParameters,
   ]);
 
@@ -1004,58 +1064,36 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
   const backupNow = useCallback(
     async (scope: BackupCadence) => {
-      if (backupNowInFlightCadence) {
+      if (
+        actionInFlightRef.current ||
+        backupRunRef.current ||
+        uncertainBackupRef.current
+      ) {
         return;
       }
-
-      const candidateUrl = readDeploymentUrl(params);
-      const secret = readAuthSecret(params);
-
-      if (!candidateUrl) {
+      const currentParams = latestCtxRef.current.plugin.attributes
+        .parameters as BackupsParameters;
+      const baseUrl = readDeploymentUrl(currentParams);
+      const secret = readAuthSecret(currentParams);
+      if (!isConnectionHealthy(currentParams) || !baseUrl || !secret) {
         setOverviewError(
-          'Save and verify a deployment before running Backup now.',
+          'Connect and authenticate the Lambda URL before running backup now.',
         );
         return;
       }
-      if (!secret) {
-        setOverviewError(
-          'A shared secret is required before running Backup now.',
-        );
-        return;
-      }
-
-      setBackupNowInFlightCadence(scope);
-      setOverviewError('');
-
+      actionInFlightRef.current = true;
       try {
-        const result = await triggerLambdaBackupNow({
-          baseUrl: candidateUrl,
-          environment: ctx.environment,
-          scope,
+        await runBackupCadences({
+          baseUrl,
           lambdaAuthSecret: secret,
+          cadences: [scope],
+          onlyMissing: false,
         });
-        ctx.notice(
-          `${getCadenceLabel(scope)} backup created: ${result.createdEnvironmentId}.`,
-        );
-        await refreshLambdaBackupOverview(candidateUrl);
-        await refreshAvailableEnvironments();
-      } catch (error) {
-        setOverviewError(
-          error instanceof Error
-            ? error.message
-            : `Could not trigger ${getCadenceLabel(scope).toLowerCase()} backup.`,
-        );
       } finally {
-        setBackupNowInFlightCadence(null);
+        actionInFlightRef.current = false;
       }
     },
-    [
-      backupNowInFlightCadence,
-      ctx,
-      params,
-      refreshAvailableEnvironments,
-      refreshLambdaBackupOverview,
-    ],
+    [runBackupCadences],
   );
 
   const onOpenEnvironments = useCallback(async () => {
@@ -1075,7 +1113,19 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     savedSecret.trim().length > 0 &&
     !isConnecting &&
     !isMountChecking &&
-    !isDisconnecting;
+    !isDisconnecting &&
+    !isSavingSecret &&
+    !isSavingDeployment &&
+    !isSavingSchedule &&
+    !hasUncertainBackup;
+
+  const isBusy =
+    isSavingSecret ||
+    isSavingDeployment ||
+    isConnecting ||
+    isSavingSchedule ||
+    isDisconnecting ||
+    backupNowInFlightCadence !== null;
 
   const connectionErrorDetails: string[] =
     !isConnected && connection?.status === 'disconnected'
@@ -1132,6 +1182,8 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     overviewError,
     isLoadingOverview,
     canBackupNow,
+    isBusy,
+    hasUncertainBackup,
   };
 };
 

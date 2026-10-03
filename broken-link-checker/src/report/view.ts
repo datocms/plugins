@@ -98,7 +98,7 @@ export type GroupFacts = {
   /** Model names by ID, each as its first occurrence names it. */
   models: ReadonlyMap<string, string>;
   locales: ReadonlySet<string>;
-  /** Lowercased occurrence URLs, index-aligned with `occurrences`. */
+  /** Unique lowercased destination variants, including fragments. */
   lowerUrls: readonly string[];
   fragment: boolean;
 };
@@ -148,31 +148,62 @@ export class GroupFactsBuilder {
   /** Only once a second record appears. */
   private records?: Set<string>;
   private lowerUrls: string[] = [];
+  private lowerUrlsPublished = false;
+  /** Allocated only when a URL has a second spelling or fragment. */
+  private seenUrls?: Set<string>;
   private models = NO_MODELS;
   private locales = NO_LOCALES;
   private fragment = false;
   private latest?: GroupFacts;
 
   add(occurrence: LinkOccurrence): void {
-    if (this.latest) {
-      this.lowerUrls = this.lowerUrls.slice();
-      this.latest = undefined;
-    }
-    const record = recordKey(occurrence);
-    if (this.records) this.records.add(record);
-    else if (this.firstRecord === undefined) this.firstRecord = record;
-    else if (record !== this.firstRecord)
-      this.records = new Set([this.firstRecord, record]);
-    if (!this.models.has(occurrence.modelId))
+    let changed = this.addRecord(recordKey(occurrence));
+    if (!this.models.has(occurrence.modelId)) {
       this.models = withModel(
         this.models,
         occurrence.modelId,
         occurrence.modelName,
       );
-    if (occurrence.locale && !this.locales.has(occurrence.locale))
+      changed = true;
+    }
+    if (occurrence.locale && !this.locales.has(occurrence.locale)) {
       this.locales = withLocale(this.locales, occurrence.locale);
-    this.lowerUrls.push(occurrence.url.toLowerCase());
-    if (occurrence.url.includes('#')) this.fragment = true;
+      changed = true;
+    }
+    if (this.addUrl(occurrence.url)) changed = true;
+    if (!this.fragment && occurrence.url.includes('#')) {
+      this.fragment = true;
+      changed = true;
+    }
+    if (changed) this.latest = undefined;
+  }
+
+  private addRecord(record: string): boolean {
+    const before =
+      this.records?.size ?? (this.firstRecord === undefined ? 0 : 1);
+    if (this.records) this.records.add(record);
+    else if (this.firstRecord === undefined) this.firstRecord = record;
+    else if (record !== this.firstRecord)
+      this.records = new Set([this.firstRecord, record]);
+    const after =
+      this.records?.size ?? (this.firstRecord === undefined ? 0 : 1);
+    return before !== after;
+  }
+
+  private addUrl(url: string): boolean {
+    const lowerUrl = url.toLowerCase();
+    const newUrl = this.seenUrls
+      ? !this.seenUrls.has(lowerUrl)
+      : this.lowerUrls[0] !== lowerUrl;
+    if (!newUrl) return false;
+    if (this.lowerUrlsPublished) {
+      this.lowerUrls = this.lowerUrls.slice();
+      this.lowerUrlsPublished = false;
+    }
+    if (this.lowerUrls.length > 0) this.seenUrls ??= new Set(this.lowerUrls);
+    this.seenUrls?.add(lowerUrl);
+    this.lowerUrls.push(lowerUrl);
+    return true;
   }
 
   facts(): GroupFacts {
@@ -184,29 +215,39 @@ export class GroupFactsBuilder {
       lowerUrls: this.lowerUrls,
       fragment: this.fragment,
     };
+    this.lowerUrlsPublished = true;
     return this.latest;
   }
 }
 
 // A group's occurrences array is never changed once it is in a report: a group
 // that grows gets a new array, so the array identity is the stable cache key.
-const factsCache = new WeakMap<readonly LinkOccurrence[], GroupFacts>();
+const factsCache = new WeakMap<
+  LinkGroup | readonly LinkOccurrence[],
+  GroupFacts
+>();
 
 /** Lets a session that already collected the facts of `occurrences` skip reading them again. */
 export function cacheGroupFacts(
-  occurrences: readonly LinkOccurrence[],
+  occurrences: LinkGroup | readonly LinkOccurrence[],
   facts: GroupFacts,
 ): void {
   factsCache.set(occurrences, facts);
 }
 
 export function groupFacts(group: LinkGroup): GroupFacts {
-  const cached = factsCache.get(group.occurrences);
+  // Session snapshots have lazy occurrence arrays. Cached metadata must not
+  // materialize an enormous shared URL merely to count or filter its row.
+  const direct = factsCache.get(group);
+  if (direct) return direct;
+  const occurrences = group.occurrences;
+  const cached = factsCache.get(occurrences);
   if (cached) return cached;
   const builder = new GroupFactsBuilder();
-  for (const occurrence of group.occurrences) builder.add(occurrence);
+  for (const occurrence of occurrences) builder.add(occurrence);
   const facts = builder.facts();
-  factsCache.set(group.occurrences, facts);
+  factsCache.set(occurrences, facts);
+  factsCache.set(group, facts);
   return facts;
 }
 
@@ -228,19 +269,24 @@ function matchesStatus(group: LinkGroup, status: StatusView): boolean {
 }
 
 /** One occurrence has to match the model, the locale and the query together. */
-function matchesOccurrences(group: LinkGroup, filters: Filters): boolean {
+function matchesOccurrences(
+  group: LinkGroup,
+  filters: Filters,
+  query: string,
+): boolean {
   const { modelId, locale } = filters;
-  const query = filters.query.toLowerCase();
+  if (!modelId && !locale && !query) return true;
   const facts = groupFacts(group);
   if (modelId && !facts.models.has(modelId)) return false;
   if (locale && !facts.locales.has(locale)) return false;
   if (!modelId && !locale)
     return !query || facts.lowerUrls.some((url) => url.includes(query));
+  if (!query && (!modelId || !locale)) return true;
   return group.occurrences.some(
-    (occurrence, index) =>
+    (occurrence) =>
       (!modelId || occurrence.modelId === modelId) &&
       (!locale || occurrence.locale === locale) &&
-      facts.lowerUrls[index].includes(query),
+      (!query || occurrence.url.toLowerCase().includes(query)),
   );
 }
 
@@ -248,10 +294,11 @@ export function filterGroups(
   groups: readonly LinkGroup[],
   filters: Filters,
 ): LinkGroup[] {
+  const query = filters.query.toLowerCase();
   return groups.filter(
     (group) =>
       matchesStatus(group, filters.status) &&
-      matchesOccurrences(group, filters),
+      matchesOccurrences(group, filters, query),
   );
 }
 
@@ -319,18 +366,10 @@ export function reportDimensions(
   for (const group of groups) {
     // A URL that grew during a scan comes with its facts; most are found once
     // or twice and are quicker to read directly.
-    const facts = factsCache.get(group.occurrences);
-    if (facts) {
-      for (const [id, name] of facts.models)
-        if (!models.has(id)) models.set(id, name);
-      for (const locale of facts.locales) locales.add(locale);
-      continue;
-    }
-    for (const occurrence of group.occurrences) {
-      if (!models.has(occurrence.modelId))
-        models.set(occurrence.modelId, occurrence.modelName);
-      if (occurrence.locale) locales.add(occurrence.locale);
-    }
+    const facts = groupFacts(group);
+    for (const [id, name] of facts.models)
+      if (!models.has(id)) models.set(id, name);
+    for (const locale of facts.locales) locales.add(locale);
   }
   return {
     models: [...models]
@@ -343,8 +382,9 @@ export function reportDimensions(
 export type ScanProgress = {
   records: number;
   found: number;
-  /** URLs that go to the network (neither invalid nor skipped). */
+  /** URLs eligible for network requests (neither invalid nor skipped). */
   checkable: number;
+  /** Eligible URLs with a terminal result, including checks withheld during a host cooldown. */
   checked: number;
   left: number;
   attention: number;
@@ -376,7 +416,7 @@ export function scanProgress(report: ScanReport): ScanProgress {
   };
 }
 
-/** Invalid and skipped URLs never go to the network, so they count as settled. */
+/** All terminal classifications count as settled, including invalid and skipped URLs. */
 export function settledUrls({ checked, found, checkable }: ScanProgress) {
   return checked + (found - checkable);
 }
@@ -385,7 +425,7 @@ export function settledUrls({ checked, found, checkable }: ScanProgress) {
 const RECORD_WEIGHT = 1 / RECORDS_PAGE_SIZE;
 
 /**
- * How much of a running scan is done, from 0 to 1, in requests: a page of
+ * An estimate of a running scan's work done, from 0 to 1: a page of
  * records to read, or a URL found so far to check. While records are still
  * being read, the total needs the record count; without it the progress is
  * unknown (null). URLs found along the way can lower the fraction, so callers
@@ -412,6 +452,72 @@ export type RecordUsage = {
   modelName: string;
   occurrences: LinkOccurrence[];
 };
+
+export type RecordUsagePreview = RecordUsage & {
+  /** Every occurrence counts, although only the places visible in a row are held. */
+  occurrenceCount: number;
+};
+
+type UsagePage = {
+  page: number;
+  perPage: number;
+  places: number;
+  records: RecordUsagePreview[];
+};
+
+// Keep only the last requested window: visiting thousands of pages must not
+// gradually retain thousands of copies of their location previews.
+const usagePageCache = new WeakMap<readonly LinkOccurrence[], UsagePage>();
+
+/**
+ * Group only the visible records, in discovery order. An enormous shared URL
+ * needs one set of record IDs, not another array for every occurrence and
+ * another object for every record. Only the visible rows retain their places.
+ */
+export function recordUsagePage(
+  group: LinkGroup,
+  page: number,
+  perPage: number,
+  places: number,
+): RecordUsagePreview[] {
+  const occurrences = group.occurrences;
+  const current = Math.min(
+    Math.max(1, page),
+    pageCount(groupFacts(group).recordCount, perPage),
+  );
+  const cached = usagePageCache.get(occurrences);
+  if (
+    cached?.page === current &&
+    cached.perPage === perPage &&
+    cached.places === places
+  )
+    return cached.records;
+  const seen = new Set<string>();
+  const visible = new Map<string, RecordUsagePreview>();
+  const start = (current - 1) * perPage;
+  for (const occurrence of occurrences) {
+    const key = recordKey(occurrence);
+    if (seen.size < start + perPage && !seen.has(key)) {
+      const index = seen.size;
+      seen.add(key);
+      if (index >= start && index < start + perPage)
+        visible.set(key, {
+          recordId: occurrence.recordId,
+          title: occurrence.recordTitle,
+          modelName: occurrence.modelName,
+          occurrences: [],
+          occurrenceCount: 0,
+        });
+    }
+    const record = visible.get(key);
+    if (!record) continue;
+    record.occurrenceCount += 1;
+    if (record.occurrences.length < places) record.occurrences.push(occurrence);
+  }
+  const records = [...visible.values()];
+  usagePageCache.set(occurrences, { page: current, perPage, places, records });
+  return records;
+}
 
 const recordsCache = new WeakMap<readonly LinkOccurrence[], RecordUsage[]>();
 

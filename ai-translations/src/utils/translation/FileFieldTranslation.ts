@@ -12,13 +12,13 @@
  * - Stream translation progress back to the UI
  */
 
-import { buildClient } from '@datocms/cma-client-browser';
+import { buildDatoCMSClient } from '../clients';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
 import { findExactLocaleKey } from './SharedFieldUtils';
 import { translateArray } from './translateArray';
-import { getCancellationOptions, isAbortError } from './Cancellation';
+import { checkCancellation, getCancellationOptions, isAbortError } from './Cancellation';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
 // Field-keyed (`{ alt: { en } }`), which is what the `uploads` simple methods
@@ -28,6 +28,8 @@ type UploadDefaultFieldMetadata = {
   alt?: Record<string, string | null>;
   title?: Record<string, string | null>;
 };
+
+const UPLOAD_DEFAULT_METADATA_CACHE_MAX_SIZE = 256;
 
 const uploadDefaultMetadataCache = new Map<
   string,
@@ -41,20 +43,24 @@ async function fetchUploadDefaultMetadata(
   cmaBaseUrl: string | undefined,
   logger: ReturnType<typeof createLogger>,
 ): Promise<UploadDefaultFieldMetadata | undefined> {
-  const cacheKey = `${cmaBaseUrl ?? ''}:${environment}:${uploadId}`;
+  // Credentials identify the project; keys never enter debug output.
+  const cacheKey = JSON.stringify([apiToken, cmaBaseUrl, environment, uploadId]);
   const cached = uploadDefaultMetadataCache.get(cacheKey);
   if (cached) return cached;
 
+  let failed = false;
   const fetchPromise = (async () => {
     try {
-      const client = buildClient({
-        apiToken,
-        environment,
-        baseUrl: cmaBaseUrl,
-      });
+      const client = buildDatoCMSClient(apiToken, environment, cmaBaseUrl);
       const upload = await client.uploads.find(uploadId);
-      return upload.default_field_metadata;
+      const metadata = (upload as { default_field_metadata?: unknown })
+        .default_field_metadata;
+      if (!metadata || typeof metadata !== 'object') {
+        return undefined;
+      }
+      return metadata as UploadDefaultFieldMetadata;
     } catch (error) {
+      failed = true;
       logger.warning('Failed to fetch upload default metadata', {
         uploadId,
         error,
@@ -63,8 +69,16 @@ async function fetchUploadDefaultMetadata(
     }
   })();
 
+  if (uploadDefaultMetadataCache.size >= UPLOAD_DEFAULT_METADATA_CACHE_MAX_SIZE) {
+    const firstKey = uploadDefaultMetadataCache.keys().next().value;
+    if (firstKey) uploadDefaultMetadataCache.delete(firstKey);
+  }
   uploadDefaultMetadataCache.set(cacheKey, fetchPromise);
-  return fetchPromise;
+  const result = await fetchPromise;
+  if (failed && uploadDefaultMetadataCache.get(cacheKey) === fetchPromise) {
+    uploadDefaultMetadataCache.delete(cacheKey);
+  }
+  return result;
 }
 
 /**
@@ -99,6 +113,7 @@ export async function translateFileFieldValue(
   cmaBaseUrl?: string,
 ): Promise<unknown> {
   // Create logger for this module
+  checkCancellation(_streamCallbacks ?? {});
   const logger = createLogger(pluginParams, 'FileFieldTranslation');
 
   // If no value, return as is
@@ -116,23 +131,26 @@ export async function translateFileFieldValue(
 
     logger.info(`Translating gallery with ${fieldValue.length} files`);
 
-    // Translate each file in the gallery
-    const translatedFiles = await Promise.all(
-      fieldValue.map(async (file) => {
-        return translateSingleFileMetadata(
-          file,
-          pluginParams,
-          toLocale,
-          fromLocale,
-          provider,
-          apiToken,
-          environment,
-          _streamCallbacks,
-          recordContext,
-          cmaBaseUrl,
-        );
-      }),
-    );
+    // The outer record/field scheduler owns concurrency. Starting all assets
+    // here creates thousands of queued provider calls and CMA metadata reads.
+    const translatedFiles: unknown[] = [];
+    for (const file of fieldValue) {
+      checkCancellation(_streamCallbacks ?? {});
+      // biome-ignore lint/performance/noAwaitInLoops: galleries share the outer scheduler; bounded asset work prevents a promise storm.
+      translatedFiles.push(await translateSingleFileMetadata(
+        file,
+        pluginParams,
+        toLocale,
+        fromLocale,
+        provider,
+        apiToken,
+        environment,
+        _streamCallbacks,
+        recordContext,
+        cmaBaseUrl,
+      ));
+    }
+    checkCancellation(_streamCallbacks ?? {});
 
     return translatedFiles;
   }
@@ -446,7 +464,8 @@ async function translateSingleFileMetadata(
     'FileFieldTranslation.translateSingleFileMetadata',
   );
 
-  if (!fileValue || typeof fileValue !== 'object') {
+  checkCancellation(_streamCallbacks ?? {});
+  if (!fileValue || typeof fileValue !== 'object' || Array.isArray(fileValue)) {
     logger.info('No valid file object to translate');
     return fileValue;
   }
@@ -469,6 +488,7 @@ async function translateSingleFileMetadata(
     logger,
   );
 
+  checkCancellation(_streamCallbacks ?? {});
   const entries = collectFileMetadataEntries(
     metadata,
     typeof altSource === 'string' ? altSource : undefined,
@@ -501,6 +521,7 @@ async function translateSingleFileMetadata(
       },
     );
 
+    checkCancellation(_streamCallbacks ?? {});
     return applyTranslatedFileEntries(
       entries,
       translatedValues,

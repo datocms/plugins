@@ -9,7 +9,7 @@ import {
   createBaseComment,
   createCommentWithReplies,
 } from '../fixtures/comments';
-import { createMentionSegment, mentionFixtures } from '../fixtures/mentions';
+import { mentionFixtures } from '../fixtures/mentions';
 
 describe('isValidISOString', () => {
   describe('valid ISO strings', () => {
@@ -119,7 +119,9 @@ describe('isValidComment', () => {
 
     it('accepts comment with mention segments', () => {
       const comment = createBaseComment({
-        content: [createMentionSegment(mentionFixtures.userJohn)],
+        content: [
+          { type: 'mention' as const, mention: mentionFixtures.userJohn },
+        ],
       });
       expect(isValidComment(comment)).toBe(true);
     });

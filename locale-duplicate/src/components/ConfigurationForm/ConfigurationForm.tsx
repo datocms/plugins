@@ -6,8 +6,13 @@ import {
   SelectField,
   SwitchField,
 } from 'datocms-react-ui';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ModelOption } from '../../types';
+import {
+  getLargeSelectionHint,
+  getVisibleOptions,
+  LARGE_SELECTION_THRESHOLD,
+} from '../../utils/selection';
 import styles from './ConfigurationForm.module.css';
 
 interface ConfigurationFormProps {
@@ -43,6 +48,21 @@ export function ConfigurationForm({
   onPublishAfterDuplicationChange,
   onSubmit,
 }: ConfigurationFormProps) {
+  const [modelSearch, setModelSearch] = useState('');
+  const compactSelection = selectedModels.length > 50;
+  const selectedModelIds = useMemo(
+    () => new Set(selectedModels.map((model) => model.value)),
+    [selectedModels],
+  );
+  const visibleModels = useMemo(
+    () =>
+      getVisibleOptions(
+        allModels,
+        modelSearch,
+        compactSelection ? undefined : selectedModelIds,
+      ),
+    [allModels, modelSearch, selectedModelIds, compactSelection],
+  );
   // Memoize locale options for source locale
   const sourceLocaleOptions = useMemo(
     () =>
@@ -55,14 +75,8 @@ export function ConfigurationForm({
 
   // Memoize locale options for target locale (excluding source)
   const targetLocaleOptions = useMemo(
-    () =>
-      currentSiteLocales
-        .filter((l) => l !== sourceLocale)
-        .map((locale) => ({
-          label: getLocaleLabel(locale),
-          value: locale,
-        })),
-    [currentSiteLocales, sourceLocale, getLocaleLabel],
+    () => sourceLocaleOptions.filter((option) => option.value !== sourceLocale),
+    [sourceLocaleOptions, sourceLocale],
   );
 
   // Memoize source locale value
@@ -170,14 +184,32 @@ export function ConfigurationForm({
                 name="models"
                 id="models"
                 label=""
+                hint={getLargeSelectionHint(allModels.length, 'models')}
+                placeholder={
+                  compactSelection
+                    ? `${selectedModels.length} models selected...`
+                    : undefined
+                }
                 value={selectedModels}
                 selectInputProps={{
                   isMulti: true,
-                  options: allModels,
-                  placeholder: 'Select models...',
+                  options: visibleModels,
+                  placeholder: compactSelection
+                    ? `${selectedModels.length} models selected...`
+                    : 'Select models...',
+                  ...(compactSelection
+                    ? {
+                        controlShouldRenderValue: false,
+                        hideSelectedOptions: false,
+                      }
+                    : {}),
+                  onInputChange: setModelSearch,
+                  ...(allModels.length > LARGE_SELECTION_THRESHOLD
+                    ? { filterOption: null }
+                    : {}),
                 }}
                 onChange={(newValue) => {
-                  onModelsChange(newValue as ModelOption[]);
+                  onModelsChange(Array.isArray(newValue) ? newValue : []);
                 }}
               />
             </div>
@@ -214,7 +246,12 @@ export function ConfigurationForm({
             fullWidth
             buttonType="primary"
             buttonSize="l"
-            disabled={selectedModels.length === 0}
+            disabled={
+              selectedModels.length === 0 ||
+              sourceLocale === targetLocale ||
+              !currentSiteLocales.includes(sourceLocale) ||
+              !currentSiteLocales.includes(targetLocale)
+            }
             onClick={onSubmit}
           >
             Duplicate locale content

@@ -1,24 +1,28 @@
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { NormalizedGenerationImage } from '../../utils/imageService/types';
 import s from './styles.module.css';
 
 type Props = {
   image: NormalizedGenerationImage;
   selected: boolean;
+  sent: boolean;
+  onPreviewFailed: () => void;
   onToggleSelected: () => void;
 };
 
-export default function Cell({ image, selected, onToggleSelected }: Props) {
+export default function Cell({
+  image,
+  selected,
+  sent,
+  onPreviewFailed,
+  onToggleSelected,
+}: Props) {
   const ctx = useCtx<RenderAssetSourceCtx>();
   const [previewFailed, setPreviewFailed] = useState(false);
 
-  useEffect(() => {
-    setPreviewFailed(false);
-  }, []);
-
-  const isSelectable = image.kind === 'success' && !previewFailed;
+  const isSelectable = image.kind === 'success' && !previewFailed && !sent;
   const hasInlineError = image.kind === 'error' || previewFailed;
   const cellClassName = [
     s.cell,
@@ -58,6 +62,7 @@ export default function Cell({ image, selected, onToggleSelected }: Props) {
   return (
     <button
       aria-pressed={selected}
+      title={sent ? 'Sent to the Media Area' : undefined}
       className={cellClassName}
       disabled={!isSelectable}
       onClick={onToggleSelected}
@@ -69,9 +74,12 @@ export default function Cell({ image, selected, onToggleSelected }: Props) {
       <img
         alt="Generated preview"
         className={s.image}
+        loading="lazy"
+        decoding="async"
         src={image.previewSrc}
         onError={() => {
           setPreviewFailed(true);
+          onPreviewFailed();
           ctx.updateHeight();
         }}
         onLoad={() => {

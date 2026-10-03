@@ -15,6 +15,10 @@ export class ProjectSchemaSource implements ISchemaSource {
     this.cachedPluginIds = options.installedPluginIds;
   }
 
+  get maxConcurrentRequests(): number {
+    return this.schema.maxConcurrentRequests;
+  }
+
   async getItemTypeById(id: string): Promise<SchemaTypes.ItemType> {
     return this.schema.getItemTypeById(id);
   }

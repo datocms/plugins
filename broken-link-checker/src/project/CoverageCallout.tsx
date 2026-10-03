@@ -7,6 +7,8 @@ import { DisabledReason } from '../ui/WithTooltip';
 import type { ScanAgain } from './ScanSummary';
 
 const COLLAPSED_WARNINGS = 5;
+const WARNINGS_PER_PAGE = 50;
+const PAGINATE_WARNINGS_ABOVE = 100;
 
 type CoverageInput = {
   state: ScanReport['state'];
@@ -40,7 +42,18 @@ function WarningList({
   uiLocale: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? warnings : warnings.slice(0, COLLAPSED_WARNINGS);
+  const [page, setPage] = useState(1);
+  const paginated = warnings.length > PAGINATE_WARNINGS_ABOVE;
+  const pages = Math.ceil(warnings.length / WARNINGS_PER_PAGE);
+  const current = Math.min(page, pages);
+  const shown = !expanded
+    ? warnings.slice(0, COLLAPSED_WARNINGS)
+    : paginated
+      ? warnings.slice(
+          (current - 1) * WARNINGS_PER_PAGE,
+          current * WARNINGS_PER_PAGE,
+        )
+      : warnings;
   return (
     <>
       <p>{intro}</p>
@@ -49,6 +62,30 @@ function WarningList({
           <li key={warning}>{formatWarning(warning, uiLocale)}</li>
         ))}
       </ul>
+      {expanded && paginated && (
+        <nav className="dl-pagination" aria-label="Content reading issues">
+          <button
+            type="button"
+            className="dl-pagination__nav"
+            disabled={current <= 1}
+            onClick={() => setPage(current - 1)}
+          >
+            « Previous
+          </button>
+          <span>
+            Page {current.toLocaleString(uiLocale)} of{' '}
+            {pages.toLocaleString(uiLocale)}
+          </span>
+          <button
+            type="button"
+            className="dl-pagination__nav"
+            disabled={current >= pages}
+            onClick={() => setPage(current + 1)}
+          >
+            Next »
+          </button>
+        </nav>
+      )}
       {warnings.length > COLLAPSED_WARNINGS && (
         <LinkButton
           className="blc-callout__toggle"
@@ -56,7 +93,7 @@ function WarningList({
         >
           {expanded
             ? 'Show fewer issues'
-            : `Show all ${warnings.length.toLocaleString(uiLocale)} issues`}
+            : `Show ${paginated ? '' : 'all '}${warnings.length.toLocaleString(uiLocale)} issues`}
         </LinkButton>
       )}
     </>
@@ -75,7 +112,7 @@ function CalloutText({
       <>
         <p>
           You canceled this scan, so it covers only the records read and the
-          URLs checked until then. URLs that weren't checked show as "Not
+          URLs processed until then. URLs that weren't checked show as "Not
           checked".
         </p>
         {warnings.length > 0 && (

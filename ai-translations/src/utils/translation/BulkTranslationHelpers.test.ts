@@ -86,11 +86,9 @@ describe('filterTranslatableFields', () => {
       field({ id: '1', api_key: 'alpha' }),
       field({ id: '2', api_key: 'beta' }),
     ];
-    expect(filterTranslatableFields(fields, config).map((r) => r.apiKey)).toEqual([
-      'gamma',
-      'alpha',
-      'beta',
-    ]);
+    expect(
+      filterTranslatableFields(fields, config).map((r) => r.apiKey),
+    ).toEqual(['gamma', 'alpha', 'beta']);
   });
 
   it('keeps only localized, allowed, non-excluded fields', () => {
@@ -135,7 +133,11 @@ describe('filterTranslatableFields', () => {
     const fields: SdkField[] = [
       field({ id: '1', api_key: 'blocks', editor: 'rich_text' }),
       field({ id: '2', api_key: 'framed', editor: 'framed_single_block' }),
-      field({ id: '3', api_key: 'frameless', editor: 'frameless_single_block' }),
+      field({
+        id: '3',
+        api_key: 'frameless',
+        editor: 'frameless_single_block',
+      }),
     ];
 
     const result = filterTranslatableFields(fields, config);
@@ -155,10 +157,9 @@ describe('filterTranslatableFields', () => {
       field({ id: '1', api_key: 'cover', editor: 'file' }),
       field({ id: '2', api_key: 'photos', editor: 'gallery' }),
     ];
-    expect(filterTranslatableFields(fields, config).map((r) => r.apiKey)).toEqual([
-      'cover',
-      'photos',
-    ]);
+    expect(
+      filterTranslatableFields(fields, config).map((r) => r.apiKey),
+    ).toEqual(['cover', 'photos']);
   });
 
   it('honors exclusions by both field id and api_key', () => {
@@ -171,13 +172,18 @@ describe('filterTranslatableFields', () => {
       field({ id: '2', api_key: 'internal_name' }),
       field({ id: '42', api_key: 'tracking_code' }),
     ];
-    expect(filterTranslatableFields(fields, config).map((r) => r.apiKey)).toEqual([
-      'title',
-    ]);
+    expect(
+      filterTranslatableFields(fields, config).map((r) => r.apiKey),
+    ).toEqual(['title']);
   });
 });
 
 describe('resolveTargetLocales', () => {
+  it('drops locales removed from the environment while keeping configured targets', () => {
+    expect(resolveTargetLocales(['fr', 'removed'], ['en', 'fr'], 'en')).toEqual(
+      ['fr'],
+    );
+  });
   it('expands the all-locales sentinel and drops the source', () => {
     const result = resolveTargetLocales(
       [ALL_LOCALES_VALUE],
@@ -201,11 +207,7 @@ describe('resolveTargetLocales', () => {
 
   it('deduplicates repeated locales', () => {
     expect(
-      resolveTargetLocales(
-        ['fr', 'de', 'fr'],
-        ['en', 'fr', 'de'],
-        'en',
-      ),
+      resolveTargetLocales(['fr', 'de', 'fr'], ['en', 'fr', 'de'], 'en'),
     ).toEqual(['fr', 'de']);
   });
 
@@ -215,11 +217,7 @@ describe('resolveTargetLocales', () => {
 
   it('all-locales sentinel takes precedence and ignores other entries', () => {
     expect(
-      resolveTargetLocales(
-        [ALL_LOCALES_VALUE, 'fr'],
-        ['en', 'fr', 'de'],
-        'en',
-      ),
+      resolveTargetLocales([ALL_LOCALES_VALUE, 'fr'], ['en', 'fr', 'de'], 'en'),
     ).toEqual(['fr', 'de']);
   });
 });
@@ -240,7 +238,9 @@ describe('isFieldIncludedInSelection', () => {
   it('is strict when a selection is provided', () => {
     const selection = { m1: ['title', 'description'] };
     expect(isFieldIncludedInSelection('m1', 'title', selection)).toBe(true);
-    expect(isFieldIncludedInSelection('m1', 'untracked', selection)).toBe(false);
+    expect(isFieldIncludedInSelection('m1', 'untracked', selection)).toBe(
+      false,
+    );
     expect(isFieldIncludedInSelection('m2', 'title', selection)).toBe(false);
   });
 });

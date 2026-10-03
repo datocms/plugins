@@ -85,7 +85,19 @@ type OutcomeToasts = {
   alert(message: string): Promise<void>;
 };
 
-type TranslationOutcome = { completed?: boolean; canceled?: boolean };
+type TranslationOutcome = {
+  completed?: boolean;
+  canceled?: boolean;
+  summary?: {
+    totalRecords: number;
+    processedCount: number;
+    successfulCount: number;
+    failedCount: number;
+    warningCount: number;
+    loadedCount: number;
+    updatedCount?: number;
+  };
+};
 
 /**
  * Reports how a progress-modal run ended. Never awaits the toast, so callers
@@ -96,7 +108,32 @@ export function reportTranslationOutcome(
   result: TranslationOutcome | undefined,
   count: number,
 ): void {
-  if (result?.canceled) void ctx.notice(TRANSLATION_CANCELED_NOTICE);
-  else if (result?.completed) void ctx.notice(translatedRecordsNotice(count));
+  const summary = result?.summary;
+  if (result?.canceled) {
+    void ctx.notice(
+      summary?.processedCount
+        ? `Translation canceled. ${recordCount(summary.successfulCount)} completed; ${recordCount(summary.failedCount)} failed. Saved changes were kept.`
+        : TRANSLATION_CANCELED_NOTICE,
+    );
+  } else if (
+    summary &&
+    (summary.failedCount > 0 || summary.processedCount < summary.totalRecords)
+  ) {
+    void ctx.alert(
+      `${recordCount(summary.successfulCount)} completed; ${recordCount(summary.failedCount)} failed; ${recordCount(summary.totalRecords - summary.processedCount)} were not processed.`,
+    );
+  } else if (summary && summary.warningCount > 0) {
+    void ctx.notice(
+      `${recordCount(summary.successfulCount)} completed; ${recordCount(summary.warningCount)} need review.`,
+    );
+  } else if (
+    summary?.updatedCount !== undefined &&
+    summary.updatedCount < summary.successfulCount
+  ) {
+    void ctx.notice(
+      `${recordCount(summary.updatedCount)} updated; ${recordCount(summary.successfulCount - summary.updatedCount)} had no eligible fields to translate.`,
+    );
+  } else if (result?.completed)
+    void ctx.notice(translatedRecordsNotice(summary?.successfulCount ?? count));
   else void ctx.alert(TRANSLATION_FAILED_ALERT);
 }

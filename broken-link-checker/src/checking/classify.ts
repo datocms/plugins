@@ -4,6 +4,8 @@ import type { CheckReason, CheckResult, PreparedUrl } from '../types';
 export type Attempt = {
   status: number;
   body?: string;
+  /** Retry-After is seconds or an HTTP date, normalized at receipt. */
+  retryAfterMs?: number;
 };
 
 export function isSuccessful(httpStatus: number): boolean {

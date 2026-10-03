@@ -1,7 +1,6 @@
 import { SchemaRepository } from '@datocms/cma-client';
 import type { Client } from '@datocms/cma-client-browser';
 import { logError } from '@/utils/errorLogger';
-import { extractLocalizedValue } from './fieldLoader';
 
 type RecordTitleInfo = {
   title: string;
@@ -23,7 +22,7 @@ function getFallbackTitle(recordId: string) {
   return `Record #${recordId}`;
 }
 
-/** singleton -> presentation_title_field -> title_field -> localized value -> fallback */
+/** singleton -> presentation/title field -> preferred/populated locale -> fallback */
 export function extractTitleFromRecordData(
   recordId: string,
   recordData: Record<string, unknown>,
@@ -57,13 +56,21 @@ export function extractTitleFromRecordData(
     return fallbackTitle;
   }
 
-  const localizedValue = extractLocalizedValue(fieldValue, mainLocale);
-  if (localizedValue !== fieldValue && localizedValue) {
-    return String(localizedValue);
+  if (typeof fieldValue === 'object') {
+    if (Array.isArray(fieldValue)) return fallbackTitle;
+    const localizedValues = fieldValue as Record<string, unknown>;
+    for (const value of [
+      localizedValues[mainLocale],
+      ...Object.values(localizedValues),
+    ]) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
+      }
+    }
+    return fallbackTitle;
   }
 
-  // Localized object but locale not found
-  if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+  if (typeof fieldValue === 'string' && fieldValue.trim().length === 0) {
     return fallbackTitle;
   }
 
@@ -84,25 +91,62 @@ function getSchemaRepository(client: Client): SchemaRepository {
   return repo;
 }
 
-// Cache titles to avoid refetching on every poll interval
-const titleCache = new Map<string, RecordTitleInfo>();
+// A client identifies the API token, project and environment. Do not share titles
+// between clients or locales, and keep long-lived sidebar sessions bounded.
+const titleCaches = new WeakMap<
+  Client,
+  Map<string, { info: RecordTitleInfo; expiresAt: number }>
+>();
 const TITLE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-let titleCacheTimestamp = 0;
+const TITLE_CACHE_LIMIT = 2000;
 
-function getCachedTitle(recordId: string): RecordTitleInfo | undefined {
-  // Invalidate cache if expired
-  if (Date.now() - titleCacheTimestamp > TITLE_CACHE_TTL_MS) {
-    titleCache.clear();
-    return undefined;
+function getTitleCache(client: Client) {
+  let cache = titleCaches.get(client);
+  if (!cache) {
+    cache = new Map();
+    titleCaches.set(client, cache);
   }
-  return titleCache.get(recordId);
+  return cache;
 }
 
-function setCachedTitle(recordId: string, info: RecordTitleInfo) {
-  if (titleCache.size === 0) {
-    titleCacheTimestamp = Date.now();
+function titleCacheKey(recordId: string, modelId: string, locale: string) {
+  return JSON.stringify([recordId, modelId, locale]);
+}
+
+function getCachedTitle(
+  client: Client,
+  recordId: string,
+  modelId: string,
+  locale: string,
+): RecordTitleInfo | undefined {
+  const cache = getTitleCache(client);
+  const key = titleCacheKey(recordId, modelId, locale);
+  const cached = cache.get(key);
+  if (!cached) return undefined;
+  cache.delete(key);
+  if (Date.now() >= cached.expiresAt) {
+    return undefined;
   }
-  titleCache.set(recordId, info);
+  cache.set(key, cached);
+  return cached.info;
+}
+
+function setCachedTitle(
+  client: Client,
+  recordId: string,
+  modelId: string,
+  locale: string,
+  info: RecordTitleInfo,
+) {
+  const cache = getTitleCache(client);
+  const key = titleCacheKey(recordId, modelId, locale);
+  cache.delete(key);
+  cache.set(key, { info, expiresAt: Date.now() + TITLE_CACHE_TTL_MS });
+  while (cache.size > TITLE_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
 }
 
 const BATCH_SIZE = 100;
@@ -121,7 +165,6 @@ async function fetchBatchRecordTitles(
   try {
     const batchRecords = await client.items.list({
       filter: {
-        type: modelId,
         ids: batchIds.join(','),
       },
       page: { limit: BATCH_SIZE },
@@ -153,7 +196,7 @@ async function fetchBatchRecordTitles(
 
       const info = { title, modelName, isSingleton };
       results.set(recordId, info);
-      setCachedTitle(recordId, info);
+      setCachedTitle(client, recordId, modelId, mainLocale, info);
     }
   } catch (batchError) {
     logError('Failed to batch fetch records:', batchError, {
@@ -177,8 +220,10 @@ async function fetchTitlesForModel(
   recordIds: string[],
   mainLocale: string,
   results: Map<string, RecordTitleInfo>,
+  shouldContinue: () => boolean,
 ): Promise<void> {
   try {
+    if (!shouldContinue()) return;
     const itemType = await schemaRepo.getItemTypeById(modelId);
     const modelName = itemType.name;
     const isSingleton = itemType.singleton ?? false;
@@ -187,7 +232,7 @@ async function fetchTitlesForModel(
       for (const recordId of recordIds) {
         const info = { title: modelName, modelName, isSingleton };
         results.set(recordId, info);
-        setCachedTitle(recordId, info);
+        setCachedTitle(client, recordId, modelId, mainLocale, info);
       }
       return;
     }
@@ -203,26 +248,21 @@ async function fetchTitlesForModel(
       titleFieldId: itemType.title_field?.id ?? null,
     };
 
-    const batches: string[][] = [];
     for (let i = 0; i < recordIds.length; i += BATCH_SIZE) {
-      batches.push(recordIds.slice(i, i + BATCH_SIZE));
+      if (!shouldContinue()) return;
+      // biome-ignore lint/performance/noAwaitInLoops: Sequential batches bound the requests made by each model worker.
+      await fetchBatchRecordTitles(
+        client,
+        modelId,
+        recordIds.slice(i, i + BATCH_SIZE),
+        modelName,
+        isSingleton,
+        titleFieldConfig,
+        normalizedFields,
+        mainLocale,
+        results,
+      );
     }
-
-    await Promise.all(
-      batches.map((batchIds) =>
-        fetchBatchRecordTitles(
-          client,
-          modelId,
-          batchIds,
-          modelName,
-          isSingleton,
-          titleFieldConfig,
-          normalizedFields,
-          mainLocale,
-          results,
-        ),
-      ),
-    );
   } catch (error) {
     logError('Failed to process model for titles:', error, { modelId });
     for (const recordId of recordIds) {
@@ -235,11 +275,12 @@ async function fetchTitlesForModel(
   }
 }
 
-/** Batch fetch: groups by model, uses caching, 100 records/call, parallel model processing. */
+/** Resolves referenced IDs only, with bounded batches and model concurrency. */
 export async function getRecordTitles(
   client: Client,
   records: Array<{ recordId: string; modelId: string }>,
   mainLocale: string,
+  shouldContinue: () => boolean = () => true,
 ): Promise<Map<string, RecordTitleInfo>> {
   const results = new Map<string, RecordTitleInfo>();
 
@@ -254,7 +295,7 @@ export async function getRecordTitles(
   // Check cache first - only fetch records we don't have cached
   const uncachedRecords: Array<{ recordId: string; modelId: string }> = [];
   for (const { recordId, modelId } of uniqueRecords.values()) {
-    const cached = getCachedTitle(recordId);
+    const cached = getCachedTitle(client, recordId, modelId, mainLocale);
     if (cached) {
       results.set(recordId, cached);
     } else {
@@ -276,19 +317,28 @@ export async function getRecordTitles(
 
   const schemaRepo = getSchemaRepository(client);
 
-  const modelPromises = Array.from(recordsByModel.entries()).map(
-    ([modelId, recordIds]) =>
-      fetchTitlesForModel(
+  const models = recordsByModel.entries();
+  const resolveModels = async () => {
+    while (shouldContinue()) {
+      const next = models.next();
+      if (next.done) return;
+      const [modelId, recordIds] = next.value;
+      // biome-ignore lint/performance/noAwaitInLoops: Each of four workers processes one model at a time.
+      await fetchTitlesForModel(
         client,
         schemaRepo,
         modelId,
         recordIds,
         mainLocale,
         results,
-      ),
-  );
+        shouldContinue,
+      );
+    }
+  };
 
-  await Promise.all(modelPromises);
+  await Promise.all(
+    Array.from({ length: Math.min(4, recordsByModel.size) }, resolveModels),
+  );
 
   return results;
 }

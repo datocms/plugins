@@ -63,10 +63,10 @@ describe('parseComments', () => {
 });
 
 describe('COMMENTS_QUERY', () => {
-  it('reads the single aggregate comments record', () => {
+  it('reads enough aggregate records to detect duplicates', () => {
     expect(COMMENTS_QUERY).toContain('allProjectComments');
     expect(COMMENTS_QUERY).toContain('recordId: { eq: $recordId }');
-    expect(COMMENTS_QUERY).toContain('first: 1');
+    expect(COMMENTS_QUERY).toContain('first: 2');
     expect(COMMENTS_QUERY).not.toContain('targetRecordId');
   });
 });

@@ -23,15 +23,10 @@ export function prepareUrl(raw: string): PreparedUrl {
   }
 
   // URL accepts embedded newlines and backslashes that are usually editor typos.
-  if (
-    [...value].some(
-      (character) =>
-        character.charCodeAt(0) <= 32 ||
-        character.charCodeAt(0) === 127 ||
-        character === '\\',
-    )
-  )
-    return invalid();
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 32 || code === 127 || character === '\\') return invalid();
+  }
 
   let parsed: URL;
   try {

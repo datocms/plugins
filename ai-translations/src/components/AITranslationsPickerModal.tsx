@@ -27,19 +27,14 @@ import {
   SelectField,
   Spinner,
 } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { Button } from '../ui/Button';
 import { DisabledReason } from '../ui/DisabledReason';
 import { formatLocaleLabel } from '../utils/localeUtils';
 import {
-  defaultFieldSelection,
-  filterTranslatableFields,
   getTranslationReadiness,
   resolveTargetLocales,
-  type SdkField,
-  sortFieldsByLayoutOrder,
-  type TranslatableField,
 } from '../utils/translation/BulkTranslationHelpers';
 import { isProviderConfigured } from '../utils/translation/ProviderFactory';
 import s from './AITranslationsPickerModal.module.css';
@@ -61,6 +56,12 @@ import {
 } from './BulkTranslations/localeSelection';
 import { ModelFieldPicker } from './BulkTranslations/ModelFieldPicker';
 import { getStartBlockedReason } from './BulkTranslations/startBlockedReason';
+import {
+  boundedSelectHint,
+  useBoundedChipSelect,
+} from './BulkTranslations/useBoundedChipSelect';
+import { useModelFields } from './BulkTranslations/useModelFields';
+import { useModelPickerPage } from './BulkTranslations/useModelPickerPage';
 import type { ConfirmModelSummary } from './TranslationConfirmModal';
 
 type SingleValue<T> = T | null;
@@ -109,7 +110,16 @@ const PROVIDER_MISSING_LINE =
   'No AI vendor is set up yet. Add its credentials in the plugin settings to start translating.';
 
 export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
-  const { itemIds, models, pluginParams } = parameters;
+  const { itemIds, pluginParams } = parameters;
+  const excludedModelCodes = useMemo(
+    () => new Set(pluginParams.modelsToBeExcludedFromThisPlugin ?? []),
+    [pluginParams.modelsToBeExcludedFromThisPlugin],
+  );
+  const models = useMemo(
+    () =>
+      parameters.models.filter((model) => !excludedModelCodes.has(model.code)),
+    [parameters.models, excludedModelCodes],
+  );
 
   const locales = useMemo<LocaleOption[]>(
     () =>
@@ -122,6 +132,8 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   );
   const isSingleLocale = ctx.site.attributes.locales.length < 2;
   const providerConfigured = isProviderConfigured(pluginParams);
+  const { visibleModels, controls: modelPageControls } =
+    useModelPickerPage(models);
 
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
     locales[0] ?? null,
@@ -130,99 +142,43 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<
     LocaleOption[]
   >([ALL_LOCALES_OPTION]);
-  const [fieldsByModel, setFieldsByModel] = useState<
-    Record<string, TranslatableField[]>
-  >({});
-  const [selectedFieldsByModel, setSelectedFieldsByModel] = useState<
-    Record<string, string[]>
-  >({});
-  const [loadingFieldsForModel, setLoadingFieldsForModel] = useState<
-    Set<string>
-  >(new Set());
-  // Models whose last field load failed; cleared by "Try again".
-  const [failedFieldModels, setFailedFieldModels] = useState<Set<string>>(
-    new Set(),
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const selectedModelIds = useMemo(() => models.map((m) => m.value), [models]);
+  const {
+    fieldsByModel,
+    selectedFieldsByModel,
+    loadingFieldsForModel,
+    failedFieldModels,
+    setModelFields,
+    retryFields,
+  } = useModelFields({
+    modelIds: selectedModelIds,
+    scopeKey: JSON.stringify([
+      ctx.environment,
+      ctx.cmaBaseUrl,
+      parameters.accessToken,
+    ]),
+    loadFields: (modelId) => ctx.loadItemTypeFields(modelId),
+    translationFields: pluginParams.translationFields,
+    excludedApiKeys: pluginParams.apiKeysToBeExcludedFromThisPlugin,
+  });
 
-  /**
-   * Fetches and stores the translatable fields for one model, defaulting
-   * the selection to "everything selected". Re-uses the page's pattern of
-   * an in-flight marker so quick toggles don't race, and skips models whose
-   * load failed until `retryFields`.
-   */
-  const ensureFieldsLoaded = useCallback(
-    async (modelId: string) => {
-      if (
-        fieldsByModel[modelId] ||
-        loadingFieldsForModel.has(modelId) ||
-        failedFieldModels.has(modelId)
-      ) {
-        return;
-      }
-
-      setLoadingFieldsForModel((prev) => {
-        const next = new Set(prev);
-        next.add(modelId);
-        return next;
-      });
-
-      try {
-        const fields = (await ctx.loadItemTypeFields(modelId)) as SdkField[];
-        const ordered = sortFieldsByLayoutOrder(fields);
-        const translatable = filterTranslatableFields(ordered, {
-          translationFields: pluginParams.translationFields ?? [],
-          apiKeysToBeExcludedFromThisPlugin:
-            pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
-        });
-
-        setFieldsByModel((prev) => ({ ...prev, [modelId]: translatable }));
-        setSelectedFieldsByModel((prev) =>
-          prev[modelId]
-            ? prev
-            : { ...prev, [modelId]: defaultFieldSelection(translatable) },
-        );
-      } catch (error) {
-        // Shown inline by ModelFieldPicker, with a "Try again" action.
-        console.error(`Error loading fields for model ${modelId}:`, error);
-        setFailedFieldModels((prev) => {
-          const next = new Set(prev);
-          next.add(modelId);
-          return next;
-        });
-      } finally {
-        setLoadingFieldsForModel((prev) => {
-          const next = new Set(prev);
-          next.delete(modelId);
-          return next;
-        });
-      }
-    },
-    [
-      ctx,
-      fieldsByModel,
-      loadingFieldsForModel,
-      failedFieldModels,
-      pluginParams.apiKeysToBeExcludedFromThisPlugin,
-      pluginParams.translationFields,
-    ],
-  );
-
-  // Load fields for every model represented in the selection on mount.
   useEffect(() => {
-    for (const m of models) {
-      void ensureFieldsLoaded(m.value);
-    }
-  }, [models, ensureFieldsLoaded]);
-
-  /** Clears a model's failed mark so the load effect fetches it again. */
-  const retryFields = (modelId: string) => {
-    setFailedFieldModels((prev) => {
-      const next = new Set(prev);
-      next.delete(modelId);
-      return next;
-    });
-  };
+    const valid = new Set(locales.map((locale) => locale.value));
+    setSourceLocale((prev) =>
+      prev && valid.has(prev.value) ? prev : (locales[0] ?? null),
+    );
+    setTargetLocaleOptions((prev) =>
+      targetsForNewSource(
+        prev.filter(
+          (option) =>
+            option.value === ALL_LOCALES_OPTION.value ||
+            valid.has(option.value),
+        ),
+        sourceLocale?.value ?? '',
+      ),
+    );
+  }, [locales, sourceLocale]);
 
   const allLocaleValues = useMemo(() => locales.map((l) => l.value), [locales]);
   const targetLocales = useMemo(
@@ -236,8 +192,6 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
         : [],
     [sourceLocale, targetLocaleOptions, allLocaleValues],
   );
-
-  const selectedModelIds = useMemo(() => models.map((m) => m.value), [models]);
 
   const readiness = useMemo(
     () =>
@@ -290,6 +244,18 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
     [locales, sourceLocale],
   );
 
+  const sourceSelect = useBoundedChipSelect(
+    locales,
+    sourceLocale ? [sourceLocale] : [],
+    'locales',
+    false,
+  );
+  const targetSelect = useBoundedChipSelect(
+    targetOptions,
+    targetLocaleOptions,
+    'locales',
+  );
+
   /**
    * Multi-select onChange for the target locales, through the soft mutex in
    * `nextTargetSelection` ("All other locales" vs specific picks).
@@ -314,10 +280,6 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
       setSourceLocale(source);
       setTargetLocaleOptions((prev) => targetsForNewSource(prev, source.value));
     }
-  };
-
-  const setModelFields = (modelId: string, apiKeys: string[]) => {
-    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: apiKeys }));
   };
 
   /**
@@ -351,7 +313,12 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
       config: {
         fromLocale: sourceLocale.value,
         toLocales: targetLocales,
-        selectedFieldsByModel,
+        selectedFieldsByModel: Object.fromEntries(
+          parameters.models.map((model) => [
+            model.value,
+            selectedFieldsByModel[model.value] ?? [],
+          ]),
+        ),
         models: modelSummaries,
       },
     } satisfies AITranslationsPickerModalResult);
@@ -373,6 +340,11 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   return (
     <Canvas ctx={ctx}>
       <Form onSubmit={handleStart}>
+        {models.length < parameters.models.length && (
+          <div className="dl-callout dl-callout--warning dl-callout--flush">
+            Records of models excluded in the plugin settings will be skipped.
+          </div>
+        )}
         {!providerConfigured && (
           <div className="dl-callout dl-callout--warning dl-callout--flush">
             {PROVIDER_MISSING_LINE}
@@ -401,11 +373,14 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                 name="sourceLocale"
                 label="Source locale"
                 required
-                hint="Content in this locale is translated into the target locales"
+                hint={boundedSelectHint(
+                  sourceSelect.hint,
+                  'Content in this locale is translated into the target locales',
+                )}
                 value={sourceLocale}
                 onChange={handleSourceLocaleChange}
                 selectInputProps={{
-                  options: locales,
+                  ...sourceSelect.selectProps,
                   formatOptionLabel: formatCodeOption,
                   isClearable: false,
                 }}
@@ -415,8 +390,11 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                 name="targetLocales"
                 label="Target locales"
                 required
-                hint='"All other locales" includes every locale except the source one'
-                placeholder="Select locales…"
+                hint={boundedSelectHint(
+                  targetSelect.hint,
+                  '"All other locales" includes every locale except the source one',
+                )}
+                placeholder={targetSelect.placeholder('Select locales…')}
                 error={
                   targetLocaleOptions.length === 0 ? FIELD_REQUIRED : undefined
                 }
@@ -424,7 +402,7 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                 onChange={handleTargetLocalesChange}
                 selectInputProps={{
                   isMulti: true,
-                  options: targetOptions,
+                  ...targetSelect.selectProps,
                   formatOptionLabel: formatCodeMultiOption,
                   noOptionsMessage: () => 'No locales found',
                 }}
@@ -442,7 +420,8 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
               Fields
             </h2>
             <FieldGroup>
-              {models.map((model) => (
+              {modelPageControls}
+              {visibleModels.map((model) => (
                 <ModelFieldPicker
                   key={model.value}
                   model={model}

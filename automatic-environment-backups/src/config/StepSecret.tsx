@@ -39,6 +39,7 @@ const linkButtonStyle: CSSProperties = {
 export const StepSecret = ({ config }: { config: BackupsConfig }) => {
   const {
     canEdit,
+    isBusy,
     secretInput,
     setSecretInput,
     saveAndCopySecret,
@@ -68,7 +69,7 @@ export const StepSecret = ({ config }: { config: BackupsConfig }) => {
           onChange={setSecretInput}
           textInputProps={{
             autoComplete: 'off',
-            disabled: !canEdit || isSavingSecret,
+            disabled: !canEdit || isBusy,
             monospaced: true,
             spellCheck: false,
           }}
@@ -115,7 +116,7 @@ export const StepSecret = ({ config }: { config: BackupsConfig }) => {
             buttonType="muted"
             buttonSize="s"
             onClick={regenerateSecret}
-            disabled={!canEdit || isSavingSecret}
+            disabled={!canEdit || isBusy}
             leftIcon={<RegenerateIcon />}
           >
             Generate new
@@ -130,7 +131,7 @@ export const StepSecret = ({ config }: { config: BackupsConfig }) => {
               onClick={() => {
                 void saveAndCopySecret();
               }}
-              disabled={!canEdit || isSavingSecret || trimmedInput.length === 0}
+              disabled={!canEdit || isBusy || trimmedInput.length === 0}
               leftIcon={isSavingSecret ? <Spinner size={16} /> : undefined}
               rightIcon={!isSavingSecret ? <StepActionArrow /> : undefined}
             >

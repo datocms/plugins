@@ -5,10 +5,10 @@
  * chat models (OpenAI, Gemini, Anthropic).
  */
 
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { defaultPrompt } from '../../prompts/DefaultPrompt';
-import { checkCancellation, isAbortError } from './Cancellation';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger, type Logger } from '../logging/Logger';
+import { checkCancellation, isAbortError } from './Cancellation';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { mapDatoToDeepL } from './DeepLMap';
 import {
@@ -21,6 +21,7 @@ import {
 import { formatErrorForUser, normalizeProviderError } from './ProviderErrors';
 import {
   type BatchTranslationOptions,
+  type CancellationOptions,
   isProviderError,
   ProviderConfigurationError,
   type ProviderDebugHooks,
@@ -34,10 +35,9 @@ import {
  * need chunking to handle large arrays reliably.
  */
 const CHAT_VENDOR_CHUNK_SIZE = 25;
+const CHAT_VENDOR_CHUNK_BYTES = 24_000;
 
-type Options = {
-  abortSignal?: AbortSignal;
-  checkCancellation?: () => boolean;
+type Options = CancellationOptions & {
   isHTML?: boolean;
   formality?: 'default' | 'more' | 'less';
   recordContext?: string;
@@ -86,7 +86,8 @@ export function tokenize(text: string): { safe: string; map: TokenMap } {
   let idx = 0;
   for (const re of patterns) {
     safe = safe.replace(re, (m) => {
-      const token = `⟦PH_${idx++}⟧`;
+      let token = `⟦PH_${idx++}⟧`;
+      while (text.includes(token)) token = `⟦PH_${idx++}⟧`;
       map.push({ safe: token, orig: m });
       return token;
     });
@@ -174,7 +175,9 @@ function parseResponseArray(
       ...context,
       rawResponse: trimmedTxt,
     });
-    return { array: [], repaired: false };
+    throw new Error(
+      'The translation provider returned an empty response. No content was saved.',
+    );
   }
 
   try {
@@ -260,12 +263,15 @@ function parseTranslationResponse(
       },
     );
   } else {
-    // Length repair: ensure output has same length as input
-    fixed = [];
-    for (let i = 0; i < originalSegments.length; i++) {
-      const v = arr[i];
-      fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+    if (
+      arr.length !== originalSegments.length ||
+      arr.some((value) => typeof value !== 'string')
+    ) {
+      throw new Error(
+        'The translation provider returned an incomplete or invalid array. No content was saved.',
+      );
     }
+    fixed = arr as string[];
   }
 
   logger.info('Final parsed response array', {
@@ -492,11 +498,9 @@ Return ONLY a valid JSON array of strings, the exact same length as the input ar
  * by sending a JSON-array prompt. Large arrays are chunked for reliability.
  *
  * @param provider - Chat-based translation provider.
- * @param pluginParams - Plugin configuration, used to read the configured prompt.
  * @param protectedSegments - Tokenized (placeholder-safe) text segments.
  * @param fromLocale - Source locale code.
  * @param toLocale - Target locale code.
- * @param recordContext - Additional context about the record being translated.
  * @returns Translated segments in order.
  */
 async function translateWithChatProvider(
@@ -511,73 +515,48 @@ async function translateWithChatProvider(
   recordContext: string,
   opts: Options,
 ): Promise<string[]> {
-  const instruction = buildChatInstruction(
-    pluginParams,
-    fromLocale,
-    toLocale,
-    recordContext,
-  );
+  const instruction = buildChatInstruction(pluginParams, fromLocale, toLocale, recordContext);
 
-  if (protectedSegments.length <= CHAT_VENDOR_CHUNK_SIZE) {
-    const prompt = `${instruction}\n${JSON.stringify(protectedSegments)}`;
+  const encoder = new TextEncoder();
+  const segmentBytes = protectedSegments.map(
+    (segment) => encoder.encode(JSON.stringify(segment)).length,
+  );
+  // Preflight every opaque segment before billable requests. Splitting a single
+  // HTML/ICU/JSON value by bytes would corrupt its structure.
+  if (segmentBytes.some((bytes) => bytes > CHAT_VENDOR_CHUNK_BYTES - 2)) {
+    throw new Error(
+      'A text segment exceeds the safe 24 KB translation request size. No content was sent for translation.',
+    );
+  }
+  const out: string[] = [];
+  let start = 0;
+  while (start < protectedSegments.length) {
+    checkCancellation(opts);
+    let end = start;
+    let bytes = 2;
+    while (
+      end < protectedSegments.length &&
+      end - start < CHAT_VENDOR_CHUNK_SIZE
+    ) {
+      const nextBytes = segmentBytes[end] + (end > start ? 1 : 0);
+      if (bytes + nextBytes > CHAT_VENDOR_CHUNK_BYTES) break;
+      bytes += nextBytes;
+      end += 1;
+    }
+    const chunkSegments = protectedSegments.slice(start, end);
+    const prompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
     logger.logPrompt('Prompt request', prompt);
     logger.logRequest('Provider text request input', {
       provider: provider.vendor,
       fromLocale,
       toLocale,
-      chunkStart: 0,
-      chunkSize: protectedSegments.length,
-      prompt,
-      protectedSegments,
-    });
-    checkCancellation(opts);
-    const txt = await provider.completeText(prompt, {
-      debug: providerDebugHooks,
-      ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
-    });
-    checkCancellation(opts);
-    logger.logResponse('Raw provider response', {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart: 0,
-      chunkSize: protectedSegments.length,
-      rawResponse: txt,
-    });
-    return parseTranslationResponse(
-      txt,
-      protectedSegments,
-      logger,
-      {
-        provider: provider.vendor,
-        fromLocale,
-        toLocale,
-        chunkStart: 0,
-        chunkSize: protectedSegments.length,
-      },
-      isHtml,
-    );
-  }
-
-  // Chunk large arrays to improve reliability and enable partial recovery
-  const translateChunk = async (chunkStart: number): Promise<string[]> => {
-    checkCancellation(opts);
-    const chunkSegments = protectedSegments.slice(
-      chunkStart,
-      chunkStart + CHAT_VENDOR_CHUNK_SIZE,
-    );
-    const chunkPrompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
-    logger.logPrompt('Prompt request', chunkPrompt);
-    logger.logRequest('Provider text request input', {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart,
+      chunkStart: start,
       chunkSize: chunkSegments.length,
-      prompt: chunkPrompt,
+      prompt,
       protectedSegments: chunkSegments,
     });
-    const chunkResponse = await provider.completeText(chunkPrompt, {
+    // biome-ignore lint/performance/noAwaitInLoops: Bound memory and finish one chunk before sending the next.
+    const response = await provider.completeText(prompt, {
       debug: providerDebugHooks,
       ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
@@ -586,35 +565,27 @@ async function translateWithChatProvider(
       provider: provider.vendor,
       fromLocale,
       toLocale,
-      chunkStart,
+      chunkStart: start,
       chunkSize: chunkSegments.length,
-      rawResponse: chunkResponse,
+      rawResponse: response,
     });
-    return parseTranslationResponse(
-      chunkResponse,
+    const translated = parseTranslationResponse(
+      response,
       chunkSegments,
       logger,
       {
         provider: provider.vendor,
         fromLocale,
         toLocale,
-        chunkStart,
+        chunkStart: start,
         chunkSize: chunkSegments.length,
       },
       isHtml,
     );
-  };
-
-  const chunkStarts: number[] = [];
-  for (let i = 0; i < protectedSegments.length; i += CHAT_VENDOR_CHUNK_SIZE) {
-    chunkStarts.push(i);
+    for (const segment of translated) out.push(segment);
+    start = end;
   }
-
-  return chunkStarts.reduce(async (chain, start) => {
-    const accumulated = await chain;
-    const chunkResults = await translateChunk(start);
-    return [...accumulated, ...chunkResults];
-  }, Promise.resolve<string[]>([]));
+  return out;
 }
 
 export async function translateArray(
@@ -683,9 +654,20 @@ export async function translateArray(
       );
     }
 
-    // Reinsert tokens with safe fallback for tokenMaps
+    if (out.length !== segments.length || out.some(value => typeof value !== 'string')) {
+      throw new Error('The translation provider returned an incomplete or invalid array. No content was saved.');
+    }
+
+    // Reinsert tokens after validating output cardinality and placeholders.
     const finalSegments = out.map((t, i) => {
       const tokenMap = tokenMaps[i] ?? [];
+      for (const { safe } of tokenMap) {
+        if (t.split(safe).length !== 2) {
+          throw new Error(
+            'The translation provider changed a protected placeholder. No content was saved.',
+          );
+        }
+      }
       return detokenize(String(t ?? ''), tokenMap);
     });
     logger.info('Translation batch output', {
@@ -710,7 +692,12 @@ export async function translateArray(
         message,
         error.status,
         error.vendor ?? provider.vendor,
-        { cause: error },
+        {
+          cause: error,
+          retryAfterMs: error.retryAfterMs,
+          retryExhausted: error.retryExhausted,
+          code: error.code,
+        },
       );
     }
     throw new Error(message, { cause: error });

@@ -28,12 +28,25 @@ export const isBackupCadence = (value: unknown): value is BackupCadence => {
   return BACKUP_CADENCES.includes(value as BackupCadence);
 };
 
+const isValidTimezone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const ensureTimezone = (value: unknown, fallback: string): string => {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim();
+  const candidate = typeof value === 'string' ? value.trim() : '';
+  if (candidate && isValidTimezone(candidate)) {
+    return candidate;
   }
 
-  return fallback || FALLBACK_TIMEZONE;
+  const normalizedFallback = fallback.trim();
+  return normalizedFallback && isValidTimezone(normalizedFallback)
+    ? normalizedFallback
+    : FALLBACK_TIMEZONE;
 };
 
 const normalizeCadences = (value: unknown): BackupCadence[] => {
@@ -73,17 +86,24 @@ const parseLocalDateKey = (value: string): LocalDateParts | null => {
   return { year, month, day };
 };
 
+export const isValidLocalDateKey = (value: string): boolean =>
+  parseLocalDateKey(value) !== null;
+
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 
 const toLocalDateKeyFromParts = (parts: LocalDateParts): string =>
-  `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
+  `${String(parts.year).padStart(4, '0')}-${pad2(parts.month)}-${pad2(parts.day)}`;
 
 const getDaysInMonth = (year: number, month: number): number => {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const date = new Date(0);
+  date.setUTCFullYear(year, month, 0);
+  return date.getUTCDate();
 };
 
 const buildUtcDateFromLocalParts = (parts: LocalDateParts): Date => {
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const date = new Date(0);
+  date.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  return date;
 };
 
 const compareDateKeys = (left: string, right: string): number => {
@@ -121,14 +141,35 @@ const toLocalDateParts = (date: Date, timezone: string): LocalDateParts => {
 };
 
 export const toLocalDateKey = (date: Date, timezone: string): string => {
-  return toLocalDateKeyFromParts(toLocalDateParts(date, timezone));
+  return toLocalDateKeyFromParts(
+    toLocalDateParts(date, ensureTimezone(timezone, FALLBACK_TIMEZONE)),
+  );
 };
 
 const isValidCadenceArray = (value: unknown): value is BackupCadence[] => {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
-    value.every((entry) => isBackupCadence(entry))
+    value.every((entry) => isBackupCadence(entry)) &&
+    new Set(value).size === value.length
+  );
+};
+
+export const isValidBackupTimestamp = (value: unknown): value is string => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const match = value.match(
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/,
+  );
+  return Boolean(
+    match &&
+      isValidLocalDateKey(match[1]) &&
+      Number(match[2]) < 24 &&
+      Number(match[3]) < 60 &&
+      Number(match[4]) < 60 &&
+      Number.isFinite(new Date(value).getTime()),
   );
 };
 
@@ -178,7 +219,8 @@ export const normalizeBackupScheduleConfig = ({
     timezone,
     anchorLocalDate,
     updatedAt:
-      typeof value.updatedAt === 'string' && value.updatedAt.trim()
+      typeof value.updatedAt === 'string' &&
+      isValidBackupTimestamp(value.updatedAt.trim())
         ? value.updatedAt.trim()
         : fallbackUpdatedAt,
   };
@@ -197,9 +239,9 @@ export const normalizeBackupScheduleConfig = ({
   const requiresMigration =
     value.version !== BACKUP_SCHEDULE_VERSION ||
     !isValidCadenceArray(value.enabledCadences) ||
-    rawTimezone.length === 0 ||
+    rawTimezone !== timezone ||
     !parseLocalDateKey(rawAnchor) ||
-    rawUpdatedAt.length === 0 ||
+    !isValidBackupTimestamp(rawUpdatedAt) ||
     hasUnexpectedKeys;
 
   return { config, requiresMigration };
@@ -425,6 +467,14 @@ export const getNextDueLocalDate = ({
   currentLocalDate: string;
   lastRunLocalDate?: string;
 }): string => {
+  if (
+    parseLocalDateKey(anchorLocalDate) &&
+    parseLocalDateKey(currentLocalDate) &&
+    compareDateKeys(currentLocalDate, anchorLocalDate) < 0
+  ) {
+    return anchorLocalDate;
+  }
+
   const alreadyRanToday =
     typeof lastRunLocalDate === 'string' &&
     compareDateKeys(lastRunLocalDate, currentLocalDate) === 0;
@@ -519,7 +569,5 @@ export const toUtcDateFromLocalDateKey = (
     return undefined;
   }
 
-  return new Date(
-    Date.UTC(parsed.year, parsed.month - 1, parsed.day, 0, 0, 0, 0),
-  );
+  return buildUtcDateFromLocalParts(parsed);
 };

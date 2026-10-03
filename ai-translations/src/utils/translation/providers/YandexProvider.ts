@@ -1,4 +1,3 @@
-import { resolveYandexLocale } from '../YandexMap';
 import type {
   BatchTranslationOptions,
   ProviderDebugHooks,
@@ -11,6 +10,7 @@ import {
   DEFAULT_API_TIMEOUT_MS,
   ProviderError,
 } from '../types';
+import { resolveYandexLocale } from '../YandexMap';
 
 /** A language advertised by Yandex Translate's live language-list endpoint. */
 export interface YandexLanguage {
@@ -152,7 +152,9 @@ function statusFromApiCode(code: unknown, fallback = 500): number {
 }
 
 function unicodeLength(value: string): number {
-  return Array.from(value).length;
+  let length = 0;
+  for (const _character of value) length += 1;
+  return length;
 }
 
 function buildTranslationBatches(segments: string[]): TranslationBatch[] {
@@ -240,10 +242,7 @@ export default class YandexProvider implements TranslationProvider {
     if (text) yield text;
   }
 
-  async completeText(
-    prompt: string,
-    options?: StreamOptions,
-  ): Promise<string> {
+  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
     const translated = await this.translateSegments(
       [prompt],
       {
@@ -268,9 +267,7 @@ export default class YandexProvider implements TranslationProvider {
    * Returns Yandex's current supported languages. The successful result is
    * cached for the lifetime of this credential-scoped provider instance.
    */
-  async listLanguages(
-    options: StreamOptions = {},
-  ): Promise<YandexLanguage[]> {
+  async listLanguages(options: StreamOptions = {}): Promise<YandexLanguage[]> {
     if (!this.languagesPromise) {
       this.languagesPromise = this.fetchLanguages(options).catch((error) => {
         this.languagesPromise = undefined;
@@ -335,10 +332,10 @@ export default class YandexProvider implements TranslationProvider {
       }
     };
 
-    await batches.reduce(
-      (chain, batch) => chain.then(() => translateBatch(batch)),
-      Promise.resolve(),
-    );
+    for (const batch of batches) {
+      // biome-ignore lint/performance/noAwaitInLoops: Native requests are bounded and run incrementally.
+      await translateBatch(batch);
+    }
     return output;
   }
 

@@ -122,7 +122,7 @@ describe('AnthropicProvider', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body).toEqual({
         model: 'claude-3-sonnet-20240229',
-        max_tokens: 1024,
+        max_tokens: 4096,
         temperature: undefined,
         messages: [{ role: 'user', content: 'Test prompt' }],
       });
@@ -210,7 +210,14 @@ describe('AnthropicProvider', () => {
         });
 
         try {
-          await provider.completeText('Test');
+          const request = provider.completeText('Test');
+          const expectation = expect(request).rejects.toMatchObject({
+            status: 429,
+            retryExhausted: true,
+          });
+          await vi.runAllTimersAsync();
+          await expectation;
+          await request;
           expect.fail('Should have thrown');
         } catch (e) {
           expect(e).toBeInstanceOf(ProviderError);
@@ -227,12 +234,10 @@ describe('AnthropicProvider', () => {
           json: () => Promise.reject(new Error('Invalid JSON')),
         });
 
-        try {
-          await provider.completeText('Test');
-          expect.fail('Should have thrown');
-        } catch (e) {
-          expect((e as ProviderError).message).toBe('Internal Server Error');
-        }
+        await expect(provider.completeText('Test')).rejects.toMatchObject({
+          message: 'Internal Server Error',
+          status: 500,
+        });
       });
 
       it('should propagate fetch errors', async () => {

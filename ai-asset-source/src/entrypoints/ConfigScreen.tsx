@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
@@ -56,6 +57,8 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const [values, setValues] =
     useState<NormalizedConfigParameters>(initialValues);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
   const [savedValues, setSavedValues] =
     useState<NormalizedConfigParameters>(initialValues);
   const [activeProvider, setActiveProvider] = useState<ProviderId>(
@@ -76,15 +79,15 @@ export default function ConfigScreen({ ctx }: Props) {
     activeProviderModel,
   );
   const showCompressionControl =
-    showOutputControls &&
-    values.providers.openai.defaultOutputFormat !== 'png';
+    showOutputControls && values.providers.openai.defaultOutputFormat !== 'png';
   const modelOptions = useMemo(
     () =>
       withSelectedModelOption(modelOptionsState.options, activeProviderModel),
     [activeProviderModel, modelOptionsState.options],
   );
   const hasAnyKey = Boolean(
-    values.providers.openai.apiKey.trim() || values.providers.google.apiKey.trim(),
+    values.providers.openai.apiKey.trim() ||
+      values.providers.google.apiKey.trim(),
   );
   const isDirty =
     serializeConfigParameters(values) !==
@@ -99,17 +102,20 @@ export default function ConfigScreen({ ctx }: Props) {
     }
 
     const controller = new AbortController();
+    const selectedModel =
+      valuesRef.current.providers[activeProvider].defaultModel;
 
     setModelOptionsState(() => ({
       status: 'loading',
-      options: withSelectedModelOption([], activeProviderModel),
+      options: withSelectedModelOption([], selectedModel),
     }));
 
     loadProviderModelOptions(activeProvider, activeProviderApiKey, {
-      selectedModel: activeProviderModel,
+      selectedModel: selectedModel,
       signal: controller.signal,
     })
       .then((result) => {
+        if (controller.signal.aborted) return;
         setModelOptionsState({
           status: 'loaded',
           options: result.options,
@@ -119,22 +125,24 @@ export default function ConfigScreen({ ctx }: Props) {
           (option) => !option.unavailable,
         );
 
-        if (!activeProviderModel && firstAvailableOption) {
+        if (!selectedModel && firstAvailableOption) {
           setValues((current) =>
-            updateProviderSettings(current, activeProvider, {
-              defaultModel: firstAvailableOption.value,
-            }),
+            current.providers[activeProvider].defaultModel
+              ? current
+              : updateProviderSettings(current, activeProvider, {
+                  defaultModel: firstAvailableOption.value,
+                }),
           );
         }
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) {
+        if (controller.signal.aborted || isAbortError(error)) {
           return;
         }
 
         setModelOptionsState({
           status: 'error',
-          options: withSelectedModelOption([], activeProviderModel),
+          options: withSelectedModelOption([], selectedModel),
           errorMessage: readErrorMessage(error),
         });
       });
@@ -230,7 +238,8 @@ export default function ConfigScreen({ ctx }: Props) {
       event.preventDefault();
 
       const nextValues = sanitizeConfigParameters(values);
-      const selectedProviderValues = nextValues.providers[nextValues.defaultProvider];
+      const selectedProviderValues =
+        nextValues.providers[nextValues.defaultProvider];
 
       if (!hasAnyKey) {
         setErrorMessage('Add at least one provider key before saving.');

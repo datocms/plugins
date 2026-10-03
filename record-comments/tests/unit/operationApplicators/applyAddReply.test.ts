@@ -214,14 +214,16 @@ describe('applyAddReply', () => {
   describe('reply data integrity', () => {
     it('preserves all reply properties', () => {
       const parent = createBaseComment({ id: 'parent' });
-      const reply = createBaseComment({
-        id: 'full-reply',
-        dateISO: '2024-01-15T11:00:00.000Z',
-        content: [createTextSegment('Reply content')],
+      const reply = {
+        ...createBaseComment({
+          id: 'full-reply',
+          dateISO: '2024-01-15T11:00:00.000Z',
+          content: [createTextSegment('Reply content')],
+          parentCommentId: 'parent',
+        }),
         author: { name: 'Reply Author', email: 'reply@test.com' },
         usersWhoUpvoted: [{ name: 'Voter', email: 'voter@test.com' }],
-        parentCommentId: 'parent',
-      });
+      };
       const op = createAddReplyOp('parent', reply);
 
       const result = applyOperation([parent], op);

@@ -11,6 +11,9 @@ export type SelectionActionBarProps = {
   disabled?: boolean;
   busyAction?: SelectionActionId | null;
   canManipulateSelection?: boolean;
+  onSelectAllMatching?: () => void;
+  progressText?: string;
+  onCancel?: () => void;
 };
 
 function ActionButton({
@@ -55,6 +58,9 @@ export function SelectionActionBar({
   disabled = false,
   busyAction = null,
   canManipulateSelection = true,
+  onSelectAllMatching,
+  progressText,
+  onCancel,
 }: SelectionActionBarProps) {
   if (selectedCount <= 0) return null;
   const actionDisabled = disabled || busyAction !== null;
@@ -63,11 +69,34 @@ export function SelectionActionBar({
     <div className={styles.bar} role="region" aria-label="Selection actions">
       <div className={styles.content}>
         <div className={styles.status}>
-          {selectedCount} {selectedCount === 1 ? 'record' : 'records'} selected
+          <div>
+            {selectedCount} {selectedCount === 1 ? 'record' : 'records'}{' '}
+            selected
+          </div>
+          {progressText && (
+            <div role="status" aria-live="polite">
+              {progressText}
+            </div>
+          )}
+          {onCancel && (
+            <button type="button" className={styles.button} onClick={onCancel}>
+              Cancel remaining
+            </button>
+          )}
         </div>
         <div className={styles.actions}>
           {canManipulateSelection && (
             <div className={`${styles.group} ${styles.secondary}`}>
+              {onSelectAllMatching && (
+                <button
+                  type="button"
+                  className={styles.button}
+                  disabled={actionDisabled}
+                  onClick={onSelectAllMatching}
+                >
+                  Select all matching records
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.button}

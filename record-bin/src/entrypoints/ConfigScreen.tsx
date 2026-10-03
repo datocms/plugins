@@ -62,7 +62,10 @@ const getRecordBinPingIndicator = ({
   activeDeploymentUrl: string;
 }): { label: string; color: string } => {
   if (isHealthChecking || isConnecting) {
-    return { label: 'Checking ping...', color: 'var(--color--warning-soft--ink)' };
+    return {
+      label: 'Checking ping...',
+      color: 'var(--color--warning-soft--ink)',
+    };
   }
   if (connectionState?.status === 'connected') {
     return {
@@ -71,7 +74,10 @@ const getRecordBinPingIndicator = ({
     };
   }
   if (connectionState?.status === 'disconnected') {
-    return { label: 'Disconnected (ping failed)', color: 'var(--color--danger-soft--ink)' };
+    return {
+      label: 'Disconnected (ping failed)',
+      color: 'var(--color--danger-soft--ink)',
+    };
   }
   if (activeDeploymentUrl) {
     return { label: 'Connection pending', color: 'var(--color--ink-subtle)' };
@@ -147,6 +153,12 @@ const getInitialConnectionErrorSummary = (
   }
   return getConnectionErrorSummary(initialConnectionState);
 };
+
+const getInitialConnectionErrorDetails = (
+  hasDetails: boolean,
+  state: LambdaConnectionState | undefined,
+): string[] =>
+  hasDetails && state ? getLambdaConnectionErrorDetails(state) : [];
 
 const computeCanSaveWithLambdaMode = ({
   isLambdaFullModeEnabled,
@@ -290,7 +302,7 @@ const computeDislambdaActionButtonsDisabled = (
 
 export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const initialConnectionState = (ctx.plugin.attributes.parameters
-    .lambdaConnection ?? undefined) as LambdaConnectionState | undefined;
+    ?.lambdaConnection ?? undefined) as LambdaConnectionState | undefined;
   const initialRuntimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
   const initialDeploymentUrl = getDeploymentUrlFromParameters(
     ctx.plugin.attributes.parameters,
@@ -329,9 +341,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [connectionErrorDetails, setConnectionErrorDetails] = useState<
     string[]
   >(
-    hasInitialConnectionErrorDetails && initialConnectionState
-      ? getLambdaConnectionErrorDetails(initialConnectionState)
-      : [],
+    getInitialConnectionErrorDetails(
+      hasInitialConnectionErrorDetails,
+      initialConnectionState,
+    ),
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -1095,29 +1108,33 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 marginTop: 'var(--spacing-l)',
               }}
             >
-              <Dropdown
-                renderTrigger={({ onClick }) => (
-                  <Button
-                    buttonType="muted"
-                    onClick={onClick}
-                    disabled={lambdaActionButtonsDisabled}
-                    style={LAMBDA_ACTION_BUTTON_STYLE}
-                  >
-                    Deploy lambda
-                  </Button>
-                )}
-              >
-                <DropdownMenu alignment="left">
-                  {DEPLOY_PROVIDER_OPTIONS.map((option) => (
-                    <DropdownOption
-                      key={option.provider}
-                      onClick={() => handleDeployProviderClick(option.provider)}
+              <div style={{ flex: '1 1 0' }}>
+                <Dropdown
+                  renderTrigger={({ onClick }) => (
+                    <Button
+                      buttonType="muted"
+                      onClick={onClick}
+                      disabled={lambdaActionButtonsDisabled}
+                      style={LAMBDA_ACTION_BUTTON_STYLE}
                     >
-                      {option.label}
-                    </DropdownOption>
-                  ))}
-                </DropdownMenu>
-              </Dropdown>
+                      Deploy lambda
+                    </Button>
+                  )}
+                >
+                  <DropdownMenu alignment="left">
+                    {DEPLOY_PROVIDER_OPTIONS.map((option) => (
+                      <DropdownOption
+                        key={option.provider}
+                        onClick={() =>
+                          handleDeployProviderClick(option.provider)
+                        }
+                      >
+                        {option.label}
+                      </DropdownOption>
+                    ))}
+                  </DropdownMenu>
+                </Dropdown>
+              </div>
               <Button
                 onClick={disconnectCurrentLambdaHandler}
                 buttonType="negative"

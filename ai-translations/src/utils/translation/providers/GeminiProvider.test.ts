@@ -96,13 +96,16 @@ describe('GeminiProvider', () => {
 
       await provider.completeText('Translate this');
 
-      expect(mockGenerateContent).toHaveBeenCalledWith({
-        contents: [{ role: 'user', parts: [{ text: 'Translate this' }] }],
-        generationConfig: {
-          temperature: undefined,
-          maxOutputTokens: undefined,
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        {
+          contents: [{ role: 'user', parts: [{ text: 'Translate this' }] }],
+          generationConfig: {
+            temperature: undefined,
+            maxOutputTokens: undefined,
+          },
         },
-      });
+        { signal: expect.any(AbortSignal) },
+      );
     });
 
     it('should return response text', async () => {
@@ -146,7 +149,7 @@ describe('GeminiProvider', () => {
 
       await expect(
         provider.completeText('Test', { abortSignal: controller.signal }),
-      ).rejects.toThrow(DOMException);
+      ).rejects.toMatchObject({ name: 'AbortError' });
     });
   });
 
@@ -174,13 +177,16 @@ describe('GeminiProvider', () => {
         chunks.push(chunk);
       }
 
-      expect(mockGenerateContentStream).toHaveBeenCalledWith({
-        contents: [{ role: 'user', parts: [{ text: 'Test prompt' }] }],
-        generationConfig: {
-          temperature: undefined,
-          maxOutputTokens: undefined,
+      expect(mockGenerateContentStream).toHaveBeenCalledWith(
+        {
+          contents: [{ role: 'user', parts: [{ text: 'Test prompt' }] }],
+          generationConfig: {
+            temperature: undefined,
+            maxOutputTokens: undefined,
+          },
         },
-      });
+        { signal: expect.any(AbortSignal) },
+      );
     });
 
     it('should yield text chunks', async () => {
@@ -249,11 +255,42 @@ describe('GeminiProvider', () => {
         })) {
           // Should not reach here
         }
-      }).rejects.toThrow(DOMException);
+      }).rejects.toMatchObject({ name: 'AbortError' });
     });
   });
 
   describe('timeout handling', () => {
+    it('cancels the actual SDK request while in flight', async () => {
+      const controller = new AbortController();
+      mockGenerateContent.mockImplementation(
+        (_request, options) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener(
+              'abort',
+              () => reject(new Error('SDK request aborted')),
+              { once: true },
+            );
+          }),
+      );
+      const request = provider
+        .completeText('Test', { abortSignal: controller.signal })
+        .catch((error) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      expect(await request).toMatchObject({ name: 'AbortError' });
+      expect(mockGenerateContent).toHaveBeenCalledOnce();
+    });
+
+    it('turns truncation into a failed field instead of saving partial output', async () => {
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          candidates: [{ finishReason: 'MAX_TOKENS' }],
+          text: () => '["partial"]',
+        },
+      });
+      await expect(provider.completeText('Test')).rejects.toThrow('truncated');
+    });
+
     it('should use default timeout', async () => {
       mockGenerateContent.mockResolvedValue({
         response: { text: () => 'Test' },
@@ -287,13 +324,16 @@ describe('GeminiProvider', () => {
 
       await providerWithTemp.completeText('Test');
 
-      expect(mockGenerateContent).toHaveBeenCalledWith({
-        contents: expect.any(Array),
-        generationConfig: {
-          temperature: 0.5,
-          maxOutputTokens: undefined,
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        {
+          contents: expect.any(Array),
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: undefined,
+          },
         },
-      });
+        { signal: expect.any(AbortSignal) },
+      );
     });
 
     it('should include maxOutputTokens when provided', async () => {
@@ -309,13 +349,16 @@ describe('GeminiProvider', () => {
 
       await providerWithTokens.completeText('Test');
 
-      expect(mockGenerateContent).toHaveBeenCalledWith({
-        contents: expect.any(Array),
-        generationConfig: {
-          temperature: undefined,
-          maxOutputTokens: 1024,
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        {
+          contents: expect.any(Array),
+          generationConfig: {
+            temperature: undefined,
+            maxOutputTokens: 1024,
+          },
         },
-      });
+        { signal: expect.any(AbortSignal) },
+      );
     });
   });
 });

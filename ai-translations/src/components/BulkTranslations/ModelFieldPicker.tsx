@@ -28,6 +28,10 @@ import {
   InlineCode,
 } from './chipOption';
 import s from './ModelFieldPicker.module.css';
+import {
+  boundedSelectHint,
+  useBoundedChipSelect,
+} from './useBoundedChipSelect';
 
 type SingleValue<T> = T | null;
 type MultiValue<T> = readonly T[];
@@ -203,6 +207,8 @@ export function ModelFieldPicker({
     ? [ALL_FIELDS_OPTION]
     : fieldOptions.filter((o) => selectedSet.has(o.value));
 
+  const fieldSelect = useBoundedChipSelect(options, value, 'fields');
+
   const handleChange = (
     newValue: SingleValue<ChipOption> | MultiValue<ChipOption>,
   ) => {
@@ -280,18 +286,21 @@ export function ModelFieldPicker({
       id={id}
       name={id}
       label={label}
-      placeholder="Select fields…"
+      placeholder={fieldSelect.placeholder('Select fields…')}
       hint={
         validationMessage
           ? undefined
-          : fieldCountHint(selectedCount, totalCount)
+          : boundedSelectHint(
+              fieldSelect.hint,
+              fieldCountHint(selectedCount, totalCount),
+            )
       }
       error={validationMessage}
       value={value}
       onChange={handleChange}
       selectInputProps={{
         isMulti: true,
-        options,
+        ...fieldSelect.selectProps,
         formatOptionLabel: formatCodeMultiOption,
         noOptionsMessage: () => 'No fields found',
         isDisabled,

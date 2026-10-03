@@ -22,8 +22,13 @@ export function useCmaClient(
   ctx: AuthCtx,
   { overrides }: UseCmaClientOptions = {},
 ): Client {
+  const { currentUserAccessToken, environment, cmaBaseUrl } = ctx;
   return useMemo(
-    () => createCmaClient(ctx, overrides),
-    [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl, overrides],
+    () =>
+      createCmaClient(
+        { currentUserAccessToken, environment, cmaBaseUrl },
+        overrides,
+      ),
+    [currentUserAccessToken, environment, cmaBaseUrl, overrides],
   );
 }

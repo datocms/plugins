@@ -19,12 +19,31 @@ function createClientMock() {
     fields: {
       list: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
+      destroy: vi.fn(),
     },
   };
 }
 
 function createFieldList(apiKeys: string[]) {
-  return apiKeys.map((apiKey) => ({ id: `field-${apiKey}`, api_key: apiKey }));
+  return apiKeys.map((apiKey) => ({
+    id: `field-${apiKey}`,
+    api_key: apiKey,
+    localized: false,
+    field_type: apiKey === COMMENT_FIELDS.CONTENT ? 'json' : 'string',
+    validators: {
+      required: {},
+      ...(apiKey === COMMENT_FIELDS.RECORD_ID && { unique: {} }),
+    },
+  }));
+}
+
+function asStorageClient(client: ReturnType<typeof createClientMock>) {
+  // The double supplies the only methods used by commentsStorage, while the
+  // public SDK type also requires unrelated resource methods.
+  return client as unknown as Parameters<
+    typeof ensureCommentsModelExistsWithClient
+  >[0];
 }
 
 describe('ensureCommentsModelExists', () => {
@@ -75,15 +94,18 @@ describe('ensureCommentsModelExistsWithClient', () => {
     client.itemTypes.list.mockResolvedValue([
       { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
     ]);
-    client.fields.list.mockResolvedValue([
-      { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
-    ]);
+    client.fields.list.mockResolvedValue(
+      createFieldList([COMMENT_FIELDS.MODEL_ID]),
+    );
     client.fields.create.mockImplementation(async (_itemTypeId, body) => ({
       id: `created-${body.api_key}`,
-      api_key: body.api_key,
+      ...body,
+      localized: false,
     }));
 
-    const result = await ensureCommentsModelExistsWithClient(client);
+    const result = await ensureCommentsModelExistsWithClient(
+      asStorageClient(client),
+    );
 
     expect(result).toBe('comments-model');
     expect(client.itemTypes.create).not.toHaveBeenCalled();
@@ -120,7 +142,9 @@ describe('ensureCommentsModelExistsWithClient', () => {
       ]),
     );
 
-    const result = await ensureCommentsModelExistsWithClient(client);
+    const result = await ensureCommentsModelExistsWithClient(
+      asStorageClient(client),
+    );
 
     expect(result).toBe('comments-model');
     expect(client.itemTypes.create).toHaveBeenCalledWith({
@@ -136,20 +160,20 @@ describe('ensureCommentsModelExistsWithClient', () => {
       { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
     ]);
     client.fields.list
-      .mockResolvedValueOnce([
-        { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
-      ])
-      .mockResolvedValueOnce([
-        { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
-        { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
-      ]);
+      .mockResolvedValueOnce(createFieldList([COMMENT_FIELDS.MODEL_ID]))
+      .mockResolvedValueOnce(
+        createFieldList([COMMENT_FIELDS.MODEL_ID, COMMENT_FIELDS.RECORD_ID]),
+      );
     client.fields.create.mockImplementation(async (_itemTypeId, body) => ({
       id: `created-${body.api_key}`,
-      api_key: body.api_key,
+      ...body,
+      localized: false,
     }));
     client.fields.create.mockRejectedValueOnce(new Error('duplicate field'));
 
-    const result = await ensureCommentsModelExistsWithClient(client);
+    const result = await ensureCommentsModelExistsWithClient(
+      asStorageClient(client),
+    );
 
     expect(result).toBe('comments-model');
     expect(client.fields.create).toHaveBeenCalledWith(
@@ -160,5 +184,60 @@ describe('ensureCommentsModelExistsWithClient', () => {
       'comments-model',
       expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT }),
     );
+  });
+
+  it.each([
+    [COMMENT_FIELDS.MODEL_ID, { localized: true }],
+    [COMMENT_FIELDS.MODEL_ID, { field_type: 'json' }],
+    [COMMENT_FIELDS.RECORD_ID, { localized: true }],
+    [COMMENT_FIELDS.RECORD_ID, { validators: { required: {} } }],
+    [COMMENT_FIELDS.CONTENT, { localized: true }],
+    [COMMENT_FIELDS.CONTENT, { field_type: 'string' }],
+  ])('preserves incompatible existing %s fields without changing schema', async (apiKey, overrides) => {
+    const client = createClientMock();
+    client.itemTypes.list.mockResolvedValue([
+      { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+    ]);
+    const fields = createFieldList([String(apiKey)]).map((field) => ({
+      ...field,
+      ...overrides,
+    }));
+    const original = structuredClone(fields);
+    client.fields.list.mockResolvedValue(fields);
+
+    await expect(
+      ensureCommentsModelExistsWithClient(asStorageClient(client)),
+    ).rejects.toThrow('Existing fields were preserved');
+
+    expect(fields).toEqual(original);
+    expect(client.itemTypes.create).not.toHaveBeenCalled();
+    expect(client.fields.create).not.toHaveBeenCalled();
+    expect(client.fields.update).not.toHaveBeenCalled();
+    expect(client.fields.destroy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incompatible field created by another session during recovery', async () => {
+    const client = createClientMock();
+    client.itemTypes.list.mockResolvedValue([
+      { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+    ]);
+    client.fields.list
+      .mockResolvedValueOnce(createFieldList([COMMENT_FIELDS.MODEL_ID]))
+      .mockResolvedValueOnce([
+        ...createFieldList([COMMENT_FIELDS.MODEL_ID]),
+        {
+          ...createFieldList([COMMENT_FIELDS.RECORD_ID])[0],
+          validators: {},
+        },
+      ]);
+    client.fields.create.mockRejectedValue(new Error('duplicate field'));
+
+    await expect(
+      ensureCommentsModelExistsWithClient(asStorageClient(client)),
+    ).rejects.toThrow('unique validator');
+
+    expect(client.fields.create).toHaveBeenCalledTimes(1);
+    expect(client.fields.update).not.toHaveBeenCalled();
+    expect(client.fields.destroy).not.toHaveBeenCalled();
   });
 });

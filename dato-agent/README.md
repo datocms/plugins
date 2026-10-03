@@ -48,3 +48,37 @@ and prepare content changes.
   write approvals; Auto-approve stays off after writes become available again.
 - If authentication expires, click **Reconnect DatoCMS**. Chat history and local
   attachments stay available. Reconnection never repeats an uncertain write.
+
+## Large projects
+
+The agent can continue up to 100 provider steps and 200 tool calls in one turn,
+including approved continuations. Auto-approve retains the same access, editor
+state and durable dispatch checks throughout the turn. Reaching a limit leaves
+the operation incomplete and does not replay or undo completed changes.
+
+Anthropic keeps bounded tool-result previews and compacts older tool outputs
+while preserving signed assistant blocks and tool identifiers. Truncated output
+is marked incomplete; a model-context limit stops before another request.
+
+The agent uses bounded context and result samples. A sample or truncated result
+does not establish an exhaustive record or asset selection. Generated scripts
+are instructed to paginate incrementally, limit concurrency, respect endpoint
+and bulk limits, and preserve localized values, nested blocks and references.
+These instructions guide the model; the plugin does not implement the remote
+script runner or validate every generated transformation.
+
+The [MCP server](https://www.datocms.com/docs/mcp-server) has finite execution
+time, output and account usage budgets. A client timeout cannot extend the
+runner's execution limit. Operations over 200,000 records or 10,000 assets
+cannot be guaranteed to finish through this finite runner; a durable
+server-side execution capability would be needed for workloads that exceed it.
+Stopping or losing a connection does not undo remote changes. An unconfirmed
+result prevents automatic replay; verify the affected data before explicitly
+requesting another write.
+
+## Development validation
+
+Run `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` from
+this directory. Synthetic tests exercise large collections, bounded context
+and journal storage without creating DatoCMS entities. They do not establish
+production throughput or remote runner capacity.

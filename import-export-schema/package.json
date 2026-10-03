@@ -28,7 +28,11 @@
     "preview": "vite preview",
     "analyze": "ANALYZE=true npm run build",
     "prepublishOnly": "npm run build",
-    "format": "npx @biomejs/biome check --unsafe --write ."
+    "format": "npx @biomejs/biome check --unsafe --write .",
+    "test": "vitest run",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@datocms/cma-client": "^6.1.0",
@@ -58,7 +62,9 @@
     "postcss-preset-env": "^11.2.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vite-plugin-svgr": "^4.5.0"
+    "vite-plugin-svgr": "^4.5.0",
+    "@biomejs/biome": "^2.4.10",
+    "vitest": "^3.2.7"
   },
   "packageManager": "npm@11.11.0",
   "overrides": {

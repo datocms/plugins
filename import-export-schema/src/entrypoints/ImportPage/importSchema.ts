@@ -1,11 +1,16 @@
-import { type Client, generateId, type SchemaTypes } from '@datocms/cma-client';
-import find from 'lodash-es/find';
+import {
+  ApiError,
+  Client,
+  generateId,
+  type SchemaTypes,
+  TimeoutError,
+} from '@datocms/cma-client';
+import cloneDeep from 'lodash-es/cloneDeep';
 import get from 'lodash-es/get';
 import isEqual from 'lodash-es/isEqual';
 import omit from 'lodash-es/omit';
 import pick from 'lodash-es/pick';
 import set from 'lodash-es/set';
-import sortBy from 'lodash-es/sortBy';
 import { mapAppearanceToProject } from '@/utils/datocms/appearance';
 import {
   validatorsContainingBlocks,
@@ -14,12 +19,24 @@ import {
 import { debugLog } from '@/utils/debug';
 import type { ImportDoc } from './buildImportDoc';
 
-/** Convenience helper to surface clearer errors when an ID mapping is missing. */
+const CONCURRENCY = 4;
+// Leave room below the CMA's 60 requests / 3 seconds for other dashboard activity.
+const REQUEST_INTERVAL_MS = 75;
+const MAX_RETRIES = 8;
+const itemTypeRelationships = [
+  'ordering_field',
+  'title_field',
+  'image_preview_field',
+  'excerpt_field',
+  'presentation_title_field',
+  'presentation_image_field',
+] as const;
+const itemTypeFinalAttributes = ['ordering_direction', 'ordering_meta'];
+
 function getOrThrow<K, V>(map: Map<K, V>, key: K, context: string): V {
   const value = map.get(key);
-  if (value === undefined) {
+  if (value === undefined)
     throw new Error(`Missing mapping for ${String(key)} in ${context}`);
-  }
   return value;
 }
 
@@ -28,56 +45,216 @@ export type ImportProgress = {
   finished: number;
   label?: string;
 };
-
 export type ImportResult = {
   itemTypeIdByExportId: Record<string, string>;
   fieldIdByExportId: Record<string, string>;
   fieldsetIdByExportId: Record<string, string>;
   pluginIdByExportId: Record<string, string>;
 };
-
 type ProgressUpdate = (progress: ImportProgress) => void;
-
 type ShouldCancel = () => boolean;
+type ItemTypeToCreate = ImportDoc['itemTypes']['entitiesToCreate'][number];
 
-/**
- * Reports task progress while guarding against cancellation between steps.
- */
 class ProgressTracker {
   private finished = 0;
+  private failed = false;
+  private failure: unknown;
 
   constructor(
     private readonly total: number,
     private readonly update: ProgressUpdate,
     private readonly shouldCancel: ShouldCancel,
-  ) {}
+  ) {
+    this.report();
+  }
 
   checkCancel() {
-    if (this.shouldCancel()) {
-      throw new Error('Import cancelled');
+    if (this.failed) throw this.failure;
+    if (this.shouldCancel()) throw new Error('Import cancelled');
+  }
+
+  stop(error: unknown) {
+    if (!this.failed) {
+      this.failed = true;
+      this.failure = error;
     }
   }
 
-  private report(label?: string) {
+  report(label?: string) {
     this.update({ total: this.total, finished: this.finished, label });
   }
 
-  async run<TArgs extends unknown[], TResult>(
-    labelForCall: (...args: TArgs) => string,
-    fn: (...args: TArgs) => Promise<TResult>,
-    ...args: TArgs
-  ): Promise<TResult> {
-    let label: string | undefined;
+  async run<T>(label: string, task: () => Promise<T>): Promise<T> {
     try {
       this.checkCancel();
-      label = labelForCall(...args);
       this.report(label);
-      const result = await fn(...args);
-      this.checkCancel();
-      return result;
-    } finally {
+      const result = await task();
+      // Only successful work advances progress, including requests already in flight
+      // when cancellation or a sibling failure occurs.
       this.finished += 1;
       this.report(label);
+      this.checkCancel();
+      return result;
+    } catch (error) {
+      this.stop(error);
+      throw error;
+    }
+  }
+
+  async wait(milliseconds: number) {
+    const until = Date.now() + milliseconds;
+    while (Date.now() < until) {
+      this.checkCancel();
+      // biome-ignore lint/performance/noAwaitInLoops: Small waits allow cancellation during backoff.
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(100, until - Date.now())),
+      );
+    }
+    this.checkCancel();
+  }
+}
+
+function retryDelay(error: unknown, attempt: number): number {
+  if (error instanceof ApiError && error.response.status === 429) {
+    const headers = error.response.headers;
+    const reset = Number(
+      headers['x-ratelimit-reset'] ?? headers['X-RateLimit-Reset'],
+    );
+    if (Number.isFinite(reset) && reset > 0) return reset * 1000;
+  }
+  return Math.min(30_000, 1000 * 2 ** attempt);
+}
+
+function canRetry(error: unknown, method: string): boolean {
+  if (error instanceof ApiError) {
+    // A failed job-result GET is not a rejection of the original create POST.
+    if (method === 'POST' && error.request.method !== 'POST') return false;
+    if (error.response.status === 429) return true;
+    if (error.errors.some((entry) => entry.attributes.transient)) return true;
+    return method !== 'POST' && error.response.status >= 500;
+  }
+  // A create timeout/network failure has an ambiguous outcome. Replaying its POST
+  // could duplicate work or turn an already-created entity into an ID collision.
+  return (
+    method !== 'POST' &&
+    (error instanceof TimeoutError || error instanceof TypeError)
+  );
+}
+
+function creationLookup(options: Parameters<Client['request']>[0]) {
+  const paths: Record<string, string> = {
+    item_type: '/item-types',
+    field: '/fields',
+    fieldset: '/fieldsets',
+    plugin: '/plugins',
+  };
+  const type = get(options.body, 'data.type') as string | undefined;
+  const id = get(options.body, 'data.id') as string | undefined;
+  if (!type || !id || !paths[type]) return undefined;
+  return `${paths[type]}/${encodeURIComponent(id)}`;
+}
+
+function creationMatches(response: unknown, body: unknown) {
+  // Compare the actual JSON sent over the wire (optional undefined properties
+  // such as appearance.field_extension are absent in API read responses).
+  const data =
+    body && typeof body === 'object' && 'data' in body ? body.data : undefined;
+  if (!data || typeof data !== 'object') return false;
+  const expected = JSON.parse(JSON.stringify(data)) as {
+    id: string;
+    type: string;
+    attributes: Record<string, unknown>;
+    relationships?: Record<string, unknown>;
+  };
+  if (
+    get(response, 'data.id') !== expected.id ||
+    get(response, 'data.type') !== expected.type
+  )
+    return false;
+  if (
+    !isEqual(
+      pick(get(response, 'data.attributes'), Object.keys(expected.attributes)),
+      expected.attributes,
+    )
+  )
+    return false;
+  return (
+    !expected.relationships ||
+    isEqual(
+      pick(
+        get(response, 'data.relationships'),
+        Object.keys(expected.relationships),
+      ),
+      expected.relationships,
+    )
+  );
+}
+
+/** Isolate retry policy from the shared client, including async job polling. */
+class ImportClient extends Client {
+  private nextRequestAt = 0;
+
+  constructor(
+    client: Client,
+    private readonly tracker: ProgressTracker,
+  ) {
+    super({ ...client.config, autoRetry: false });
+  }
+
+  private async reconcileCreate<T>(
+    options: Parameters<Client['request']>[0],
+    error: unknown,
+  ): Promise<T | undefined> {
+    if (
+      options.method !== 'POST' ||
+      !(error instanceof TimeoutError || error instanceof TypeError)
+    )
+      return undefined;
+    const url = creationLookup(options);
+    if (!url) return undefined;
+    this.tracker.report('Checking whether an API create completed');
+    try {
+      const response = await this.request<T>({ method: 'GET', url });
+      return creationMatches(response, options.body) ? response : undefined;
+    } catch {
+      this.tracker.checkCancel();
+      // A 404 cannot prove that the original request will not commit later.
+      return undefined;
+    }
+  }
+
+  override async request<T>(
+    options: Parameters<Client['request']>[0],
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      this.tracker.checkCancel();
+      const startAt = Math.max(Date.now(), this.nextRequestAt);
+      this.nextRequestAt = startAt + REQUEST_INTERVAL_MS;
+      // biome-ignore lint/performance/noAwaitInLoops: Each attempt must obey the shared pacing and cancellation signal.
+      await this.tracker.wait(startAt - Date.now());
+      let acceptedJob = false;
+      const fetchFn: typeof fetch = async (input, init) => {
+        const response = await (this.config.fetchFn ?? globalThis.fetch)(
+          input,
+          init,
+        );
+        acceptedJob = response.status === 202;
+        return response;
+      };
+      const requestOptions = { ...options, fetchFn };
+      try {
+        return await super.request<T>(requestOptions);
+      } catch (error) {
+        // The SDK polls an accepted job and reports its final error using the
+        // original request method. Retrying here would submit the mutation again.
+        if (acceptedJob) throw error;
+        const recovered = await this.reconcileCreate<T>(options, error);
+        if (recovered !== undefined) return recovered;
+        if (attempt >= MAX_RETRIES || !canRetry(error, options.method))
+          throw error;
+        this.tracker.report('Waiting to retry an API request');
+        await this.tracker.wait(retryDelay(error, attempt));
+      }
     }
   }
 }
@@ -88,7 +265,6 @@ type ImportMappings = {
   fieldsetIds: Map<string, string>;
   pluginIds: Map<string, string>;
 };
-
 type ImportContext = {
   client: Client;
   tracker: ProgressTracker;
@@ -97,407 +273,345 @@ type ImportContext = {
   mappings: ImportMappings;
 };
 
-/** Prepare project-side IDs for every entity that will be created during import. */
-function prepareMappings(importDoc: ImportDoc): ImportMappings {
-  const itemTypeIds = new Map<string, string>();
-  const fieldIds = new Map<string, string>();
-  const fieldsetIds = new Map<string, string>();
-  const pluginIds = new Map<string, string>();
-
-  for (const toCreate of importDoc.itemTypes.entitiesToCreate) {
-    itemTypeIds.set(
-      toCreate.entity.id,
-      importDoc.idsToReplace.itemTypes[toCreate.entity.id]
-        ? generateId()
-        : toCreate.entity.id,
-    );
-
-    for (const field of toCreate.fields) {
-      fieldIds.set(
-        field.id,
-        importDoc.idsToReplace.fields[field.id] ? generateId() : field.id,
-      );
-    }
-
-    for (const fieldset of toCreate.fieldsets) {
-      fieldsetIds.set(
-        fieldset.id,
-        importDoc.idsToReplace.fieldsets[fieldset.id]
-          ? generateId()
-          : fieldset.id,
-      );
-    }
-  }
-
-  for (const [exportId, projectId] of Object.entries(
-    importDoc.itemTypes.idsToReuse,
-  )) {
-    itemTypeIds.set(exportId, projectId);
-  }
-
-  for (const plugin of importDoc.plugins.entitiesToCreate) {
-    pluginIds.set(
-      plugin.id,
-      importDoc.idsToReplace.plugins[plugin.id] ? generateId() : plugin.id,
-    );
-  }
-
-  for (const [exportId, projectId] of Object.entries(
-    importDoc.plugins.idsToReuse,
-  )) {
-    pluginIds.set(exportId, projectId);
-  }
-
-  return { itemTypeIds, fieldIds, fieldsetIds, pluginIds };
+function addMapping(map: Map<string, string>, id: string, replacement: string) {
+  if (map.has(id)) throw new Error(`Duplicate entity ID in import: ${id}`);
+  map.set(id, replacement);
 }
 
-/**
- * Concurrency-limited map that respects cancellation signals between iterations.
- * Each worker processes items one at a time via tail-recursive async calls,
- * avoiding await-in-loop while still limiting concurrency.
- */
-async function pMap<T, R>(
-  items: readonly T[],
-  limit: number,
-  iteratee: (item: T, index: number) => Promise<R>,
-  checkCancel: () => void,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-  let firstError: unknown = null;
+function replacementId(id: string, idsToReplace: Record<string, true>) {
+  return idsToReplace[id] ? generateId() : id;
+}
 
-  async function processNextItem(): Promise<void> {
-    if (firstError) return;
-    const current = nextIndex;
-    if (current >= items.length) return;
-    nextIndex += 1;
-    try {
-      checkCancel();
-      const result = await iteratee(items[current], current);
-      results[current] = result;
-      // Tail-recursive: process the next item in sequence for this worker
-      await processNextItem();
-    } catch (err) {
-      firstError = err;
+function prepareMappings(importDoc: ImportDoc): ImportMappings {
+  const mappings: ImportMappings = {
+    itemTypeIds: new Map(),
+    fieldIds: new Map(),
+    fieldsetIds: new Map(),
+    pluginIds: new Map(),
+  };
+  for (const { entity, fields, fieldsets } of importDoc.itemTypes
+    .entitiesToCreate) {
+    addMapping(
+      mappings.itemTypeIds,
+      entity.id,
+      replacementId(entity.id, importDoc.idsToReplace.itemTypes),
+    );
+    for (const field of fields)
+      addMapping(
+        mappings.fieldIds,
+        field.id,
+        replacementId(field.id, importDoc.idsToReplace.fields),
+      );
+    for (const fieldset of fieldsets)
+      addMapping(
+        mappings.fieldsetIds,
+        fieldset.id,
+        replacementId(fieldset.id, importDoc.idsToReplace.fieldsets),
+      );
+  }
+  for (const [id, replacement] of Object.entries(
+    importDoc.itemTypes.idsToReuse,
+  ))
+    addMapping(mappings.itemTypeIds, id, replacement);
+  for (const plugin of importDoc.plugins.entitiesToCreate)
+    addMapping(
+      mappings.pluginIds,
+      plugin.id,
+      replacementId(plugin.id, importDoc.idsToReplace.plugins),
+    );
+  for (const [id, replacement] of Object.entries(importDoc.plugins.idsToReuse))
+    addMapping(mappings.pluginIds, id, replacement);
+  return mappings;
+}
+
+function validatorPaths(field: SchemaTypes.Field) {
+  return [...validatorsContainingLinks, ...validatorsContainingBlocks]
+    .filter((entry) => entry.field_type === field.attributes.field_type)
+    .map((entry) => entry.validator);
+}
+
+function linkedIds(
+  field: SchemaTypes.Field,
+  path: string,
+): string[] | undefined {
+  const ids: unknown = get(field.attributes.validators, path);
+  if (ids === undefined) return undefined;
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
+    throw new Error(`Invalid validator ${path} in field ${field.id}`);
+  return ids;
+}
+
+function validateField(
+  field: SchemaTypes.Field,
+  itemType: ItemTypeToCreate,
+  mappings: ImportMappings,
+  fieldsById: Map<string, SchemaTypes.Field>,
+  fieldsetsById: Set<string>,
+) {
+  if (field.relationships.item_type.data.id !== itemType.entity.id)
+    throw new Error(`Field ${field.id} belongs to a different model`);
+  const fieldset = field.relationships.fieldset.data;
+  if (fieldset && !fieldsetsById.has(fieldset.id))
+    throw new Error(
+      `Field ${field.id} references a missing fieldset: ${fieldset.id}`,
+    );
+  for (const path of validatorPaths(field)) {
+    for (const id of linkedIds(field, path) ?? [])
+      getOrThrow(
+        mappings.itemTypeIds,
+        id,
+        `validator ${path} in field ${field.id}`,
+      );
+  }
+  const slugTitleId = get(
+    field.attributes.validators,
+    'slug_title_field.title_field_id',
+  ) as string | undefined;
+  if (
+    slugTitleId !== undefined &&
+    fieldsById.get(slugTitleId)?.attributes.field_type !== 'string'
+  )
+    throw new Error(
+      `Slug field ${field.id} references a missing or invalid title field: ${slugTitleId}`,
+    );
+}
+
+/** Fail before writes rather than silently dropping missing dependencies. */
+function validateImport(importDoc: ImportDoc, mappings: ImportMappings) {
+  for (const itemType of importDoc.itemTypes.entitiesToCreate) {
+    const fieldsById = new Map(
+      itemType.fields.map((field) => [field.id, field]),
+    );
+    const fieldsetsById = new Set(
+      itemType.fieldsets.map((fieldset) => fieldset.id),
+    );
+    for (const fieldset of itemType.fieldsets) {
+      if (fieldset.relationships.item_type.data.id !== itemType.entity.id) {
+        throw new Error(`Fieldset ${fieldset.id} belongs to a different model`);
+      }
+    }
+    for (const field of itemType.fields)
+      validateField(field, itemType, mappings, fieldsById, fieldsetsById);
+    for (const name of itemTypeRelationships) {
+      const handle = itemType.entity.relationships[name]?.data;
+      if (handle && !fieldsById.has(handle.id))
+        throw new Error(
+          `Model ${itemType.entity.id} references a missing ${name}: ${handle.id}`,
+        );
     }
   }
+}
 
-  const workerCount = Math.max(1, Math.min(limit, items.length));
-  const workers = Array.from({ length: workerCount }, () => processNextItem());
-  await Promise.all(workers);
-  if (firstError) throw firstError;
-  return results;
+/** Only four workers and their current entities are retained; no recursive chain or nested pools. */
+async function pMap<T>(
+  items: Iterable<T>,
+  tracker: ProgressTracker,
+  task: (item: T) => Promise<void>,
+) {
+  const iterator = items[Symbol.iterator]();
+  async function worker() {
+    try {
+      while (true) {
+        tracker.checkCancel();
+        const next = iterator.next();
+        if (next.done) return;
+        // biome-ignore lint/performance/noAwaitInLoops: A worker must finish its entity before requesting another.
+        await task(next.value);
+      }
+    } catch (error) {
+      tracker.stop(error);
+    }
+  }
+  // Drain every in-flight request before surfacing cancellation/failure.
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  tracker.checkCancel();
 }
 
 function buildPluginCreateData(
   plugin: SchemaTypes.Plugin,
-  newPluginId: string | undefined,
+  id: string,
 ): SchemaTypes.PluginCreateSchema['data'] {
-  const baseAttributes = plugin.attributes.package_name
-    ? pick(plugin.attributes, ['package_name'])
-    : plugin.meta.version === '2'
-      ? omit(plugin.attributes, ['parameters'])
-      : omit(plugin.attributes, [
-          'parameter_definitions',
-          'field_types',
-          'plugin_type',
-          'parameters',
-        ]);
-
-  return {
-    type: 'plugin',
-    id: newPluginId,
-    attributes: baseAttributes,
-  };
+  const attributes: SchemaTypes.PluginCreateSchema['data']['attributes'] =
+    plugin.attributes.package_name
+      ? { package_name: plugin.attributes.package_name }
+      : pick(plugin.attributes, ['name', 'description', 'url', 'permissions']);
+  if (!plugin.attributes.package_name && plugin.meta.version !== '2') {
+    attributes.plugin_type = plugin.attributes.plugin_type ?? undefined;
+    attributes.field_types = plugin.attributes.field_types ?? undefined;
+    attributes.parameter_definitions =
+      plugin.attributes.parameter_definitions ?? undefined;
+  }
+  return { type: 'plugin', id, attributes };
 }
 
-async function createSinglePlugin(
-  client: ImportContext['client'],
-  plugin: SchemaTypes.Plugin,
-  pluginIds: Map<string, string>,
-) {
-  const data = buildPluginCreateData(plugin, pluginIds.get(plugin.id));
-  try {
-    debugLog('Creating plugin', data);
-    const { data: created } = await client.plugins.rawCreate({ data });
-
-    if (!isEqual(created.attributes.parameters, {})) {
-      try {
-        await client.plugins.update(created.id, {
-          parameters: created.attributes.parameters,
-        });
-      } catch {
-        // ignore invalid legacy parameters
-      }
-    }
-    debugLog('Created plugin', created);
-  } catch (error) {
-    console.error('Failed to create plugin', data, error);
+function verifyCreatedId(actual: string, expected: string) {
+  if (actual !== expected)
     throw new Error(
-      `Plugin "${
-        plugin.attributes.name || plugin.attributes.package_name || plugin.id
-      }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
+      `API returned unexpected entity ID ${actual}; expected ${expected}`,
     );
+}
+
+async function createPluginsPhase({
+  client,
+  tracker,
+  importDoc,
+  mappings,
+}: ImportContext) {
+  await pMap(importDoc.plugins.entitiesToCreate, tracker, async (plugin) => {
+    const name =
+      plugin.attributes.name || plugin.attributes.package_name || plugin.id;
+    const id = getOrThrow(mappings.pluginIds, plugin.id, 'plugin create');
+    const created = await tracker.run(`Creating plugin: ${name}`, async () => {
+      const { data } = await client.plugins.rawCreate({
+        data: buildPluginCreateData(plugin, id),
+      });
+      verifyCreatedId(data.id, id);
+      return data;
+    });
+    if (!isEqual(plugin.attributes.parameters, {})) {
+      await tracker.run(`Configuring plugin: ${name}`, async () => {
+        if (
+          !isEqual(created.attributes.parameters, plugin.attributes.parameters)
+        )
+          await client.plugins.update(id, {
+            parameters: plugin.attributes.parameters,
+          });
+      });
+    }
+  });
+}
+
+async function createItemTypesPhase({
+  client,
+  tracker,
+  importDoc,
+  mappings,
+}: ImportContext) {
+  const createdById = new Map<string, SchemaTypes.ItemType>();
+  await pMap(
+    importDoc.itemTypes.entitiesToCreate,
+    tracker,
+    async ({ entity, rename }) => {
+      await tracker.run(
+        `Creating ${entity.attributes.modular_block ? 'block' : 'model'}: ${rename?.name || entity.attributes.name}`,
+        async () => {
+          const id = getOrThrow(
+            mappings.itemTypeIds,
+            entity.id,
+            'model create',
+          );
+          const attributes = omit(entity.attributes, [
+            'has_singleton_item',
+            'ordering_direction',
+            'ordering_meta',
+          ]);
+          if (rename) {
+            attributes.name = rename.name;
+            attributes.api_key = rename.apiKey;
+          }
+          const { data } = await client.itemTypes.rawCreate({
+            data: { type: 'item_type', id, attributes },
+          });
+          verifyCreatedId(data.id, id);
+          createdById.set(id, data);
+        },
+      );
+    },
+  );
+  return createdById;
+}
+
+function* fieldsetsToCreate(importDoc: ImportDoc) {
+  for (const itemType of importDoc.itemTypes.entitiesToCreate) {
+    for (const fieldset of itemType.fieldsets) yield { itemType, fieldset };
   }
 }
 
-/**
- * Install any plugins bundled with the export before creating linked entities.
- */
-async function createPluginsPhase(context: ImportContext) {
-  const {
-    client,
-    tracker,
-    importDoc: {
-      plugins: { entitiesToCreate: pluginsToCreate },
-    },
-    mappings: { pluginIds },
-  } = context;
-
-  await pMap(
-    pluginsToCreate,
-    4,
-    (plugin) =>
-      tracker.run(
-        (p: SchemaTypes.Plugin) =>
-          `Creating plugin: ${
-            p.attributes.name || p.attributes.package_name || p.id
-          }`,
-        (p: SchemaTypes.Plugin) => createSinglePlugin(client, p, pluginIds),
-        plugin,
-      ),
-    () => tracker.checkCancel(),
-  );
+function* fieldsToCreate(importDoc: ImportDoc, slugs: boolean) {
+  for (const itemType of importDoc.itemTypes.entitiesToCreate) {
+    for (const field of itemType.fields) {
+      if ((field.attributes.field_type === 'slug') === slugs)
+        yield { itemType, field };
+    }
+  }
 }
 
-/**
- * Create item types (models and blocks) and return the freshly created records.
- */
-async function createItemTypesPhase(
-  context: ImportContext,
-): Promise<SchemaTypes.ItemType[]> {
-  const {
-    client,
-    tracker,
-    importDoc: {
-      itemTypes: { entitiesToCreate: itemTypesToCreate },
-    },
-    mappings: { itemTypeIds },
-  } = context;
-
-  return pMap(
-    itemTypesToCreate,
-    3,
-    (toCreate) =>
-      tracker.run(
-        (t: ImportDoc['itemTypes']['entitiesToCreate'][number]) =>
-          `Creating ${t.entity.attributes.modular_block ? 'block' : 'model'}: ${
-            t.rename?.name || t.entity.attributes.name
-          }`,
-        async (t: ImportDoc['itemTypes']['entitiesToCreate'][number]) => {
-          const data: SchemaTypes.ItemTypeCreateSchema['data'] = {
-            type: 'item_type',
-            id: itemTypeIds.get(t.entity.id),
-            attributes: omit(t.entity.attributes, [
-              'has_singleton_item',
-              'ordering_direction',
-              'ordering_meta',
-            ]),
-          };
-
-          if (t.rename) {
-            data.attributes.name = t.rename.name;
-            data.attributes.api_key = t.rename.apiKey;
-          }
-
-          try {
-            debugLog('Creating item type', data);
-            const { data: created } = await client.itemTypes.rawCreate({
-              data,
-            });
-            debugLog('Created item type', created);
-            return created;
-          } catch (error) {
-            console.error('Failed to create item type', data, error);
-            throw new Error(
-              `${t.entity.attributes.modular_block ? 'Block' : 'Model'} "${
-                t.rename?.name || t.entity.attributes.name
-              }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
-            );
-          }
-        },
-        toCreate,
-      ),
-    () => tracker.checkCancel(),
-  );
-}
-
-/**
- * Create fieldsets and fields for each item type, respecting dependencies and validators.
- */
 async function createFieldsetsAndFieldsPhase(context: ImportContext) {
-  const {
-    client,
-    tracker,
-    locales,
-    importDoc: {
-      itemTypes: { entitiesToCreate: itemTypesToCreate },
-    },
-    mappings,
-  } = context;
-
+  const { client, tracker, importDoc, mappings } = context;
   await pMap(
-    itemTypesToCreate,
-    2,
-    async ({ entity, fields, fieldsets }) => {
-      const itemTypeId = entity.id;
-
-      await pMap(
-        fieldsets,
-        4,
-        (fieldset) =>
-          tracker.run(
-            (_fs: SchemaTypes.Fieldset) =>
-              `Creating fieldset in ${entity.attributes.name}`,
-            async (fs: SchemaTypes.Fieldset) => {
-              const data: SchemaTypes.FieldsetCreateSchema['data'] = {
-                ...omit(fs, ['relationships']),
-                id: mappings.fieldsetIds.get(fs.id),
-              };
-
-              try {
-                debugLog('Creating fieldset', data);
-                const itemTypeProjectId = getOrThrow(
-                  mappings.itemTypeIds,
-                  itemTypeId,
-                  'fieldset create',
-                );
-                const { data: created } = await client.fieldsets.rawCreate(
-                  itemTypeProjectId,
-                  { data },
-                );
-                debugLog('Created fieldset', created);
-              } catch (error) {
-                console.error('Failed to create fieldset', data, error);
-                throw new Error(
-                  `Fieldset "${
-                    fs.attributes.title || fs.id
-                  }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
-                );
-              }
-            },
-            fieldset,
-          ),
-        () => tracker.checkCancel(),
-      );
-
-      const nonSlugFields = fields.filter(
-        (field) => field.attributes.field_type !== 'slug',
-      );
-
-      await pMap(
-        nonSlugFields,
-        6,
-        (field) =>
-          tracker.run(
-            (f: SchemaTypes.Field) =>
-              `Creating field ${f.attributes.label || f.attributes.api_key} in ${entity.attributes.name}`,
-            (f: SchemaTypes.Field) =>
-              importField(f, {
-                client,
-                locales,
-                mappings,
-              }),
-            field,
-          ),
-        () => tracker.checkCancel(),
-      );
-
-      const slugFields = fields.filter(
-        (field) => field.attributes.field_type === 'slug',
-      );
-
-      await pMap(
-        slugFields,
-        4,
-        (field) =>
-          tracker.run(
-            (f: SchemaTypes.Field) =>
-              `Creating field ${f.attributes.label || f.attributes.api_key} in ${entity.attributes.name}`,
-            (f: SchemaTypes.Field) =>
-              importField(f, {
-                client,
-                locales,
-                mappings,
-              }),
-            field,
-          ),
-        () => tracker.checkCancel(),
+    fieldsetsToCreate(importDoc),
+    tracker,
+    async ({ itemType, fieldset }) => {
+      await tracker.run(
+        `Creating fieldset in ${itemType.entity.attributes.name}`,
+        async () => {
+          const id = getOrThrow(
+            mappings.fieldsetIds,
+            fieldset.id,
+            'fieldset create',
+          );
+          const data: SchemaTypes.FieldsetCreateSchema['data'] = {
+            ...omit(fieldset, ['relationships']),
+            id,
+          };
+          const { data: created } = await client.fieldsets.rawCreate(
+            getOrThrow(
+              mappings.itemTypeIds,
+              itemType.entity.id,
+              'fieldset model',
+            ),
+            { data },
+          );
+          verifyCreatedId(created.id, id);
+        },
       );
     },
-    () => tracker.checkCancel(),
   );
+  // All models already exist, so link/block validators can include cycles.
+  // All non-slug fields finish before slug title-field references are applied.
+  const createField = async ({
+    itemType,
+    field,
+  }: {
+    itemType: ItemTypeToCreate;
+    field: SchemaTypes.Field;
+  }) => {
+    await tracker.run(
+      `Creating field ${field.attributes.label || field.attributes.api_key} in ${itemType.entity.attributes.name}`,
+      () => importField(field, context),
+    );
+  };
+  await pMap(fieldsToCreate(importDoc, false), tracker, createField);
+  await pMap(fieldsToCreate(importDoc, true), tracker, createField);
 }
 
-/**
- * Apply relationship and ordering metadata that requires created field IDs.
- */
 async function finalizeItemTypesPhase(
   context: ImportContext,
-  createdItemTypes: SchemaTypes.ItemType[],
+  createdById: Map<string, SchemaTypes.ItemType>,
 ) {
-  const {
-    client,
-    tracker,
-    importDoc: {
-      itemTypes: { entitiesToCreate: itemTypesToCreate },
-    },
-    mappings,
-  } = context;
-
-  const relationshipsToUpdate = [
-    'ordering_field',
-    'title_field',
-    'image_preview_field',
-    'excerpt_field',
-    'presentation_title_field',
-    'presentation_image_field',
-  ] as const;
-  const attributesToUpdate = ['ordering_direction', 'ordering_meta'];
-
+  const { client, tracker, importDoc, mappings } = context;
   await pMap(
-    itemTypesToCreate,
-    3,
-    (toCreate) =>
-      tracker.run(
-        (t: ImportDoc['itemTypes']['entitiesToCreate'][number]) =>
-          `Finalizing ${t.entity.attributes.modular_block ? 'block' : 'model'}: ${
-            t.rename?.name || t.entity.attributes.name
-          }`,
-        async (t: ImportDoc['itemTypes']['entitiesToCreate'][number]) => {
+    importDoc.itemTypes.entitiesToCreate,
+    tracker,
+    async ({ entity, rename }) => {
+      await tracker.run(
+        `Finalizing ${entity.attributes.modular_block ? 'block' : 'model'}: ${rename?.name || entity.attributes.name}`,
+        async () => {
           const id = getOrThrow(
             mappings.itemTypeIds,
-            t.entity.id,
-            'finalize item type',
+            entity.id,
+            'finalize model',
           );
-          const createdItemType = find(createdItemTypes, { id });
-          if (!createdItemType) {
-            throw new Error(`Item type not found after creation: ${id}`);
-          }
-
+          const created = getOrThrow(createdById, id, 'created model');
           const data: SchemaTypes.ItemTypeUpdateSchema['data'] = {
             type: 'item_type',
             id,
-            attributes: pick(t.entity.attributes, attributesToUpdate),
+            attributes: pick(entity.attributes, itemTypeFinalAttributes),
             relationships: Object.fromEntries(
-              relationshipsToUpdate.map((relationshipName) => {
-                const handle = get(
-                  t.entity,
-                  `relationships.${relationshipName}.data`,
-                );
-
+              itemTypeRelationships.map((name) => {
+                const handle = entity.relationships[name]?.data;
                 return [
-                  relationshipName,
+                  name,
                   {
                     data: handle
                       ? {
@@ -505,7 +619,7 @@ async function finalizeItemTypesPhase(
                           id: getOrThrow(
                             mappings.fieldIds,
                             handle.id,
-                            'finalize relationships',
+                            'model presentation field',
                           ),
                         }
                       : null,
@@ -516,137 +630,72 @@ async function finalizeItemTypesPhase(
               SchemaTypes.ItemTypeUpdateSchema['data']['relationships']
             >,
           };
-
-          try {
-            debugLog('Finalize diff snapshot', {
-              relationships: data.relationships,
-              currentAttributes: pick(
-                createdItemType.attributes,
-                attributesToUpdate,
-              ),
-              currentRelationships: pick(
-                createdItemType.relationships,
-                relationshipsToUpdate,
-              ),
-            });
-            if (
-              !isEqual(
-                data.relationships,
-                pick(createdItemType.relationships, relationshipsToUpdate),
-              ) ||
-              !isEqual(
-                data.attributes,
-                pick(createdItemType.attributes, attributesToUpdate),
-              )
-            ) {
-              debugLog('Finalizing item type', data);
-              const { data: updatedItemType } =
-                await client.itemTypes.rawUpdate(id, { data });
-              debugLog('Finalized item type', updatedItemType);
-            }
-          } catch (error) {
-            console.error('Failed to finalize item type', data, error);
-          }
+          if (
+            !isEqual(
+              data.attributes,
+              pick(created.attributes, itemTypeFinalAttributes),
+            ) ||
+            !isEqual(
+              data.relationships,
+              pick(created.relationships, itemTypeRelationships),
+            )
+          )
+            await client.itemTypes.rawUpdate(id, { data });
         },
-        toCreate,
-      ),
-    () => tracker.checkCancel(),
+      );
+    },
   );
 }
 
 type ReorderableEntity = SchemaTypes.Fieldset | SchemaTypes.Field;
 
-async function reorderSingleEntity(
-  entity: ReorderableEntity,
-  client: ImportContext['client'],
-  mappings: ImportMappings,
-  tracker: ProgressTracker,
-) {
-  tracker.checkCancel();
-  if (entity.type === 'fieldset') {
-    await client.fieldsets.update(
-      getOrThrow(mappings.fieldsetIds, entity.id, 'fieldset reorder'),
-      { position: entity.attributes.position },
-    );
-  } else {
-    await client.fields.update(
-      getOrThrow(mappings.fieldIds, entity.id, 'field reorder'),
-      { position: entity.attributes.position },
-    );
-  }
-}
-
-async function reorderItemTypeEntities(
-  o: ImportDoc['itemTypes']['entitiesToCreate'][number],
-  client: ImportContext['client'],
-  mappings: ImportMappings,
-  tracker: ProgressTracker,
-) {
-  const { entity: itemType, fields, fieldsets } = o;
-  const allEntities = [...fieldsets, ...fields];
-
-  if (allEntities.length <= 1) {
-    return;
-  }
-
-  try {
-    debugLog('Reordering fields/fieldsets for item type', {
-      itemTypeId: getOrThrow(
-        mappings.itemTypeIds,
-        itemType.id,
-        'reorder start log',
-      ),
-    });
-
-    // Sequential reordering is required: reduce to chain promises in position order
-    const sortedEntities = sortBy(allEntities, [
-      'attributes',
-      'position',
-    ]) as ReorderableEntity[];
-    await sortedEntities.reduce<Promise<void>>(
-      (chain, entity) =>
-        chain.then(() =>
-          reorderSingleEntity(entity, client, mappings, tracker),
-        ),
-      Promise.resolve(),
-    );
-
-    debugLog('Reordered fields/fieldsets for item type', {
-      itemTypeId: getOrThrow(mappings.itemTypeIds, itemType.id, 'reorder log'),
-    });
-  } catch (error) {
-    console.error('Failed to reorder fields/fieldsets', error);
-  }
-}
-
-/**
- * Restore the original ordering for fieldsets and fields to match the export.
- */
-async function reorderEntitiesPhase(context: ImportContext) {
-  const {
-    client,
-    tracker,
-    importDoc: {
-      itemTypes: { entitiesToCreate: itemTypesToCreate },
-    },
-    mappings,
-  } = context;
-
+async function reorderEntitiesPhase({
+  client,
+  tracker,
+  importDoc,
+  mappings,
+}: ImportContext) {
   await pMap(
-    itemTypesToCreate,
-    3,
-    (obj) =>
-      tracker.run(
-        (o: ImportDoc['itemTypes']['entitiesToCreate'][number]) => {
-          const { entity } = o;
-          return `Reordering fields/fieldsets for ${entity.attributes.name}`;
-        },
-        (o: ImportDoc['itemTypes']['entitiesToCreate'][number]) =>
-          reorderItemTypeEntities(o, client, mappings, tracker),
-        obj,
-      ),
-    () => tracker.checkCancel(),
+    importDoc.itemTypes.entitiesToCreate,
+    tracker,
+    async ({ entity: itemType, fields, fieldsets }) => {
+      const entities: ReorderableEntity[] = [...fieldsets, ...fields];
+      if (entities.length <= 1) return;
+      entities.sort(
+        (left, right) => left.attributes.position - right.attributes.position,
+      );
+      for (const entity of entities) {
+        // biome-ignore lint/performance/noAwaitInLoops: Position updates affect siblings and must be sequential within each model.
+        await tracker.run(
+          `Reordering field/fieldset in ${itemType.attributes.name}`,
+          async () => {
+            const position = entity.attributes.position;
+            if (entity.type === 'fieldset')
+              await client.fieldsets.update(
+                getOrThrow(mappings.fieldsetIds, entity.id, 'fieldset reorder'),
+                { position },
+              );
+            else
+              await client.fields.update(
+                getOrThrow(mappings.fieldIds, entity.id, 'field reorder'),
+                { position },
+              );
+          },
+        );
+      }
+    },
   );
+}
+
+function countOperations(importDoc: ImportDoc) {
+  let total = 1 + importDoc.plugins.entitiesToCreate.length;
+  for (const plugin of importDoc.plugins.entitiesToCreate)
+    if (!isEqual(plugin.attributes.parameters, {})) total += 1;
+  for (const itemType of importDoc.itemTypes.entitiesToCreate) {
+    const childCount = itemType.fields.length + itemType.fieldsets.length;
+    total += 2 + childCount + (childCount > 1 ? childCount : 0);
+  }
+  return total;
 }
 
 export default async function importSchema(
@@ -655,50 +704,30 @@ export default async function importSchema(
   updateProgress: ProgressUpdate,
   opts?: { shouldCancel?: ShouldCancel },
 ): Promise<ImportResult> {
-  const shouldCancel = opts?.shouldCancel ?? (() => false);
-
-  const pluginCreates = importDoc.plugins.entitiesToCreate.length;
-  const itemTypeCreates = importDoc.itemTypes.entitiesToCreate.length;
-  const fieldsetCreates = importDoc.itemTypes.entitiesToCreate.reduce(
-    (acc, it) => acc + it.fieldsets.length,
-    0,
+  const tracker = new ProgressTracker(
+    countOperations(importDoc),
+    updateProgress,
+    opts?.shouldCancel ?? (() => false),
   );
-  const fieldCreates = importDoc.itemTypes.entitiesToCreate.reduce(
-    (acc, it) => acc + it.fields.length,
-    0,
-  );
-  const finalizeUpdates = itemTypeCreates;
-  const reorderBatches = itemTypeCreates;
-
-  const total =
-    pluginCreates +
-    itemTypeCreates +
-    fieldsetCreates +
-    fieldCreates +
-    finalizeUpdates +
-    reorderBatches;
-
-  const tracker = new ProgressTracker(total, updateProgress, shouldCancel);
-
   tracker.checkCancel();
-  const { locales } = await client.site.find();
-  tracker.checkCancel();
-
   const mappings = prepareMappings(importDoc);
+  validateImport(importDoc, mappings);
+  const importClient = new ImportClient(client, tracker);
+  const { locales } = await tracker.run('Loading project locales', () =>
+    importClient.site.find(),
+  );
   const context: ImportContext = {
-    client,
+    client: importClient,
     tracker,
     locales,
     importDoc,
     mappings,
   };
-
   await createPluginsPhase(context);
-  const createdItemTypes = await createItemTypesPhase(context);
+  const createdById = await createItemTypesPhase(context);
   await createFieldsetsAndFieldsPhase(context);
-  await finalizeItemTypesPhase(context, createdItemTypes);
+  await finalizeItemTypesPhase(context, createdById);
   await reorderEntitiesPhase(context);
-
   return {
     itemTypeIdByExportId: Object.fromEntries(mappings.itemTypeIds),
     fieldIdByExportId: Object.fromEntries(mappings.fieldIds),
@@ -707,30 +736,16 @@ export default async function importSchema(
   };
 }
 
-type ImportFieldOptions = {
-  client: Client;
-  locales: string[];
-  mappings: ImportMappings;
-};
-
-/**
- * Create a single field in the target project, translating validators and appearance.
- */
 async function importField(
   field: SchemaTypes.Field,
-  { client, locales, mappings }: ImportFieldOptions,
+  { client, locales, mappings }: ImportContext,
 ) {
-  const nextAppearance = await mapAppearanceToProject(
-    field,
-    mappings.pluginIds,
-  );
-
+  const appearance = await mapAppearanceToProject(field, mappings.pluginIds);
+  const id = getOrThrow(mappings.fieldIds, field.id, 'field create');
   const data: SchemaTypes.FieldCreateSchema['data'] = {
-    ...field,
-    id: mappings.fieldIds.get(field.id),
-    attributes: {
-      ...field.attributes,
-    },
+    type: 'field',
+    id,
+    attributes: { ...field.attributes, appearance },
     relationships: {
       fieldset: {
         data: field.relationships.fieldset.data
@@ -739,95 +754,54 @@ async function importField(
               id: getOrThrow(
                 mappings.fieldsetIds,
                 field.relationships.fieldset.data.id,
-                'field appearance fieldset mapping',
+                'field fieldset',
               ),
             }
           : null,
       },
     },
   };
-
-  const validators = [
-    ...validatorsContainingLinks.filter(
-      (item) => item.field_type === field.attributes.field_type,
-    ),
-    ...validatorsContainingBlocks.filter(
-      (item) => item.field_type === field.attributes.field_type,
-    ),
-  ].map((item) => item.validator);
-
-  for (const validator of validators) {
-    const fieldLinkedItemTypeIds = get(
-      field.attributes.validators,
-      validator,
-    ) as string[];
-
-    const newIds: string[] = [];
-
-    for (const fieldLinkedItemTypeId of fieldLinkedItemTypeIds ?? []) {
-      const mapped = mappings.itemTypeIds.get(fieldLinkedItemTypeId);
-      if (mapped) newIds.push(mapped);
-    }
-
-    const validatorsContainer = (data.attributes.validators ?? {}) as Record<
-      string,
-      unknown
-    >;
-    set(validatorsContainer, validator, newIds);
-    data.attributes.validators =
-      validatorsContainer as typeof data.attributes.validators;
+  // Do not mutate validators belonging to the export document when remapping IDs.
+  data.attributes.validators = cloneDeep(field.attributes.validators);
+  for (const path of validatorPaths(field)) {
+    const ids = linkedIds(field, path);
+    if (ids !== undefined)
+      set(
+        data.attributes.validators ?? {},
+        path,
+        ids.map((linkedId) =>
+          getOrThrow(mappings.itemTypeIds, linkedId, `field validator ${path}`),
+        ),
+      );
   }
-
-  const slugTitleFieldValidator = (
-    field.attributes.validators as Record<string, unknown>
-  ).slug_title_field as undefined | { title_field_id: string };
-
-  if (slugTitleFieldValidator) {
-    const mapped = getOrThrow(
-      mappings.fieldIds,
-      slugTitleFieldValidator.title_field_id,
-      'slug title field',
+  const slugTitleId = get(
+    field.attributes.validators,
+    'slug_title_field.title_field_id',
+  ) as string | undefined;
+  if (slugTitleId !== undefined)
+    set(
+      data.attributes.validators ?? {},
+      'slug_title_field.title_field_id',
+      getOrThrow(mappings.fieldIds, slugTitleId, 'slug title field'),
     );
-    (data.attributes.validators as Record<string, unknown>).slug_title_field = {
-      title_field_id: mapped,
-    };
-  }
-
-  delete (data.attributes as { appearance?: unknown }).appearance;
   delete (data.attributes as { appeareance?: unknown }).appeareance;
-
   if (field.attributes.localized) {
-    const oldDefaultValues = field.attributes.default_value as Record<
+    const oldDefaults = field.attributes.default_value as Record<
       string,
       unknown
     >;
     data.attributes.default_value = Object.fromEntries(
-      locales.map((locale) => [locale, oldDefaultValues?.[locale] ?? null]),
+      locales.map((locale) => [locale, oldDefaults?.[locale] ?? null]),
     ) as typeof data.attributes.default_value;
   }
-
-  data.attributes.appearance = nextAppearance;
-
-  try {
-    debugLog('Creating field', data);
-    const itemTypeProjectId = getOrThrow(
+  debugLog('Creating field', data);
+  const { data: created } = await client.fields.rawCreate(
+    getOrThrow(
       mappings.itemTypeIds,
       field.relationships.item_type.data.id,
-      'field create',
-    );
-    const { data: createdField } = await client.fields.rawCreate(
-      itemTypeProjectId,
-      {
-        data,
-      },
-    );
-    debugLog('Created field', createdField);
-  } catch (error) {
-    console.error('Failed to create field', data, error);
-    throw new Error(
-      `Field "${
-        field.attributes.label || field.attributes.api_key || field.id
-      }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
-    );
-  }
+      'field model',
+    ),
+    { data },
+  );
+  verifyCreatedId(created.id, id);
 }

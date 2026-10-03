@@ -4,12 +4,7 @@
 /**
  * Supported vendor identifiers for translation providers.
  */
-export type VendorId =
-  | 'openai'
-  | 'google'
-  | 'anthropic'
-  | 'deepl'
-  | 'yandex';
+export type VendorId = 'openai' | 'google' | 'anthropic' | 'deepl' | 'yandex';
 
 /**
  * Default timeout for API calls in milliseconds (2 minutes).
@@ -176,6 +171,9 @@ export class ProviderError extends Error {
   public readonly status?: number;
   /** The vendor that generated this error. */
   public readonly vendor?: VendorId;
+  public readonly retryAfterMs?: number;
+  public readonly retryExhausted: boolean;
+  public readonly code?: string;
 
   /**
    * Creates a new ProviderError.
@@ -189,12 +187,19 @@ export class ProviderError extends Error {
     message: string,
     status?: number,
     vendor?: VendorId,
-    options?: ErrorOptions,
+    options?: ErrorOptions & {
+      retryAfterMs?: number;
+      retryExhausted?: boolean;
+      code?: string;
+    },
   ) {
     super(message, options);
     this.name = 'ProviderError';
     this.status = status;
     this.vendor = vendor;
+    this.retryAfterMs = options?.retryAfterMs;
+    this.retryExhausted = options?.retryExhausted === true;
+    this.code = options?.code;
   }
 }
 

@@ -471,7 +471,7 @@ connect({
     if (!preflightItemsTranslation(ctx, pluginParams)) return;
 
     try {
-      const itemIds = items.map((item) => item.id);
+      const itemIds = [...new Set(items.map((item) => item.id))];
       const pickerParams: AITranslationsPickerModalParams = {
         itemIds,
         models,

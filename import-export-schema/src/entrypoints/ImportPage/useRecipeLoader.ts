@@ -20,8 +20,11 @@ async function fetchAndParseRecipe(
   recipeUrl: string,
   recipeTitle: string | null,
   onLoaded: RecipeLoadedCallback,
+  signal: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(recipeUrl);
+  const response = await fetch(recipeUrl, { signal });
+  if (!response.ok)
+    throw new Error(`Recipe request failed (${response.status}).`);
   const body = (await response.json()) as ExportDoc;
   const schema = new ExportSchema(body);
   const parsedUrl = new URL(recipeUrl);
@@ -54,21 +57,29 @@ export function useRecipeLoader(
 
     const recipeTitle = params.get('recipe_title');
     let cancelled = false;
+    const abortController = new AbortController();
+    const timeout = window.setTimeout(() => abortController.abort(), 60000);
 
     async function run() {
       try {
         setLoading(true);
-        await fetchAndParseRecipe(recipeUrl, recipeTitle, (payload) => {
-          if (!cancelled) {
-            onLoaded(payload);
-          }
-        });
+        await fetchAndParseRecipe(
+          recipeUrl,
+          recipeTitle,
+          (payload) => {
+            if (!cancelled) {
+              onLoaded(payload);
+            }
+          },
+          abortController.signal,
+        );
       } catch (error) {
         if (!cancelled) {
           onError?.(error);
           console.error('Failed to load recipe export', error);
         }
       } finally {
+        window.clearTimeout(timeout);
         if (!cancelled) setLoading(false);
       }
     }
@@ -77,6 +88,8 @@ export function useRecipeLoader(
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
+      abortController.abort();
     };
   }, [locationSearch, onLoaded, onError]);
 

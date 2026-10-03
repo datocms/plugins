@@ -1,268 +1,313 @@
-/**
- * Field utility functions for the Locale Duplicate plugin
- */
+/** Field value helpers for locale duplication. Editor values remain Slate-shaped. */
+import {
+  getErrorMessage,
+  isLocalizedField,
+  type LocalizedField,
+} from '../types';
 
-import { isLocalizedField, type LocalizedField } from '../types';
-
-/**
- * Checks if a field type is supported for locale duplication
- */
 export function isFieldTypeSupported(fieldType: string): boolean {
-  const supportedTypes = [
-    'string',
-    'text',
-    'structured_text',
-    'json',
-    'seo',
-    'slug',
-  ];
-
-  return supportedTypes.includes(fieldType);
+  return ['string', 'text', 'structured_text', 'json', 'seo', 'slug'].includes(
+    fieldType,
+  );
 }
 
-/**
- * Gets the value of a field from a localized field object
- */
 export function getFieldValue(
   field: LocalizedField | unknown,
   locale: string,
 ): unknown {
-  if (isLocalizedField(field)) {
-    return field[locale];
-  }
-  return undefined;
+  return isLocalizedField(field) ? field[locale] : undefined;
 }
 
-/**
- * Sets the value of a field in a localized field object
- */
 export function setFieldValue(
   field: LocalizedField | unknown,
   locale: string,
   value: unknown,
 ): LocalizedField {
-  if (!isLocalizedField(field)) {
-    return { [locale]: value };
-  }
-
-  return {
-    ...field,
-    [locale]: value,
-  };
+  return { ...(isLocalizedField(field) ? field : {}), [locale]: value };
 }
 
-// ─── removeBlockItemIdsImmutable helpers ─────────────────────────────────────
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-/**
- * Processes an array by recursively removing block IDs and filtering out inlineItem nodes.
- */
-function processArrayImmutable(arr: unknown[]): unknown[] {
-  return arr
-    .map((item) => removeBlockItemIdsImmutable(item))
-    .filter((item) => {
-      if (typeof item === 'object' && item !== null && 'type' in item) {
-        return (item as { type: unknown }).type !== 'inlineItem';
-      }
-      return true;
+interface CloneTask {
+  source: object;
+  target: unknown[] | Record<string, unknown>;
+}
+
+function cloneChild(
+  value: unknown,
+  copies: WeakMap<object, unknown>,
+  pending: CloneTask[],
+): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (copies.has(value)) return copies.get(value);
+  const target: unknown[] | Record<string, unknown> = Array.isArray(value)
+    ? []
+    : {};
+  copies.set(value, target);
+  pending.push({ source: value, target });
+  return target;
+}
+
+function setCloneProperty(
+  target: CloneTask['target'],
+  key: string,
+  value: unknown,
+): void {
+  if (key === '__proto__') {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
     });
-}
-
-/**
- * Handles a structured-text block node that carries an id directly.
- */
-function processStructuredTextBlockImmutable(
-  typedObj: Record<string, unknown>,
-): Record<string, unknown> {
-  const { id: _id, ...blockWithoutId } = typedObj;
-  const result: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(blockWithoutId)) {
-    result[key] = removeBlockItemIdsImmutable(val);
+    return;
   }
-  return result;
+  (target as Record<string, unknown>)[key] = value;
 }
 
-/**
- * Handles a modular-content block node that wraps an item object.
- */
-function processModularBlockImmutable(
-  typedObj: Record<string, unknown>,
-): Record<string, unknown> {
-  const itemObj = typedObj.item as Record<string, unknown>;
-  const { id: _id, ...itemWithoutId } = itemObj;
-  const result: Record<string, unknown> = {
-    type: typedObj.type,
-    item: removeBlockItemIdsImmutable(itemWithoutId),
-  };
-  for (const [key, val] of Object.entries(typedObj)) {
-    if (key !== 'type' && key !== 'item') {
-      result[key] = removeBlockItemIdsImmutable(val);
+/** Clone JSON-compatible editor/API values without recursion or shared children. */
+export function cloneFieldValue<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+
+  const result: unknown[] | Record<string, unknown> = Array.isArray(value)
+    ? []
+    : {};
+  const copies = new WeakMap<object, unknown>([[value, result]]);
+  const pending: CloneTask[] = [{ source: value, target: result }];
+
+  while (pending.length > 0) {
+    const pair = pending.pop();
+    if (!pair) break;
+
+    for (const [key, original] of Object.entries(
+      pair.source as Record<string, unknown>,
+    )) {
+      // An arbitrary JSON key must not change the clone's prototype.
+      setCloneProperty(pair.target, key, cloneChild(original, copies, pending));
     }
   }
-  return result;
+
+  return result as T;
 }
 
-/**
- * Handles a plain object, stripping IDs only when modular-content markers are present.
- */
-function processPlainObjectImmutable(
-  typedObj: Record<string, unknown>,
-): Record<string, unknown> {
-  const hasItemId = 'itemId' in typedObj;
-  const hasItemTypeId = 'itemTypeId' in typedObj;
-  const shouldRemoveId = hasItemId || hasItemTypeId;
-
-  const result: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(typedObj)) {
-    if (key === 'id' && shouldRemoveId) {
-      continue;
-    }
-    if (key === 'itemId') {
-      continue;
-    }
-    result[key] = removeBlockItemIdsImmutable(val);
-  }
-  return result;
+export interface FormBlockField {
+  apiKey: string;
+  fieldType: string;
+  localized: boolean;
 }
 
-/**
- * Removes block item IDs - version for field extension (creates new objects).
- * This version creates new objects without ID fields, suitable for field-level copying.
- */
-export function removeBlockItemIdsImmutable(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null) {
-    return value;
+export type FormBlockSchemas = ReadonlyMap<string, readonly FormBlockField[]>;
+
+type FormTask =
+  | { kind: 'field'; value: unknown; fieldType: string; localized?: boolean }
+  | { kind: 'slate'; value: unknown };
+
+interface FormBlock {
+  value: Record<string, unknown>;
+  modelId: string;
+  slate: boolean;
+}
+
+function visitSlateNode(
+  value: unknown,
+  pending: FormTask[],
+): FormBlock | undefined {
+  if (!isObject(value)) return;
+  if (value.type === 'block' || value.type === 'inlineBlock') {
+    if (typeof value.blockModelId !== 'string') {
+      throw new Error(
+        'Block content is not loaded. Wait for the editor to load it.',
+      );
+    }
+    return { value, modelId: value.blockModelId, slate: true };
   }
 
-  if (Array.isArray(value)) {
-    return processArrayImmutable(value);
+  if (Array.isArray(value.children)) {
+    for (const child of value.children)
+      pending.push({ kind: 'slate', value: child });
+  }
+}
+
+function visitFormField(
+  task: Extract<FormTask, { kind: 'field' }>,
+  pending: FormTask[],
+): FormBlock | undefined {
+  if (task.value === null || task.value === undefined) return;
+  if (task.localized && isObject(task.value)) {
+    for (const value of Object.values(task.value))
+      pending.push({ ...task, value, localized: false });
+    return;
   }
 
-  const typedObj = value as Record<string, unknown>;
-
-  if (typedObj.type === 'block' && 'id' in typedObj) {
-    return processStructuredTextBlockImmutable(typedObj);
+  if (task.fieldType === 'single_block') {
+    if (!isObject(task.value) || typeof task.value.itemTypeId !== 'string') {
+      throw new Error(
+        'Block content is not loaded. Wait for the editor to load it.',
+      );
+    }
+    return { value: task.value, modelId: task.value.itemTypeId, slate: false };
   }
+  if (!Array.isArray(task.value))
+    throw new Error('Editor content is not loaded.');
+  for (const value of task.value) {
+    pending.push(
+      task.fieldType === 'structured_text'
+        ? { kind: 'slate', value }
+        : { kind: 'field', value, fieldType: 'single_block' },
+    );
+  }
+}
 
+function shouldVisitFormTask(
+  task: FormTask,
+  visited: WeakSet<object>,
+): boolean {
   if (
-    typedObj.type === 'block' &&
-    typedObj.item !== null &&
-    typedObj.item !== undefined &&
-    typeof typedObj.item === 'object'
-  ) {
-    return processModularBlockImmutable(typedObj);
-  }
-
-  if (typedObj.type === 'item' && 'id' in typedObj) {
-    const { id: _id, ...itemWithoutId } = typedObj;
-    return removeBlockItemIdsImmutable(itemWithoutId);
-  }
-
-  return processPlainObjectImmutable(typedObj);
+    task.kind === 'field' &&
+    !['rich_text', 'single_block', 'structured_text'].includes(task.fieldType)
+  )
+    return false;
+  if (typeof task.value !== 'object' || task.value === null) return true;
+  if (visited.has(task.value)) return false;
+  visited.add(task.value);
+  return true;
 }
 
-// ─── removeBlockItemIdsMutable helpers ────────────────────────────────────────
-
-/**
- * Removes IDs from a structured-text block node in place.
- */
-function clearStructuredTextBlockId(typedObj: Record<string, unknown>): void {
-  if (typedObj.type === 'block' && 'id' in typedObj) {
-    (typedObj as { id?: unknown }).id = undefined;
+function enqueueBlockFields(
+  block: FormBlock,
+  schemas: FormBlockSchemas,
+  pending: FormTask[],
+): void {
+  const fields = schemas.get(block.modelId);
+  if (!fields)
+    throw new Error(
+      `Could not load the fields of block model ${block.modelId}.`,
+    );
+  for (const field of fields) {
+    pending.push({
+      kind: 'field',
+      value: block.value[field.apiKey],
+      fieldType: field.fieldType,
+      localized: field.localized,
+    });
   }
 }
 
-/**
- * Removes IDs from a nested modular-content item in place.
- */
-function clearModularBlockItemId(typedObj: Record<string, unknown>): void {
-  if (
-    typedObj.type === 'block' &&
-    typedObj.item !== null &&
-    typedObj.item !== undefined &&
-    typeof typedObj.item === 'object'
-  ) {
-    const itemObj = typedObj.item as { id?: unknown };
-    if ('id' in itemObj) {
-      itemObj.id = undefined;
+/** Follow only block-bearing fields in the schema; arbitrary JSON stays opaque. */
+function* formBlocks(
+  value: unknown,
+  fieldType: string,
+  schemas: FormBlockSchemas,
+): Generator<FormBlock> {
+  const pending: FormTask[] = [{ kind: 'field', value, fieldType }];
+  const visited = new WeakSet<object>();
+
+  while (pending.length > 0) {
+    const task = pending.pop();
+    if (!task) break;
+    if (!shouldVisitFormTask(task, visited)) continue;
+
+    const block =
+      task.kind === 'slate'
+        ? visitSlateNode(task.value, pending)
+        : visitFormField(task, pending);
+    if (!block) continue;
+
+    yield block;
+    enqueueBlockFields(block, schemas, pending);
+  }
+}
+
+/** Load only block models actually present in this field, once per model. */
+export async function loadFormBlockSchemas(
+  value: unknown,
+  fieldType: string,
+  loadFields: (modelId: string) => Promise<readonly FormBlockField[]>,
+): Promise<FormBlockSchemas> {
+  const schemas = new Map<string, readonly FormBlockField[]>();
+  for (const block of formBlocks(value, fieldType, schemas)) {
+    if (!schemas.has(block.modelId)) {
+      // biome-ignore lint/performance/noAwaitInLoops: each schema is needed to find its nested block fields.
+      schemas.set(block.modelId, await loadFields(block.modelId));
     }
   }
+  return schemas;
 }
 
-/**
- * Nullifies the item reference on inlineItem nodes so DatoCMS keeps the property.
- */
-function clearInlineItemReference(typedObj: Record<string, unknown>): void {
-  if (typedObj.type === 'inlineItem' && 'item' in typedObj) {
-    (typedObj as { item: unknown }).item = null;
-  }
-}
-
-/**
- * Removes IDs from item-type objects in place.
- */
-function clearItemTypeId(typedObj: Record<string, unknown>): void {
-  if (typedObj.type === 'item' && 'id' in typedObj) {
-    (typedObj as { id?: unknown }).id = undefined;
-  }
-}
-
-/**
- * Removes itemId and, when appropriate, id from modular-content blocks in place.
- */
-function clearModularContentIds(typedObj: Record<string, unknown>): void {
-  if ('itemId' in typedObj) {
-    (typedObj as { itemId?: unknown }).itemId = undefined;
-  }
-
-  const hasItemId = 'itemId' in typedObj;
-  const hasItemTypeId = 'itemTypeId' in typedObj;
-  const shouldRemoveId = hasItemId || hasItemTypeId;
-
-  if (shouldRemoveId && 'id' in typedObj) {
-    (typedObj as { id?: unknown }).id = undefined;
-  }
-}
-
-/**
- * Removes block item IDs - version for settings area (mutates objects).
- * This version mutates objects in place, suitable for bulk operations.
- */
-export function removeBlockItemIdsMutable(obj: unknown): unknown {
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      removeBlockItemIdsMutable(item);
-    }
-  } else if (obj !== null && obj !== undefined && typeof obj === 'object') {
-    const typedObj = obj as Record<string, unknown>;
-
-    clearStructuredTextBlockId(typedObj);
-    clearModularBlockItemId(typedObj);
-    clearInlineItemReference(typedObj);
-    clearItemTypeId(typedObj);
-    clearModularContentIds(typedObj);
-
-    for (const key in typedObj) {
-      removeBlockItemIdsMutable(typedObj[key]);
+/** Duplicate editor blocks while preserving linked records, uploads and JSON IDs. */
+export function cloneFormFieldValue(
+  value: unknown,
+  fieldType: string,
+  schemas: FormBlockSchemas = new Map(),
+): unknown {
+  const result = cloneFieldValue(value);
+  for (const block of formBlocks(result, fieldType, schemas)) {
+    if (block.slate) {
+      delete block.value.id;
+      block.value.key = globalThis.crypto.randomUUID();
+    } else {
+      delete block.value.itemId;
     }
   }
-  return obj;
+  return result;
 }
 
-/**
- * Validates if a locale code is valid
- */
+/** Keep one editor write in flight and finish remaining locales after partial failure. */
+export async function copyFormValueToLocales(
+  value: unknown,
+  fieldType: string,
+  schemas: FormBlockSchemas,
+  locales: readonly string[],
+  writeValue: (locale: string, value: unknown) => Promise<void>,
+): Promise<{ copied: number; failures: string[] }> {
+  let copied = 0;
+  const failures: string[] = [];
+  for (const locale of locales) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: keep one cloned value and one editor write in flight.
+      await writeValue(locale, cloneFormFieldValue(value, fieldType, schemas));
+      copied += 1;
+    } catch (error) {
+      failures.push(`${locale}: ${getErrorMessage(error)}`);
+    }
+  }
+  return { copied, failures };
+}
+
+/** SDK paths use dot-separated field names, locales and block indexes. */
+export function getValueAtPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const part of path.replace(/\[(\d+)\]/g, '.$1').split('.')) {
+    if (
+      current === null ||
+      typeof current !== 'object' ||
+      Object.getOwnPropertyDescriptor(current, part) === undefined
+    )
+      return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+/** Replace only the field's locale, preserving localized parent-block paths. */
+export function getLocalizedFieldPath(
+  fieldPath: string,
+  currentLocale: string,
+  targetLocale: string,
+): string | undefined {
+  const suffix = `.${currentLocale}`;
+  if (!currentLocale || !targetLocale || !fieldPath.endsWith(suffix)) return;
+  return `${fieldPath.slice(0, -suffix.length)}.${targetLocale}`;
+}
+
 export function isValidLocale(locale: string): boolean {
-  // Matches patterns like 'en', 'en-US', 'pt-BR'
   return /^[a-z]{2}(-[A-Z]{2})?$/.test(locale);
 }
 
-/**
- * Extracts locale codes from a localized field
- */
 export function getLocalesFromField(field: LocalizedField | unknown): string[] {
-  if (!isLocalizedField(field)) {
-    return [];
-  }
-
-  return Object.keys(field).filter(isValidLocale);
+  return isLocalizedField(field)
+    ? Object.keys(field).filter(isValidLocale)
+    : [];
 }

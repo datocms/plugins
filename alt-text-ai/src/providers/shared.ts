@@ -3,8 +3,15 @@ import {
   AltTextProviderError,
   createProviderHttpError,
   isAbortError,
+  isAltTextProviderError,
   normalizeProviderFailure,
 } from './errors';
+import {
+  readBoundedResponseBytes,
+  ResponseTooLargeError,
+  throwIfAborted,
+  withHttpRetries,
+} from './http';
 import type { AltTextProviderId, GenerateAltTextInput } from './types';
 
 export { DEFAULT_ALT_TEXT_PROMPT };
@@ -102,8 +109,20 @@ export function prepareGenerationInput(
   };
 }
 
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text();
+const MAX_JSON_RESPONSE_BYTES = 8 * 1024 * 1024;
+// Base64 expands bytes by 4/3. Leave room below Gemini's 20MB inline request cap.
+export const MAX_INLINE_IMAGE_BYTES = 12 * 1024 * 1024;
+
+async function readResponsePayload(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const bytes = await readBoundedResponseBytes(
+    response,
+    MAX_JSON_RESPONSE_BYTES,
+    signal,
+  );
+  const text = new TextDecoder().decode(bytes);
   if (!text.trim()) {
     return null;
   }
@@ -115,10 +134,11 @@ async function readResponsePayload(response: Response): Promise<unknown> {
   }
 }
 
-export async function fetchProviderJson(
+async function fetchProviderJsonAttempt(
   provider: AltTextProviderId,
   url: string,
-  init: RequestInit,
+  init: RequestInit & { signal: AbortSignal },
+  preserveFailure: (failure: AltTextProviderError) => void,
 ): Promise<unknown> {
   let response: Response;
 
@@ -131,10 +151,22 @@ export async function fetchProviderJson(
     throw normalizeProviderFailure(provider, error);
   }
 
+  const httpFailure = response.ok
+    ? undefined
+    : createProviderHttpError(provider, response, null);
+  if (httpFailure) {
+    preserveFailure(httpFailure);
+  }
   let payload: unknown;
   try {
-    payload = await readResponsePayload(response);
+    payload = await readResponsePayload(response, init.signal);
   } catch (error) {
+    if (httpFailure) {
+      throw httpFailure;
+    }
+    if (isAbortError(error)) {
+      throw error;
+    }
     throw new AltTextProviderError(
       provider,
       'invalid_response',
@@ -157,6 +189,28 @@ export async function fetchProviderJson(
   }
 
   return payload;
+}
+
+export function fetchProviderJson(
+  provider: AltTextProviderId,
+  url: string,
+  init: RequestInit,
+): Promise<unknown> {
+  const readOnly =
+    !init.method || ['GET', 'HEAD'].includes(init.method.toUpperCase());
+  return withHttpRetries(
+    provider,
+    init.signal,
+    readOnly,
+    (signal, preserveFailure) =>
+      fetchProviderJsonAttempt(
+        provider,
+        url,
+        { ...init, signal },
+        preserveFailure,
+      ),
+    `${provider}:${new URL(url).origin}`,
+  );
 }
 
 function removeWrappingMarkdown(text: string): string {
@@ -219,18 +273,46 @@ export function finalizeAltText(
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  let binary = '';
+  // A multiple of three avoids padding between chunks and a full binary-string copy.
+  const chunkSize = 0x6000;
+  const chunks: string[] = [];
 
   for (let offset = 0; offset < bytes.length; offset += chunkSize) {
     const chunk = bytes.subarray(offset, offset + chunkSize);
-    binary += String.fromCharCode(...chunk);
+    chunks.push(btoa(String.fromCharCode(...chunk)));
   }
 
-  return btoa(binary);
+  return chunks.join('');
 }
 
-export async function fetchImageAsBase64(
+function supportedImageMimeType(
+  provider: AltTextProviderId,
+  response: Response,
+): string {
+  const contentType = response.headers
+    .get('content-type')
+    ?.split(';')[0]
+    ?.trim()
+    .toLowerCase();
+  const supportedTypes = [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ];
+  if (!contentType || !supportedTypes.includes(contentType)) {
+    void response.body?.cancel().catch(() => {});
+    throw new AltTextProviderError(
+      provider,
+      'image_fetch',
+      'The downloaded file has an unsupported image format.',
+    );
+  }
+  return contentType;
+}
+
+async function fetchImageAsBase64Attempt(
   provider: AltTextProviderId,
   imageUrl: string,
   signal?: AbortSignal,
@@ -245,13 +327,18 @@ export async function fetchImageAsBase64(
     }
     throw new AltTextProviderError(
       provider,
-      'image_fetch',
+      'network',
       'Could not download the image for analysis.',
       { details: error },
     );
   }
 
   if (!response.ok) {
+    const httpFailure = createProviderHttpError(provider, response, null);
+    void response.body?.cancel().catch(() => {});
+    if (response.status === 429) {
+      throw httpFailure;
+    }
     throw new AltTextProviderError(
       provider,
       'image_fetch',
@@ -261,22 +348,46 @@ export async function fetchImageAsBase64(
   }
 
   try {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type')?.split(';')[0];
+    const contentType = supportedImageMimeType(provider, response);
+    const bytes = await readBoundedResponseBytes(
+      response,
+      MAX_INLINE_IMAGE_BYTES,
+      signal,
+    );
+    if (!bytes.byteLength) {
+      throw new AltTextProviderError(
+        provider,
+        'image_fetch',
+        'The downloaded image is empty.',
+      );
+    }
+    throwIfAborted(signal);
 
     return {
       data: bytesToBase64(bytes),
-      mimeType: contentType?.startsWith('image/') ? contentType : 'image/jpeg',
+      mimeType: contentType,
     };
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isAbortError(error) || isAltTextProviderError(error)) {
       throw error;
     }
     throw new AltTextProviderError(
       provider,
-      'image_fetch',
-      'Could not read the downloaded image.',
+      error instanceof ResponseTooLargeError ? 'image_fetch' : 'network',
+      error instanceof ResponseTooLargeError
+        ? 'The image exceeds the 12 MiB analysis download limit.'
+        : 'Could not read the downloaded image.',
       { details: error },
     );
   }
+}
+
+export function fetchImageAsBase64(
+  provider: AltTextProviderId,
+  imageUrl: string,
+  signal?: AbortSignal,
+): Promise<{ data: string; mimeType: string }> {
+  return withHttpRetries(provider, signal, true, (requestSignal) =>
+    fetchImageAsBase64Attempt(provider, imageUrl, requestSignal),
+  );
 }

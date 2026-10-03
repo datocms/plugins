@@ -239,6 +239,34 @@ type NormalizedOptions = {
   maxOptionValues: number;
 };
 
+type ManifestSourceIndex = {
+  itemTypesById: ReadonlyMap<string, ItemType>;
+  fieldsByModelId: ReadonlyMap<string, ReadonlyMap<string, Field>>;
+};
+
+function indexManifestSources(
+  itemTypes: readonly ItemType[],
+  fields: readonly Field[],
+): ManifestSourceIndex {
+  const itemTypesById = new Map<string, ItemType>();
+  const fieldsByModelId = new Map<string, Map<string, Field>>();
+
+  for (const itemType of itemTypes) {
+    itemTypesById.set(itemType.id, itemType);
+  }
+  for (const field of fields) {
+    const modelId = field.relationships.item_type.data.id;
+    let modelFields = fieldsByModelId.get(modelId);
+    if (!modelFields) {
+      modelFields = new Map();
+      fieldsByModelId.set(modelId, modelFields);
+    }
+    modelFields.set(field.id, field);
+  }
+
+  return { itemTypesById, fieldsByModelId };
+}
+
 function normalizeLimit(value: number | undefined, fallback: number): number {
   const result = value ?? fallback;
 
@@ -267,11 +295,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function capText(value: string, maxCharacters: number): CappedText {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  const characters = Array.from(normalized);
+  const characters: string[] = [];
+  let pendingSpace = false;
+  let truncated = false;
+  for (const character of value) {
+    if (/\s/.test(character)) {
+      pendingSpace = characters.length > 0;
+      continue;
+    }
+    if (pendingSpace) {
+      characters.push(' ');
+      pendingSpace = false;
+    }
+    characters.push(character);
+    if (characters.length > maxCharacters) {
+      truncated = true;
+      break;
+    }
+  }
 
-  if (characters.length <= maxCharacters) {
-    return { value: normalized, truncated: false };
+  if (!truncated) {
+    return { value: characters.join(''), truncated: false };
   }
 
   if (maxCharacters === 0) {
@@ -303,13 +347,21 @@ function compactStringList(value: unknown, limit: number): CompactList | null {
     return null;
   }
 
-  const allValues = value.filter(
-    (entry): entry is string => typeof entry === 'string',
-  );
+  const values: string[] = [];
+  let total = 0;
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    total += 1;
+    if (values.length < limit) {
+      values.push(entry);
+    }
+  }
 
   return {
-    values: allValues.slice(0, limit),
-    omittedCount: Math.max(0, allValues.length - limit),
+    values,
+    omittedCount: total - values.length,
   };
 }
 
@@ -438,12 +490,17 @@ function readEditorOptions(
   }
 
   const parsedOptions: EditorOptionManifest[] = [];
+  let total = 0;
 
   for (const rawOption of rawOptions) {
     if (!isRecord(rawOption) || typeof rawOption.value !== 'string') {
       continue;
     }
 
+    total += 1;
+    if (parsedOptions.length >= options.maxOptionValues) {
+      continue;
+    }
     parsedOptions.push({
       value: rawOption.value,
       ...(typeof rawOption.label === 'string'
@@ -455,11 +512,8 @@ function readEditorOptions(
   }
 
   return {
-    options: parsedOptions.slice(0, options.maxOptionValues),
-    omittedOptionCount: Math.max(
-      0,
-      parsedOptions.length - options.maxOptionValues,
-    ),
+    options: parsedOptions,
+    omittedOptionCount: total - parsedOptions.length,
   };
 }
 
@@ -555,18 +609,19 @@ function buildFieldContextManifest(
   itemTypesById: ReadonlyMap<string, ItemType>,
   roles: readonly PresentationRole[],
   options: NormalizedOptions,
+  includeDetails = true,
 ): FieldContextManifest {
   const validators = field.attributes.validators as Record<string, unknown>;
-  const selectedValidators = extractSelectedValidators(
-    validators,
-    options.maxOptionValues,
-  );
-  const hint = cappedOptionalText(
-    field.attributes.hint,
-    options.maxHintCharacters,
-  );
+  const selectedValidators = includeDetails
+    ? extractSelectedValidators(validators, options.maxOptionValues)
+    : [];
+  const hint = includeDetails
+    ? cappedOptionalText(field.attributes.hint, options.maxHintCharacters)
+    : undefined;
   const targets = extractTargets(validators, itemTypesById);
-  const editor = extractSemanticEditor(field, options);
+  const editor = includeDetails
+    ? extractSemanticEditor(field, options)
+    : undefined;
 
   return {
     id: field.id,
@@ -593,16 +648,21 @@ export function buildModelContextManifest({
   ...rawOptions
 }: BuildModelContextManifestInput): ModelContextManifest {
   const options = normalizeOptions(rawOptions);
-  const itemTypesById = new Map(
-    itemTypes.map((candidate) => [candidate.id, candidate]),
-  );
-  itemTypesById.set(itemType.id, itemType);
+  const source = indexManifestSources(itemTypes, fields);
+  return buildIndexedModelContextManifest(itemType, source, options);
+}
 
-  const fieldsById = new Map(
-    fields
-      .filter((field) => field.relationships.item_type.data.id === itemType.id)
-      .map((field) => [field.id, field]),
-  );
+function buildIndexedModelContextManifest(
+  itemType: ItemType,
+  source: ManifestSourceIndex,
+  options: NormalizedOptions,
+  includeDetails = true,
+): ModelContextManifest {
+  const itemTypesById =
+    source.itemTypesById.get(itemType.id) === itemType
+      ? source.itemTypesById
+      : new Map([...source.itemTypesById, [itemType.id, itemType]]);
+  const fieldsById = source.fieldsByModelId.get(itemType.id) ?? new Map();
   const expectedFieldIds = itemType.relationships.fields.data.map(
     (field) => field.id,
   );
@@ -624,12 +684,12 @@ export function buildModelContextManifest({
         itemTypesById,
         rolesByFieldId.get(field.id) ?? [],
         options,
+        includeDetails,
       ),
     );
-  const hint = cappedOptionalText(
-    itemType.attributes.hint,
-    options.maxHintCharacters,
-  );
+  const hint = includeDetails
+    ? cappedOptionalText(itemType.attributes.hint, options.maxHintCharacters)
+    : undefined;
 
   return {
     id: itemType.id,
@@ -803,22 +863,34 @@ export function renderModelContextManifest(
     .join('\n');
 }
 
-function renderProjectMap(
-  manifests: readonly ModelContextManifest[],
+function renderProjectMapHeader(
+  includedModelCount: number,
   totalModelCount: number,
   sourceIncompleteModelCount: number,
 ): string {
   const complete =
-    manifests.length === totalModelCount && sourceIncompleteModelCount === 0;
-  const header = [
+    includedModelCount === totalModelCount && sourceIncompleteModelCount === 0;
+  return [
     'project_map',
     `complete=${complete}`,
-    `models=${manifests.length}/${totalModelCount}`,
-    `omitted_models=${totalModelCount - manifests.length}`,
+    `models=${includedModelCount}/${totalModelCount}`,
+    `omitted_models=${totalModelCount - includedModelCount}`,
     `source_incomplete_models=${sourceIncompleteModelCount}`,
   ].join('|');
+}
 
-  return [header, ...manifests.map(renderModelContextManifest)].join('\n');
+function incompleteModelApiKeys(
+  itemTypes: readonly ItemType[],
+  source: ManifestSourceIndex,
+): string[] {
+  return itemTypes
+    .filter((itemType) => {
+      const loaded = source.fieldsByModelId.get(itemType.id);
+      return itemType.relationships.fields.data.some(
+        ({ id }) => !loaded?.has(id),
+      );
+    })
+    .map((itemType) => itemType.attributes.api_key);
 }
 
 export function buildStandaloneProjectMap({
@@ -844,39 +916,47 @@ export function buildStandaloneProjectMap({
         Number(right.attributes.modular_block) ||
       left.attributes.api_key.localeCompare(right.attributes.api_key),
   );
-  const manifests = sortedItemTypes.map((itemType) =>
-    buildModelContextManifest({
-      itemType,
-      itemTypes: sortedItemTypes,
-      fields,
-      ...rawOptions,
-    }),
+  const options = normalizeOptions(rawOptions);
+  const source = indexManifestSources(sortedItemTypes, fields);
+  const sourceIncompleteModelApiKeys = incompleteModelApiKeys(
+    sortedItemTypes,
+    source,
   );
-  const sourceIncompleteModelApiKeys = manifests
-    .filter((manifest) => !manifest.fieldsComplete)
-    .map((manifest) => manifest.apiKey);
-  const included: ModelContextManifest[] = [];
-  const omitted: ModelContextManifest[] = [];
+  const included: string[] = [];
+  const omitted: string[] = [];
+  const renderedModels: string[] = [];
+  let renderedModelCharacters = 0;
 
-  for (const manifest of manifests) {
-    const candidate = renderProjectMap(
-      [...included, manifest],
-      manifests.length,
+  for (const itemType of sortedItemTypes) {
+    const renderedModel = renderModelContextManifest(
+      buildIndexedModelContextManifest(itemType, source, options),
+    );
+    const header = renderProjectMapHeader(
+      included.length + 1,
+      sortedItemTypes.length,
       sourceIncompleteModelApiKeys.length,
     );
 
-    if (candidate.length <= maxCharacters) {
-      included.push(manifest);
+    if (
+      header.length + renderedModelCharacters + renderedModel.length + 1 <=
+      maxCharacters
+    ) {
+      included.push(itemType.attributes.api_key);
+      renderedModels.push(renderedModel);
+      renderedModelCharacters += renderedModel.length + 1;
     } else {
-      omitted.push(manifest);
+      omitted.push(itemType.attributes.api_key);
     }
   }
 
-  const text = renderProjectMap(
-    included,
-    manifests.length,
-    sourceIncompleteModelApiKeys.length,
-  );
+  const text = [
+    renderProjectMapHeader(
+      included.length,
+      sortedItemTypes.length,
+      sourceIncompleteModelApiKeys.length,
+    ),
+    ...renderedModels,
+  ].join('\n');
 
   if (text.length > maxCharacters) {
     throw new RangeError(
@@ -889,8 +969,8 @@ export function buildStandaloneProjectMap({
     characterCount: text.length,
     maxCharacters,
     complete: omitted.length === 0 && sourceIncompleteModelApiKeys.length === 0,
-    includedModelApiKeys: included.map((manifest) => manifest.apiKey),
-    omittedModelApiKeys: omitted.map((manifest) => manifest.apiKey),
+    includedModelApiKeys: included,
+    omittedModelApiKeys: omitted,
     sourceIncompleteModelApiKeys,
   };
 }
@@ -969,24 +1049,22 @@ function renderFieldDirectoryModel(manifest: ModelContextManifest): string {
   ].join('|');
 }
 
-function renderFieldDirectory(
-  manifests: readonly ModelContextManifest[],
+function renderFieldDirectoryHeader(
+  includedModelCount: number,
   totalModelCount: number,
   sourceIncompleteModelCount: number,
 ): string {
   const complete =
-    manifests.length === totalModelCount && sourceIncompleteModelCount === 0;
-  const header = [
+    includedModelCount === totalModelCount && sourceIncompleteModelCount === 0;
+  return [
     'field_directory',
     `field_coverage_complete=${complete}`,
-    `models=${manifests.length}/${totalModelCount}`,
-    `omitted_models=${totalModelCount - manifests.length}`,
+    `models=${includedModelCount}/${totalModelCount}`,
+    `omitted_models=${totalModelCount - includedModelCount}`,
     `source_incomplete_models=${sourceIncompleteModelCount}`,
     `relationship_targets=bounded`,
     `max_relationship_targets_per_field=${FIELD_DIRECTORY_TARGET_LIMIT}`,
   ].join('|');
-
-  return [header, ...manifests.map(renderFieldDirectoryModel)].join('\n');
 }
 
 /**
@@ -1019,39 +1097,47 @@ export function buildStandaloneFieldDirectory({
         Number(right.attributes.modular_block) ||
       left.attributes.api_key.localeCompare(right.attributes.api_key),
   );
-  const manifests = sortedItemTypes.map((itemType) =>
-    buildModelContextManifest({
-      itemType,
-      itemTypes: sortedItemTypes,
-      fields,
-      ...rawOptions,
-    }),
+  const options = normalizeOptions(rawOptions);
+  const source = indexManifestSources(sortedItemTypes, fields);
+  const sourceIncompleteModelApiKeys = incompleteModelApiKeys(
+    sortedItemTypes,
+    source,
   );
-  const sourceIncompleteModelApiKeys = manifests
-    .filter((manifest) => !manifest.fieldsComplete)
-    .map((manifest) => manifest.apiKey);
-  const included: ModelContextManifest[] = [];
-  const omitted: ModelContextManifest[] = [];
+  const included: string[] = [];
+  const omitted: string[] = [];
+  const renderedModels: string[] = [];
+  let renderedModelCharacters = 0;
 
-  for (const manifest of manifests) {
-    const candidate = renderFieldDirectory(
-      [...included, manifest],
-      manifests.length,
+  for (const itemType of sortedItemTypes) {
+    const renderedModel = renderFieldDirectoryModel(
+      buildIndexedModelContextManifest(itemType, source, options, false),
+    );
+    const header = renderFieldDirectoryHeader(
+      included.length + 1,
+      sortedItemTypes.length,
       sourceIncompleteModelApiKeys.length,
     );
 
-    if (candidate.length <= maxCharacters) {
-      included.push(manifest);
+    if (
+      header.length + renderedModelCharacters + renderedModel.length + 1 <=
+      maxCharacters
+    ) {
+      included.push(itemType.attributes.api_key);
+      renderedModels.push(renderedModel);
+      renderedModelCharacters += renderedModel.length + 1;
     } else {
-      omitted.push(manifest);
+      omitted.push(itemType.attributes.api_key);
     }
   }
 
-  const text = renderFieldDirectory(
-    included,
-    manifests.length,
-    sourceIncompleteModelApiKeys.length,
-  );
+  const text = [
+    renderFieldDirectoryHeader(
+      included.length,
+      sortedItemTypes.length,
+      sourceIncompleteModelApiKeys.length,
+    ),
+    ...renderedModels,
+  ].join('\n');
 
   if (text.length > maxCharacters) {
     throw new RangeError(
@@ -1064,8 +1150,8 @@ export function buildStandaloneFieldDirectory({
     characterCount: text.length,
     maxCharacters,
     complete: omitted.length === 0 && sourceIncompleteModelApiKeys.length === 0,
-    includedModelApiKeys: included.map((manifest) => manifest.apiKey),
-    omittedModelApiKeys: omitted.map((manifest) => manifest.apiKey),
+    includedModelApiKeys: included,
+    omittedModelApiKeys: omitted,
     sourceIncompleteModelApiKeys,
   };
 }

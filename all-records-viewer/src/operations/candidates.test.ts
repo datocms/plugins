@@ -241,7 +241,7 @@ describe('evaluateSelection', () => {
     expect(result.itemIds).toEqual(['unknown-item']);
   });
 
-  it('disables the operation instead of partially submitting over 200 records', () => {
+  it('keeps every eligible ID when selection exceeds one API batch', () => {
     const article = model('article');
     const items = Array.from({ length: MAX_BULK_ITEMS + 5 }, (_, index) =>
       item(`item-${index}`, article.id),
@@ -256,10 +256,10 @@ describe('evaluateSelection', () => {
     expect(result).toMatchObject({
       selectedCount: 205,
       eligibleCount: 205,
-      submittedCount: 0,
-      overflowCount: 5,
-      itemIds: [],
-      disabledReason: 'Bulk actions support at most 200 records.',
+      submittedCount: 205,
+      overflowCount: 0,
+      itemIds: items.map((entry) => entry.id),
+      disabledReason: null,
     });
   });
 

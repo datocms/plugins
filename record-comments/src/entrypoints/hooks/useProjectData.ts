@@ -1,4 +1,8 @@
-import { loadAllFields } from '@utils/fieldLoader';
+import {
+  type FieldLoadCache,
+  getFieldValuesMetadataKey,
+  loadAllFields,
+} from '@utils/fieldLoader';
 import { getValidItemTypes } from '@utils/itemTypeUtils';
 import type { TypedUserInfo } from '@utils/userDisplayResolver';
 import {
@@ -57,28 +61,48 @@ export function useProjectData(
 
   const itemTypeId = ctx.itemType.id;
   const siteId = ctx.site.id;
+  const recordId = ctx.item?.id ?? null;
+  const fieldCache = useMemo<FieldLoadCache>(
+    () => new Map(),
+    [siteId, ctx.environment, itemTypeId],
+  );
   const localesStableKey = useMemo(
     () => ctx.site.attributes.locales.join(','),
     [ctx.site.attributes.locales],
   );
+  const fieldValuesMetadataKey = loadFields
+    ? getFieldValuesMetadataKey(ctx.formValues)
+    : '';
   const loadFieldsAsync = useCallback(async () => {
-    return loadAllFields(ctx);
-  }, [ctx]);
+    return loadAllFields(ctx, fieldCache);
+  }, [ctx, fieldCache]);
 
   const {
     data: modelFields,
     isLoading: isLoadingFields,
     error: fieldError,
-    retry: retryFields,
+    retry: retryFieldsOperation,
   } = useAsyncOperation(
     loadFieldsAsync,
-    [itemTypeId, fieldsRequestKey, localesStableKey],
+    [
+      siteId,
+      ctx.environment,
+      itemTypeId,
+      recordId,
+      fieldsRequestKey,
+      localesStableKey,
+      fieldValuesMetadataKey,
+    ],
     {
       enabled: loadFields,
       operationName: 'load fields',
       errorContext: { itemTypeId },
     },
   );
+  const retryFields = useCallback(() => {
+    fieldCache.clear();
+    retryFieldsOperation();
+  }, [fieldCache, retryFieldsOperation]);
 
   const buildTypedUsersFromRaw = useCallback(
     (

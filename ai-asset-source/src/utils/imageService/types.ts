@@ -84,6 +84,7 @@ export type NormalizedGenerationBatch = {
   createdAt: string;
   request: ImageOperationRequest;
   images: NormalizedGenerationImage[];
+  warnings?: string[];
 };
 
 export type NormalizedProviderError = {
@@ -92,6 +93,7 @@ export type NormalizedProviderError = {
 
 export type ImageServiceOptions = {
   signal?: AbortSignal;
+  fetch?: typeof fetch;
 };
 
 export type ImageProviderAdapter = {

@@ -74,9 +74,12 @@ import { type AgentSystemContext, buildSystemPrompt } from './systemPrompt';
 
 export const DEFAULT_AGENT_MODEL = 'gpt-5.6-terra' as const;
 export const DEFAULT_ANTHROPIC_AGENT_MODEL = 'claude-sonnet-4-6' as const;
-export const DEFAULT_MAX_CONTINUATIONS = 20;
-export const MAX_MAX_CONTINUATIONS = 20;
+export const DEFAULT_MAX_CONTINUATIONS = 100;
+export const MAX_MAX_CONTINUATIONS = 100;
 export const DEFAULT_MAX_TOOL_CALLS = 20;
+export const MAX_AGENT_TOOL_CALLS_PER_TURN = 200;
+export const MAX_AGENT_REQUEST_CHARACTERS = 600_000;
+export const MAX_TOOL_RESULT_CHARACTERS = 60_000;
 export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 16_000;
 export const DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
 export const MAX_AGENT_HISTORY_CHARACTERS = 120_000;
@@ -1539,6 +1542,8 @@ function ambiguousOutcomesFromOpenAiMcpCall(
   );
 }
 
+class AgentContextLimitError extends Error {}
+
 class AgentAbortError extends Error {
   override name = 'AbortError';
 }
@@ -2883,6 +2888,13 @@ function runtimeFailure(
       retryable: false,
     };
   }
+  if (providerCause instanceof AgentContextLimitError) {
+    return {
+      code: 'incomplete',
+      message: providerCause.message,
+      retryable: false,
+    };
+  }
   if (cause instanceof ProviderRequestFailure) {
     return classifyProviderFailure(cause.provider, providerCause);
   }
@@ -3838,7 +3850,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
   ): ResponseCreateParamsStreaming {
     const remainingToolCalls = Math.max(
       0,
-      DEFAULT_MAX_TOOL_CALLS - (state?.toolCallCount ?? 0),
+      MAX_AGENT_TOOL_CALLS_PER_TURN - (state?.toolCallCount ?? 0),
     );
     const approvalExecutionCredits = state?.approvalExecutionCredits ?? 0;
     const toolBudgetExhausted =
@@ -3864,7 +3876,11 @@ export class AgentRuntime implements AgentRuntimeHandle {
       // them, but the Responses API still needs capacity to execute them.
       max_tool_calls: Math.max(
         1,
-        remainingToolCalls + approvalExecutionCredits,
+        approvalExecutionCredits,
+        Math.min(
+          DEFAULT_MAX_TOOL_CALLS,
+          remainingToolCalls + approvalExecutionCredits,
+        ),
       ),
       stream: true,
       store: true,
@@ -4037,12 +4053,12 @@ export class AgentRuntime implements AgentRuntimeHandle {
           return result;
         }
 
-        if (state.toolCallCount > DEFAULT_MAX_TOOL_CALLS) {
+        if (state.toolCallCount > MAX_AGENT_TOOL_CALLS_PER_TURN) {
           const error: AgentRuntimeError = {
             code: 'continuation_limit',
             message:
-              'The agent stopped after too many tool calls. Try a more focused request.',
-            retryable: true,
+              'The agent reached its safety limit for automatic tool calls. The operation is incomplete; completed DatoCMS changes are not rolled back. Verify the reported counts before any further changes.',
+            retryable: false,
           };
           const result: AgentTurnResult = {
             status: 'failed',
@@ -4218,8 +4234,8 @@ export class AgentRuntime implements AgentRuntimeHandle {
       const error: AgentRuntimeError = {
         code: 'continuation_limit',
         message:
-          'The agent stopped after too many consecutive tool steps. Try a more focused request.',
-        retryable: true,
+          'The agent reached its safety limit for automatic tool steps. The operation is incomplete; completed DatoCMS changes are not rolled back. Verify its reported counts before any further changes.',
+        retryable: false,
       };
       const result: AgentTurnResult = {
         status: 'failed',
@@ -4241,7 +4257,11 @@ export class AgentRuntime implements AgentRuntimeHandle {
       const error = runtimeFailure('openai', cause, signal);
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
-        status: aborted ? 'aborted' : 'failed',
+        status: aborted
+          ? 'aborted'
+          : error.code === 'incomplete' && !error.retryable
+            ? 'incomplete'
+            : 'failed',
         ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
         text: state.accumulatedText,
         approvals: [],
@@ -4841,12 +4861,62 @@ interface AnthropicLoopState {
   lastResponseId?: string;
   loadedModelSchemaIdentifiers: Set<string>;
   toolCallCount: number;
-  toolResultCharacters: number;
   confirmedApprovalIds: string[];
   approvalOutcomes: AgentApprovalOutcome[];
   viewedProtectedRepairScript: boolean;
   failedRepairCallIdentities: Set<string>;
   repairPolicy?: AgentRepairPolicy;
+}
+
+function anthropicToolResultCharacters(
+  messages: readonly MessageParam[],
+): number {
+  let characters = 0;
+  for (const message of messages) {
+    if (message.role !== 'user' || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (const block of message.content) {
+      if (block.type === 'tool_result' && typeof block.content === 'string') {
+        characters += block.content.length;
+      }
+    }
+  }
+  return characters;
+}
+
+/** Preserve tool IDs, message order and signed assistant blocks verbatim. */
+function boundAnthropicToolResultHistory(state: AnthropicLoopState): void {
+  let characters = anthropicToolResultCharacters(state.messages);
+  if (characters <= MAX_TOOL_RESULT_CHARACTERS_PER_TURN) {
+    return;
+  }
+
+  const omitted =
+    '[INCOMPLETE: earlier tool output omitted from model context to keep this continuous execution bounded. This is not an empty result or a complete target set. Use the latest verified counts/cursor, or read a compact summary before acting on earlier data.]';
+  for (let index = 0; index < state.messages.length; index += 1) {
+    const message = state.messages[index];
+    if (message.role !== 'user' || !Array.isArray(message.content)) {
+      continue;
+    }
+    const content = message.content.map((block) => {
+      if (
+        characters <= MAX_TOOL_RESULT_CHARACTERS_PER_TURN ||
+        block.type !== 'tool_result' ||
+        typeof block.content !== 'string' ||
+        block.content.length <= omitted.length
+      ) {
+        return block;
+      }
+      characters -= block.content.length - omitted.length;
+      return { ...block, content: omitted, is_error: true };
+    });
+    // Never mutate previously dispatched request objects retained by a proxy.
+    state.messages[index] = { ...message, content };
+    if (characters <= MAX_TOOL_RESULT_CHARACTERS_PER_TURN) {
+      break;
+    }
+  }
 }
 
 interface PendingAnthropicApprovalCall {
@@ -5428,7 +5498,6 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
           nextContinuation: 0,
           loadedModelSchemaIdentifiers: new Set(),
           toolCallCount: 0,
-          toolResultCharacters: 0,
           confirmedApprovalIds: [],
           approvalOutcomes: [],
           viewedProtectedRepairScript: false,
@@ -5855,7 +5924,11 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       const error = runtimeFailure('anthropic', cause, args.signal);
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
-        status: aborted ? 'aborted' : 'failed',
+        status: aborted
+          ? 'aborted'
+          : error.code === 'incomplete' && !error.retryable
+            ? 'incomplete'
+            : 'failed',
         responseId,
         text: state.accumulatedText,
         approvals: [],
@@ -5915,6 +5988,17 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     state: AnthropicLoopState,
     tools: AnthropicTool[],
   ): AgentAnthropicMessageCreateParamsStreaming {
+    boundAnthropicToolResultHistory(state);
+    if (
+      JSON.stringify(state.messages).length +
+        state.system.length +
+        JSON.stringify(tools).length >
+      MAX_AGENT_REQUEST_CHARACTERS
+    ) {
+      throw new AgentContextLimitError(
+        'The agent reached its model-context safety limit. The operation is incomplete; completed changes are not rolled back. Raw tool outputs were compacted, but signed reasoning and reviewed calls cannot be safely discarded.',
+      );
+    }
     const betas = [
       ...(state.usesFiles ? [ANTHROPIC_FILES_API_BETA] : []),
       ...(this.fastMode ? [ANTHROPIC_FAST_MODE_BETA] : []),
@@ -6118,9 +6202,9 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         }
 
         state.toolCallCount += summary.toolUses.length;
-        if (state.toolCallCount > DEFAULT_MAX_TOOL_CALLS) {
+        if (state.toolCallCount > MAX_AGENT_TOOL_CALLS_PER_TURN) {
           const error = this.continuationLimitError(
-            'The agent stopped after too many tool calls. Try a more focused request.',
+            'The agent reached its safety limit for automatic tool calls. The operation is incomplete; completed DatoCMS changes are not rolled back. Verify the reported counts before any further changes.',
           );
           const result: AgentTurnResult = {
             status: 'failed',
@@ -6337,7 +6421,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       }
 
       const error = this.continuationLimitError(
-        'The agent stopped after too many consecutive tool steps. Try a more focused request.',
+        'The agent reached its safety limit for automatic tool steps. The operation is incomplete; completed DatoCMS changes are not rolled back. Verify its reported counts before any further changes.',
       );
       const result: AgentTurnResult = {
         status: 'failed',
@@ -6359,7 +6443,11 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       const error = runtimeFailure('anthropic', cause, signal);
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
-        status: aborted ? 'aborted' : 'failed',
+        status: aborted
+          ? 'aborted'
+          : error.code === 'incomplete' && !error.retryable
+            ? 'incomplete'
+            : 'failed',
         ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
         text: state.accumulatedText,
         approvals: [],
@@ -6567,31 +6655,23 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   }
 
   private toolResult(
-    state: AnthropicLoopState,
+    _state: AnthropicLoopState,
     toolUseId: string,
     content: string,
     isError: boolean,
   ): ToolResultBlockParam {
-    const remaining = Math.max(
-      0,
-      MAX_TOOL_RESULT_CHARACTERS_PER_TURN - state.toolResultCharacters,
-    );
-    const marker = '\n… [tool result truncated]';
+    const marker =
+      '\n… [tool result truncated] INCOMPLETE: this output is not a complete result or target set. Request a compact summary/count/cursor before relying on it.';
     const bounded =
-      remaining === 0
-        ? ''
-        : content.length <= remaining
-          ? content
-          : remaining > marker.length
-            ? `${content.slice(0, remaining - marker.length)}${marker}`
-            : marker.slice(-remaining);
-    state.toolResultCharacters += bounded.length;
+      content.length <= MAX_TOOL_RESULT_CHARACTERS
+        ? content
+        : `${content.slice(0, MAX_TOOL_RESULT_CHARACTERS - marker.length)}${marker}`;
 
     return {
       type: 'tool_result',
       tool_use_id: toolUseId,
       content: bounded,
-      is_error: isError,
+      is_error: isError || bounded !== content,
     };
   }
 
@@ -6623,7 +6703,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     return {
       code: 'continuation_limit',
       message,
-      retryable: true,
+      retryable: false,
     };
   }
 

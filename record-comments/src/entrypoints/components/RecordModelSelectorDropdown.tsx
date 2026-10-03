@@ -37,7 +37,7 @@ const RecordModelSelectorDropdown = ({
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, []);
+  }, [filteredModels]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -50,6 +50,8 @@ const RecordModelSelectorDropdown = ({
       : 'No models available';
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const selectedModel = filteredModels[selectedIndex];
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -65,15 +67,15 @@ const RecordModelSelectorDropdown = ({
 
       case 'Enter':
         e.preventDefault();
-        if (filteredModels.length > 0) {
-          onSelect(filteredModels[selectedIndex]);
+        if (selectedModel) {
+          onSelect(selectedModel);
         }
         break;
 
       case 'Tab':
         e.preventDefault();
-        if (filteredModels.length > 0) {
-          onSelect(filteredModels[selectedIndex]);
+        if (selectedModel) {
+          onSelect(selectedModel);
         }
         break;
 

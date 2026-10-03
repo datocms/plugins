@@ -20,15 +20,17 @@ import type {
   TableRecord,
 } from '../components/types';
 import { useColumnSettings } from '../components/useColumnSettings';
-import { WORKFLOW_STAGE_MODAL_ID } from '../constants';
+import { MAX_BULK_ITEMS, WORKFLOW_STAGE_MODAL_ID } from '../constants';
 import { buildCmaClient } from '../data/cma';
+import { collectSelection } from '../data/collectSelection';
+import { loadItemsById, loadUploadsById, mapBounded } from '../data/loadById';
 import { getRegularModels } from '../data/models';
 import {
   previewOrderingField,
   serverOrderBy,
   sortableColumnIds,
 } from '../data/ordering';
-import { DEFAULT_ORDER_BY } from '../data/query';
+import { DEFAULT_ORDER_BY, throwIfItemsRequestAborted } from '../data/query';
 import {
   availableMoveDestinationIds,
   evaluateMoveSelection,
@@ -39,6 +41,8 @@ import { executeBulkOperation } from '../operations/execute';
 import { identityKey } from '../operations/permissions';
 import { bulkErrorMessage, bulkResultMessage } from '../operations/results';
 import type {
+  BulkOperationProgress,
+  BulkOperationRequest,
   BulkOperationResult,
   SelectionAction as BulkSelectionAction,
   MoveSelectionContext,
@@ -48,7 +52,6 @@ import type {
 } from '../operations/types';
 import type { RawField } from '../presentation/fields';
 import { formatDate } from '../presentation/formatters';
-import type { Upload } from '../presentation/previews';
 import { createPresentationResolver } from '../presentation/resolver';
 import {
   getItemStatus,
@@ -63,6 +66,7 @@ import {
   updateQueryState,
 } from '../state/queryState';
 import {
+  compactSelectedItem,
   invertPageSelection,
   retainSelectionForModels,
   setPageSelection,
@@ -71,6 +75,7 @@ import { useDebouncedValue } from '../state/useDebouncedValue';
 import { useItemsPage } from '../state/useItemsPage';
 import { useModelFields } from '../state/useModelFields';
 import { usePresentations } from '../state/usePresentations';
+import { useSelectedItemsPage } from '../state/useSelectedItemsPage';
 import type { ModelSummary, QueryState, RawItem, RawItemType } from '../types';
 import styles from './AllRecordsPage.module.css';
 
@@ -87,52 +92,6 @@ const STATUS_FILTER_OPTIONS = [
 
 function isDefined<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined;
-}
-
-function chunks<T>(values: readonly T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    result.push(values.slice(index, index + size));
-  }
-  return result;
-}
-
-async function loadItemsById(
-  client: Client,
-  ids: readonly string[],
-): Promise<RawItem[]> {
-  const uniqueIds = [...new Set(ids)].filter(Boolean);
-  const responses = await Promise.all(
-    chunks(uniqueIds, 200).map((batch) =>
-      client.items.rawList({
-        nested: false,
-        version: 'current',
-        filter: { ids: batch.join(',') },
-        page: { limit: batch.length, offset: 0 },
-      }),
-    ),
-  );
-
-  return responses.flatMap((response) => response.data);
-}
-
-async function loadUploadsById(
-  client: Client,
-  ids: readonly string[],
-): Promise<Upload[]> {
-  const uniqueIds = [...new Set(ids)].filter(Boolean);
-  const responses = await Promise.all(
-    chunks(uniqueIds, 200).map((batch) =>
-      // The simple method, not `rawList`: it normalizes
-      // `default_field_metadata` to the field-keyed shape on every environment.
-      client.uploads.list({
-        filter: { ids: batch.join(',') },
-        page: { limit: batch.length, offset: 0 },
-      }),
-    ),
-  );
-
-  return responses.flat();
 }
 
 function itemDate(value: unknown, locale: string, timeZone: string): string {
@@ -309,16 +268,6 @@ function useOrderingState(args: {
   };
 }
 
-function recordsToDisplay(args: {
-  showingSelected: boolean;
-  selectedItems: readonly RawItem[];
-  pageItems: readonly RawItem[];
-}): readonly RawItem[] {
-  return args.showingSelected && args.selectedItems.length > 0
-    ? args.selectedItems
-    : args.pageItems;
-}
-
 function evaluatedSelectionBarAction(
   evaluation: SelectionEvaluation,
   onClick: () => void | Promise<void>,
@@ -367,7 +316,7 @@ function reportBulkResult(
   result: BulkOperationResult,
 ): void {
   const message = bulkResultMessage(result);
-  if (result.failed > 0) {
+  if (result.failed > 0 || result.uncertain || result.unprocessed) {
     ctx.alert(message);
   } else {
     ctx.notice(message);
@@ -380,10 +329,12 @@ async function chooseMoveDestination(args: {
   moveContext: EnabledMoveContext;
   selectionInput: SelectionInput;
   selectedCount: number;
+  signal?: AbortSignal;
 }): Promise<MoveDestination | null> {
   const workflow = await args.client.workflows.find(
     args.moveContext.workflowId,
   );
+  if (args.signal?.aborted) return null;
   const allowedIds = new Set(
     availableMoveDestinationIds({
       ...args.selectionInput,
@@ -420,6 +371,156 @@ async function chooseMoveDestination(args: {
   return { id: destination.id, name: destination.name };
 }
 
+async function confirmSelectionAction(
+  ctx: RenderPageCtx,
+  action: BulkSelectionAction,
+  evaluation: SelectionEvaluation,
+): Promise<boolean> {
+  const label = operationLabel(action);
+  return Boolean(
+    await ctx.openConfirm({
+      title: `${label} selected records`,
+      content: confirmationContent(action, evaluation),
+      choices: [
+        {
+          label,
+          value: true,
+          intent: action === 'delete' ? 'negative' : 'positive',
+        },
+      ],
+      cancel: { label: 'Cancel', value: false },
+    }),
+  );
+}
+
+async function prepareMoveOperation(args: {
+  ctx: RenderPageCtx;
+  client: Client;
+  moveContext: EnabledMoveContext;
+  selectionInput: SelectionInput;
+  signal?: AbortSignal;
+}): Promise<BulkOperationRequest | null> {
+  const destination = await chooseMoveDestination({
+    ...args,
+    selectedCount: args.selectionInput.items.length,
+  });
+  if (!destination || args.signal?.aborted) return null;
+  const evaluation = evaluateMoveSelection({
+    ...args.selectionInput,
+    destinationStageId: destination.id,
+  });
+  if (evaluation.disabledReason) {
+    args.ctx.alert(evaluation.disabledReason);
+    return null;
+  }
+  const confirmed = await args.ctx.openConfirm({
+    title: `Move selected records to ${destination.name}`,
+    content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
+    choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
+    cancel: { label: 'Cancel', value: false },
+  });
+  return confirmed
+    ? {
+        operation: 'move_to_stage',
+        itemIds: evaluation.itemIds,
+        stage: destination.id,
+      }
+    : null;
+}
+
+function selectionScaleProps(args: {
+  showingSelected: boolean;
+  total: number;
+  perPage: number;
+  selectedCount: number;
+  selectionBelongsToCurrentFilter: boolean;
+  selectAll: () => Promise<void>;
+  collectionProgress: string | null;
+  bulkProgress: BulkOperationProgress | null;
+  cancel: () => void;
+}) {
+  return {
+    onSelectAllMatching:
+      !args.showingSelected &&
+      args.total > args.perPage &&
+      (!args.selectionBelongsToCurrentFilter || args.selectedCount < args.total)
+        ? args.selectAll
+        : undefined,
+    progressText:
+      args.collectionProgress ??
+      (args.bulkProgress
+        ? `${args.bulkProgress.completed} of ${args.bulkProgress.requested} processed; ${args.bulkProgress.successful} succeeded; ${args.bulkProgress.failed} failed`
+        : undefined),
+    onCancel:
+      args.collectionProgress || args.bulkProgress ? args.cancel : undefined,
+  };
+}
+
+function displayPage<T>(showingSelected: boolean, selected: T, page: T): T {
+  return showingSelected ? selected : page;
+}
+
+function synchronizeSelection(
+  selected: ReadonlyMap<string, RawItem>,
+  currentItems: readonly RawItem[],
+): ReadonlyMap<string, RawItem> {
+  let next: Map<string, RawItem> | undefined;
+  for (const item of currentItems) {
+    const previous = selected.get(item.id);
+    if (!previous) continue;
+    const current = compactSelectedItem(item);
+    if (
+      JSON.stringify(previous.meta) === JSON.stringify(current.meta) &&
+      JSON.stringify(previous.relationships) ===
+        JSON.stringify(current.relationships)
+    ) {
+      continue;
+    }
+    next ??= new Map(selected);
+    next.set(item.id, current);
+  }
+  return next ?? selected;
+}
+
+async function loadCurrentSelection(
+  client: Client,
+  selected: readonly RawItem[],
+  {
+    omitMissing = false,
+    signal,
+  }: { omitMissing?: boolean; signal?: AbortSignal } = {},
+): Promise<RawItem[]> {
+  const batches: string[][] = [];
+  for (let offset = 0; offset < selected.length; offset += 100) {
+    batches.push(selected.slice(offset, offset + 100).map((item) => item.id));
+  }
+  const loaded = (
+    await mapBounded(batches, async (ids) => {
+      throwIfItemsRequestAborted(signal);
+      const items = await loadItemsById(client, ids);
+      throwIfItemsRequestAborted(signal);
+      // Discard large fields per batch rather than aggregating full records.
+      return items.map(compactSelectedItem);
+    })
+  ).flat();
+  const byId = new Map(loaded.map((item) => [item.id, item]));
+  const missingMessage =
+    'Some selected records no longer exist or cannot be read. Refresh the view and select the records again.';
+  const selectedIds = new Set(selected.map((item) => item.id));
+  if (
+    [...byId.keys()].some((id) => !selectedIds.has(id)) ||
+    (!omitMissing && byId.size !== selected.length)
+  ) {
+    throw new Error(missingMessage);
+  }
+  return selected.flatMap((item) => {
+    const current = byId.get(item.id);
+    if (!current && omitMissing) return [];
+    if (!current) throw new Error(missingMessage);
+    return [current];
+  });
+}
+
 export default function AllRecordsPage({ ctx }: Props) {
   const queryState = useMemo(
     () => parseQueryState(ctx.location.search),
@@ -431,9 +532,24 @@ export default function AllRecordsPage({ ctx }: Props) {
   const [selectedById, setSelectedById] = useState<
     ReadonlyMap<string, RawItem>
   >(new Map());
+  const selectionFilterScope = useRef<string | null>(null);
+  const matchingFilterScope = JSON.stringify([
+    queryState.model,
+    queryState.status,
+    queryState.query,
+  ]);
   const [showingSelected, setShowingSelected] = useState(false);
   const [busyAction, setBusyAction] = useState<SelectionActionId | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [selectionPage, setSelectionPage] = useState(0);
+  const [collectingSelection, setCollectingSelection] = useState(false);
+  const [collectionProgress, setCollectionProgress] = useState<string | null>(
+    null,
+  );
+  const [bulkProgress, setBulkProgress] =
+    useState<BulkOperationProgress | null>(null);
+  const actionController = useRef<AbortController | null>(null);
+  const actionLocked = useRef(false);
 
   const updateLocation = useCallback(
     (patch: Partial<QueryState>) => {
@@ -518,8 +634,21 @@ export default function AllRecordsPage({ ctx }: Props) {
   const selectionScope = `${ctx.site.id}:${ctx.environment}:${ctx.currentUser.type}:${ctx.currentUser.id}`;
   useLayoutEffect(() => {
     void selectionScope;
+    actionController.current?.abort();
+    actionController.current = null;
+    actionLocked.current = false;
+    setBusyAction(null);
+    setCollectingSelection(false);
+    setCollectionProgress(null);
+    setBulkProgress(null);
+    selectionFilterScope.current = null;
     setSelectedById(new Map());
     setShowingSelected(false);
+    setSelectionPage(0);
+    return () => {
+      actionController.current?.abort();
+      actionController.current = null;
+    };
   }, [selectionScope]);
 
   useEffect(() => {
@@ -567,6 +696,8 @@ export default function AllRecordsPage({ ctx }: Props) {
   ]);
 
   const presentationResolver = useMemo(() => {
+    // A record refresh must also reload cached references and upload previews.
+    void refreshVersion;
     if (!client) {
       return null;
     }
@@ -580,8 +711,8 @@ export default function AllRecordsPage({ ctx }: Props) {
       googleMapsApiToken:
         ctx.site.attributes.google_maps_api_token ?? undefined,
       loadFields: async (itemTypeIds): Promise<RawField[]> => {
-        const fields = await Promise.all(
-          itemTypeIds.map((itemTypeId) => ctx.loadItemTypeFields(itemTypeId)),
+        const fields = await mapBounded(itemTypeIds, (itemTypeId) =>
+          ctx.loadItemTypeFields(itemTypeId),
         );
         return fields.flat() as RawField[];
       },
@@ -596,17 +727,65 @@ export default function AllRecordsPage({ ctx }: Props) {
     ctx.site.attributes.locales,
     ctx.site.attributes.timezone,
     itemTypes,
+    refreshVersion,
   ]);
 
   const selectedItems = useMemo(
     () => [...selectedById.values()],
     [selectedById],
   );
-  const displayItems = recordsToDisplay({
+  const selectedPage = useMemo(
+    () =>
+      selectedItems.slice(
+        selectionPage * queryState.perPage,
+        (selectionPage + 1) * queryState.perPage,
+      ),
+    [selectedItems, selectionPage, queryState.perPage],
+  );
+  const selectedItemsPage = useSelectedItemsPage(
+    client,
+    selectedPage,
     showingSelected,
-    selectedItems,
-    pageItems: itemsPage.items,
-  });
+    refreshVersion,
+  );
+  useEffect(() => {
+    if (itemsPage.loaded) {
+      setSelectedById((current) =>
+        synchronizeSelection(current, itemsPage.items),
+      );
+    }
+  }, [itemsPage.items, itemsPage.loaded]);
+  useEffect(() => {
+    if (!selectedItemsPage.loading && !selectedItemsPage.error) {
+      setSelectedById((current) =>
+        synchronizeSelection(current, selectedItemsPage.items),
+      );
+    }
+  }, [
+    selectedItemsPage.items,
+    selectedItemsPage.loading,
+    selectedItemsPage.error,
+  ]);
+  const displayItems = displayPage(
+    showingSelected,
+    selectedItemsPage.items,
+    itemsPage.items,
+  );
+  const displayLoading = displayPage(
+    showingSelected,
+    selectedItemsPage.loading,
+    itemsPage.loading,
+  );
+  const displayError = displayPage(
+    showingSelected,
+    selectedItemsPage.error,
+    itemsPage.error,
+  );
+  useEffect(() => {
+    setSelectionPage((page) =>
+      clampPage(page, selectedItems.length, queryState.perPage),
+    );
+  }, [selectedItems.length, queryState.perPage]);
   const presentations = usePresentations(presentationResolver, displayItems);
 
   useEffect(() => {
@@ -715,129 +894,259 @@ export default function AllRecordsPage({ ctx }: Props) {
   );
 
   function clearSelection(): void {
+    selectionFilterScope.current = null;
     setSelectedById(new Map());
     setShowingSelected(false);
+    setSelectionPage(0);
+  }
+
+  function noteSelectionFilter(): void {
+    if (selectedById.size === 0) {
+      selectionFilterScope.current = matchingFilterScope;
+    } else if (selectionFilterScope.current !== matchingFilterScope) {
+      selectionFilterScope.current = null;
+    }
   }
 
   function refresh(): void {
     setRefreshVersion((value) => value + 1);
   }
 
+  function beginAction(action?: SelectionActionId): AbortController | null {
+    if (actionLocked.current) return null;
+    actionLocked.current = true;
+    const controller = new AbortController();
+    actionController.current = controller;
+    if (action) setBusyAction(action);
+    return controller;
+  }
+
+  function finishAction(controller: AbortController): void {
+    if (actionController.current !== controller) return;
+    actionController.current = null;
+    actionLocked.current = false;
+    setBusyAction(null);
+    setCollectingSelection(false);
+    setCollectionProgress(null);
+    setBulkProgress(null);
+  }
+
+  function isActive(controller: AbortController): boolean {
+    return (
+      actionController.current === controller && !controller.signal.aborted
+    );
+  }
+
+  function reportActionError(
+    controller: AbortController,
+    message: string,
+  ): void {
+    if (actionController.current !== controller) return;
+    ctx.alert(message);
+    refresh();
+  }
+
+  function selectionLoadError(
+    controller: AbortController,
+    error: unknown,
+  ): void {
+    if (!isActive(controller)) return;
+    reportActionError(
+      controller,
+      error instanceof Error
+        ? error.message
+        : 'Could not select matching records.',
+    );
+  }
+
+  async function selectAllMatching(): Promise<void> {
+    if (!client) return;
+    const controller = beginAction();
+    if (!controller) return;
+    setCollectingSelection(true);
+    setCollectionProgress('Selecting matching records…');
+    try {
+      const selection = await collectSelection(client, queryState, {
+        signal: controller.signal,
+        modelIds: models.map((model) => model.id),
+        onProgress: (count, total) => {
+          if (actionController.current === controller) {
+            setCollectionProgress(`Selecting ${count} of ${total} records…`);
+          }
+        },
+      });
+      if (isActive(controller)) {
+        selectionFilterScope.current = matchingFilterScope;
+        setSelectedById(selection);
+        setSelectionPage(0);
+      }
+    } catch (error) {
+      selectionLoadError(controller, error);
+    } finally {
+      finishAction(controller);
+    }
+  }
+
+  function operationProgress(controller: AbortController, count: number) {
+    return count > MAX_BULK_ITEMS
+      ? (progress: BulkOperationProgress) => {
+          if (actionController.current === controller)
+            setBulkProgress(progress);
+        }
+      : undefined;
+  }
+
+  async function selectionForAction(
+    controller: AbortController,
+  ): Promise<SelectionInput | null> {
+    if (!client) return null;
+    const items = await loadCurrentSelection(client, selectedItems, {
+      signal: controller.signal,
+    });
+    if (!isActive(controller)) return null;
+    setSelectedById(new Map(items.map((item) => [item.id, item])));
+    return { items, modelsById, permissions };
+  }
+
+  async function applyBulkResult(
+    controller: AbortController,
+    currentSelection: SelectionInput,
+    result: BulkOperationResult,
+    submittedIds: readonly string[],
+  ): Promise<void> {
+    if (actionController.current !== controller) return;
+    reportBulkResult(ctx, result);
+    const retained = new Set(result.remainingItemIds);
+    const submitted = new Set(submittedIds);
+    const remaining = currentSelection.items.filter(
+      (item) => !submitted.has(item.id) || retained.has(item.id),
+    );
+    selectionFilterScope.current = null;
+    setSelectedById(new Map(remaining.map((item) => [item.id, item])));
+    setShowingSelected(false);
+    refresh();
+    if (!client || remaining.length === 0) return;
+    try {
+      // A partially successful batch retains all its IDs; refresh their stages
+      // and creator scopes before making the selection available again.
+      const items = await loadCurrentSelection(client, remaining, {
+        // A partial delete may have removed IDs that its count-only result
+        // could not identify. The current read reconciles those missing IDs.
+        omitMissing: result.operation === 'delete',
+        signal: controller.signal,
+      });
+      if (actionController.current === controller) {
+        setSelectedById(new Map(items.map((item) => [item.id, item])));
+      }
+    } catch (error) {
+      if (!isActive(controller)) return;
+      ctx.alert(
+        `The action finished, but the remaining selection could not be refreshed: ${
+          error instanceof Error ? error.message : 'The request failed.'
+        }`,
+      );
+    }
+  }
+
   async function runSelectionAction(
     action: BulkSelectionAction,
-    evaluation: SelectionEvaluation,
   ): Promise<void> {
-    if (!client || evaluation.disabledReason) {
+    if (!client) {
       ctx.alert(
-        evaluation.disabledReason ??
-          'This action requires the current user access token permission.',
+        'This action requires the current user access token permission.',
       );
       return;
     }
-
-    const label = operationLabel(action);
-    const confirmed = await ctx.openConfirm({
-      title: `${label} selected records`,
-      content: confirmationContent(action, evaluation),
-      choices: [
-        {
-          label,
-          value: true,
-          intent: action === 'delete' ? 'negative' : 'positive',
-        },
-      ],
-      cancel: { label: 'Cancel', value: false },
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
-    setBusyAction(action);
-    setShowingSelected(false);
+    const controller = beginAction(action);
+    if (!controller) return;
     try {
-      const result = await executeBulkOperation(client, {
-        operation: action,
-        itemIds: evaluation.itemIds,
-      });
-      reportBulkResult(ctx, result);
-      clearSelection();
-      refresh();
+      const currentSelection = await selectionForAction(controller);
+      if (!currentSelection) return;
+      const evaluation = evaluateSelection({ ...currentSelection, action });
+      if (evaluation.disabledReason) {
+        reportActionError(controller, evaluation.disabledReason);
+        return;
+      }
+      const confirmed = await confirmSelectionAction(ctx, action, evaluation);
+      if (!confirmed || controller.signal.aborted) return;
+      setShowingSelected(false);
+      const result = await executeBulkOperation(
+        client,
+        {
+          operation: action,
+          itemIds: evaluation.itemIds,
+        },
+        {
+          signal: controller.signal,
+          onProgress: operationProgress(controller, evaluation.itemIds.length),
+        },
+      );
+      await applyBulkResult(
+        controller,
+        currentSelection,
+        result,
+        evaluation.itemIds,
+      );
     } catch (error) {
-      ctx.alert(bulkErrorMessage(action, error));
-      refresh();
+      reportActionError(controller, bulkErrorMessage(action, error));
     } finally {
-      setBusyAction(null);
+      finishAction(controller);
     }
   }
 
   async function runMoveToStage(): Promise<void> {
-    if (!client || !moveContext.enabled) {
+    if (!client) {
       ctx.alert(
-        moveContext.disabledReason ??
-          'This action requires the current user access token permission.',
+        'This action requires the current user access token permission.',
       );
       return;
     }
-
-    setBusyAction('move');
+    const controller = beginAction('move');
+    if (!controller) return;
     try {
-      const destination = await chooseMoveDestination({
+      const currentSelection = await selectionForAction(controller);
+      if (!currentSelection) return;
+      const currentMoveContext = getMoveSelectionContext(currentSelection);
+      if (!currentMoveContext.enabled) {
+        reportActionError(controller, currentMoveContext.disabledReason);
+        return;
+      }
+      const request = await prepareMoveOperation({
         client,
         ctx,
-        moveContext,
-        selectionInput,
-        selectedCount: selectedItems.length,
+        moveContext: currentMoveContext,
+        selectionInput: currentSelection,
+        signal: controller.signal,
       });
-      if (!destination) return;
-
-      const evaluation = evaluateMoveSelection({
-        ...selectionInput,
-        destinationStageId: destination.id,
+      if (!request || controller.signal.aborted) return;
+      const result = await executeBulkOperation(client, request, {
+        signal: controller.signal,
+        onProgress: operationProgress(controller, request.itemIds.length),
       });
-      if (evaluation.disabledReason) {
-        ctx.alert(evaluation.disabledReason);
-        return;
-      }
-
-      const confirmed = await ctx.openConfirm({
-        title: `Move selected records to ${destination.name}`,
-        content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
-        choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
-        cancel: { label: 'Cancel', value: false },
-      });
-
-      if (!confirmed) {
-        return;
-      }
-
-      const result = await executeBulkOperation(client, {
-        operation: 'move_to_stage',
-        itemIds: evaluation.itemIds,
-        stage: destination.id,
-      });
-      reportBulkResult(ctx, result);
-      clearSelection();
-      refresh();
+      await applyBulkResult(
+        controller,
+        currentSelection,
+        result,
+        request.itemIds,
+      );
     } catch (error) {
-      ctx.alert(bulkErrorMessage('move_to_stage', error));
-      refresh();
+      reportActionError(controller, bulkErrorMessage('move_to_stage', error));
     } finally {
-      setBusyAction(null);
-      setShowingSelected(false);
+      finishAction(controller);
     }
   }
 
-  const tableDisabled = busyAction !== null || ordering.pending;
+  const tableDisabled =
+    busyAction !== null || collectingSelection || ordering.pending;
   const totalLabel = recordsLabel(itemsPage.totalCount);
   const selectionActions = buildSelectionBarActions({
     deleteEvaluation,
     publishEvaluation,
     unpublishEvaluation,
     moveEnabled: moveContext.enabled,
-    onDelete: () => runSelectionAction('delete', deleteEvaluation),
-    onPublish: () => runSelectionAction('publish', publishEvaluation),
-    onUnpublish: () => runSelectionAction('unpublish', unpublishEvaluation),
+    onDelete: () => runSelectionAction('delete'),
+    onPublish: () => runSelectionAction('publish'),
+    onUnpublish: () => runSelectionAction('unpublish'),
     onMove: runMoveToStage,
   });
 
@@ -907,6 +1216,7 @@ export default function AllRecordsPage({ ctx }: Props) {
               <button
                 type="button"
                 className={styles.clearSearch}
+                disabled={tableDisabled}
                 aria-label="Clear search"
                 onClick={() => {
                   searchWasEdited.current = false;
@@ -942,10 +1252,10 @@ export default function AllRecordsPage({ ctx }: Props) {
         </div>
 
         <main className={styles.content}>
-          {itemsPage.error ? (
+          {displayError ? (
             <div className={styles.state}>
               <h2>Could not load records</h2>
-              <p>{itemsPage.error}</p>
+              <p>{displayError}</p>
               <button type="button" className={styles.retry} onClick={refresh}>
                 Retry
               </button>
@@ -964,17 +1274,19 @@ export default function AllRecordsPage({ ctx }: Props) {
                 if (!item) {
                   return;
                 }
+                noteSelectionFilter();
                 setSelectedById((current) => {
                   const next = new Map(current);
                   if (next.has(itemId)) {
                     next.delete(itemId);
                   } else {
-                    next.set(itemId, item);
+                    next.set(itemId, compactSelectedItem(item));
                   }
                   return next;
                 });
               }}
               onTogglePage={(selected) => {
+                noteSelectionFilter();
                 setSelectedById((current) =>
                   setPageSelection(current, displayItems, selected),
                 );
@@ -994,8 +1306,8 @@ export default function AllRecordsPage({ ctx }: Props) {
                   }),
                 );
               }}
-              loading={itemsPage.loading || presentations.loading}
-              disabled={tableDisabled || itemsPage.loading}
+              loading={displayLoading || presentations.loading}
+              disabled={tableDisabled || displayLoading}
               sortingDisabled={Boolean(queryState.query)}
               emptyState={emptyStateMessage(queryState)}
             />
@@ -1006,28 +1318,60 @@ export default function AllRecordsPage({ ctx }: Props) {
           <SelectionActionBar
             selectedCount={selectedItems.length}
             showingSelected={showingSelected}
-            onToggleShowingSelected={() =>
-              setShowingSelected((current) => !current)
-            }
-            onInvertSelection={() =>
+            onToggleShowingSelected={() => {
+              setSelectionPage(0);
+              setShowingSelected((current) => !current);
+            }}
+            onInvertSelection={() => {
+              noteSelectionFilter();
               setSelectedById((current) =>
-                invertPageSelection(current, itemsPage.items),
-              )
-            }
+                invertPageSelection(current, displayItems),
+              );
+            }}
             onClearSelection={clearSelection}
-            disabled={tableDisabled || itemsPage.loading}
+            disabled={tableDisabled || displayLoading}
             busyAction={busyAction}
+            {...selectionScaleProps({
+              showingSelected,
+              total: itemsPage.totalCount,
+              perPage: queryState.perPage,
+              selectedCount: selectedItems.length,
+              selectionBelongsToCurrentFilter:
+                selectionFilterScope.current === matchingFilterScope,
+              selectAll: selectAllMatching,
+              collectionProgress,
+              bulkProgress,
+              cancel: () => {
+                actionController.current?.abort();
+                setCollectionProgress((value) =>
+                  value ? 'Cancelling…' : null,
+                );
+              },
+            })}
             actions={selectionActions}
           />
         </div>
 
         <Pagination
-          currentPage={queryState.page}
+          currentPage={displayPage(
+            showingSelected,
+            selectionPage,
+            queryState.page,
+          )}
           perPage={queryState.perPage}
-          totalEntries={itemsPage.totalCount}
-          disabled={itemsPage.loading || tableDisabled}
-          onPageChange={(page) => updateLocation({ page })}
-          onPerPageChange={(perPage) => updateLocation({ perPage })}
+          totalEntries={displayPage(
+            showingSelected,
+            selectedItems.length,
+            itemsPage.totalCount,
+          )}
+          disabled={displayLoading || tableDisabled}
+          onPageChange={(page) =>
+            showingSelected ? setSelectionPage(page) : updateLocation({ page })
+          }
+          onPerPageChange={(perPage) => {
+            setSelectionPage(0);
+            updateLocation({ perPage });
+          }}
         />
       </div>
     </Canvas>

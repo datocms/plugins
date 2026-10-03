@@ -26,6 +26,7 @@ export const StatusOverview = ({
     availableEnvironmentIds,
     overviewError,
     isLoadingOverview,
+    progressMessage,
     backupNowInFlightCadence,
     canBackupNow,
     backupNow,
@@ -59,7 +60,7 @@ export const StatusOverview = ({
           : 'Setup needs attention. Fix the highlighted step above.'}
       </StatusBox>
 
-      {isConnected && isLoadingOverview && (
+      {isConnected && isLoadingOverview && !progressMessage && (
         <StatusBox
           variant="neutral"
           style={{ marginBottom: 'var(--spacing-m)' }}
@@ -67,6 +68,18 @@ export const StatusOverview = ({
           <span className={styles.spinnerRow}>
             <Spinner size={20} />
             Loading backup status…
+          </span>
+        </StatusBox>
+      )}
+
+      {isConnected && progressMessage && (
+        <StatusBox
+          variant="neutral"
+          style={{ marginBottom: 'var(--spacing-m)' }}
+        >
+          <span className={styles.spinnerRow}>
+            <Spinner size={20} />
+            {progressMessage}
           </span>
         </StatusBox>
       )}

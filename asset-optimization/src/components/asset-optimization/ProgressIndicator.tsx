@@ -10,6 +10,15 @@ interface ProgressIndicatorProps {
   assetSizeCategory?: string; // Category of assets being processed (large, very large)
   currentAsset?: Asset; // Current asset being processed
   isPreview?: boolean; // Whether this is a preview operation
+  isLoading?: boolean;
+}
+
+function thumbnailUrl(asset: Asset): string {
+  const url = new URL(asset.url);
+  const parameters = { w: '120', h: '80', fit: 'crop', auto: 'format' };
+  for (const [key, value] of Object.entries(parameters))
+    url.searchParams.set(key, value);
+  return url.toString();
 }
 
 /**
@@ -30,13 +39,14 @@ const ProgressIndicator = ({
   assetSizeCategory = 'large',
   currentAsset,
   isPreview,
+  isLoading,
 }: ProgressIndicatorProps): ReactElement | null => {
   if (!isVisible) return null;
 
   // Ensure percentage is calculated correctly and bounded to 0-100
   const percentage =
     total > 0
-      ? Math.min(100, Math.max(0, Math.round((current / total) * 100)))
+      ? Math.min(100, Math.max(0, Math.floor((current / total) * 100)))
       : 0;
 
   return (
@@ -66,10 +76,7 @@ const ProgressIndicator = ({
       {currentAsset && (
         <div className={s.currentAssetPreview}>
           <div className={s.assetPreviewImage}>
-            <img
-              src={`${currentAsset.url}?w=120&h=80&fit=crop&auto=format`}
-              alt={currentAsset.basename}
-            />
+            <img src={thumbnailUrl(currentAsset)} alt={currentAsset.basename} />
           </div>
           <div className={s.assetPreviewInfo}>
             <div className={s.assetPreviewTitle}>{currentAsset.basename}</div>
@@ -84,7 +91,9 @@ const ProgressIndicator = ({
       <div className={s.statusText}>
         <Spinner size={16} />{' '}
         <span>
-          Processing {assetSizeCategory} assets: {current} of {total}
+          {isLoading
+            ? `Loading assets: ${total} found`
+            : `Processing ${assetSizeCategory} assets: ${current} of ${total}`}
         </span>
       </div>
       <div className={s.percentageText}>

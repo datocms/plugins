@@ -1,33 +1,21 @@
 import { Button, Section } from 'datocms-react-ui';
 import { useCallback, useMemo, useState } from 'react';
-import type { ProgressUpdate } from '../ProgressView/ProgressView';
+import type { DuplicationStats } from '../../services/duplicationTypes';
+import {
+  type ProgressUpdate,
+  progressUpdateKey,
+} from '../ProgressView/ProgressView';
 import styles from './SummaryView.module.css';
 
 /**
  * Represents statistics for the duplication process
  */
-export interface DuplicationStats {
-  totalModels: number;
-  totalRecords: number;
-  successfulRecords: number;
-  failedRecords: number;
-  modelStats: Record<
-    string,
-    {
-      success: number;
-      error: number;
-      total: number;
-      name: string;
-      processedRecordIds: Record<string, boolean>;
-    }
-  >;
-  startTime: number;
-  endTime: number;
-}
-
 interface SummaryViewProps {
   duplicationStats: DuplicationStats;
   progressUpdates: ProgressUpdate[];
+  errorUpdates: ProgressUpdate[];
+  errorCount: number;
+  operationCount: number;
   onReturn: () => void;
 }
 
@@ -41,6 +29,9 @@ interface ExpandedSections {
 export function SummaryView({
   duplicationStats,
   progressUpdates,
+  errorUpdates,
+  errorCount,
+  operationCount,
   onReturn,
 }: SummaryViewProps) {
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
@@ -49,40 +40,9 @@ export function SummaryView({
     errors: false,
     logs: false,
   });
-
-  // Memoize error updates filtering
-  const errorUpdates = useMemo(
-    () => progressUpdates.filter((update) => update.type === 'error'),
-    [progressUpdates],
-  );
-
-  // Memoize success percentage calculation
-  const successPercentage = useMemo(
-    () =>
-      duplicationStats.totalRecords > 0
-        ? Math.round(
-            (duplicationStats.successfulRecords /
-              duplicationStats.totalRecords) *
-              100,
-          )
-        : 0,
-    [duplicationStats.totalRecords, duplicationStats.successfulRecords],
-  );
-
-  // Memoize duration calculations
-  const { durationMinutes, durationSeconds } = useMemo(() => {
-    const duration = duplicationStats.endTime - duplicationStats.startTime;
-    return {
-      durationMinutes: Math.floor(duration / 60000),
-      durationSeconds: Math.floor((duration % 60000) / 1000),
-    };
-  }, [duplicationStats.endTime, duplicationStats.startTime]);
-
-  // Memoize model statistics entries
-  const modelStatsEntries = useMemo(
-    () => Object.entries(duplicationStats.modelStats),
-    [duplicationStats.modelStats],
-  );
+  const summaryErrorCount = Math.max(errorCount, errorUpdates.length);
+  const visibleErrors = errorUpdates.slice(0, 100);
+  const visibleOperations = progressUpdates.slice(-500);
 
   const toggleSection = useCallback((section: keyof ExpandedSections) => {
     setExpandedSections((prev) => ({
@@ -125,63 +85,12 @@ export function SummaryView({
               </div>
             </button>
 
-            {/* Expanded records details */}
             {expandedSections.models && (
-              <div className={styles.expandedContent}>
-                <h4 className={styles.subheading}>Record Statistics</h4>
-
-                <table className={styles.statsTable}>
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Count</th>
-                      <th>Percentage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className={styles.successRow}>
-                      <td>✓ Successful</td>
-                      <td>{duplicationStats.successfulRecords}</td>
-                      <td>{successPercentage}%</td>
-                    </tr>
-                    <tr className={styles.errorRow}>
-                      <td>✗ Failed</td>
-                      <td>{duplicationStats.failedRecords}</td>
-                      <td>{100 - successPercentage}%</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <h4 className={`${styles.subheading} ${styles.spaced}`}>
-                  Models Processed
-                </h4>
-                <table className={styles.statsTable}>
-                  <thead>
-                    <tr>
-                      <th>Model</th>
-                      <th>Success</th>
-                      <th>Failed</th>
-                      <th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {modelStatsEntries.map(([modelId, stats]) => (
-                      <tr key={modelId}>
-                        <td>{stats.name}</td>
-                        <td className={styles.successText}>{stats.success}</td>
-                        <td className={stats.error > 0 ? styles.errorText : ''}>
-                          {stats.error}
-                        </td>
-                        <td>{stats.total}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <RecordStatistics duplicationStats={duplicationStats} />
             )}
 
             {/* Errors */}
-            {errorUpdates.length > 0 && (
+            {summaryErrorCount > 0 && (
               <>
                 <button
                   type="button"
@@ -197,7 +106,7 @@ export function SummaryView({
                   </div>
                   <div className={styles.buttonRight}>
                     <span className={`${styles.buttonValue} ${styles.error}`}>
-                      {errorUpdates.length}
+                      {summaryErrorCount}
                     </span>
                     <span
                       className={`${styles.expandIcon} ${expandedSections.errors ? styles.expanded : ''}`}
@@ -209,10 +118,13 @@ export function SummaryView({
 
                 {expandedSections.errors && (
                   <div className={styles.expandedContent}>
+                    {summaryErrorCount > visibleErrors.length && (
+                      <p>Showing the first {visibleErrors.length} errors.</p>
+                    )}
                     <div className={styles.errorLog}>
-                      {errorUpdates.map((error) => (
+                      {visibleErrors.map((error) => (
                         <div
-                          key={`error-${error.timestamp}-${error.message}`}
+                          key={progressUpdateKey(error)}
                           className={styles.errorItem}
                         >
                           <span className={styles.errorIcon}>✗</span>
@@ -238,7 +150,7 @@ export function SummaryView({
               </div>
               <div className={styles.buttonRight}>
                 <span className={`${styles.buttonValue} ${styles.muted}`}>
-                  {progressUpdates.length} entries
+                  {operationCount} entries
                 </span>
                 <span
                   className={`${styles.expandIcon} ${expandedSections.logs ? styles.expanded : ''}`}
@@ -250,10 +162,15 @@ export function SummaryView({
 
             {expandedSections.logs && (
               <div className={styles.expandedContent}>
+                {operationCount > visibleOperations.length && (
+                  <p>
+                    Showing the latest {visibleOperations.length} operations.
+                  </p>
+                )}
                 <div className={styles.fullLog}>
-                  {progressUpdates.map((update) => (
+                  {visibleOperations.map((update) => (
                     <div
-                      key={`log-${update.timestamp}-${update.message}`}
+                      key={progressUpdateKey(update)}
                       className={`${styles.logItem} ${styles[update.type]}`}
                     >
                       <span className={styles.logIcon}>
@@ -271,23 +188,10 @@ export function SummaryView({
             )}
           </div>
 
-          {/* Overall Summary */}
-          <div
-            className={`${styles.overallSummary} ${successPercentage === 100 ? styles.success : styles.error}`}
-          >
-            <h3
-              className={`${styles.overallTitle} ${successPercentage === 100 ? styles.success : styles.error}`}
-            >
-              {successPercentage === 100
-                ? '✓ Duplication Completed Successfully!'
-                : '⚠️ Duplication Completed with Errors'}
-            </h3>
-            <p className={styles.overallDescription}>
-              Processed {duplicationStats.totalRecords} records across{' '}
-              {duplicationStats.totalModels} models in {durationMinutes}m{' '}
-              {durationSeconds}s
-            </p>
-          </div>
+          <OverallSummary
+            duplicationStats={duplicationStats}
+            errorCount={summaryErrorCount}
+          />
         </Section>
 
         {/* Return button */}
@@ -302,6 +206,203 @@ export function SummaryView({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function RecordStatistics({
+  duplicationStats,
+}: {
+  duplicationStats: DuplicationStats;
+}) {
+  const [modelPage, setModelPage] = useState(0);
+  const modelStatsEntries = useMemo(
+    () => Object.entries(duplicationStats.modelStats),
+    [duplicationStats.modelStats],
+  );
+  const successPercentage = recordPercentage(
+    duplicationStats.successfulRecords,
+    duplicationStats.totalRecords,
+  );
+  const failedPercentage = recordPercentage(
+    duplicationStats.failedRecords,
+    duplicationStats.totalRecords,
+  );
+  return (
+    <div className={styles.expandedContent}>
+      <h4 className={styles.subheading}>Record Statistics</h4>
+
+      <table className={styles.statsTable}>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className={styles.successRow}>
+            <td>✓ Successful</td>
+            <td>{duplicationStats.successfulRecords}</td>
+            <td>{successPercentage}%</td>
+          </tr>
+          <tr className={styles.errorRow}>
+            <td>✗ Failed</td>
+            <td>{duplicationStats.failedRecords}</td>
+            <td>{failedPercentage}%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 className={`${styles.subheading} ${styles.spaced}`}>
+        Models Processed
+      </h4>
+      <table className={styles.statsTable}>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Success</th>
+            <th>Failed</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {modelStatsEntries
+            .slice(modelPage * 100, (modelPage + 1) * 100)
+            .map(([modelId, stats]) => (
+              <tr key={modelId}>
+                <td>{stats.name}</td>
+                <td className={styles.successText}>{stats.success}</td>
+                <td className={stats.error > 0 ? styles.errorText : ''}>
+                  {stats.error}
+                </td>
+                <td>{stats.total}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+      {modelStatsEntries.length > 100 && (
+        <div>
+          <Button
+            disabled={modelPage === 0}
+            onClick={() => setModelPage((page) => page - 1)}
+          >
+            Previous models
+          </Button>
+          <span>
+            {' '}
+            Page {modelPage + 1} of {Math.ceil(
+              modelStatsEntries.length / 100,
+            )}{' '}
+          </span>
+          <Button
+            disabled={(modelPage + 1) * 100 >= modelStatsEntries.length}
+            onClick={() => setModelPage((page) => page + 1)}
+          >
+            Next models
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function recordPercentage(count: number, total: number): number {
+  return total > 0 ? Math.round((count / total) * 100) : 0;
+}
+
+export function completedWithoutErrors(
+  stats: DuplicationStats,
+  errorCount: number,
+): boolean {
+  const failures =
+    stats.failedRecords +
+    stats.failedPublications +
+    stats.uncertainPublications +
+    stats.pendingPublications +
+    stats.modelFailures;
+  return (
+    !stats.cancelled &&
+    errorCount === 0 &&
+    failures === 0 &&
+    stats.totalRecords >= stats.totalToProcess
+  );
+}
+
+function summaryTitle(
+  stats: DuplicationStats,
+  completedSuccessfully: boolean,
+): string {
+  if (stats.cancelled) return 'Duplication Aborted';
+  return completedSuccessfully
+    ? '✓ Duplication Completed Successfully!'
+    : '⚠️ Duplication Completed with Errors';
+}
+
+export function OverallSummary({
+  duplicationStats,
+  errorCount,
+}: {
+  duplicationStats: DuplicationStats;
+  errorCount: number;
+}) {
+  const completedSuccessfully = completedWithoutErrors(
+    duplicationStats,
+    errorCount,
+  );
+  const duration = Math.max(
+    0,
+    duplicationStats.endTime - duplicationStats.startTime,
+  );
+  const durationMinutes = Math.floor(duration / 60000);
+  const durationSeconds = Math.floor((duration % 60000) / 1000);
+  return (
+    <div
+      className={`${styles.overallSummary} ${completedSuccessfully ? styles.success : styles.error}`}
+    >
+      <h3
+        className={`${styles.overallTitle} ${completedSuccessfully ? styles.success : styles.error}`}
+      >
+        {summaryTitle(duplicationStats, completedSuccessfully)}
+      </h3>
+      <p className={styles.overallDescription}>
+        Processed {duplicationStats.totalRecords} records across{' '}
+        {duplicationStats.totalModels} models in {durationMinutes}m{' '}
+        {durationSeconds}s
+      </p>
+      {duplicationStats.skippedRecords > 0 && (
+        <p>{duplicationStats.skippedRecords} records needed no changes.</p>
+      )}
+      {duplicationStats.uncertainRecords > 0 && (
+        <p>
+          {duplicationStats.uncertainRecords} update outcomes could not be
+          confirmed; these are included in the failed operation count.
+        </p>
+      )}
+      {duplicationStats.totalRecords < duplicationStats.totalToProcess && (
+        <p>
+          {duplicationStats.totalToProcess - duplicationStats.totalRecords}{' '}
+          selected records were not processed.
+        </p>
+      )}
+      {duplicationStats.modelFailures > 0 && (
+        <p>
+          {duplicationStats.modelFailures} model or operation failures prevented
+          a complete run.
+        </p>
+      )}
+      {duplicationStats.publishedRecords +
+        duplicationStats.failedPublications +
+        duplicationStats.uncertainPublications +
+        duplicationStats.pendingPublications >
+        0 && (
+        <p>
+          {duplicationStats.publishedRecords} records published;{' '}
+          {duplicationStats.failedPublications} publication failures;{' '}
+          {duplicationStats.uncertainPublications} publication outcomes
+          unconfirmed; {duplicationStats.pendingPublications} pending.
+        </p>
+      )}
     </div>
   );
 }

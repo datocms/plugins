@@ -46,7 +46,7 @@ export function normalizeProviderError(
   provider: ProviderId,
   error: unknown,
 ): string {
-  return getProviderAdapter(provider).normalizeError(error).message;
+  return getProviderAdapter(provider).normalizeError(error).message.slice(0, 1000);
 }
 
 export function isAbortError(error: unknown): boolean {

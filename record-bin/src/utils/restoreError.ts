@@ -15,12 +15,12 @@ const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
 const serializeUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
-  }
-
   try {
-    return JSON.stringify(error, null, 2);
+    const serialized =
+      error instanceof Error
+        ? JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
+        : JSON.stringify(error, null, 2);
+    return serialized ?? String(error);
   } catch {
     return String(error);
   }
@@ -119,8 +119,11 @@ const normalizeSimplifiedErrorRecord = (
 
 const unwrapErrorWrapper = (error: unknown): unknown => {
   let current = error;
+  const visited = new WeakSet<object>();
 
   while (isRecord(current) && 'error' in current) {
+    if (visited.has(current)) break;
+    visited.add(current);
     const nestedError = current.error;
     if (nestedError === undefined || nestedError === current) {
       break;

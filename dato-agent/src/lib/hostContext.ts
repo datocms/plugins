@@ -23,7 +23,7 @@ const MINIMUM_MODEL_SCHEMA_CHARACTER_LIMIT = 256;
 const MAX_LOCATION_CHARACTER_LIMIT = 500;
 const MAX_IDENTITY_CHARACTER_LIMIT = 200;
 const MAX_LIST_VALUES = 12;
-const MAX_RICH_NODES = 500;
+const MAX_RICH_VALUES = 500;
 const CURRENT_FORM_VALUE_CHARACTER_LIMIT = 1_200;
 
 export type HostContextSnapshot = {
@@ -145,6 +145,7 @@ type ValueSummary = {
 type RichValueSummary = {
   text: string;
   textTruncated: boolean;
+  traversalTruncated: boolean;
   nodes: number;
   blocks: number;
   linkedRecords: number;
@@ -174,11 +175,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function capText(value: string, maxCharacters: number): ValueSummary {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  const characters = Array.from(normalized);
+  const characters: string[] = [];
+  let pendingSpace = false;
+  let truncated = false;
 
-  if (characters.length <= maxCharacters) {
-    return { text: normalized };
+  for (const character of value) {
+    if (/\s/.test(character)) {
+      pendingSpace = characters.length > 0;
+      continue;
+    }
+
+    if (pendingSpace) {
+      characters.push(' ');
+      pendingSpace = false;
+    }
+    characters.push(character);
+    if (characters.length > maxCharacters) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (!truncated) {
+    return { text: characters.join('') };
   }
 
   if (maxCharacters === 0) {
@@ -299,17 +318,24 @@ function summarizeIdList(value: unknown): ValueSummary {
     return { text: 'invalid_list' };
   }
 
-  const ids = value
-    .map(recordIdentifier)
-    .filter((candidate): candidate is string => Boolean(candidate));
-  const included = ids.slice(0, MAX_LIST_VALUES);
-  const omitted = Math.max(0, ids.length - included.length);
+  const included: string[] = [];
+  let identifiersTruncated = false;
+  const inspectedCount = Math.min(value.length, MAX_LIST_VALUES);
+  for (let index = 0; index < inspectedCount; index += 1) {
+    const id = recordIdentifier(value[index]);
+    if (id) {
+      const cappedId = capText(id, MAX_IDENTITY_CHARACTER_LIMIT);
+      included.push(cappedId.text);
+      identifiersTruncated ||= Boolean(cappedId.truncated);
+    }
+  }
+  const omitted = value.length - inspectedCount;
 
   return {
     text: `count=${value.length}|ids=${JSON.stringify(included)}${
       omitted > 0 ? `|omitted=${omitted}` : ''
     }`,
-    ...(omitted > 0 ? { truncated: true } : {}),
+    ...(omitted > 0 || identifiersTruncated ? { truncated: true } : {}),
   };
 }
 
@@ -335,23 +361,23 @@ function scanRichValue(
   const seen = new Set<object>();
   let currentTextCharacters = 0;
   let textTruncated = false;
+  let traversalTruncated = false;
+  let visitedValues = 0;
   let nodes = 0;
   let blocks = 0;
   let linkedRecords = 0;
 
   const appendText = (text: string) => {
-    const normalized = text.replace(/\s+/g, ' ').trim();
-    if (!normalized) {
-      return;
-    }
-
     const remaining = maxTextCharacters - currentTextCharacters;
     if (remaining <= 0) {
       textTruncated = true;
       return;
     }
 
-    const capped = capText(normalized, remaining);
+    const capped = capText(text, remaining);
+    if (!capped.text) {
+      return;
+    }
     textParts.push(capped.text);
     currentTextCharacters += Array.from(capped.text).length + 1;
     textTruncated ||= Boolean(capped.truncated);
@@ -359,10 +385,12 @@ function scanRichValue(
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: A single bounded recursive visitor keeps cycle, depth, node, text, block, and link accounting consistent.
   const visit = (candidate: unknown, depth: number) => {
-    if (nodes >= MAX_RICH_NODES || depth > 24) {
+    if (visitedValues >= MAX_RICH_VALUES || depth > 24) {
       textTruncated = true;
+      traversalTruncated = true;
       return;
     }
+    visitedValues += 1;
 
     if (typeof candidate === 'string') {
       appendText(candidate);
@@ -374,17 +402,21 @@ function scanRichValue(
     }
 
     if (seen.has(candidate)) {
+      textTruncated = true;
+      traversalTruncated = true;
       return;
     }
     seen.add(candidate);
     nodes += 1;
 
     if (Array.isArray(candidate)) {
-      for (const entry of candidate) {
-        visit(entry, depth + 1);
-        if (nodes >= MAX_RICH_NODES) {
+      for (let index = 0; index < candidate.length; index += 1) {
+        if (visitedValues >= MAX_RICH_VALUES) {
+          textTruncated = true;
+          traversalTruncated = true;
           break;
         }
+        visit(candidate[index], depth + 1);
       }
       return;
     }
@@ -392,19 +424,17 @@ function scanRichValue(
     const record = candidate as Record<string, unknown>;
     const nodeType = typeof record.type === 'string' ? record.type : undefined;
 
-    if (
+    const linkedNode = nodeType === 'itemLink' || nodeType === 'inlineItem';
+    const blockNode =
       nodeType === 'block' ||
+      nodeType === 'inlineBlock' ||
       typeof record.blockModelId === 'string' ||
-      typeof record.itemTypeId === 'string'
-    ) {
+      (typeof record.itemTypeId === 'string' && !linkedNode);
+    if (blockNode) {
       blocks += 1;
     }
 
-    if (
-      nodeType === 'itemLink' ||
-      nodeType === 'inlineItem' ||
-      typeof record.item === 'string'
-    ) {
+    if (linkedNode || (typeof record.item === 'string' && !blockNode)) {
       linkedRecords += 1;
     }
 
@@ -429,6 +459,7 @@ function scanRichValue(
   return {
     text: textParts.join(' ').trim(),
     textTruncated,
+    traversalTruncated,
     nodes,
     blocks,
     linkedRecords,
@@ -446,6 +477,7 @@ function summarizeRichValue(
       `nodes=${summary.nodes}`,
       `blocks=${summary.blocks}`,
       `linked_records=${summary.linkedRecords}`,
+      ...(summary.traversalTruncated ? ['counts_complete=false'] : []),
       `text=${JSON.stringify(summary.text)}`,
     ].join('|'),
     ...(summary.textTruncated ? { truncated: true } : {}),
@@ -657,7 +689,8 @@ function classifyCurrentFormValue(
     if (
       !richSummary.text &&
       richSummary.blocks === 0 &&
-      richSummary.linkedRecords === 0
+      richSummary.linkedRecords === 0 &&
+      !richSummary.traversalTruncated
     ) {
       return 'empty';
     }
@@ -676,8 +709,15 @@ function summarizeCurrentFormValue(
   }
 
   if (typeof value === 'string') {
+    let characters = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      characters += 1;
+      if ((value.codePointAt(index) ?? 0) > 0xffff) {
+        index += 1;
+      }
+    }
     return {
-      text: `string(characters=${Array.from(value).length})`,
+      text: `string(characters=${characters})`,
     };
   }
 

@@ -105,6 +105,95 @@ describe('reportTranslationOutcome', () => {
     expect(ctx.alert).not.toHaveBeenCalled();
   });
 
+  it('reports partial failures and unprocessed records from cumulative counts', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(
+      ctx,
+      {
+        summary: {
+          totalRecords: 200000,
+          processedCount: 125,
+          successfulCount: 120,
+          failedCount: 5,
+          warningCount: 0,
+          loadedCount: 150,
+        },
+      },
+      200000,
+    );
+    expect(ctx.alert).toHaveBeenCalledWith(
+      `120 records completed; 5 records failed; ${n(199875)} records were not processed.`,
+    );
+    expect(ctx.notice).not.toHaveBeenCalled();
+  });
+
+  it('retains the saved outcome when the user cancels a partial run', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(
+      ctx,
+      {
+        canceled: true,
+        summary: {
+          totalRecords: 100,
+          processedCount: 6,
+          successfulCount: 5,
+          failedCount: 1,
+          warningCount: 0,
+          loadedCount: 30,
+        },
+      },
+      100,
+    );
+    expect(ctx.notice).toHaveBeenCalledWith(
+      'Translation canceled. 5 records completed; 1 record failed. Saved changes were kept.',
+    );
+  });
+
+  it('does not call records with skipped fields fully translated', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(
+      ctx,
+      {
+        completed: true,
+        summary: {
+          totalRecords: 10,
+          processedCount: 10,
+          successfulCount: 10,
+          failedCount: 0,
+          warningCount: 3,
+          loadedCount: 10,
+        },
+      },
+      10,
+    );
+    expect(ctx.notice).toHaveBeenCalledWith(
+      '10 records completed; 3 records need review.',
+    );
+  });
+
+  it('distinguishes unchanged records from confirmed updates', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(
+      ctx,
+      {
+        completed: true,
+        summary: {
+          totalRecords: 10,
+          processedCount: 10,
+          successfulCount: 10,
+          failedCount: 0,
+          warningCount: 0,
+          loadedCount: 10,
+          updatedCount: 2,
+        },
+      },
+      10,
+    );
+    expect(ctx.notice).toHaveBeenCalledWith(
+      '2 records updated; 8 records had no eligible fields to translate.',
+    );
+  });
+
   it('alerts when the run had errors or returned nothing', () => {
     const ctx = makeCtx();
     reportTranslationOutcome(ctx, {}, 3);

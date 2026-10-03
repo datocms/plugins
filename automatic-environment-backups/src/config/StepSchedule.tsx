@@ -24,6 +24,8 @@ export const StepSchedule = ({
 }) => {
   const {
     canEdit,
+    isBusy,
+    hasUncertainBackup,
     cadenceSelection,
     setCadenceEnabled,
     saveSchedule,
@@ -59,7 +61,7 @@ export const StepSchedule = ({
                 id: `cadence_${cadence}`,
                 name: `cadence_${cadence}`,
                 value: cadenceSelection.includes(cadence),
-                disabled: !canEdit || isSavingSchedule,
+                disabled: !canEdit || isBusy || hasUncertainBackup,
               }}
             />
           </div>
@@ -89,7 +91,7 @@ export const StepSchedule = ({
             onClick={() => {
               void handleSave();
             }}
-            disabled={!canEdit || isSavingSchedule || !hasSelection}
+            disabled={!canEdit || isBusy || hasUncertainBackup || !hasSelection}
             leftIcon={isSavingSchedule ? <Spinner size={16} /> : undefined}
             rightIcon={!isSavingSchedule ? <StepActionArrow /> : undefined}
           >

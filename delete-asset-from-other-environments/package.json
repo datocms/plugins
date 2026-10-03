@@ -26,7 +26,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc -b",
+    "lint": "biome lint ./src",
+    "test": "vitest run --pool=threads --maxWorkers=1 --testTimeout=60000",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",
@@ -41,6 +45,10 @@
     "@vitejs/plugin-react": "^5.2.0",
     "globals": "^15.15.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "@biomejs/biome": "^2.5.5",
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
   }
 }

@@ -5,8 +5,10 @@ import {
   LambdaAuthSecretError,
 } from './lambdaAuth';
 import {
-  createTimeoutController,
+  fetchLambdaText,
   isAbortError,
+  isValidLambdaTimestamp,
+  LambdaResponseTooLargeError,
   truncateResponseSnippet,
 } from './lambdaHttp';
 import { normalizeLambdaBaseUrl } from './verifyLambdaHealth';
@@ -77,6 +79,7 @@ type TriggerLambdaBackupNowInput = {
   environment: string;
   scope: BackupCadence;
   lambdaAuthSecret: string;
+  signal?: AbortSignal;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -104,8 +107,7 @@ const toValidatedBackupNowResult = (
     payload.service !== EXPECTED_SERVICE_NAME ||
     payload.status !== EXPECTED_SERVICE_STATUS ||
     !isObject(backup) ||
-    payload.checkedAt === '' ||
-    typeof payload.checkedAt !== 'string'
+    !isValidLambdaTimestamp(payload.checkedAt)
   ) {
     return null;
   }
@@ -116,7 +118,7 @@ const toValidatedBackupNowResult = (
     typeof backup.createdEnvironmentId !== 'string' ||
     backup.createdEnvironmentId.trim().length === 0 ||
     !isOptionalStringOrNull(backup.deletedEnvironmentId) ||
-    typeof backup.completedAt !== 'string'
+    !isValidLambdaTimestamp(backup.completedAt)
   ) {
     return null;
   }
@@ -136,6 +138,7 @@ export const triggerLambdaBackupNow = async ({
   environment,
   scope,
   lambdaAuthSecret,
+  signal,
 }: TriggerLambdaBackupNowInput): Promise<LambdaBackupNowResult> => {
   const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
   const endpoint = new URL(
@@ -157,8 +160,8 @@ export const triggerLambdaBackupNow = async ({
     },
   });
 
-  const timeoutController = createTimeoutController(BACKUP_NOW_TIMEOUT_MS);
   let response: Response;
+  let payloadText: string;
   let requestHeaders: Record<string, string>;
 
   try {
@@ -175,13 +178,24 @@ export const triggerLambdaBackupNow = async ({
   }
 
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
+    // Without a server idempotency key, an ambiguous result must not be retried.
+    ({ response, payloadText } = await fetchLambdaText(endpoint, {
       headers: requestHeaders,
       body,
-      signal: timeoutController.controller.signal,
-    });
+      timeoutMs: BACKUP_NOW_TIMEOUT_MS,
+      signal,
+    }));
   } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+    if (error instanceof LambdaResponseTooLargeError) {
+      throw new LambdaBackupNowError({
+        code: 'INVALID_RESPONSE',
+        endpoint,
+        message: error.message,
+      });
+    }
     if (isAbortError(error)) {
       throw new LambdaBackupNowError({
         code: 'TIMEOUT',
@@ -195,11 +209,7 @@ export const triggerLambdaBackupNow = async ({
       endpoint,
       message: 'Could not reach backup now endpoint.',
     });
-  } finally {
-    timeoutController.clear();
   }
-
-  const payloadText = await response.text();
   const responseSnippet = truncateResponseSnippet(
     payloadText,
     RESPONSE_SNIPPET_MAX_LENGTH,

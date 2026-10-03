@@ -10,8 +10,12 @@ import {
 import { isContentEmpty } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import { useCommentActions } from '@hooks/useCommentActions';
+import { useCommentPagination } from '@hooks/useCommentPagination';
 import { useCommentsData } from '@hooks/useCommentsData';
-import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
+import {
+  type CommentsStorageProblem,
+  SUBSCRIPTION_STATUS,
+} from '@hooks/useCommentsSubscription';
 import { useEntityResolver } from '@hooks/useEntityResolver';
 import { useMentionPermissions } from '@hooks/useMentionPermissions';
 import { useOperationQueue } from '@hooks/useOperationQueue';
@@ -33,7 +37,7 @@ import { getCurrentUserInfo } from '@utils/userTransformers';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { COMMENTS_PAGE_SIZE, ERROR_MESSAGES } from '@/constants';
+import { ERROR_MESSAGES } from '@/constants';
 import { ensureCommentsModelExistsWithClient } from '@/utils/commentsStorage';
 import { logDebug, logError, logWarn } from '@/utils/errorLogger';
 import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
@@ -43,6 +47,59 @@ import { ProjectDataProvider } from './contexts/ProjectDataContext';
 type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
+
+function RealtimeConfigurationWarning({
+  requested,
+  cdaToken,
+}: {
+  requested: boolean;
+  cdaToken: string | undefined;
+}) {
+  if (!requested || cdaToken) return null;
+  return (
+    <div className={styles.warning}>
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        role="img"
+        aria-labelledby="warningIconTitle"
+      >
+        <title id="warningIconTitle">Warning</title>
+        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+      </svg>
+      <span>
+        Realtime updates disabled. Configure a CDA token in plugin settings.
+      </span>
+    </div>
+  );
+}
+
+function CommentsStorageNotice({
+  problem,
+}: {
+  problem: CommentsStorageProblem;
+}) {
+  return (
+    <div className={styles.migrationRequired} role="alert">
+      <p>
+        {problem.type === 'migration_required'
+          ? 'Comments are stored in an older format.'
+          : 'Comments storage could not be read.'}
+      </p>
+      <span>
+        Go to the plugin settings screen and run the comment migration before
+        adding new comments.
+      </span>
+      {problem.type === 'malformed_aggregate' && (
+        <span className={styles.migrationRequiredDetails}>
+          {problem.message}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const CommentsBar = ({ ctx }: Props) => {
   const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
@@ -55,9 +112,6 @@ const CommentsBar = ({ ctx }: Props) => {
 
   const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] =
     useState(false);
-
-  // Tracks how many old comments to hide (new comments at index 0 always visible)
-  const [hiddenOldCount, setHiddenOldCount] = useState<number | null>(null);
 
   const cmaToken = ctx.currentUserAccessToken;
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
@@ -300,30 +354,22 @@ const CommentsBar = ({ ctx }: Props) => {
     onOrphanedDraft: handleOrphanedDraft,
   });
 
-  useEffect(() => {
-    if (hiddenOldCount === null && comments.length > 0) {
-      setHiddenOldCount(Math.max(0, comments.length - COMMENTS_PAGE_SIZE));
-    }
-  }, [comments.length, hiddenOldCount]);
-
-  const visibleStoredComments = useMemo(() => {
-    const hideCount =
-      hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
-    const showCount = comments.length - hideCount;
-    return comments.slice(0, showCount);
-  }, [comments, hiddenOldCount]);
+  const { visibleStoredComments, hasMoreComments, loadMore } =
+    useCommentPagination(
+      comments,
+      JSON.stringify([ctx.environment, ctx.itemType.id, ctx.item?.id ?? null]),
+    );
 
   useEffect(() => {
     prefetchEntities(visibleStoredComments);
   }, [visibleStoredComments, prefetchEntities]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Async cache mutations require re-resolution even when the comment array is unchanged.
   const visibleComments = useMemo(
     () => resolveComments(visibleStoredComments),
     // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
     [visibleStoredComments, resolveComments, cacheVersion],
   );
-
-  const hasMoreComments = (hiddenOldCount ?? 0) > 0;
 
   const {
     submitNewComment,
@@ -512,43 +558,13 @@ const CommentsBar = ({ ctx }: Props) => {
               </div>
             )}
 
-            {realTimeRequested && !cdaToken && (
-              <div className={styles.warning}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  role="img"
-                  aria-labelledby="warningIconTitle"
-                >
-                  <title id="warningIconTitle">Warning</title>
-                  <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
-                </svg>
-                <span>
-                  Realtime updates disabled. Configure a CDA token in plugin
-                  settings.
-                </span>
-              </div>
-            )}
+            <RealtimeConfigurationWarning
+              requested={realTimeRequested}
+              cdaToken={cdaToken}
+            />
 
             {storageProblem ? (
-              <div className={styles.migrationRequired} role="alert">
-                <p>
-                  {storageProblem.type === 'migration_required'
-                    ? 'Comments are stored in an older format.'
-                    : 'Comments storage could not be read.'}
-                </p>
-                <span>
-                  Go to the plugin settings screen and run the comment
-                  migration before adding new comments.
-                </span>
-                {storageProblem.type === 'malformed_aggregate' && (
-                  <span className={styles.migrationRequiredDetails}>
-                    {storageProblem.message}
-                  </span>
-                )}
-              </div>
+              <CommentsStorageNotice problem={storageProblem} />
             ) : (
               <>
                 <div className={styles.composer}>
@@ -602,7 +618,9 @@ const CommentsBar = ({ ctx }: Props) => {
                         onAssetClick={handleAssetToolbarClick}
                         onModelClick={handleModelToolbarClick}
                         onSendClick={submitNewComment}
-                        isSendDisabled={isComposerEmptyValue || pendingCount > 0}
+                        isSendDisabled={
+                          isComposerEmptyValue || pendingCount > 0
+                        }
                         canMentionAssets={canMentionAssets}
                         canMentionModels={canMentionModels}
                       />
@@ -613,11 +631,7 @@ const CommentsBar = ({ ctx }: Props) => {
                 <CommentsList
                   comments={visibleComments}
                   hasMoreComments={hasMoreComments}
-                  onLoadMore={() =>
-                    setHiddenOldCount((prev) =>
-                      Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE),
-                    )
-                  }
+                  onLoadMore={loadMore}
                   currentUserId={currentUserId}
                   modelFields={modelFields}
                   fieldMentionsLoading={isLoadingFields}

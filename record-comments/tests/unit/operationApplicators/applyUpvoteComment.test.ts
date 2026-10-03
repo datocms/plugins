@@ -120,7 +120,7 @@ describe('applyUpvoteComment', () => {
       expect(result.comments[0].upvoterIds).toHaveLength(1);
     });
 
-    it('still returns status "applied" (idempotent success)', () => {
+    it('returns an idempotent no-op when the vote already exists', () => {
       const voterId = 'voter-1';
       const comment = createBaseComment({
         id: 'to-upvote',
@@ -130,7 +130,7 @@ describe('applyUpvoteComment', () => {
 
       const result = applyOperation([comment], op);
 
-      expect(result.status).toBe('applied');
+      expect(result.status).toBe('no_op_idempotent');
     });
   });
 
@@ -149,7 +149,7 @@ describe('applyUpvoteComment', () => {
       const result = applyOperation([comment], op);
 
       expect(result.comments[0].upvoterIds).toHaveLength(0);
-      expect(result.status).toBe('applied');
+      expect(result.status).toBe('no_op_idempotent');
     });
   });
 

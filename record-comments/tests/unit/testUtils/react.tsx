@@ -55,10 +55,11 @@ export function renderHook<T>(useHook: () => T): {
   root = createRoot(container);
 
   const renderHarness = () => {
-    if (!root) return;
+    const activeRoot = root;
+    if (!activeRoot) return;
 
     act(() => {
-      root.render(<HookHarness />);
+      activeRoot.render(<HookHarness />);
     });
   };
 

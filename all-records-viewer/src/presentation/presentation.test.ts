@@ -1,4 +1,4 @@
-import type { ApiTypes } from '@datocms/cma-client-browser';
+import type { RawApiTypes } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
 import type { RawItem, RawItemType } from '../types';
 import {
@@ -7,9 +7,17 @@ import {
   getPresentationTitleField,
   type RawField,
 } from './fields';
-import { formatColor, formatCoordinates, formatFieldTitle } from './formatters';
+import {
+  extractStructuredText,
+  formatColor,
+  formatCoordinates,
+  formatFieldTitle,
+} from './formatters';
 import { buildUploadThumbnail } from './previews';
-import { createPresentationResolver } from './resolver';
+import {
+  createPresentationResolver,
+  PRESENTATION_CACHE_LIMITS,
+} from './resolver';
 import { getItemStatus, getItemValidity } from './status';
 
 function field(
@@ -94,6 +102,28 @@ function item(
   } as unknown as RawItem;
 }
 
+function deferred<T>() {
+  let resolvePromise: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
+}
+
+function upload(id: string): RawApiTypes.Upload {
+  return {
+    id,
+    attributes: {
+      url: `https://assets.example/${id}.jpg`,
+      path: `/${id}.jpg`,
+      md5: null,
+      mux_playback_id: null,
+      updated_at: null,
+      default_field_metadata: { focal_point: null, poster_time: null },
+    },
+  } as unknown as RawApiTypes.Upload;
+}
+
 describe('presentation field selection', () => {
   const plain = field('plain', 'plain', 'string', 0);
   const heading = field('heading', 'heading', 'string', 2, {
@@ -119,6 +149,14 @@ describe('presentation field selection', () => {
     expect(getPresentationImageField(itemType(), [plain, image])?.id).toBe(
       'image',
     );
+  });
+
+  it('keeps native position and API key precedence without sorting schema arrays', () => {
+    const last = field('last', 'z', 'string', 1, { heading: true });
+    const first = field('first', 'a', 'string', 1, { heading: true });
+    const fields = [last, first, plain];
+    expect(getPresentationTitleField(itemType(), fields)?.id).toBe('first');
+    expect(fields).toEqual([last, first, plain]);
   });
 
   it('uses preferred then site locale order', () => {
@@ -159,6 +197,49 @@ describe('presentation formatting', () => {
         field('structured', 'structured', 'structured_text', 0),
       ),
     ).toBe('DatoCMS');
+  });
+
+  it('handles deeply nested and cyclic Structured Text without recursive traversal', () => {
+    let deep: unknown = { value: 'Deep title' };
+    for (let index = 0; index < 10_000; index += 1) {
+      deep = { children: [deep] };
+    }
+    expect(extractStructuredText(deep)).toBe('Deep title');
+
+    const cyclic: { children: unknown[] } = {
+      children: [{ value: 'Readable' }],
+    };
+    cyclic.children.push(cyclic, cyclic.children);
+    expect(extractStructuredText(cyclic)).toBe('Readable');
+  });
+
+  it('stops Structured Text extraction after enough title text is available', () => {
+    const unreachable = {
+      get children(): unknown {
+        throw new Error(
+          'The remainder of this huge document must not be traversed',
+        );
+      },
+    };
+    expect(
+      formatFieldTitle(
+        {
+          document: {
+            children: [{ value: 'x'.repeat(1_000_000) }, unreachable],
+          },
+        },
+        field('structured', 'structured', 'structured_text', 0),
+      ),
+    ).toBe(`${'x'.repeat(199)}…`);
+    expect(
+      formatFieldTitle(
+        {
+          document: { children: [{ value: ' Hello  ' }, { value: ' world ' }] },
+        },
+        field('structured', 'structured', 'structured_text', 0),
+        { maxLength: 10 },
+      ),
+    ).toBe('Hello wor…');
   });
 });
 
@@ -249,6 +330,221 @@ describe('presentation resolver', () => {
       null,
     ]);
   });
+
+  it('deduplicates an entity requested again while its batch is in flight', async () => {
+    const response = deferred<readonly RawItem[]>();
+    const started = deferred<void>();
+    const loadItems = vi.fn(() => {
+      started.resolve();
+      return response.promise;
+    });
+    const resolver = createPresentationResolver({
+      itemTypes: [
+        itemType('model-1', 'link'),
+        itemType('linked-model', 'name'),
+      ],
+      fields: [
+        field('link', 'next', 'link', 0),
+        field('name', 'name', 'string', 0, { itemTypeId: 'linked-model' }),
+      ],
+      locales: ['en'],
+      loadItems,
+    });
+    const record = item('root', 'model-1', { next: 'linked' });
+    const first = resolver.resolve(record);
+    await started.promise;
+    const second = resolver.resolve(record);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(loadItems).toHaveBeenCalledTimes(1);
+    response.resolve([item('linked', 'linked-model', { name: 'Resolved' })]);
+    expect(
+      (await Promise.all([first, second])).map((value) => value.title),
+    ).toEqual(['Resolved', 'Resolved']);
+  });
+
+  it('keeps newly primed data when an older hydration response arrives', async () => {
+    const response = deferred<readonly RawItem[]>();
+    const started = deferred<void>();
+    const resolver = createPresentationResolver({
+      itemTypes: [
+        itemType('model-1', 'link'),
+        itemType('linked-model', 'name'),
+      ],
+      fields: [
+        field('link', 'next', 'link', 0),
+        field('name', 'name', 'string', 0, { itemTypeId: 'linked-model' }),
+      ],
+      locales: ['en'],
+      loadItems: () => {
+        started.resolve();
+        return response.promise;
+      },
+    });
+    const record = item('root', 'model-1', { next: 'linked' });
+    const first = resolver.resolve(record);
+    await started.promise;
+    resolver.primeItems([
+      item('linked', 'linked-model', { name: 'Current value' }),
+    ]);
+    expect((await first).title).toBe('Current value');
+    response.resolve([item('linked', 'linked-model', { name: 'Stale value' })]);
+    await Promise.resolve();
+    expect((await resolver.resolve(record)).title).toBe('Current value');
+  });
+
+  it('evicts old records and uploads after navigation exceeds the cache limits', async () => {
+    const loadItems = vi.fn(async (ids: readonly string[]) =>
+      ids.map((id) => item(id, 'linked-model', { name: `Reloaded ${id}` })),
+    );
+    const loadUploads = vi.fn(async (ids: readonly string[]) =>
+      ids.map(upload),
+    );
+    const resolver = createPresentationResolver({
+      itemTypes: [
+        itemType('model-1', 'link', 'image'),
+        itemType('linked-model', 'name'),
+      ],
+      fields: [
+        field('link', 'next', 'link', 0),
+        field('image', 'image', 'file', 1),
+        field('name', 'name', 'string', 0, { itemTypeId: 'linked-model' }),
+      ],
+      locales: ['en'],
+      loadItems,
+      loadUploads,
+    });
+    resolver.primeItems(
+      Array.from({ length: PRESENTATION_CACHE_LIMITS.items + 1 }, (_, index) =>
+        item(`linked-${index}`, 'linked-model', { name: `Cached ${index}` }),
+      ),
+    );
+    resolver.primeUploads(
+      Array.from(
+        { length: PRESENTATION_CACHE_LIMITS.uploads + 1 },
+        (_, index) => upload(`upload-${index}`),
+      ),
+    );
+
+    const recent = await resolver.resolve(
+      item('recent', 'model-1', {
+        next: `linked-${PRESENTATION_CACHE_LIMITS.items}`,
+        image: { upload_id: `upload-${PRESENTATION_CACHE_LIMITS.uploads}` },
+      }),
+    );
+    expect(recent.title).toBe(`Cached ${PRESENTATION_CACHE_LIMITS.items}`);
+    expect(loadItems).not.toHaveBeenCalled();
+    expect(loadUploads).not.toHaveBeenCalled();
+
+    const evicted = await resolver.resolve(
+      item('old', 'model-1', {
+        next: 'linked-0',
+        image: { upload_id: 'upload-0' },
+      }),
+    );
+    expect(evicted.title).toBe('Reloaded linked-0');
+    expect(evicted.image?.uploadId).toBe('upload-0');
+    expect(loadItems).toHaveBeenCalledWith(['linked-0']);
+    expect(loadUploads).toHaveBeenCalledWith(['upload-0']);
+  });
+
+  it('bounds hydration batch sizes and shared concurrency for a synthetic large selection', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const batches: number[] = [];
+    async function hydrate<T>(ids: readonly string[], make: (id: string) => T) {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      batches.push(ids.length);
+      await Promise.resolve();
+      active -= 1;
+      return ids.map(make);
+    }
+    const resolver = createPresentationResolver({
+      itemTypes: [
+        itemType('model-1', 'link', 'image'),
+        itemType('linked-model', 'name'),
+      ],
+      fields: [
+        field('link', 'next', 'link', 0),
+        field('image', 'image', 'file', 1),
+        field('name', 'name', 'string', 0, { itemTypeId: 'linked-model' }),
+      ],
+      locales: ['en'],
+      loadItems: (ids) =>
+        hydrate(ids, (id) => item(id, 'linked-model', { name: id })),
+      loadUploads: (ids) => hydrate(ids, upload),
+    });
+    const records = Array.from({ length: 501 }, (_, index) =>
+      item(`root-${index}`, 'model-1', {
+        next: `linked-${index}`,
+        image: { upload_id: `upload-${index}` },
+      }),
+    );
+
+    // Also exercise the cache boundary when callers resolve independently.
+    const result = await Promise.all(
+      records.map((record) => resolver.resolve(record)),
+    );
+    expect(result).toHaveLength(records.length);
+    expect(result[500].title).toBe('linked-500');
+    expect(Math.max(...batches)).toBe(100);
+    expect(maxActive).toBe(2);
+  });
+
+  it('stops starting work after a visible-page resolution is cancelled', async () => {
+    const controller = new AbortController();
+    const loadedIds: string[] = [];
+    const resolver = createPresentationResolver({
+      itemTypes: [itemType('model-1', 'link')],
+      fields: [field('link', 'next', 'link', 0)],
+      locales: ['en'],
+      loadItems: async (ids) => {
+        loadedIds.push(...ids);
+        controller.abort();
+        return [];
+      },
+    });
+    const records = Array.from({ length: 1_000 }, (_, index) =>
+      item(`root-${index}`, 'model-1', {
+        next: `linked-${index}`,
+      }),
+    );
+    await expect(
+      resolver.resolveMany(records, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(loadedIds.length).toBeGreaterThan(0);
+    expect(loadedIds.length).toBeLessThanOrEqual(25);
+  });
+
+  it('skips queued model hydration after all requesting pages are cancelled', async () => {
+    const controller = new AbortController();
+    const response = deferred<readonly RawField[]>();
+    const started = deferred<void>();
+    const loadFields = vi.fn(() => {
+      if (loadFields.mock.calls.length === 2) started.resolve();
+      return response.promise;
+    });
+    const models = Array.from({ length: 25 }, (_, index) =>
+      itemType(`model-${index}`),
+    );
+    const resolver = createPresentationResolver({
+      itemTypes: models,
+      locales: ['en'],
+      loadFields,
+    });
+    const records = models.map((model) =>
+      item(`record-${model.id}`, model.id, {}),
+    );
+    const pending = resolver.resolveMany(records, {
+      signal: controller.signal,
+    });
+    await started.promise;
+    controller.abort();
+    response.resolve([]);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(loadFields).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('status, validity, and thumbnails', () => {
@@ -266,19 +562,21 @@ describe('status, validity, and thumbnails', () => {
   it('builds cropped upload URLs with record focal point', () => {
     const upload = {
       id: 'upload-1',
-      url: 'https://assets.example/image.jpg',
-      path: '/image.jpg',
-      md5: '1234567890',
-      mux_playback_id: null,
-      updated_at: null,
-      default_field_metadata: {
-        alt: {},
-        title: {},
-        custom_data: {},
-        focal_point: null,
-        poster_time: null,
+      attributes: {
+        url: 'https://assets.example/image.jpg',
+        path: '/image.jpg',
+        md5: '1234567890',
+        mux_playback_id: null,
+        updated_at: null,
+        default_field_metadata: {
+          alt: {},
+          title: {},
+          custom_data: {},
+          focal_point: null,
+          poster_time: null,
+        },
       },
-    } as unknown as ApiTypes.Upload;
+    } as unknown as RawApiTypes.Upload;
 
     const result = buildUploadThumbnail(upload, {
       locales: ['en'],

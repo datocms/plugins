@@ -1,4 +1,7 @@
-import { buildClient, type Client } from '@datocms/cma-client-browser';
+import {
+  buildClient,
+  type Client,
+} from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
   ExecuteUploadsDropdownActionCtx,
@@ -13,6 +16,13 @@ import {
   PROVIDER_LABELS,
 } from '../config';
 import { createAltTextProvider } from '../providers/factory';
+import { isFatalProviderFailure } from '../providers/errors';
+import { createCmaFetch } from './cmaTransport';
+import {
+  acquireFieldGenerationLock,
+  getLatestFieldContext,
+  recordFieldValueWrite,
+} from './fieldContext';
 import type {
   AltTextProvider,
   AltTextProviderConfig,
@@ -24,12 +34,18 @@ const IMGIX_FIT = 'max';
 const IMGIX_WIDTH = '1024';
 const IMGIX_HEIGHT = '1024';
 const GENERATION_CONCURRENCY = 3;
-const GENERATION_TIMEOUT_MS = 60_000;
+// Allows the bounded CMA read, Gemini image download and provider retry budgets.
+// Individual HTTP attempts still time out and abort at 30/60 seconds.
+const GENERATION_TIMEOUT_MS = 365_000;
 const GENERATION_TOAST_DURATION_MS = 5_000;
 const GENERATION_PROGRESS_INTERVAL_MS = 6_000;
 const OPENAI_MAX_OUTPUT_TOKENS = 1_000;
 const GEMINI_MAX_OUTPUT_TOKENS = 1_000;
 const MAX_DISPLAYED_ERRORS = 8;
+const UPLOAD_BATCH_SIZE = 50;
+const LOCALE_SAVE_BATCH_SIZE = 10;
+const activeUploadRuns = new Set<string>();
+const cmaFetch = createCmaFetch();
 const UNKNOWN_ERROR = 'Unknown error';
 
 export type AltGenerationMode = 'missing-only' | 'overwrite-all';
@@ -41,43 +57,39 @@ type GenerationTarget = {
 
 type CmaUpload = Awaited<ReturnType<Client['uploads']['find']>>;
 
-type UploadGenerationTarget = {
-  upload: CmaUpload;
-  locale: string;
-};
-
-type GeneratedUploadAlt = UploadGenerationTarget & {
-  alt: string;
-};
-
-type UploadAltGroup = {
-  upload: CmaUpload;
-  alts: Map<string, string>;
-};
-
-type UploadLoadSummary = {
-  uploads: CmaUpload[];
-  errors: string[];
-};
-
-type UploadGenerationSummary = {
-  groups: UploadAltGroup[];
-  errors: string[];
-};
-
 type UploadUpdateSummary = {
   updatedAltCount: number;
   updatedUploadCount: number;
-  errors: string[];
 };
+
+/** Keep diagnostic memory bounded even if every locale of every asset fails. */
+class GenerationErrors {
+  count = 0;
+  messages: string[] = [];
+
+  add(message: string): void {
+    this.count += 1;
+    if (this.messages.length < MAX_DISPLAYED_ERRORS) {
+      this.messages.push(
+        message.length > 1_000 ? `${message.slice(0, 1_000)}…` : message,
+      );
+    }
+  }
+
+  format(): string {
+    const remaining = this.count - this.messages.length;
+    return `Alt text generation errors:\n${[
+      ...this.messages,
+      ...(remaining > 0 ? [`…and ${remaining} more error(s).`] : []),
+    ].join('\n')}`;
+  }
+}
 
 type UploadMetadataUpdate = NonNullable<
   Parameters<Client['uploads']['update']>[1]['default_field_metadata']
 >;
 
 type LocalizedAltUpdate = NonNullable<UploadMetadataUpdate['alt']>;
-
-type FieldKeyedUploadMetadata = CmaUpload['default_field_metadata'];
 
 type GenerationFeedbackCtx = Pick<ExecuteFieldDropdownActionCtx, 'customToast'>;
 
@@ -197,27 +209,25 @@ export async function mapSettledWithConcurrency<T, R>(
     return [];
   }
 
-  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  const workerCount = Number.isFinite(concurrency)
+    ? Math.max(1, Math.min(Math.floor(concurrency), items.length))
+    : 1;
   const results = new Array<SettledResult<R>>(items.length);
   let nextIndex = 0;
 
   const worker = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += 1;
-    if (index >= items.length) {
-      return;
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = {
+          status: 'fulfilled',
+          // biome-ignore lint/performance/noAwaitInLoops: Each worker must wait before claiming more work to bound concurrency.
+          value: await mapper(items[index], index),
+        };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
     }
-
-    try {
-      results[index] = {
-        status: 'fulfilled',
-        value: await mapper(items[index], index),
-      };
-    } catch (reason) {
-      results[index] = { status: 'rejected', reason };
-    }
-
-    await worker();
   };
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
@@ -231,7 +241,11 @@ async function withGenerationTimeout(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error('Alt text generation timed out after 60 seconds.'));
+      reject(
+        new Error(
+          `Alt text generation timed out after ${GENERATION_TIMEOUT_MS / 1000} seconds.`,
+        ),
+      );
       abortController.abort();
     }, GENERATION_TIMEOUT_MS);
   });
@@ -294,6 +308,7 @@ async function generateAltForAsset(
 ): Promise<string> {
   return withGenerationTimeout(async (signal) => {
     const upload = await client.uploads.find(asset.upload_id);
+    signal.throwIfAborted();
 
     return requestAltForUpload(
       upload,
@@ -306,27 +321,18 @@ async function generateAltForAsset(
   });
 }
 
-function formatErrorSummary(messages: string[]): string {
-  const visibleMessages = messages.slice(0, MAX_DISPLAYED_ERRORS);
-  const remainingCount = messages.length - visibleMessages.length;
-
-  if (remainingCount > 0) {
-    visibleMessages.push(`…and ${remainingCount} more error(s).`);
-  }
-
-  return `Alt text generation errors:\n${visibleMessages.join('\n')}`;
-}
-
 function showGenerationToast(
   ctx: GenerationFeedbackCtx,
   message: string,
 ): void {
-  void ctx.customToast({
-    type: 'warning',
-    message,
-    dismissOnPageChange: true,
-    dismissAfterTimeout: GENERATION_TOAST_DURATION_MS,
-  });
+  void ctx
+    .customToast({
+      type: 'warning',
+      message,
+      dismissOnPageChange: true,
+      dismissAfterTimeout: GENERATION_TOAST_DURATION_MS,
+    })
+    .catch(() => undefined);
 }
 
 function showGenerationStarted(ctx: GenerationFeedbackCtx): void {
@@ -337,54 +343,12 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? '' : 's'}`;
 }
 
-function createUploadGenerationProgress(
-  ctx: ExecuteUploadsDropdownActionCtx,
-  targets: UploadGenerationTarget[],
-  localeCount: number,
-): (target: UploadGenerationTarget) => void {
-  const targetTotalsByUpload = new Map<string, number>();
-  const processedByUpload = new Map<string, number>();
-  for (const target of targets) {
-    targetTotalsByUpload.set(
-      target.upload.id,
-      (targetTotalsByUpload.get(target.upload.id) ?? 0) + 1,
-    );
-  }
-  const uploadCount = targetTotalsByUpload.size;
-
-  let processedTargetCount = 0;
-  let finishedUploadCount = 0;
-  let lastUpdateAt = Date.now();
-
-  showGenerationToast(
-    ctx,
-    `Generating ${countLabel(targets.length, 'alt text')} for ${countLabel(uploadCount, 'asset')} across ${countLabel(localeCount, 'locale')}…`,
-  );
-
-  return (target) => {
-    processedTargetCount += 1;
-    const processedForUpload =
-      (processedByUpload.get(target.upload.id) ?? 0) + 1;
-    processedByUpload.set(target.upload.id, processedForUpload);
-
-    if (processedForUpload === targetTotalsByUpload.get(target.upload.id)) {
-      finishedUploadCount += 1;
-    }
-
-    const now = Date.now();
-    if (
-      processedTargetCount === targets.length ||
-      now - lastUpdateAt < GENERATION_PROGRESS_INTERVAL_MS
-    ) {
-      return;
-    }
-
-    lastUpdateAt = now;
-    showGenerationToast(
-      ctx,
-      `Generating alt texts… ${processedTargetCount} of ${targets.length} locale versions processed; ${finishedUploadCount} of ${uploadCount} assets finished.`,
-    );
-  };
+async function writeFieldValue(
+  ctx: ExecuteFieldDropdownActionCtx,
+  value: FileFieldValue | FileFieldValue[],
+): Promise<void> {
+  await ctx.setFieldValue(ctx.fieldPath, value);
+  recordFieldValueWrite(ctx, value);
 }
 
 async function generateSingleAlt(
@@ -399,9 +363,7 @@ async function generateSingleAlt(
     await ctx.notice('Alt text already exists for this asset.');
     return;
   }
-
   showGenerationStarted(ctx);
-
   try {
     const alt = await generateAltForAsset(
       asset,
@@ -410,13 +372,107 @@ async function generateSingleAlt(
       configuration,
       ctx.locale,
     );
-    await ctx.setFieldValue(ctx.fieldPath, { ...asset, alt });
+    const latestCtx = getLatestFieldContext(ctx);
+    const current = latestCtx && getFieldValue(latestCtx);
+    if (
+      !isFileFieldValue(current) ||
+      current.upload_id !== asset.upload_id ||
+      current.alt !== asset.alt
+    ) {
+      await ctx.notice(
+        'Newer field changes were preserved; no alt text was changed.',
+      );
+      return;
+    }
+    await writeFieldValue(latestCtx ?? ctx, { ...current, alt });
     await ctx.notice(
       `Alt text generated with ${PROVIDER_LABELS[configuration.provider]}.`,
     );
   } catch (error) {
     await ctx.alert(`Could not generate alt text: ${getErrorMessage(error)}`);
   }
+}
+
+type GalleryState = {
+  cache: Map<string, Promise<SettledResult<string>>>;
+  errors: GenerationErrors;
+  updated: number;
+  processed: number;
+  stopped: boolean;
+};
+
+async function generateGalleryTarget(
+  asset: FileFieldValue,
+  state: GalleryState,
+  provider: AltTextProvider,
+  client: Client,
+  configuration: PluginConfiguration,
+  locale: string,
+): Promise<string | undefined> {
+  if (state.stopped) return undefined;
+  let pending = state.cache.get(asset.upload_id);
+  if (!pending) {
+    pending = generateAltForAsset(
+      asset,
+      provider,
+      client,
+      configuration,
+      locale,
+    )
+      .then((value): SettledResult<string> => ({ status: 'fulfilled', value }))
+      .catch((error): SettledResult<string> => {
+        if (fatalGenerationFailure(error)) state.stopped = true;
+        return { status: 'rejected', reason: getErrorMessage(error) };
+      });
+    state.cache.set(asset.upload_id, pending);
+  }
+  const result = await pending;
+  state.processed += 1;
+  if (result.status === 'rejected')
+    throw new Error(getErrorMessage(result.reason));
+  return result.value;
+}
+
+async function applyGalleryBatch(
+  ctx: ExecuteFieldDropdownActionCtx,
+  assets: FileFieldValue[],
+  batch: GenerationTarget[],
+  results: SettledResult<string | undefined>[],
+  state: GalleryState,
+): Promise<boolean> {
+  const latestCtx = getLatestFieldContext(ctx);
+  const current = latestCtx && getFieldValue(latestCtx);
+  if (
+    !isFileFieldValueArray(current) ||
+    current.length !== assets.length ||
+    current.some((entry, index) => entry.upload_id !== assets[index].upload_id)
+  ) {
+    state.errors.add(
+      'The gallery changed while generating alt text; newer field changes were preserved.',
+    );
+    return false;
+  }
+  const updated = [...current];
+  let applied = 0;
+  for (const [index, result] of results.entries()) {
+    const target = batch[index];
+    if (result.status === 'rejected') {
+      state.errors.add(
+        `${target.asset.upload_id}: ${getErrorMessage(result.reason)}`,
+      );
+    } else if (
+      result.value !== undefined &&
+      current[target.index].alt === target.asset.alt
+    ) {
+      updated[target.index] = { ...current[target.index], alt: result.value };
+      applied += 1;
+    }
+  }
+  if (applied > 0) {
+    await writeFieldValue(latestCtx ?? ctx, updated);
+    state.updated += applied;
+  }
+  return true;
 }
 
 async function generateGalleryAlts(
@@ -427,56 +483,79 @@ async function generateGalleryAlts(
   ctx: ExecuteFieldDropdownActionCtx,
   mode: AltGenerationMode,
 ) {
-  const targets: GenerationTarget[] = [];
-  for (const [index, asset] of assets.entries()) {
-    if (shouldProcessAsset(asset, mode)) {
-      targets.push({ asset, index });
-    }
-  }
-
+  const targets = assets.flatMap((asset, index) =>
+    shouldProcessAsset(asset, mode) ? [{ asset, index }] : [],
+  );
   if (targets.length === 0) {
     await ctx.notice('No assets need alt text generation.');
     return;
   }
-
   showGenerationStarted(ctx);
-
-  const results = await mapSettledWithConcurrency(
-    targets,
-    GENERATION_CONCURRENCY,
-    ({ asset }) =>
-      generateAltForAsset(asset, provider, client, configuration, ctx.locale),
-  );
-
-  const updatedAssets = [...assets];
-  const errorMessages: string[] = [];
-  let updatedCount = 0;
-
-  for (const [resultIndex, result] of results.entries()) {
-    const { asset, index } = targets[resultIndex];
-    if (result.status === 'rejected') {
-      errorMessages.push(
-        `${asset.upload_id}: ${getErrorMessage(result.reason)}`,
+  const state: GalleryState = {
+    cache: new Map(),
+    errors: new GenerationErrors(),
+    updated: 0,
+    processed: 0,
+    stopped: false,
+  };
+  let lastProgress = Date.now();
+  const report = () => {
+    const now = Date.now();
+    if (
+      targets.length <= UPLOAD_BATCH_SIZE ||
+      now - lastProgress < GENERATION_PROGRESS_INTERVAL_MS
+    )
+      return;
+    lastProgress = now;
+    showGenerationToast(
+      ctx,
+      `Generating gallery alt texts… ${state.processed} of ${targets.length} entries processed; ${state.updated} alt texts applied.`,
+    );
+  };
+  const timer =
+    targets.length > UPLOAD_BATCH_SIZE
+      ? setInterval(report, GENERATION_PROGRESS_INTERVAL_MS)
+      : undefined;
+  try {
+    for (
+      let offset = 0;
+      offset < targets.length && !state.stopped;
+      offset += UPLOAD_BATCH_SIZE
+    ) {
+      const batch = targets.slice(offset, offset + UPLOAD_BATCH_SIZE);
+      // biome-ignore lint/performance/noAwaitInLoops: Apply each bounded gallery batch before generating another.
+      const results = await mapSettledWithConcurrency(
+        batch,
+        GENERATION_CONCURRENCY,
+        async ({ asset }) => {
+          const result = await generateGalleryTarget(
+            asset,
+            state,
+            provider,
+            client,
+            configuration,
+            ctx.locale,
+          );
+          report();
+          return result;
+        },
       );
-      continue;
+      if (!(await applyGalleryBatch(ctx, assets, batch, results, state))) break;
     }
-
-    updatedAssets[index] = { ...asset, alt: result.value };
-    updatedCount += 1;
+  } finally {
+    if (timer !== undefined) clearInterval(timer);
   }
-
-  if (updatedCount > 0) {
-    await ctx.setFieldValue(ctx.fieldPath, updatedAssets);
+  if (state.updated > 0) {
     await ctx.notice(
-      `${updatedCount} alt text${updatedCount === 1 ? '' : 's'} generated with ${
-        PROVIDER_LABELS[configuration.provider]
-      }.`,
+      `${countLabel(state.updated, 'alt text')} generated with ${PROVIDER_LABELS[configuration.provider]}.`,
     );
   }
-
-  if (errorMessages.length > 0) {
-    await ctx.alert(formatErrorSummary(errorMessages));
+  if (state.stopped) {
+    await ctx.notice(
+      `Generation stopped after a service error; ${state.processed} of ${targets.length} gallery entries processed. Applied alt texts were kept.`,
+    );
   }
+  if (state.errors.count > 0) await ctx.alert(state.errors.format());
 }
 
 function nonImageSkipMessage(count: number): string {
@@ -487,64 +566,51 @@ function uploadLabel(upload: CmaUpload): string {
   return upload.filename.trim() || upload.id;
 }
 
-// The `uploads` simple methods speak one shape on every environment —
-// field-keyed (`{ alt: { en } }`) — so no runtime shape detection is needed.
-function uploadMetadata(upload: CmaUpload): FieldKeyedUploadMetadata {
-  return upload.default_field_metadata;
-}
-
 function uploadAltForLocale(upload: CmaUpload, locale: string): unknown {
-  return uploadMetadata(upload).alt[locale];
+  return upload.default_field_metadata.alt[locale];
 }
 
 function selectedUploadLabel(upload: Upload): string {
   return upload.attributes.filename.trim() || upload.id;
 }
 
-function uploadGenerationTargets(
-  uploads: CmaUpload[],
-  locales: string[],
-  mode: AltGenerationMode,
-): UploadGenerationTarget[] {
-  return uploads.flatMap((upload) =>
-    locales
-      .filter(
-        (locale) =>
-          mode === 'overwrite-all' ||
-          !hasAltText(uploadAltForLocale(upload, locale)),
-      )
-      .map((locale) => ({ upload, locale })),
-  );
-}
-
 function buildUploadMetadataUpdate(
   upload: CmaUpload,
+  original: CmaUpload,
   alts: Map<string, string>,
   mode: AltGenerationMode,
 ): { metadata: UploadMetadataUpdate; updatedAltCount: number } {
-  const metadata = uploadMetadata(upload);
-  const updatedAlts: LocalizedAltUpdate = { ...metadata.alt };
+  // The server merges inner locale maps; send only generated locales.
+  const fieldKeyedAlts: LocalizedAltUpdate = {};
   let updatedAltCount = 0;
 
   for (const [locale, alt] of alts) {
-    if (mode === 'missing-only' && hasAltText(metadata.alt[locale])) {
+    const currentAlt = uploadAltForLocale(upload, locale);
+    // Even overwrite mode must not overwrite an edit made after generation began.
+    if (
+      currentAlt !== uploadAltForLocale(original, locale) ||
+      (mode === 'missing-only' && hasAltText(currentAlt)) ||
+      currentAlt === alt
+    ) {
       continue;
     }
-
-    updatedAlts[locale] = alt;
+    fieldKeyedAlts[locale] = alt;
     updatedAltCount += 1;
   }
 
-  return { metadata: { alt: updatedAlts }, updatedAltCount };
+  return {
+    metadata: { alt: fieldKeyedAlts },
+    updatedAltCount,
+  };
 }
 
 async function confirmUploadOverwrite(
   ctx: ExecuteUploadsDropdownActionCtx,
-  imageCount: number,
+  selectedCount: number,
 ): Promise<boolean> {
   const result = await ctx.openConfirm({
     title: 'Regenerate asset alt texts?',
-    content: `This will immediately replace existing default alt text for ${imageCount} image asset${imageCount === 1 ? '' : 's'} in every locale. This action cannot be undone.`,
+    content: `This will immediately replace existing default alt text for the selected image assets in every locale (${countLabel(selectedCount, 'asset')} selected). This action cannot be undone.`,
     choices: [
       {
         label: 'Regenerate alt texts',
@@ -561,184 +627,324 @@ async function confirmUploadOverwrite(
   return result === true;
 }
 
-async function loadSelectedUploads(
-  client: Client,
-  selectedUploads: Upload[],
-): Promise<UploadLoadSummary> {
-  const results = await mapSettledWithConcurrency(
-    selectedUploads,
-    GENERATION_CONCURRENCY,
-    (upload) => client.uploads.find(upload.id),
-  );
-  const uploads: CmaUpload[] = [];
-  const errors: string[] = [];
-
-  for (const [index, result] of results.entries()) {
-    if (result.status === 'rejected') {
-      errors.push(
-        `${selectedUploadLabel(selectedUploads[index])}: Could not load asset: ${getErrorMessage(result.reason)}`,
-      );
-    } else {
-      uploads.push(result.value);
-    }
+function fatalCmaFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return false;
   }
-
-  return { uploads, errors };
+  const response = error.response;
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'status' in response &&
+    [401, 402, 403, 429].includes(Number(response.status))
+  );
 }
 
-async function reportNoUploadTargets(
-  ctx: ExecuteUploadsDropdownActionCtx,
-  selectedCount: number,
-  imageCount: number,
-  nonImageCount: number,
-  errors: string[],
-): Promise<void> {
-  if (imageCount === 0) {
-    if (selectedCount === 0 || nonImageCount > 0) {
-      await ctx.notice('No image assets selected.');
-    }
-  } else {
-    const skippedMessage = nonImageCount
-      ? ` ${nonImageSkipMessage(nonImageCount)}`
-      : '';
-    await ctx.notice(
-      `All selected image assets already have alt text for every locale.${skippedMessage}`,
+function fatalGenerationFailure(error: unknown): boolean {
+  return isFatalProviderFailure(error) || fatalCmaFailure(error);
+}
+
+async function saveUploadAlts(
+  client: Client,
+  original: CmaUpload,
+  alts: Map<string, string>,
+  mode: AltGenerationMode,
+): Promise<number> {
+  const latest = await client.uploads.find(original.id);
+  if (!latest.is_image || latest.url !== original.url) {
+    throw new Error(
+      'The asset image changed while alt text was being generated.',
     );
   }
-
-  if (errors.length > 0) {
-    await ctx.alert(formatErrorSummary(errors));
+  const { metadata, updatedAltCount } = buildUploadMetadataUpdate(
+    latest,
+    original,
+    alts,
+    mode,
+  );
+  if (updatedAltCount === 0) {
+    return 0;
+  }
+  try {
+    await client.uploads.update(latest.id, {
+      default_field_metadata: metadata as UploadMetadataUpdate,
+    });
+    return updatedAltCount;
+  } catch (error) {
+    if (fatalCmaFailure(error)) throw error;
+    // The server may have saved a timed-out write. Verify; never replay a stale patch.
+    let verified: CmaUpload;
+    try {
+      verified = await client.uploads.find(original.id);
+    } catch {
+      throw new Error(
+        `Save outcome could not be verified; no write was retried. ${getErrorMessage(error)}`,
+      );
+    }
+    const saved = Array.from(alts).filter(
+      ([locale, alt]) =>
+        uploadAltForLocale(verified, locale) === alt &&
+        uploadAltForLocale(latest, locale) !== alt &&
+        uploadAltForLocale(latest, locale) ===
+          uploadAltForLocale(original, locale),
+    ).length;
+    if (saved === updatedAltCount) {
+      return saved;
+    }
+    throw error;
   }
 }
 
-async function generateUploadTargetAlts(
-  targets: UploadGenerationTarget[],
+type UploadRunState = {
+  errors: GenerationErrors;
+  summary: UploadUpdateSummary;
+  stopped: boolean;
+  loaded: number;
+  completed: number;
+  images: number;
+  nonImages: number;
+  processedLocales: number;
+  targetCount: number;
+  targetAssets: number;
+  generatedCount: number;
+};
+
+async function processUpload(
+  upload: CmaUpload,
+  locales: string[],
+  mode: AltGenerationMode,
+  client: Client,
   provider: AltTextProvider,
   configuration: PluginConfiguration,
-  onTargetSettled: (target: UploadGenerationTarget) => void,
-): Promise<UploadGenerationSummary> {
-  const results = await mapSettledWithConcurrency(
-    targets,
+  state: UploadRunState,
+): Promise<void> {
+  const alts = new Map<string, string>();
+  let savedForUpload = 0;
+  const save = async () => {
+    if (alts.size === 0) return;
+    try {
+      const count = await saveUploadAlts(client, upload, alts, mode);
+      savedForUpload += count;
+      state.summary.updatedAltCount += count;
+    } catch (error) {
+      state.errors.add(
+        `${uploadLabel(upload)}: Could not save generated alt text: ${getErrorMessage(error)}`,
+      );
+      if (fatalCmaFailure(error)) state.stopped = true;
+    } finally {
+      alts.clear();
+    }
+  };
+
+  for (const locale of locales) {
+    if (state.stopped) break;
+    if (
+      mode === 'missing-only' &&
+      hasAltText(uploadAltForLocale(upload, locale))
+    )
+      continue;
+    try {
+      alts.set(
+        locale,
+        // biome-ignore lint/performance/noAwaitInLoops: Assets already have three workers; locales stay sequential and flush after ten successes.
+        await generateAltForUpload(upload, provider, configuration, locale),
+      );
+      state.generatedCount += 1;
+    } catch (error) {
+      state.errors.add(
+        `${uploadLabel(upload)} (${locale}): ${getErrorMessage(error)}`,
+      );
+      if (fatalGenerationFailure(error)) state.stopped = true;
+    } finally {
+      state.processedLocales += 1;
+    }
+    if (alts.size >= LOCALE_SAVE_BATCH_SIZE) await save();
+  }
+  await save();
+  if (savedForUpload > 0) state.summary.updatedUploadCount += 1;
+  state.completed += 1;
+}
+
+function createUploadProgress(
+  ctx: ExecuteUploadsDropdownActionCtx,
+  state: UploadRunState,
+  selectedCount: number,
+  localeCount: number,
+): { start: () => void; report: () => void; dispose: () => void } {
+  const large = selectedCount > UPLOAD_BATCH_SIZE;
+  let started = false;
+  let lastUpdate = Date.now();
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const report = () => {
+    const now = Date.now();
+    if (!started || now - lastUpdate < GENERATION_PROGRESS_INTERVAL_MS) return;
+    lastUpdate = now;
+    showGenerationToast(
+      ctx,
+      `Generating alt texts… ${state.loaded} of ${selectedCount} assets checked; ${state.processedLocales} locale versions processed; ${state.completed} assets finished; ${state.summary.updatedAltCount} alt texts saved.`,
+    );
+  };
+  return {
+    start: () => {
+      if (started) return;
+      started = true;
+      showGenerationToast(
+        ctx,
+        large
+          ? `Generating alt texts for ${countLabel(selectedCount, 'selected asset')} across ${countLabel(localeCount, 'locale')}…`
+          : `Generating ${countLabel(state.targetCount, 'alt text')} for ${countLabel(state.targetAssets, 'asset')} across ${countLabel(localeCount, 'locale')}…`,
+      );
+      timer = setInterval(report, GENERATION_PROGRESS_INTERVAL_MS);
+    },
+    report,
+    dispose: () => {
+      if (timer !== undefined) clearInterval(timer);
+    },
+  };
+}
+
+async function loadUploadBatch(
+  batch: Upload[],
+  locales: string[],
+  mode: AltGenerationMode,
+  client: Client,
+  state: UploadRunState,
+  report: () => void,
+): Promise<CmaUpload[]> {
+  const loaded = await mapSettledWithConcurrency(
+    batch,
     GENERATION_CONCURRENCY,
-    async (target): Promise<GeneratedUploadAlt> => {
+    async (entry) => {
+      if (state.stopped) return undefined;
       try {
-        return {
-          ...target,
-          alt: await generateAltForUpload(
-            target.upload,
-            provider,
-            configuration,
-            target.locale,
-          ),
-        };
+        return await client.uploads.find(entry.id);
+      } catch (error) {
+        if (fatalCmaFailure(error)) state.stopped = true;
+        throw error;
       } finally {
-        onTargetSettled(target);
+        state.loaded += 1;
+        report();
       }
     },
   );
-  const groupsByUpload = new Map<string, UploadAltGroup>();
-  const errors: string[] = [];
-
-  for (const [index, result] of results.entries()) {
-    const target = targets[index];
+  const targets: CmaUpload[] = [];
+  for (const [index, result] of loaded.entries()) {
     if (result.status === 'rejected') {
-      errors.push(
-        `${uploadLabel(target.upload)} (${target.locale}): ${getErrorMessage(result.reason)}`,
+      state.errors.add(
+        `${selectedUploadLabel(batch[index])}: Could not load asset: ${getErrorMessage(result.reason)}`,
       );
       continue;
     }
-
-    const group = groupsByUpload.get(result.value.upload.id) ?? {
-      upload: result.value.upload,
-      alts: new Map<string, string>(),
-    };
-    group.alts.set(result.value.locale, result.value.alt);
-    groupsByUpload.set(result.value.upload.id, group);
-  }
-
-  return { groups: Array.from(groupsByUpload.values()), errors };
-}
-
-async function updateUploadAlts(
-  client: Client,
-  groups: UploadAltGroup[],
-  mode: AltGenerationMode,
-): Promise<UploadUpdateSummary> {
-  const results = await mapSettledWithConcurrency(
-    groups,
-    GENERATION_CONCURRENCY,
-    async ({ upload, alts }) => {
-      const latestUpload = await client.uploads.find(upload.id);
-      if (!latestUpload.is_image) {
-        throw new Error('The asset is no longer an image.');
-      }
-
-      const { metadata, updatedAltCount } = buildUploadMetadataUpdate(
-        latestUpload,
-        alts,
-        mode,
-      );
-
-      if (updatedAltCount > 0) {
-        await client.uploads.update(latestUpload.id, {
-          default_field_metadata: metadata,
-        });
-      }
-
-      return updatedAltCount;
-    },
-  );
-  const summary: UploadUpdateSummary = {
-    updatedAltCount: 0,
-    updatedUploadCount: 0,
-    errors: [],
-  };
-
-  for (const [index, result] of results.entries()) {
-    if (result.status === 'rejected') {
-      summary.errors.push(
-        `${uploadLabel(groups[index].upload)}: Could not save generated alt text: ${getErrorMessage(result.reason)}`,
-      );
-    } else if (result.value > 0) {
-      summary.updatedAltCount += result.value;
-      summary.updatedUploadCount += 1;
+    const upload = result.value;
+    if (!upload) continue;
+    if (!upload.is_image) {
+      state.nonImages += 1;
+      continue;
+    }
+    state.images += 1;
+    const missing = locales.reduce(
+      (count, locale) =>
+        count +
+        (mode === 'overwrite-all' ||
+        !hasAltText(uploadAltForLocale(upload, locale))
+          ? 1
+          : 0),
+      0,
+    );
+    state.targetCount += missing;
+    if (missing > 0) {
+      targets.push(upload);
+      state.targetAssets += 1;
     }
   }
-
-  return summary;
+  return targets;
 }
 
-async function reportUploadGeneration(
+async function reportUploadRun(
   ctx: ExecuteUploadsDropdownActionCtx,
   configuration: PluginConfiguration,
-  generatedGroupCount: number,
-  updateSummary: UploadUpdateSummary,
-  nonImageCount: number,
-  errors: string[],
+  state: UploadRunState,
+  selectedCount: number,
 ): Promise<void> {
-  const noticeMessages: string[] = [];
-
-  if (updateSummary.updatedAltCount > 0) {
-    noticeMessages.push(
-      `${updateSummary.updatedAltCount} alt text${updateSummary.updatedAltCount === 1 ? '' : 's'} generated for ${updateSummary.updatedUploadCount} asset${updateSummary.updatedUploadCount === 1 ? '' : 's'} with ${PROVIDER_LABELS[configuration.provider]}.`,
+  const messages: string[] = [];
+  if (state.summary.updatedAltCount > 0) {
+    messages.push(
+      `${countLabel(state.summary.updatedAltCount, 'alt text')} generated for ${countLabel(state.summary.updatedUploadCount, 'asset')} with ${PROVIDER_LABELS[configuration.provider]}.`,
     );
-  } else if (generatedGroupCount > 0 && errors.length === 0) {
-    noticeMessages.push(
+  } else if (state.generatedCount > 0 && state.errors.count === 0) {
+    messages.push(
       'No alt texts were changed because newer asset metadata was preserved.',
     );
+  } else if (state.targetCount === 0 && state.errors.count === 0) {
+    messages.push(
+      state.images === 0
+        ? 'No image assets selected.'
+        : 'All selected image assets already have alt text for every locale.',
+    );
   }
+  if (state.nonImages > 0) messages.push(nonImageSkipMessage(state.nonImages));
+  if (state.stopped)
+    messages.push(
+      `Generation stopped after a service error; ${state.loaded} of ${selectedCount} assets checked, ${state.processedLocales} locale versions processed. Saved metadata was kept.`,
+    );
+  if (messages.length > 0) await ctx.notice(messages.join(' '));
+  if (state.errors.count > 0) await ctx.alert(state.errors.format());
+}
 
-  if (nonImageCount > 0) {
-    noticeMessages.push(nonImageSkipMessage(nonImageCount));
+async function executeUploadRun(
+  ctx: ExecuteUploadsDropdownActionCtx,
+  selected: Upload[],
+  locales: string[],
+  mode: AltGenerationMode,
+  client: Client,
+  configuration: PluginConfiguration,
+  state: UploadRunState,
+  progress: ReturnType<typeof createUploadProgress>,
+): Promise<void> {
+  let provider: AltTextProvider | undefined;
+  if (selected.length > UPLOAD_BATCH_SIZE) progress.start();
+  // No project-wide record/model/reference scan. The SDK provides the complete selection.
+  for (
+    let offset = 0;
+    offset < selected.length && !state.stopped;
+    offset += UPLOAD_BATCH_SIZE
+  ) {
+    // biome-ignore lint/performance/noAwaitInLoops: Finish and release each upload batch before loading the next fifty.
+    const targets = await loadUploadBatch(
+      selected.slice(offset, offset + UPLOAD_BATCH_SIZE),
+      locales,
+      mode,
+      client,
+      state,
+      progress.report,
+    );
+    if (targets.length === 0 || state.stopped) continue;
+    provider ??= createAltTextProvider(providerConfig(configuration));
+    progress.start();
+    const activeProvider = provider;
+    await mapSettledWithConcurrency(
+      targets,
+      GENERATION_CONCURRENCY,
+      async (upload) => {
+        if (state.stopped) return;
+        try {
+          await processUpload(
+            upload,
+            locales,
+            mode,
+            client,
+            activeProvider,
+            configuration,
+            state,
+          );
+        } catch (error) {
+          state.errors.add(`${uploadLabel(upload)}: ${getErrorMessage(error)}`);
+        }
+        progress.report();
+      },
+    );
   }
-
-  if (noticeMessages.length > 0) {
-    await ctx.notice(noticeMessages.join(' '));
-  }
-
-  if (errors.length > 0) {
-    await ctx.alert(formatErrorSummary(errors));
-  }
+  await reportUploadRun(ctx, configuration, state, selected.length);
 }
 
 export async function runAltGenerationForUploads(
@@ -752,7 +958,6 @@ export async function runAltGenerationForUploads(
     );
     return;
   }
-
   const configuration = normalizePluginConfiguration(
     ctx.plugin.attributes.parameters,
   );
@@ -763,75 +968,69 @@ export async function runAltGenerationForUploads(
     );
     return;
   }
-
+  const scope = JSON.stringify([ctx.cmaBaseUrl, ctx.environment, ctx.site.id]);
+  if (activeUploadRuns.has(scope)) {
+    await ctx.notice(
+      'Alt text generation is already running for selected assets.',
+    );
+    return;
+  }
+  activeUploadRuns.add(scope);
+  const selected = Array.from(
+    new Map(uploads.map((upload) => [upload.id, upload])).values(),
+  );
+  const locales = Array.from(new Set(ctx.site.attributes.locales));
+  const state: UploadRunState = {
+    errors: new GenerationErrors(),
+    summary: { updatedAltCount: 0, updatedUploadCount: 0 },
+    stopped: false,
+    loaded: 0,
+    completed: 0,
+    images: 0,
+    nonImages: 0,
+    processedLocales: 0,
+    targetCount: 0,
+    targetAssets: 0,
+    generatedCount: 0,
+  };
+  const progress = createUploadProgress(
+    ctx,
+    state,
+    selected.length,
+    locales.length,
+  );
   try {
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
+      autoRetry: false,
+      requestTimeout: 125_000,
+      fetchFn: cmaFetch,
     });
-    const loadSummary = await loadSelectedUploads(client, uploads);
-    const imageUploads = loadSummary.uploads.filter(
-      (upload) => upload.is_image,
-    );
-    const nonImageCount = loadSummary.uploads.length - imageUploads.length;
-    const locales = Array.from(new Set(ctx.site.attributes.locales));
-    const targets = uploadGenerationTargets(imageUploads, locales, mode);
-
-    if (targets.length === 0) {
-      await reportNoUploadTargets(
-        ctx,
-        uploads.length,
-        imageUploads.length,
-        nonImageCount,
-        loadSummary.errors,
-      );
-      return;
-    }
-
     if (
       mode === 'overwrite-all' &&
-      !(await confirmUploadOverwrite(ctx, imageUploads.length))
-    ) {
+      selected.length > 0 &&
+      !(await confirmUploadOverwrite(ctx, selected.length))
+    )
       return;
-    }
-
-    const provider = createAltTextProvider(providerConfig(configuration));
-    const reportProgress = createUploadGenerationProgress(
+    await executeUploadRun(
       ctx,
-      targets,
-      locales.length,
-    );
-    const generationSummary = await generateUploadTargetAlts(
-      targets,
-      provider,
-      configuration,
-      reportProgress,
-    );
-    const updateSummary = await updateUploadAlts(
-      client,
-      generationSummary.groups,
+      selected,
+      locales,
       mode,
-    );
-    const errors = [
-      ...loadSummary.errors,
-      ...generationSummary.errors,
-      ...updateSummary.errors,
-    ];
-
-    await reportUploadGeneration(
-      ctx,
+      client,
       configuration,
-      generationSummary.groups.length,
-      updateSummary,
-      nonImageCount,
-      errors,
+      state,
+      progress,
     );
   } catch (error) {
-    console.error('Unexpected upload alt text generation error:', error);
     await ctx.alert(
       `Unexpected error while generating asset alt text: ${getErrorMessage(error)}`,
     );
+  } finally {
+    progress.dispose();
+    activeUploadRuns.delete(scope);
   }
 }
 
@@ -868,6 +1067,11 @@ export async function runAltGenerationForField(
     return;
   }
 
+  const release = acquireFieldGenerationLock(ctx);
+  if (!release) {
+    await ctx.notice('Alt text generation is already running for this field.');
+    return;
+  }
   let didDisableField = false;
 
   try {
@@ -877,6 +1081,9 @@ export async function runAltGenerationForField(
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
+      autoRetry: false,
+      requestTimeout: 125_000,
+      fetchFn: cmaFetch,
     });
     const provider = createAltTextProvider(providerConfig(configuration));
 
@@ -906,7 +1113,10 @@ export async function runAltGenerationForField(
 
     await ctx.notice('No asset selected in this field.');
   } catch (error) {
-    console.error('Unexpected alt text generation error:', error);
+    console.error(
+      'Unexpected alt text generation error:',
+      getErrorMessage(error),
+    );
     await ctx.alert(
       `Unexpected error while generating alt text: ${getErrorMessage(error)}`,
     );
@@ -915,8 +1125,12 @@ export async function runAltGenerationForField(
       try {
         await ctx.disableField(ctx.fieldPath, false);
       } catch (error) {
-        console.error('Could not re-enable the asset field:', error);
+        console.error(
+          'Could not re-enable the asset field:',
+          getErrorMessage(error),
+        );
       }
     }
+    release();
   }
 }

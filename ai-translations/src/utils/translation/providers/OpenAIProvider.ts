@@ -1,10 +1,12 @@
 import OpenAI from 'openai';
+import { ProviderRequestControl } from '../ProviderRequestControl';
 import {
   isEmptyPrompt,
   withTimeout,
   withTimeoutGenerator,
 } from '../providerUtils';
 import type { StreamOptions, TranslationProvider, VendorId } from '../types';
+import { ProviderError } from '../types';
 
 type OpenAIProviderConfig = {
   apiKey: string;
@@ -22,6 +24,7 @@ export default class OpenAIProvider implements TranslationProvider {
   private readonly client: OpenAI;
   private readonly model: string;
   private readonly baseUrl: string;
+  private readonly requests = new ProviderRequestControl('openai');
 
   /**
    * Creates a provider bound to a model and API credentials.
@@ -34,6 +37,7 @@ export default class OpenAIProvider implements TranslationProvider {
       baseURL: cfg.baseUrl,
       organization: cfg.organization,
       dangerouslyAllowBrowser: true,
+      maxRetries: 0,
     });
     this.model = cfg.model;
     this.baseUrl = cfg.baseUrl ?? 'https://api.openai.com/v1';
@@ -101,33 +105,44 @@ export default class OpenAIProvider implements TranslationProvider {
       return '';
     }
 
-    return withTimeout(options, async (signal) => {
-      const requestBody = {
-        model: this.model,
-        messages: [{ role: 'user' as const, content: prompt }],
-        stream: false as const,
-      };
-      options?.debug?.request?.('Provider request', {
-        provider: this.vendor,
-        operation: 'completeText',
-        url: `${this.baseUrl.replace(/\/$/, '')}/chat/completions`,
-        body: requestBody,
-        options: {
-          timeoutMs: options?.timeoutMs,
-          hasAbortSignal: options?.abortSignal !== undefined,
-        },
-      });
-      const resp = await this.client.chat.completions.create(requestBody, {
-        signal,
-      });
-      const text = resp.choices?.[0]?.message?.content ?? '';
-      options?.debug?.response?.('Provider response', {
-        provider: this.vendor,
-        operation: 'completeText',
-        response: resp,
-        text,
-      });
-      return text;
-    });
+    return this.requests.run(
+      () =>
+        withTimeout(options, async (signal) => {
+          const requestBody = {
+            model: this.model,
+            messages: [{ role: 'user' as const, content: prompt }],
+            stream: false as const,
+          };
+          options?.debug?.request?.('Provider request', {
+            provider: this.vendor,
+            operation: 'completeText',
+            url: `${this.baseUrl.replace(/\/$/, '')}/chat/completions`,
+            body: requestBody,
+            options: {
+              timeoutMs: options?.timeoutMs,
+              hasAbortSignal: options?.abortSignal !== undefined,
+            },
+          });
+          const resp = await this.client.chat.completions.create(requestBody, {
+            signal,
+          });
+          if (resp.choices?.[0]?.finish_reason === 'length') {
+            throw new ProviderError(
+              'The model truncated the translation. No content was saved.',
+              422,
+              'openai',
+            );
+          }
+          const text = resp.choices?.[0]?.message?.content ?? '';
+          options?.debug?.response?.('Provider response', {
+            provider: this.vendor,
+            operation: 'completeText',
+            response: resp,
+            text,
+          });
+          return text;
+        }),
+      options?.abortSignal,
+    );
   }
 }

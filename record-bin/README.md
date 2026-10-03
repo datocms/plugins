@@ -2,11 +2,11 @@
 
 ![example.png](public/example.png)
 
-Record Bin will make a best-effort attempt to store a copy of deleted records in its own "Record Bin" model prior to deletion. These copies can then be restored to their original models later in case of an accidental deletion.
+Record Bin stores a copy of deleted records in its own "Record Bin" model. In Lambda-less mode, dashboard deletion is allowed only after the archive is saved and verified. These copies can be restored individually to their original models later in case of an accidental deletion.
 
 It works similarly to the trash can / recycling bin on your computer filesystem.
 
-The plugin isn't foolproof (see the "Important limitations and behavior" section below) but should catch the majority of record deletions.
+See "Important limitations and behavior" below for API deletions, concurrent changes, storage limits, and large selections.
 
 ## Usage
 
@@ -62,9 +62,22 @@ The current user role must be allowed to manage webhooks for connect/disconnect 
 ## Important limitations and behavior
 
 - In Lambda-less mode, API-triggered deletions are not captured. Only dashboard-triggered deletions go to the bin.
-- Lambda-less capture is NOT failsafe: Even if the backup fails, deletion WILL STILL OCCUR.
+- Lambda-less capture blocks deletion if any selected record cannot be archived and verified. Successfully saved archives remain available after an interrupted or rejected operation; repeated capture reconciles a stable archive ID instead of creating another copy.
+- Reads use bounded batches of 20 records with complete nested blocks, and up to four archive writes run concurrently. Requests are paced and transient reads are retried automatically. Capture runs continuously, without mandatory pause/resume checkpoints.
+- Captured versions are rechecked before allowing deletion. This detects edits during capture, but the CMA does not provide an atomic snapshot or conditional bulk deletion: a concurrent write after the final check remains possible.
+- Large JSON bodies are compressed with gzip/base64 inside the private `record_body` field. The full escaped request must fit 280,000 bytes, leaving room below the CMA's 300 KB record limit. Bodies that still do not fit are rejected before deletion. No public upload is created.
+- A full pre-deletion archive requires project quota for every archive record alongside the originals. Assets are referenced, not copied; restoration still depends on the original assets, referenced records, and compatible models.
+- The CMA accepts at most 200 IDs per bulk deletion. The inspected dashboard submits one bulk request for the entire selection. Until the dashboard implements batching after collecting every plugin's veto, this plugin blocks larger selections. Running bulk deletion inside one hook would bypass concurrent vetoes from other plugins, so the plugin never takes over the host's deletion.
+- Lambda mode still uses the separately deployed deletion webhook for ordinary selections. That webhook runs after deletion; its performance, retries, and capture integrity require a separate audit of the deployed backend. This plugin does not guarantee pre-deletion capture for API deletions or that backend.
 - Existing webhook-origin `record_body` payloads are still restorable.
-- New Lambda-less payloads are stored in a webhook-compatible envelope (`event_type: to_be_restored`) so records stay restorable after runtime switches.
+- Uncompressed Lambda-less payloads retain the webhook-compatible envelope (`event_type: to_be_restored`). New locally captured and compressed archives are restored locally even after switching runtime modes; legacy webhook archives retain the Lambda flow.
+- Individual restoration preserves the original UUID where supported, validates complete restored content before removing the archive, and leaves the archive intact on conflicts or integrity failures. Only timestamps present in the archive are checked; server-generated timestamps on legacy archives do not count as content changes. Historical numeric IDs receive a deterministic new UUID. Incoming links removed from other records during deletion are not reconstructed by restoring the archived record.
+
+### Local validation
+
+Run `npm ci`, then `npm run check` from this plugin directory. `check` aggregates TypeScript, deterministic mocked tests, and the production build. The monorepo `run-checks.js` targets other plugins and does not include Record Bin.
+
+The tests include a virtual 200,000-ID worker queue, bounded nested capture batches, many locales/models, opaque JSON, corruption, cancellation, and uncertain writes. Synthetic fixtures do not establish production throughput, memory usage, multi-hour iframe survival, or compatibility with a live dashboard. Some fixtures deliberately exceed the CMA's per-record block/locale limits to exercise local traversal only.
 
 ## For developers only: Additional technical details
 

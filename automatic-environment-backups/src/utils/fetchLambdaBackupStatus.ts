@@ -5,8 +5,11 @@ import {
   LambdaAuthSecretError,
 } from './lambdaAuth';
 import {
-  createTimeoutController,
+  fetchLambdaText,
   isAbortError,
+  isValidLambdaTimestamp,
+  LambdaResponseTooLargeError,
+  parseRetryAfterMs,
   truncateResponseSnippet,
 } from './lambdaHttp';
 import { normalizeLambdaBaseUrl } from './verifyLambdaHealth';
@@ -31,6 +34,7 @@ export class LambdaBackupStatusError extends Error {
     | 'INVALID_JSON'
     | 'INVALID_RESPONSE';
   readonly httpStatus?: number;
+  readonly retryAfterMs?: number;
   readonly responseSnippet?: string;
 
   constructor({
@@ -38,6 +42,7 @@ export class LambdaBackupStatusError extends Error {
     endpoint,
     message,
     httpStatus,
+    retryAfterMs,
     responseSnippet,
   }: {
     code:
@@ -50,6 +55,7 @@ export class LambdaBackupStatusError extends Error {
     endpoint: string;
     message: string;
     httpStatus?: number;
+    retryAfterMs?: number;
     responseSnippet?: string;
   }) {
     super(message);
@@ -57,6 +63,7 @@ export class LambdaBackupStatusError extends Error {
     this.code = code;
     this.endpoint = endpoint;
     this.httpStatus = httpStatus;
+    this.retryAfterMs = retryAfterMs;
     this.responseSnippet = responseSnippet;
   }
 }
@@ -65,13 +72,21 @@ type FetchLambdaBackupStatusInput = {
   baseUrl: string;
   environment: string;
   lambdaAuthSecret: string;
+  signal?: AbortSignal;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isIsoOrNull = (value: unknown): value is string | null =>
-  value === null || typeof value === 'string';
+  value === null || isValidLambdaTimestamp(value);
+
+const getResponseRetryAfterMs = (response: Response): number | undefined => {
+  if (response.status !== 429 && response.status !== 503) {
+    return undefined;
+  }
+  return parseRetryAfterMs(response.headers.get('Retry-After')) ?? undefined;
+};
 
 const toValidatedSlot = (
   candidate: unknown,
@@ -91,13 +106,21 @@ const toValidatedSlot = (
     return null;
   }
 
-  return {
+  const slot: LambdaBackupStatus['slots']['daily'] = {
     scope: expectedScope,
     executionMode: 'lambda_cron',
     lastBackupAt: candidate.lastBackupAt,
     nextBackupAt: candidate.nextBackupAt,
     dueNow: candidate.dueNow === true,
   };
+  if (
+    candidate.lastManagedEnvironmentId === null ||
+    (typeof candidate.lastManagedEnvironmentId === 'string' &&
+      candidate.lastManagedEnvironmentId.trim().length > 0)
+  ) {
+    slot.lastManagedEnvironmentId = candidate.lastManagedEnvironmentId;
+  }
+  return slot;
 };
 
 const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
@@ -116,7 +139,7 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
     payload.status !== EXPECTED_SERVICE_STATUS ||
     !isObject(scheduler) ||
     !isObject(slots) ||
-    typeof payload.checkedAt !== 'string'
+    !isValidLambdaTimestamp(payload.checkedAt)
   ) {
     return null;
   }
@@ -139,6 +162,12 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
 
   const biweeklySlot = toValidatedSlot(slots.biweekly, 'biweekly');
   const monthlySlot = toValidatedSlot(slots.monthly, 'monthly');
+  if (
+    (slots.biweekly !== undefined && !biweeklySlot) ||
+    (slots.monthly !== undefined && !monthlySlot)
+  ) {
+    return null;
+  }
   const validatedSlots: LambdaBackupStatus['slots'] = {
     daily: dailySlot,
     weekly: weeklySlot,
@@ -165,6 +194,7 @@ export const fetchLambdaBackupStatus = async ({
   baseUrl,
   environment,
   lambdaAuthSecret,
+  signal,
 }: FetchLambdaBackupStatusInput): Promise<LambdaBackupStatus> => {
   const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
   const endpoint = new URL(
@@ -183,8 +213,8 @@ export const fetchLambdaBackupStatus = async ({
     },
   });
 
-  const timeoutController = createTimeoutController(STATUS_TIMEOUT_MS);
   let response: Response;
+  let payloadText: string;
   let requestHeaders: Record<string, string>;
 
   try {
@@ -201,13 +231,24 @@ export const fetchLambdaBackupStatus = async ({
   }
 
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
+    ({ response, payloadText } = await fetchLambdaText(endpoint, {
       headers: requestHeaders,
       body,
-      signal: timeoutController.controller.signal,
-    });
+      timeoutMs: STATUS_TIMEOUT_MS,
+      signal,
+      retrySafeRead: true,
+    }));
   } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+    if (error instanceof LambdaResponseTooLargeError) {
+      throw new LambdaBackupStatusError({
+        code: 'INVALID_RESPONSE',
+        endpoint,
+        message: error.message,
+      });
+    }
     if (isAbortError(error)) {
       throw new LambdaBackupStatusError({
         code: 'TIMEOUT',
@@ -221,11 +262,7 @@ export const fetchLambdaBackupStatus = async ({
       endpoint,
       message: 'Could not reach backup status endpoint.',
     });
-  } finally {
-    timeoutController.clear();
   }
-
-  const payloadText = await response.text();
   const responseSnippet = truncateResponseSnippet(
     payloadText,
     RESPONSE_SNIPPET_MAX_LENGTH,
@@ -236,6 +273,7 @@ export const fetchLambdaBackupStatus = async ({
       code: 'HTTP',
       endpoint,
       httpStatus: response.status,
+      retryAfterMs: getResponseRetryAfterMs(response),
       responseSnippet,
       message: buildLambdaHttpErrorMessage(
         response.status,

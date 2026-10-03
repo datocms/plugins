@@ -10,6 +10,7 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
+import type { bulkPublishTranslatedRecords } from '../utils/translation/BulkPublishUtils';
 import type {
   loadRecordBatches,
   RecordBatch,
@@ -20,9 +21,33 @@ import type {
   TranslateBatchOptions,
   translateAndUpdateRecords,
 } from '../utils/translation/ItemsDropdownUtils';
+import {
+  TranslationProgressStore,
+  VISIBLE_TRANSLATION_UPDATE_LIMIT,
+} from '../utils/translation/TranslationProgressStore';
 import TranslationProgressModal from './TranslationProgressModal';
 
 type LoadingOptions = NonNullable<Parameters<typeof loadRecordBatches>[2]>;
+type PublishClient = Parameters<typeof bulkPublishTranslatedRecords>[0];
+type PublicationRecord = Awaited<
+  ReturnType<PublishClient['items']['list']>
+>[number];
+type PublicationLookup = (query?: {
+  filter?: { ids?: string };
+}) => Promise<PublicationRecord[]>;
+
+function publicationRecord(
+  id: string,
+  status = 'published',
+  currentVersion = `v-${id}`,
+): PublicationRecord {
+  // This UI fixture needs only the ID and publication/version metadata.
+  return {
+    id,
+    item_type: { id: 'article', type: 'item_type' },
+    meta: { status, current_version: currentVersion },
+  } as PublicationRecord;
+}
 
 const mocks = vi.hoisted(() => ({
   buildDatoCMSClient: vi.fn(),
@@ -31,10 +56,8 @@ const mocks = vi.hoisted(() => ({
   getProvider: vi.fn(),
   loadRecordBatches: vi.fn<typeof loadRecordBatches>(),
   translateAndUpdateRecords: vi.fn<typeof translateAndUpdateRecords>(),
-  bulkPublish:
-    vi.fn<
-      (body: { items: { id: string; type: 'item' }[] }) => Promise<unknown>
-    >(),
+  bulkPublish: vi.fn<PublishClient['items']['rawBulkPublish']>(),
+  listPublishedRecords: vi.fn<PublicationLookup>(),
 }));
 
 vi.mock('../utils/clients', () => ({
@@ -112,6 +135,7 @@ function reportCompleted(
       status: 'completed',
       statusText: 'Translated',
       translatedFieldApiKeys: ['title'],
+      currentVersion: `v-${item.id}`,
     };
     options.onProgress?.({ ...update, status: 'processing' });
     options.onProgress?.(update);
@@ -154,14 +178,26 @@ describe('TranslationProgressModal', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.buildDatoCMSClient.mockReturnValue({
-      items: { bulkPublish: mocks.bulkPublish },
+      items: {
+        rawBulkPublish: mocks.bulkPublish,
+        list: mocks.listPublishedRecords,
+      },
     });
     mocks.createSchemaRepository.mockReturnValue({
       getItemTypeById: mocks.getItemTypeById,
     });
     mocks.getItemTypeById.mockResolvedValue({ draft_mode_active: true });
     mocks.getProvider.mockReturnValue({ vendor: 'openai' });
-    mocks.bulkPublish.mockResolvedValue(undefined);
+    mocks.bulkPublish.mockImplementation(async ({ data }) => ({
+      data: [],
+      meta: { successful: data.relationships.items.data.length, failed: 0 },
+    }));
+    mocks.listPublishedRecords.mockImplementation(async (query) =>
+      String(query?.filter?.ids ?? '')
+        .split(',')
+        .filter(Boolean)
+        .map((id) => publicationRecord(id)),
+    );
     mocks.translateAndUpdateRecords.mockImplementation(
       async (
         records,
@@ -187,7 +223,11 @@ describe('TranslationProgressModal', () => {
     );
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('starts a single uncancelled job inside the host StrictMode wrapper', async () => {
     renderModal(['r1'], { strictMode: true });
@@ -411,10 +451,24 @@ describe('TranslationProgressModal', () => {
     expect(
       screen.getByText(/Progress: 1 of 2 records processed \(50%\)/),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Publish all/ })).toBeNull();
+    const publish = screen.getByRole('button', {
+      name: 'Publish all translated records (1)',
+    });
+    fireEvent.click(publish);
+    await waitFor(() => {
+      expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.');
+    });
     fireEvent.click(close);
     expect(ctx.resolve).toHaveBeenCalledWith(
-      expect.objectContaining({ completed: false, canceled: false }),
+      expect.objectContaining({
+        completed: false,
+        canceled: false,
+        summary: expect.objectContaining({
+          processedCount: 1,
+          successfulCount: 1,
+          failedCount: 0,
+        }),
+      }),
     );
   });
 
@@ -437,11 +491,19 @@ describe('TranslationProgressModal', () => {
 
     expect(loadingOptions?.abortSignal?.aborted).toBe(true);
     expect(loadingOptions?.checkCancellation?.()).toBe(true);
-    expect(ctx.resolve).toHaveBeenCalledWith({
-      completed: false,
-      canceled: true,
-    });
+    expect(ctx.resolve).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Cancelling…' })).toHaveProperty(
+      'disabled',
+      true,
+    );
     await act(async () => loading.resolve());
+    expect(ctx.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: false,
+        canceled: true,
+        summary: expect.objectContaining({ processedCount: 0 }),
+      }),
+    );
     expect(mocks.translateAndUpdateRecords).not.toHaveBeenCalled();
     expect(screen.queryByText(/Translation failed/)).toBeNull();
     expect(ctx.resolve).toHaveBeenCalledTimes(1);
@@ -487,11 +549,19 @@ describe('TranslationProgressModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(translationOptions?.abortSignal?.aborted).toBe(true);
     expect(translationOptions?.checkCancellation?.()).toBe(true);
+    expect(ctx.resolve).not.toHaveBeenCalled();
     await act(async () => translation.resolve());
 
     expect(fetchNext).not.toHaveBeenCalled();
-    expect(screen.queryByRole('listitem')).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(ctx.resolve).toHaveBeenCalledTimes(1);
+    expect(ctx.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: false,
+        canceled: true,
+        summary: expect.objectContaining({ updatedCount: 1 }),
+      }),
+    );
   });
 
   it('aborts pending record loading when the modal unmounts', async () => {
@@ -549,12 +619,14 @@ describe('TranslationProgressModal', () => {
       );
     });
     const publishedIds = mocks.bulkPublish.mock.calls.flatMap(([body]) =>
-      body.items.map((item) => item.id),
+      body.data.relationships.items.data.map((item) => item.id),
     );
     expect(publishedIds).toEqual(itemIds);
     expect(mocks.bulkPublish).toHaveBeenCalledTimes(15);
     expect(
-      mocks.bulkPublish.mock.calls.every(([body]) => body.items.length <= 200),
+      mocks.bulkPublish.mock.calls.every(
+        ([body]) => body.data.relationships.items.data.length <= 200,
+      ),
     ).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -571,5 +643,226 @@ describe('TranslationProgressModal', () => {
       progress: ProgressUpdate[];
     };
     expect(result.progress).toHaveLength(2882);
+  });
+
+  it('coalesces rapid progress events while counting them immediately', async () => {
+    vi.useFakeTimers();
+    const translation = deferred();
+    const snapshot = vi.spyOn(TranslationProgressStore.prototype, 'snapshot');
+    mocks.translateAndUpdateRecords.mockImplementation(
+      async (
+        records,
+        _client,
+        _provider,
+        _from,
+        _to,
+        _fields,
+        _params,
+        _ctx,
+        _token,
+        options = {},
+      ) => {
+        for (let index = 0; index < 2_000; index += 1) {
+          options.onProgress?.({
+            recordId: 'r1',
+            recordIndex: 0,
+            status: 'processing',
+            statusText: `Translating locale ${index}`,
+          });
+        }
+        reportCompleted(records, options);
+        await translation.promise;
+      },
+    );
+    await act(async () => {
+      renderModal(['r1']);
+    });
+
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(100));
+    expect(snapshot).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('1 successful, 0 failed')).toBeTruthy();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+
+    await act(async () => translation.resolve());
+    expect(snapshot).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
+      'disabled',
+      false,
+    );
+  });
+
+  it('bounds massive job details and cancels publication after acknowledging the current batch', async () => {
+    const itemIds = Array.from({ length: 6_001 }, (_, index) => `r${index}`);
+    mocks.loadRecordBatches.mockImplementation(async function* () {
+      for (let offset = 0; offset < itemIds.length; offset += 30) {
+        yield batch(itemIds.slice(offset, offset + 30).map(record));
+      }
+    });
+    const publishing = deferred();
+    mocks.bulkPublish.mockImplementation(async ({ data }) => {
+      await publishing.promise;
+      return {
+        data: [],
+        meta: { successful: data.relationships.items.data.length, failed: 0 },
+      };
+    });
+    const { ctx } = renderModal(itemIds);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Publish all translated records (6001)',
+      }),
+    );
+    await waitFor(() => expect(mocks.bulkPublish).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel publishing' }));
+    expect(screen.getByRole('button', { name: 'Cancelling…' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(ctx.resolve).not.toHaveBeenCalled();
+
+    await act(async () => publishing.resolve());
+
+    expect(mocks.bulkPublish).toHaveBeenCalledTimes(1);
+    expect(ctx.alert).not.toHaveBeenCalled();
+    expect(ctx.notice).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', {
+        name: 'Retry publishing remaining (5801)',
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('listitem')).toHaveLength(
+      VISIBLE_TRANSLATION_UPDATE_LIMIT,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(ctx.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: true,
+        progressTruncated: true,
+        progress: expect.any(Array),
+        summary: expect.objectContaining({
+          totalRecords: 6_001,
+          processedCount: 6_001,
+          updatedCount: 6_001,
+        }),
+      }),
+    );
+    const result = ctx.resolve.mock.calls[0][0] as {
+      progress: ProgressUpdate[];
+    };
+    expect(result.progress).toHaveLength(VISIBLE_TRANSLATION_UPDATE_LIMIT);
+  });
+
+  it('retries only IDs not confirmed by a partially successful publication', async () => {
+    const { ctx } = renderModal(['r1', 'r2']);
+    mocks.bulkPublish.mockResolvedValueOnce({
+      data: [],
+      meta: { successful: 1, failed: 1 },
+    });
+    mocks.listPublishedRecords
+      .mockResolvedValueOnce([publicationRecord('r1'), publicationRecord('r2')])
+      .mockResolvedValueOnce([
+        publicationRecord('r1'),
+        publicationRecord('r2', 'draft'),
+      ]);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Publish all translated records (2)',
+      }),
+    );
+    await waitFor(() => expect(ctx.alert).toHaveBeenCalledTimes(1));
+    expect(ctx.notice).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry publishing remaining (1)' }),
+    );
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith(
+        'Published 2 translated records.',
+      ),
+    );
+    expect(
+      mocks.bulkPublish.mock.calls[1][0].data.relationships.items.data,
+    ).toEqual([{ type: 'item', id: 'r2' }]);
+  });
+
+  it('retains early publish candidates when a model eligibility lookup recovers in a later batch', async () => {
+    mocks.getItemTypeById.mockRejectedValueOnce(
+      new Error('Temporary read failure'),
+    );
+    mocks.loadRecordBatches.mockImplementation(async function* () {
+      yield batch([record('r1')]);
+      yield batch([record('r2')]);
+    });
+    const { ctx } = renderModal();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Publish all translated records (2)',
+      }),
+    );
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith(
+        'Published 2 translated records.',
+      ),
+    );
+    expect(
+      mocks.bulkPublish.mock.calls[0][0].data.relationships.items.data,
+    ).toEqual([
+      { type: 'item', id: 'r1' },
+      { type: 'item', id: 'r2' },
+    ]);
+  });
+
+  it('passes saved versions into publication and excludes records edited after translation', async () => {
+    const { ctx } = renderModal(['r1', 'r2']);
+    mocks.listPublishedRecords.mockResolvedValueOnce([
+      publicationRecord('r1'),
+      publicationRecord('r2', 'updated', 'newer-editor-version'),
+    ]);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Publish all translated records (2)',
+      }),
+    );
+
+    await waitFor(() => expect(ctx.alert).toHaveBeenCalledTimes(1));
+
+    expect(
+      mocks.bulkPublish.mock.calls[0][0].data.relationships.items.data,
+    ).toEqual([{ type: 'item', id: 'r1' }]);
+    expect(ctx.notice).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Retry publishing remaining (1)' }),
+    ).toBeTruthy();
+  });
+
+  it('publishes in the job environment even if the host replaces context and parameters', async () => {
+    const { ctx, parameters, rerender } = renderModal(['r1']);
+    await screen.findByRole('button', {
+      name: 'Publish all translated records (1)',
+    });
+    rerender(
+      <TranslationProgressModal
+        ctx={{ ...ctx, environment: 'other' } as unknown as RenderModalCtx}
+        parameters={{ ...parameters, accessToken: 'other-token' }}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Publish all translated records (1)',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.'),
+    );
+    expect(mocks.buildDatoCMSClient).toHaveBeenLastCalledWith(
+      'cma-token',
+      'main',
+      'https://cma.example.test',
+    );
   });
 });

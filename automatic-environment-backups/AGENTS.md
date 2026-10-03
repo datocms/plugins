@@ -22,8 +22,14 @@ orchestrator.
   component/render test harness.
 - **Orchestration hook** `useBackupsConfig.ts`: edit-state, a queued
   authoritative-merge persister, the run-once mount health ping, overview/env
-  loaders, and `ensureBackupsExistForCadences` (sequential creation with a 409
-  retry).
+  loaders, and `ensureBackupsExistForCadences` (sequential creation with automatic
+  read-only completion monitoring). A 409 is `CADENCE_NOT_ENABLED`; never retry
+  a backup POST after an ambiguous response.
+- **Execution helpers:** `backupExecution.ts` keeps cadences sequential and
+  observes existing clones until CMA metadata confirms `ready`.
+  `backupEnvironments.ts` reconciles service/CMA snapshots without loading
+  content. `cmaRead.ts` bounds read retries and timeouts. The hook enables
+  continuous observation; long operations never require manual resumption.
 - **Components:** `StepSection` (numbered-card chrome), `StepSecret` /
   `StepDeploy` / `StepConnect` / `StepSchedule`, `StatusOverview`, `StatusBox`,
   `AdvancedSettings`, and `StepTimeline` (top progress stepper). `StepDeploy`

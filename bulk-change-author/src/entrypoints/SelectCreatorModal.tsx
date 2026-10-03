@@ -1,19 +1,28 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Form, SelectField } from 'datocms-react-ui';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type BulkProgress,
+  bulkChangeCreator,
+  type CreatorType,
+} from '../actions/bulkChangeCreator';
 import { makeClient } from '../services/cmaClient';
+import { describeApiError } from '../services/requestErrors';
+import {
+  LARGE_SELECTION_THRESHOLD,
+  resolveExecutionError,
+} from '../utils/bulkCreatorWorkflow';
 import styles from './SelectCreatorModal.module.css';
 
 type Props = {
   ctx: RenderModalCtx;
 };
 
-type CreatorType = 'user' | 'sso_user' | 'account' | 'organization';
-
 type ModalParameters = {
   preselectedUserId?: string;
   preselectedUserType?: CreatorType;
   itemCount?: number;
+  itemIds?: string[];
 };
 
 type Option = {
@@ -132,6 +141,22 @@ function findPreselectedOption(
   return match ?? null;
 }
 
+function resolveLoadedSelection(
+  allOptions: Option[],
+  current: Option | null,
+  preselectedUserId?: string,
+  preselectedUserType?: CreatorType,
+) {
+  if (preselectedUserId) {
+    return findPreselectedOption(
+      allOptions,
+      preselectedUserId,
+      preselectedUserType,
+    );
+  }
+  return allOptions.length === 0 ? null : current;
+}
+
 type FetchUserOptionsResult = {
   nextOptionGroups: OptionGroup<Option>[];
   allOptions: Option[];
@@ -158,17 +183,91 @@ async function fetchUserOptions(
   });
 }
 
+function progressStatusMessage(progress: BulkProgress): string | null {
+  if (progress.stopping) {
+    return 'Waiting for requests already started to finish. No further records will be started.';
+  }
+  if (progress.waitingUntil !== null) {
+    return 'Waiting for the API rate limit. Updates will continue automatically.';
+  }
+  return progress.retries > 0 ? `${progress.retries} automatic retries.` : null;
+}
+
+function ExecutionProgress({ progress }: { progress: BulkProgress }) {
+  const statusMessage = progressStatusMessage(progress);
+  return (
+    <div
+      className={styles.progress}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <p>
+        {progress.stopping ? 'Stopping…' : 'Changing creators…'}{' '}
+        {progress.processed} of {progress.total} records processed.
+      </p>
+      <progress
+        max={Math.max(1, progress.total)}
+        value={progress.processed}
+        aria-label="Records processed"
+      />
+      <p>
+        {progress.succeeded} changed, {progress.active} in progress.
+        {progress.failed > 0 && ` ${progress.failed} failed.`}
+        {progress.uncertain > 0 &&
+          ` ${progress.uncertain} could not be confirmed.`}
+      </p>
+      {statusMessage && <p>{statusMessage}</p>}
+    </div>
+  );
+}
+
+function CreatorModalHeader({
+  title,
+  isContinuousExecution,
+}: {
+  title: string;
+  isContinuousExecution: boolean;
+}) {
+  return (
+    <header className={styles.header}>
+      <h2 className={styles.heading}>{title}</h2>
+      <p className={styles.subheading}>
+        Select a collaborator, SSO user, or project owner to assign as the new
+        creator for the chosen records.
+      </p>
+      {isContinuousExecution && (
+        <p className={styles.subheading}>
+          Large selections can take hours. Keep this window open until the
+          changes finish.
+        </p>
+      )}
+    </header>
+  );
+}
+
 export default function SelectCreatorModal({ ctx }: Props) {
   const params = useMemo<ModalParameters>(() => {
     return (ctx.parameters as ModalParameters) ?? {};
   }, [ctx.parameters]);
 
-  const itemCount = params.itemCount ?? 0;
+  const itemIds = Array.isArray(params.itemIds) ? params.itemIds : undefined;
+  const itemCount = itemIds?.length ?? params.itemCount ?? 0;
+  const isContinuousExecution = Boolean(
+    itemIds && itemIds.length >= LARGE_SELECTION_THRESHOLD,
+  );
   const [optionGroups, setOptionGroups] = useState<OptionGroup<Option>[]>([]);
   const [selectedUser, setSelectedUser] = useState<Option | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [partialListWarning, setPartialListWarning] = useState<string | null>(
+    null,
+  );
+  const [progress, setProgress] = useState<BulkProgress | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const executionStarted = useRef(false);
+  const abortController = useRef<AbortController | null>(null);
   const hasOptions = optionGroups.some((group) => group.options.length > 0);
 
   useEffect(() => {
@@ -184,20 +283,24 @@ export default function SelectCreatorModal({ ctx }: Props) {
 
       setOptionGroups(nextOptionGroups);
 
-      const preselectedOption = findPreselectedOption(
-        allOptions,
-        params.preselectedUserId,
-        params.preselectedUserType,
+      setSelectedUser((current) =>
+        resolveLoadedSelection(
+          allOptions,
+          current,
+          params.preselectedUserId,
+          params.preselectedUserType,
+        ),
       );
 
-      if (params.preselectedUserId) {
-        setSelectedUser(preselectedOption);
-      } else if (allOptions.length === 0) {
-        setSelectedUser(null);
+      if (firstRejectionReason === null) {
+        return;
       }
-
-      if (firstRejectionReason !== null && allOptions.length === 0) {
+      if (allOptions.length === 0) {
         setFetchError(resolveErrorMessage(firstRejectionReason));
+      } else {
+        setPartialListWarning(
+          `Some creators could not be loaded. Only the available creators are listed. ${resolveErrorMessage(firstRejectionReason)}`,
+        );
       }
     }
 
@@ -213,6 +316,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
 
       setIsLoading(true);
       setFetchError(null);
+      setPartialListWarning(null);
 
       try {
         await applyFetchedUsers(ctx.currentUserAccessToken);
@@ -244,6 +348,12 @@ export default function SelectCreatorModal({ ctx }: Props) {
     params.preselectedUserType,
   ]);
 
+  useEffect(() => {
+    return () => {
+      abortController.current?.abort();
+    };
+  }, []);
+
   const title = useMemo(() => {
     if (itemCount <= 0) {
       return 'Change creators';
@@ -255,38 +365,95 @@ export default function SelectCreatorModal({ ctx }: Props) {
   const errorMessage = fetchError ?? selectionError ?? undefined;
 
   const handleSelectChange = (option: SingleValue<Option>) => {
+    if (executionStarted.current) {
+      return;
+    }
     setSelectedUser(option ?? null);
     setSelectionError(null);
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (executionStarted.current) {
+      return;
+    }
     if (!selectedUser) {
       setSelectionError(
         'Select a collaborator, SSO user, or project owner to continue.',
       );
       return;
     }
-    ctx.resolve({
-      userId: selectedUser.value,
-      userType: selectedUser.userType,
+    if (!isContinuousExecution || !itemIds) {
+      executionStarted.current = true;
+      ctx.resolve({
+        userId: selectedUser.value,
+        userType: selectedUser.userType,
+      });
+      return;
+    }
+
+    if (!ctx.currentUserAccessToken) {
+      setSelectionError(
+        'The access token required to change creators is unavailable.',
+      );
+      return;
+    }
+
+    executionStarted.current = true;
+    const controller = new AbortController();
+    abortController.current = controller;
+    setIsRunning(true);
+    setProgress({
+      total: itemIds.length,
+      succeeded: 0,
+      failed: 0,
+      uncertain: 0,
+      processed: 0,
+      active: 0,
+      retries: 0,
+      waitingUntil: null,
+      stopping: false,
     });
+
+    try {
+      const bulkResult = await bulkChangeCreator({
+        apiToken: ctx.currentUserAccessToken,
+        environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
+        itemIds,
+        userId: selectedUser.value,
+        userType: selectedUser.userType,
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+      ctx.resolve({ bulkResult });
+    } catch (error) {
+      ctx.resolve({
+        executionError: `The creator change stopped unexpectedly and its final outcome could not be confirmed. Check the selected records before running the action again. ${resolveExecutionError(error)}`,
+      });
+    }
   };
 
   const handleCancel = () => {
+    if (executionStarted.current) {
+      return;
+    }
+    executionStarted.current = true;
     ctx.resolve(null);
+  };
+
+  const handleStop = () => {
+    abortController.current?.abort();
+    setProgress((current) => current && { ...current, stopping: true });
   };
 
   return (
     <Canvas ctx={ctx}>
       <Form onSubmit={handleSubmit} className={styles.form}>
-        <header className={styles.header}>
-          <h2 className={styles.heading}>{title}</h2>
-          <p className={styles.subheading}>
-            Select a collaborator, SSO user, or project owner to assign as the
-            new creator for the chosen records.
-          </p>
-        </header>
+        <CreatorModalHeader
+          title={title}
+          isContinuousExecution={isContinuousExecution}
+        />
         <SelectField<Option, false, OptionGroup<Option>>
           id="new-creator"
           name="new-creator"
@@ -299,7 +466,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
           selectInputProps={{
             options: optionGroups,
             isClearable: false,
-            isDisabled: isLoading || Boolean(fetchError),
+            isDisabled: isLoading || Boolean(fetchError) || isRunning,
             isLoading,
             placeholder: isLoading
               ? 'Loading users…'
@@ -308,17 +475,36 @@ export default function SelectCreatorModal({ ctx }: Props) {
                 : 'No users available',
           }}
         />
+        {partialListWarning && (
+          <p className={styles.warning} role="status">
+            {partialListWarning}
+          </p>
+        )}
+        {isRunning && progress && <ExecutionProgress progress={progress} />}
         <footer className={styles.footer}>
           <Button
             type="submit"
             buttonType="primary"
-            disabled={isLoading || Boolean(fetchError) || !selectedUser}
+            disabled={
+              isLoading || Boolean(fetchError) || !selectedUser || isRunning
+            }
           >
-            Change creator
+            {isRunning ? 'Changing creator…' : 'Change creator'}
           </Button>
-          <Button type="button" buttonType="muted" onClick={handleCancel}>
-            Cancel
-          </Button>
+          {isRunning ? (
+            <Button
+              type="button"
+              buttonType="muted"
+              onClick={handleStop}
+              disabled={progress?.stopping}
+            >
+              {progress?.stopping ? 'Stopping…' : 'Stop'}
+            </Button>
+          ) : (
+            <Button type="button" buttonType="muted" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
         </footer>
       </Form>
     </Canvas>
@@ -494,13 +680,5 @@ function formatLabel(
 }
 
 function resolveErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === 'string' && error.trim().length > 0) {
-    return error;
-  }
-
-  return 'Unable to load users.';
+  return `Unable to load creators. ${describeApiError(error)}`;
 }

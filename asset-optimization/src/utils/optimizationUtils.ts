@@ -12,6 +12,9 @@ export interface Asset {
   url: string;
   path: string;
   basename: string;
+  md5?: string;
+  updated_at?: string | null;
+  format?: string;
   width?: number;
   height?: number;
   tags?: string[];
@@ -38,6 +41,7 @@ export interface ProcessedAsset {
   id: string;
   path: string;
   url: string;
+  error?: string;
 }
 
 /**
@@ -51,6 +55,10 @@ export interface AssetOptimizerResult {
   optimizedAssets: OptimizedAsset[];
   skippedAssets: ProcessedAsset[];
   failedAssets: ProcessedAsset[];
+  cancelled?: boolean;
+  unprocessed?: number;
+  stoppedReason?: string;
+  inventoryIncomplete?: boolean;
 }
 
 /**
@@ -94,6 +102,49 @@ export const defaultSettings: OptimizationSettings = {
   useChromaSubsampling: false, // Default to standard JPEG chroma subsampling (420)
   preserveColorProfile: true, // Default to preserve color profiles for accurate colors
 };
+
+function normalizeNumber(
+  key: keyof OptimizationSettings,
+  value: number,
+): number {
+  const minimum = key.includes('Threshold')
+    ? 0.1
+    : key.includes('Dimension')
+      ? 1
+      : 0;
+  const maximum =
+    key.includes('quality') || key === 'minimumReduction'
+      ? 100
+      : Number.MAX_SAFE_INTEGER;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function normalizeSetting(key: keyof OptimizationSettings, candidate: unknown) {
+  const fallback = defaultSettings[key];
+  if (typeof fallback === 'boolean')
+    return typeof candidate === 'boolean' ? candidate : fallback;
+  if (typeof fallback === 'number')
+    return typeof candidate === 'number' && Number.isFinite(candidate)
+      ? normalizeNumber(key, candidate)
+      : fallback;
+  return candidate === 'webp' || candidate === 'avif' ? candidate : fallback;
+}
+
+export function normalizeSettings(value: unknown): OptimizationSettings {
+  const settings = { ...defaultSettings };
+  if (!value || typeof value !== 'object') return settings;
+  const input = value as Record<string, unknown>;
+  for (const key of Object.keys(
+    defaultSettings,
+  ) as (keyof OptimizationSettings)[]) {
+    Object.assign(settings, { [key]: normalizeSetting(key, input[key]) });
+  }
+  settings.veryLargeAssetThreshold = Math.max(
+    settings.largeAssetThreshold,
+    settings.veryLargeAssetThreshold,
+  );
+  return settings;
+}
 
 type AssetSizeCategory = 'small' | 'large' | 'very-large';
 
@@ -139,6 +190,20 @@ const buildResizeParam = (
   return `h=${maxDimension}`;
 };
 
+function getOutputFormat(
+  asset: Asset,
+  settings: OptimizationSettings,
+): string | undefined {
+  if (!settings.preserveOriginalFormat) return settings.targetFormat;
+  const format = (asset.format ?? asset.path.split('.').pop())?.toLowerCase();
+  if (
+    !format ||
+    !['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(format)
+  )
+    return undefined;
+  return format === 'jpeg' ? 'jpg' : format;
+}
+
 const collectOptimizationParamParts = (
   asset: Asset,
   settings: OptimizationSettings,
@@ -161,9 +226,8 @@ const collectOptimizationParamParts = (
     parts.push(resizeParam);
   }
 
-  if (settings.targetFormat && !settings.preserveOriginalFormat) {
-    parts.push(`fm=${settings.targetFormat}`);
-  }
+  const format = getOutputFormat(asset, settings);
+  if (format) parts.push(`fm=${format}`);
 
   if (sizeCategory === 'very-large' && settings.useDpr) {
     parts.push('dpr=2');
@@ -197,6 +261,8 @@ export function getOptimizationParams(
   if (!asset.is_image) {
     return null;
   }
+  if (settings.preserveOriginalFormat && !getOutputFormat(asset, settings))
+    return null;
 
   const sizeCategory = getAssetSizeCategory(asset.size, settings);
 

@@ -265,4 +265,70 @@ describe('FileFieldTranslation', () => {
       },
     });
   });
+  it('keeps a 10,000-asset synthetic gallery ordered with only one metadata translation in flight', async () => {
+    let active = 0;
+    let peak = 0;
+    vi.mocked(translateArray).mockImplementation(async (_provider, _params, values) => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return values.map((value) => `IT ${value}`);
+    });
+    const gallery = Array.from({ length: 10_000 }, (_, index) => ({
+      upload_id: `synthetic-${index}`, alt: `alt-${index}`, title: `title-${index}`,
+      focal_point: { x: 0.25, y: 0.5 },
+    }));
+    const result = await translateFileFieldValue(gallery, mockPluginParams, 'it', 'en', mockProvider) as typeof gallery;
+    expect(peak).toBe(1);
+    expect(result).toHaveLength(10_000);
+    expect(result[9_999]).toEqual({ ...gallery[9_999], alt: 'IT alt-9999', title: 'IT title-9999' });
+    expect(gallery[0].alt).toBe('alt-0');
+    expect(mockUploadsFind).not.toHaveBeenCalled();
+  });
+
+  it('rejects cancellation between gallery entries without returning partial success', async () => {
+    const controller = new AbortController();
+    vi.mocked(translateArray).mockImplementation(async () => {
+      controller.abort();
+      return ['IT alt', 'IT title'];
+    });
+    const gallery = [{ alt: 'alt', title: 'title' }, { alt: 'other', title: 'other' }];
+    await expect(translateFileFieldValue(
+      gallery, mockPluginParams, 'it', 'en', mockProvider, undefined, undefined,
+      { abortSignal: controller.signal },
+    )).rejects.toMatchObject({ name: 'AbortError' });
+    expect(translateArray).toHaveBeenCalledTimes(1);
+    expect(gallery[0].alt).toBe('alt');
+  });
+
+  it('isolates upload defaults by credentials and evicts old asset metadata', async () => {
+    mockUploadsFind.mockResolvedValue({ default_field_metadata: { alt: { en: 'Default alt' }, title: { en: 'Default title' } } });
+    vi.mocked(translateArray).mockResolvedValue(['IT alt', 'IT title']);
+    const translate = (id: string, token: string) => translateFileFieldValue(
+      { upload_id: id }, mockPluginParams, 'it', 'en', mockProvider, token, 'cache-test-environment',
+    );
+    await translate('shared-upload', 'project-one');
+    await translate('shared-upload', 'project-two');
+    expect(mockUploadsFind).toHaveBeenCalledTimes(2);
+    for (let index = 0; index < 257; index++) {
+      // biome-ignore lint/performance/noAwaitInLoops: populate the bounded cache deterministically.
+      await translate(`bounded-${index}`, 'bounded-project');
+    }
+    const count = mockUploadsFind.mock.calls.length;
+    await translate('bounded-0', 'bounded-project');
+    expect(mockUploadsFind).toHaveBeenCalledTimes(count + 1);
+  });
+
+  it('retries failed upload-default reads instead of caching the failure permanently', async () => {
+    mockUploadsFind.mockRejectedValueOnce(new Error('temporary CMA failure'));
+    mockUploadsFind.mockResolvedValueOnce({ default_field_metadata: { alt: { en: 'Alt' }, title: { en: 'Title' } } });
+    vi.mocked(translateArray).mockResolvedValue(['IT Alt', 'IT Title']);
+    const source = { upload_id: 'failed-cache-case' };
+    await translateFileFieldValue(source, mockPluginParams, 'it', 'en', mockProvider, 'failure-token', 'main');
+    const result = await translateFileFieldValue(source, mockPluginParams, 'it', 'en', mockProvider, 'failure-token', 'main');
+    expect(mockUploadsFind).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ ...source, alt: 'IT Alt', title: 'IT Title' });
+  });
+
 });

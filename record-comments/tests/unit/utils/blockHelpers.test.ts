@@ -204,6 +204,17 @@ describe('isFieldValidators', () => {
     expect(isFieldValidators(validators)).toBe(true);
   });
 
+  it('returns true for valid single_block_blocks', () => {
+    expect(isFieldValidators({
+      single_block_blocks: { item_types: ['block1'] },
+    })).toBe(true);
+  });
+
+  it('rejects malformed single_block_blocks rather than trusting unknown validator data', () => {
+    expect(isFieldValidators({ single_block_blocks: { item_types: 'block1' } })).toBe(false);
+    expect(isFieldValidators({ single_block_blocks: { item_types: [1] } })).toBe(false);
+  });
+
   it('returns true for valid structured_text_blocks', () => {
     const validators = {
       structured_text_blocks: { item_types: ['block1', 'block2'] },

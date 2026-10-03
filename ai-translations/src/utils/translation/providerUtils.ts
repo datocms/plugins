@@ -45,7 +45,12 @@ export async function withTimeout<T>(
   );
 
   try {
+    signal.throwIfAborted();
     return await fn(signal);
+  } catch (error) {
+    // SDKs may use their own abort exception; retain timeout vs user cancel.
+    if (signal.aborted) throw signal.reason;
+    throw error;
   } finally {
     cleanup();
   }
@@ -70,7 +75,11 @@ export async function* withTimeoutGenerator<T>(
   );
 
   try {
+    signal.throwIfAborted();
     yield* fn(signal);
+  } catch (error) {
+    if (signal.aborted) throw signal.reason;
+    throw error;
   } finally {
     cleanup();
   }

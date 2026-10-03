@@ -3,12 +3,14 @@ import {
   type GenerativeModel,
   GoogleGenerativeAI,
 } from '@google/generative-ai';
+import { ProviderRequestControl } from '../ProviderRequestControl';
 import {
   isEmptyPrompt,
   withTimeout,
   withTimeoutGenerator,
 } from '../providerUtils';
 import type { StreamOptions, TranslationProvider, VendorId } from '../types';
+import { ProviderError } from '../types';
 
 type GeminiProviderConfig = {
   apiKey: string;
@@ -53,6 +55,7 @@ export default class GeminiProvider implements TranslationProvider {
   private readonly modelId: string;
   private readonly temperature?: number;
   private readonly maxOutputTokens?: number;
+  private readonly requests = new ProviderRequestControl('google');
 
   /**
    * Creates a Gemini provider instance bound to a model id.
@@ -105,7 +108,7 @@ export default class GeminiProvider implements TranslationProvider {
         model: modelId,
         body: request,
       });
-      const result = await model.generateContentStream(request);
+      const result = await model.generateContentStream(request, { signal });
 
       for await (const item of result.stream) {
         // Check abort/timeout signal between chunks to allow early termination
@@ -146,34 +149,49 @@ export default class GeminiProvider implements TranslationProvider {
     const temperature = this.temperature;
     const maxOutputTokens = this.maxOutputTokens;
 
-    return withTimeout(options, async (signal) => {
-      // Check if already aborted before starting
-      if (signal.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-      }
+    return this.requests.run(
+      () =>
+        withTimeout(options, async (signal) => {
+          // Check if already aborted before starting
+          if (signal.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+          }
 
-      const request = buildGeminiRequest(prompt, temperature, maxOutputTokens);
-      options?.debug?.request?.('Provider request', {
-        provider: this.vendor,
-        operation: 'completeText',
-        url: 'https://generativelanguage.googleapis.com',
-        model: modelId,
-        body: request,
-        options: {
-          timeoutMs: options?.timeoutMs,
-          hasAbortSignal: options?.abortSignal !== undefined,
-        },
-      });
-      const result = await model.generateContent(request);
-      const text = result.response?.text?.() ?? '';
-      options?.debug?.response?.('Provider response', {
-        provider: this.vendor,
-        operation: 'completeText',
-        model: modelId,
-        response: result.response ?? null,
-        text,
-      });
-      return text;
-    });
+          const request = buildGeminiRequest(
+            prompt,
+            temperature,
+            maxOutputTokens,
+          );
+          options?.debug?.request?.('Provider request', {
+            provider: this.vendor,
+            operation: 'completeText',
+            url: 'https://generativelanguage.googleapis.com',
+            model: modelId,
+            body: request,
+            options: {
+              timeoutMs: options?.timeoutMs,
+              hasAbortSignal: options?.abortSignal !== undefined,
+            },
+          });
+          const result = await model.generateContent(request, { signal });
+          if (result.response?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+            throw new ProviderError(
+              'The model truncated the translation. No content was saved.',
+              422,
+              'google',
+            );
+          }
+          const text = result.response?.text?.() ?? '';
+          options?.debug?.response?.('Provider response', {
+            provider: this.vendor,
+            operation: 'completeText',
+            model: modelId,
+            response: result.response ?? null,
+            text,
+          });
+          return text;
+        }),
+      options?.abortSignal,
+    );
   }
 }

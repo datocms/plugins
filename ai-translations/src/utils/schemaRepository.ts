@@ -18,6 +18,8 @@ import type { FieldValidators } from './translation/SharedFieldUtils';
  */
 export type BlockFieldMeta = {
   editor: string;
+  /** API field type remains stable when an editor is replaced by a plugin. */
+  field_type?: string;
   id: string;
   localized?: boolean;
   validators?: FieldValidators;
@@ -35,6 +37,39 @@ export type FieldTypeDictionaryEntry = BlockFieldMeta & {
  * Dictionary mapping field API keys to their metadata.
  */
 export type FieldTypeDictionary = Record<string, FieldTypeDictionaryEntry>;
+
+// SchemaRepository caches requests, but converting its arrays on every block
+// and record still costs O(fields × records). Share projections for this run.
+const blockDictionaries = new WeakMap<
+  SchemaRepository,
+  Map<string, Promise<Record<string, BlockFieldMeta>>>
+>();
+const fieldDictionaries = new WeakMap<
+  SchemaRepository,
+  Map<string, Promise<FieldTypeDictionary>>
+>();
+
+function cachedDictionary<T>(
+  cache: WeakMap<SchemaRepository, Map<string, Promise<T>>>,
+  repository: SchemaRepository,
+  modelId: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  let models = cache.get(repository);
+  if (!models) {
+    models = new Map();
+    cache.set(repository, models);
+  }
+  const existing = models.get(modelId);
+  if (existing) return existing;
+  const target = models;
+  const pending = load().catch((error: unknown) => {
+    target.delete(modelId);
+    throw error;
+  });
+  models.set(modelId, pending);
+  return pending;
+}
 
 /**
  * Creates a new SchemaRepository instance for the given client.
@@ -75,20 +110,28 @@ export async function getBlockFieldsFromRepo(
   schemaRepository: SchemaRepository,
   blockModelId: string,
 ): Promise<Record<string, BlockFieldMeta>> {
-  const itemType = await schemaRepository.getItemTypeById(blockModelId);
-  const fields = await schemaRepository.getItemTypeFields(itemType);
+  return cachedDictionary(
+    blockDictionaries,
+    schemaRepository,
+    blockModelId,
+    async () => {
+      const itemType = await schemaRepository.getItemTypeById(blockModelId);
+      const fields = await schemaRepository.getItemTypeFields(itemType);
 
-  return fields.reduce(
-    (acc, field) => {
-      acc[field.api_key] = {
-        editor: field.appearance.editor,
-        id: field.id,
-        localized: field.localized,
-        validators: field.validators,
-      };
-      return acc;
+      return fields.reduce(
+        (acc, field) => {
+          acc[field.api_key] = {
+            editor: field.appearance.editor,
+            field_type: field.field_type,
+            id: field.id,
+            localized: field.localized,
+            validators: field.validators,
+          };
+          return acc;
+        },
+        {} as Record<string, BlockFieldMeta>,
+      );
     },
-    {} as Record<string, BlockFieldMeta>,
   );
 }
 
@@ -106,18 +149,26 @@ export async function buildFieldTypeDictionaryFromRepo(
   schemaRepository: SchemaRepository,
   itemTypeId: string,
 ): Promise<FieldTypeDictionary> {
-  const itemType = await schemaRepository.getItemTypeById(itemTypeId);
-  const fields = await schemaRepository.getItemTypeFields(itemType);
+  return cachedDictionary(
+    fieldDictionaries,
+    schemaRepository,
+    itemTypeId,
+    async () => {
+      const itemType = await schemaRepository.getItemTypeById(itemTypeId);
+      const fields = await schemaRepository.getItemTypeFields(itemType);
 
-  return fields.reduce((acc, field) => {
-    acc[field.api_key] = {
-      editor: field.appearance.editor,
-      id: field.id,
-      isLocalized: field.localized,
-      validators: field.validators,
-    };
-    return acc;
-  }, {} as FieldTypeDictionary);
+      return fields.reduce((acc, field) => {
+        acc[field.api_key] = {
+          editor: field.appearance.editor,
+          field_type: field.field_type,
+          id: field.id,
+          isLocalized: field.localized,
+          validators: field.validators,
+        };
+        return acc;
+      }, {} as FieldTypeDictionary);
+    },
+  );
 }
 
 // Re-export SchemaRepository type for consumers

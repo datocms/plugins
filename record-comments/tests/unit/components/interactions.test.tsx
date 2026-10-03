@@ -10,7 +10,7 @@ import ModelMentionDropdown from '@components/ModelMentionDropdown';
 import UserMentionDropdown from '@components/UserMentionDropdown';
 import TimeAgo from 'javascript-time-ago';
 import en from 'javascript-time-ago/locale/en.json';
-import { createRef } from 'react';
+import { act, createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarNavigationProvider } from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { ProjectDataProvider } from '@/entrypoints/contexts/ProjectDataContext';
@@ -193,6 +193,54 @@ describe('dropdown interactions', () => {
 });
 
 describe('comment accessibility and semantics', () => {
+  it('passes the content from editing start after the displayed comment receives an update', () => {
+    const ctx = createSidebarCtx();
+    const editComment = vi.fn(() => true);
+    const baseline = [{ type: 'text' as const, content: 'Original' }];
+    const comment = createResolvedCommentWithReplies(0, {
+      id: 'comment-1',
+      content: baseline,
+      storedContent: baseline,
+      author: createResolvedAuthor({ id: 'user-1' }),
+    });
+    const renderComment = (commentObject: typeof comment) => (
+      <SidebarNavigationProvider ctx={ctx}>
+        <ProjectDataProvider
+          projectUsers={[]}
+          projectModels={[]}
+          modelFields={[]}
+          currentUserId="user-1"
+          typedUsers={[]}
+        >
+          <Comment
+            deleteComment={vi.fn(() => true)}
+            editComment={editComment}
+            upvoteComment={vi.fn(() => true)}
+            replyComment={vi.fn(() => true)}
+            commentObject={commentObject}
+            currentUserId="user-1"
+            projectUsers={[]}
+            projectModels={[]}
+            ctx={ctx}
+          />
+        </ProjectDataProvider>
+      </SidebarNavigationProvider>
+    );
+    const view = render(renderComment(comment));
+    const editButton = view.container.querySelector<HTMLButtonElement>('[aria-label="Edit comment"]');
+    if (!editButton) throw new Error('Edit action missing');
+    act(() => editButton.click());
+
+    const updated = [{ type: 'text' as const, content: 'Another user changed this' }];
+    view.rerender(renderComment({ ...comment, content: updated, storedContent: updated }));
+    const sendButton = view.container.querySelector<HTMLButtonElement>('[aria-label="Send comment"]');
+    if (!sendButton) throw new Error('Send action missing');
+    act(() => sendButton.click());
+
+    expect(editComment).toHaveBeenCalledWith('comment-1', baseline, undefined, baseline);
+    view.unmount();
+  });
+
   it('exposes comment actions as a labeled group instead of a fake menu', () => {
     const view = render(
       <CommentActions

@@ -140,6 +140,70 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('buildTranslatedUpdatePayload', () => {
+    it('routes a custom block editor by its structural API type', async () => {
+      const blocks = [
+        { type: 'item', id: 'source-block', attributes: { text: 'Hello' } },
+      ];
+      vi.mocked(translateFieldValue).mockResolvedValue([
+        { type: 'item', attributes: { text: 'Ciao' } },
+      ]);
+      const result = await buildTranslatedUpdatePayload(
+        { id: 'r1', item_type: { id: 'm1' }, content: { en: blocks } },
+        'en',
+        'it',
+        {
+          content: {
+            editor: 'plugin-editor',
+            field_type: 'rich_text',
+            id: 'field',
+            isLocalized: true,
+          },
+        },
+        provider,
+        { ...pluginParams, translationFields: ['rich_text'] },
+        'token',
+        'main',
+      );
+      expect(vi.mocked(translateFieldValue).mock.calls[0][4]).toBe('rich_text');
+      expect(result.translatedFieldCount).toBe(1);
+    });
+
+    it('strips source block IDs in required custom block-editor fallbacks', async () => {
+      const result = await buildTranslatedUpdatePayload(
+        {
+          id: 'r1',
+          item_type: { id: 'm1' },
+          content: {
+            en: {
+              type: 'item',
+              id: 'source-block',
+              attributes: { text: 'Hello' },
+            },
+          },
+        },
+        'en',
+        'it',
+        {
+          content: {
+            editor: 'plugin-editor',
+            field_type: 'single_block',
+            id: 'field',
+            isLocalized: true,
+            validators: { required: {} },
+          },
+        },
+        provider,
+        { ...pluginParams, translationFields: [] },
+        'token',
+        'main',
+      );
+      expect(result.payload.content.it).toEqual({
+        type: 'item',
+        attributes: { text: 'Hello' },
+      });
+      expect(translateFieldValue).not.toHaveBeenCalled();
+    });
+
     it('includes disabled fields with null fallback in the payload (locale sync)', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
 
@@ -644,12 +708,189 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('translateAndUpdateRecords', () => {
+    it('does not save unrelated locale fallbacks when every selected translation fails', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(new Error('Invalid translation response'));
+      const update = vi.fn();
+      const updates: ProgressUpdate[] = [];
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' }, disabled: { en: 'Required source' } }],
+        { items: { update } } as unknown as Parameters<typeof translateAndUpdateRecords>[1],
+        provider, 'en', ['it'], async () => ({
+          title: fieldTypeDictionary.title,
+          disabled: { editor: 'unknown', id: 'disabled', isLocalized: true, validators: { required: {} } },
+        }), pluginParams, { alert: vi.fn(), environment: 'main' }, 'token',
+        { onProgress: (progress) => updates.push(progress) },
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(updates.at(-1)?.status).toBe('error');
+    });
+    it('does not copy references or call providers for models with an empty field selection', async () => {
+      const update = vi.fn();
+      const dictionary = vi.fn();
+      const updates: ProgressUpdate[] = [];
+      await translateAndUpdateRecords(
+        [
+          {
+            id: 'r1',
+            item_type: { id: 'excluded' },
+            related: { en: ['linked'] },
+          },
+        ],
+        { items: { update } } as unknown as Parameters<
+          typeof translateAndUpdateRecords
+        >[1],
+        provider,
+        'en',
+        ['it'],
+        dictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'token',
+        {
+          selectedFieldsByModel: { excluded: [] },
+          onProgress: (progress) => updates.push(progress),
+        },
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(dictionary).not.toHaveBeenCalled();
+      expect(translateFieldValue).not.toHaveBeenCalled();
+      expect(updates.at(-1)?.statusText).toBe(
+        'No eligible fields to translate',
+      );
+    });
+
+    it('merges many target locales into one version-locked write without losing untouched locales', async () => {
+      const targets = Array.from(
+        { length: 256 },
+        (_, index) => `target-${index}`,
+      );
+      vi.mocked(translateFieldValue).mockImplementation(
+        async (_value, _params, locale) => locale,
+      );
+      const update = vi.fn().mockResolvedValue({});
+      await translateAndUpdateRecords(
+        [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: { en: 'Hello', fr: 'Keep' },
+            meta: { current_version: 'original' },
+          },
+        ],
+        { items: { update } } as unknown as Parameters<
+          typeof translateAndUpdateRecords
+        >[1],
+        provider,
+        'en',
+        targets,
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'token',
+      );
+      expect(update).toHaveBeenCalledTimes(1);
+      const payload = update.mock.calls[0][1];
+      expect(payload.meta.current_version).toBe('original');
+      expect(Object.keys(payload.title)).toHaveLength(258);
+      expect(payload.title.fr).toBe('Keep');
+      for (const locale of targets) expect(payload.title[locale]).toBe(locale);
+    });
+
+    it('deduplicates targets and never overwrites the source locale', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi.fn().mockResolvedValue({});
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' } }],
+        { items: { update } } as unknown as Parameters<
+          typeof translateAndUpdateRecords
+        >[1],
+        provider,
+        'en',
+        ['en', 'EN', 'it', 'it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'token',
+      );
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][1].title.en).toBe('Hello');
+    });
+
+    it('does not mistake nested metadata for the source locale or open a toast per missing record', async () => {
+      const alert = vi.fn();
+      const update = vi.fn();
+      const updates: ProgressUpdate[] = [];
+      await translateAndUpdateRecords(
+        [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: { fr: 'Bonjour' },
+            metadata: { en: 'not localized content' },
+          },
+        ],
+        { items: { update } } as unknown as Parameters<
+          typeof translateAndUpdateRecords
+        >[1],
+        provider,
+        'en',
+        ['it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert, environment: 'main' },
+        'token',
+        { onProgress: (progress) => updates.push(progress) },
+      );
+      expect(updates.at(-1)?.statusText).toBe('Missing source locale');
+      expect(alert).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(translateFieldValue).not.toHaveBeenCalled();
+    });
+
+    it('reports a write acknowledged after cancellation before stopping the next record', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const controller = new AbortController();
+      const update = vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return { meta: { updated_at: 'saved' } };
+      });
+      const updates: ProgressUpdate[] = [];
+      await expect(
+        translateAndUpdateRecords(
+          [record, { ...record, id: 'next' }],
+          { items: { update } } as unknown as Parameters<
+            typeof translateAndUpdateRecords
+          >[1],
+          provider,
+          'en',
+          ['it'],
+          async () => fieldTypeDictionary,
+          pluginParams,
+          { alert: vi.fn(), environment: 'main' },
+          'token',
+          {
+            abortSignal: controller.signal,
+            onProgress: (progress) => updates.push(progress),
+          },
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(updates.at(-1)).toMatchObject({
+        status: 'completed',
+        updatedAt: 'saved',
+      });
+    });
+
     it('attaches structured report data to the completed progress update', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
       const updates: ProgressUpdate[] = [];
-      const update = vi
-        .fn()
-        .mockResolvedValue({ meta: { updated_at: '2026-07-08T21:00:00.000Z' } });
+      const update = vi.fn().mockResolvedValue({
+        meta: {
+          updated_at: '2026-07-08T21:00:00.000Z',
+          current_version: 'saved-version',
+        },
+      });
       // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
       const client = { items: { update } } as any;
 
@@ -699,6 +940,7 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.recordLabel).toBeTruthy();
       // CMA timestamp captured from the update response.
       expect(finalUpdate?.updatedAt).toBe('2026-07-08T21:00:00.000Z');
+      expect(finalUpdate?.currentVersion).toBe('saved-version');
       // Translated + copied field lists, by api_key and by field id.
       expect(finalUpdate?.translatedFieldApiKeys).toContain('title');
       expect(finalUpdate?.translatedFieldIds).toContain('field-title');
@@ -756,7 +998,10 @@ describe('ItemsDropdownUtils', () => {
         typeof translateAndUpdateRecords
       >[1];
       const updates: ProgressUpdate[] = [];
-      const indexes = new Map([['r31', 30], ['r33', 32]]);
+      const indexes = new Map([
+        ['r31', 30],
+        ['r33', 32],
+      ]);
       const records = ['r31', 'r33'].map((id) => ({
         id,
         item_type: { id: 'm1' },
@@ -779,9 +1024,11 @@ describe('ItemsDropdownUtils', () => {
         },
       );
 
-      expect(updates.filter((progress) => progress.status === 'completed').map(
-        (progress) => progress.recordIndex,
-      )).toEqual([30, 32]);
+      expect(
+        updates
+          .filter((progress) => progress.status === 'completed')
+          .map((progress) => progress.recordIndex),
+      ).toEqual([30, 32]);
     });
 
     it('keeps every target translation when target locales already have content', async () => {
@@ -794,12 +1041,19 @@ describe('ItemsDropdownUtils', () => {
       >[1];
 
       await translateAndUpdateRecords(
-        [{
-          id: 'r1',
-          item_type: { id: 'm1' },
-          title: { en: 'Hello', it: 'Old Italian', fr: 'Old French', de: 'Hallo' },
-          related: { en: ['linked-record'] },
-        }],
+        [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: {
+              en: 'Hello',
+              it: 'Old Italian',
+              fr: 'Old French',
+              de: 'Hallo',
+            },
+            related: { en: ['linked-record'] },
+          },
+        ],
         client,
         provider,
         'en',
@@ -838,17 +1092,19 @@ describe('ItemsDropdownUtils', () => {
         typeof translateAndUpdateRecords
       >[1];
 
-      await expect(translateAndUpdateRecords(
-        [record],
-        client,
-        provider,
-        'en',
-        ['it'],
-        async () => fieldTypeDictionary,
-        pluginParams,
-        { alert: vi.fn(), environment: 'main' },
-        'access-token',
-      )).rejects.toMatchObject({ name: 'AbortError' });
+      await expect(
+        translateAndUpdateRecords(
+          [record],
+          client,
+          provider,
+          'en',
+          ['it'],
+          async () => fieldTypeDictionary,
+          pluginParams,
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' });
       expect(translateFieldValue).toHaveBeenCalledTimes(1);
       expect(update).not.toHaveBeenCalled();
     });
@@ -864,18 +1120,20 @@ describe('ItemsDropdownUtils', () => {
         typeof translateAndUpdateRecords
       >[1];
 
-      await expect(translateAndUpdateRecords(
-        [record, { ...record, id: 'record-2' }],
-        client,
-        provider,
-        'en',
-        ['it', 'fr'],
-        async () => fieldTypeDictionary,
-        pluginParams,
-        { alert: vi.fn(), environment: 'main' },
-        'access-token',
-        { abortSignal: controller.signal },
-      )).rejects.toMatchObject({ name: 'AbortError' });
+      await expect(
+        translateAndUpdateRecords(
+          [record, { ...record, id: 'record-2' }],
+          client,
+          provider,
+          'en',
+          ['it', 'fr'],
+          async () => fieldTypeDictionary,
+          pluginParams,
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+          { abortSignal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' });
       expect(translateFieldValue).toHaveBeenCalledTimes(1);
       expect(update).not.toHaveBeenCalled();
     });
@@ -888,23 +1146,25 @@ describe('ItemsDropdownUtils', () => {
         typeof translateAndUpdateRecords
       >[1];
 
-      await expect(translateAndUpdateRecords(
-        [record],
-        client,
-        provider,
-        'en',
-        ['it'],
-        async () => fieldTypeDictionary,
-        pluginParams,
-        { alert: vi.fn(), environment: 'main' },
-        'access-token',
-        {
-          checkCancellation: () => cancelled,
-          onProgress: (progress) => {
-            if (progress.statusText === 'Saving…') cancelled = true;
+      await expect(
+        translateAndUpdateRecords(
+          [record],
+          client,
+          provider,
+          'en',
+          ['it'],
+          async () => fieldTypeDictionary,
+          pluginParams,
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+          {
+            checkCancellation: () => cancelled,
+            onProgress: (progress) => {
+              if (progress.statusText === 'Saving…') cancelled = true;
+            },
           },
-        },
-      )).rejects.toMatchObject({ name: 'AbortError' });
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' });
       expect(update).not.toHaveBeenCalled();
     });
 
@@ -931,9 +1191,13 @@ describe('ItemsDropdownUtils', () => {
         { onProgress: (progress) => updates.push(progress) },
       );
 
-      expect(update.mock.calls[0][1].meta).toEqual({ current_version: 'version-1' });
+      expect(update.mock.calls[0][1].meta).toEqual({
+        current_version: 'version-1',
+      });
       expect(updates.at(-1)?.status).toBe('error');
-      expect(updates.at(-1)?.message).toContain('record changed during translation');
+      expect(updates.at(-1)?.message).toContain(
+        'record changed during translation',
+      );
       expect(updates.at(-1)?.warnings).toEqual([updates.at(-1)?.message]);
     });
   });
@@ -962,6 +1226,46 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('stripBlockIds', () => {
+    it('also clones simplified nested blocks while retaining their model linkage', () => {
+      const value = {
+        id: 'block',
+        item_type: { type: 'item_type', id: 'model' },
+        title: 'Hello',
+      };
+      const copied = stripBlockIds(value) as typeof value;
+      expect(copied.id).toBeUndefined();
+      expect(copied.item_type.id).toBe('model');
+      expect(value.id).toBe('block');
+    });
+    it('preserves record linkage IDs while cloning hydrated blocks', () => {
+      const value = {
+        type: 'item',
+        id: 'block',
+        attributes: { title: 'Hello' },
+        relationships: {
+          link: { data: { type: 'item', id: 'linked-record' } },
+          item_type: { data: { type: 'item_type', id: 'model' } },
+        },
+      };
+      const copied = stripBlockIds(value) as typeof value;
+      expect(copied.id).toBeUndefined();
+      expect(copied.relationships.link.data.id).toBe('linked-record');
+      expect(value.id).toBe('block');
+    });
+
+    it('clones deep synthetic content without recursive call-stack growth', () => {
+      let value: Record<string, unknown> = {
+        type: 'item',
+        id: 'block',
+        attributes: {},
+      };
+      for (let depth = 0; depth < 12000; depth++) value = { child: value };
+      let copied = stripBlockIds(value) as Record<string, unknown>;
+      for (let depth = 0; depth < 12000; depth++)
+        copied = copied.child as Record<string, unknown>;
+      expect(copied.id).toBeUndefined();
+    });
+
     it('strips id from top-level block objects', () => {
       const block = {
         type: 'item',

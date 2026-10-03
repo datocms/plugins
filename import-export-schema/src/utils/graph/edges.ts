@@ -1,6 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { MarkerType } from '@xyflow/react';
-import find from 'lodash-es/find';
 import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,
@@ -8,19 +7,19 @@ import {
 import type { AppEdge } from '@/utils/graph/types';
 
 function appendFieldToEdge(
-  edges: AppEdge[],
+  edges: Map<string, AppEdge>,
   edgeId: string,
   sourceNodeId: string,
   targetNodeId: string,
   field: SchemaTypes.Field,
 ) {
-  const existing = find(edges, { id: edgeId });
+  const existing = edges.get(edgeId);
   if (existing) {
     const data = existing.data ?? { fields: [] };
     data.fields.push(field);
     existing.data = data;
   } else {
-    edges.push({
+    edges.set(edgeId, {
       id: edgeId,
       source: sourceNodeId,
       target: targetNodeId,
@@ -35,7 +34,7 @@ function processItemTypeLinks(
   itemType: SchemaTypes.ItemType,
   field: SchemaTypes.Field,
   rootItemTypeIds: Set<string>,
-  edges: AppEdge[],
+  edges: Map<string, AppEdge>,
   linkedItemTypeIds: Set<string>,
 ) {
   for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
@@ -56,7 +55,7 @@ function processPluginLinks(
   itemType: SchemaTypes.ItemType,
   field: SchemaTypes.Field,
   installedPluginIds: Set<string>,
-  edges: AppEdge[],
+  edges: Map<string, AppEdge>,
   linkedPluginIds: Set<string>,
 ) {
   for (const linkedPluginId of findLinkedPluginIds(field, installedPluginIds)) {
@@ -79,7 +78,7 @@ export function buildEdgesForItemType(
   rootItemTypeIds: Set<string>,
   installedPluginIds: Set<string>,
 ) {
-  const edges: AppEdge[] = [];
+  const edges = new Map<string, AppEdge>();
   const linkedItemTypeIds = new Set<string>();
   const linkedPluginIds = new Set<string>();
 
@@ -100,5 +99,9 @@ export function buildEdgesForItemType(
     );
   }
 
-  return [edges, linkedItemTypeIds, linkedPluginIds] as const;
+  return [
+    Array.from(edges.values()),
+    linkedItemTypeIds,
+    linkedPluginIds,
+  ] as const;
 }

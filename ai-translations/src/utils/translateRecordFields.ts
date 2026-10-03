@@ -21,11 +21,9 @@
 
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
-import {
-  FIELD_TRANSLATION_TIMEOUT_MS,
-  RATE_LIMIT_MAX_RETRIES,
-  STREAM_THROTTLE_MS,
-} from './constants';
+import { buildDatoCMSClient } from './clients';
+import { createSchemaRepository, type SchemaRepository } from './schemaRepository';
+import { STREAM_THROTTLE_MS } from './constants';
 import { createLogger } from './logging/Logger';
 import {
   formatErrorForUser,
@@ -42,13 +40,9 @@ import {
   translateFieldValue,
 } from './translation/TranslateField';
 import {
-  calculateRateLimitBackoff,
-  delay,
   getMaxConcurrency,
-  getRequestSpacingMs,
   hasTranslatableSourceValue,
   isAbortError,
-  shouldRetryRateLimitError,
   shouldProcessField,
 } from './translation/TranslationCore';
 import {
@@ -134,6 +128,7 @@ type RunJobParams = {
   environment: string;
   cmaBaseUrl?: string;
   recordContext: string;
+  schemaRepository: SchemaRepository;
   options: TranslateOptions;
   lastStreamAt: Map<string, number>;
   nextFrame: () => Promise<void>;
@@ -169,6 +164,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
     environment,
     cmaBaseUrl,
     recordContext,
+    schemaRepository,
     options,
     lastStreamAt,
     nextFrame,
@@ -179,13 +175,14 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
     setFieldValue,
   } = params;
 
-  if (getFatalAbort() || options.checkCancellation?.()) return;
+  if (getFatalAbort() || options.abortSignal?.aborted || options.checkCancellation?.()) return;
 
   const start = performance.now?.() ?? Date.now();
   options.onStart?.(fieldLabel, locale, fieldPath, baseFieldPath);
 
   const streamCallbacks = {
     onStream: (chunk: string) => {
+      if (getFatalAbort() || options.abortSignal?.aborted || options.checkCancellation?.()) return;
       const now = Date.now();
       const last = lastStreamAt.get(fieldPath) ?? 0;
       const isThrottled = now - last >= STREAM_THROTTLE_MS;
@@ -194,7 +191,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
         options.onStream?.(fieldLabel, locale, fieldPath, baseFieldPath, chunk);
       }
     },
-    checkCancellation: options.checkCancellation,
+    checkCancellation: () => getFatalAbort() || !!options.checkCancellation?.(),
     abortSignal: options.abortSignal,
   };
 
@@ -211,7 +208,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       targetLocale: locale,
       value: sourceLocaleValue,
     });
-    const translatedFieldValue = await translateFieldWithTimeout(
+    const translatedFieldValue = await translateFieldValue(
       sourceLocaleValue,
       pluginParams,
       locale,
@@ -222,15 +219,15 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       accessToken,
       fieldId,
       environment,
-      cmaBaseUrl,
       streamCallbacks,
       recordContext,
-      fieldApiKey,
+      schemaRepository,
+      { fieldApiKey, cmaBaseUrl },
     );
 
-    if (getFatalAbort() || options.checkCancellation?.()) return;
+    if (getFatalAbort() || options.abortSignal?.aborted || options.checkCancellation?.()) return;
     await nextFrame();
-    if (getFatalAbort() || options.checkCancellation?.()) return;
+    if (getFatalAbort() || options.abortSignal?.aborted || options.checkCancellation?.()) return;
 
     logger.info('Translated field payload', {
       flow: 'sidebar',
@@ -274,6 +271,8 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       throw fatalErr;
     }
     throw e;
+  } finally {
+    lastStreamAt.delete(fieldPath);
   }
 }
 
@@ -292,75 +291,6 @@ function hasSingleBlockBlocks(
     return false;
   const sbb = obj.single_block_blocks as Record<string, unknown>;
   return Array.isArray(sbb.item_types);
-}
-
-/**
- * Translates a single field value with a timeout guard.
- * Wraps `translateFieldValue` in a `Promise.race` against a timeout promise so
- * a stalled API call does not block the scheduler indefinitely.
- *
- * @param sourceLocaleValue - The source field value to translate.
- * @param pluginParams - Plugin configuration parameters.
- * @param locale - Target locale code.
- * @param sourceLocale - Source locale code.
- * @param fieldType - DatoCMS field type editor identifier.
- * @param provider - Translation provider instance.
- * @param fieldTypePrompt - Prompt suffix for the field type.
- * @param accessToken - DatoCMS API access token.
- * @param fieldId - Field definition ID (for exclusion checking).
- * @param environment - Dato environment slug.
- * @param streamCallbacks - Streaming progress callbacks.
- * @param recordContext - Context string about the record.
- * @param fieldApiKey - Field API key (for exclusion checking).
- * @returns The translated field value.
- */
-async function translateFieldWithTimeout(
-  sourceLocaleValue: unknown,
-  pluginParams: import('../entrypoints/Config/ConfigScreen').ctxParamsType,
-  locale: string,
-  sourceLocale: string,
-  fieldType: string,
-  provider: TranslationProvider,
-  fieldTypePrompt: string,
-  accessToken: string,
-  fieldId: string,
-  environment: string,
-  cmaBaseUrl: string | undefined,
-  streamCallbacks: Parameters<typeof translateFieldValue>[10],
-  recordContext: string,
-  fieldApiKey: string,
-): Promise<unknown> {
-  const translationPromise = translateFieldValue(
-    sourceLocaleValue,
-    pluginParams,
-    locale,
-    sourceLocale,
-    fieldType,
-    provider,
-    fieldTypePrompt,
-    accessToken,
-    fieldId,
-    environment,
-    streamCallbacks,
-    recordContext,
-    undefined,
-    {
-      fieldApiKey,
-      ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
-    },
-  );
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(
-        new Error(
-          `Field translation timed out after ${FIELD_TRANSLATION_TIMEOUT_MS / 1000} seconds`,
-        ),
-      );
-    }, FIELD_TRANSLATION_TIMEOUT_MS);
-  });
-
-  return Promise.race([translationPromise, timeoutPromise]);
 }
 
 /**
@@ -514,10 +444,13 @@ function findFieldValueAndPathImpl(
  */
 function buildFramelessParentsByItemType(
   fields: RenderItemFormSidebarPanelCtx['fields'],
+  currentItemTypeId: string,
 ): Map<string, string[]> {
   const result = new Map<string, string[]>();
   for (const field of Object.values(fields)) {
     if (!field?.attributes) continue;
+    const owner = field.relationships?.item_type?.data?.id;
+    if (owner && owner !== currentItemTypeId) continue;
     const isFrameless =
       field.attributes.appearance.editor === 'frameless_single_block';
     if (!isFrameless || !field.attributes.localized) continue;
@@ -544,30 +477,12 @@ function buildFramelessParentsByItemType(
 function resolveIsFieldLocalized(
   field: NonNullable<RenderItemFormSidebarPanelCtx['fields'][string]>,
   currentItemTypeId: string,
-  allFields: RenderItemFormSidebarPanelCtx['fields'],
+  framelessParentsByItemType: Map<string, string[]>,
 ): boolean {
   if (field.attributes.localized) return true;
-
   const fieldItemTypeId = field.relationships?.item_type?.data?.id;
-  if (!fieldItemTypeId || fieldItemTypeId === currentItemTypeId) return false;
+  return !!fieldItemTypeId && fieldItemTypeId !== currentItemTypeId && framelessParentsByItemType.has(fieldItemTypeId);
 
-  // Field belongs to a different item type (frameless block). Check if any
-  // localized frameless_single_block field in the current item type references it.
-  for (const framelessField of Object.values(allFields)) {
-    if (!framelessField) continue;
-    const isLocalized =
-      framelessField.attributes?.appearance?.editor ===
-        'frameless_single_block' && framelessField.attributes.localized;
-    if (!isLocalized) continue;
-    const validators = framelessField.attributes.validators;
-    if (
-      hasSingleBlockBlocks(validators) &&
-      validators.single_block_blocks.item_types.includes(fieldItemTypeId)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -612,22 +527,30 @@ export async function translateRecordFields(
 
   const framelessParentsByItemType = buildFramelessParentsByItemType(
     ctx.fields,
+    ctx.itemType.id,
   );
 
   // Small helper to yield to the UI thread
   const nextFrame = () =>
-    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-  // Build job list
+  const locales = Array.from(new Set(targetLocales)).filter(
+    (locale) => locale.toLowerCase() !== sourceLocale.toLowerCase(),
+  );
+  const isCancelled = () => !!(options.abortSignal?.aborted || options.checkCancellation?.());
+  if (locales.length === 0 || isCancelled()) return;
+  const schemaRepository = createSchemaRepository(buildDatoCMSClient(
+    ctx.currentUserAccessToken as string, ctx.environment, ctx.cmaBaseUrl,
+  ));
+
+  // Build only field snapshots; locale jobs are created as workers pull them.
   type Job = {
     id: string;
     fieldLabel: string;
     locale: string;
     baseFieldPath: string;
     run: () => Promise<void>;
-    retries: number;
   };
-  const jobs: Job[] = [];
   let fatalAbort = false;
   let fatalError: Error | null = null;
 
@@ -651,7 +574,6 @@ export async function translateRecordFields(
       fieldLabel,
       locale,
       baseFieldPath,
-      retries: 0,
       run: () =>
         runFieldLocaleJob({
           fieldLabel,
@@ -670,6 +592,7 @@ export async function translateRecordFields(
           environment: ctx.environment,
           cmaBaseUrl: ctx.cmaBaseUrl,
           recordContext,
+          schemaRepository,
           options,
           lastStreamAt,
           nextFrame,
@@ -717,7 +640,7 @@ export async function translateRecordFields(
     const isFieldLocalized = resolveIsFieldLocalized(
       field,
       ctx.itemType.id,
-      ctx.fields,
+      framelessParentsByItemType,
     );
     const shouldTranslate = shouldProcessField(
       fieldType,
@@ -766,183 +689,57 @@ export async function translateRecordFields(
     };
   }
 
-  /**
-   * Appends one translation job per target locale for the given field data.
-   */
-  function appendLocaleJobs(data: TranslatableFieldData): void {
-    const {
-      fieldType,
-      fieldApiKey,
-      fieldLabel,
-      fieldId,
-      basePath,
-      isFramelessField,
-      framelessParentKey,
-      sourceLocaleValue,
-    } = data;
-    const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
-    const hasFramelessParent = isFramelessField && framelessParentKey;
-
-    for (const locale of targetLocales) {
-      const fieldPath = hasFramelessParent
-        ? `${framelessParentKey}.${locale}.${basePath}`
-        : `${basePath}.${locale}`;
-      const baseFieldPath = hasFramelessParent
-        ? `${framelessParentKey}.${basePath}`
-        : basePath;
-      jobs.push(
-        buildFieldLocaleJob(
-          fieldLabel,
-          locale,
-          fieldPath,
-          baseFieldPath,
-          sourceLocaleValue,
-          fieldType,
-          fieldId,
-          fieldApiKey,
-          fieldTypePrompt,
-        ),
-      );
-    }
-  }
-
-  /**
-   * Processes a single field definition and appends locale-specific translation
-   * jobs to the jobs array. Skips fields that are not eligible for translation.
-   * Returns true if cancelled.
-   */
-  function buildJobsForField(
-    field: NonNullable<(typeof ctx.fields)[string]>,
-  ): boolean {
-    if (options.checkCancellation?.()) return true;
-    const data = resolveTranslatableFieldData(field);
-    if (data) appendLocaleJobs(data);
-    return false;
-  }
-
-  // Process all fields in the context and build the job list
+  const fieldsToTranslate: TranslatableFieldData[] = [];
   for (const field of Object.values(ctx.fields)) {
+    if (isCancelled()) return;
     if (!field?.attributes) continue;
-    const cancelled = buildJobsForField(field);
-    if (cancelled) return;
+    const data = resolveTranslatableFieldData(field);
+    if (data) fieldsToTranslate.push(data);
+  }
+  const totalJobs = fieldsToTranslate.length * locales.length;
+  if (totalJobs === 0) return;
+  let nextJobIndex = 0;
+
+  function pullJob(): Job | undefined {
+    if (fatalAbort || isCancelled() || nextJobIndex >= totalJobs) return undefined;
+    const index = nextJobIndex++;
+    const data = fieldsToTranslate[Math.floor(index / locales.length)];
+    const locale = locales[index % locales.length];
+    const hasFramelessParent = data.isFramelessField && data.framelessParentKey;
+    const fieldPath = hasFramelessParent
+      ? `${data.framelessParentKey}.${locale}.${data.basePath}`
+      : `${data.basePath}.${locale}`;
+    const baseFieldPath = hasFramelessParent
+      ? `${data.framelessParentKey}.${data.basePath}`
+      : data.basePath;
+    return buildFieldLocaleJob(
+      data.fieldLabel, locale, fieldPath, baseFieldPath, data.sourceLocaleValue,
+      data.fieldType, data.fieldId, data.fieldApiKey,
+      prepareFieldTypePrompt(data.fieldType),
+    );
   }
 
-  // Adaptive concurrency scheduler with simple AIMD (additive-increase, multiplicative-decrease)
-  // Derive a sensible cap from the chosen model; scheduler auto-tunes under this
-  const MAX_CAP = getMaxConcurrency(pluginParams);
-  const REQUEST_SPACING = getRequestSpacingMs(pluginParams);
-  let currentConcurrency = MAX_CAP; // start at configured cap
-  let active = 0;
-  let nextIndex = 0;
-  let successStreak = 0;
-  let lastRequestTime = 0; // Track last request time for spacing
-
-  const isCancelled = () => !!options.checkCancellation?.();
-
-  let resolveDone: () => void;
-  let rejectDone: (err: Error) => void;
-  const done = new Promise<void>((r, j) => {
-    resolveDone = r;
-    rejectDone = j;
-  });
-
-  /**
-   * Runs one scheduling iteration: applies the configured request-spacing delay,
-   * then dispatches the next job and wires up its completion callbacks.
-   * Deliberately a standalone async function so there is no await inside
-   * a loop — callers invoke this once per slot without looping over awaits.
-   * The job index is captured synchronously before any await to avoid races.
-   */
-  const launchNextJob = async (idx: number) => {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-    if (timeSinceLastRequest < REQUEST_SPACING && lastRequestTime > 0) {
-      await delay(REQUEST_SPACING - timeSinceLastRequest);
-    }
-    lastRequestTime = Date.now();
-
-    const job = jobs[idx];
-    // active was already incremented by the schedule() caller before this
-    // function was fired, so we do NOT increment it here again.
-    job
-      .run()
-      .then(() => {
-        successStreak += 1;
-        if (successStreak >= 3 && currentConcurrency < MAX_CAP) {
-          currentConcurrency += 1;
-          successStreak = 0;
-          logger.info('Increased concurrency', { currentConcurrency });
+  async function worker(): Promise<void> {
+    let job = pullJob();
+    while (job) {
+      try {
+        // Retries belong to individual provider requests. Replaying this job
+        // would bill successful chunks of a large field a second time.
+        // biome-ignore lint/performance/noAwaitInLoops: workers keep queued field/locale work bounded.
+        await job.run();
+      } catch (error) {
+        if (!fatalAbort && !isCancelled() && !isAbortError(error)) {
+          const message = formatErrorForUser(normalizeProviderError(error, provider.vendor));
+          logger.error('Job failed', { job: job.id, error, errorMessage: message });
+          options.onError?.(job.fieldLabel, job.locale, job.id, job.baseFieldPath, message);
         }
-      })
-      .catch(async (err) => {
-        successStreak = 0;
-        if (fatalAbort) {
-          // Stop scheduling further jobs
-          nextIndex = jobs.length;
-        } else if (
-          shouldRetryRateLimitError(err, provider.vendor) &&
-          job.retries < RATE_LIMIT_MAX_RETRIES
-        ) {
-          job.retries += 1;
-          // Reduce concurrency aggressively on rate limit
-          currentConcurrency = Math.max(1, Math.ceil(currentConcurrency / 2));
-          // Calculate exponential backoff delay
-          const backoffDelay = calculateRateLimitBackoff(job.retries);
-          logger.warning('Rate limit detected; backing off', {
-            job: job.id,
-            retries: job.retries,
-            maxRetries: RATE_LIMIT_MAX_RETRIES,
-            backoffMs: backoffDelay,
-            currentConcurrency,
-          });
-          // Wait with exponential backoff before requeueing
-          await delay(backoffDelay);
-          jobs.push(job);
-        } else {
-          // Job failed permanently - notify UI
-          const norm = normalizeProviderError(err, provider.vendor);
-          const errorMessage = formatErrorForUser(norm);
-          logger.error('Job failed', { job: job.id, err, errorMessage });
-          options.onError?.(
-            job.fieldLabel,
-            job.locale,
-            job.id,
-            job.baseFieldPath,
-            errorMessage,
-          );
-        }
-      })
-      .finally(() => {
-        active--;
-        if (nextIndex >= jobs.length && active === 0) {
-          if (fatalAbort && fatalError) rejectDone(fatalError);
-          else resolveDone();
-        } else {
-          schedule();
-        }
-      });
-  };
-
-  /**
-   * Fills available concurrency slots by firing launchNextJob for each empty
-   * slot. Each invocation of launchNextJob is fire-and-forget — it increments
-   * `active` itself, so counting slots before we fire is sufficient to avoid
-   * over-committing without awaiting inside a loop.
-   */
-  const schedule = () => {
-    if (isCancelled()) {
-      if (active === 0) resolveDone();
-      return;
+      }
+      job = pullJob();
     }
-    const slotsAvailable = currentConcurrency - active;
-    const jobsRemaining = jobs.length - nextIndex;
-    const slotsToFill = Math.min(slotsAvailable, jobsRemaining);
-    for (let s = 0; s < slotsToFill; s++) {
-      active++;
-      void launchNextJob(nextIndex++);
-    }
-  };
+  }
 
-  schedule();
-  await done;
+  // Every started worker settles before returning, including cancellation and
+  // fatal errors, so callers cannot observe late form writes after completion.
+  await Promise.all(Array.from({ length: Math.min(getMaxConcurrency(pluginParams), totalJobs) }, () => worker()));
+  if (fatalError) throw fatalError;
 }

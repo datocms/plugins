@@ -12,36 +12,36 @@ export const downloadJSON = (
   data: unknown,
   options: DownloadOptions = {},
 ): void => {
+  const jsonString =
+    (options.prettify ?? true)
+      ? JSON.stringify(data, null, 2)
+      : JSON.stringify(data);
+  downloadBlob(new Blob([jsonString], { type: 'application/json' }), options);
+};
+
+/** Download an already-built blob without serializing the whole schema again. */
+export const downloadBlob = (
+  blob: Blob,
+  options: Pick<DownloadOptions, 'fileName'> = {},
+): void => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
   try {
     // Default options
     const fileName = options.fileName || 'data.json';
-    const prettify = options.prettify ?? true;
-
-    // Convert data to JSON string
-    const jsonString = prettify
-      ? JSON.stringify(data, null, 2) // Pretty print with 2 spaces
-      : JSON.stringify(data);
-
-    // Create blob with JSON data
-    const blob = new Blob([jsonString], { type: 'application/json' });
-
-    // Create URL for the blob
-    const url = URL.createObjectURL(blob);
-
-    // Create temporary link element
-    const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
 
     // Append link to document, click it, and remove it
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-
-    // Clean up by revoking the URL
-    URL.revokeObjectURL(url);
+    // Give the browser time to consume large blob downloads before revoking.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   } catch (error) {
+    URL.revokeObjectURL(url);
     console.error('Error downloading JSON:', error);
     throw error;
+  } finally {
+    link.remove();
   }
 };

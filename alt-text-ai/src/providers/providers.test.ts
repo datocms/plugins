@@ -22,6 +22,27 @@ afterEach(() => {
 });
 
 describe('alt text providers', () => {
+  it.each([
+    'en-GB',
+    'en_GB',
+  ])('preserves regional locale %s when AltText.ai returns lower-case locale keys', async (locale) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          alt_texts: { 'en-gb': 'A colourful kite', en: 'A colorful kite' },
+        }),
+      ),
+    );
+    const provider = createAltTextProvider({
+      provider: 'alttext-ai',
+      apiKey: 'key',
+    });
+    await expect(provider.generate({ ...input, locale })).resolves.toBe(
+      'A colourful kite',
+    );
+  });
+
   it('keeps the AltText.ai payload backwards compatible', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -64,7 +64,7 @@ describe('useItemsPage', () => {
     await act(async () => {
       second.resolve({
         data: [item('new-page')],
-        meta: { total_count: 1 },
+        meta: { total_count: 51 },
       } as Response);
     });
     await waitFor(() => expect(result.current.items[0]?.id).toBe('new-page'));
@@ -113,5 +113,65 @@ describe('useItemsPage', () => {
       expect(result.current.items[0]?.id).toBe('after-schema-change'),
     );
     expect(rawList).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels partition planning when the query changes', async () => {
+    type Response = RawApiTypes.ItemInstancesTargetSchema;
+    const oldProbes = deferred<Response>();
+    const rawList = vi.fn((query: RawApiTypes.ItemInstancesHrefSchema) => {
+      if ((query.page?.limit ?? 0) > 0) {
+        return Promise.resolve({
+          data: [],
+          meta: { total_count: 0 },
+        } as Response);
+      }
+      return query.filter?.type
+        ? oldProbes.promise
+        : Promise.resolve({
+            data: [],
+            meta: { total_count: 200_000 },
+          } as Response);
+    });
+    const client = { items: { rawList } } as unknown as Client;
+    const models = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `model-${index}`,
+      name: String(index).padStart(4, '0'),
+      apiKey: `model_${index}`,
+      draftModeActive: true,
+      workflowId: null,
+    }));
+    const { result, rerender } = renderHook(
+      ({ queryState }) =>
+        useItemsPage({
+          client,
+          models,
+          queryState,
+          enabled: true,
+          refreshVersion: 0,
+        }),
+      {
+        initialProps: {
+          queryState: {
+            ...DEFAULT_STATE,
+            orderBy: '_model_ASC' as const,
+          } as QueryState,
+        },
+      },
+    );
+    await waitFor(() => expect(rawList).toHaveBeenCalledTimes(5));
+
+    rerender({ queryState: DEFAULT_STATE });
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => {
+      oldProbes.resolve({
+        data: [],
+        meta: { total_count: 10_000 },
+      } as Response);
+    });
+
+    expect(result.current.items).toEqual([]);
+    expect(result.current.error).toBeNull();
+    // The four in-flight probes settle, but no further model probes are sent.
+    expect(rawList).toHaveBeenCalledTimes(6);
   });
 });

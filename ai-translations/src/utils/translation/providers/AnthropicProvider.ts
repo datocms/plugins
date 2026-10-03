@@ -1,3 +1,7 @@
+import {
+  ProviderRequestControl,
+  retryAfterMs,
+} from '../ProviderRequestControl';
 import { isEmptyPrompt, withTimeout } from '../providerUtils';
 import type { StreamOptions, TranslationProvider, VendorId } from '../types';
 import { ProviderError } from '../types';
@@ -26,6 +30,7 @@ export default class AnthropicProvider implements TranslationProvider {
   private readonly temperature?: number;
   private readonly maxOutputTokens?: number;
   private readonly baseUrl: string;
+  private readonly requests = new ProviderRequestControl('anthropic');
 
   /**
    * Creates a Claude provider with the given configuration.
@@ -36,7 +41,7 @@ export default class AnthropicProvider implements TranslationProvider {
     this.apiKey = cfg.apiKey;
     this.model = cfg.model;
     this.temperature = cfg.temperature;
-    this.maxOutputTokens = cfg.maxOutputTokens ?? 1024;
+    this.maxOutputTokens = cfg.maxOutputTokens ?? 4096;
     this.baseUrl = cfg.baseUrl ?? 'https://api.anthropic.com/v1/messages';
   }
 
@@ -108,10 +113,25 @@ export default class AnthropicProvider implements TranslationProvider {
         statusText: res.statusText,
         response: rawError,
       });
-      throw new ProviderError(msg, res.status, 'anthropic');
+      const errorCode =
+        rawError && typeof rawError === 'object'
+          ? (rawError as { error?: { details?: { error_code?: string } } })
+              .error?.details?.error_code
+          : undefined;
+      throw new ProviderError(msg, res.status, 'anthropic', {
+        retryAfterMs: retryAfterMs(res.headers),
+        code: errorCode,
+      });
     }
 
     const data = await res.json();
+    if (data?.stop_reason === 'max_tokens') {
+      throw new ProviderError(
+        'The model truncated the translation. No content was saved.',
+        422,
+        'anthropic',
+      );
+    }
     const content = Array.isArray(data?.content) ? data.content : [];
     const parts: string[] = [];
     for (const c of content) {
@@ -158,8 +178,12 @@ export default class AnthropicProvider implements TranslationProvider {
       messages: [{ role: 'user', content: prompt }],
     };
 
-    return withTimeout(options, (signal) =>
-      this.fetchAnthropicResponse(body, signal, prompt, options?.debug),
+    return this.requests.run(
+      () =>
+        withTimeout(options, (signal) =>
+          this.fetchAnthropicResponse(body, signal, prompt, options?.debug),
+        ),
+      options?.abortSignal,
     );
   }
 }

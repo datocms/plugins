@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findExactLocaleKey,
   hasMinItemsValidator,
   isFieldExcluded,
   isFieldRequired,
@@ -111,4 +112,22 @@ describe('SharedFieldUtils', () => {
       expect(isReferenceField(undefined)).toBe(false);
     });
   });
+  it('reuses immutable large exclusion snapshots and invalidates replacement arrays and appended entries', () => {
+    const entries = Array.from({ length: 10_000 }, (_, index) => `field-${index}`);
+    expect(isFieldExcluded(entries, ['field-9999'])).toBe(true);
+    expect(isFieldExcluded(entries, ['missing-field'])).toBe(false);
+    const replacement = [...entries.slice(0, -1), 'replacement-field'];
+    expect(isFieldExcluded(replacement, ['field-9999'])).toBe(false);
+    expect(isFieldExcluded(replacement, ['replacement-field'])).toBe(true);
+    entries.push('appended-field');
+    expect(isFieldExcluded(entries, ['appended-field'])).toBe(true);
+  });
+
+  it('resolves only own locale keys, while retaining case-insensitive locale matching', () => {
+    const values = Object.assign(Object.create({ en: 'inherited content' }) as Record<string, unknown>, { 'pt-BR': 'Fonte' });
+    expect(findExactLocaleKey(values, 'en')).toBeUndefined();
+    expect(findExactLocaleKey(values, 'pt-BR')).toBe('pt-BR');
+    expect(findExactLocaleKey(values, 'pt-br')).toBe('pt-BR');
+  });
+
 });

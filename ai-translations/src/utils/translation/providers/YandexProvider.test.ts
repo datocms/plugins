@@ -180,6 +180,19 @@ describe('YandexProvider', () => {
   });
 
   describe('translateArray', () => {
+    it('respects an external abort before starting native translation', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        provider.translateArray(['Hello'], {
+          targetLang: 'de',
+          abortSignal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('returns immediately for empty input', async () => {
       await expect(
         provider.translateArray([], { targetLang: 'de' }),

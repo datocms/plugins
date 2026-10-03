@@ -130,13 +130,22 @@ const ResultsStats = ({
     }
   };
 
-  const showNoAssetsInfo = totalAssets === 0 && Boolean(largeAssetThreshold);
+  const showNoAssetsInfo =
+    totalAssets === 0 && Boolean(largeAssetThreshold) && !result.cancelled;
 
   return (
     <div className={s.resultsContainer}>
       <h2 className={s.optimizationSummaryTitle}>
         {isPreview ? 'Preview Summary' : 'Optimization Summary'}
       </h2>
+
+      {(result.cancelled || result.stoppedReason) && (
+        <p role="status">
+          {result.inventoryIncomplete
+            ? `Discovery cancelled after ${totalAssets} matching assets were found. The complete count is unknown; no assets were replaced.`
+            : `${result.stoppedReason ?? 'Operation cancelled.'} ${result.unprocessed ?? 0} assets were not processed. Replacements already accepted were allowed to finish.`}
+        </p>
+      )}
 
       {isPreview && (
         <div className={s.previewInfoBox}>

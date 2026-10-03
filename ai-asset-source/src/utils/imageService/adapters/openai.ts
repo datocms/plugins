@@ -4,6 +4,11 @@ import {
   supportsOutputControls,
 } from '../catalog';
 import {
+  MAX_GENERATED_IMAGES,
+  validateGenerationRequest,
+} from '../generationValidation';
+import { createProviderFetch } from '../providerTransport';
+import {
   createGenerationBatch,
   normalizeGeneratedImages,
   readProviderErrorDetails,
@@ -22,17 +27,27 @@ export const openAiAdapter: ImageProviderAdapter = {
     return getCapabilities('openai', model);
   },
   async run(apiKey: string, request: ImageOperationRequest, options = {}) {
+    validateGenerationRequest(request);
+    options.signal?.throwIfAborted();
+
+    if (!apiKey.trim()) {
+      throw new Error('Configure an OpenAI API key before generating images.');
+    }
+
     const body = buildImageGenerationBody(request);
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-        'Content-Type': 'application/json',
+    const response = await createProviderFetch(options)(
+      'https://api.openai.com/v1/images/generations',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        signal: options.signal,
+        body: JSON.stringify(body),
       },
-      signal: options.signal,
-      body: JSON.stringify(body),
-    });
-    const payload = await readJsonResponse(response);
+    );
+    const payload: unknown = await response.json();
 
     if (!response.ok) {
       throw createProviderError(response, payload);
@@ -41,7 +56,7 @@ export const openAiAdapter: ImageProviderAdapter = {
     const createdAt = new Date().toISOString();
     const generatedResponse = readImageGenerationResponse(
       payload,
-      request.outputFormat,
+      body.output_format,
     );
     const outputFormat = resolveResponseFormat(generatedResponse, request);
     const outputCompression = readOutputCompression(request, outputFormat);
@@ -65,7 +80,13 @@ export const openAiAdapter: ImageProviderAdapter = {
       throw new Error('OpenAI did not return image data for this request.');
     }
 
-    return createGenerationBatch(request, createdAt, images);
+    return createGenerationBatch(
+      request,
+      createdAt,
+      images,
+      'OpenAI did not return this image. The request was not repeated automatically.',
+      generatedResponse.returnedImageCount,
+    );
   },
   normalizeError(error: unknown): NormalizedProviderError {
     return readProviderError(error, 'OpenAI');
@@ -102,6 +123,7 @@ type ReadImageGenerationResponse = {
   outputFormat?: ImageOutputFormat;
   quality?: string;
   size?: string;
+  returnedImageCount: number;
 };
 
 function buildImageGenerationBody(
@@ -140,6 +162,7 @@ function readImageGenerationResponse(
     return {
       images: [],
       metadata: [],
+      returnedImageCount: 0,
     };
   }
 
@@ -150,19 +173,15 @@ function readImageGenerationResponse(
   const images: Array<{ base64: string; mediaType: string }> = [];
   const metadata: Array<{ revisedPrompt?: string }> = [];
 
-  for (const entry of data) {
+  for (const entry of data.slice(0, MAX_GENERATED_IMAGES)) {
     const image = readImageEntry(entry);
 
-    if (!image) {
-      continue;
-    }
-
     images.push({
-      base64: image.base64,
+      base64: image?.base64 ?? '',
       mediaType,
     });
     metadata.push({
-      revisedPrompt: image.revisedPrompt,
+      revisedPrompt: image?.revisedPrompt,
     });
   }
 
@@ -170,8 +189,10 @@ function readImageGenerationResponse(
     images,
     metadata,
     outputFormat,
-    quality: typeof response.quality === 'string' ? response.quality : undefined,
+    quality:
+      typeof response.quality === 'string' ? response.quality : undefined,
     size: typeof response.size === 'string' ? response.size : undefined,
+    returnedImageCount: data.length,
   };
 }
 
@@ -204,7 +225,7 @@ function resolveResponseFormat(
   response: ReadImageGenerationResponse,
   request: ImageOperationRequest,
 ): ImageOutputFormat {
-  return response.outputFormat || request.outputFormat || 'png';
+  return response.outputFormat || request.outputFormat || 'webp';
 }
 
 function readOutputCompression(
@@ -232,14 +253,6 @@ function readImageOutputFormat(value: unknown): ImageOutputFormat | undefined {
   }
 
   return undefined;
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return {};
-  }
 }
 
 function createProviderError(response: Response, payload: unknown): Error {
@@ -289,7 +302,9 @@ function readProviderError(
 
   if (details.status === 429) {
     return {
-      message: `${providerLabel} rate limited this request. Wait a moment and try again.`,
+      message:
+        details.message ||
+        `${providerLabel} rate limited this request. Wait a moment and try again.`,
     };
   }
 
@@ -303,7 +318,7 @@ function readProviderError(
 
   if (details.status && details.status >= 500) {
     return {
-      message: `${providerLabel} returned a server error. Try again in a moment.`,
+      message: `${providerLabel} returned a server error. The request may have been charged; it was not repeated automatically.`,
     };
   }
 

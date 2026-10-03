@@ -10,12 +10,23 @@ function fieldById(
   return id ? fields.find((field) => field.id === id) : undefined;
 }
 
-function sortedFields(fields: readonly RawField[]): RawField[] {
-  return [...fields].sort(
-    (left, right) =>
-      left.attributes.position - right.attributes.position ||
-      left.attributes.api_key.localeCompare(right.attributes.api_key),
-  );
+function earliestField(
+  fields: readonly RawField[],
+  matches: (field: RawField) => boolean,
+): RawField | undefined {
+  let earliest: RawField | undefined;
+  for (const field of fields) {
+    if (!matches(field)) continue;
+    if (
+      !earliest ||
+      field.attributes.position < earliest.attributes.position ||
+      (field.attributes.position === earliest.attributes.position &&
+        field.attributes.api_key.localeCompare(earliest.attributes.api_key) < 0)
+    ) {
+      earliest = field;
+    }
+  }
+  return earliest;
 }
 
 export function getPresentationTitleField(
@@ -31,8 +42,8 @@ export function getPresentationTitleField(
     return configured;
   }
 
-  const ordered = sortedFields(fields);
-  const heading = ordered.find(
+  const heading = earliestField(
+    fields,
     ({ attributes }) =>
       attributes.field_type === 'string' &&
       attributes.appearance.editor === 'single_line' &&
@@ -41,8 +52,11 @@ export function getPresentationTitleField(
 
   return (
     heading ??
-    ordered.find(({ attributes }) => attributes.field_type === 'string') ??
-    ordered.find(({ attributes }) =>
+    earliestField(
+      fields,
+      ({ attributes }) => attributes.field_type === 'string',
+    ) ??
+    earliestField(fields, ({ attributes }) =>
       ['text', 'structured_text'].includes(attributes.field_type),
     )
   );
@@ -61,7 +75,7 @@ export function getPresentationImageField(
     return configured;
   }
 
-  return sortedFields(fields).find(({ attributes }) =>
+  return earliestField(fields, ({ attributes }) =>
     ['file', 'gallery'].includes(attributes.field_type),
   );
 }

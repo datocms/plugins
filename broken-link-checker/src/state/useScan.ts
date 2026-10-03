@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckQueue } from '../checking/queue';
 import type { LinkGroup, ScanReport } from '../types';
+import { updateGroup } from './group';
 import { errorMessage, ScanSession } from './session';
 
 export type ScanProducer = (
@@ -96,16 +97,6 @@ export function useScan(contextKey: string) {
         publish({
           ...next,
           stale: allStale.current || staleRecords.current.size > 0,
-          groups: next.groups.map((group) => {
-            const stale =
-              allStale.current ||
-              (staleRecords.current.size > 0 &&
-                group.occurrences.some((occurrence) =>
-                  staleRecords.current.has(occurrence.recordId ?? ''),
-                ));
-            // A session reuses unchanged groups between reports: keep them as they are.
-            return stale === group.stale ? group : { ...group, stale };
-          }),
         });
       });
       activeSession.current = session;
@@ -131,20 +122,24 @@ export function useScan(contextKey: string) {
     (recordId?: string) => {
       if (recordId) staleRecords.current.add(recordId);
       else allStale.current = true;
+      if (activeSession.current) {
+        activeSession.current.markStale(recordId);
+        return;
+      }
       const previous = currentReport.current;
       if (!previous) return;
       publish({
         ...previous,
         stale: true,
-        groups: previous.groups.map((group) => ({
-          ...group,
-          stale:
+        groups: previous.groups.map((group) => {
+          const stale =
             group.stale ||
             !recordId ||
             group.occurrences.some(
               (occurrence) => occurrence.recordId === recordId,
-            ),
-        })),
+            );
+          return stale === group.stale ? group : updateGroup(group, { stale });
+        }),
       });
     },
     [publish],
@@ -179,7 +174,7 @@ export function useScan(contextKey: string) {
           publish({
             ...current,
             groups: current.groups.map((entry) =>
-              entry.key === target.key ? { ...entry, result } : entry,
+              entry.key === target.key ? updateGroup(entry, { result }) : entry,
             ),
           });
         },

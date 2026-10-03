@@ -6,6 +6,10 @@
   list-style: none;
 }
 
+.assetList a {
+  overflow-wrap: anywhere;
+}
+
 .cancelationModal {
   text-align: center;
   margin-top: -2em;
@@ -23,4 +27,35 @@
 
 .modalButton {
   width: 30%;
+}
+
+.button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.loadingSpinner {
+  height: 200px;
+  position: relative;
+}
+
+.operationStatus {
+  text-align: center;
+}
+
+.progressText {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+}
+
+.pagination {
+  padding-top: var(--spacing-m);
+}
+
+.pageButtons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-m);
 }

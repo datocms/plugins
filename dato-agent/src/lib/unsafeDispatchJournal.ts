@@ -7,9 +7,12 @@ import {
 } from './conversations';
 
 export const UNSAFE_DISPATCH_JOURNAL_VERSION = 1;
-export const MAX_UNSAFE_DISPATCH_OPERATIONS = 20;
+export const MAX_UNSAFE_DISPATCH_OPERATIONS = 200;
 export const MAX_UNSAFE_DISPATCH_NAME_CHARACTERS = 200;
 export const MAX_UNSAFE_DISPATCH_ARGUMENT_CHARACTERS = 20_000;
+// Count JSON escaping as well: previews must not exhaust durable browser storage
+// when a long automatic chain contains large scripts or control characters.
+export const MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS = 500_000;
 const MAX_JOURNAL_ID_CHARACTERS = 512;
 const MAX_MODEL_CHARACTERS = 512;
 const MAX_TITLE_CHARACTERS = 120;
@@ -187,6 +190,96 @@ function normalizeOperation(
   };
 }
 
+function serializedArgumentLength(value: string): number {
+  return JSON.stringify(value).length - 2;
+}
+
+function truncateArgumentPreview(
+  operation: UnsafeDispatchJournalOperation,
+  maximum: number,
+): UnsafeDispatchJournalOperation {
+  if (serializedArgumentLength(operation.argumentsPreview) <= maximum) {
+    return operation;
+  }
+
+  let lower = 0;
+  let upper = operation.argumentsPreview.length;
+  while (lower < upper) {
+    const middle = Math.ceil((lower + upper) / 2);
+    if (
+      serializedArgumentLength(operation.argumentsPreview.slice(0, middle)) <=
+      maximum
+    ) {
+      lower = middle;
+    } else {
+      upper = middle - 1;
+    }
+  }
+
+  return {
+    ...operation,
+    argumentsPreview: operation.argumentsPreview.slice(0, lower),
+    argumentsTruncated: true,
+  };
+}
+
+function boundArgumentPreviews(
+  operations: UnsafeDispatchJournalOperation[],
+): UnsafeDispatchJournalOperation[] {
+  if (
+    operations.reduce(
+      (total, operation) =>
+        total + serializedArgumentLength(operation.argumentsPreview),
+      0,
+    ) <= MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS
+  ) {
+    return operations;
+  }
+
+  const bounded = [...operations];
+  const unconfirmed = operations.filter(
+    (operation) => operation.state !== 'confirmed',
+  );
+  const unconfirmedLength = unconfirmed.reduce(
+    (total, operation) =>
+      total + serializedArgumentLength(operation.argumentsPreview),
+    0,
+  );
+  const unconfirmedMaximum =
+    unconfirmedLength > MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS
+      ? Math.floor(
+          MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS /
+            unconfirmed.length,
+        )
+      : MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS;
+  let remaining = MAX_UNSAFE_DISPATCH_SERIALIZED_ARGUMENT_CHARACTERS;
+
+  // Keep unresolved evidence first. These are previews only; dispatch always
+  // uses the runtime's original arguments, never this compacted journal.
+  for (const [index, operation] of operations.entries()) {
+    if (operation.state === 'confirmed') {
+      continue;
+    }
+    const preview = truncateArgumentPreview(operation, unconfirmedMaximum);
+    bounded[index] = preview;
+    remaining -= serializedArgumentLength(preview.argumentsPreview);
+  }
+
+  // Preserve the most recent confirmed previews within the remaining budget,
+  // retaining every approval ID and state even when its preview is compacted.
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const operation = operations[index];
+    if (operation?.state !== 'confirmed') {
+      continue;
+    }
+    const preview = truncateArgumentPreview(operation, remaining);
+    bounded[index] = preview;
+    remaining -= serializedArgumentLength(preview.argumentsPreview);
+  }
+
+  return bounded;
+}
+
 function normalizeJournal(value: unknown): UnsafeDispatchJournal {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('The unsafe dispatch journal is invalid.');
@@ -283,7 +376,7 @@ function normalizeJournal(value: unknown): UnsafeDispatchJournal {
       MAX_JOURNAL_ID_CHARACTERS,
     ),
     scope: normalizeScope(candidate.scope),
-    operations,
+    operations: boundArgumentPreviews(operations),
     createdAt,
     updatedAt: safeIsoDate(candidate.updatedAt, createdAt),
   };

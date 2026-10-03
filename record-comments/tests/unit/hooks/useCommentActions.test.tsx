@@ -3,10 +3,54 @@
 import { useCommentActions } from '@hooks/useCommentActions';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { createRecordMention, createMentionSegment } from '../fixtures/mentions';
+import { createBaseComment } from '../fixtures/comments';
+import {
+  createMentionSegment,
+  createRecordMention,
+} from '../fixtures/mentions';
 import { renderHook } from '../testUtils/react';
 
 describe('useCommentActions', () => {
+  it('enqueues the editing-start baseline instead of newer subscription content', () => {
+    const original = [
+      { type: 'text' as const, content: 'Original at editing start' },
+    ];
+    const current = createBaseComment({
+      id: 'comment-1',
+      content: [{ type: 'text', content: 'Updated while editor was open' }],
+    });
+    const enqueue = vi.fn(() => true);
+    const hook = renderHook(() =>
+      useCommentActions({
+        userId: 'user-1',
+        comments: [current],
+        setComments: vi.fn(),
+        enqueue,
+        composerSegments: [],
+        setComposerSegments: vi.fn(),
+        pendingNewReplies: { current: new Set<string>() },
+      }),
+    );
+
+    act(() => {
+      hook.result.current?.editComment(
+        'comment-1',
+        [{ type: 'text', content: 'My edit' }],
+        undefined,
+        original,
+      );
+    });
+
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'EDIT_COMMENT',
+        expectedContent: original,
+        newContent: [{ type: 'text', content: 'My edit' }],
+      }),
+    );
+    hook.unmount();
+  });
+
   it('does not apply optimistic state updates when enqueue rejects a new comment', () => {
     const setComments = vi.fn();
     const setComposerSegments = vi.fn();
@@ -30,7 +74,9 @@ describe('useCommentActions', () => {
 
     let accepted = true;
     act(() => {
-      accepted = result.current?.submitNewComment();
+      const actions = result.current;
+      if (!actions) throw new Error('Comment actions hook was not rendered');
+      accepted = actions.submitNewComment();
     });
 
     expect(accepted).toBe(false);

@@ -86,6 +86,29 @@ describe('buildRestoreErrorPayload', () => {
     expect(result.simplifiedError.code).toBe('UNKNOWN');
     expect(result.simplifiedError.details.message).toBe('Gateway timeout');
   });
+
+  it('handles cycles in error wrappers without hanging', () => {
+    const first: Record<string, unknown> = {
+      code: 'WRAPPED',
+      details: { code: 'WRAPPED' },
+    };
+    const second: Record<string, unknown> = { error: first };
+    first.error = second;
+    const result = buildRestoreErrorPayload(first);
+    expect(result.simplifiedError.code).toBe('WRAPPED');
+    expect(result.fullErrorPayload).toBe('[object Object]');
+  });
+
+  it('always produces text for undefined and circular Error payloads', () => {
+    expect(buildRestoreErrorPayload(undefined).fullErrorPayload).toBe(
+      'undefined',
+    );
+    const error = new Error('Circular');
+    Object.assign(error, { error });
+    expect(buildRestoreErrorPayload(error).fullErrorPayload).toBe(
+      'Error: Circular',
+    );
+  });
 });
 
 describe('parseJsonStringSafely', () => {

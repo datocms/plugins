@@ -3414,6 +3414,84 @@ describe('AgentFrame', () => {
     ).toBeUndefined();
   });
 
+  it('runs 25 automatically approved batches continuously without the former eight-batch pause', async () => {
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    enableAutoApproval(frameProps);
+    const batches = 25;
+    const required = (batch: number) =>
+      completedResult({
+        status: 'approval_required',
+        responseId: `resp_batch_${batch}`,
+        approvals: [unsafeApprovalWithId(`approval_batch_${batch}`)],
+      });
+    const emit = async (
+      result: AgentTurnResult,
+      onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+    ) => {
+      if (result.responseId && result.approvals[0]) {
+        await onEvent?.({
+          type: 'approval_required',
+          responseId: result.responseId,
+          approval: result.approvals[0],
+        });
+      }
+      await onEvent?.({ type: 'turn_completed', result });
+      return result;
+    };
+    const submitApprovals = vi.fn(
+      async (
+        args: ContinueApprovalsArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        const approvedIds = args.decisions.map(
+          (decision) => decision.approvalRequestId,
+        );
+        await args.unsafeDispatchCallbacks?.prepareDispatch?.(approvedIds);
+        args.unsafeDispatchCallbacks?.beforeDispatch(approvedIds);
+        args.unsafeDispatchCallbacks?.confirmed?.(approvedIds);
+        const batch = submitApprovals.mock.calls.length;
+        return emit(
+          batch < batches
+            ? required(batch)
+            : completedResult({ responseId: 'resp_batches_complete' }),
+          onEvent,
+        );
+      },
+    );
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => emit(required(0), onEvent),
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+    render(<AgentFrame {...frameProps} />);
+    act(() => mocks.surfaceProps?.onSubmit('Apply the exact reviewed batches'));
+    await waitFor(() => {
+      expect(submitApprovals).toHaveBeenCalledTimes(batches);
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+    expect(
+      mocks.surfaceProps?.entries.filter((entry) => entry.kind === 'approval'),
+    ).toHaveLength(batches);
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' && entry.approval.status !== 'approved',
+      ),
+    ).toBe(false);
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.error?.includes('too many consecutive'),
+      ),
+    ).toBe(false);
+  });
+
   it('turns auto-approve on only after confirmation and disables it immediately', async () => {
     const frameProps = props();
     render(<AgentFrame {...frameProps} />);

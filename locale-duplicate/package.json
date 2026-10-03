@@ -41,7 +41,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "node --import ./tests/register-typescript.mjs --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",

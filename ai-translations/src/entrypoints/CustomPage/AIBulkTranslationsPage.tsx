@@ -37,14 +37,7 @@ import {
   ToolbarStack,
   ToolbarTitle,
 } from 'datocms-react-ui';
-import {
-  type Ref,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { FaCircleExclamation } from 'react-icons/fa6';
 import {
   confirmTranslationTitle,
@@ -67,6 +60,12 @@ import {
 } from '../../components/BulkTranslations/localeSelection';
 import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
 import { getStartBlockedReason } from '../../components/BulkTranslations/startBlockedReason';
+import {
+  boundedSelectHint,
+  useBoundedChipSelect,
+} from '../../components/BulkTranslations/useBoundedChipSelect';
+import { useModelFields } from '../../components/BulkTranslations/useModelFields';
+import { useModelPickerPage } from '../../components/BulkTranslations/useModelPickerPage';
 import type { TranslationConfirmModalParams } from '../../components/TranslationConfirmModal';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { Button } from '../../ui/Button';
@@ -81,14 +80,9 @@ import {
 import { formatLocaleLabel } from '../../utils/localeUtils';
 import { collectRecordIds } from '../../utils/translation/BulkRecordLoader';
 import {
-  defaultFieldSelection,
-  filterTranslatableFields,
   getTranslationReadiness,
   pruneFieldSelection,
   resolveTargetLocales,
-  type SdkField,
-  sortFieldsByLayoutOrder,
-  type TranslatableField,
 } from '../../utils/translation/BulkTranslationHelpers';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
@@ -132,6 +126,42 @@ const PROVIDER_MISSING_LINE =
 /** Selects, "Remove model" and "Try again" lock only after this long busy. */
 const FIELD_LOCK_DELAY_MS = 1000;
 
+function modelExclusionsKey(pluginParams: ctxParamsType) {
+  return JSON.stringify(pluginParams.modelsToBeExcludedFromThisPlugin ?? []);
+}
+
+function retainSelectedModels(selected: ModelOption[], models: ModelOption[]) {
+  const current = new Map(models.map((model) => [model.value, model]));
+  return selected.flatMap((model) => {
+    const next = current.get(model.value);
+    return next ? [next] : [];
+  });
+}
+
+function retainedSource(source: LocaleOption | null, locales: LocaleOption[]) {
+  return (
+    locales.find((locale) => locale.value === source?.value) ??
+    locales[0] ??
+    null
+  );
+}
+
+function refreshedTargets(
+  targets: LocaleOption[],
+  locales: LocaleOption[],
+  source: LocaleOption | null,
+  sourceChanged: boolean,
+) {
+  const valid = new Set(locales.map((locale) => locale.value));
+  const current = targets.filter(
+    (option) =>
+      option.value === ALL_LOCALES_OPTION.value || valid.has(option.value),
+  );
+  return sourceChanged && source
+    ? targetsForNewSource(current, source.value)
+    : current;
+}
+
 function deriveView(
   loadState: LoadState,
   localeCount: number,
@@ -143,20 +173,6 @@ function deriveView(
   if (localeCount < 2) return 'single-locale';
   if (modelCount === 0) return 'no-models';
   return 'form';
-}
-
-/** Adds or removes `ids` from a Set state without mutating it. */
-function withIds(
-  prev: ReadonlySet<string>,
-  ids: readonly string[],
-  include: boolean,
-): Set<string> {
-  const next = new Set(prev);
-  for (const id of ids) {
-    if (include) next.add(id);
-    else next.delete(id);
-  }
-  return next;
 }
 
 function LoadErrorState({
@@ -360,6 +376,17 @@ function LocalesSection({
     value: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
   ) => void;
 }) {
+  const sourceSelect = useBoundedChipSelect(
+    locales,
+    sourceLocale ? [sourceLocale] : [],
+    'locales',
+    false,
+  );
+  const targetSelect = useBoundedChipSelect(
+    targetOptions,
+    targetLocaleOptions,
+    'locales',
+  );
   return (
     <Section
       title="Locales"
@@ -373,11 +400,14 @@ function LocalesSection({
             name="sourceLocale"
             label="Source locale"
             required
-            hint="Content is translated from this locale"
+            hint={boundedSelectHint(
+              sourceSelect.hint,
+              'Content is translated from this locale',
+            )}
             value={sourceLocale}
             onChange={onSourceChange}
             selectInputProps={{
-              options: locales,
+              ...sourceSelect.selectProps,
               formatOptionLabel: formatCodeOption,
               isClearable: false,
               isDisabled: isLocked,
@@ -390,8 +420,11 @@ function LocalesSection({
             name="targetLocales"
             label="Target locales"
             required
-            hint='"All other locales" skips the source locale'
-            placeholder="Select locales…"
+            hint={boundedSelectHint(
+              targetSelect.hint,
+              '"All other locales" skips the source locale',
+            )}
+            placeholder={targetSelect.placeholder('Select locales…')}
             error={
               targetLocaleOptions.length === 0 ? FIELD_REQUIRED : undefined
             }
@@ -399,7 +432,7 @@ function LocalesSection({
             onChange={onTargetsChange}
             selectInputProps={{
               isMulti: true,
-              options: targetOptions,
+              ...targetSelect.selectProps,
               formatOptionLabel: formatCodeMultiOption,
               noOptionsMessage: () => 'No locales found',
               isDisabled: isLocked,
@@ -412,6 +445,8 @@ function LocalesSection({
 }
 
 export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
+  const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+  const exclusionsKey = modelExclusionsKey(pluginParams);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>([]);
   // "Field is required" on the models select only once the user emptied it.
@@ -423,20 +458,6 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<
     LocaleOption[]
   >([ALL_LOCALES_OPTION]);
-  const [fieldsByModel, setFieldsByModel] = useState<
-    Record<string, TranslatableField[]>
-  >({});
-  const [selectedFieldsByModel, setSelectedFieldsByModel] = useState<
-    Record<string, string[]>
-  >({});
-  const [loadingFieldsForModel, setLoadingFieldsForModel] = useState<
-    Set<string>
-  >(new Set());
-  // Models whose last field load failed. Keeps `ensureFieldsLoaded` from
-  // refetching in a loop until the user asks to try again.
-  const [failedFieldModels, setFailedFieldModels] = useState<Set<string>>(
-    new Set(),
-  );
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' });
   const [reloadToken, setReloadToken] = useState(0);
   const [isStartingTranslation, setIsStartingTranslation] = useState(false);
@@ -461,6 +482,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   // the loading state, so host ctx updates re-run this without a spinner.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadToken` re-runs the load when the user clicks "Try again".
   useEffect(() => {
+    let stale = false;
     async function loadData() {
       if (!ctx.currentUserAccessToken) {
         setLoadState({ status: 'error', cause: 'no-token' });
@@ -474,17 +496,24 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           ctx.cmaBaseUrl,
         );
 
-        const itemTypes = await client.itemTypes.list();
-        const nonBlockModels = itemTypes.filter((m) => !m.modular_block);
-        setModels(
-          nonBlockModels.map((m) => ({
-            label: m.name,
-            value: m.id,
-            code: m.api_key,
-          })),
-        );
+        const [itemTypes, site] = await Promise.all([
+          client.itemTypes.list(),
+          client.site.find(),
+        ]);
+        if (stale) return;
+        const exclusions = new Set(JSON.parse(exclusionsKey) as string[]);
+        const nextModels = itemTypes
+          .filter(
+            (model) => !model.modular_block && !exclusions.has(model.api_key),
+          )
+          .map((model) => ({
+            label: model.name,
+            value: model.id,
+            code: model.api_key,
+          }));
+        setModels(nextModels);
+        setSelectedModels((prev) => retainSelectedModels(prev, nextModels));
 
-        const site = await client.site.find();
         const localeOptions: LocaleOption[] = site.locales.map(
           (locale: string) => ({
             label: formatLocaleLabel(locale),
@@ -497,19 +526,20 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         // still exists. When it falls back, prune the targets like a user
         // source change does, so no phantom target chip is left behind.
         const currentSource = sourceLocaleRef.current;
-        const sourceStillExists =
-          currentSource !== null &&
-          localeOptions.some((l) => l.value === currentSource.value);
-        if (!sourceStillExists && localeOptions.length > 0) {
-          const nextSource = localeOptions[0];
-          setSourceLocale(nextSource);
-          setTargetLocaleOptions((prev) =>
-            targetsForNewSource(prev, nextSource.value),
-          );
-        }
-
+        const nextSource = retainedSource(currentSource, localeOptions);
+        sourceLocaleRef.current = nextSource;
+        setSourceLocale(nextSource);
+        setTargetLocaleOptions((prev) =>
+          refreshedTargets(
+            prev,
+            localeOptions,
+            nextSource,
+            nextSource?.value !== currentSource?.value,
+          ),
+        );
         setLoadState({ status: 'ready' });
       } catch (error) {
+        if (stale) return;
         console.error('Error loading data:', error);
         // Only the initial load (or a "Try again") shows the error pane. A
         // failed background refresh keeps the loaded form, including a
@@ -522,95 +552,44 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       }
     }
 
-    loadData();
-  }, [ctx, reloadToken]);
+    void loadData();
+    return () => {
+      stale = true;
+    };
+  }, [ctx, reloadToken, exclusionsKey]);
 
   const retryLoad = () => {
     setLoadState({ status: 'loading' });
     setReloadToken((token) => token + 1);
   };
 
-  const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
   const providerConfigured = isProviderConfigured(pluginParams);
+  const modelSelect = useBoundedChipSelect(models, selectedModels, 'models');
+  const { visibleModels, controls: modelPageControls } =
+    useModelPickerPage(selectedModels);
 
-  /**
-   * Loads, filters, and caches a selected model's translatable fields,
-   * defaulting its selection to "everything translatable". Reuses an
-   * in-flight loading marker to avoid duplicate fetches on quick model
-   * toggles, and skips models whose load failed until `retryFields`.
-   */
-  const ensureFieldsLoaded = useCallback(
-    async (modelId: string) => {
-      if (
-        fieldsByModel[modelId] ||
-        loadingFieldsForModel.has(modelId) ||
-        failedFieldModels.has(modelId)
-      ) {
-        return;
-      }
-
-      setLoadingFieldsForModel((prev) => withIds(prev, [modelId], true));
-
-      try {
-        // `loadItemTypeFields` does not guarantee schema-layout order in the
-        // returned array, so we sort by `position` ourselves before filtering.
-        const fields = (await ctx.loadItemTypeFields(modelId)) as SdkField[];
-        const ordered = sortFieldsByLayoutOrder(fields);
-        const translatable = filterTranslatableFields(ordered, {
-          translationFields: pluginParams.translationFields ?? [],
-          apiKeysToBeExcludedFromThisPlugin:
-            pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
-        });
-
-        setFieldsByModel((prev) => ({ ...prev, [modelId]: translatable }));
-        setSelectedFieldsByModel((prev) =>
-          // Don't overwrite an existing selection if the user already toggled
-          // some fields before the fetch resolved.
-          prev[modelId]
-            ? prev
-            : { ...prev, [modelId]: defaultFieldSelection(translatable) },
-        );
-      } catch (error) {
-        // Shown inline by ModelFieldPicker, with a "Try again" action.
-        console.error(`Error loading fields for model ${modelId}:`, error);
-        setFailedFieldModels((prev) => withIds(prev, [modelId], true));
-      } finally {
-        setLoadingFieldsForModel((prev) => withIds(prev, [modelId], false));
-      }
-    },
-    [
-      ctx,
-      fieldsByModel,
-      loadingFieldsForModel,
-      failedFieldModels,
-      pluginParams.apiKeysToBeExcludedFromThisPlugin,
-      pluginParams.translationFields,
-    ],
+  const selectedModelIds = useMemo(
+    () => selectedModels.map((model) => model.value),
+    [selectedModels],
   );
-
-  // Fetch fields for any newly selected model, in parallel.
-  useEffect(() => {
-    for (const m of selectedModels) {
-      void ensureFieldsLoaded(m.value);
-    }
-  }, [selectedModels, ensureFieldsLoaded]);
-
-  // Drop cached fields, picks and failed marks of deselected models, so a
-  // model added again starts fresh from its default selection.
-  useEffect(() => {
-    const keptIds = selectedModels.map((m) => m.value);
-    setFieldsByModel((prev) => pruneFieldSelection(prev, keptIds));
-    setSelectedFieldsByModel((prev) => pruneFieldSelection(prev, keptIds));
-    setFailedFieldModels((prev) => {
-      const next = new Set(keptIds.filter((id) => prev.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [selectedModels]);
-
-  /** Clears a model's failed mark so the load effect fetches it again. */
-  const retryFields = (modelId: string) => {
-    setFailedFieldModels((prev) => withIds(prev, [modelId], false));
-  };
+  const {
+    fieldsByModel,
+    selectedFieldsByModel,
+    loadingFieldsForModel,
+    failedFieldModels,
+    setModelFields,
+    retryFields,
+  } = useModelFields({
+    modelIds: selectedModelIds,
+    scopeKey: JSON.stringify([
+      ctx.environment,
+      ctx.cmaBaseUrl,
+      ctx.currentUserAccessToken,
+    ]),
+    loadFields: (modelId) => ctx.loadItemTypeFields(modelId),
+    translationFields: pluginParams.translationFields,
+    excludedApiKeys: pluginParams.apiKeysToBeExcludedFromThisPlugin,
+  });
 
   // Derive concrete target locales from the user's multi-select state.
   const allLocaleValues = useMemo(() => locales.map((l) => l.value), [locales]);
@@ -624,11 +603,6 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           )
         : [],
     [sourceLocale, targetLocaleOptions, allLocaleValues],
-  );
-
-  const selectedModelIds = useMemo(
-    () => selectedModels.map((m) => m.value),
-    [selectedModels],
   );
 
   const readiness = useMemo(
@@ -718,10 +692,6 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         : [];
     setSelectedModels(next);
     setModelsTouched(true);
-  };
-
-  const setModelFields = (modelId: string, apiKeys: string[]) => {
-    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: apiKeys }));
   };
 
   /** Drops a model from the selection (the prune effect clears its caches). */
@@ -995,8 +965,13 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                             name="selectedModels"
                             label="Models"
                             required
-                            hint="All records of these models are translated"
-                            placeholder="Select models…"
+                            hint={boundedSelectHint(
+                              modelSelect.hint,
+                              'All records of these models are translated',
+                            )}
+                            placeholder={modelSelect.placeholder(
+                              'Select models…',
+                            )}
                             error={
                               modelsTouched && selectedModels.length === 0
                                 ? FIELD_REQUIRED
@@ -1006,7 +981,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                             onChange={handleModelChange}
                             selectInputProps={{
                               isMulti: true,
-                              options: models,
+                              ...modelSelect.selectProps,
                               formatOptionLabel: formatCodeMultiOption,
                               noOptionsMessage: () => 'No models found',
                               isDisabled: fieldsLocked,
@@ -1016,7 +991,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
                         {selectedModels.length > 0 && (
                           <div className={s.modelGrid}>
-                            {selectedModels.map((model) => (
+                            {modelPageControls}
+                            {visibleModels.map((model) => (
                               <div key={model.value}>
                                 <ModelFieldPicker
                                   model={model}

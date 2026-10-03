@@ -32,15 +32,18 @@ export type ItemsPage = {
 
 export type ItemsListQuery = RawApiTypes.ItemInstancesHrefSchema & {
   nested: false;
+  page: { offset: number; limit: number };
 };
 
 function toNonNegativeInteger(value: unknown, fallback: number): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(0, Math.floor(value));
+    const integer = Math.max(0, Math.floor(value));
+    return Number.isSafeInteger(integer) ? integer : fallback;
   }
 
   if (typeof value === 'string' && /^\d+$/.test(value)) {
-    return Math.max(0, Number.parseInt(value, 10));
+    const integer = Number.parseInt(value, 10);
+    return Number.isSafeInteger(integer) ? integer : fallback;
   }
 
   return fallback;
@@ -82,7 +85,10 @@ export function normalizeQueryState(state: Partial<QueryState>): QueryState {
       (status !== null && orderBy.startsWith('_status_')));
 
   return {
-    page: toNonNegativeInteger(state.page, 0),
+    page: Math.min(
+      toNonNegativeInteger(state.page, 0),
+      Math.floor(Number.MAX_SAFE_INTEGER / perPage),
+    ),
     perPage,
     query: typeof state.query === 'string' ? state.query.trim() : '',
     model,
@@ -124,7 +130,6 @@ export function buildItemsListQuery(
       ? DEFAULT_ORDER_BY
       : (state.orderBy ?? DEFAULT_ORDER_BY));
   const stableOrderBy =
-    !state.model &&
     requestedOrderBy !== 'id_ASC' &&
     requestedOrderBy !== 'id_DESC' &&
     !requestedOrderBy.includes(',')
@@ -146,20 +151,106 @@ export function buildItemsListQuery(
 
 type ItemsClient = Pick<Client, 'items'>;
 
+export function throwIfItemsRequestAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('The record request was cancelled.', 'AbortError');
+  }
+}
+
+/** The SDK has no per-call signal; observe the in-flight result and stop subsequent work. */
+export function waitForItemsRequest<T>(
+  request: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return request;
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () =>
+      reject(
+        new DOMException('The record request was cancelled.', 'AbortError'),
+      );
+    signal.addEventListener('abort', abort, { once: true });
+    request.then(
+      (result) => {
+        signal.removeEventListener('abort', abort);
+        resolve(result);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+    if (signal.aborted) abort();
+  });
+}
+
+export function itemsPageTotal(
+  response: { data: readonly { id: string }[]; meta: { total_count: number } },
+  offset: number,
+  limit: number,
+): number {
+  const total = response.meta?.total_count;
+  if (
+    !Array.isArray(response.data) ||
+    !Number.isSafeInteger(total) ||
+    total < 0 ||
+    response.data.length > limit ||
+    response.data.some((item) => !item?.id)
+  ) {
+    throw new Error(
+      'The API returned an incomplete record page. Refresh the view.',
+    );
+  }
+  if (limit > 0 && response.data.length === 0 && offset < total) {
+    throw new Error(
+      'The API returned an empty page before its record total. Refresh the view.',
+    );
+  }
+  if (response.data.length > 0 && offset + response.data.length > total) {
+    throw new Error(
+      'The API returned a page beyond its record total. Refresh the view.',
+    );
+  }
+  return total;
+}
+
 export async function fetchItemsPage(
   client: ItemsClient,
   state: Partial<QueryState>,
   serverOrderBy?: string,
+  signal?: AbortSignal,
 ): Promise<ItemsPage> {
-  const response = await client.items.rawList(
-    buildItemsListQuery(state, serverOrderBy),
-  );
+  const query = buildItemsListQuery(state, serverOrderBy);
+  const offset = query.page.offset;
+  const limit = query.page.limit;
+  const items: RawItem[] = [];
+  const ids = new Set<string>();
+  let totalCount = 0;
 
-  return {
-    items: response.data,
-    totalCount:
-      typeof response.meta.total_count === 'number'
-        ? response.meta.total_count
-        : response.data.length,
-  };
+  do {
+    throwIfItemsRequestAborted(signal);
+    const currentOffset = offset + items.length;
+    const currentLimit = limit - items.length;
+    // biome-ignore lint/performance/noAwaitInLoops: Short responses are completed from the actual last offset.
+    const response = await waitForItemsRequest(
+      client.items.rawList({
+        ...query,
+        page: { offset: currentOffset, limit: currentLimit },
+      }),
+      signal,
+    );
+    throwIfItemsRequestAborted(signal);
+    totalCount = itemsPageTotal(response, currentOffset, currentLimit);
+    for (const item of response.data) {
+      if (ids.has(item.id)) {
+        throw new Error(
+          'Records changed while this page was loading. Refresh the view.',
+        );
+      }
+      ids.add(item.id);
+      items.push(item);
+    }
+  } while (items.length < limit && offset + items.length < totalCount);
+
+  return { items, totalCount };
 }

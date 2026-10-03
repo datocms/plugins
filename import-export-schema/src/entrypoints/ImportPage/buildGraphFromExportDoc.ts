@@ -6,6 +6,7 @@ import type { ExportSchema } from '../ExportPage/ExportSchema';
 export async function buildGraphFromExportDoc(
   exportSchema: ExportSchema,
   itemTypeIdsToSkip: string[],
+  shouldCancel?: () => boolean,
 ): Promise<Graph> {
   // Convert the static export document into the graph format expected by React Flow.
   const source = new ExportSchemaSource(exportSchema);
@@ -13,5 +14,6 @@ export async function buildGraphFromExportDoc(
     source,
     initialItemTypes: exportSchema.rootItemTypes,
     itemTypeIdsToSkip,
+    shouldCancel,
   });
 }

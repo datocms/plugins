@@ -83,6 +83,14 @@ export default function TranslationConfirmModal({ ctx, parameters }: Props) {
           into <strong>{localeLabel}</strong>.
         </p>
 
+        {recordCount * toLocales.length >= 10000 ? (
+          <p role="note">
+            Each selected field is translated into every target locale. Provider
+            usage depends on the content size and can be substantial for this
+            selection. Keep this window open until the run finishes.
+          </p>
+        ) : null}
+
         <div className={s.summary}>
           <div className={s.row}>
             <span className={s.label}>From</span>

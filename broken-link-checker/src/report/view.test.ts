@@ -6,6 +6,7 @@ import type {
   ScanReport,
 } from '../types';
 import {
+  cacheGroupFacts,
   countStatuses,
   DEFAULT_FILTERS,
   type Filters,
@@ -20,6 +21,7 @@ import {
   pageSlice,
   paginationWindow,
   recordsOf,
+  recordUsagePage,
   reportDimensions,
   scanFraction,
   scanProgress,
@@ -434,9 +436,101 @@ describe('record usage', () => {
         ['news', 'News'],
       ]),
       locales: new Set(['en', 'it']),
-      lowerUrls: [url, `${url}#top`, url],
+      lowerUrls: [url, `${url}#top`],
       fragment: true,
     });
+  });
+
+  it('keeps repeated destinations once and reuses immutable URL facts across many records', () => {
+    const builder = new GroupFactsBuilder();
+    const url = 'https://shared.example/';
+    builder.add(occurrence({ url, recordId: 'r0' }));
+    const first = builder.facts();
+    for (let index = 1; index <= 10_000; index += 1) {
+      builder.add(occurrence({ url, recordId: `r${index}` }));
+      if (index % 1_000 === 0)
+        expect(builder.facts().lowerUrls).toBe(first.lowerUrls);
+    }
+    expect(first.recordCount).toBe(1);
+    expect(builder.facts().recordCount).toBe(10_001);
+    expect(builder.facts().lowerUrls).toEqual([url]);
+    builder.add(occurrence({ url: `${url}#LAST`, recordId: 'r10000' }));
+    expect(first.lowerUrls).toEqual([url]);
+    expect(builder.facts().lowerUrls).toEqual([url, `${url}#last`]);
+  });
+
+  it('keeps a published URL list immutable when a new record and variant arrive in one batch', () => {
+    const url = 'https://shared.example/';
+    const builder = new GroupFactsBuilder();
+    builder.add(occurrence({ url, recordId: 'first' }));
+    const published = builder.facts();
+    builder.add(occurrence({ url, recordId: 'second' }));
+    builder.add(occurrence({ url: `${url}#later`, recordId: 'second' }));
+    expect(published.lowerUrls).toEqual([url]);
+    expect(published.recordCount).toBe(1);
+    expect(builder.facts().lowerUrls).toEqual([url, `${url}#later`]);
+    expect(builder.facts().recordCount).toBe(2);
+  });
+
+  it('does not materialize cached shared occurrences for dimensions, counts or simple filters', () => {
+    const entry = group('broken');
+    const facts = groupFacts(entry);
+    let reads = 0;
+    const lazy: LinkGroup = {
+      ...entry,
+      get occurrences(): LinkOccurrence[] {
+        reads += 1;
+        throw new Error('The large array should stay lazy');
+      },
+    };
+    cacheGroupFacts(lazy, facts);
+    expect(groupFacts(lazy)).toBe(facts);
+    expect(reportDimensions([lazy])).toEqual({
+      models: [{ id: 'page', name: 'page' }],
+      locales: ['en'],
+    });
+    expect(filterGroups([lazy], DEFAULT_FILTERS)).toEqual([lazy]);
+    expect(filterGroups([lazy], filters({ modelId: 'page' }))).toEqual([lazy]);
+    expect(filterGroups([lazy], filters({ locale: 'en' }))).toEqual([lazy]);
+    expect(filterGroups([lazy], filters({ query: 'BROKEN-PAGE' }))).toEqual([
+      lazy,
+    ]);
+    expect(countStatuses([lazy]).broken).toBe(1);
+    expect(reads).toBe(0);
+  });
+
+  it('retains only the visible record previews while counting late and repeated places', () => {
+    const entry = group('broken');
+    entry.occurrences = Array.from({ length: 2_001 }, (_, index) =>
+      occurrence({
+        url: entry.prepared.url,
+        id: `record-${index}:first`,
+        recordId: `record-${index}`,
+        recordTitle: `Record ${index}`,
+      }),
+    );
+    // Later locales/blocks of the same records still count in a visible row.
+    for (let place = 0; place < 6; place += 1)
+      for (let index = 0; index < 2_001; index += 1)
+        entry.occurrences.push(
+          occurrence({
+            url: entry.prepared.url,
+            id: `record-${index}:place-${place}`,
+            recordId: `record-${index}`,
+          }),
+        );
+    const second = recordUsagePage(entry, 2, 50, 5);
+    expect(second).toHaveLength(50);
+    expect(second[0].recordId).toBe('record-50');
+    expect(second[49].recordId).toBe('record-99');
+    expect(second.every((record) => record.occurrences.length === 5)).toBe(
+      true,
+    );
+    expect(second.every((record) => record.occurrenceCount === 7)).toBe(true);
+    expect(recordUsagePage({ ...entry, stale: true }, 2, 50, 5)).toBe(second);
+    expect(recordUsagePage(entry, 41, 50, 5)).toEqual([
+      expect.objectContaining({ recordId: 'record-2000', occurrenceCount: 7 }),
+    ]);
   });
 });
 

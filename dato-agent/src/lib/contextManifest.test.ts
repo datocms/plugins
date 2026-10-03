@@ -144,6 +144,132 @@ function field({
   } as Field;
 }
 
+describe('manifest scale safety', () => {
+  it.each([buildStandaloneProjectMap, buildStandaloneFieldDirectory])(
+    'indexes each loaded field once across a large model directory',
+    (buildProjection) => {
+      const models: ItemType[] = [];
+      const fields: Field[] = [];
+      let ownerReads = 0;
+      for (let modelIndex = 0; modelIndex < 400; modelIndex += 1) {
+        const modelId = `model-${modelIndex}`;
+        const fieldIds: string[] = [];
+        for (let fieldIndex = 0; fieldIndex < 5; fieldIndex += 1) {
+          const fieldId = `${modelId}-field-${fieldIndex}`;
+          fieldIds.push(fieldId);
+          const currentField = field({
+            id: fieldId,
+            modelId,
+            apiKey: `field_${fieldIndex}`,
+            localized: true,
+            position: fieldIndex,
+          });
+          Object.defineProperty(
+            currentField.relationships.item_type.data,
+            'id',
+            {
+              get: () => {
+                ownerReads += 1;
+                return modelId;
+              },
+            },
+          );
+          fields.push(currentField);
+        }
+        models.push(
+          model({ id: modelId, apiKey: `model_${modelIndex}`, fieldIds }),
+        );
+      }
+
+      const projection = buildProjection({
+        itemTypes: models,
+        fields,
+        maxCharacters: 6_000,
+      });
+
+      expect(ownerReads).toBe(fields.length);
+      expect(projection.includedModelApiKeys.length).toBeGreaterThan(0);
+      expect(
+        projection.includedModelApiKeys.length +
+          projection.omittedModelApiKeys.length,
+      ).toBe(models.length);
+      expect(projection.sourceIncompleteModelApiKeys).toEqual([]);
+      expect(projection.complete).toBe(false);
+      expect(projection.characterCount).toBeLessThanOrEqual(6_000);
+      expect(projection.characterCount).toBe(projection.text.length);
+    },
+  );
+
+  it('does not read detailed editor or validator semantics for the field directory', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['title-id'],
+    });
+    const title = field({
+      id: 'title-id',
+      modelId: article.id,
+      apiKey: 'title',
+      validators: { required: {} },
+    });
+    const unusedDetail = () => {
+      throw new Error('Unused detailed semantics were accessed.');
+    };
+    Object.defineProperty(title.attributes, 'appearance', {
+      get: unusedDetail,
+    });
+    Object.defineProperty(title.attributes, 'hint', { get: unusedDetail });
+    Object.defineProperty(title.attributes.validators, 'enum', {
+      get: unusedDetail,
+    });
+    Object.defineProperty(article.attributes, 'hint', { get: unusedDetail });
+
+    const directory = buildStandaloneFieldDirectory({
+      itemTypes: [article],
+      fields: [title],
+    });
+
+    expect(directory.complete).toBe(true);
+    expect(directory.text).toContain('fields_by_type={"string":["title"]}');
+  });
+
+  it('retains only the configured option prefix while counting omitted valid options', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['choice-id'],
+    });
+    let labelReads = 0;
+    const option = {
+      value: 'choice',
+      get label() {
+        labelReads += 1;
+        return 'Choice';
+      },
+    };
+    const options = new Array(10_000).fill(option);
+    const choice = field({
+      id: 'choice-id',
+      modelId: article.id,
+      apiKey: 'choice',
+      editor: 'string_select',
+      editorParameters: { options },
+    });
+    const manifest = buildModelContextManifest({
+      itemType: article,
+      itemTypes: [article],
+      fields: [choice],
+      maxOptionValues: 12,
+    });
+
+    // The type check and value read each inspect a kept label once; the tail
+    // contributes only to the exact valid-option count.
+    expect(labelReads).toBeLessThanOrEqual(24);
+    expect(manifest.fields[0]?.editor?.options).toHaveLength(12);
+    expect(manifest.fields[0]?.editor?.omittedOptionCount).toBe(9_988);
+  });
+});
+
 describe('buildModelContextManifest', () => {
   it('projects field semantics without raw defaults or addons', () => {
     const article = model({

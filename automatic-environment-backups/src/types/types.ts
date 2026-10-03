@@ -71,6 +71,8 @@ export type LambdaBackupStatusSlot = {
   lastBackupAt: string | null;
   nextBackupAt: string | null;
   dueNow?: boolean;
+  /** Actual ready environment ID; null means unconfirmed, omitted by legacy services. */
+  lastManagedEnvironmentId?: string | null;
 };
 
 export type LambdaBackupStatus = {

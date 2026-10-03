@@ -98,10 +98,8 @@ function resolveLinkedItemTypes(
 function resolveLinkedPlugins(
   fields: SchemaTypes.Field[],
   exportSchema: ExportSchema,
+  exportedPluginIds: Set<string>,
 ): SchemaTypes.Plugin[] {
-  const exportedPluginIds = new Set(
-    Array.from(exportSchema.pluginsById.keys()),
-  );
   const linked: SchemaTypes.Plugin[] = [];
   for (const field of fields) {
     for (const linkedPluginId of findLinkedPluginIds(
@@ -128,6 +126,7 @@ function processItemType(
   resolutions: Resolutions,
   result: ImportDoc,
   nextLevelQueue: Set<QueueItem>,
+  exportedPluginIds: Set<string>,
 ) {
   const resolution = resolutions.itemTypes[itemType.id];
 
@@ -140,13 +139,7 @@ function processItemType(
   const fields = exportSchema.getItemTypeFields(itemType);
   const fieldsets = exportSchema.getItemTypeFieldsets(itemType);
 
-  applyItemTypeIdReplacements(
-    itemType,
-    fields,
-    fieldsets,
-    resolutions,
-    result,
-  );
+  applyItemTypeIdReplacements(itemType, fields, fieldsets, resolutions, result);
 
   result.itemTypes.entitiesToCreate.push({
     entity: itemType,
@@ -159,7 +152,11 @@ function processItemType(
     nextLevelQueue.add(linkedItemType);
   }
 
-  for (const linkedPlugin of resolveLinkedPlugins(fields, exportSchema)) {
+  for (const linkedPlugin of resolveLinkedPlugins(
+    fields,
+    exportSchema,
+    exportedPluginIds,
+  )) {
     nextLevelQueue.add(linkedPlugin);
   }
 }
@@ -214,7 +211,16 @@ export async function buildImportDoc(
   };
 
   // Breadth-first traversal keeps dependencies ordered for creation.
-  const queue: QueueItem[][] = [exportSchema.rootItemTypes];
+  // Every bundled entity is intentional, including disconnected cycles and
+  // plugins that are not used by a field. Creation phases handle dependencies.
+  const queue: QueueItem[][] = [
+    [
+      ...exportSchema.rootItemTypes,
+      ...exportSchema.itemTypes,
+      ...exportSchema.plugins,
+    ],
+  ];
+  const exportedPluginIds = new Set(exportSchema.pluginsById.keys());
   const processedNodes = new Set<QueueItem>();
 
   // Process each level of the graph
@@ -242,6 +248,7 @@ export async function buildImportDoc(
           resolutions,
           result,
           nextLevelQueue,
+          exportedPluginIds,
         );
       } else {
         processPlugin(itemTypeOrPlugin, conflicts, resolutions, result);

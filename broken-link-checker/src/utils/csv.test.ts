@@ -1,7 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { prepareUrl } from '../checking/url';
 import type { ScanReport } from '../types';
-import { reportCsv } from './csv';
+import { downloadReport, reportBlob, reportCsv, reportCsvRows } from './csv';
+
+function blobBytes(blob: Blob): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error('Expected the CSV bytes'));
+    };
+    reader.readAsArrayBuffer(blob);
+  });
+}
 
 function report(title = 'Article'): ScanReport {
   const prepared = prepareUrl('https://example.com/page?x=1#heading');
@@ -83,5 +95,91 @@ describe('reportCsv', () => {
     expect(csv.match(/https:\/\/example.com\/page/g)).toHaveLength(2);
     expect(csv).toContain('"record-1"');
     expect(csv).toContain('"record-2"');
+  });
+
+  it('walks rows lazily without reading later URL groups up front', () => {
+    const source = report();
+    const entry = source.groups[0];
+    let reads = 0;
+    source.groups.push({
+      ...entry,
+      get occurrences() {
+        reads += 1;
+        return entry.occurrences;
+      },
+    });
+    const rows = reportCsvRows(source);
+    expect(rows.next().value).toMatch(/^\uFEFF"URL"/);
+    expect(reads).toBe(0);
+    expect(rows.next().value).toContain('"record-1"');
+    expect(reads).toBe(0);
+    expect(rows.next().value).toContain('"record-1"');
+    expect(reads).toBe(1);
+  });
+
+  it('encodes many synthetic occurrences in bounded sequential batches without losing CSV data', async () => {
+    const source = report();
+    const first = source.groups[0].occurrences[0];
+    source.groups[0].occurrences = Array.from(
+      { length: 3_001 },
+      (_, index) => ({
+        ...first,
+        id: `occurrence-${index}`,
+        recordId: `record-${index}`,
+        recordTitle: index % 2 === 0 ? '=formula' : `Record ${index} 😀`,
+      }),
+    );
+    const yieldWork = vi.fn(async () => undefined);
+    const blob = await reportBlob(source, yieldWork);
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(
+      await blobBytes(blob),
+    );
+    expect(text).toBe(reportCsv(source));
+    expect(blob.type).toBe('text/csv;charset=utf-8');
+    expect(yieldWork.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(text.match(/https:\/\/example.com\/page/g)).toHaveLength(3_001);
+    expect(text).toContain('"record-3000"');
+  });
+
+  it('yields for large individual rows and preserves their exact escaping', async () => {
+    const source = report(`="${'x'.repeat(300_000)}`);
+    const yieldWork = vi.fn(async () => undefined);
+    const blob = await reportBlob(source, yieldWork);
+    expect(yieldWork).toHaveBeenCalledTimes(2);
+    expect(
+      new TextDecoder('utf-8', { ignoreBOM: true }).decode(
+        await blobBytes(blob),
+      ),
+    ).toBe(reportCsv(source));
+  });
+
+  it('releases the object URL even when the browser rejects the download click', async () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn(() => 'blob:test-report');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL = createObjectURL;
+        static revokeObjectURL = revokeObjectURL;
+      },
+    );
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {
+        throw new Error('Download blocked');
+      });
+    try {
+      await expect(downloadReport(report())).rejects.toThrow(
+        'Download blocked',
+      );
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-report');
+    } finally {
+      click.mockRestore();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });

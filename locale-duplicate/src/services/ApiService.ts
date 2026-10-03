@@ -1,9 +1,7 @@
-/**
- * API Service for centralized DatoCMS API operations
- */
-
-import { buildClient, type Client } from '@datocms/cma-client-browser';
+/** Centralized DatoCMS API operations with explicit, bounded collection reads. */
+import type { Client } from '@datocms/cma-client-browser';
 import type { Field, Item, ItemType } from '../types';
+import { type CmaClientOptions, createCmaClient } from './cmaClient';
 
 export interface PaginationOptions {
   page?: number;
@@ -11,118 +9,170 @@ export interface PaginationOptions {
   version?: 'published' | 'current';
 }
 
-/**
- * Service class for handling DatoCMS API operations
- */
-export class ApiService {
-  private client: Client;
+type RecordReference = { type: 'item'; id: string };
 
-  constructor(apiToken: string, environment?: string, baseUrl?: string) {
-    this.client = buildClient({
-      apiToken,
-      environment,
-      baseUrl,
-    });
+export class PartialPublicationError extends Error {
+  constructor(
+    readonly publishedRecords: number,
+    readonly failedRecords: number | undefined,
+    readonly cause: unknown,
+  ) {
+    super(
+      `Publication stopped after ${publishedRecords} confirmed publications. ${failedRecords === undefined ? 'The last batch outcome could not be confirmed.' : `${failedRecords} records failed in the last batch.`}`,
+    );
+    this.name = 'PartialPublicationError';
+  }
+}
+
+function pageSize(perPage = 30): number {
+  if (!Number.isSafeInteger(perPage) || perPage < 1) {
+    throw new RangeError('perPage must be a positive integer.');
+  }
+  // Nested mode has a hard CMA limit of 30, regardless of project size.
+  return Math.min(perPage, 30);
+}
+
+export class ApiService {
+  private readonly client: Client;
+
+  constructor(
+    apiToken: string,
+    environment?: string,
+    baseUrl?: string,
+    options: CmaClientOptions = {},
+  ) {
+    this.client = createCmaClient(apiToken, environment, baseUrl, options);
   }
 
-  /**
-   * Fetch all models (item types)
-   */
   async fetchModels(excludeModularBlocks = true): Promise<ItemType[]> {
-    console.log('[ApiService] Fetching models...');
     const models = await this.client.itemTypes.list();
-
     return excludeModularBlocks
       ? models.filter((model) => !model.modular_block)
       : models;
   }
 
-  /**
-   * Fetch fields for a specific model
-   */
   async fetchFields(modelId: string): Promise<Field[]> {
-    console.log(`[ApiService] Fetching fields for model ${modelId}...`);
-    return await this.client.fields.list(modelId);
+    return this.client.fields.list(modelId);
   }
 
-  /**
-   * Fetch records with pagination support
-   */
+  /** Return one page and the server's total, never implicitly materialize all records. */
   async fetchRecords(
     modelId: string,
     options: PaginationOptions = {},
   ): Promise<{ data: Item[]; totalCount: number }> {
-    const { page = 1, perPage = 500, version = 'current' } = options;
-    console.log(
-      `[ApiService] Fetching records for model ${modelId}, page ${page}...`,
-    );
-
-    // Get model API key first
-    const models = await this.fetchModels();
-    const model = models.find((m) => m.id === modelId);
-    if (!model) {
-      throw new Error(`Model with ID ${modelId} not found`);
+    const page = options.page ?? 1;
+    const perPage = pageSize(options.perPage);
+    if (
+      !Number.isSafeInteger(page) ||
+      page < 1 ||
+      !Number.isSafeInteger((page - 1) * perPage)
+    ) {
+      throw new RangeError(
+        'page must be a positive integer with a safe offset.',
+      );
     }
+    const response = await this.client.items.rawList({
+      filter: { type: modelId },
+      page: { offset: (page - 1) * perPage, limit: perPage },
+      order_by: 'id_ASC',
+      nested: true,
+      version: options.version ?? 'current',
+    });
 
-    const allRecords: Item[] = [];
-    let totalCount = 0;
-
-    // If requesting all records (perPage is high), use iterator
-    if (perPage >= 500) {
-      for await (const record of this.client.items.listPagedIterator({
-        filter: { type: model.api_key },
-        nested: true,
-        version,
-      })) {
-        allRecords.push(record);
-        totalCount++;
-      }
-    } else {
-      // Otherwise use pagination
-      const response = await this.client.items.list({
-        filter: { type: model.api_key },
-        page: { offset: (page - 1) * perPage, limit: perPage },
-        nested: true,
-        version,
-      });
-
-      allRecords.push(...response);
-      totalCount = response.length;
-    }
-
-    return { data: allRecords, totalCount };
+    return {
+      data: response.data.map((record) => ({
+        ...record.attributes,
+        __itemTypeId: record.__itemTypeId,
+        id: record.id,
+        type: record.type,
+        item_type: record.relationships.item_type.data,
+        creator: record.relationships.creator?.data,
+        meta: record.meta,
+      })),
+      totalCount: response.meta.total_count,
+    };
   }
 
-  /**
-   * Update a single record
-   */
+  /** Pull records on demand; at most one page is held by this iterator. */
+  async *iterateRecords(
+    modelId: string,
+    options: PaginationOptions = {},
+  ): AsyncGenerator<Item> {
+    const perPage = pageSize(options.perPage);
+    for (let page = options.page ?? 1; ; page++) {
+      // biome-ignore lint/performance/noAwaitInLoops: Fetch pages on demand to bound memory.
+      const response = await this.fetchRecords(modelId, {
+        ...options,
+        page,
+        perPage,
+      });
+      if (response.data.length === 0) {
+        if ((page - 1) * perPage < response.totalCount)
+          throw new Error('Record listing ended before the reported total.');
+        return;
+      }
+      for (const record of response.data) yield record;
+      if (page * perPage >= response.totalCount) return;
+      if (response.data.length < perPage)
+        throw new Error(
+          'The CMA returned a short page before the reported total; the collection may have changed.',
+        );
+    }
+  }
+
   async updateRecord(
     recordId: string,
     updates: Record<string, unknown>,
   ): Promise<Item> {
-    console.log(`[ApiService] Updating record ${recordId}...`);
-    return await this.client.items.update(recordId, updates);
+    return this.client.items.update(recordId, updates);
   }
 
-  /**
-   * Publish multiple records
-   */
+  /** Publish incrementally and stop if a batch fails or its outcome is uncertain. */
   async publishRecords(
-    records: Array<{ type: 'item'; id: string }>,
+    records: Iterable<RecordReference> | AsyncIterable<RecordReference>,
   ): Promise<void> {
-    console.log(`[ApiService] Publishing ${records.length} records...`);
+    let batch: RecordReference[] = [];
+    let publishedRecords = 0;
+    const publishBatch = async () => {
+      let result: Awaited<ReturnType<Client['items']['rawBulkPublish']>>;
+      try {
+        result = await this.client.items.rawBulkPublish({
+          data: {
+            type: 'item_bulk_publish_operation',
+            relationships: { items: { data: batch } },
+          },
+        });
+      } catch (error) {
+        throw new PartialPublicationError(publishedRecords, undefined, error);
+      }
+      const { successful, failed } = result.meta;
+      if (
+        !Number.isSafeInteger(successful) ||
+        !Number.isSafeInteger(failed) ||
+        successful < 0 ||
+        failed < 0 ||
+        successful + failed !== batch.length
+      ) {
+        throw new PartialPublicationError(
+          publishedRecords,
+          undefined,
+          new Error('The CMA returned inconsistent publication totals.'),
+        );
+      }
+      publishedRecords += successful;
+      if (failed > 0)
+        throw new PartialPublicationError(
+          publishedRecords,
+          failed,
+          result.data,
+        );
+      batch = [];
+    };
 
-    // Publish in batches to avoid API limits, sequentially to prevent rate limiting
-    const batchSize = 100;
-    const batches: Array<Array<{ type: 'item'; id: string }>> = [];
-    for (let i = 0; i < records.length; i += batchSize) {
-      batches.push(records.slice(i, i + batchSize));
+    for await (const record of records) {
+      batch.push(record);
+      if (batch.length === 200) await publishBatch();
     }
-
-    await batches.reduce(
-      (promise, batch) =>
-        promise.then(() => this.client.items.bulkPublish({ items: batch })),
-      Promise.resolve() as Promise<unknown>,
-    );
+    if (batch.length > 0) await publishBatch();
   }
 }

@@ -10,6 +10,7 @@ type Options = {
   schema: ProjectSchema;
   onProgress?: (update: SchemaProgressUpdate) => void;
   installedPluginIds?: Set<string>;
+  shouldCancel?: () => boolean;
 };
 
 /**
@@ -22,6 +23,7 @@ export async function buildGraphFromSchema({
   schema,
   onProgress,
   installedPluginIds,
+  shouldCancel,
 }: Options): Promise<Graph> {
   const source = new ProjectSchemaSource(schema, {
     installedPluginIds,
@@ -31,6 +33,7 @@ export async function buildGraphFromSchema({
     initialItemTypes,
     selectedItemTypeIds,
     onProgress,
+    shouldCancel,
   });
 }
 

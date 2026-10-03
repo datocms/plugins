@@ -231,7 +231,7 @@ export function findLinkedPluginIds(
   const fieldLinkedPluginIds = new Set<string>();
   // Some fields may have no appearance set (older exports or defaults)
   const editorId = field.attributes.appearance?.editor;
-  const hasInstalledList = !!installedPluginIds && installedPluginIds.size > 0;
+  const hasInstalledList = installedPluginIds !== undefined;
 
   // If we have a list of installed plugins, only collect editors that match.
   // If not, skip editor to avoid false-positives for built-in editors.

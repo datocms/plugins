@@ -65,6 +65,11 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 
 ## Notes & Limits
 
+- This plugin migrates schema entities, not records or assets. Record/asset counts do not determine the number of models to export. Large schemas run continuously with bounded work, automatic backoff, and incremental JSON serialization; no manual pause/resume step is required.
+- Large conflict lists and model selectors use bounded rendering only above 200 entries. A bulk ID replacement action appears only when more than 200 active ID decisions are pending; validation still covers every page.
+- Imports validate bundle references before writing and use a global four-worker queue. Cancellation waits for known in-flight work, and changes already accepted by the API remain in the project. Partial failures refresh the target schema and conflicts; an ambiguous create response is never blindly replayed.
+- Detailed findings, synthetic fixture sizes, official limits, and remaining constraints are documented in [the scale audit](docs/scale-audit.md).
+
 - Plugin detection: editor/addon plugins used by fields are included when “Select all dependencies” is used. If the installed plugin list cannot be fetched you’ll see a one-time banner (per session) so you know detection may be incomplete.
 - Graph threshold: when the graph would exceed ~60 nodes the UI shows a warning instead of rendering an unreadable canvas. Dependency selection and export remain available, and you can still render the graph explicitly.
 - Rate limiting & throttling: long operations show a stall notice if progress pauses, and `ProjectSchema` throttles CMA calls by default (override with something like `localStorage.setItem('schemaThrottleMax', '8')`; valid values are 1–15 for local debugging).
@@ -91,6 +96,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
   - `buildExportDoc` trims validators/appearances so exports stay self-contained; `buildImportDoc` + `importSchema` orchestrate plugin installs, item type creation, field migrations, and reorder passes.
 - Local development:
   - `npm run dev` starts Vite, `npm run build` runs `tsc -b` followed by `vite build`, `npm run analyze` builds with bundle analysis, and `npm run format` runs Biome in `--write` mode.
+  - `npm run check` runs Biome, TypeScript (including test fixtures), deterministic mock tests, and the production build. Tests do not call a real DatoCMS project.
 
 ## Export File Format
 

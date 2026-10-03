@@ -6,7 +6,7 @@ import {
   createTextSegment,
   resetIdCounter,
 } from '../fixtures/comments';
-import { createMentionSegment, mentionFixtures } from '../fixtures/mentions';
+import { mentionFixtures } from '../fixtures/mentions';
 import { createEditCommentOp } from '../fixtures/operations';
 
 describe('applyEditComment', () => {
@@ -227,7 +227,7 @@ describe('applyEditComment', () => {
       });
       const newContent = [
         createTextSegment('Hey '),
-        createMentionSegment(mentionFixtures.userJohn),
+        { type: 'mention' as const, mention: mentionFixtures.userJohn },
         createTextSegment('!'),
       ];
       const op = createEditCommentOp('to-edit', newContent);
@@ -243,7 +243,7 @@ describe('applyEditComment', () => {
         id: 'to-edit',
         content: [
           createTextSegment('Hey '),
-          createMentionSegment(mentionFixtures.userJohn),
+          { type: 'mention' as const, mention: mentionFixtures.userJohn },
         ],
       });
       const newContent = [createTextSegment('Plain text only')];

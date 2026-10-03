@@ -64,7 +64,9 @@ Every result comes with a short explanation, on the Link checker page and in the
 - **Anchors aren't checked.** Only the part before `#` is requested, so a missing anchor on an existing page isn't detected.
 - **A page that loads isn't always the right page.** A login screen or a "not found" message served as a normal page still counts as reachable.
 - **Your role applies.** The scan only reads records you can read, and the report lists anything it couldn't read so you know what's missing.
-- **Checks are gentle on websites:** at most four at a time, one per website, with a 10-second timeout.
+- **Checks are gentle on websites:** at most four at a time, one per website, with a 10-second timeout per request and bounded automatic retries for temporary failures.
+- **Large scans keep running automatically.** Record pages and link requests are processed incrementally, with automatic backoff and progress updates. Very large lists of records, places and reading issues use pages to keep the interface responsive. Keep the plugin page open until the scan finishes.
+- **The full report stays in browser memory.** Very large numbers of link occurrences or CSV exports still need sufficient browser memory and storage. The plugin checks website links in record content; it does not crawl the asset library or download asset files.
 
 ## Development
 

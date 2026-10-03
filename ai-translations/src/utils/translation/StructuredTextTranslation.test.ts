@@ -432,7 +432,7 @@ describe('StructuredTextTranslation', () => {
           undefined,
           '',
           undefined,
-          { bypassFieldTypeAllowlist: true },
+          { bypassFieldTypeAllowlist: true, contentAlreadyCloned: true },
         );
       });
 
@@ -487,7 +487,7 @@ describe('StructuredTextTranslation', () => {
           undefined,
           '',
           undefined,
-          { bypassFieldTypeAllowlist: true },
+          { bypassFieldTypeAllowlist: true, contentAlreadyCloned: true },
         );
         expect(result).toEqual([
           {
@@ -759,7 +759,7 @@ describe('StructuredTextTranslation', () => {
           callbacks,
           '',
           undefined,
-          { bypassFieldTypeAllowlist: true },
+          { bypassFieldTypeAllowlist: true, contentAlreadyCloned: true },
         );
       });
     });
@@ -818,4 +818,70 @@ describe('StructuredTextTranslation', () => {
       });
     });
   });
+  it('preserves empty API envelopes, document properties, metadata IDs and record identities', async () => {
+    const empty = { schema: 'dast', document: { type: 'root', children: [], extra: 'retain' } };
+    expect(await translateStructuredTextValue(empty, mockPluginParams, 'it', 'en', mockProvider, '', 'main')).toBe(empty);
+    vi.mocked(translateArray).mockResolvedValue(['IT Label']);
+    const document = {
+      schema: 'dast', extra: { id: 'envelope-id' },
+      document: { type: 'root', extra: { id: 'document-id' }, children: [{
+        type: 'paragraph', children: [{ type: 'itemLink', item: 'linked-record',
+          meta: [{ id: 'custom-metadata', nested: { id: 'nested-metadata' } }],
+          children: [{ type: 'span', value: 'Label', marks: ['custom-mark'] }],
+        }],
+      }] },
+    };
+    const result = await translateStructuredTextValue(document, mockPluginParams, 'it', 'en', mockProvider, '', 'main') as typeof document;
+    expect(result.extra).toEqual(document.extra);
+    expect(result.document.extra).toEqual(document.document.extra);
+    expect(result.document.children[0].children[0]).toEqual({
+      ...document.document.children[0].children[0], children: [{ type: 'span', value: 'IT Label', marks: ['custom-mark'] }],
+    });
+    expect(document.document.children[0].children[0].children[0].value).toBe('Label');
+  });
+
+  it('translates nested inline blocks and keeps their original position among text and references', async () => {
+    vi.mocked(translateArray).mockResolvedValue(['Before ', ' after']);
+    vi.mocked(translateFieldValue).mockImplementation(async (value) => (value as Array<Record<string, unknown>>).map((node) => ({ ...node, title: 'IT block' })));
+    const source = [{ type: 'paragraph', children: [
+      { text: 'Before ' }, { type: 'inlineBlock', blockModelId: 'inline-model', title: 'Block', children: [{ text: '' }] },
+      { type: 'inlineItem', item: 'linked-record', children: [{ text: '' }] }, { text: ' after' },
+    ] }];
+    // Empty editor children of inlineItem are retained, alongside visible spans.
+    vi.mocked(translateArray).mockResolvedValue(['Before ', '', ' after']);
+    const result = await translateStructuredTextValue(source, mockPluginParams, 'it', 'en', mockProvider, '', 'main') as typeof source;
+    expect(result[0].children[1]).toMatchObject({ type: 'inlineBlock', title: 'IT block' });
+    expect(result[0].children[2].item).toBe('linked-record');
+    expect(source[0].children[1].title).toBe('Block');
+    expect(translateFieldValue).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles a 20,000-level child tree without stack overflow and keeps the source unchanged', async () => {
+    const root: Record<string, unknown> = { type: 'paragraph' };
+    let node = root;
+    for (let index = 0; index < 20_000; index++) {
+      const child: Record<string, unknown> = { type: 'blockquote' };
+      node.children = [child];
+      node = child;
+    }
+    node.children = [{ text: 'Deep leaf' }];
+    vi.mocked(translateArray).mockResolvedValue(['Folha profunda']);
+    const result = await translateStructuredTextValue([root], mockPluginParams, 'pt', 'en', mockProvider, '', 'main') as Array<Record<string, unknown>>;
+    let output = result[0];
+    for (let index = 0; index < 20_000; index++) output = (output.children as Array<Record<string, unknown>>)[0];
+    expect((output.children as Array<{ text: string }>)[0].text).toBe('Folha profunda');
+    expect((node.children as Array<{ text: string }>)[0].text).toBe('Deep leaf');
+  });
+
+  it('replaces 10,000 synthetic embedded blocks in linear order and rejects an incomplete block result', async () => {
+    const blocks = Array.from({ length: 10_000 }, (_, index) => ({ type: 'block', item: `synthetic-${index}` }));
+    vi.mocked(translateFieldValue).mockImplementation(async (value) => value);
+    const result = await translateStructuredTextValue(blocks, mockPluginParams, 'it', 'en', mockProvider, '', 'main') as typeof blocks;
+    expect(result).toHaveLength(10_000);
+    expect(result[9_999]).toEqual(blocks[9_999]);
+    expect(result[0]).not.toHaveProperty('originalIndex');
+    vi.mocked(translateFieldValue).mockResolvedValue([]);
+    await expect(translateStructuredTextValue(blocks, mockPluginParams, 'it', 'en', mockProvider, '', 'main')).rejects.toThrow('incomplete document');
+  });
+
 });

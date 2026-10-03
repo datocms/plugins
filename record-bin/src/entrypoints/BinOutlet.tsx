@@ -1,7 +1,8 @@
 import type { RenderItemFormOutletCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, FieldGroup, Form } from 'datocms-react-ui';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { errorObject } from '../types/types';
+import { createBoundedFetch } from '../utils/cmaRequests';
 import { createDebugLogger, isDebugEnabled } from '../utils/debugLogger';
 import { getDeploymentUrlFromParameters } from '../utils/getDeploymentUrlFromParameters';
 import { getRuntimeMode } from '../utils/getRuntimeMode';
@@ -9,6 +10,7 @@ import {
   isLambdaLessRestoreError,
   restoreRecordWithoutLambda,
 } from '../utils/lambdaLessRestore';
+import { isPackedRecordBinBody } from '../utils/recordBinStorage';
 import {
   buildRestoreErrorPayload,
   isRestoreSuccessResponse,
@@ -79,11 +81,16 @@ const executeRestoreViaLambda = async ({
 
   let restoreResponse: Response;
   try {
-    restoreResponse = await fetch(deploymentURL, {
-      method: 'POST',
-      body: requestBody,
-      headers: { Accept: '*/*', 'Content-Type': 'application/json' },
-    });
+    // A legacy lambda may commit a POST even if the response is lost. Bound the
+    // wait, but never automatically repeat an unreconciled remote restoration.
+    restoreResponse = await createBoundedFetch(undefined, 60000)(
+      deploymentURL,
+      {
+        method: 'POST',
+        body: requestBody,
+        headers: { Accept: '*/*', 'Content-Type': 'application/json' },
+      },
+    );
   } catch (error) {
     const restorationError = buildRestoreErrorPayload(error);
     setError(restorationError);
@@ -91,7 +98,9 @@ const executeRestoreViaLambda = async ({
       'Restoration request failed before receiving response',
       restorationError,
     );
-    await alertFn('The record could not be restored!');
+    await alertFn(
+      'The restore API did not confirm the result. Check whether the record was restored before trying again.',
+    );
     return false;
   }
 
@@ -144,8 +153,8 @@ const executeRestoreWithoutLambda = async ({
   trashRecordId,
   parsedRecordBody,
   currentUserAccessToken,
-  environment,
   cmaBaseUrl,
+  environment,
   debugLogger,
   alertFn,
   noticeFn,
@@ -155,9 +164,9 @@ const executeRestoreWithoutLambda = async ({
 }: {
   trashRecordId: string;
   parsedRecordBody: unknown;
-  currentUserAccessToken: string | undefined;
+  currentUserAccessToken: string | null | undefined;
+  cmaBaseUrl?: string;
   environment: string;
-  cmaBaseUrl: string | undefined;
   debugLogger: DebugLogger;
   alertFn: (message: string) => Promise<unknown>;
   noticeFn: (message: string) => void;
@@ -199,6 +208,15 @@ const executeRestoreWithoutLambda = async ({
     restoredRecordId: parsedResponse.restoredRecord.id,
     restoredModelId: parsedResponse.restoredRecord.modelID,
   });
+  if (parsedResponse.cleanupError) {
+    debugLogger.warn(
+      'Restored record archive cleanup failed',
+      parsedResponse.cleanupError,
+    );
+    await alertFn(
+      'The record was restored, but its archive could not be removed. Restoring this archive again will check the existing record before creating anything.',
+    );
+  }
   noticeFn('The record has been successfully restored!');
   navigateTo(
     buildRecordEditPath(
@@ -325,9 +343,12 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     'BinOutlet',
   );
   const [isLoading, setLoading] = useState(false);
+  const restorationInProgress = useRef(false);
   const [error, setError] = useState<errorObject>();
 
   const restorationHandler = useCallback(async () => {
+    if (restorationInProgress.current) return;
+    restorationInProgress.current = true;
     debugLogger.log('Starting record restoration', {
       itemId: ctx.item?.id,
       itemTypeId: ctx.itemType.id,
@@ -338,23 +359,29 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
     const rawRecordBody = ctx.formValues.record_body;
 
-    const parseResult = await parseLambdaRecordBody(
-      rawRecordBody,
-      debugLogger,
-      ctx.alert.bind(ctx),
-    );
-    if (!parseResult.success) {
-      setLoading(false);
-      return;
-    }
-    const parsedRecordBody = parseResult.parsedBody;
-
     const alertFn = ctx.alert.bind(ctx);
     const noticeFn = ctx.notice.bind(ctx);
     const navigateTo = ctx.navigateTo.bind(ctx);
 
     try {
-      if (runtimeMode === 'lambda') {
+      const parseResult = await parseLambdaRecordBody(
+        rawRecordBody,
+        debugLogger,
+        alertFn,
+      );
+      if (!parseResult.success) return;
+      const parsedRecordBody = parseResult.parsedBody;
+      const isLocallyCapturedRecord =
+        typeof parsedRecordBody === 'object' &&
+        parsedRecordBody !== null &&
+        '__record_bin' in parsedRecordBody;
+      // Existing deployments retain the legacy webhook flow. Locally captured
+      // archives use the local runtime for integrity checks and safe retries.
+      if (
+        runtimeMode === 'lambda' &&
+        !isPackedRecordBinBody(parsedRecordBody) &&
+        !isLocallyCapturedRecord
+      ) {
         await runLambdaModeRestore({
           parsedRecordBody,
           pluginParameters: ctx.plugin.attributes.parameters as Record<
@@ -383,8 +410,8 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         trashRecordId: ctx.item.id,
         parsedRecordBody,
         currentUserAccessToken: ctx.currentUserAccessToken,
-        environment: ctx.environment,
         cmaBaseUrl: ctx.cmaBaseUrl,
+        environment: ctx.environment,
         debugLogger,
         alertFn,
         noticeFn,
@@ -393,9 +420,11 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         setError,
       });
     } catch (err) {
+      setError(buildRestoreErrorPayload(err));
       debugLogger.error('Restoration flow failed', err);
       await alertFn('The record could not be restored!');
     } finally {
+      restorationInProgress.current = false;
       setLoading(false);
     }
   }, [ctx, debugLogger]);

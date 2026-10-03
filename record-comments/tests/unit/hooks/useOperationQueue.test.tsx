@@ -1,15 +1,25 @@
 // @vitest-environment jsdom
 
-import { useOperationQueue } from '@hooks/useOperationQueue';
 import { ApiError } from '@datocms/cma-client-browser';
+import { useOperationQueue } from '@hooks/useOperationQueue';
 import { act, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, render, renderHook } from '../testUtils/react';
+import { createCommentStorageFields } from '../fixtures/commentsStorage';
+
+type QueueParams = Parameters<typeof useOperationQueue>[0];
 
 function createCtx() {
   return {
     alert: vi.fn(),
-  } as never;
+    loadItemTypeFields: vi.fn().mockResolvedValue(
+      createCommentStorageFields().map(({ id, ...attributes }) => ({
+        id,
+        type: 'field',
+        attributes,
+      })),
+    ),
+  };
 }
 
 function createStaleItemVersionError() {
@@ -17,10 +27,12 @@ function createStaleItemVersionError() {
     request: {
       method: 'PUT',
       url: 'https://example.com/items/comment-record-1',
+      headers: {},
     },
     response: {
       status: 422,
       statusText: 'Unprocessable Entity',
+      headers: {},
       body: {
         data: [
           {
@@ -34,7 +46,7 @@ function createStaleItemVersionError() {
         ],
       },
     },
-  } as never);
+  });
 }
 
 describe('useOperationQueue', () => {
@@ -56,7 +68,7 @@ describe('useOperationQueue', () => {
         commentsModelId: null,
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue(null),
       }),
@@ -64,17 +76,18 @@ describe('useOperationQueue', () => {
 
     let didEnqueue = false;
     act(() => {
-      didEnqueue = result.current?.enqueue({
-        type: 'ADD_COMMENT',
-        comment: {
-          id: 'comment-1',
-          dateISO: '2024-01-01T00:00:00.000Z',
-          content: [{ type: 'text', content: 'Hello' }],
-          authorId: 'user-1',
-          upvoterIds: [],
-          replies: [],
-        },
-      });
+      didEnqueue =
+        result.current?.enqueue({
+          type: 'ADD_COMMENT',
+          comment: {
+            id: 'comment-1',
+            dateISO: '2024-01-01T00:00:00.000Z',
+            content: [{ type: 'text', content: 'Hello' }],
+            authorId: 'user-1',
+            upvoterIds: [],
+            replies: [],
+          },
+        }) ?? false;
     });
 
     expect(didEnqueue).toBe(false);
@@ -92,16 +105,16 @@ describe('useOperationQueue', () => {
         list: vi.fn(),
         create: vi.fn(),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useOperationQueue({
-        client,
+        client: client as unknown as QueueParams['client'],
         commentRecordId: 'comment-record-1',
         commentsModelId: 'comments-model',
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
       }),
@@ -134,16 +147,16 @@ describe('useOperationQueue', () => {
         update: vi.fn(),
         find: vi.fn(),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useOperationQueue({
-        client,
+        client: client as unknown as QueueParams['client'],
         commentRecordId: null,
         commentsModelId: null,
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated,
         resolveCommentsModelId,
       }),
@@ -174,23 +187,26 @@ describe('useOperationQueue', () => {
           record_id: { eq: 'record-1' },
         },
       },
-      page: { limit: 1 },
+      page: { limit: 2 },
     });
-    expect(client.items.create).toHaveBeenCalledWith({
-      item_type: { type: 'item_type', id: 'comments-model' },
-      model_id: 'model-1',
-      record_id: 'record-1',
-      content: JSON.stringify([
-        {
-          id: 'comment-1',
-          dateISO: '2024-01-01T00:00:00.000Z',
-          content: [{ type: 'text', content: 'Hello' }],
-          authorId: 'user-1',
-          upvoterIds: [],
-          replies: [],
-        },
-      ]),
-    });
+    expect(client.items.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/),
+        item_type: { type: 'item_type', id: 'comments-model' },
+        model_id: 'model-1',
+        record_id: 'record-1',
+        content: JSON.stringify([
+          {
+            id: 'comment-1',
+            dateISO: '2024-01-01T00:00:00.000Z',
+            content: [{ type: 'text', content: 'Hello' }],
+            authorId: 'user-1',
+            upvoterIds: [],
+            replies: [],
+          },
+        ]),
+      }),
+    );
     expect(onRecordCreated).toHaveBeenCalledWith('comment-record-1');
     unmount();
   });
@@ -222,16 +238,16 @@ describe('useOperationQueue', () => {
         update: vi.fn().mockResolvedValue({}),
         find: vi.fn(),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useOperationQueue({
-        client,
+        client: client as unknown as QueueParams['client'],
         commentRecordId: null,
         commentsModelId: 'comments-model',
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated,
         resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
       }),
@@ -311,16 +327,16 @@ describe('useOperationQueue', () => {
         list: vi.fn(),
         create: vi.fn(),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useOperationQueue({
-        client,
+        client: client as unknown as QueueParams['client'],
         commentRecordId: 'comment-record-1',
         commentsModelId: 'comments-model',
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
       }),
@@ -365,18 +381,18 @@ describe('useOperationQueue', () => {
         update: vi.fn(),
         find: vi.fn(),
       },
-    } as never;
+    };
 
     let latestHook: ReturnType<typeof useOperationQueue> | null = null;
 
     function HookHarness() {
       latestHook = useOperationQueue({
-        client,
+        client: client as unknown as QueueParams['client'],
         commentRecordId: null,
         commentsModelId: 'comments-model',
         modelId: 'model-1',
         recordId: 'record-1',
-        ctx,
+        ctx: ctx as unknown as QueueParams['ctx'],
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
       });

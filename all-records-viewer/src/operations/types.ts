@@ -77,6 +77,23 @@ export type BulkOperationResult = {
   requested: number;
   successful: number;
   failed: number;
+  uncertain?: number;
+  unprocessed?: number;
+  cancelled?: boolean;
+  remainingItemIds?: string[];
+  error?: string;
+};
+
+export type BulkOperationProgress = {
+  requested: number;
+  completed: number;
+  successful: number;
+  failed: number;
+};
+
+export type BulkExecutionOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: BulkOperationProgress) => void;
 };
 
 export type BulkItemsResource = Pick<

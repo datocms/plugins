@@ -231,8 +231,7 @@ describe('ProviderErrors.ts', () => {
             method: 'GET',
             headers: {},
           },
-          message:
-            'GET https://site-api.datocms.com/items/123: Timeout error',
+          message: 'GET https://site-api.datocms.com/items/123: Timeout error',
         };
         const result = normalizeProviderError(error, 'openai');
 
@@ -521,6 +520,11 @@ describe('ProviderErrors.ts', () => {
   });
 
   describe('isFatalProviderError', () => {
+    it('keeps malformed output and a locale-specific unsupported language partial failures', () => {
+      expect(isFatalProviderError('openai', { source: 'provider', code: 'model', message: 'The translation provider returned an unexpected response.' })).toBe(false);
+      expect(isFatalProviderError('yandex', { source: 'provider', code: 'model', message: 'The target language is unavailable in Yandex Translate.' })).toBe(false);
+    });
+
     it('treats Yandex authentication, permission, and folder errors as fatal', () => {
       const auth = normalizeProviderError(
         new ProviderError('Invalid API key', 401, 'yandex'),
@@ -540,7 +544,7 @@ describe('ProviderErrors.ts', () => {
       expect(isFatalProviderError('yandex', folder)).toBe(true);
     });
 
-    it('keeps Yandex quota, rate-limit, and network errors retryable', () => {
+    it('stops Yandex quota exhaustion while keeping temporary failures non-fatal', () => {
       const quota = normalizeProviderError(
         new ProviderError('Quota exceeded', 400, 'yandex'),
         'yandex',
@@ -554,7 +558,7 @@ describe('ProviderErrors.ts', () => {
         'yandex',
       );
 
-      expect(isFatalProviderError('yandex', quota)).toBe(false);
+      expect(isFatalProviderError('yandex', quota)).toBe(true);
       expect(isFatalProviderError('yandex', rateLimit)).toBe(false);
       expect(isFatalProviderError('yandex', network)).toBe(false);
     });

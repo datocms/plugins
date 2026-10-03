@@ -13,6 +13,38 @@ const expectRejected = async (promise: Promise<unknown>): Promise<unknown> => {
   }
 };
 
+const statusPayload = () => ({
+  ok: true,
+  mpi: {
+    message: 'DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_STATUS',
+    version: '2026-02-26',
+  },
+  service: 'datocms-backups-scheduled-function',
+  status: 'ready',
+  scheduler: { provider: 'vercel', cadence: 'daily' },
+  slots: {
+    daily: {
+      scope: 'daily',
+      executionMode: 'lambda_cron',
+      lastBackupAt: '2026-10-03T00:20:00.000Z',
+      nextBackupAt: '2026-10-03T02:05:00.000Z',
+    },
+    weekly: {
+      scope: 'weekly',
+      executionMode: 'lambda_cron',
+      lastBackupAt: null,
+      nextBackupAt: null,
+    },
+  },
+  checkedAt: '2026-10-03T00:25:00.000Z',
+});
+
+const statusInput = {
+  baseUrl: 'https://backups.example.test',
+  environment: 'main',
+  lambdaAuthSecret: 'shared-secret',
+};
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -142,4 +174,149 @@ describe('fetchLambdaBackupStatus', () => {
 
     expect(error.code).toBe('MISSING_AUTH_SECRET');
   });
+
+  it('preserves the actual environment ID for a clone crossing UTC midnight', async () => {
+    const payload = statusPayload();
+    const id = 'backup-plugin-daily-2026-10-02';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...payload,
+              slots: {
+                ...payload.slots,
+                daily: { ...payload.slots.daily, lastManagedEnvironmentId: id },
+              },
+            }),
+          ),
+      ),
+    );
+    const result = await fetchLambdaBackupStatus(statusInput);
+    expect(result.slots.daily.lastManagedEnvironmentId).toBe(id);
+    expect(result.slots.daily.lastBackupAt).toBe('2026-10-03T00:20:00.000Z');
+  });
+
+  it('keeps old deployments compatible when lastManagedEnvironmentId is absent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(statusPayload()))),
+    );
+    const result = await fetchLambdaBackupStatus(statusInput);
+    expect(result.slots.daily).not.toHaveProperty('lastManagedEnvironmentId');
+    expect(result.slots).not.toHaveProperty('biweekly');
+  });
+
+  it('preserves an explicit null lastManagedEnvironmentId', async () => {
+    const payload = statusPayload();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...payload,
+              slots: {
+                ...payload.slots,
+                weekly: {
+                  ...payload.slots.weekly,
+                  lastManagedEnvironmentId: null,
+                },
+              },
+            }),
+          ),
+      ),
+    );
+    const result = await fetchLambdaBackupStatus(statusInput);
+    expect(result.slots.weekly.lastManagedEnvironmentId).toBeNull();
+  });
+
+  it.each(['invalid', '', '2026-02-30T02:05:00.000Z'])(
+    'rejects invalid backup timestamp %s',
+    async (lastBackupAt) => {
+      const payload = statusPayload();
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...payload,
+              slots: {
+                ...payload.slots,
+                daily: { ...payload.slots.daily, lastBackupAt },
+              },
+            }),
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(fetchLambdaBackupStatus(statusInput)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('rejects malformed optional cadence instead of silently omitting it', async () => {
+    const payload = statusPayload();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...payload,
+              slots: {
+                ...payload.slots,
+                biweekly: {
+                  ...payload.slots.daily,
+                  scope: 'biweekly',
+                  nextBackupAt: 'invalid',
+                },
+              },
+            }),
+          ),
+      ),
+    );
+    await expect(fetchLambdaBackupStatus(statusInput)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('rejects invalid checkedAt', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...statusPayload(),
+              checkedAt: '',
+            }),
+          ),
+      ),
+    );
+    await expect(fetchLambdaBackupStatus(statusInput)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it.each([429, 503])(
+    'exposes Retry-After for continuous polling on HTTP %s',
+    async (status) => {
+      const fetchMock = vi.fn(
+        async () =>
+          new Response('busy', {
+            status,
+            headers: { 'Retry-After': '30' },
+          }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(fetchLambdaBackupStatus(statusInput)).rejects.toMatchObject({
+        code: 'HTTP',
+        httpStatus: status,
+        retryAfterMs: 30000,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 });

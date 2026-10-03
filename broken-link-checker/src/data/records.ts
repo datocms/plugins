@@ -5,6 +5,14 @@ import {
   type RawApiTypes,
 } from '@datocms/cma-client-browser';
 import type { ContentModel, RecordInput } from '../types';
+import {
+  CMA_READ_TIMEOUT_MS,
+  CmaReadScheduler,
+  cancellableRead,
+  createCmaReadFetch,
+  retryCmaRead,
+  throwIfAborted,
+} from './cmaRequests';
 
 export type CmaClientContext = {
   currentUserAccessToken?: string | null;
@@ -12,17 +20,40 @@ export type CmaClientContext = {
   cmaBaseUrl?: string;
 };
 
-export function buildCmaClient(ctx: CmaClientContext): Client {
+const schedulers = new WeakMap<object, CmaReadScheduler>();
+
+export function buildCmaClient(
+  ctx: CmaClientContext,
+  signal?: AbortSignal,
+): Client {
   if (!ctx.currentUserAccessToken) {
     throw new Error(
       'Scanning saved records requires API access. Enable the plugin permission and reload the page.',
     );
   }
-  return buildClient({
+  const client = buildClient({
     apiToken: ctx.currentUserAccessToken,
     environment: ctx.environment,
     baseUrl: ctx.cmaBaseUrl,
+    autoRetry: false,
+    requestTimeout: CMA_READ_TIMEOUT_MS + 1_000,
+    fetchFn: createCmaReadFetch(signal),
   });
+  schedulers.set(client, new CmaReadScheduler());
+  return client;
+}
+
+/** All project record/count reads share pacing and a 429 cooldown. */
+export function readCma<T>(
+  client: object,
+  operation: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return retryCmaRead(
+    () => cancellableRead(operation(), signal, CMA_READ_TIMEOUT_MS + 2_000),
+    signal,
+    schedulers.get(client),
+  );
 }
 
 // Nested block payloads have a lower CMA page limit than flat record lists.
@@ -31,25 +62,6 @@ export type NestedRecord = RawApiTypes.ItemInstancesTargetSchema<
   ItemTypeDefinition,
   true
 >['data'][number];
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted)
-    throw new DOMException('The scan was cancelled.', 'AbortError');
-}
-
-function cancellable<T>(request: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return request;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () =>
-      reject(new DOMException('The scan was cancelled.', 'AbortError'));
-    signal.addEventListener('abort', abort, { once: true });
-    // Observe both outcomes even if cancellation wins: the SDK has no per-call signal.
-    request
-      .then(resolve, reject)
-      .finally(() => signal.removeEventListener('abort', abort));
-    if (signal.aborted) abort();
-  });
-}
 
 const INCONSISTENT_PAGES =
   'The API returned inconsistent record pagination. Run the scan again.';
@@ -61,6 +73,50 @@ const INCONSISTENT_PAGES =
  * before.
  */
 const SPARE_REQUESTS = 50;
+
+function nextBacktrackDistance(stepBack: number, deleted: number): number {
+  return stepBack === 0 ? deleted + 1 : stepBack * 2;
+}
+
+function repeatedPage(
+  page: NestedRecord[],
+  previousPage: string[],
+  offset: number,
+  previousOffset: number,
+  total: number,
+  previousTotal: number,
+): void {
+  if (
+    offset > previousOffset &&
+    previousTotal === total &&
+    previousPage.length > 0 &&
+    page.length === previousPage.length &&
+    page.every((record, index) => record.id === previousPage[index])
+  )
+    throw new Error(INCONSISTENT_PAGES);
+}
+
+function nextPageOffset(
+  page: NestedRecord[],
+  offset: number,
+  total: number,
+): number | undefined {
+  const end = offset + page.length;
+  if (end >= total) return undefined;
+  if (page.length < 2) throw new Error(INCONSISTENT_PAGES);
+  return end - 1;
+}
+
+function pageFollowsOn(
+  page: NestedRecord[],
+  seen: Set<string>,
+  offset: number,
+  unchecked: boolean,
+): boolean {
+  return (
+    offset === 0 || unchecked || page.some((record) => seen.has(record.id))
+  );
+}
 
 function pageTotal(
   response: { data: NestedRecord[]; meta: { total_count: number } },
@@ -80,6 +136,8 @@ function pageTotal(
   // An empty page past the end is consistent: records were deleted since the page before.
   if (
     response.data.length > RECORDS_PAGE_SIZE ||
+    new Set(response.data.map((record) => record.id)).size !==
+      response.data.length ||
     (response.data.length > 0 && offset + response.data.length > total)
   ) {
     throw new Error(INCONSISTENT_PAGES);
@@ -119,36 +177,47 @@ export async function* readRecords(
   /** How far the last page stepped back; 0 when it followed on. */
   let stepBack = 0;
   let unchecked = false;
+  let previousPage: string[] = [];
+  let previousOffset = -1;
 
   while (true) {
     throwIfAborted(signal);
     // biome-ignore lint/performance/noAwaitInLoops: Each page depends on the previous page and is cancellable before the next request.
-    const response = await cancellable(
-      client.items.rawList({
-        nested: true,
-        version: 'current',
-        filter: { type: modelId },
-        order_by: 'id_ASC',
-        page: { offset, limit: RECORDS_PAGE_SIZE },
-      }),
+    const response = await readCma(
+      client,
+      () =>
+        client.items.rawList({
+          nested: true,
+          version: 'current',
+          filter: { type: modelId },
+          order_by: 'id_ASC',
+          page: { offset, limit: RECORDS_PAGE_SIZE },
+        }),
       signal,
     );
     throwIfAborted(signal);
     const total = pageTotal(response, offset);
+    repeatedPage(
+      response.data,
+      previousPage,
+      offset,
+      previousOffset,
+      total,
+      lastTotal,
+    );
+    previousPage = response.data.map((record) => record.id);
+    previousOffset = offset;
     requests += 1;
     const deleted = Math.max(0, lastTotal - total);
     lastTotal = total;
     largestTotal = Math.max(largestTotal, total);
-    const followsOn =
-      offset === 0 ||
-      unchecked ||
-      response.data.some((record) => seen.has(record.id));
+    const followsOn = pageFollowsOn(response.data, seen, offset, unchecked);
     if (!followsOn) {
       const budget =
         3 * Math.ceil(largestTotal / (RECORDS_PAGE_SIZE - 1)) + SPARE_REQUESTS;
       if (requests > budget) unchecked = true;
       else {
-        stepBack = stepBack === 0 ? deleted + 1 : stepBack * 2;
+        stepBack = nextBacktrackDistance(stepBack, deleted);
         offset = Math.max(0, Math.min(offset, total) - stepBack);
         continue;
       }
@@ -160,11 +229,10 @@ export async function* readRecords(
       seen.add(record.id);
       yield record;
     }
-    const end = offset + response.data.length;
-    if (end >= total) break;
+    const nextOffset = nextPageOffset(response.data, offset, total);
+    if (nextOffset === undefined) break;
     // The next page starts with this page's last record.
-    if (response.data.length < 2) throw new Error(INCONSISTENT_PAGES);
-    offset = end - 1;
+    offset = nextOffset;
   }
   if (unchecked) {
     throw new Error(

@@ -15,7 +15,7 @@ import {
   SelectField,
   Spinner,
 } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import {
   type FieldCopyConfig,
@@ -23,43 +23,123 @@ import {
   getErrorMessage,
   type ModelOption,
 } from '../types';
+import {
+  createCachedModelLoader,
+  getLargeSelectionHint,
+  getVisibleOptions,
+  indexFieldCopyConfigs,
+  LARGE_SELECTION_THRESHOLD,
+  normalizeFieldCopyConfigs,
+  validatePluginParameters,
+} from '../utils/selection';
 
 /**
  * Main configuration screen component.
  * Manages field configurations and provides access to mass duplication feature.
  */
 export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
+  const contextRef = useRef(ctx);
+  contextRef.current = ctx;
+  const { currentUserAccessToken, environment, cmaBaseUrl } = ctx;
+  const siteId = ctx.site.id;
+  const pluginId = ctx.plugin.id;
+  const client = useMemo(
+    () =>
+      currentUserAccessToken
+        ? buildClient({
+            apiToken: currentUserAccessToken,
+            environment,
+            baseUrl: cmaBaseUrl,
+          })
+        : null,
+    [currentUserAccessToken, environment, cmaBaseUrl],
+  );
   const [selectedModel, setSelectedModel] = useState<ModelOption | null>(null);
   const [selectedField, setSelectedField] = useState<FieldOption | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
-  const [availableFields, setAvailableFields] = useState<FieldOption[]>([]);
+  const [modelFields, setModelFields] = useState<FieldOption[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [fieldSearch, setFieldSearch] = useState('');
   const [savedConfigs, setSavedConfigs] = useState<FieldCopyConfig[]>([]);
   const [originalConfigs, setOriginalConfigs] = useState<FieldCopyConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const dataScope = useMemo(
+    () => ({ client, siteId, pluginId }),
+    [client, siteId, pluginId],
+  );
+  const configuredFields = useMemo(
+    () => indexFieldCopyConfigs(savedConfigs),
+    [savedConfigs],
+  );
+  const selectedModelId = selectedModel?.value;
+  const availableFields = useMemo(
+    () =>
+      modelFields.filter(
+        (field) =>
+          !configuredFields.get(selectedModelId ?? '')?.has(field.value),
+      ),
+    [modelFields, configuredFields, selectedModelId],
+  );
+  const visibleModels = useMemo(
+    () => getVisibleOptions(availableModels, modelSearch),
+    [availableModels, modelSearch],
+  );
+  const visibleFields = useMemo(
+    () => getVisibleOptions(availableFields, fieldSearch),
+    [availableFields, fieldSearch],
+  );
+  const loadModelFields = useMemo(
+    () =>
+      createCachedModelLoader(async (modelId: string) => {
+        const fieldContext = contextRef.current;
+        if (
+          !client ||
+          fieldContext.site.id !== siteId ||
+          fieldContext.environment !== environment ||
+          fieldContext.cmaBaseUrl !== cmaBaseUrl
+        ) {
+          throw new Error(
+            'API access is required. Check the plugin permissions.',
+          );
+        }
+        // The SDK repository is partial. This helper returns all model fields.
+        const fields = await fieldContext.loadItemTypeFields(modelId);
+        return fields
+          .filter((field) => field.attributes.localized)
+          .map((field) => ({ label: field.attributes.label, value: field.id }));
+      }),
+    [client, siteId, environment, cmaBaseUrl],
+  );
 
   /**
    * Load saved configurations and fetch available models on component mount
    */
   useEffect(() => {
+    let active = true;
+    setIsLoading(true);
+    setAvailableModels([]);
+    setSelectedModel(null);
+    setSelectedField(null);
+    const configArray = normalizeFieldCopyConfigs(
+      contextRef.current.plugin.attributes.parameters?.fieldConfigs,
+    );
+    setSavedConfigs(configArray);
+    setOriginalConfigs(configArray);
+    const scopedClient = dataScope.client;
+    if (!scopedClient) {
+      contextRef.current.notice(
+        'API access is required. Check the plugin permissions.',
+      );
+      setIsLoading(false);
+      return;
+    }
+
     const loadData = async () => {
       try {
-        // Load saved configurations from plugin parameters
-        const configs = ctx.plugin.attributes.parameters?.fieldConfigs;
-        const configArray = Array.isArray(configs) ? configs : [];
-        setSavedConfigs(configArray);
-        setOriginalConfigs(configArray);
-
-        // Initialize DatoCMS Content Management API client
-        const client = buildClient({
-          apiToken: ctx.currentUserAccessToken || '',
-          environment: ctx.environment,
-          baseUrl: ctx.cmaBaseUrl,
-        });
-
         // Fetch all models (excluding modular blocks)
-        const models = await client.itemTypes.list();
+        const models = await scopedClient.itemTypes.list();
         const modelOptions = models
           .filter((model) => !model.modular_block)
           .map((model) => ({
@@ -67,67 +147,58 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             value: model.id,
           }));
 
-        setAvailableModels(modelOptions);
-        setIsLoading(false);
+        if (active) setAvailableModels(modelOptions);
       } catch (error) {
-        console.error('Error loading data:', error);
-        ctx.notice(`Error loading data: ${getErrorMessage(error)}`);
-        setIsLoading(false);
+        if (active) {
+          console.error('Error loading data:', error);
+          contextRef.current.notice(
+            `Error loading data: ${getErrorMessage(error)}`,
+          );
+        }
+      } finally {
+        if (active) setIsLoading(false);
       }
     };
 
     loadData();
-  }, [ctx]);
+    return () => {
+      active = false;
+    };
+  }, [dataScope]);
 
   /**
    * Load available fields when a model is selected.
    * Only shows localized fields that aren't already configured.
    */
   useEffect(() => {
+    let active = true;
+    setModelFields([]);
+    if (!selectedModelId) {
+      setIsLoadingFields(false);
+      return;
+    }
+    setIsLoadingFields(true);
     const loadFields = async () => {
-      if (!selectedModel) {
-        setAvailableFields([]);
-        setIsLoadingFields(false);
-        return;
-      }
-
-      setIsLoadingFields(true);
       try {
-        const client = buildClient({
-          apiToken: ctx.currentUserAccessToken || '',
-          environment: ctx.environment,
-          baseUrl: ctx.cmaBaseUrl,
-        });
-
-        // Fetch fields for the selected model
-        const fields = await client.fields.list(selectedModel.value);
-
-        // Filter only localized fields and exclude already configured fields
-        const configuredFieldIds = savedConfigs
-          .filter((config) => config.modelId === selectedModel.value)
-          .map((config) => config.fieldId);
-
-        const fieldOptions = fields
-          .filter(
-            (field) =>
-              field.localized && !configuredFieldIds.includes(field.id),
-          )
-          .map((field) => ({
-            label: field.label,
-            value: field.id,
-          }));
-
-        setAvailableFields(fieldOptions);
+        const fields = await loadModelFields(selectedModelId);
+        if (active) setModelFields(fields);
       } catch (error) {
-        console.error('Error loading fields:', error);
-        ctx.notice(`Error loading fields: ${getErrorMessage(error)}`);
+        if (active) {
+          console.error('Error loading fields:', error);
+          contextRef.current.notice(
+            `Error loading fields: ${getErrorMessage(error)}`,
+          );
+        }
       } finally {
-        setIsLoadingFields(false);
+        if (active) setIsLoadingFields(false);
       }
     };
 
     loadFields();
-  }, [selectedModel, savedConfigs, ctx]);
+    return () => {
+      active = false;
+    };
+  }, [selectedModelId, loadModelFields]);
 
   /**
    * Add a new field configuration to the list
@@ -139,11 +210,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
 
     // Check if this configuration already exists
-    const exists = savedConfigs.some(
-      (config) =>
-        config.modelId === selectedModel.value &&
-        config.fieldId === selectedField.value,
-    );
+    const exists = configuredFields
+      .get(selectedModel.value)
+      ?.has(selectedField.value);
 
     if (exists) {
       ctx.notice('This configuration already exists');
@@ -164,7 +233,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     // Reset selections
     setSelectedModel(null);
     setSelectedField(null);
-  }, [selectedModel, selectedField, savedConfigs, ctx]);
+  }, [selectedModel, selectedField, savedConfigs, configuredFields, ctx]);
 
   /**
    * Remove a field configuration from the list
@@ -183,10 +252,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      await ctx.updatePluginParameters({
+      const parameters = {
         ...ctx.plugin.attributes.parameters,
         fieldConfigs: savedConfigs,
-      });
+      };
+      validatePluginParameters(parameters);
+      await ctx.updatePluginParameters(parameters);
 
       setOriginalConfigs(savedConfigs);
       ctx.notice('Configuration saved successfully');
@@ -219,12 +290,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   /**
    * Get model name by ID for display purposes
    */
-  const getModelName = useCallback(
-    (modelId: string) => {
-      const model = availableModels.find((m) => m.value === modelId);
-      return model?.label || modelId;
-    },
+  const modelNames = useMemo(
+    () => new Map(availableModels.map((model) => [model.value, model.label])),
     [availableModels],
+  );
+  const getModelName = useCallback(
+    (modelId: string) => modelNames.get(modelId) || modelId,
+    [modelNames],
   );
 
   /**
@@ -233,6 +305,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const handleModelChange = useCallback((newValue: ModelOption | null) => {
     setSelectedModel(newValue);
     setSelectedField(null);
+    setFieldSearch('');
   }, []);
 
   /**
@@ -295,11 +368,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                     name="model"
                     id="model"
                     label="Model"
-                    hint="Select a model"
+                    hint={
+                      getLargeSelectionHint(availableModels.length, 'models') ??
+                      'Select a model'
+                    }
                     value={selectedModel}
                     selectInputProps={{
                       isMulti: false,
-                      options: availableModels,
+                      options: visibleModels,
+                      onInputChange: setModelSearch,
+                      ...(availableModels.length > LARGE_SELECTION_THRESHOLD
+                        ? { filterOption: null }
+                        : {}),
                     }}
                     onChange={(newValue) =>
                       handleModelChange(newValue as ModelOption | null)
@@ -322,13 +402,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                       hint={
                         isLoadingFields
                           ? 'Loading fields...'
-                          : 'Select a localized field'
+                          : (getLargeSelectionHint(
+                              availableFields.length,
+                              'fields',
+                            ) ?? 'Select a localized field')
                       }
                       value={selectedField}
                       selectInputProps={{
                         isDisabled: !selectedModel || isLoadingFields,
                         isMulti: false,
-                        options: availableFields,
+                        options: visibleFields,
+                        onInputChange: setFieldSearch,
+                        ...(availableFields.length > LARGE_SELECTION_THRESHOLD
+                          ? { filterOption: null }
+                          : {}),
                         isLoading: isLoadingFields,
                         placeholder: isLoadingFields
                           ? 'Loading...'

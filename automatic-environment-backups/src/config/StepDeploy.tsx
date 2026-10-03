@@ -8,6 +8,7 @@ import type { BackupsConfig } from './useBackupsConfig';
 export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
   const {
     canEdit,
+    isBusy,
     urlInput,
     setUrlInput,
     saveDeploymentUrl,
@@ -97,7 +98,7 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
           onChange={setUrlInput}
           textInputProps={{
             autoComplete: 'url',
-            disabled: !canEdit || isSavingDeployment || isDisconnecting,
+            disabled: !canEdit || isBusy,
             spellCheck: false,
             type: 'url',
           }}
@@ -113,7 +114,7 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
               onClick={() => {
                 void removeDeployment();
               }}
-              disabled={!canEdit || isSavingDeployment || isDisconnecting}
+              disabled={!canEdit || isBusy}
             >
               {isDisconnecting ? 'Removing…' : 'Remove saved deployment'}
             </Button>
@@ -127,12 +128,7 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
             onClick={() => {
               void saveDeploymentUrl();
             }}
-            disabled={
-              !canEdit ||
-              isSavingDeployment ||
-              isDisconnecting ||
-              trimmedUrl.length === 0
-            }
+            disabled={!canEdit || isBusy || trimmedUrl.length === 0}
             leftIcon={isSavingDeployment ? <Spinner size={16} /> : undefined}
             rightIcon={!isSavingDeployment ? <StepActionArrow /> : undefined}
           >

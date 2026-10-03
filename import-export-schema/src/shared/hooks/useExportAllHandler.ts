@@ -1,10 +1,11 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { useCallback } from 'react';
-import buildExportDoc, {
+import { useCallback, useRef } from 'react';
+import {
+  buildExportBlob,
   calculateExportProgressTotal,
 } from '@/entrypoints/ExportPage/buildExportDoc';
 import type { LongTaskController } from '@/shared/tasks/useLongTask';
-import { downloadJSON } from '@/utils/downloadJson';
+import { downloadBlob } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
 type Options = {
@@ -13,11 +14,18 @@ type Options = {
   task: LongTaskController;
 };
 
+function throwIfExportCancelled(task: LongTaskController): void {
+  if (task.isCancelRequested()) throw new Error('Export cancelled');
+}
+
 /**
  * Returns a memoized handler that exports the entire schema with confirmation + progress.
  */
 export function useExportAllHandler({ ctx, schema, task }: Options) {
+  const runningRef = useRef(false);
   return useCallback(async () => {
+    if (runningRef.current) return;
+    runningRef.current = true;
     try {
       const confirmation = await ctx.openConfirm({
         title: 'Export entire schema?',
@@ -38,7 +46,9 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
 
       task.start({ label: 'Preparing export…' });
       const allTypes = await schema.getAllItemTypes();
+      throwIfExportCancelled(task);
       const allPlugins = await schema.getAllPlugins();
+      throwIfExportCancelled(task);
       if (!allTypes.length) {
         task.reset();
         ctx.alert('No item types found in this environment.');
@@ -52,7 +62,7 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         allPlugins.length,
       );
       task.setProgress({ done: 0, total, label: 'Preparing export…' });
-      const exportDoc = await buildExportDoc(
+      const exportBlob = await buildExportBlob(
         schema,
         preferredRoot.id,
         allTypes.map((t) => t.id),
@@ -62,12 +72,9 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
           shouldCancel: () => task.isCancelRequested(),
         },
       );
-      if (task.isCancelRequested()) {
-        throw new Error('Export cancelled');
-      }
-      downloadJSON(exportDoc, {
+      throwIfExportCancelled(task);
+      downloadBlob(exportBlob, {
         fileName: 'export.json',
-        prettify: true,
       });
       task.complete({ done: total, total, label: 'Export completed' });
       ctx.notice('Export completed successfully.');
@@ -81,6 +88,7 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         ctx.alert('Could not export the current schema. Please try again.');
       }
     } finally {
+      runningRef.current = false;
       task.reset();
     }
   }, [ctx, schema, task]);

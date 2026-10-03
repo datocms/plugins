@@ -118,3 +118,76 @@ export function normalizeError(error: unknown): Error {
   }
   return new Error(String(error));
 }
+
+function retryHeaderValue(
+  headers: Record<string, string>,
+  header: string,
+): string {
+  return (
+    Object.entries(headers).find(
+      ([name]) => name.toLowerCase() === header,
+    )?.[1] ?? ''
+  );
+}
+
+function retryAfterDelay(value: string, now: number): number {
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
+
+function minimumRetryDelay(
+  headers: Record<string, string>,
+  now: number,
+): number {
+  const retryAfter = retryHeaderValue(headers, 'retry-after');
+  const resetSeconds = Number(retryHeaderValue(headers, 'x-ratelimit-reset'));
+  return Math.max(
+    retryAfterDelay(retryAfter, now),
+    Number.isFinite(resetSeconds) ? resetSeconds * 1000 : 0,
+  );
+}
+
+/** Explicit subscription/resource failures stop a batch instead of retrying writes. */
+export function isQuotaOrBillingError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.response.status === 402) return true;
+  return error.errors.some(({ attributes }) =>
+    attributes.code === 'PLAN_UPGRADE_REQUIRED' ||
+    (attributes.code === 'INVALID_FIELD' && attributes.details?.code === 'INVALID_FOR_CURRENT_PLAN') ||
+    /quota|billing|usage|monthly|subscription|cost|resource_limit|max_allowed|(?:cap|records?|storage)_(?:limit|quota|exceeded|reached)/i.test(attributes.code),
+  );
+}
+
+/** Retry only API/transport failures; malformed storage and logic errors fail closed. */
+export function getCommentRetryInfo(
+  error: unknown,
+  now = Date.now(),
+): { retryable: boolean; versionConflict: boolean; minimumDelayMs: number } {
+  if (isQuotaOrBillingError(error))
+    return { retryable: false, versionConflict: false, minimumDelayMs: 0 };
+  if (error instanceof ApiError) {
+    const versionConflict = Boolean(error.findError('STALE_ITEM_VERSION'));
+    const retryable =
+      versionConflict ||
+      error.response.status === 429 ||
+      error.response.status >= 500 ||
+      error.errors.some((entry) => entry.attributes.transient === true);
+    return {
+      retryable,
+      versionConflict,
+      minimumDelayMs: minimumRetryDelay(error.response.headers ?? {}, now),
+    };
+  }
+  return {
+    retryable:
+      error instanceof TimeoutError ||
+      (error instanceof TypeError &&
+        /fetch|network|load failed|connection/i.test(error.message)),
+    versionConflict: false,
+    minimumDelayMs: 0,
+  };
+}
+
+import { ApiError, TimeoutError } from '@datocms/cma-client-browser';

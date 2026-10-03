@@ -1,28 +1,19 @@
-/**
- * Service for handling locale duplication logic
- */
+import { ApiError, type Client } from '@datocms/cma-client-browser';
+import type { Item, ItemType } from '../types';
+import { CmaUncertainOutcomeError, createCmaClient } from './cmaClient';
+import {
+  type DuplicationProgress,
+  type DuplicationStats,
+  initialDuplicationStats,
+} from './duplicationTypes';
+import {
+  buildLocaleUpdates,
+  containsUpdates,
+  type FieldSchema,
+} from './localeUpdates';
 
-import { buildClient, type Client } from '@datocms/cma-client-browser';
-import type { Item, ItemType, LocalizedField } from '../types';
-import { formatErrorMessage } from '../utils/errorMessages';
-import { removeBlockItemIdsMutable } from '../utils/fieldUtils';
+export type ProgressCallback = (update: DuplicationProgress) => void;
 
-/**
- * Progress callback type for duplication operations
- */
-export type ProgressCallback = (update: {
-  message: string;
-  type: 'info' | 'success' | 'error';
-  timestamp: number;
-  progress?: number;
-  recordId?: string;
-  modelId?: string;
-  modelName?: string;
-}) => void;
-
-/**
- * Configuration for duplication operation
- */
 export interface DuplicationConfig {
   sourceLocale: string;
   targetLocale: string;
@@ -32,502 +23,660 @@ export interface DuplicationConfig {
   abortSignal?: { current: boolean };
 }
 
-/**
- * Result of a duplication operation
- */
 export interface DuplicationResult {
   totalRecordsProcessed: number;
   successfulRecords: number;
   failedRecords: number;
   publishedRecords: number;
+  stats: DuplicationStats;
 }
 
-/**
- * Service class for handling locale duplication
- */
-export class LocaleDuplicationService {
-  private client: Client;
-  private recordsToPublish: Array<{ type: 'item'; id: string }> = [];
-  private totalRecordsProcessed = 0;
+// CMA has no ID-only projection: smaller discovery pages also bound heavy scalar content.
+const ID_PAGE_SIZE = 100;
+const NESTED_PAGE_SIZE = 30;
+const WORKERS = 3;
+const PUBLISH_BATCH_SIZE = 200;
 
-  constructor(apiToken: string, environment?: string, baseUrl?: string) {
-    this.client = buildClient({
-      apiToken,
-      environment,
-      baseUrl,
-    });
-  }
+type ModelSelection = { model: ItemType; ids: string[] };
+type Publication = { id: string; version: string };
 
-  /**
-   * Duplicate content from one locale to another
-   */
-  async duplicateContent(
-    config: DuplicationConfig,
-    onProgress: ProgressCallback,
-  ): Promise<DuplicationResult> {
-    const {
-      sourceLocale,
-      targetLocale,
-      selectedModelIds,
-      useDraftRecords = true,
-      publishAfterDuplication = false,
-      abortSignal,
-    } = config;
-
-    // Reset counters
-    this.recordsToPublish = [];
-    this.totalRecordsProcessed = 0;
-    let successfulRecords = 0;
-    let failedRecords = 0;
-
-    try {
-      // Step 1: Retrieve and filter content models
-      const allModels = await this.client.itemTypes.list();
-      let models = allModels.filter((model) => !model.modular_block);
-
-      // Filter by selected model IDs if provided
-      if (selectedModelIds && selectedModelIds.length > 0) {
-        models = models.filter((model) => selectedModelIds.includes(model.id));
-      }
-
-      // Progress tracking for models
-      const totalModels = models.length;
-
-      // Step 2: Process each model sequentially (required for progress tracking and abort)
-      const modelResults = await models.reduce(
-        async (
-          promiseChain,
-          model,
-          i,
-        ): Promise<{ successful: number; failed: number }[]> => {
-          const accumulatedResults = await promiseChain;
-
-          if (abortSignal?.current) {
-            onProgress({
-              message: 'Process aborted by user',
-              type: 'error',
-              timestamp: Date.now(),
-              progress: Math.round(((i + 1) / totalModels) * 90),
-            });
-            return accumulatedResults;
-          }
-
-          const result = await this.processModel(
-            model,
-            sourceLocale,
-            targetLocale,
-            useDraftRecords,
-            publishAfterDuplication,
-            onProgress,
-            abortSignal,
-            i,
-            totalModels,
-          );
-
-          return [...accumulatedResults, result];
-        },
-        Promise.resolve([] as { successful: number; failed: number }[]),
-      );
-
-      for (const result of modelResults) {
-        successfulRecords += result.successful;
-        failedRecords += result.failed;
-      }
-
-      // Step 3: Bulk publish if enabled
-      let publishedRecords = 0;
-      if (publishAfterDuplication && this.recordsToPublish.length > 0) {
-        publishedRecords = await this.publishRecords(onProgress);
-      }
-
-      // Final progress
-      onProgress({
-        message: 'Migration completed successfully!',
-        type: 'success',
-        timestamp: Date.now(),
-        progress: 100,
-      });
-
-      return {
-        totalRecordsProcessed: this.totalRecordsProcessed,
-        successfulRecords,
-        failedRecords,
-        publishedRecords,
-      };
-    } catch (error) {
-      onProgress({
-        message: formatErrorMessage('API_REQUEST_FAILED', {
-          errorDetails: error instanceof Error ? error.message : String(error),
-        }),
-        type: 'error',
-        timestamp: Date.now(),
-        progress: 100,
-      });
-
-      throw error;
-    }
-  }
-
-  /**
-   * Process a single model - collects all records then processes them sequentially
-   */
-  private async processModel(
-    model: ItemType,
-    sourceLocale: string,
-    targetLocale: string,
-    useDraftRecords: boolean,
-    publishAfterDuplication: boolean,
-    onProgress: ProgressCallback,
-    abortSignal?: { current: boolean },
-    modelIndex?: number,
-    totalModels?: number,
-  ): Promise<{ successful: number; failed: number }> {
-    const modelStartProgress = this.calculateStartProgress(
-      modelIndex,
-      totalModels,
+function describeError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return (
+      error.errors.map((entry) => entry.attributes.code).join(', ') ||
+      `HTTP ${error.response.status}`
     );
-    const modelEndProgress = this.calculateEndProgress(modelIndex, totalModels);
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
-    onProgress({
-      message: `Processing model: ${model.name}`,
-      type: 'info',
+function fatalError(error: unknown): boolean {
+  if (error instanceof CmaUncertainOutcomeError) return fatalError(error.cause);
+  return (
+    error instanceof ApiError && [401, 403].includes(error.response.status)
+  );
+}
+
+function isStaleVersion(error: unknown): boolean {
+  return error instanceof ApiError && !!error.findError('STALE_ITEM_VERSION');
+}
+
+/** Only call after invoking a write: successful HTTP responses can fail decoding. */
+function classifyWriteError(error: unknown): unknown {
+  if (error instanceof CmaUncertainOutcomeError) return error;
+  if (
+    error instanceof SyntaxError ||
+    error instanceof TypeError ||
+    (error instanceof ApiError &&
+      error.response.status >= 200 &&
+      error.response.status < 300)
+  )
+    return new CmaUncertainOutcomeError(
+      'The CMA write response could not be read; its outcome must be confirmed.',
+      error,
+    );
+  return error;
+}
+
+/** One run holds IDs and counters, one nested page, and at most three record updates. */
+class DuplicationRun {
+  readonly stats = initialDuplicationStats();
+  private readonly schema = new Map<string, Promise<FieldSchema[]>>();
+  private readonly publications: Publication[] = [];
+  private progress = 0;
+
+  constructor(
+    private readonly client: Client,
+    private readonly config: DuplicationConfig,
+    private readonly onProgress: ProgressCallback,
+  ) {
+    this.stats.startTime = Date.now();
+  }
+
+  private get cancelled(): boolean {
+    return this.config.abortSignal?.current === true;
+  }
+
+  private emit(
+    message: string,
+    type: DuplicationProgress['type'],
+    progress = this.progress,
+    model?: ItemType,
+    recordId?: string,
+  ) {
+    this.progress = Math.max(this.progress, progress);
+    this.onProgress({
+      message,
+      type,
       timestamp: Date.now(),
-      progress: modelStartProgress,
-      modelId: model.id,
-      modelName: model.name,
+      progress: this.progress,
+      modelId: model?.id,
+      modelName: model?.name,
+      recordId,
     });
-
-    try {
-      // Collect all records for the current model
-      const recordsToProcess = await this.collectRecordsForModel(
-        model,
-        useDraftRecords,
-      );
-
-      return await this.processRecordsSequentially(
-        recordsToProcess,
-        model,
-        sourceLocale,
-        targetLocale,
-        publishAfterDuplication,
-        onProgress,
-        abortSignal,
-        modelStartProgress,
-        modelEndProgress,
-      );
-    } catch (modelError) {
-      const errorMessage = formatErrorMessage('MODEL_PROCESSING_FAILED', {
-        modelName: model.name,
-        errorDetails:
-          modelError instanceof Error ? modelError.message : String(modelError),
-      });
-
-      onProgress({
-        message: errorMessage,
-        type: 'error',
-        timestamp: Date.now(),
-        modelId: model.id,
-        modelName: model.name,
-        progress: modelStartProgress,
-      });
-    }
-
-    return { successful: 0, failed: 0 };
   }
 
-  /**
-   * Calculates the start progress percentage for a model
-   */
-  private calculateStartProgress(
-    modelIndex?: number,
-    totalModels?: number,
-  ): number {
-    if (modelIndex !== undefined && totalModels) {
-      return Math.round((modelIndex / totalModels) * 90);
-    }
-    return 0;
-  }
-
-  /**
-   * Calculates the end progress percentage for a model
-   */
-  private calculateEndProgress(
-    modelIndex?: number,
-    totalModels?: number,
-  ): number {
-    if (modelIndex !== undefined && totalModels) {
-      return Math.round(((modelIndex + 1) / totalModels) * 90);
-    }
-    return 90;
-  }
-
-  /**
-   * Collects all records for a given model using the paged iterator
-   */
-  private async collectRecordsForModel(
-    model: ItemType,
-    useDraftRecords: boolean,
-  ): Promise<Item[]> {
-    const records: Item[] = [];
-    for await (const record of this.client.items.listPagedIterator({
-      filter: {
-        type: model.api_key,
+  private snapshot(
+    message: string,
+    type: DuplicationProgress['type'] = 'info',
+    progress = this.progress,
+  ) {
+    this.progress = Math.max(this.progress, progress);
+    this.onProgress({
+      message,
+      type,
+      timestamp: Date.now(),
+      progress: this.progress,
+      stats: {
+        ...this.stats,
+        modelStats: Object.fromEntries(
+          Object.entries(this.stats.modelStats).map(([id, value]) => [
+            id,
+            { ...value },
+          ]),
+        ),
       },
-      nested: true,
-      version: useDraftRecords ? 'current' : 'published',
-    })) {
-      records.push(record);
+    });
+  }
+
+  private loadFields = (modelId: string): Promise<FieldSchema[]> => {
+    let fields = this.schema.get(modelId);
+    if (!fields) {
+      fields = this.client.fields.list(modelId).then((fields) =>
+        fields.map(({ api_key, field_type, localized }) => ({
+          api_key,
+          field_type,
+          localized,
+        })),
+      );
+      this.schema.set(modelId, fields);
+      fields.catch(() => this.schema.delete(modelId));
+    }
+    return fields;
+  };
+
+  private async discoverModel(model: ItemType): Promise<string[]> {
+    const ids = new Set<string>();
+    let offset = 0;
+    let expectedCount: number | undefined;
+    while (!this.cancelled) {
+      // biome-ignore lint/performance/noAwaitInLoops: Stable sequential pages are discarded after retaining only IDs.
+      const response = await this.client.items.rawList({
+        filter: { type: model.id },
+        order_by: 'id_ASC',
+        version:
+          this.config.useDraftRecords === false ? 'published' : 'current',
+        page: { offset, limit: ID_PAGE_SIZE },
+      });
+      expectedCount ??= response.meta.total_count;
+      if (expectedCount !== response.meta.total_count) {
+        throw new Error(
+          'The record collection changed during discovery. This model was not copied.',
+        );
+      }
+      if (response.data.length === 0 && offset < expectedCount) {
+        throw new Error(
+          'Record listing ended before the reported total. This model was not copied.',
+        );
+      }
+      for (const record of response.data) {
+        if (ids.has(record.id))
+          throw new Error(
+            'Duplicate ID in pagination; this model was not copied.',
+          );
+        ids.add(record.id);
+      }
+      offset += response.data.length;
+      this.emit(
+        `Found ${ids.size} of ${expectedCount} records in ${model.name}`,
+        'info',
+      );
+      if (offset >= expectedCount) break;
+    }
+    return [...ids];
+  }
+
+  private async discover(): Promise<ModelSelection[]> {
+    const allModels = await this.client.itemTypes.list();
+    const selected = this.config.selectedModelIds
+      ? new Set(this.config.selectedModelIds)
+      : undefined;
+    const models = allModels.filter(
+      (model) => !model.modular_block && (!selected || selected.has(model.id)),
+    );
+    if (selected && models.length !== selected.size)
+      throw new Error('Some selected models are no longer available');
+    this.stats.totalModels = models.length;
+    const selection: ModelSelection[] = [];
+    for (const model of models) {
+      if (this.cancelled) break;
+      this.stats.modelStats[model.id] = {
+        name: model.name,
+        success: 0,
+        error: 0,
+        total: 0,
+      };
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: Discovery does not flood the CMA with parallel model requests.
+        const ids = await this.discoverModel(model);
+        selection.push({ model, ids });
+        this.stats.totalToProcess += ids.length;
+      } catch (error) {
+        if (fatalError(error)) throw error;
+        this.stats.modelFailures++;
+        this.emit(
+          `Could not load ${model.name}: ${describeError(error)}`,
+          'error',
+          this.progress,
+          model,
+        );
+      }
+      this.snapshot(
+        `Discovered ${this.stats.totalToProcess} records`,
+        'info',
+        (10 * selection.length) / Math.max(1, models.length),
+      );
+    }
+    return selection;
+  }
+
+  private recordFinished(
+    model: ItemType,
+    id: string,
+    result: 'success' | 'skipped' | 'error',
+    error?: unknown,
+  ) {
+    const modelStats = this.stats.modelStats[model.id];
+    modelStats.total++;
+    this.stats.totalRecords++;
+    if (result === 'error') {
+      modelStats.error++;
+      this.stats.failedRecords++;
+      if (error instanceof CmaUncertainOutcomeError)
+        this.stats.uncertainRecords++;
+      this.emit(
+        `Could not update ${id} in ${model.name}: ${describeError(error)}`,
+        'error',
+        this.progress,
+        model,
+        id,
+      );
+    } else {
+      modelStats.success++;
+      this.stats.successfulRecords++;
+      if (result === 'skipped') this.stats.skippedRecords++;
+      this.emit(
+        result === 'skipped'
+          ? `No changes needed for record ${id}`
+          : `Updated record ${id} in ${model.name}`,
+        'success',
+        this.progress,
+        model,
+        id,
+      );
+    }
+  }
+
+  private async writeRecord(
+    source: Item,
+    current: Item,
+    fields: FieldSchema[],
+  ): Promise<Item | undefined> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // biome-ignore lint/performance/noAwaitInLoops: Retry only stale versions against a freshly rebuilt payload.
+      const updates = await buildLocaleUpdates(
+        source,
+        current,
+        fields,
+        this.config.sourceLocale,
+        this.config.targetLocale,
+        this.loadFields,
+      );
+      if (Object.keys(updates).length === 0) return undefined;
+      if (this.cancelled) return undefined;
+      try {
+        return await this.client.items.update(current.id, {
+          ...updates,
+          meta: { current_version: current.meta.current_version },
+        });
+      } catch (error) {
+        if (isStaleVersion(error)) {
+          current = await this.client.items.find(current.id, { nested: true });
+          source = this.config.useDraftRecords === false ? source : current;
+          continue;
+        }
+        return this.reconcileWrite(
+          classifyWriteError(error),
+          current.id,
+          updates,
+          fields,
+        );
+      }
+    }
+    throw new Error(
+      'Record kept changing during duplication; no overwrite was forced',
+    );
+  }
+
+  private async reconcileWrite(
+    error: unknown,
+    id: string,
+    updates: Record<string, unknown>,
+    fields: FieldSchema[],
+  ): Promise<Item> {
+    if (!(error instanceof CmaUncertainOutcomeError)) throw error;
+    try {
+      const after = await this.client.items.find(id, { nested: true });
+      if (await containsUpdates(after, updates, fields, this.loadFields))
+        return after;
+    } catch (readError) {
+      throw new CmaUncertainOutcomeError(
+        `Could not confirm the update: ${describeError(readError)}. Its payload was not replayed.`,
+        readError,
+      );
+    }
+    throw new CmaUncertainOutcomeError(
+      'Update outcome is uncertain; its payload was not replayed',
+    );
+  }
+
+  private async processRecord(
+    record: Item,
+    model: ItemType,
+    fields: FieldSchema[],
+  ) {
+    if (this.cancelled) return;
+    try {
+      const current =
+        this.config.useDraftRecords === false
+          ? await this.client.items.find(record.id, { nested: true })
+          : record;
+      const updated = await this.writeRecord(record, current, fields);
+      // A dispatched update is counted even when cancellation arrives while it is in flight.
+      if (!updated && this.cancelled) return;
+      if (
+        updated &&
+        this.config.publishAfterDuplication &&
+        model.draft_mode_active
+      ) {
+        this.publications.push({
+          id: updated.id,
+          version: updated.meta.current_version,
+        });
+      }
+      this.recordFinished(model, record.id, updated ? 'success' : 'skipped');
+    } catch (error) {
+      this.recordFinished(model, record.id, 'error', error);
+      if (fatalError(error)) throw error;
+    }
+  }
+
+  private async processPage(
+    records: Item[],
+    model: ItemType,
+    fields: FieldSchema[],
+  ) {
+    let index = 0;
+    let failure: unknown;
+    await Promise.all(
+      Array.from({ length: Math.min(WORKERS, records.length) }, async () => {
+        while (!this.cancelled && !failure) {
+          const record = records[index++];
+          if (!record) return;
+          try {
+            // biome-ignore lint/performance/noAwaitInLoops: Each worker consumes one record at a time, at most three in flight.
+            await this.processRecord(record, model, fields);
+          } catch (error) {
+            failure = error;
+          }
+        }
+      }),
+    );
+    if (failure) throw failure;
+  }
+
+  private async copyModel({ model, ids }: ModelSelection) {
+    const fields = await this.loadFields(model.id);
+    for (
+      let offset = 0;
+      offset < ids.length && !this.cancelled;
+      offset += NESTED_PAGE_SIZE
+    ) {
+      const pageIds = ids.slice(offset, offset + NESTED_PAGE_SIZE);
+      // biome-ignore lint/performance/noAwaitInLoops: Consume a bounded nested page before fetching another.
+      const records = await this.client.items.list({
+        filter: { ids: pageIds.join(',') },
+        nested: true,
+        version:
+          this.config.useDraftRecords === false ? 'published' : 'current',
+        page: { limit: NESTED_PAGE_SIZE },
+      });
+      if (this.cancelled) break;
+      const available = new Set(records.map((record) => record.id));
+      for (const id of pageIds) {
+        if (!available.has(id))
+          this.recordFinished(
+            model,
+            id,
+            'error',
+            'Record was deleted, unpublished or became inaccessible',
+          );
+      }
+      await this.processPage(records, model, fields);
+      this.snapshot(
+        `Processed ${this.stats.totalRecords} of ${this.stats.totalToProcess} records`,
+        'info',
+        10 +
+          ((this.config.publishAfterDuplication ? 75 : 89) *
+            this.stats.totalRecords) /
+            Math.max(1, this.stats.totalToProcess),
+      );
+    }
+  }
+
+  private async publishedVersions(
+    batch: Publication[],
+  ): Promise<Map<string, Item>> {
+    const records = new Map<string, Item>();
+    for (let offset = 0; offset < batch.length; offset += ID_PAGE_SIZE) {
+      // biome-ignore lint/performance/noAwaitInLoops: Publication checks use bounded non-nested reads.
+      const page = await this.client.items.list({
+        filter: {
+          ids: batch
+            .slice(offset, offset + ID_PAGE_SIZE)
+            .map((record) => record.id)
+            .join(','),
+        },
+        version: 'current',
+        page: { limit: ID_PAGE_SIZE },
+      });
+      for (const record of page) records.set(record.id, record);
     }
     return records;
   }
 
-  /**
-   * Processes records sequentially with abort signal support and progress tracking
-   */
-  private async processRecordsSequentially(
-    recordsToProcess: Item[],
-    model: ItemType,
-    sourceLocale: string,
-    targetLocale: string,
-    publishAfterDuplication: boolean,
-    onProgress: ProgressCallback,
-    abortSignal: { current: boolean } | undefined,
-    modelStartProgress: number,
-    modelEndProgress: number,
-  ): Promise<{ successful: number; failed: number }> {
-    return recordsToProcess.reduce(
-      async (
-        promiseChain,
-        record,
-        j,
-      ): Promise<{ successful: number; failed: number }> => {
-        const accumulated = await promiseChain;
-
-        if (abortSignal?.current) {
-          const abortProgress =
-            modelStartProgress +
-            Math.round(
-              (j / recordsToProcess.length) *
-                (modelEndProgress - modelStartProgress),
-            );
-          onProgress({
-            message: 'Process aborted by user',
-            type: 'error',
-            timestamp: Date.now(),
-            progress: abortProgress,
-          });
-          return accumulated;
-        }
-
-        const recordProgress =
-          modelStartProgress +
-          Math.round(
-            ((j + 1) / recordsToProcess.length) *
-              (modelEndProgress - modelStartProgress),
-          );
-
-        const recordResult = await this.processRecord(
-          record,
-          model,
-          sourceLocale,
-          targetLocale,
-          publishAfterDuplication,
-          onProgress,
-          recordProgress,
-        );
-
-        this.totalRecordsProcessed++;
-
-        return {
-          successful: accumulated.successful + (recordResult.success ? 1 : 0),
-          failed: accumulated.failed + (recordResult.success ? 0 : 1),
-        };
-      },
-      Promise.resolve({ successful: 0, failed: 0 }),
-    );
-  }
-
-  /**
-   * Process a single record
-   */
-  private async processRecord(
-    record: Item,
-    model: ItemType,
-    sourceLocale: string,
-    targetLocale: string,
-    publishAfterDuplication: boolean,
-    onProgress: ProgressCallback,
-    progress: number,
-  ): Promise<{ success: boolean }> {
+  private async publishBatch(batch: Publication[]) {
+    let result: Awaited<ReturnType<Client['items']['rawBulkPublish']>>;
     try {
-      const updates = this.buildLocaleUpdates(
-        record,
-        sourceLocale,
-        targetLocale,
+      result = await this.client.items.rawBulkPublish({
+        data: {
+          type: 'item_bulk_publish_operation',
+          relationships: {
+            items: {
+              data: batch.map(({ id }) => ({ type: 'item' as const, id })),
+            },
+          },
+        },
+      });
+    } catch (error) {
+      await this.reconcilePublication(batch, classifyWriteError(error));
+      return;
+    }
+    const successful = result?.meta?.successful;
+    const failed = result?.meta?.failed;
+    if (
+      !Number.isSafeInteger(successful) ||
+      !Number.isSafeInteger(failed) ||
+      successful < 0 ||
+      failed < 0 ||
+      successful + failed !== batch.length
+    ) {
+      await this.reconcilePublication(
+        batch,
+        new CmaUncertainOutcomeError(
+          'The publication job returned inconsistent totals',
+        ),
       );
-
-      if (Object.keys(updates).length === 0) {
-        return { success: true };
-      }
-
-      await this.client.items.update(record.id, updates);
-
-      if (publishAfterDuplication) {
-        this.recordsToPublish.push({ type: 'item', id: record.id });
-      }
-
-      onProgress({
-        message: `Updated record ${record.id} in ${model.name}`,
-        type: 'success',
-        timestamp: Date.now(),
-        recordId: record.id,
-        modelId: model.id,
-        modelName: model.name,
-        progress,
-      });
-
-      return { success: true };
-    } catch (_updateError) {
-      const errorMessage = formatErrorMessage('RECORD_UPDATE_FAILED', {
-        recordId: record.id,
-        modelName: model.name,
-        sourceLocale,
-        targetLocale,
-        errorDetails:
-          'Check if the original record is currently invalid and fix validation errors',
-      });
-
-      onProgress({
-        message: errorMessage,
-        type: 'error',
-        timestamp: Date.now(),
-        recordId: record.id,
-        modelId: model.id,
-        modelName: model.name,
-        progress,
-      });
-
-      return { success: false };
+      return;
     }
+    this.stats.publishedRecords += successful;
+    this.stats.failedPublications += failed;
+    if (failed > 0)
+      this.emit(
+        `Publication completed with ${failed} failed records in this batch.`,
+        'error',
+      );
   }
 
-  /**
-   * Builds the locale update map for a record by copying source locale values to target locale
-   */
-  private buildLocaleUpdates(
-    record: Item,
-    sourceLocale: string,
-    targetLocale: string,
-  ): Record<string, LocalizedField> {
-    let updates: Record<string, LocalizedField> = {};
-
-    const recordData = { ...record };
-    const {
-      id: _id,
-      type: _type,
-      item_type: _itemType,
-      creator: _creator,
-      meta: _meta,
-      ...fields
-    } = recordData;
-
-    for (const [fieldKey, fieldValue] of Object.entries(fields)) {
-      if (this.shouldSkipField(fieldKey)) {
-        continue;
-      }
-
-      if (this.isLocalizedFieldWithSourceLocale(fieldValue, sourceLocale)) {
-        const localizedField = fieldValue as Record<string, unknown>;
-        updates[fieldKey] = { ...localizedField };
-        updates[fieldKey][targetLocale] = localizedField[sourceLocale];
-        updates = removeBlockItemIdsMutable(updates) as Record<
-          string,
-          LocalizedField
-        >;
-      }
-    }
-
-    return updates;
-  }
-
-  /**
-   * Checks if a field key should be skipped during locale duplication
-   */
-  private shouldSkipField(fieldKey: string): boolean {
-    const systemFields = [
-      'id',
-      'type',
-      'meta',
-      'created_at',
-      'updated_at',
-      'is_valid',
-      'item_type',
-    ];
-    return fieldKey.startsWith('_') || systemFields.includes(fieldKey);
-  }
-
-  /**
-   * Checks if a value is a localized field containing the source locale
-   */
-  private isLocalizedFieldWithSourceLocale(
-    fieldValue: unknown,
-    sourceLocale: string,
-  ): boolean {
-    return (
-      fieldValue !== null &&
-      typeof fieldValue === 'object' &&
-      !Array.isArray(fieldValue) &&
-      Object.keys(fieldValue).includes(sourceLocale)
-    );
-  }
-
-  /**
-   * Bulk publish records in sequential batches to avoid API limits
-   */
-  private async publishRecords(onProgress: ProgressCallback): Promise<number> {
-    onProgress({
-      message: `Publishing ${this.recordsToPublish.length} updated records...`,
-      type: 'info',
-      timestamp: Date.now(),
-      progress: 95,
-    });
-
+  private async reconcilePublication(batch: Publication[], error: unknown) {
+    // A submitted batch with unavailable read-back is uncertain, never merely pending.
+    let after: Map<string, Item>;
     try {
-      const batchSize = 100;
-      const batches: Array<Array<{ type: 'item'; id: string }>> = [];
-      for (let i = 0; i < this.recordsToPublish.length; i += batchSize) {
-        batches.push(this.recordsToPublish.slice(i, i + batchSize));
-      }
-
-      let publishedCount = 0;
-      await batches.reduce(async (promiseChain, batch) => {
-        await promiseChain;
-        await this.client.items.bulkPublish({ items: batch });
-        publishedCount += batch.length;
-      }, Promise.resolve());
-
-      onProgress({
-        message: `Successfully published ${publishedCount} records`,
-        type: 'success',
-        timestamp: Date.now(),
-        progress: 98,
-      });
-
-      return publishedCount;
-    } catch (publishError) {
-      const errorMessage = formatErrorMessage('PUBLISH_FAILED', {
-        errorDetails: 'Some records may remain in draft state',
-      });
-
-      onProgress({
-        message: errorMessage,
-        type: 'error',
-        timestamp: Date.now(),
-        progress: 98,
-      });
-
-      console.error('Bulk publish error:', publishError);
-      return 0;
+      after = await this.publishedVersions(batch);
+    } catch (readError) {
+      this.stats.uncertainPublications += batch.length;
+      this.emit(
+        `Could not confirm the submitted publication batch: ${describeError(readError)}. The job was not resubmitted.`,
+        'error',
+      );
+      if (fatalError(readError)) throw readError;
+      if (fatalError(error)) throw error;
+      return;
     }
+    for (const record of batch) {
+      const latest = after.get(record.id);
+      if (
+        latest?.meta.status === 'published' &&
+        latest.meta.current_version === record.version
+      )
+        this.stats.publishedRecords++;
+      else if (error instanceof CmaUncertainOutcomeError)
+        this.stats.uncertainPublications++;
+      else this.stats.failedPublications++;
+    }
+    this.emit(
+      `Publication batch failed: ${describeError(error)}. Confirmed results are included in the summary.`,
+      'error',
+    );
+    if (fatalError(error)) throw error;
+  }
+
+  private async publish() {
+    this.emit(
+      `Publishing ${this.publications.length} updated records...`,
+      'info',
+      85,
+    );
+    for (
+      let offset = 0;
+      offset < this.publications.length && !this.cancelled;
+      offset += PUBLISH_BATCH_SIZE
+    ) {
+      const batch = this.publications.slice(
+        offset,
+        offset + PUBLISH_BATCH_SIZE,
+      );
+      // biome-ignore lint/performance/noAwaitInLoops: Validate that the copied draft is still current before publishing it.
+      const before = await this.publishedVersions(batch);
+      const unchanged = batch.filter(
+        (record) =>
+          before.get(record.id)?.meta.current_version === record.version,
+      );
+      this.stats.failedPublications += batch.length - unchanged.length;
+      if (unchanged.length !== batch.length)
+        this.emit(
+          'Some drafts changed after copying and were excluded from publication.',
+          'error',
+        );
+      if (this.cancelled) break;
+      if (unchanged.length > 0) {
+        this.emit(
+          `Publishing records ${offset + 1}–${offset + batch.length} of ${this.publications.length}...`,
+          'info',
+        );
+        await this.publishBatch(unchanged);
+      }
+      this.snapshot(
+        `Published ${this.stats.publishedRecords} records; ${this.stats.failedPublications} publication failures`,
+        'info',
+        85 +
+          (14 * Math.min(offset + batch.length, this.publications.length)) /
+            Math.max(1, this.publications.length),
+      );
+    }
+  }
+
+  private async copySelection(selection: ModelSelection[]) {
+    for (const model of selection) {
+      if (this.cancelled) break;
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: Models share a bounded pool of record workers.
+        await this.copyModel(model);
+      } catch (error) {
+        if (fatalError(error)) throw error;
+        this.stats.modelFailures++;
+        this.emit(
+          `Could not finish ${model.model.name}: ${describeError(error)}`,
+          'error',
+        );
+      }
+    }
+  }
+
+  async execute(): Promise<DuplicationResult> {
+    if (
+      !this.config.sourceLocale ||
+      !this.config.targetLocale ||
+      this.config.sourceLocale === this.config.targetLocale
+    ) {
+      throw new Error('Choose two different locales');
+    }
+    try {
+      const selection = await this.discover();
+      await this.copySelection(selection);
+      if (this.config.publishAfterDuplication && !this.cancelled)
+        await this.publish();
+    } catch (error) {
+      this.stats.modelFailures++;
+      this.emit(`Duplication stopped: ${describeError(error)}`, 'error');
+    }
+    this.stats.cancelled = this.cancelled;
+    this.stats.endTime = Date.now();
+    this.stats.pendingPublications =
+      this.publications.length -
+      this.stats.publishedRecords -
+      this.stats.failedPublications -
+      this.stats.uncertainPublications;
+    const failed =
+      this.stats.failedRecords +
+      this.stats.failedPublications +
+      this.stats.uncertainPublications +
+      this.stats.modelFailures;
+    this.snapshot(
+      this.cancelled
+        ? 'Duplication aborted; completed changes are retained.'
+        : failed > 0
+          ? 'Duplication completed with errors.'
+          : 'Migration completed successfully!',
+      failed > 0 || this.cancelled ? 'error' : 'success',
+      this.cancelled ? this.progress : 100,
+    );
+    return {
+      totalRecordsProcessed: this.stats.totalRecords,
+      successfulRecords: this.stats.successfulRecords,
+      failedRecords: this.stats.failedRecords,
+      publishedRecords: this.stats.publishedRecords,
+      stats: this.stats,
+    };
+  }
+}
+
+export function runLocaleDuplication(
+  client: Client,
+  config: DuplicationConfig,
+  onProgress: ProgressCallback,
+) {
+  return new DuplicationRun(client, config, onProgress).execute();
+}
+
+export class LocaleDuplicationService {
+  private readonly client: Client;
+  private onProgress: ProgressCallback | undefined;
+
+  constructor(apiToken: string, environment?: string, baseUrl?: string) {
+    if (!apiToken)
+      throw new Error(
+        'CMA access is unavailable. Enable the currentUserAccessToken permission.',
+      );
+    this.client = createCmaClient(apiToken, environment, baseUrl, {
+      onRetry: () =>
+        this.onProgress?.({
+          message: 'Waiting before retrying a temporary CMA request failure...',
+          type: 'info',
+          timestamp: Date.now(),
+        }),
+    });
+  }
+
+  duplicateContent(
+    config: DuplicationConfig,
+    onProgress: ProgressCallback,
+  ): Promise<DuplicationResult> {
+    if (this.onProgress)
+      throw new Error('A duplication is already running in this service');
+    this.onProgress = onProgress;
+    return runLocaleDuplication(this.client, config, onProgress).finally(() => {
+      this.onProgress = undefined;
+    });
   }
 }

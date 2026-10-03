@@ -1,11 +1,22 @@
 // @vitest-environment jsdom
 
+import type { CommentType } from '@ctypes/comments';
+import type { Client } from '@datocms/cma-client-browser';
 import { useCommentsSubscription } from '@hooks/useCommentsSubscription';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, renderHook } from '../testUtils/react';
 
 const useQuerySubscriptionMock = vi.fn();
+
+vi.mock('@utils/cmaFallbackRead', () => ({
+  createCmaFallbackRead: (client: Client) => ({
+    client,
+    cancel: vi.fn(),
+    isCanceled: () => false,
+  }),
+}));
 
 vi.mock('react-datocms/use-query-subscription', () => ({
   useQuerySubscription: (...args: unknown[]) =>
@@ -31,7 +42,7 @@ function createSidebarCtx(
       : {},
     formValues,
     site: { attributes: { internal_domain: 'example.admin.datocms.com' } },
-  } as never;
+  } as unknown as RenderItemFormSidebarCtx;
 }
 
 describe('useCommentsSubscription', () => {
@@ -143,7 +154,7 @@ describe('useCommentsSubscription', () => {
           },
         ]),
       },
-    } as never;
+    };
 
     let recordId: string | null = 'record-1';
 
@@ -152,7 +163,7 @@ describe('useCommentsSubscription', () => {
         ctx: createSidebarCtx(recordId),
         realTimeEnabled: false,
         cdaToken: '',
-        client,
+        client: client as unknown as Client,
         commentsModelId: 'comments-model',
         isSyncAllowed: true,
         query: 'query',
@@ -203,14 +214,14 @@ describe('useCommentsSubscription', () => {
           },
         ]),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useCommentsSubscription({
         ctx: createSidebarCtx('record-1', false),
         realTimeEnabled: false,
         cdaToken: '',
-        client,
+        client: client as unknown as Client,
         commentsModelId: 'comments-model',
         isSyncAllowed: true,
         query: 'query',
@@ -233,7 +244,7 @@ describe('useCommentsSubscription', () => {
           record_id: { eq: 'record-1' },
         },
       },
-      page: { limit: 1 },
+      page: { limit: 2 },
     });
     expect(result.current?.comments).toHaveLength(1);
     expect(result.current?.commentsModelId).toBe('comments-model');
@@ -251,16 +262,18 @@ describe('useCommentsSubscription', () => {
       items: {
         list: vi.fn().mockResolvedValue([]),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useCommentsSubscription({
         ctx: createSidebarCtx('record-1', true, {
-          comment_log: JSON.stringify([{ dateISO: '2024-01-01T00:00:00.000Z' }]),
+          comment_log: JSON.stringify([
+            { dateISO: '2024-01-01T00:00:00.000Z' },
+          ]),
         }),
         realTimeEnabled: false,
         cdaToken: '',
-        client,
+        client: client as unknown as Client,
         commentsModelId: 'comments-model',
         isSyncAllowed: true,
         query: 'query',
@@ -291,18 +304,18 @@ describe('useCommentsSubscription', () => {
         list: vi.fn().mockResolvedValue([
           {
             id: 'comment-record-1',
-            content: '[{\"bad\": true}]',
+            content: '[{"bad": true}]',
           },
         ]),
       },
-    } as never;
+    };
 
     const { result, unmount } = renderHook(() =>
       useCommentsSubscription({
         ctx: createSidebarCtx('record-1'),
         realTimeEnabled: false,
         cdaToken: '',
-        client,
+        client: client as unknown as Client,
         commentsModelId: 'comments-model',
         isSyncAllowed: true,
         query: 'query',
@@ -318,6 +331,197 @@ describe('useCommentsSubscription', () => {
 
     expect(result.current?.comments).toEqual([]);
     expect(result.current?.storageProblem?.type).toBe('malformed_aggregate');
+    unmount();
+  });
+});
+
+describe('useCommentsSubscription integrity at scale', () => {
+  const stored = (id = 'comment-1', text = 'Stored'): CommentType[] => [
+    {
+      id,
+      dateISO: '2024-01-01T00:00:00.000Z',
+      content: [{ type: 'text', content: text }],
+      authorId: 'user-1',
+      upvoterIds: [],
+      replies: [],
+    },
+  ];
+
+  it('blocks duplicate aggregate records instead of hiding later comments', async () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'closed',
+      error: null,
+    });
+    const client = {
+      items: {
+        list: vi.fn().mockResolvedValue([
+          { id: 'aggregate-1', content: stored() },
+          { id: 'aggregate-2', content: stored('other-comment') },
+        ]),
+      },
+    };
+    const { result, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1'),
+        realTimeEnabled: false,
+        cdaToken: '',
+        client: client as unknown as Client,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+    await flushPromises();
+    expect(client.items.list).toHaveBeenCalledWith(
+      expect.objectContaining({ page: { limit: 2 } }),
+    );
+    expect(result.current?.storageProblem).toMatchObject({
+      type: 'malformed_aggregate',
+    });
+    expect(result.current?.commentRecordId).toBeNull();
+    expect(result.current?.comments).toEqual([]);
+    unmount();
+  });
+
+  it('does not overwrite optimistic comments with a fallback fetch during writes', async () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'closed',
+      error: null,
+    });
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const list = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      )
+      .mockResolvedValue([
+        { id: 'aggregate-1', content: stored('local-comment', 'Confirmed') },
+      ]);
+    const client = { items: { list } };
+    let isSyncAllowed = true;
+    const { result, rerender, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1'),
+        realTimeEnabled: false,
+        cdaToken: '',
+        client: client as unknown as Client,
+        commentsModelId: 'comments-model',
+        isSyncAllowed,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+    act(() =>
+      result.current?.setComments(stored('local-comment', 'Optimistic')),
+    );
+    isSyncAllowed = false;
+    rerender();
+    await act(async () => {
+      resolveFetch?.([
+        { id: 'aggregate-1', content: stored('old-comment', 'Old') },
+      ]);
+    });
+    expect(result.current?.comments[0]?.id).toBe('local-comment');
+    expect(list).toHaveBeenCalledTimes(1);
+    isSyncAllowed = true;
+    rerender();
+    await flushPromises();
+    expect(result.current?.comments[0]?.content[0]).toMatchObject({
+      content: 'Confirmed',
+    });
+    expect(list).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('keeps legacy detection pending until realtime data actually arrives', () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'connecting',
+      error: null,
+    });
+    const { result, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1', true, {
+          comment_log: '[{"legacy":true}]',
+        }),
+        realTimeEnabled: true,
+        cdaToken: 'token',
+        client: null,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+    expect(result.current?.isLoading).toBe(true);
+    expect(result.current?.storageProblem).toBeNull();
+    unmount();
+  });
+
+  it('rejects cached realtime responses belonging to a previous record', () => {
+    let recordId = 'record-1';
+    let data = {
+      allProjectComments: [
+        {
+          id: 'aggregate-1',
+          modelId: 'model-1',
+          recordId: 'record-1',
+          content: stored(),
+        },
+      ],
+    };
+    useQuerySubscriptionMock.mockImplementation(() => ({
+      data,
+      status: 'connected',
+      error: null,
+    }));
+    const { result, rerender, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx(recordId),
+        realTimeEnabled: true,
+        cdaToken: 'token',
+        client: null,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId },
+        filterParams: { modelId: 'model-1', recordId },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+    expect(result.current?.comments).toHaveLength(1);
+    recordId = 'record-2';
+    rerender();
+    expect(result.current?.comments).toEqual([]);
+    expect(result.current?.commentRecordId).toBeNull();
+    data = {
+      allProjectComments: [
+        {
+          id: 'aggregate-2',
+          modelId: 'model-1',
+          recordId: 'record-2',
+          content: stored('new-comment'),
+        },
+      ],
+    };
+    rerender();
+    expect(result.current?.comments[0]?.id).toBe('new-comment');
     unmount();
   });
 });

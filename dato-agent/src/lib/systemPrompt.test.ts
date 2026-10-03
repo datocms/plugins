@@ -120,6 +120,9 @@ describe('buildSystemPrompt', () => {
     );
     expect(prompt).toContain('never print the complete rawList response');
     expect(prompt).toContain('at most the first eight ranked candidates');
+    expect(prompt).toContain("exceeds a local tool's declared item limit");
+    expect(prompt).toContain('Do not send every affected ID');
+    expect(prompt).toContain('not the complete target set for a write');
     expect(prompt).toContain(
       'Inspect at most three shortlisted records in one batched read-only script',
     );
@@ -298,6 +301,144 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain(
       'After finding or changing several records, call present_records instead',
     );
+  });
+
+  it('requires complete incremental enumeration without broadening ordinary discovery', () => {
+    const prompt = buildSystemPrompt({
+      siteId: 'site-123',
+      environment: 'main',
+      isEnvironmentPrimary: true,
+    });
+
+    expect(prompt).toContain('200,000 records and 10,000 assets');
+    expect(prompt).toContain('Keep ordinary discovery bounded');
+    expect(prompt).toContain('returns one page, not the complete collection');
+    expect(prompt).toContain('regular records and uploads allow at most 500');
+    expect(prompt).toContain('nested: true allow at most 30');
+    expect(prompt).toContain('at most 200 records per request');
+    expect(prompt).toContain('never infer an unlimited batch');
+    expect(prompt).toContain('Process each page immediately');
+    expect(prompt).toContain('never accumulate all content');
+    expect(prompt).toContain('Start with concurrency 1');
+    expect(prompt).toContain('at most 4 concurrent requests');
+    expect(prompt).toContain('Use rawList metadata for the count');
+    expect(prompt).toContain('never print the complete rawList response');
+    expect(prompt).toContain('at most the first eight ranked candidates');
+  });
+
+  it('requires exact reviewed targets and acknowledges finite isolated runners', () => {
+    const prompt = buildSystemPrompt({
+      siteId: 'site-123',
+      environment: 'staging',
+      isEnvironmentPrimary: false,
+    });
+
+    expect(prompt).toContain('freeze the exact target IDs before a write');
+    expect(prompt).toContain('never mutate while paginating a filter');
+    expect(prompt).toContain('A changing collection is not a snapshot');
+    expect(prompt).toContain('does not extend a runner');
+    expect(prompt).toContain('Stored TypeScript source does not persist');
+    expect(prompt).toContain('Do not invent background jobs');
+    expect(prompt).toContain(
+      'explain the concrete limitation before dispatching',
+    );
+    expect(prompt).toContain(
+      'never replace reviewed IDs with a broad live filter',
+    );
+    expect(prompt).toContain('silently process only a prefix');
+    expect(prompt).toContain(
+      'Unsafe calls must always send the complete TypeScript source',
+    );
+  });
+
+  it.each(['project', 'record'] as const)(
+    'keeps automatic batches continuous and progress truthful on the %s surface',
+    (surface) => {
+      const prompt = buildSystemPrompt({
+        siteId: 'site-123',
+        environment: 'main',
+        isEnvironmentPrimary: true,
+        surface,
+      });
+
+      expect(prompt).toContain(
+        'continuously and automatically through completion',
+      );
+      expect(prompt).toContain('Do not introduce a required pause');
+      expect(prompt).toContain('manual-resume workflow');
+      expect(prompt).toContain('Retain the host');
+      expect(prompt).toContain(
+        'required write approval and exact project boundary',
+      );
+      expect(prompt).toContain(
+        'counters actually supplied by the host or tool results',
+      );
+      expect(prompt).toContain('never describe it as live progress');
+      expect(prompt).toContain('never invent percentages or an ETA');
+    },
+  );
+
+  it('prevents ambiguous mutation retries and preserves partial-outcome accounting', () => {
+    const prompt = buildSystemPrompt({
+      siteId: 'site-123',
+      environment: 'main',
+      isEnvironmentPrimary: true,
+    });
+
+    expect(prompt).toContain('60 requests every 3 seconds');
+    expect(prompt).toContain(
+      'official client handles 429 responses automatically',
+    );
+    expect(prompt).toContain('small bounded retry count with backoff');
+    expect(prompt).toContain(
+      'never blindly retry create, duplicate, delete, publish',
+    );
+    expect(prompt).toContain(
+      'unconfirmed approved write still requires the editor',
+    );
+    expect(prompt).toContain('Do not invent an idempotency-key option');
+    expect(prompt).toContain(
+      'confirmed-success, skipped, failed, and unconfirmed counts separately',
+    );
+    expect(prompt).toContain("asynchronous job's documented final result");
+    expect(prompt).toContain(
+      'official CMA client already awaits job completion',
+    );
+    expect(prompt).toContain(
+      'isError: false alone is not confirmation of a write',
+    );
+    expect(prompt).toContain('Saving source with no_execute does not execute');
+    expect(prompt).toContain(
+      'tool-level success is not proof that every record changed',
+    );
+    expect(prompt).toContain(
+      'If an outcome is unknown, preserve that category',
+    );
+  });
+
+  it('protects localized, nested, and referenced content during massive updates', () => {
+    const prompt = buildSystemPrompt({
+      siteId: 'site-123',
+      environment: 'main',
+      isEnvironmentPrimary: true,
+      currentRecord: {
+        id: 'record-456',
+        hasUnsavedChanges: true,
+      },
+    });
+
+    expect(prompt).toContain(
+      'Preserve all unedited fields, locale keys, null values, block IDs and order',
+    );
+    expect(prompt).toContain('DAST nodes/marks and embedded references');
+    expect(prompt).toContain(
+      'protect reference traversal from cycles and repeated visits',
+    );
+    expect(prompt).toContain('omitted fields stay unchanged');
+    expect(prompt).toContain('meta.current_version optimistic locking');
+    expect(prompt).toContain('classify STALE_ITEM_VERSION as a conflict');
+    expect(prompt).toContain('Re-read only the exact approved IDs');
+    expect(prompt).toContain('Do not remotely update or delete this record');
   });
 
   it('uses record-sidebar tools safely before a new record has been saved', () => {

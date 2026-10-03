@@ -324,7 +324,7 @@
 .actions {
   position: absolute;
   top: 8px;
-  right: 4px;
+  right: 36px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -372,16 +372,7 @@
   color: var(--color--ink);
 }
 
-/* Hide trigger and show full actions on wrapper hover or focus-within */
-.actionsWrapper:hover .actionsTrigger,
-.actionsWrapper:focus-within .actionsTrigger {
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.1s ease,
-    visibility 0s linear 0.1s;
-}
-
+/* Keep the trigger in place while actions appear beside it. */
 .actionsWrapper:hover .actions,
 .actionsWrapper:focus-within .actions {
   opacity: 1;

@@ -14,8 +14,8 @@ import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import SettingsAreaSidebar from './entrypoints/SettingsAreaSidebar';
-import { isFieldCopyConfigArray } from './types';
 import { render } from './utils/render';
+import { isFieldCopyConfigured } from './utils/selection';
 
 /**
  * Initialize the DatoCMS plugin with its configuration
@@ -63,21 +63,10 @@ connect({
    * based on the plugin's configuration settings
    */
   overrideFieldExtensions(field: Field, ctx: OverrideFieldExtensionsCtx) {
-    // Retrieve field configurations from plugin parameters with type safety
-    const paramConfigs = ctx.plugin.attributes.parameters?.fieldConfigs;
-    const configs = isFieldCopyConfigArray(paramConfigs)
-      ? paramConfigs
-      : undefined;
-
-    // Exit early if no configurations exist
-    if (!configs || !Array.isArray(configs)) {
-      return;
-    }
-
-    // Check if the current field is configured to show copy button
-    const isConfigured = configs.some(
-      (config) =>
-        config.modelId === ctx.itemType.id && config.fieldId === field.id,
+    const isConfigured = isFieldCopyConfigured(
+      ctx.plugin.attributes.parameters?.fieldConfigs,
+      field.relationships.item_type.data.id,
+      field.id,
     );
 
     // Add the copy button addon to configured fields

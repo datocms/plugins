@@ -1,414 +1,373 @@
-import type { SimpleSchemaTypes } from '@datocms/cma-client-browser';
-import { buildClient } from '@datocms/cma-client-browser';
+import {
+  ApiError,
+  buildClient,
+  type Client,
+  type SimpleSchemaTypes,
+} from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import type {
-  Asset,
-  AssetOptimizerResult,
-  OptimizationSettings,
+import {
+  createBoundedCmaFetch,
+  replaceAssetFromBlob,
+} from '../utils/assetReplacer';
+import {
+  CmaRequestScheduler,
+  retryCmaRead,
+  throwIfAborted,
+} from '../utils/cmaRequests';
+import { formatFileSize } from '../utils/formatters';
+import {
+  downloadOptimizedImage,
+  getOptimizedFilename,
+  ImageSizeLimitError,
+  MAX_OPTIMIZED_IMAGE_BYTES,
+} from '../utils/imageTransfer';
+import {
+  type Asset,
+  type AssetOptimizerResult,
+  getOptimizationParams,
+  normalizeSettings,
+  type OptimizationSettings,
 } from '../utils/optimizationUtils';
-import { getOptimizationParams } from '../utils/optimizationUtils';
 
-/**
- * Interface for an asset optimization task
- */
-interface AssetOptimizationTask {
-  asset: Asset;
-  retryCount: number;
+export interface OptimizationProgress {
+  phase: 'loading' | 'processing';
+  current: number;
+  total: number;
+  asset?: Asset;
 }
 
-/**
- * Process a single asset for optimization
- *
- * @param asset The asset to optimize
- * @param settings Optimization settings
- * @param client The DatoCMS client
- * @param addLog Function to add log entries
- * @param addSizeComparisonLog Function to add size comparison log entries
- * @returns Result object with optimization details or null if skipped
- */
-async function processAsset(
-  asset: Asset,
-  settings: OptimizationSettings,
-  client: ReturnType<typeof buildClient>,
-  addLog: (message: string) => void,
-  addSizeComparisonLog: (
-    assetPath: string,
-    originalSize: number,
-    optimizedSize: number,
-  ) => void,
-): Promise<{
-  status: 'optimized' | 'skipped' | 'failed';
-  asset: Asset;
-  optimizedSize?: number;
-  error?: string;
-}> {
-  try {
-    addLog(`Processing asset: ${asset.path} (${formatFileSize(asset.size)})`);
-
-    // Determine optimization parameters based on image type and size
-    const optimizationParams = getOptimizationParams(asset, settings);
-
-    if (!optimizationParams) {
-      addLog(
-        `Skipping asset ${asset.path}: No suitable optimization parameters found.`,
-      );
-      return { status: 'skipped', asset };
-    }
-
-    // Create URL with optimization parameters
-    const optimizedUrl = `${asset.url}${optimizationParams}`;
-    addLog(`Optimizing with parameters: ${optimizationParams}`);
-
-    // Fetch the optimized image
-    const response = await fetch(optimizedUrl);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch optimized image: ${response.statusText}`,
-      );
-    }
-
-    const optimizedImageBlob = await response.blob();
-    addLog(`Optimized image size: ${formatFileSize(optimizedImageBlob.size)}`);
-
-    // Skip if optimized image is not smaller by the minimum reduction percentage
-    const minimumSizeThreshold =
-      asset.size * (1 - settings.minimumReduction / 100);
-    if (optimizedImageBlob.size > minimumSizeThreshold) {
-      addLog(
-        `Skipping asset ${asset.path}: Optimization didn't achieve minimum ${settings.minimumReduction}% reduction.`,
-      );
-      return { status: 'skipped', asset };
-    }
-
-    // Upload the optimized image back to DatoCMS
-    await client.uploads.createFromFileOrBlob({
-      fileOrBlob: optimizedImageBlob,
-      filename: asset.basename,
-      tags: asset.tags || [],
-    });
-
-    addSizeComparisonLog(asset.path, asset.size, optimizedImageBlob.size);
-    return {
-      status: 'optimized',
-      asset,
-      optimizedSize: optimizedImageBlob.size,
-    };
-  } catch (error) {
-    addLog(
-      `Error optimizing asset ${asset.path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return {
-      status: 'failed',
-      asset,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Sleep for a specified duration
- *
- * @param {number} ms - Time to sleep in milliseconds
- * @returns {Promise<void>}
- */
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-type OptimizationAccumulator = {
-  optimized: number;
-  skipped: number;
-  failed: number;
-  optimizedAssets: Array<{
-    path: string;
-    url: string;
-    id: string;
-    originalSize: number;
-    optimizedSize: number;
-  }>;
-  skippedAssets: Array<{ path: string; url: string; id: string }>;
-  failedAssets: Array<{ path: string; url: string; id: string }>;
-};
-
-async function processSingleQueueTask({
-  task,
-  settings,
-  client,
-  addLog,
-  addSizeComparisonLog,
-  acc,
-  shouldDelay,
-}: {
-  task: AssetOptimizationTask;
-  settings: OptimizationSettings;
-  client: ReturnType<typeof buildClient>;
-  addLog: (message: string) => void;
-  addSizeComparisonLog: (
-    assetPath: string,
+interface OptimizationOptions {
+  preview?: boolean;
+  collectionId?: string;
+  signal?: AbortSignal;
+  concurrency?: number;
+  addLog?: (message: string) => void;
+  addSizeComparisonLog?: (
+    path: string,
     originalSize: number,
     optimizedSize: number,
   ) => void;
-  acc: OptimizationAccumulator;
-  shouldDelay: boolean;
-}): Promise<void> {
-  try {
-    if (shouldDelay) {
-      await sleep(500);
-    }
-
-    const result = await processAsset(
-      task.asset,
-      settings,
-      client,
-      addLog,
-      addSizeComparisonLog,
-    );
-
-    const assetRef = {
-      path: task.asset.path,
-      url: task.asset.url,
-      id: task.asset.id,
-    };
-
-    if (result.status === 'optimized' && result.optimizedSize) {
-      acc.optimizedAssets.push({
-        ...assetRef,
-        originalSize: task.asset.size,
-        optimizedSize: result.optimizedSize,
-      });
-      acc.optimized++;
-    } else if (result.status === 'skipped') {
-      acc.skippedAssets.push(assetRef);
-      acc.skipped++;
-    } else {
-      acc.failedAssets.push(assetRef);
-      acc.failed++;
-    }
-  } catch (error) {
-    addLog(
-      `Unexpected error processing ${task.asset.path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    acc.failedAssets.push({
-      path: task.asset.path,
-      url: task.asset.url,
-      id: task.asset.id,
-    });
-    acc.failed++;
-  }
+  onProgress?: (progress: OptimizationProgress) => void;
 }
 
-/**
- * Handle the optimization process for assets with parallel processing
- * @param ctx DatoCMS context
- * @param settings Optimization settings
- * @param addLog Function to add log entries
- * @param addSizeComparisonLog Function to add size comparison log entries
- * @param setProgress Function to update the progress percentage
- * @param concurrency Number of concurrent optimizations to perform
- * @returns The result of the optimization process
- */
+export interface OptimizationDependencies {
+  scheduler?: CmaRequestScheduler;
+  download?: typeof downloadOptimizedImage;
+  filename?: typeof getOptimizedFilename;
+  replace?: typeof replaceAssetFromBlob;
+}
+
+function uploadToAsset(upload: SimpleSchemaTypes.Upload): Asset {
+  return {
+    id: upload.id,
+    is_image: upload.is_image,
+    size: upload.size,
+    url: upload.url,
+    path: upload.path,
+    basename: upload.basename,
+    width: upload.width ?? undefined,
+    height: upload.height ?? undefined,
+    md5: upload.md5,
+    updated_at: upload.updated_at,
+    format: upload.format ?? undefined,
+  };
+}
+
+function assertAssetCollection(
+  upload: SimpleSchemaTypes.Upload,
+  collectionId?: string,
+): void {
+  if (collectionId && upload.upload_collection?.id !== collectionId)
+    throw new Error(
+      'An asset outside the selected collection was returned. No assets were replaced.',
+    );
+}
+
+export async function collectOptimizableAssets(
+  client: Client,
+  threshold: number,
+  scheduler: CmaRequestScheduler,
+  signal?: AbortSignal,
+  onLoaded?: (count: number) => void,
+  collectionId?: string,
+): Promise<Asset[]> {
+  const assets: Asset[] = [];
+  const seen = new Set<string>();
+  // Replacing during offset pagination shrinks the size filter and skips uploads.
+  // Complete discovery first; retain only lightweight metadata, never image data.
+  for (let offset = 0; ; offset += 500) {
+    // biome-ignore lint/performance/noAwaitInLoops: Discover sequential pages before writing to the filtered collection.
+    const page = await retryCmaRead(
+      () =>
+        client.uploads.list({
+          filter: {
+            fields: {
+              type: { eq: 'image' },
+              // The CMA accepts integer byte counts, including decimal MB settings.
+              size: { gte: Math.ceil(threshold) },
+            },
+            ...(collectionId ? { collection_id: { eq: collectionId } } : {}),
+          },
+          order_by: 'id_ASC',
+          page: { limit: 500, offset },
+        }),
+      scheduler,
+      signal,
+    );
+    for (const upload of page) {
+      assertAssetCollection(upload, collectionId);
+      if (seen.has(upload.id)) continue;
+      seen.add(upload.id);
+      if (upload.is_image && upload.size >= threshold)
+        assets.push(uploadToAsset(upload));
+    }
+    onLoaded?.(assets.length);
+    if (page.length < 500) break;
+  }
+  return assets;
+}
+
+function emptyResult(): AssetOptimizerResult {
+  return {
+    optimized: 0,
+    skipped: 0,
+    failed: 0,
+    totalAssets: 0,
+    optimizedAssets: [],
+    skippedAssets: [],
+    failedAssets: [],
+  };
+}
+
+function assetRef(asset: Asset) {
+  return { id: asset.id, path: asset.path, url: asset.url };
+}
+
+async function processAsset(
+  asset: Asset,
+  settings: OptimizationSettings,
+  client: Client,
+  scheduler: CmaRequestScheduler,
+  options: OptimizationOptions,
+  dependencies: OptimizationDependencies,
+  result: AssetOptimizerResult,
+): Promise<void> {
+  const log = options.addLog ?? (() => {});
+  const params = getOptimizationParams(asset, settings);
+  const maxBytes = Math.min(
+    MAX_OPTIMIZED_IMAGE_BYTES,
+    Math.floor(asset.size * (1 - settings.minimumReduction / 100)),
+  );
+  if (!params || maxBytes <= 0) {
+    result.skipped++;
+    result.skippedAssets.push(assetRef(asset));
+    return;
+  }
+  const optimizedUrl = new URL(asset.url);
+  for (const [key, value] of new URLSearchParams(params))
+    optimizedUrl.searchParams.set(key, value);
+  log(`Processing asset: ${asset.path} (${formatFileSize(asset.size)})`);
+  let blob: Blob;
+  try {
+    blob = await (dependencies.download ?? downloadOptimizedImage)(
+      optimizedUrl.toString(),
+      maxBytes,
+      options.signal,
+    );
+  } catch (error) {
+    if (!(error instanceof ImageSizeLimitError)) throw error;
+    result.skipped++;
+    result.skippedAssets.push(assetRef(asset));
+    log(
+      `Skipping ${asset.path}: insufficient size reduction or image exceeds memory limit.`,
+    );
+    return;
+  }
+  throwIfAborted(options.signal);
+  if (blob.size === 0) throw new Error('The optimized image is empty');
+  if (blob.size > maxBytes || blob.size >= asset.size) {
+    result.skipped++;
+    result.skippedAssets.push(assetRef(asset));
+    log(
+      `Skipping ${asset.path}: insufficient size reduction or image exceeds memory limit.`,
+    );
+    return;
+  }
+  let reference = assetRef(asset);
+  let optimizedSize = blob.size;
+  if (!options.preview) {
+    const filename = await (dependencies.filename ?? getOptimizedFilename)(
+      asset,
+      blob,
+    );
+    const updated = await (dependencies.replace ?? replaceAssetFromBlob)(
+      asset,
+      blob,
+      filename,
+      client,
+      {
+        signal: options.signal,
+        beforeRequest: (signal?: AbortSignal) =>
+          scheduler.beforeRequest(signal),
+        onRateLimit: (ms: number) => scheduler.onRateLimit(ms),
+      },
+    );
+    reference = { id: updated.id, path: updated.path, url: updated.url };
+    optimizedSize = updated.size;
+  }
+  result.optimized++;
+  result.optimizedAssets.push({
+    ...reference,
+    originalSize: asset.size,
+    optimizedSize,
+  });
+  options.addSizeComparisonLog?.(asset.path, asset.size, optimizedSize);
+}
+
+function recordFailure(
+  asset: Asset,
+  error: unknown,
+  result: AssetOptimizerResult,
+  options: OptimizationOptions,
+): boolean {
+  if (
+    options.signal?.aborted &&
+    error instanceof Error &&
+    error.name === 'AbortError'
+  )
+    return false;
+  const message = error instanceof Error ? error.message : String(error);
+  result.failed++;
+  result.failedAssets.push({ ...assetRef(asset), error: message });
+  options.addLog?.(`Error processing ${asset.path}: ${message}`);
+  if (error instanceof ApiError && error.response.status === 401)
+    result.stoppedReason =
+      'API access expired. No further assets were scheduled.';
+  return true;
+}
+
+export async function runAssetOptimization(
+  client: Client,
+  inputSettings: OptimizationSettings,
+  options: OptimizationOptions = {},
+  dependencies: OptimizationDependencies = {},
+): Promise<AssetOptimizerResult> {
+  const settings = normalizeSettings(inputSettings);
+  const scheduler = dependencies.scheduler ?? new CmaRequestScheduler();
+  const result = emptyResult();
+  let assets: Asset[];
+  try {
+    assets = await collectOptimizableAssets(
+      client,
+      settings.largeAssetThreshold * 1024 * 1024,
+      scheduler,
+      options.signal,
+      (total) => {
+        result.totalAssets = total;
+        options.onProgress?.({ phase: 'loading', current: 0, total });
+      },
+      options.collectionId,
+    );
+  } catch (error) {
+    if (!options.signal?.aborted) throw error;
+    return {
+      ...result,
+      cancelled: true,
+      unprocessed: result.totalAssets,
+      inventoryIncomplete: true,
+    };
+  }
+  result.totalAssets = assets.length;
+  options.addLog?.(`Found ${assets.length} optimizable images.`);
+  options.onProgress?.({
+    phase: 'processing',
+    current: 0,
+    total: assets.length,
+    asset: assets[0],
+  });
+  const requestedConcurrency = options.concurrency ?? 2;
+  const concurrency = Number.isFinite(requestedConcurrency)
+    ? Math.min(3, Math.max(1, Math.floor(requestedConcurrency)))
+    : 2;
+  let nextIndex = 0;
+  let processed = 0;
+  let lastProgressAt = 0;
+  const reportProgress = (asset: Asset) => {
+    processed++;
+    if (Date.now() - lastProgressAt < 200 && processed !== assets.length)
+      return;
+    lastProgressAt = Date.now();
+    options.onProgress?.({
+      phase: 'processing',
+      current: processed,
+      total: assets.length,
+      asset,
+    });
+  };
+  const worker = async () => {
+    while (!options.signal?.aborted && !result.stoppedReason) {
+      const index = nextIndex++;
+      const asset = assets[index];
+      if (!asset) return;
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: Each worker holds at most one image and releases it before taking another.
+        await processAsset(
+          asset,
+          settings,
+          client,
+          scheduler,
+          options,
+          dependencies,
+          result,
+        );
+      } catch (error) {
+        if (!recordFailure(asset, error, result, options)) return;
+      }
+      reportProgress(asset);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, assets.length) }, worker),
+  );
+  result.cancelled = options.signal?.aborted ?? false;
+  result.unprocessed = assets.length - processed;
+  options.onProgress?.({
+    phase: 'processing',
+    current: processed,
+    total: assets.length,
+  });
+  return result;
+}
+
 export async function optimizeAssets(
   ctx: RenderPageCtx,
   settings: OptimizationSettings,
   addLog: (message: string) => void,
   addSizeComparisonLog: (
-    assetPath: string,
+    path: string,
     originalSize: number,
     optimizedSize: number,
   ) => void,
   setProgress: (progress: number) => void,
-  concurrency = 3,
+  concurrency = 2,
 ): Promise<AssetOptimizerResult> {
-  // Initialize accumulator for results
-  const acc: OptimizationAccumulator = {
-    optimized: 0,
-    skipped: 0,
-    failed: 0,
-    optimizedAssets: [],
-    skippedAssets: [],
-    failedAssets: [],
-  };
-  let processed = 0;
-
-  // Get access token from the plugin context
-  const token = ctx.currentUserAccessToken;
-
-  if (!token) {
-    addLog('Error: Access token not available');
-    return {
-      optimized: acc.optimized,
-      skipped: acc.skipped,
-      failed: acc.failed,
-      totalAssets: 0,
-      optimizedAssets: acc.optimizedAssets,
-      skippedAssets: acc.skippedAssets,
-      failedAssets: acc.failedAssets,
-    };
-  }
-
-  // Initialize CMA client
+  if (!ctx.currentUserAccessToken)
+    throw new Error('Access token not available');
   const client = buildClient({
-    apiToken: token,
+    apiToken: ctx.currentUserAccessToken,
     environment: ctx.environment,
     baseUrl: ctx.cmaBaseUrl,
+    autoRetry: false,
+    requestTimeout: 30_000,
+    fetchFn: createBoundedCmaFetch(),
   });
-
-  try {
-    // Fetch all assets from the site
-    const assets = await client.items.list({
-      filter: {
-        type: 'asset',
-      },
-      page: {
-        // Get all assets
-        limit: 100,
-        offset: 0,
-      },
-    });
-
-    const totalAssets = assets.length;
-    addLog(`Found ${totalAssets} assets to process.`);
-    setProgress(0);
-
-    /**
-     * Converts a DatoCMS CMA Upload object to our internal Asset type
-     */
-    function uploadToAsset(upload: SimpleSchemaTypes.Upload): Asset {
-      return {
-        id: upload.id,
-        is_image: upload.is_image || false,
-        size: upload.size || 0,
-        url: upload.url || '',
-        path: upload.path || '',
-        basename: upload.basename || '',
-        width: upload.width || undefined,
-        height: upload.height || undefined,
-        tags: upload.tags || [],
-      };
-    }
-
-    // Filter out assets that are not images or don't have URLs
-    const uploadAssets = [];
-
-    for (const item of assets) {
-      // Check if the item has the expected upload properties
-      if (
-        'url' in item &&
-        'is_image' in item &&
-        'size' in item &&
-        'path' in item &&
-        'basename' in item &&
-        typeof item.url === 'string' &&
-        typeof item.is_image === 'boolean' &&
-        item.is_image &&
-        item.url
-      ) {
-        // This item has the properties we expect from a Upload
-        // Use a type-safe two-step cast by going through unknown first
-        uploadAssets.push(item);
-      }
-    }
-
-    // We've verified these items have Upload properties, so we can safely map them
-    // Use a two-step cast through unknown first to satisfy TypeScript
-    const optimizableAssets = uploadAssets.map((item) =>
-      uploadToAsset(item as unknown as SimpleSchemaTypes.Upload),
-    );
-
-    addLog(`Found ${optimizableAssets.length} optimizable images.`);
-
-    // Create a queue of assets to process
-    const queue: AssetOptimizationTask[] = optimizableAssets.map((asset) => ({
-      asset,
-      retryCount: 0,
-    }));
-    let activeCount = 0;
-
-    // Function to update progress
-    const updateProgress = () => {
-      processed++;
-      const progressPercentage = Math.floor(
-        (processed / optimizableAssets.length) * 100,
-      );
-      setProgress(progressPercentage);
-    };
-
-    // Process queue until empty
-    const processQueue = async () => {
-      // Process assets concurrently up to the concurrency limit
-      const promises: Promise<void>[] = [];
-
-      // Start processing assets up to the concurrency limit
-      while (queue.length > 0 && activeCount < concurrency) {
-        const task = queue.shift();
-        if (!task) continue;
-
-        activeCount++;
-
-        const processPromise = processSingleQueueTask({
-          task,
-          settings,
-          client,
-          addLog,
-          addSizeComparisonLog,
-          acc,
-          shouldDelay: activeCount > 1,
-        }).then(() => {
-          updateProgress();
-          activeCount--;
-        });
-
-        promises.push(processPromise);
-      }
-
-      // Wait for all active processes to complete
-      await Promise.all(promises);
-
-      // If there are still items in the queue, continue processing
-      if (queue.length > 0) {
-        return processQueue();
-      }
-    };
-
-    // Start the parallel processing
-    await processQueue();
-
-    // Ensure progress bar reaches 100%
-    setProgress(100);
-
-    // Return the final result
-    return {
-      optimized: acc.optimized,
-      skipped: acc.skipped,
-      failed: acc.failed,
-      totalAssets: optimizableAssets.length,
-      optimizedAssets: acc.optimizedAssets,
-      skippedAssets: acc.skippedAssets,
-      failedAssets: acc.failedAssets,
-    };
-  } catch (error) {
-    addLog(
-      `Error fetching assets: ${error instanceof Error ? error.message : String(error)}`,
-    );
-
-    // Return the result with the error
-    return {
-      optimized: acc.optimized,
-      skipped: acc.skipped,
-      failed: acc.failed,
-      totalAssets: 0,
-      optimizedAssets: acc.optimizedAssets,
-      skippedAssets: acc.skippedAssets,
-      failedAssets: acc.failedAssets,
-    };
-  }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} bytes`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return runAssetOptimization(client, settings, {
+    concurrency,
+    addLog,
+    addSizeComparisonLog,
+    onProgress: ({ phase, current, total }) =>
+      setProgress(
+        phase === 'processing' ? (total ? (current / total) * 100 : 100) : 0,
+      ),
+  });
 }

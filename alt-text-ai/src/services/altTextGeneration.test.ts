@@ -2,11 +2,15 @@ import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
   FileFieldValue,
+  FieldDropdownActionsCtx,
+  Item,
 } from 'datocms-plugin-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ALT_TEXT_PROMPT } from '../config';
 import { createAltTextProvider } from '../providers/factory';
 import type { AltTextProvider } from '../providers/types';
+import { observeFieldContext } from './fieldContext';
+import { AltTextProviderError } from '../providers/errors';
 import {
   hasGeneratableFieldValue,
   isFileFieldValue,
@@ -216,6 +220,9 @@ describe('runAltGenerationForField', () => {
       apiToken: 'dato-token',
       environment: 'sandbox',
       baseUrl: 'https://cma.example.com',
+      autoRetry: false,
+      requestTimeout: 125_000,
+      fetchFn: expect.any(Function),
     });
     expect(createAltTextProvider).toHaveBeenCalledWith({
       provider: 'alttext-ai',
@@ -335,12 +342,12 @@ describe('runAltGenerationForField', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(generate).toHaveBeenCalledOnce();
 
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(365_000);
       await generation;
 
       expect(generate.mock.calls[0][0].signal?.aborted).toBe(true);
       expect(alert).toHaveBeenCalledWith(
-        'Could not generate alt text: Alt text generation timed out after 60 seconds.',
+        'Could not generate alt text: Alt text generation timed out after 365 seconds.',
       );
       expect(disableField.mock.calls).toEqual([
         ['image', true],
@@ -379,5 +386,193 @@ describe('mapSettledWithConcurrency', () => {
       { status: 'rejected', reason: expect.any(Error) },
       { status: 'fulfilled', value: 3 },
     ]);
+  });
+});
+
+describe('large and changing field values', () => {
+  it('applies 10,000 gallery entries incrementally and generates repeated images once', async () => {
+    const gallery = Array.from({ length: 10_000 }, (_, index) => ({
+      ...asset(`image-${index % 10}`),
+      title: `Title ${index}`,
+      custom_data: { index: String(index), credit: 'Photographer' },
+      focal_point: { x: 0.2, y: 0.8 },
+    }));
+    let requests = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockImplementation(
+      async (id) =>
+        ({
+          id,
+          is_image: true,
+          url: `https://example.imgix.net/${id}.jpg`,
+          filename: `${id}.jpg`,
+        }) as Awaited<ReturnType<Client['uploads']['find']>>,
+    );
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockImplementation(async ({ assetId }) => {
+      requests += 1;
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await Promise.resolve();
+      active -= 1;
+      return `Alt ${assetId}`;
+    });
+    mockGenerationDependencies(uploadsFind, generate, 'openai');
+    const { ctx, notice, setFieldValue } = fieldContext(gallery, {
+      provider: 'openai',
+      openAiApiKey: 'mock-key',
+      openAiModel: 'vision-model',
+    });
+    let firstWriteAt = 0;
+    let finalValue: unknown;
+    setFieldValue.mockImplementation(async (_path, value) => {
+      firstWriteAt ||= requests;
+      finalValue = value;
+    });
+    await runAltGenerationForField(ctx, 'missing-only');
+    expect(maximumActive).toBe(3);
+    expect(requests).toBe(10);
+    expect(uploadsFind).toHaveBeenCalledTimes(10);
+    expect(firstWriteAt).toBe(10);
+    expect(setFieldValue).toHaveBeenCalledTimes(200);
+    expect(finalValue).toEqual(
+      gallery.map((entry) => ({ ...entry, alt: `Alt ${entry.upload_id}` })),
+    );
+    expect(notice).toHaveBeenCalledWith(
+      '10000 alt texts generated with OpenAI.',
+    );
+    expect(gallery.every((entry) => entry.alt === null)).toBe(true);
+  });
+
+  it('merges current single-file metadata and preserves concurrent alt edits in overwrite mode', async () => {
+    const current = asset('one', 'Original');
+    const { ctx, notice, setFieldValue } = fieldContext(current, {
+      apiKey: 'mock-key',
+    });
+    ctx.item = { id: 'saved-record' } as Item;
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockResolvedValue({
+      id: 'one',
+      is_image: true,
+      url: 'https://example.imgix.net/one.jpg',
+      filename: 'one.jpg',
+    } as Awaited<ReturnType<Client['uploads']['find']>>);
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockImplementation(async () => {
+      observeFieldContext({
+        ...ctx,
+        formValues: {
+          image: { ...current, alt: 'Editor changed it', title: 'New title' },
+        },
+      } as unknown as FieldDropdownActionsCtx);
+      return 'Generated';
+    });
+    mockGenerationDependencies(uploadsFind, generate);
+    await runAltGenerationForField(ctx, 'overwrite-all');
+    expect(setFieldValue).not.toHaveBeenCalled();
+    expect(notice).toHaveBeenCalledWith(
+      'Newer field changes were preserved; no alt text was changed.',
+    );
+  });
+
+  it('keeps current title, custom data and focal point when only the alt is generated', async () => {
+    const current = asset('one');
+    const latest = {
+      ...current,
+      title: 'New title',
+      custom_data: { credit: 'Latest' },
+      focal_point: { x: 0.1, y: 0.9 },
+    };
+    const { ctx, setFieldValue } = fieldContext(current, {
+      apiKey: 'mock-key',
+    });
+    ctx.item = { id: 'saved-record' } as Item;
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockResolvedValue({
+      id: 'one',
+      is_image: true,
+      url: 'https://example.imgix.net/one.jpg',
+      filename: 'one.jpg',
+    } as Awaited<ReturnType<Client['uploads']['find']>>);
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockImplementation(async () => {
+      observeFieldContext({
+        ...ctx,
+        formValues: { image: latest },
+      } as unknown as FieldDropdownActionsCtx);
+      return 'Generated';
+    });
+    mockGenerationDependencies(uploadsFind, generate);
+    await runAltGenerationForField(ctx, 'missing-only');
+    expect(setFieldValue).toHaveBeenCalledWith('image', {
+      ...latest,
+      alt: 'Generated',
+    });
+  });
+
+  it('does not apply generated gallery alts after the gallery is reordered', async () => {
+    const gallery = [asset('one'), asset('two')];
+    const { ctx, alert, setFieldValue } = fieldContext(gallery, {
+      apiKey: 'mock-key',
+    });
+    ctx.item = { id: 'saved-record' } as Item;
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockImplementation(
+      async (id) =>
+        ({
+          id,
+          is_image: true,
+          url: `https://example.imgix.net/${id}.jpg`,
+          filename: `${id}.jpg`,
+        }) as Awaited<ReturnType<Client['uploads']['find']>>,
+    );
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockImplementation(async () => {
+      observeFieldContext({
+        ...ctx,
+        formValues: { image: [...gallery].reverse() },
+      } as unknown as FieldDropdownActionsCtx);
+      return 'Generated';
+    });
+    mockGenerationDependencies(uploadsFind, generate);
+    await runAltGenerationForField(ctx, 'missing-only');
+    expect(setFieldValue).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledWith(
+      expect.stringContaining('gallery changed'),
+    );
+  });
+
+  it('stops new gallery generation after a fatal provider failure', async () => {
+    const gallery = Array.from({ length: 10_000 }, (_, index) =>
+      asset(`image-${index}`),
+    );
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockImplementation(
+      async (id) =>
+        ({
+          id,
+          is_image: true,
+          url: `https://example.imgix.net/${id}.jpg`,
+          filename: `${id}.jpg`,
+        }) as Awaited<ReturnType<Client['uploads']['find']>>,
+    );
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockRejectedValue(
+      new AltTextProviderError('openai', 'quota', 'Quota exceeded'),
+    );
+    mockGenerationDependencies(uploadsFind, generate, 'openai');
+    const { ctx, notice, setFieldValue } = fieldContext(gallery, {
+      provider: 'openai',
+      openAiApiKey: 'mock-key',
+      openAiModel: 'vision-model',
+    });
+    await runAltGenerationForField(ctx, 'missing-only');
+    expect(generate.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(setFieldValue).not.toHaveBeenCalled();
+    expect(notice).toHaveBeenCalledWith(
+      expect.stringContaining('Generation stopped after a service error'),
+    );
   });
 });

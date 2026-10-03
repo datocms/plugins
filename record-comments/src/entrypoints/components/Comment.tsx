@@ -1,12 +1,17 @@
 import type { ResolvedCommentType } from '@ctypes/comments';
 import { isContentEmpty } from '@ctypes/comments';
 // Types and utilities
-import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 import { useCommentEditor } from '@hooks/useCommentEditor';
 // Hooks
 import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
-import { areRepliesEqual, areSegmentsEqual } from '@utils/comparisonHelpers';
+import barStyles from '@styles/commentbar.module.css';
+import {
+  areRepliesEqual,
+  areSegmentsEqual,
+  areStoredSegmentsEqual,
+} from '@utils/comparisonHelpers';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
   memo,
@@ -39,6 +44,7 @@ type CommentProps = {
     id: string,
     newContent: CommentSegment[],
     parentCommentId?: string,
+    expectedContent?: StoredCommentSegment[],
   ) => boolean;
   upvoteComment: (
     id: string,
@@ -88,6 +94,10 @@ function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
 
   if (prevComment.id !== nextComment.id) return false;
   if (!areSegmentsEqual(prevComment.content, nextComment.content)) return false;
+  if (
+    !areStoredSegmentsEqual(prevComment.storedContent, nextComment.storedContent)
+  )
+    return false;
   // Compare upvoters arrays (resolved authors)
   if (prevComment.upvoters.length !== nextComment.upvoters.length) return false;
   if (
@@ -226,6 +236,25 @@ function CommentReplyToggle({
   );
 }
 
+function LoadMoreReplies({
+  hiddenCount,
+  onLoadMore,
+}: {
+  hiddenCount: number;
+  onLoadMore: () => void;
+}) {
+  if (hiddenCount === 0) return null;
+  return (
+    <button
+      type="button"
+      className={barStyles.loadMoreButton}
+      onClick={onLoadMore}
+    >
+      Load more replies
+    </button>
+  );
+}
+
 const Comment = memo(function Comment({
   deleteComment,
   editComment,
@@ -264,6 +293,20 @@ const Comment = memo(function Comment({
   const replies = isTopLevel ? (commentObject.replies ?? []) : [];
   const replyCount = replies.length;
   const hasNewReply = replies.some((r) => isContentEmpty(r.content));
+  const [hiddenReplyIds, setHiddenReplyIds] = useState(() =>
+    replies.slice(100).map((reply) => reply.id),
+  );
+  const hiddenReplyIdSet = useMemo(
+    () => new Set(hiddenReplyIds),
+    [hiddenReplyIds],
+  );
+  const hiddenReplies = replies.filter(
+    (reply) => hiddenReplyIdSet.has(reply.id) && !isContentEmpty(reply.content),
+  );
+  const effectiveHiddenReplyCount = hiddenReplies.length;
+  const visibleReplies = replies.filter(
+    (reply) => !hiddenReplyIdSet.has(reply.id) || isContentEmpty(reply.content),
+  );
 
   const avatarSize = isReply ? UI.AVATAR_SIZE_REPLY : UI.AVATAR_SIZE_COMMENT;
 
@@ -286,12 +329,14 @@ const Comment = memo(function Comment({
     isEditing,
     setIsEditing,
     segments,
+    editBaselineContent,
     setSegments,
     composerRef,
     handleStartEditing,
     resetToOriginal,
   } = useCommentEditor({
     commentContent: commentObject.content,
+    storedCommentContent: commentObject.storedContent,
     isNewComment,
   });
 
@@ -356,7 +401,12 @@ const Comment = memo(function Comment({
       return;
     }
 
-    const didSave = editComment(commentObject.id, segments, parentId);
+    const didSave = editComment(
+      commentObject.id,
+      segments,
+      parentId,
+      editBaselineContent,
+    );
     if (didSave) {
       setIsEditing(false);
     }
@@ -409,12 +459,14 @@ const Comment = memo(function Comment({
 
     replyScrollTimeoutRef.current = setTimeout(() => {
       if (commentRef.current) {
-        // Find the last reply element (the newly created one)
+        // Replies can be prepended; scroll to their draft instead of an old reply.
         const repliesContainer = repliesRef.current;
         if (repliesContainer) {
-          const lastReply = repliesContainer.lastElementChild;
-          if (lastReply) {
-            lastReply.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const newReply =
+            repliesContainer.querySelector('[data-comment-draft="true"]') ??
+            repliesContainer.lastElementChild;
+          if (newReply) {
+            newReply.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return;
           }
         }
@@ -505,6 +557,7 @@ const Comment = memo(function Comment({
         userIsAuthor && styles.ownComment,
       )}
       data-comment-id={commentObject.id}
+      data-comment-draft={isNewComment ? 'true' : undefined}
     >
       {!isEditing && (
         <CommentActions
@@ -629,7 +682,17 @@ const Comment = memo(function Comment({
 
       {isTopLevel && replyCount > 0 && repliesExpanded && (
         <div ref={repliesRef} className={styles.replies}>
-          {replies.map((reply) => (
+          <LoadMoreReplies
+            hiddenCount={effectiveHiddenReplyCount}
+            onLoadMore={() =>
+              setHiddenReplyIds(
+                hiddenReplies
+                  .slice(100)
+                  .map((reply) => reply.id),
+              )
+            }
+          />
+          {visibleReplies.map((reply) => (
             <Comment
               key={reply.id}
               deleteComment={deleteComment}

@@ -5,7 +5,8 @@ import type {
   ContentSchema,
   RecordInput,
 } from '../types';
-import { buildCmaClient, toRecordInput } from './records';
+import { cancellableRead, throwIfAborted } from './cmaRequests';
+import { buildCmaClient, readCma, toRecordInput } from './records';
 
 export type FormReadContext = Pick<
   RenderItemFormSidebarPanelCtx,
@@ -106,24 +107,6 @@ function sameValue(left: unknown, right: unknown, depth = 0): boolean {
   );
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted)
-    throw new DOMException('The scan was cancelled.', 'AbortError');
-}
-
-function cancellable<T>(request: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return request;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () =>
-      reject(new DOMException('The scan was cancelled.', 'AbortError'));
-    signal.addEventListener('abort', abort, { once: true });
-    request
-      .then(resolve, reject)
-      .finally(() => signal.removeEventListener('abort', abort));
-    if (signal.aborted) abort();
-  });
-}
-
 /** Checks fields as well as containers: an omitted nested field is not empty. */
 function auditCoverage(
   attributes: ObjectValue,
@@ -185,6 +168,12 @@ function auditCoverage(
     visitNode(document, path, depth + 1);
   };
 
+  const visitBlocks = (blocks: unknown[], path: string, depth: number) => {
+    for (const [index, block] of blocks.entries()) {
+      visitBlock(block, `${path} ${index + 1}`, depth + 1);
+    }
+  };
+
   const visitValue = (
     value: unknown,
     field: ContentField,
@@ -203,10 +192,7 @@ function auditCoverage(
         return;
       case 'rich_text':
         if (!Array.isArray(value)) warn(path);
-        else
-          value.forEach((block, index) => {
-            visitBlock(block, `${path} ${index + 1}`, depth + 1);
-          });
+        else visitBlocks(value, path, depth);
         return;
       case 'single_block':
         visitBlock(value, path, depth + 1);
@@ -286,15 +272,18 @@ async function restoreSavedContainers(
   if (!missing.length || !ctx.item?.id || !ctx.currentUserAccessToken) return;
   try {
     throwIfAborted(signal);
-    const saved = await cancellable(
-      buildCmaClient(ctx).items.rawFind(ctx.item.id, {
-        nested: true,
-        version: 'current',
-      }),
+    const client = buildCmaClient(ctx, signal);
+    const saved = await readCma(
+      client,
+      () =>
+        client.items.rawFind(ctx.item?.id ?? '', {
+          nested: true,
+          version: 'current',
+        }),
       signal,
     );
     throwIfAborted(signal);
-    const savedForm = await cancellable(
+    const savedForm = await cancellableRead(
       ctx.itemToFormValues(saved.data),
       signal,
     );
@@ -329,7 +318,7 @@ export async function readFormRecord(
   throwIfAborted(signal);
   const model = schema.get(ctx.itemType.id);
   if (!model) throw new Error('The record model is unavailable.');
-  const converted = await cancellable(
+  const converted = await cancellableRead(
     ctx.formValuesToItem(ctx.formValues, false),
     signal,
   );

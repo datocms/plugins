@@ -103,6 +103,23 @@ export function extractLinks(
   const warnings = new Set<string>();
   const activeObjects = new WeakSet<object>();
   const rootModel = schema.get(record.modelId);
+  const selectedLocales = [...new Set(locales)];
+  const localeOrder = new Map(
+    selectedLocales.map((locale, index) => [locale, index]),
+  );
+
+  const readableLocales = (localized: ObjectValue) => {
+    const present = Object.keys(localized);
+    if (!selectedLocales.length) return present;
+    // Sparse locale maps are common: do not revisit hundreds of absent locales
+    // for every field of every nested block. Preserve the selected locale order.
+    if (present.length < selectedLocales.length) {
+      return present
+        .filter((locale) => localeOrder.has(locale))
+        .sort((a, b) => (localeOrder.get(a) ?? 0) - (localeOrder.get(b) ?? 0));
+    }
+    return selectedLocales;
+  };
 
   const warn = (message: string, context?: Context) => {
     const location = context
@@ -301,10 +318,7 @@ export function extractLinks(
       );
       return;
     }
-    const selectedLocales = locales.length
-      ? [...new Set(locales)]
-      : Object.keys(localized);
-    for (const locale of selectedLocales) {
+    for (const locale of readableLocales(localized)) {
       visitField(field, localized[locale], {
         ...context,
         rootLocale: parent ? parent.rootLocale : locale,

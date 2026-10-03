@@ -1,4 +1,3 @@
-import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -11,9 +10,10 @@ import {
   SelectField,
   TextField,
 } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import downloadAllAssets from '../utils/downloadAllAssets';
 import downloadAllRecords from '../utils/downloadAllRecords';
+import { createExportClient } from '../utils/exportRuntime';
 import LoadingOverlay from './LoadingOverlay';
 import s from './styles.module.css';
 
@@ -28,6 +28,12 @@ type ModelObject = {
 
 export type AvailableFormats = 'JSON' | 'CSV' | 'XML' | 'XLSX';
 
+function exportErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : 'The export failed. Please try again.';
+}
+
 export default function ConfigScreen({ ctx }: Props) {
   const [isLoading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -41,6 +47,10 @@ export default function ConfigScreen({ ctx }: Props) {
     (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON',
   );
   const [textQuery, setTextQuery] = useState('');
+  const activeExport = useRef<AbortController | null>(null);
+  const [isLargeExport, setLargeExport] = useState(false);
+
+  useEffect(() => () => activeExport.current?.abort(), []);
 
   useEffect(() => {
     const accessToken = ctx.currentUserAccessToken;
@@ -48,72 +58,122 @@ export default function ConfigScreen({ ctx }: Props) {
       return;
     }
 
-    const client = buildClient({
-      apiToken: accessToken,
-      environment: ctx.environment,
-      baseUrl: ctx.cmaBaseUrl,
-    });
+    const controller = new AbortController();
+    const client = createExportClient(
+      {
+        apiToken: accessToken,
+        environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
+      },
+      controller.signal,
+    );
 
-    client.itemTypes.list().then((models) => {
-      setAllModels(
-        models
-          .filter((model) => !model.modular_block)
-          .map((model) => {
-            return { name: model.name, id: model.id };
-          }),
-      );
-    });
-  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
+    client.itemTypes
+      .list()
+      .then((models) => {
+        if (controller.signal.aborted) return;
+        setAllModels(
+          models
+            .filter((model) => !model.modular_block)
+            .map((model) => {
+              return { name: model.name, id: model.id };
+            }),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          ctx.alert('Could not load models. Reload the plugin to try again.');
+      });
+    return () => controller.abort();
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl, ctx.alert]);
 
-  const handleRecordDownload = async (
+  const runExport = async (
+    kind: 'records' | 'assets',
     options: { modelIDs?: string[]; textQuery?: string } = {},
   ) => {
+    if (activeExport.current) return;
+    if (!ctx.currentUserAccessToken) {
+      await ctx.alert(
+        'A user access token is required to export this project.',
+      );
+      return;
+    }
+    const controller = new AbortController();
+    activeExport.current = controller;
     setLoading(true);
     setLoadingStatus('Initializing download...');
     setLoadingProgress(0);
-
-    const accessToken = ctx.currentUserAccessToken ?? '';
-    await downloadAllRecords(
-      accessToken,
-      ctx.environment,
-      ctx.cmaBaseUrl,
-      selectedFormat,
-      options,
-      (progress, msg) => {
+    setLargeExport(false);
+    let completion = '';
+    const onProgress = (progress: number, msg: string) => {
+      if (!controller.signal.aborted) {
         setLoadingStatus(msg);
         setLoadingProgress(progress);
-      },
-    );
-
-    setLoading(false);
-    setLoadingStatus('');
-    setLoadingProgress(undefined);
+        if (
+          msg.includes(' for part ') ||
+          msg.match(/\d+/g)?.some((count) => Number(count) >= 1000)
+        )
+          setLargeExport(true);
+        if (progress === 100) completion = msg;
+      }
+    };
+    try {
+      if (kind === 'records') {
+        await downloadAllRecords(
+          ctx.currentUserAccessToken,
+          ctx.environment,
+          ctx.cmaBaseUrl,
+          selectedFormat,
+          options,
+          onProgress,
+          controller.signal,
+        );
+      } else {
+        await downloadAllAssets(
+          ctx.currentUserAccessToken,
+          ctx.environment,
+          ctx.cmaBaseUrl,
+          onProgress,
+          controller.signal,
+        );
+      }
+      if (completion) await ctx.notice(completion);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        await ctx.notice(
+          'Export cancelled. Files already prepared remain in your downloads.',
+        );
+      } else {
+        await ctx.alert(exportErrorMessage(error));
+      }
+    } finally {
+      activeExport.current = null;
+      setLoading(false);
+      setLoadingStatus('');
+      setLoadingProgress(undefined);
+    }
   };
 
-  const handleAllAssets = async () => {
-    setLoading(true);
-    setLoadingStatus('Initializing asset download...');
-    setLoadingProgress(0);
-
-    await downloadAllAssets(
-      ctx.currentUserAccessToken as string,
-      ctx.environment,
-      ctx.cmaBaseUrl,
-      (progress, msg) => {
-        setLoadingStatus(msg);
-        setLoadingProgress(progress);
-      },
-    );
-
-    setLoading(false);
-    setLoadingStatus('');
-    setLoadingProgress(undefined);
-  };
+  const handleRecordDownload = (
+    options: { modelIDs?: string[]; textQuery?: string } = {},
+  ) => runExport('records', options);
+  const handleAllAssets = () => runExport('assets');
 
   return (
     <Canvas ctx={ctx}>
       {isLoading && (
-        <LoadingOverlay status={loadingStatus} progress={loadingProgress} />
+        <LoadingOverlay
+          status={loadingStatus}
+          progress={loadingProgress}
+          onCancel={
+            isLargeExport
+              ? () => {
+                  activeExport.current?.abort();
+                  setLoadingStatus('Cancelling export...');
+                }
+              : undefined
+          }
+        />
       )}
       <div className={s.buttonList}>
         <div

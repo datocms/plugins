@@ -1,5 +1,5 @@
 import type { CommentType } from '@ctypes/comments';
-import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 
 // LOCAL/OPTIMISTIC state updates (fast, assumes success).
@@ -156,6 +156,7 @@ export type CommentActionsReturn = {
     id: string,
     newContent: CommentSegment[],
     parentCommentId?: string,
+    expectedContent?: StoredCommentSegment[],
   ) => boolean;
   upvoteComment: (
     id: string,

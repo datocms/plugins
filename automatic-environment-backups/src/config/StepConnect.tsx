@@ -20,6 +20,7 @@ const compactSuccessStyle = {
 export const StepConnect = ({ config }: { config: BackupsConfig }) => {
   const {
     canEdit,
+    isBusy,
     testConnection,
     isConnecting,
     isMountChecking,
@@ -32,6 +33,7 @@ export const StepConnect = ({ config }: { config: BackupsConfig }) => {
 
   const [showDetails, setShowDetails] = useState(false);
   const isTesting = isConnecting || isMountChecking;
+  const isActionDisabled = !canEdit || isBusy || isTesting;
   const persistedError =
     !isConnected && connection?.status === 'disconnected'
       ? (connection.errorMessage ??
@@ -63,7 +65,7 @@ export const StepConnect = ({ config }: { config: BackupsConfig }) => {
             onClick={() => {
               void testConnection();
             }}
-            disabled={!canEdit}
+            disabled={isActionDisabled}
           >
             Test again
           </Button>
@@ -116,7 +118,7 @@ export const StepConnect = ({ config }: { config: BackupsConfig }) => {
                 onClick={() => {
                   void testConnection();
                 }}
-                disabled={!canEdit || isTesting}
+                disabled={isActionDisabled}
                 leftIcon={isTesting ? <Spinner size={16} /> : undefined}
                 rightIcon={!isTesting ? <StepActionArrow /> : undefined}
               >

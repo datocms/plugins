@@ -28,7 +28,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "vitest run --pool=threads --maxWorkers=1",
+    "typecheck": "tsc -b",
+    "lint": "biome check src vite.config.ts",
+    "lint:fix": "biome check --write src vite.config.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",
@@ -43,7 +48,9 @@
     "@vitejs/plugin-react": "^5.2.0",
     "globals": "^17.4.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "@biomejs/biome": "^2.4.10",
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "datocms-react-ui": {

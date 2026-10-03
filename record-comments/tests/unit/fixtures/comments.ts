@@ -43,7 +43,7 @@ export function createBaseComment(
 export function createCommentWithReplies(
   replyCount = 2,
   commentOverrides: Partial<CommentType> = {},
-): CommentType {
+): CommentType & { replies: CommentType[] } {
   const parentId = commentOverrides.id ?? generateId();
   const replies: CommentType[] = Array.from({ length: replyCount }, (_, i) =>
     createBaseComment({
@@ -53,11 +53,10 @@ export function createCommentWithReplies(
     }),
   );
 
-  return createBaseComment({
-    ...commentOverrides,
-    id: parentId,
+  return {
+    ...createBaseComment({ ...commentOverrides, id: parentId, replies }),
     replies,
-  });
+  };
 }
 
 export function createCommentWithUpvotes(

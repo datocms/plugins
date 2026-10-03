@@ -11,6 +11,7 @@ type FieldTypeInfo = Record<
 >;
 
 let cached: Promise<FieldTypeInfo> | undefined;
+let editors: Promise<Set<string>> | undefined;
 
 // Built-in fallback for default editors when the remote metadata endpoint is
 // unavailable (eg: offline, CORS/network issues). Parameters are kept empty
@@ -57,31 +58,58 @@ function fallbackFieldTypeInfo(): FieldTypeInfo {
 async function fetchFieldTypeInfo() {
   if (cached) return cached;
   cached = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch('https://internal.datocms.com/field-types');
+      const response = await fetch('https://internal.datocms.com/field-types', {
+        signal: controller.signal,
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as FieldTypeInfo;
-      return data;
+      const data: unknown = await response.json();
+      return validateFieldTypeInfo(data);
     } catch {
       // Fall back to a local static map to keep flows working safely
       return fallbackFieldTypeInfo();
+    } finally {
+      clearTimeout(timeout);
     }
   })();
   return cached;
 }
 
-async function allEditors() {
-  const info = await fetchFieldTypeInfo();
+function validateFieldTypeInfo(data: unknown): FieldTypeInfo {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('Invalid field editor metadata');
+  }
+  for (const value of Object.values(data)) {
+    if (
+      !value ||
+      typeof value.default_editor?.id !== 'string' ||
+      !Array.isArray(value.other_editor_ids) ||
+      !value.other_editor_ids.every((id: unknown) => typeof id === 'string')
+    ) {
+      throw new Error('Invalid field editor metadata');
+    }
+  }
+  return { ...fallbackFieldTypeInfo(), ...(data as FieldTypeInfo) };
+}
 
-  return Object.values(info).flatMap((fieldInfo) => [
-    fieldInfo.default_editor.id,
-    ...fieldInfo.other_editor_ids,
-  ]);
+async function allEditors() {
+  editors ??= fetchFieldTypeInfo().then(
+    (info) =>
+      new Set(
+        Object.values(info).flatMap((fieldInfo) => [
+          fieldInfo.default_editor.id,
+          ...fieldInfo.other_editor_ids,
+        ]),
+      ),
+  );
+  return editors;
 }
 
 export async function isHardcodedEditor(editor: string) {
   try {
-    return (await allEditors()).includes(editor);
+    return (await allEditors()).has(editor);
   } catch {
     // Fallback to a conservative check against known built-ins
     return Object.values(FALLBACK_DEFAULT_EDITORS)

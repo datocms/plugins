@@ -12,7 +12,7 @@ export type PageToolbarMode =
   | 'idle'
   | 'scanning'
   | 'rechecking';
-export type ExportState = 'hidden' | 'enabled' | 'disabled';
+export type ExportState = 'hidden' | 'enabled' | 'disabled' | 'preparing';
 
 type PageToolbarProps = {
   mode: PageToolbarMode;
@@ -52,7 +52,7 @@ function ExportButton({
   onExport?: () => void;
 }) {
   if (state === 'hidden') return null;
-  const disabled = state === 'disabled';
+  const disabled = state === 'disabled' || state === 'preparing';
   const button = (
     <Button
       buttonSize="s"
@@ -60,6 +60,7 @@ function ExportButton({
         iconOnly ? <Icon icon={faDownload} title="Export CSV" /> : undefined
       }
       disabled={disabled}
+      aria-busy={state === 'preparing' || undefined}
       style={disabled ? BLOCKED : undefined}
       onClick={onExport}
     >
@@ -68,7 +69,13 @@ function ExportButton({
   );
   if (disabled)
     return (
-      <DisabledReason reason="You cannot export the report as it has no URLs">
+      <DisabledReason
+        reason={
+          state === 'preparing'
+            ? 'The CSV report is being prepared'
+            : 'You cannot export the report as it has no URLs'
+        }
+      >
         {button}
       </DisabledReason>
     );

@@ -1,6 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import keyBy from 'lodash-es/keyBy';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
+import { mapWithConcurrency } from '@/utils/graph/mapWithConcurrency';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
 export type IdCollisionEntityType =
@@ -175,38 +176,56 @@ async function buildProjectChildEntityMaps(
     | ((p: { done: number; total: number; label: string }) => void)
     | undefined,
   progress: { done: number; total: number },
+  shouldCancel: () => boolean,
 ): Promise<ProjectChildEntityMaps> {
   const fieldsById = new Map<string, ProjectFieldEntry>();
   const fieldsetsById = new Map<string, ProjectFieldsetEntry>();
 
-  for (const itemType of projectItemTypes) {
-    onProgress?.({
-      done: progress.done,
-      total: progress.total,
-      label: `Scanning IDs: ${getItemTypeLabel(itemType)}`,
-    });
-
-    const [fields, fieldsets] =
-      await projectSchema.getItemTypeFieldsAndFieldsets(itemType);
-
-    for (const field of fields) {
-      fieldsById.set(String(field.id), {
-        entity: field,
-        parentItemType: itemType,
+  await mapWithConcurrency(
+    projectItemTypes,
+    projectSchema.maxConcurrentRequests,
+    async (itemType) => {
+      checkCancellation(shouldCancel);
+      onProgress?.({
+        done: progress.done,
+        total: progress.total,
+        label: `Scanning IDs: ${getItemTypeLabel(itemType)}`,
       });
-    }
 
-    for (const fieldset of fieldsets) {
-      fieldsetsById.set(String(fieldset.id), {
-        entity: fieldset,
-        parentItemType: itemType,
+      const [fields, fieldsets] =
+        await projectSchema.getItemTypeFieldsAndFieldsets(itemType, {
+          shouldCancel,
+        });
+      checkCancellation(shouldCancel);
+
+      for (const field of fields) {
+        fieldsById.set(String(field.id), {
+          entity: field,
+          parentItemType: itemType,
+        });
+      }
+
+      for (const fieldset of fieldsets) {
+        fieldsetsById.set(String(fieldset.id), {
+          entity: fieldset,
+          parentItemType: itemType,
+        });
+      }
+
+      progress.done += 1;
+      onProgress?.({
+        ...progress,
+        label: `Scanned IDs: ${getItemTypeLabel(itemType)}`,
       });
-    }
-
-    progress.done += 1;
-  }
+    },
+    shouldCancel,
+  );
 
   return { fieldsById, fieldsetsById };
+}
+
+function checkCancellation(shouldCancel: () => boolean) {
+  if (shouldCancel()) throw new Error('Conflict analysis cancelled');
 }
 
 function buildLegacyIdIssues(exportSchema: ExportSchema): LegacyIdIssues {
@@ -381,12 +400,16 @@ export default async function buildConflicts(
   exportSchema: ExportSchema,
   projectSchema: ProjectSchema,
   onProgress?: (p: { done: number; total: number; label: string }) => void,
+  options: { shouldCancel?: () => boolean } = {},
 ) {
+  const shouldCancel = options.shouldCancel ?? (() => false);
+  checkCancellation(shouldCancel);
   let done = 0;
   let total = 2 + exportSchema.itemTypes.length + exportSchema.plugins.length;
 
   onProgress?.({ done, total, label: 'Loading models…' });
   const projectItemTypes = await projectSchema.getAllItemTypes();
+  checkCancellation(shouldCancel);
   total += projectItemTypes.length;
   done += 1;
   onProgress?.({ done, total, label: 'Loading plugins…' });
@@ -397,6 +420,7 @@ export default async function buildConflicts(
   );
 
   const projectPlugins = await projectSchema.getAllPlugins();
+  checkCancellation(shouldCancel);
   done += 1;
   onProgress?.({ done, total, label: 'Scanning item types…' });
   const projectPluginsByName = keyBy(projectPlugins, 'attributes.name');
@@ -408,6 +432,7 @@ export default async function buildConflicts(
     projectItemTypes,
     onProgress,
     progress,
+    shouldCancel,
   );
   done = progress.done;
 
@@ -427,6 +452,7 @@ export default async function buildConflicts(
   };
 
   for (const itemType of exportSchema.itemTypes) {
+    checkCancellation(shouldCancel);
     const conflictingItemType =
       projectItemTypesByName[itemType.attributes.name] ||
       projectItemTypesByApiKey[itemType.attributes.api_key];
@@ -444,6 +470,7 @@ export default async function buildConflicts(
 
   onProgress?.({ done, total, label: 'Scanning plugins…' });
   for (const plugin of exportSchema.plugins) {
+    checkCancellation(shouldCancel);
     const conflictingPlugin =
       projectPluginsByUrl[plugin.attributes.url] ||
       projectPluginsByName[plugin.attributes.name];

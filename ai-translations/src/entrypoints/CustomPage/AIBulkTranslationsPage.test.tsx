@@ -633,6 +633,89 @@ describe('AIBulkTranslationsPage', () => {
     });
   });
 
+  it('keeps excluded models out of the selectable catalog', async () => {
+    mocks.listModels.mockResolvedValue([
+      {
+        id: 'article',
+        api_key: 'article',
+        name: 'Articles',
+        modular_block: false,
+      },
+      ...extraModels,
+    ]);
+    const { ctx } = renderPage({
+      pluginParams: {
+        ...pluginParams,
+        modelsToBeExcludedFromThisPlugin: ['article'],
+      },
+    });
+    await screen.findByRole('button', {
+      name: 'Pick selectedModels landing_page',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Pick selectedModels article' }),
+    ).toBeNull();
+    expect(ctx.loadItemTypeFields).not.toHaveBeenCalled();
+  });
+
+  it('discards an older environment refresh that finishes after the current one', async () => {
+    const olderModels = deferred<typeof extraModels>();
+    mocks.listModels
+      .mockReturnValueOnce(olderModels.promise)
+      .mockResolvedValueOnce([
+        {
+          id: 'new',
+          api_key: 'new',
+          name: 'Current model',
+          modular_block: false,
+        },
+      ]);
+    const { ctx, rerender } = renderPage();
+    rerender(
+      <AIBulkTranslationsPage
+        ctx={{ ...ctx, environment: 'sandbox' } as unknown as RenderPageCtx}
+      />,
+    );
+    await screen.findByRole('button', { name: 'Pick selectedModels new' });
+    await act(async () => olderModels.resolve(extraModels));
+    expect(
+      screen.getByRole('button', { name: 'Pick selectedModels new' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Pick selectedModels landing_page',
+      }),
+    ).toBeNull();
+  });
+
+  it('drops removed target locales after a schema refresh before starting the job', async () => {
+    mocks.findSite.mockResolvedValueOnce({ locales: ['en', 'it', 'fr'] });
+    mocks.collectRecordIds.mockResolvedValue(['r1']);
+    const { ctx, rerender } = renderPage();
+    ctx.openModal.mockResolvedValue(false);
+    await selectModel();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick targetLocales it' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick targetLocales fr' }),
+    );
+    mocks.findSite.mockResolvedValueOnce({ locales: ['en', 'fr'] });
+    rerender(
+      <AIBulkTranslationsPage ctx={{ ...ctx } as unknown as RenderPageCtx} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Pick targetLocales it' }),
+      ).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Translate records' }));
+    await waitFor(() => expect(ctx.openModal).toHaveBeenCalledTimes(1));
+    expect(ctx.openModal.mock.calls[0][0].parameters).toMatchObject({
+      toLocales: ['fr'],
+    });
+  });
+
   describe('models section', () => {
     it('shows one field picker per selected model in selection order and prunes deselected ones', async () => {
       mocks.listModels.mockResolvedValue([

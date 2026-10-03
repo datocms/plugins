@@ -51,9 +51,3 @@ export const RETRY_LIMITS = {
   MAX_ATTEMPTS: 15,
   MAX_DURATION_MS: 120000,
 } as const;
-
-// CMA fallback fetch settings (when realtime disabled)
-export const CMA_FETCH = {
-  TIMEOUT_MS: 30000,
-  MAX_RETRIES: 3,
-} as const;

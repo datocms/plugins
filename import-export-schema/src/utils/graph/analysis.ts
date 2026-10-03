@@ -51,9 +51,8 @@ function bfsFromNode(
 ) {
   const queue: string[] = [startId];
   seen.add(startId);
-  while (queue.length) {
-    const cur = queue.shift();
-    if (cur === undefined) break;
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const cur = queue[cursor];
     comp.push(cur);
     const neighbors = adj.get(cur);
     if (!neighbors) continue;
@@ -81,7 +80,8 @@ export function getConnectedComponents(graph: Graph): string[][] {
   return components;
 }
 
-// Tarjan's algorithm for SCCs
+// Iterative Tarjan: deeply nested block/reference chains must not exhaust the
+// JavaScript call stack while computing schema metrics.
 export function getStronglyConnectedComponents(graph: Graph): string[][] {
   const adj = buildDirectedAdjacency(graph);
   let index = 0;
@@ -99,18 +99,6 @@ export function getStronglyConnectedComponents(graph: Graph): string[][] {
     return indices.get(id) ?? 0;
   }
 
-  function visitNeighbors(v: string) {
-    const neighbors = adj.get(v) ?? new Set<string>();
-    for (const w of neighbors) {
-      if (!indices.has(w)) {
-        strongconnect(w);
-        lowlink.set(v, Math.min(getLowlink(v), getLowlink(w)));
-      } else if (onStack.has(w)) {
-        lowlink.set(v, Math.min(getLowlink(v), getIndex(w)));
-      }
-    }
-  }
-
   function popScc(v: string) {
     const comp: string[] = [];
     let w: string | undefined;
@@ -123,22 +111,52 @@ export function getStronglyConnectedComponents(graph: Graph): string[][] {
     sccs.push(comp);
   }
 
-  function strongconnect(v: string) {
+  function enter(v: string) {
     indices.set(v, index);
     lowlink.set(v, index);
     index++;
     stack.push(v);
     onStack.add(v);
 
-    visitNeighbors(v);
+    return { id: v, neighbors: (adj.get(v) ?? new Set<string>()).values() };
+  }
 
-    if (getLowlink(v) === getIndex(v)) {
-      popScc(v);
+  function visitNeighbor(
+    frame: ReturnType<typeof enter>,
+    w: string,
+    frames: ReturnType<typeof enter>[],
+  ) {
+    if (!indices.has(w)) {
+      frames.push(enter(w));
+    } else if (onStack.has(w)) {
+      lowlink.set(frame.id, Math.min(getLowlink(frame.id), getIndex(w)));
+    }
+  }
+
+  function visit(v: string) {
+    const frames = [enter(v)];
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1];
+      const neighbor = frame.neighbors.next();
+      if (!neighbor.done) {
+        visitNeighbor(frame, neighbor.value, frames);
+        continue;
+      }
+
+      frames.pop();
+      if (getLowlink(frame.id) === getIndex(frame.id)) popScc(frame.id);
+      const parent = frames[frames.length - 1];
+      if (parent) {
+        lowlink.set(
+          parent.id,
+          Math.min(getLowlink(parent.id), getLowlink(frame.id)),
+        );
+      }
     }
   }
 
   for (const v of adj.keys()) {
-    if (!indices.has(v)) strongconnect(v);
+    if (!indices.has(v)) visit(v);
   }
 
   return sccs;
@@ -146,7 +164,13 @@ export function getStronglyConnectedComponents(graph: Graph): string[][] {
 
 export function countCycles(graph: Graph): number {
   const sccs = getStronglyConnectedComponents(graph);
-  return sccs.filter((comp) => comp.length > 1).length;
+  const selfReferences = new Set(
+    graph.edges
+      .filter((edge) => edge.source === edge.target)
+      .map((edge) => edge.source),
+  );
+  return sccs.filter((comp) => comp.length > 1 || selfReferences.has(comp[0]))
+    .length;
 }
 
 export function splitNodesByType(graph: Graph): {

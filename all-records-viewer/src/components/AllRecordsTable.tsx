@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { DEFAULT_ORDER_BY } from '../data/query';
 import type { ColumnId, ColumnSetting, OrderBy } from '../types';
 import styles from './AllRecordsTable.module.css';
 import { ColumnSettingsMenu } from './ColumnSettingsMenu';
@@ -74,7 +75,7 @@ function nextOrder(
   const direction = orderDirection(orderBy, columnId);
   if (!direction) return `${columnId}_ASC` as OrderBy;
   if (direction === 'ASC') return `${columnId}_DESC` as OrderBy;
-  return null;
+  return orderBy === DEFAULT_ORDER_BY ? (`${columnId}_ASC` as OrderBy) : null;
 }
 
 function statusLabel(status: TableRecord['status']): ReactNode {

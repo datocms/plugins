@@ -3,26 +3,31 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, SwitchInput } from 'datocms-react-ui';
 import get from 'lodash-es/get';
 import { useCallback, useContext, useId, useMemo, useState } from 'react';
-import { useFormState } from 'react-final-form';
+import { useForm, useFormState } from 'react-final-form';
+import { PaginatedEntries } from '@/components/SchemaOverview/PaginatedEntries';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import { isDefined } from '@/utils/isDefined';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
-import { idCollisionFieldPrefix } from '../ResolutionsForm';
+import {
+  type FormValues,
+  getPendingIdReplacementKeys,
+  idCollisionFieldPrefix,
+} from '../ResolutionsForm';
+import type {
+  FieldIdCollision,
+  FieldLegacyIdIssue,
+  FieldsetIdCollision,
+  FieldsetLegacyIdIssue,
+  IdCollisionEntityType,
+  ItemTypeIdCollision,
+  ItemTypeLegacyIdIssue,
+  PluginIdCollision,
+  PluginLegacyIdIssue,
+} from './buildConflicts';
 import { ConflictsContext } from './ConflictsContext';
 import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
-import type {
-  FieldIdCollision,
-  FieldsetIdCollision,
-  IdCollisionEntityType,
-  ItemTypeIdCollision,
-  FieldLegacyIdIssue,
-  FieldsetLegacyIdIssue,
-  ItemTypeLegacyIdIssue,
-  PluginLegacyIdIssue,
-  PluginIdCollision,
-} from './buildConflicts';
 
 // Collator keeps alphabetical/numeric ordering stable regardless of locale accents.
 const localeAwareCollator = new Intl.Collator(undefined, {
@@ -30,11 +35,27 @@ const localeAwareCollator = new Intl.Collator(undefined, {
   numeric: true,
 });
 
-function sortEntriesByDisplayName<T>(items: T[], getName: (item: T) => string) {
-  // Clone to avoid mutating callers and sort using the locale-aware collator.
-  return [...items].sort((a, b) =>
-    localeAwareCollator.compare(getName(a), getName(b)),
-  );
+export function sortConflictEntries<T>(
+  items: T[],
+  isUnresolved: (entry: T) => boolean,
+  hasConflict: (entry: T) => boolean,
+  getName: (entry: T) => string,
+) {
+  // Evaluate potentially expensive field-level resolution checks once per entry.
+  return items
+    .map((entry) => ({
+      entry,
+      unresolved: isUnresolved(entry),
+      conflict: hasConflict(entry),
+      name: getTextWithoutRepresentativeEmojiAndPadding(getName(entry)),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.unresolved) - Number(a.unresolved) ||
+        Number(b.conflict) - Number(a.conflict) ||
+        localeAwareCollator.compare(a.name, b.name),
+    )
+    .map(({ entry }) => entry);
 }
 
 type Props = {
@@ -84,24 +105,11 @@ function sortItemTypesByUnresolvedThenName(
   items: ItemTypeEntry[],
   isUnresolved: (entry: ItemTypeEntry) => boolean,
 ): ItemTypeEntry[] {
-  const sorted = [...items].sort((a, b) => {
-    const aUnresolved = isUnresolved(a);
-    const bUnresolved = isUnresolved(b);
-    if (aUnresolved !== bUnresolved) {
-      return aUnresolved ? -1 : 1;
-    }
-    const aHasConflict = itemTypeEntryHasConflict(a);
-    const bHasConflict = itemTypeEntryHasConflict(b);
-    if (aHasConflict !== bHasConflict) {
-      return aHasConflict ? -1 : 1;
-    }
-    return 0;
-  });
-
-  return sortEntriesByDisplayName(sorted, (entry) =>
-    getTextWithoutRepresentativeEmojiAndPadding(
-      entry.exportItemType.attributes.name,
-    ),
+  return sortConflictEntries(
+    items,
+    isUnresolved,
+    itemTypeEntryHasConflict,
+    (entry) => entry.exportItemType.attributes.name,
   );
 }
 
@@ -109,24 +117,11 @@ function sortPluginsByUnresolvedThenName(
   entries: PluginEntry[],
   isUnresolved: (entry: PluginEntry) => boolean,
 ): PluginEntry[] {
-  const sorted = [...entries].sort((a, b) => {
-    const aUnresolved = isUnresolved(a);
-    const bUnresolved = isUnresolved(b);
-    if (aUnresolved !== bUnresolved) {
-      return aUnresolved ? -1 : 1;
-    }
-    const aHasConflict = pluginEntryHasConflict(a);
-    const bHasConflict = pluginEntryHasConflict(b);
-    if (aHasConflict !== bHasConflict) {
-      return aHasConflict ? -1 : 1;
-    }
-    return 0;
-  });
-
-  return sortEntriesByDisplayName(sorted, (entry) =>
-    getTextWithoutRepresentativeEmojiAndPadding(
-      entry.exportPlugin.attributes.name,
-    ),
+  return sortConflictEntries(
+    entries,
+    isUnresolved,
+    pluginEntryHasConflict,
+    (entry) => entry.exportPlugin.attributes.name,
   );
 }
 
@@ -138,6 +133,7 @@ export default function ConflictsManager({
   schema: _schema,
 }: Props) {
   const conflicts = useContext(ConflictsContext);
+  const form = useForm<FormValues>();
   const [showOnlyConflicts, setShowOnlyConflicts] = useState(false);
   const toggleId = useId();
   // Track submission state for enabling/disabling the final CTA.
@@ -163,6 +159,10 @@ export default function ConflictsManager({
     values: Record<string, unknown>;
     errors: Record<string, unknown>;
   };
+  const pendingIdReplacementKeys = useMemo(
+    () => getPendingIdReplacementKeys(conflicts, formValues),
+    [conflicts, formValues],
+  );
 
   const isIdCollisionUnresolved = useCallback(
     (entityType: IdCollisionEntityType, id: string) => {
@@ -183,42 +183,20 @@ export default function ConflictsManager({
         return false;
       }
 
-      if (
-        entry.idCollision &&
-        isIdCollisionUnresolved('itemType', entry.idCollision.exportId)
-      ) {
-        return true;
-      }
-
-      if (
-        entry.legacyIdIssue &&
-        isIdCollisionUnresolved('itemType', entry.legacyIdIssue.exportId)
-      ) {
-        return true;
-      }
-
-      for (const collision of entry.fieldIdCollisions) {
-        if (isIdCollisionUnresolved('field', collision.exportId)) {
+      const issueGroups = [
+        [entry.idCollision, entry.legacyIdIssue].filter(isDefined),
+        entry.fieldIdCollisions,
+        entry.fieldLegacyIdIssues,
+        entry.fieldsetIdCollisions,
+        entry.fieldsetLegacyIdIssues,
+      ];
+      for (const issues of issueGroups) {
+        if (
+          issues.some((issue) =>
+            isIdCollisionUnresolved(issue.entityType, issue.exportId),
+          )
+        )
           return true;
-        }
-      }
-
-      for (const issue of entry.fieldLegacyIdIssues) {
-        if (isIdCollisionUnresolved('field', issue.exportId)) {
-          return true;
-        }
-      }
-
-      for (const collision of entry.fieldsetIdCollisions) {
-        if (isIdCollisionUnresolved('fieldset', collision.exportId)) {
-          return true;
-        }
-      }
-
-      for (const issue of entry.fieldsetLegacyIdIssues) {
-        if (isIdCollisionUnresolved('fieldset', issue.exportId)) {
-          return true;
-        }
       }
 
       return false;
@@ -315,7 +293,7 @@ export default function ConflictsManager({
     [formValues, formErrors, hasUnresolvedPluginIdCollision],
   );
 
-  const itemTypesByCategory = useMemo(() => {
+  const itemTypeEntriesByCategory = useMemo(() => {
     const empty: Record<'blocks' | 'models', ItemTypeEntry[]> = {
       blocks: [],
       models: [],
@@ -371,23 +349,25 @@ export default function ConflictsManager({
       { blocks: [], models: [] },
     );
 
-    const isItemTypeEntryUnresolved = (entry: ItemTypeEntry) =>
-      isItemTypeConflictUnresolved(entry);
+    return grouped;
+  }, [conflicts, exportSchema]);
 
-    return {
+  const itemTypesByCategory = useMemo(
+    () => ({
       blocks: sortItemTypesByUnresolvedThenName(
-        grouped.blocks,
-        isItemTypeEntryUnresolved,
+        itemTypeEntriesByCategory.blocks,
+        isItemTypeConflictUnresolved,
       ),
       models: sortItemTypesByUnresolvedThenName(
-        grouped.models,
-        isItemTypeEntryUnresolved,
+        itemTypeEntriesByCategory.models,
+        isItemTypeConflictUnresolved,
       ),
-    };
-  }, [conflicts, exportSchema, isItemTypeConflictUnresolved]);
+    }),
+    [itemTypeEntriesByCategory, isItemTypeConflictUnresolved],
+  );
 
   // Deterministic sorting keeps plugin ordering stable between renders.
-  const pluginEntries = useMemo<PluginEntry[]>(() => {
+  const unsortedPluginEntries = useMemo<PluginEntry[]>(() => {
     if (!conflicts) {
       return [];
     }
@@ -400,11 +380,16 @@ export default function ConflictsManager({
         conflicts.legacyIds.plugins[String(exportPlugin.id)] ?? undefined,
     }));
 
-    const isPluginEntryUnresolved = (entry: PluginEntry) =>
-      isPluginConflictUnresolved(entry);
-
-    return sortPluginsByUnresolvedThenName(entries, isPluginEntryUnresolved);
-  }, [conflicts, exportSchema, isPluginConflictUnresolved]);
+    return entries;
+  }, [conflicts, exportSchema]);
+  const pluginEntries = useMemo(
+    () =>
+      sortPluginsByUnresolvedThenName(
+        unsortedPluginEntries,
+        isPluginConflictUnresolved,
+      ),
+    [unsortedPluginEntries, isPluginConflictUnresolved],
+  );
 
   // Toggle in place filters the list down to unresolved conflicts when requested.
   const visibleModels = itemTypesByCategory.models.filter((entry) =>
@@ -487,6 +472,21 @@ export default function ConflictsManager({
           />
           <span>Show only unresolved conflicts</span>
         </label>
+        {pendingIdReplacementKeys.length > 200 && (
+          <div style={{ marginTop: '12px' }}>
+            <Button
+              type="button"
+              buttonType="muted"
+              buttonSize="s"
+              onClick={() =>
+                form.mutators.generateReplacementIds(pendingIdReplacementKeys)
+              }
+            >
+              Generate replacement IDs for all {pendingIdReplacementKeys.length}{' '}
+              pending IDs
+            </Button>
+          </div>
+        )}
       </div>
       <div className="page__content">
         {!hasConflicts && (
@@ -521,22 +521,27 @@ export default function ConflictsManager({
                     Models ({visibleModels.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleModels.map((entry) => (
-                      <ItemTypeConflict
-                        key={entry.exportItemType.id}
-                        exportItemType={entry.exportItemType}
-                        projectItemType={entry.projectItemType}
-                        idCollision={entry.idCollision}
-                        legacyIdIssue={entry.legacyIdIssue}
-                        fieldIdCollisions={entry.fieldIdCollisions}
-                        fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
-                        fieldsetIdCollisions={entry.fieldsetIdCollisions}
-                        fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
-                        hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
-                          entry,
-                        )}
-                      />
-                    ))}
+                    <PaginatedEntries
+                      entries={visibleModels}
+                      getEntityId={(entry) => entry.exportItemType.id}
+                    >
+                      {(entry) => (
+                        <ItemTypeConflict
+                          key={entry.exportItemType.id}
+                          exportItemType={entry.exportItemType}
+                          projectItemType={entry.projectItemType}
+                          idCollision={entry.idCollision}
+                          legacyIdIssue={entry.legacyIdIssue}
+                          fieldIdCollisions={entry.fieldIdCollisions}
+                          fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
+                          fieldsetIdCollisions={entry.fieldsetIdCollisions}
+                          fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
+                          hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
+                            entry,
+                          )}
+                        />
+                      )}
+                    </PaginatedEntries>
                   </div>
                 </div>
               );
@@ -549,22 +554,27 @@ export default function ConflictsManager({
                     Block models ({visibleBlocks.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleBlocks.map((entry) => (
-                      <ItemTypeConflict
-                        key={entry.exportItemType.id}
-                        exportItemType={entry.exportItemType}
-                        projectItemType={entry.projectItemType}
-                        idCollision={entry.idCollision}
-                        legacyIdIssue={entry.legacyIdIssue}
-                        fieldIdCollisions={entry.fieldIdCollisions}
-                        fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
-                        fieldsetIdCollisions={entry.fieldsetIdCollisions}
-                        fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
-                        hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
-                          entry,
-                        )}
-                      />
-                    ))}
+                    <PaginatedEntries
+                      entries={visibleBlocks}
+                      getEntityId={(entry) => entry.exportItemType.id}
+                    >
+                      {(entry) => (
+                        <ItemTypeConflict
+                          key={entry.exportItemType.id}
+                          exportItemType={entry.exportItemType}
+                          projectItemType={entry.projectItemType}
+                          idCollision={entry.idCollision}
+                          legacyIdIssue={entry.legacyIdIssue}
+                          fieldIdCollisions={entry.fieldIdCollisions}
+                          fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
+                          fieldsetIdCollisions={entry.fieldsetIdCollisions}
+                          fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
+                          hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
+                            entry,
+                          )}
+                        />
+                      )}
+                    </PaginatedEntries>
                   </div>
                 </div>
               );
@@ -577,18 +587,23 @@ export default function ConflictsManager({
                     Plugins ({visiblePlugins.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visiblePlugins.map((entry) => (
-                      <PluginConflict
-                        key={entry.exportPlugin.id}
-                        exportPlugin={entry.exportPlugin}
-                        projectPlugin={entry.projectPlugin}
-                        idCollision={entry.idCollision}
-                        legacyIdIssue={entry.legacyIdIssue}
-                        hasUnresolvedIdCollision={hasUnresolvedPluginIdCollision(
-                          entry,
-                        )}
-                      />
-                    ))}
+                    <PaginatedEntries
+                      entries={visiblePlugins}
+                      getEntityId={(entry) => entry.exportPlugin.id}
+                    >
+                      {(entry) => (
+                        <PluginConflict
+                          key={entry.exportPlugin.id}
+                          exportPlugin={entry.exportPlugin}
+                          projectPlugin={entry.projectPlugin}
+                          idCollision={entry.idCollision}
+                          legacyIdIssue={entry.legacyIdIssue}
+                          hasUnresolvedIdCollision={hasUnresolvedPluginIdCollision(
+                            entry,
+                          )}
+                        />
+                      )}
+                    </PaginatedEntries>
                   </div>
                 </div>
               );

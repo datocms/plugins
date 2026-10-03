@@ -23,14 +23,14 @@ function requireApiKey(
   return normalized;
 }
 
-function uniqueSorted(models: string[]): string[] {
+function uniqueSorted(models: Iterable<string>): string[] {
   return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b));
 }
 
 function extractOpenAIModelIds(payload: unknown): string[] {
   const response = asRecord(payload);
   if (!response || !Array.isArray(response.data)) {
-    return [];
+    throw modelListPaginationError('openai');
   }
 
   const ids: string[] = [];
@@ -62,7 +62,7 @@ export async function listOpenAIModels(
 }
 
 function modelListPaginationError(
-  provider: 'anthropic' | 'gemini',
+  provider: DirectAltTextProviderId,
 ): AltTextProviderError {
   return new AltTextProviderError(
     provider,
@@ -74,7 +74,7 @@ function modelListPaginationError(
 function extractAnthropicModelIds(payload: unknown): string[] {
   const response = asRecord(payload);
   if (!response || !Array.isArray(response.data)) {
-    return [];
+    throw modelListPaginationError('anthropic');
   }
 
   const ids: string[] = [];
@@ -91,47 +91,45 @@ async function loadAnthropicModelPages(
   key: string,
   signal: AbortSignal | undefined,
   baseUrl: string,
-  afterId?: string,
-  page = 1,
 ): Promise<string[]> {
-  if (page > MAX_MODEL_LIST_PAGES) {
-    throw modelListPaginationError('anthropic');
+  const models = new Set<string>();
+  const seenCursors = new Set<string>();
+  let afterId: string | undefined;
+  for (let page = 0; page < MAX_MODEL_LIST_PAGES; page += 1) {
+    const url = new URL(joinApiUrl(baseUrl, 'models'));
+    url.searchParams.set('limit', MODEL_LIST_PAGE_SIZE);
+    if (afterId) {
+      url.searchParams.set('after_id', afterId);
+    }
+    // biome-ignore lint/performance/noAwaitInLoops: The next page cursor is returned by the preceding page.
+    const payload = await fetchProviderJson('anthropic', url.toString(), {
+      headers: {
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': key,
+      },
+      signal,
+    });
+    for (const model of extractAnthropicModelIds(payload)) {
+      models.add(model);
+    }
+    const response = asRecord(payload);
+    if (response?.has_more === false) {
+      return uniqueSorted(models);
+    }
+    const lastId = response?.last_id;
+    if (
+      response?.has_more !== true ||
+      typeof lastId !== 'string' ||
+      !lastId ||
+      seenCursors.has(lastId)
+    ) {
+      throw modelListPaginationError('anthropic');
+    }
+    seenCursors.add(lastId);
+    afterId = lastId;
   }
-
-  const url = new URL(joinApiUrl(baseUrl, 'models'));
-  url.searchParams.set('limit', MODEL_LIST_PAGE_SIZE);
-  if (afterId) {
-    url.searchParams.set('after_id', afterId);
-  }
-
-  const payload = await fetchProviderJson('anthropic', url.toString(), {
-    headers: {
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': key,
-    },
-    signal,
-  });
-  const models = extractAnthropicModelIds(payload);
-  const response = asRecord(payload);
-
-  if (response?.has_more !== true) {
-    return models;
-  }
-
-  const lastId = response.last_id;
-  if (typeof lastId !== 'string' || !lastId || lastId === afterId) {
-    throw modelListPaginationError('anthropic');
-  }
-
-  const remainingModels = await loadAnthropicModelPages(
-    key,
-    signal,
-    baseUrl,
-    lastId,
-    page + 1,
-  );
-  return [...models, ...remainingModels];
+  throw modelListPaginationError('anthropic');
 }
 
 export async function listAnthropicModels(
@@ -140,7 +138,7 @@ export async function listAnthropicModels(
   baseUrl = ANTHROPIC_BASE_URL,
 ): Promise<string[]> {
   const key = requireApiKey('anthropic', apiKey);
-  return uniqueSorted(await loadAnthropicModelPages(key, signal, baseUrl));
+  return loadAnthropicModelPages(key, signal, baseUrl);
 }
 
 function stripGeminiModelPrefix(model: string): string {
@@ -150,7 +148,7 @@ function stripGeminiModelPrefix(model: string): string {
 function extractGeminiModelIds(payload: unknown): string[] {
   const response = asRecord(payload);
   if (!response || !Array.isArray(response.models)) {
-    return [];
+    throw modelListPaginationError('gemini');
   }
 
   const ids: string[] = [];
@@ -169,47 +167,39 @@ async function loadGeminiModelPages(
   key: string,
   signal: AbortSignal | undefined,
   baseUrl: string,
-  pageToken?: string,
-  page = 1,
 ): Promise<string[]> {
-  if (page > MAX_MODEL_LIST_PAGES) {
-    throw modelListPaginationError('gemini');
+  const models = new Set<string>();
+  const seenCursors = new Set<string>();
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_MODEL_LIST_PAGES; page += 1) {
+    const url = new URL(joinApiUrl(baseUrl, 'models'));
+    url.searchParams.set('pageSize', MODEL_LIST_PAGE_SIZE);
+    if (pageToken) {
+      url.searchParams.set('pageToken', pageToken);
+    }
+    // biome-ignore lint/performance/noAwaitInLoops: The next page cursor is returned by the preceding page.
+    const payload = await fetchProviderJson('gemini', url.toString(), {
+      headers: { 'x-goog-api-key': key },
+      signal,
+    });
+    for (const model of extractGeminiModelIds(payload)) {
+      models.add(model);
+    }
+    const nextPageToken = asRecord(payload)?.nextPageToken;
+    if (
+      nextPageToken === undefined ||
+      nextPageToken === null ||
+      nextPageToken === ''
+    ) {
+      return uniqueSorted(models);
+    }
+    if (typeof nextPageToken !== 'string' || seenCursors.has(nextPageToken)) {
+      throw modelListPaginationError('gemini');
+    }
+    seenCursors.add(nextPageToken);
+    pageToken = nextPageToken;
   }
-
-  const url = new URL(joinApiUrl(baseUrl, 'models'));
-  url.searchParams.set('pageSize', MODEL_LIST_PAGE_SIZE);
-  if (pageToken) {
-    url.searchParams.set('pageToken', pageToken);
-  }
-
-  const payload = await fetchProviderJson('gemini', url.toString(), {
-    headers: { 'x-goog-api-key': key },
-    signal,
-  });
-  const models = extractGeminiModelIds(payload);
-  const response = asRecord(payload);
-  const nextPageToken = response?.nextPageToken;
-
-  if (nextPageToken === undefined || nextPageToken === null) {
-    return models;
-  }
-
-  if (
-    typeof nextPageToken !== 'string' ||
-    !nextPageToken ||
-    nextPageToken === pageToken
-  ) {
-    throw modelListPaginationError('gemini');
-  }
-
-  const remainingModels = await loadGeminiModelPages(
-    key,
-    signal,
-    baseUrl,
-    nextPageToken,
-    page + 1,
-  );
-  return [...models, ...remainingModels];
+  throw modelListPaginationError('gemini');
 }
 
 export async function listGeminiModels(
@@ -218,7 +208,7 @@ export async function listGeminiModels(
   baseUrl = GEMINI_BASE_URL,
 ): Promise<string[]> {
   const key = requireApiKey('gemini', apiKey);
-  return uniqueSorted(await loadGeminiModelPages(key, signal, baseUrl));
+  return loadGeminiModelPages(key, signal, baseUrl);
 }
 
 export async function listProviderModels(

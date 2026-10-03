@@ -1,5 +1,21 @@
 import type { RawItem } from '../types';
 
+/** Selection only needs identities and metadata, never localized field payloads. */
+export function compactSelectedItem(item: RawItem): RawItem {
+  return {
+    id: item.id,
+    type: item.type,
+    attributes: {},
+    meta: { ...item.meta },
+    relationships: {
+      item_type: { data: { ...item.relationships.item_type.data } },
+      ...(item.relationships.creator
+        ? { creator: { data: { ...item.relationships.creator.data } } }
+        : {}),
+    },
+  };
+}
+
 export function setPageSelection(
   current: ReadonlyMap<string, RawItem>,
   pageItems: readonly RawItem[],
@@ -9,7 +25,7 @@ export function setPageSelection(
 
   for (const item of pageItems) {
     if (selected) {
-      next.set(item.id, item);
+      next.set(item.id, compactSelectedItem(item));
     } else {
       next.delete(item.id);
     }
@@ -28,7 +44,7 @@ export function invertPageSelection(
     if (next.has(item.id)) {
       next.delete(item.id);
     } else {
-      next.set(item.id, item);
+      next.set(item.id, compactSelectedItem(item));
     }
   }
 
@@ -39,9 +55,20 @@ export function retainSelectionForModels(
   current: ReadonlyMap<string, RawItem>,
   modelIds: ReadonlySet<string>,
 ): ReadonlyMap<string, RawItem> {
-  const retained = [...current].filter(([, item]) =>
-    modelIds.has(item.relationships.item_type.data.id),
-  );
+  let needsPruning = false;
+  for (const item of current.values()) {
+    if (!modelIds.has(item.relationships.item_type.data.id)) {
+      needsPruning = true;
+      break;
+    }
+  }
+  if (!needsPruning) return current;
 
-  return retained.length === current.size ? current : new Map(retained);
+  const retained = new Map<string, RawItem>();
+  for (const [id, item] of current) {
+    if (modelIds.has(item.relationships.item_type.data.id)) {
+      retained.set(id, item);
+    }
+  }
+  return retained;
 }

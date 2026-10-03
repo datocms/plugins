@@ -2,30 +2,46 @@ import type {
   AutomaticBackupsScheduleState,
   BackupCadence,
 } from '../types/types';
-import { BACKUP_CADENCES } from './backupSchedule';
+import {
+  BACKUP_CADENCES,
+  isValidBackupTimestamp,
+  isValidLocalDateKey,
+} from './backupSchedule';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const asOptionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
-const toCadenceMap = (
+const asOptionalTimestamp = (value: unknown): string | undefined => {
+  const normalized = asOptionalString(value);
+  return normalized && isValidBackupTimestamp(normalized)
+    ? normalized
+    : undefined;
+};
+
+const asOptionalLocalDate = (value: unknown): string | undefined => {
+  const normalized = asOptionalString(value);
+  return normalized && isValidLocalDateKey(normalized) ? normalized : undefined;
+};
+
+const asOptionalExecutionMode = (value: unknown): 'lambda_cron' | undefined =>
+  asOptionalString(value) === 'lambda_cron' ? 'lambda_cron' : undefined;
+
+const toCadenceMap = <T extends string>(
   value: unknown,
-): Partial<Record<BackupCadence, string>> | undefined => {
+  normalize: (entry: unknown) => T | undefined,
+): Partial<Record<BackupCadence, T>> | undefined => {
   if (!isObject(value)) {
     return undefined;
   }
 
-  const next: Partial<Record<BackupCadence, string>> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (!BACKUP_CADENCES.includes(key as BackupCadence)) {
-      continue;
-    }
-
-    const normalized = asOptionalString(entry);
+  const next: Partial<Record<BackupCadence, T>> = {};
+  for (const cadence of BACKUP_CADENCES) {
+    const normalized = normalize(value[cadence]);
     if (normalized) {
-      next[key as BackupCadence] = normalized;
+      next[cadence] = normalized;
     }
   }
 
@@ -41,19 +57,30 @@ export const toAutomaticBackupsScheduleState = (
 
   return {
     ...value,
-    lastRunLocalDateByCadence: toCadenceMap(value.lastRunLocalDateByCadence),
-    lastRunAtByCadence: toCadenceMap(value.lastRunAtByCadence),
+    lastRunLocalDateByCadence: toCadenceMap(
+      value.lastRunLocalDateByCadence,
+      asOptionalLocalDate,
+    ),
+    lastRunAtByCadence: toCadenceMap(
+      value.lastRunAtByCadence,
+      asOptionalTimestamp,
+    ),
     lastManagedEnvironmentIdByCadence: toCadenceMap(
       value.lastManagedEnvironmentIdByCadence,
+      asOptionalString,
     ),
     lastExecutionModeByCadence: toCadenceMap(
       value.lastExecutionModeByCadence,
-    ) as AutomaticBackupsScheduleState['lastExecutionModeByCadence'],
-    lastErrorByCadence: toCadenceMap(value.lastErrorByCadence),
-    dailyLastRunDate: asOptionalString(value.dailyLastRunDate),
+      asOptionalExecutionMode,
+    ),
+    lastErrorByCadence: toCadenceMap(
+      value.lastErrorByCadence,
+      asOptionalString,
+    ),
+    dailyLastRunDate: asOptionalLocalDate(value.dailyLastRunDate),
     weeklyLastRunKey: asOptionalString(value.weeklyLastRunKey),
-    lastDailyRunAt: asOptionalString(value.lastDailyRunAt),
-    lastWeeklyRunAt: asOptionalString(value.lastWeeklyRunAt),
+    lastDailyRunAt: asOptionalTimestamp(value.lastDailyRunAt),
+    lastWeeklyRunAt: asOptionalTimestamp(value.lastWeeklyRunAt),
     lastDailyManagedEnvironmentId: asOptionalString(
       value.lastDailyManagedEnvironmentId,
     ),

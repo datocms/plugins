@@ -82,7 +82,7 @@ export default function Collapsible({
         style={{ display: isSelected ? 'block' : 'none' }}
         aria-labelledby={`conflict-button-${entity.id}`}
       >
-        {children}
+        {isSelected ? children : null}
       </section>
     </div>
   );

@@ -83,6 +83,7 @@ export function isStructuredTextBlock(
 export type FieldValidators = {
   item_item_type?: { item_types: string[] };
   rich_text_blocks?: { item_types: string[] };
+  single_block_blocks?: { item_types: string[] };
   structured_text_blocks?: { item_types: string[] };
 };
 
@@ -108,6 +109,10 @@ export function isFieldValidators(value: unknown): value is FieldValidators {
 
   if (obj.rich_text_blocks !== undefined) {
     if (!isValidItemTypesGroup(obj.rich_text_blocks)) return false;
+  }
+
+  if (obj.single_block_blocks !== undefined) {
+    if (!isValidItemTypesGroup(obj.single_block_blocks)) return false;
   }
 
   if (obj.structured_text_blocks !== undefined) {

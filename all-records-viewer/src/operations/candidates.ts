@@ -1,4 +1,3 @@
-import { MAX_BULK_ITEMS } from '../constants';
 import type { ModelSummary, RawItem } from '../types';
 import { isPotentiallyEligible } from './permissions';
 import type {
@@ -70,24 +69,17 @@ function buildEvaluation(
   eligible: readonly RawItem[],
   action: SelectionAction | 'move_to_stage',
 ): SelectionEvaluation {
-  const overflowCount = Math.max(eligible.length - MAX_BULK_ITEMS, 0);
-  const submittedItems = overflowCount > 0 ? [] : [...eligible];
-  const maxItemsReason =
-    overflowCount > 0
-      ? `Bulk actions support at most ${MAX_BULK_ITEMS} records.`
-      : null;
+  const submittedItems = [...eligible];
 
   return {
     selectedCount: selected.length,
     eligibleCount: eligible.length,
     excludedCount: selected.length - eligible.length,
     submittedCount: submittedItems.length,
-    overflowCount,
+    overflowCount: 0,
     items: submittedItems,
     itemIds: submittedItems.map((item) => item.id),
-    disabledReason:
-      maxItemsReason ??
-      disabledReason(action, selected.length, eligible.length),
+    disabledReason: disabledReason(action, selected.length, eligible.length),
   };
 }
 
@@ -203,8 +195,17 @@ export function availableMoveDestinationIds(
     return [];
   }
 
-  return input.destinationStageIds.filter(
-    (destinationStageId) =>
-      evaluateMoveSelection({ ...input, destinationStageId }).eligibleCount > 0,
+  return input.destinationStageIds.filter((destinationStageId) =>
+    input.items.some(
+      (item) =>
+        item.meta.stage !== destinationStageId &&
+        isPotentiallyEligible({
+          item,
+          model: moveContext.model,
+          permissions: input.permissions,
+          action: 'move_to_stage',
+          destinationStageId,
+        }),
+    ),
   );
 }

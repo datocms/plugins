@@ -22,6 +22,19 @@ connect({
     );
     const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
 
+    // The host currently sends one bulk request, whose CMA limit is 200 IDs.
+    // Performing deletion here would bypass other plugins' concurrent vetoes.
+    if (items.length > 200) {
+      await ctx
+        .notice(
+          'Record Bin stopped this deletion: the dashboard must support bounded bulk operations before a selection above 200 records can be deleted safely. The original records have been kept.',
+        )
+        .catch((error) =>
+          debugLogger.warn('Could not display deletion limit notice', error),
+        );
+      return false;
+    }
+
     if (runtimeMode === 'lambda') {
       debugLogger.log(
         'Skipping Lambda-less delete capture because lambda mode is active',
@@ -32,14 +45,14 @@ connect({
     try {
       const captureResult = await captureDeletedItemsWithoutLambda(items, ctx);
       debugLogger.log('Lambda-less delete capture completed', captureResult);
+      return captureResult.allowDeletion;
     } catch (error) {
       debugLogger.error(
-        'Unexpected error in Lambda-less delete capture. Proceeding with deletion (fail-open).',
+        'Unexpected error in delete capture. Deletion blocked to preserve the records.',
         error,
       );
+      return false;
     }
-
-    return true;
   },
   renderConfigScreen(ctx) {
     const debugLogger = createDebugLogger(

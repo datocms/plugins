@@ -27,12 +27,15 @@ import {
   DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
   MAX_AGENT_HISTORY_CHARACTERS,
+  MAX_AGENT_REQUEST_CHARACTERS,
+  MAX_AGENT_TOOL_CALLS_PER_TURN,
   MAX_CURRENT_FORM_STATE_FIELDS,
   MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
   MAX_PRESENTED_ASSETS,
   MAX_PRESENTED_FIELDS,
   MAX_PRESENTED_MODELS,
   MAX_PRESENTED_USERS,
+  MAX_TOOL_RESULT_CHARACTERS,
   MAX_TOOL_RESULT_CHARACTERS_PER_TURN,
   normalizeAgentHistory,
 } from './agentRuntime';
@@ -4103,13 +4106,216 @@ describe('AnthropicAgentRuntime', () => {
       continuationCount: 1,
       error: {
         code: 'continuation_limit',
-        retryable: true,
+        retryable: false,
       },
     });
     expect(anthropic.requests).toHaveLength(1);
     expect(mcp.callTool).toHaveBeenCalledOnce();
     expect(mcp.close).toHaveBeenCalledOnce();
   });
+
+  it('continues 25 compact batch results representing 200,000 records and 10,000 assets without manual resumption', async () => {
+    const batchCount = 25;
+    const anthropic = new QueueAnthropicClient([
+      ...Array.from({ length: batchCount }, (_, index) =>
+        message(
+          `msg-batch-${index}`,
+          [
+            toolUse(`batch-${index}`, 'upsert_and_execute_safe_script', {
+              ...unsafeScriptInput(`batch-${index}.ts`),
+              body: {
+                mode: 'full',
+                content: `console.log({ cursor: ${index} });`,
+              },
+            }),
+          ],
+          'tool_use',
+        ),
+      ),
+      message('msg-scale-done', [
+        textBlock('The synthetic counts are complete.'),
+      ]),
+    ]);
+    let batch = 0;
+    const mcp = mcpClientWith(async () => {
+      batch += 1;
+      return {
+        content: JSON.stringify({
+          processedRecords: batch * 8_000,
+          processedAssets: batch * 400,
+          nextCursor: batch < batchCount ? batch : null,
+          complete: batch === batchCount,
+        }),
+        isError: false,
+      };
+    });
+    const { result } = await drain(
+      runtimeWith(anthropic, mcp.client).streamTurn({
+        message: 'Inspect the massive synthetic project.',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      continuationCount: batchCount,
+    });
+    expect(mcp.callTool).toHaveBeenCalledTimes(batchCount);
+    expect(anthropic.requests).toHaveLength(batchCount + 1);
+    expect(
+      lastMessageContent(
+        anthropic.requests.at(-1) as MessageCreateParamsStreaming,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        content: JSON.stringify({
+          processedRecords: 200_000,
+          processedAssets: 10_000,
+          nextCursor: null,
+          complete: true,
+        }),
+      }),
+    ]);
+  });
+
+  it('compacts older tool outputs while keeping signed assistant blocks, paired IDs and the latest cursor', async () => {
+    const originals = Array.from({ length: 12 }, (_, index) => [
+      thinkingBlock(`signed-thinking-${index}`),
+      toolUse(`history-${index}`, 'whoami', {}),
+    ]);
+    const anthropic = new QueueAnthropicClient([
+      ...originals.map((blocks, index) =>
+        message(`msg-history-${index}`, blocks, 'tool_use'),
+      ),
+      message('msg-history-done', [textBlock('Done.')]),
+    ]);
+    let cursor = 0;
+    const mcp = mcpClientWith(async () => ({
+      content: `cursor=${++cursor};${'x'.repeat(35_000)}`,
+      isError: false,
+    }));
+    const { result } = await drain(
+      runtimeWith(anthropic, mcp.client).streamTurn({
+        message: 'Inspect results continuously.',
+      }),
+    );
+    expect(result.status).toBe('completed');
+    const finalRequest = anthropic.requests.at(
+      -1,
+    ) as MessageCreateParamsStreaming;
+    const assistantMessages = finalRequest.messages.filter(
+      (entry) => entry.role === 'assistant',
+    );
+    expect(assistantMessages.map((entry) => entry.content)).toEqual(originals);
+    const results = finalRequest.messages.flatMap((entry) =>
+      Array.isArray(entry.content)
+        ? entry.content.filter((block) => block.type === 'tool_result')
+        : [],
+    ) as ToolResultBlockParam[];
+    expect(results.map((block) => block.tool_use_id)).toEqual(
+      originals.map((_, index) => `history-${index}`),
+    );
+    expect(results[0]?.content).toContain(
+      'INCOMPLETE: earlier tool output omitted',
+    );
+    expect(results.at(-1)?.content).toContain('cursor=12;');
+    expect(
+      results.reduce(
+        (total, block) =>
+          total +
+          (typeof block.content === 'string' ? block.content.length : 0),
+        0,
+      ),
+    ).toBeLessThanOrEqual(MAX_TOOL_RESULT_CHARACTERS_PER_TURN);
+    expect(JSON.stringify(finalRequest).length).toBeLessThan(
+      MAX_AGENT_REQUEST_CHARACTERS,
+    );
+    // The old request snapshot keeps the original payload, not the later marker.
+    expect(lastMessageContent(anthropic.requests[1])[0]).toMatchObject({
+      content: expect.stringContaining('cursor=1;'),
+    });
+  });
+
+  it('fails clearly before sending oversized signed history instead of discarding protocol blocks', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-large-thinking',
+        [
+          thinkingBlock('x'.repeat(MAX_AGENT_REQUEST_CHARACTERS)),
+          toolUse('large-thinking', 'whoami', {}),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const { result } = await drain(
+      runtimeWith(anthropic, mcp.client).streamTurn({ message: 'Inspect.' }),
+    );
+    expect(result.error).toMatchObject({
+      code: 'incomplete',
+      retryable: false,
+      message: expect.stringContaining('signed reasoning'),
+    });
+    expect(anthropic.requests).toHaveLength(1);
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+  });
+
+  it.each(['auth', 'cancel'] as const)(
+    'keeps read-only and %s termination after compacting a continuous turn',
+    async (failure) => {
+      const controller = new AbortController();
+      const anthropic = new QueueAnthropicClient(
+        Array.from({ length: 13 }, (_, index) =>
+          message(
+            `bounded-read-${index}`,
+            [toolUse(`bounded-tool-${index}`, 'whoami', {})],
+            'tool_use',
+          ),
+        ),
+      );
+      let calls = 0;
+      const mcp = mcpClientWith(async () => {
+        calls += 1;
+        if (calls === 12) {
+          if (failure === 'auth')
+            return {
+              content: 'Reconnect required.',
+              isError: true,
+              authenticationRequired: true,
+            };
+          controller.abort();
+          throw new DOMException('Cancelled.', 'AbortError');
+        }
+        return {
+          content: `cursor=${calls};${'x'.repeat(35_000)}`,
+          isError: false,
+        };
+      });
+      const { result } = await drain(
+        runtimeWith(anthropic, mcp.client, { readOnly: true }).streamTurn({
+          message: 'Read bounded output.',
+          signal: controller.signal,
+        }),
+      );
+      expect(result).toMatchObject({
+        status: failure === 'auth' ? 'failed' : 'aborted',
+        error: {
+          code: failure === 'auth' ? 'mcp_auth_required' : 'aborted',
+          retryable: false,
+        },
+      });
+      expect(anthropic.requests).toHaveLength(12);
+      expect(mcp.callTool).toHaveBeenCalledTimes(12);
+      expect(mcp.close).toHaveBeenCalledOnce();
+      const final = anthropic.requests[11];
+      expect(JSON.stringify(final.tools)).not.toContain(
+        'upsert_and_execute_unsafe_script',
+      );
+      expect(JSON.stringify(final.messages)).toContain(
+        'INCOMPLETE: earlier tool output omitted',
+      );
+      expect(JSON.stringify(final.messages)).toContain('cursor=11;');
+    },
+  );
 
   it('bounds aggregate tool-result content across a turn', async () => {
     const anthropic = new QueueAnthropicClient([
@@ -4141,7 +4347,12 @@ describe('AnthropicAgentRuntime', () => {
     expect(results[0]?.content.length).toBeLessThanOrEqual(
       MAX_TOOL_RESULT_CHARACTERS_PER_TURN,
     );
-    expect(results[1]?.content).toBe('');
+    expect(results[1]?.content).toContain('INCOMPLETE');
+    expect(
+      results.every(
+        (block) => block.content.length <= MAX_TOOL_RESULT_CHARACTERS,
+      ),
+    ).toBe(true);
     expect(
       results.reduce((total, block) => total + block.content.length, 0),
     ).toBeLessThan(MAX_TOOL_RESULT_CHARACTERS_PER_TURN + 100);
@@ -4151,7 +4362,7 @@ describe('AnthropicAgentRuntime', () => {
     const anthropic = new QueueAnthropicClient([
       message(
         'msg-tool-limit',
-        Array.from({ length: 21 }, (_, index) =>
+        Array.from({ length: MAX_AGENT_TOOL_CALLS_PER_TURN + 1 }, (_, index) =>
           toolUse(`toolu-limit-${index}`, 'whoami', {}),
         ),
         'tool_use',
@@ -4170,7 +4381,7 @@ describe('AnthropicAgentRuntime', () => {
       status: 'failed',
       error: {
         code: 'continuation_limit',
-        retryable: true,
+        retryable: false,
       },
     });
     expect(mcp.callTool).not.toHaveBeenCalled();

@@ -28,7 +28,7 @@ export function useExportGraph({
 }: Options) {
   const [graph, setGraph] = useState<Graph | undefined>();
   const [error, setError] = useState<Error | undefined>();
-  const [_refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
   const prepareProgressRef = useRef(onPrepareProgress);
   const graphPreparedRef = useRef(onGraphPrepared);
 
@@ -40,6 +40,7 @@ export function useExportGraph({
     graphPreparedRef.current = onGraphPrepared;
   }, [onGraphPrepared]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey explicitly requests a new graph build.
   useEffect(() => {
     // Avoid setting state after unmount or when inputs change mid-build.
     let cancelled = false;
@@ -53,7 +54,10 @@ export function useExportGraph({
           initialItemTypes,
           selectedItemTypeIds,
           schema,
-          onProgress: prepareProgressRef.current,
+          onProgress: (progress) => {
+            if (!cancelled) prepareProgressRef.current?.(progress);
+          },
+          shouldCancel: () => cancelled,
           installedPluginIds,
         });
         if (cancelled) return;
@@ -80,6 +84,7 @@ export function useExportGraph({
     selectedItemTypeIds.length,
     selectedItemTypeIds,
     initialItemTypes,
+    refreshKey,
   ]);
 
   return {

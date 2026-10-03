@@ -13,6 +13,8 @@ describe('navigation helpers', () => {
     openUsersPage(
       {
         site: { attributes: { internal_domain: null } },
+        environment: 'main',
+        isEnvironmentPrimary: true,
       },
       'user',
     );
@@ -24,6 +26,8 @@ describe('navigation helpers', () => {
     openModelPage(
       {
         site: { attributes: { internal_domain: null } },
+        environment: 'main',
+        isEnvironmentPrimary: true,
       },
       'model-1',
       false,

@@ -294,7 +294,6 @@ type PendingNavigation =
   | { type: 'openRecord'; target: RecordTarget }
   | { type: 'showRecords'; target: RecordListTarget };
 
-const MAX_AUTO_APPROVAL_BUNDLES_PER_TURN = 8;
 const MAX_DIAGNOSTIC_EVENTS_PER_TURN = 500;
 const MAX_DIAGNOSTIC_EVENT_OUTPUT_CHARACTERS = 500_000;
 const DIAGNOSTIC_OUTPUT_TRUNCATION_MARKER =
@@ -5132,7 +5131,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     setRunning(false);
   }
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Fail-closed validation, dirty-state protection, bundle caps, and atomic dispatch are kept together for the automatic approval boundary.
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Fail-closed validation, dirty-state protection, and atomic dispatch are kept together for the automatic approval boundary.
   async function autoApproveResponse(
     responseId: string | undefined,
   ): Promise<void> {
@@ -5164,14 +5163,6 @@ export default function AgentFrame(props: AgentFrameProps) {
       pauseAutomaticApproval(
         responseId,
         'Auto-approve paused. Close the open DatoCMS dialog before continuing.',
-      );
-      return;
-    }
-
-    if (turn.autoApprovalBundleCount >= MAX_AUTO_APPROVAL_BUNDLES_PER_TURN) {
-      pauseAutomaticApproval(
-        responseId,
-        'Auto-approve paused after too many consecutive changes. Review this operation to continue.',
       );
       return;
     }

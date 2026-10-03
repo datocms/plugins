@@ -425,6 +425,31 @@ describe('areCommentsEqual', () => {
     resetIdCounter();
   });
 
+  it('detects raw field reference changes even when resolved display content is equal', () => {
+    const a = createResolvedComment({
+      id: 'test-1',
+      storedContent: [{
+        type: 'mention',
+        mention: { type: 'field', modelId: 'old-model', fieldPath: 'title', locale: 'pt' },
+      }],
+    });
+    const b = {
+      ...a,
+      storedContent: [{
+        type: 'mention' as const,
+        mention: { type: 'field' as const, modelId: 'new-model', fieldPath: 'title', locale: 'pt' },
+      }],
+    };
+
+    expect(areSegmentsEqual(a.content, b.content)).toBe(true);
+    expect(areCommentsEqual(a, b)).toBe(false);
+    expect(areRepliesEqual([a], [b])).toBe(false);
+    expect(areCommentsEqual(
+      createResolvedComment({ id: 'parent', replies: [a] }),
+      createResolvedComment({ id: 'parent', replies: [b] }),
+    )).toBe(false);
+  });
+
   it('returns true for identical comments', () => {
     const a = createResolvedComment({ id: 'test-1' });
     const b = createResolvedComment({ id: 'test-1' });

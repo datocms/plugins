@@ -1,14 +1,15 @@
+import {
+  ProviderRequestControl,
+  retryAfterMs,
+} from '../ProviderRequestControl';
+import { withTimeout } from '../providerUtils';
 import type {
   BatchTranslationOptions,
   StreamOptions,
   TranslationProvider,
   VendorId,
 } from '../types';
-import {
-  createTimeoutSignal,
-  DEFAULT_API_TIMEOUT_MS,
-  ProviderError,
-} from '../types';
+import { ProviderError } from '../types';
 
 /**
  * Type definition for a single translation in the DeepL API response.
@@ -50,6 +51,7 @@ const CORS_PROXY_URL = 'https://cors-proxy.datocms.com';
  * and account for potential metadata overhead.
  */
 const DEEPL_BATCH_SIZE = 45;
+const DEEPL_MAX_BODY_BYTES = 128 * 1024;
 
 /**
  * Type guard for the DeepL `/v2/glossaries/{id}` success response shape.
@@ -94,6 +96,7 @@ export default class DeepLProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'deepl';
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly requests = new ProviderRequestControl('deepl');
   // Glossary caches are scoped to the provider instance (not module-level) so
   // their lifetime is tied to credential identity. The ProviderFactory keys
   // instances by API key + base URL, so changing credentials yields a fresh
@@ -121,62 +124,69 @@ export default class DeepLProvider implements TranslationProvider {
    */
   private async fetchGlossaryInfo(
     glossaryId: string,
+    options: BatchTranslationOptions,
   ): Promise<GlossaryInfo | null> {
     // Check cache first
     if (this.glossaryInfoCache.has(glossaryId)) {
       return this.glossaryInfoCache.get(glossaryId) ?? null;
     }
 
-    try {
-      const deeplApiUrl = `${this.baseUrl.replace(/\/$/, '')}/v2/glossaries/${glossaryId}`;
-      const url = `${CORS_PROXY_URL}/?url=${encodeURIComponent(deeplApiUrl)}`;
+    return this.requests.run(
+      () =>
+        withTimeout(options, async (signal) => {
+          const deeplApiUrl = `${this.baseUrl.replace(/\/$/, '')}/v2/glossaries/${glossaryId}`;
+          const url = `${CORS_PROXY_URL}/?url=${encodeURIComponent(deeplApiUrl)}`;
 
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `DeepL-Auth-Key ${this.apiKey}`,
-        },
-      });
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+              Authorization: `DeepL-Auth-Key ${this.apiKey}`,
+            },
+            signal,
+          });
 
-      if (!res.ok) {
-        // Glossary not found or other error - cache as null to avoid repeated calls
-        this.glossaryInfoCache.set(glossaryId, null);
-        return null;
-      }
+          if (!res.ok) {
+            if (res.status === 404) {
+              this.glossaryInfoCache.set(glossaryId, null);
+              return null;
+            }
+            await this.throwDeepLError(res);
+          }
 
-      const json: unknown = await res.json();
+          const json: unknown = await res.json();
 
-      // The CORS proxy may relay DeepL errors with HTTP 200, so we can't
-      // trust res.ok alone — inspect the body. Match on stable substrings
-      // ("invalid" + "glossary") rather than the full error string, so DeepL
-      // rewording (e.g. "Invalid glossary ID", "glossary id is invalid")
-      // still gets classified correctly. Requiring both keywords keeps the
-      // match tightly scoped and avoids false positives from unrelated
-      // errors that happen to contain "invalid".
-      const errorMessage = extractErrorMessage(json);
-      if (
-        errorMessage.includes('invalid') &&
-        errorMessage.includes('glossary')
-      ) {
-        this.invalidGlossaryIds.add(glossaryId);
-        this.glossaryInfoCache.set(glossaryId, null);
-        return null;
-      }
+          // The CORS proxy may relay DeepL errors with HTTP 200, so we can't
+          // trust res.ok alone — inspect the body. Match on stable substrings
+          // ("invalid" + "glossary") rather than the full error string, so DeepL
+          // rewording (e.g. "Invalid glossary ID", "glossary id is invalid")
+          // still gets classified correctly. Requiring both keywords keeps the
+          // match tightly scoped and avoids false positives from unrelated
+          // errors that happen to contain "invalid".
+          const errorMessage = extractErrorMessage(json);
+          if (
+            errorMessage.includes('invalid') &&
+            errorMessage.includes('glossary')
+          ) {
+            this.invalidGlossaryIds.add(glossaryId);
+            this.glossaryInfoCache.set(glossaryId, null);
+            return null;
+          }
 
-      // If the response isn't a known error but also doesn't look like a
-      // valid glossary object, treat it as a transient/unknown failure.
-      if (!isGlossaryInfo(json)) {
-        this.glossaryInfoCache.set(glossaryId, null);
-        return null;
-      }
+          // If the response isn't a known error but also doesn't look like a
+          // valid glossary object, treat it as a transient/unknown failure.
+          if (!isGlossaryInfo(json)) {
+            throw new ProviderError(
+              'DeepL returned invalid glossary metadata.',
+              502,
+              'deepl',
+            );
+          }
 
-      this.glossaryInfoCache.set(glossaryId, json);
-      return json;
-    } catch {
-      // Network error or other issue - cache as null
-      this.glossaryInfoCache.set(glossaryId, null);
-      return null;
-    }
+          this.glossaryInfoCache.set(glossaryId, json);
+          return json;
+        }),
+      options.abortSignal,
+    );
   }
 
   /**
@@ -192,8 +202,9 @@ export default class DeepLProvider implements TranslationProvider {
     glossaryId: string,
     sourceLang: string | undefined,
     targetLang: string,
+    options: BatchTranslationOptions,
   ): Promise<boolean> {
-    const info = await this.fetchGlossaryInfo(glossaryId);
+    const info = await this.fetchGlossaryInfo(glossaryId, options);
     if (!info) return false;
 
     // Normalize language codes to uppercase for comparison
@@ -235,14 +246,13 @@ export default class DeepLProvider implements TranslationProvider {
    * @param _options - Optional abort signal (unused).
    * @returns Translated text in English.
    */
-  async completeText(
-    prompt: string,
-    options?: StreamOptions,
-  ): Promise<string> {
+  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
     // Fallback single-string translation via DeepL
     const arr = await this.translateArray([prompt], {
       targetLang: 'EN',
       debug: options?.debug,
+      abortSignal: options?.abortSignal,
+      timeoutMs: options?.timeoutMs,
     });
     return arr[0] || '';
   }
@@ -261,6 +271,8 @@ export default class DeepLProvider implements TranslationProvider {
   ): Promise<string[]> {
     if (!segments.length) return segments;
     opts.abortSignal?.throwIfAborted();
+    // Validate all byte limits before a billable batch or glossary lookup.
+    const batches = this.buildBatches(segments, opts);
 
     // Validate glossary before using it - if the glossary doesn't support this
     // language pair, we skip it entirely to avoid silent failures where DeepL
@@ -271,6 +283,7 @@ export default class DeepLProvider implements TranslationProvider {
         validatedGlossaryId,
         opts.sourceLang,
         opts.targetLang,
+        opts,
       );
       if (!isValid) {
         // If DeepL explicitly rejected this glossary ID, surface a clear error
@@ -296,53 +309,91 @@ export default class DeepLProvider implements TranslationProvider {
     const url = `${CORS_PROXY_URL}/?url=${encodeURIComponent(deeplApiUrl)}`;
 
     const out: string[] = new Array(segments.length);
-    const batchSize = DEEPL_BATCH_SIZE;
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       Authorization: `DeepL-Auth-Key ${this.apiKey}`,
     };
 
-    // EDGE-002: Use timeout for each batch request
-    const timeoutMs = opts.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
-
     /**
      * Translates a single batch (slice) of segments and writes results into `out`.
      * Extracted to avoid await-in-loop lint errors in the batch iteration.
      */
-    const translateBatch = async (batchStartIndex: number): Promise<void> => {
+    const translateBatch = async (
+      batchStartIndex: number,
+      slice: string[],
+    ): Promise<void> => {
       opts.abortSignal?.throwIfAborted();
-      const slice = segments.slice(
-        batchStartIndex,
-        batchStartIndex + batchSize,
+      await this.requests.run(
+        () =>
+          withTimeout(opts, (signal) =>
+            this.executeBatchRequest(
+              slice,
+              batchStartIndex,
+              out,
+              opts,
+              validatedGlossaryId,
+              url,
+              headers,
+              signal,
+            ),
+          ),
+        opts.abortSignal,
       );
-      const { signal, cleanup } = createTimeoutSignal(timeoutMs, opts.abortSignal);
-      try {
-        await this.executeBatchRequest(
-          slice,
-          batchStartIndex,
-          out,
-          opts,
-          validatedGlossaryId,
-          url,
-          headers,
-          signal,
-        );
-      } finally {
-        cleanup();
-      }
     };
 
-    // Build batch start indices and process them sequentially using reduce
-    const batchStartIndices: number[] = [];
-    for (let i = 0; i < segments.length; i += batchSize) {
-      batchStartIndices.push(i);
+    for (const batch of batches) {
+      // biome-ignore lint/performance/noAwaitInLoops: Batch requests share provider limits and run incrementally.
+      await translateBatch(batch.start, batch.texts);
     }
-    await batchStartIndices.reduce(
-      (chain, startIndex) => chain.then(() => translateBatch(startIndex)),
-      Promise.resolve(),
-    );
 
     return out;
+  }
+
+  private buildBatches(
+    segments: string[],
+    opts: BatchTranslationOptions,
+  ): { start: number; texts: string[] }[] {
+    const encoder = new TextEncoder();
+    const overhead = encoder.encode(
+      JSON.stringify(
+        this.buildDeepLRequestBody(
+          [],
+          opts,
+          opts.glossaryId,
+          !!opts.glossaryId,
+        ),
+      ),
+    ).length;
+    const batches: { start: number; texts: string[] }[] = [];
+    let texts: string[] = [];
+    let bytes = overhead;
+    let start = 0;
+    for (let index = 0; index < segments.length; index += 1) {
+      const segmentBytes = encoder.encode(
+        JSON.stringify(segments[index]),
+      ).length;
+      if (overhead + segmentBytes > DEEPL_MAX_BODY_BYTES) {
+        throw new ProviderError(
+          `DeepL request exceeds 128 KiB at segment ${index + 1}. No content was sent for translation.`,
+          413,
+          'deepl',
+        );
+      }
+      if (
+        texts.length &&
+        (texts.length === DEEPL_BATCH_SIZE ||
+          bytes + 1 + segmentBytes > DEEPL_MAX_BODY_BYTES)
+      ) {
+        batches.push({ start, texts });
+        texts = [];
+        bytes = overhead;
+        start = index;
+      }
+      bytes += segmentBytes + (texts.length ? 1 : 0);
+      texts.push(segments[index]);
+    }
+    if (texts.length) batches.push({ start, texts });
+    return batches;
   }
 
   /**
@@ -477,7 +528,9 @@ export default class DeepLProvider implements TranslationProvider {
     if (/wrong endpoint/i.test(msg)) {
       msg = this.buildWrongEndpointMessage(msg);
     }
-    throw new ProviderError(msg, res.status, 'deepl');
+    throw new ProviderError(msg, res.status, 'deepl', {
+      retryAfterMs: retryAfterMs(res.headers),
+    });
   }
 
   /**
@@ -602,9 +655,18 @@ export default class DeepLProvider implements TranslationProvider {
       response: rawData,
     });
     const data = rawData as DeepLResponse;
-    const translations: string[] = Array.isArray(data?.translations)
-      ? data.translations.map((t: DeepLTranslation) => String(t?.text ?? ''))
-      : [];
+    if (
+      !Array.isArray(data?.translations) ||
+      data.translations.length !== slice.length ||
+      data.translations.some((t) => typeof t?.text !== 'string')
+    ) {
+      throw new ProviderError(
+        'DeepL returned an incomplete or invalid translation response. No content was saved.',
+        502,
+        'deepl',
+      );
+    }
+    const translations = data.translations.map((t) => t.text);
     for (let j = 0; j < slice.length; j++) {
       out[batchStartIndex + j] = translations[j] ?? slice[j];
     }

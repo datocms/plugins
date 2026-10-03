@@ -1,6 +1,15 @@
 import type { SchemaTypes } from '@datocms/cma-client';
+import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
+import {
+  findLinkedItemTypeIds,
+  findLinkedPluginIds,
+} from '@/utils/datocms/schema';
 import { buildHierarchyNodes } from '@/utils/graph/buildHierarchyNodes';
 import { buildEdgesForItemType } from '@/utils/graph/edges';
+import {
+  mapWithConcurrency,
+  yieldGraphWork,
+} from '@/utils/graph/mapWithConcurrency';
 import { buildItemTypeNode, buildPluginNode } from '@/utils/graph/nodes';
 import { rebuildGraphWithPositionsFromHierarchy } from '@/utils/graph/rebuildGraphWithPositionsFromHierarchy';
 import { deterministicGraphSort } from '@/utils/graph/sort';
@@ -14,6 +23,7 @@ type BuildGraphOptions = {
   selectedItemTypeIds?: string[]; // export use-case to include edges
   itemTypeIdsToSkip?: string[]; // import use-case to avoid edges
   onProgress?: (update: SchemaProgressUpdate) => void;
+  shouldCancel?: () => boolean;
 };
 
 type DiscoveryState = {
@@ -23,7 +33,12 @@ type DiscoveryState = {
   pluginsById: Map<string, SchemaTypes.Plugin>;
   discoveredPluginIdsInOrder: string[];
   visitedItemTypeIds: Set<string>;
+  scannedItemTypeCount: number;
 };
+
+function ensureNotCancelled(shouldCancel: (() => boolean) | undefined) {
+  if (shouldCancel?.()) throw new Error('Schema preparation cancelled');
+}
 
 /**
  * Process one BFS frontier item: store its fields, discover linked item types and plugins.
@@ -37,105 +52,123 @@ function processFrontierItem(
   onProgress: ((update: SchemaProgressUpdate) => void) | undefined,
   state: DiscoveryState,
   nextFrontierIds: Set<string>,
-  newPluginIds: string[],
+  newPluginIds: Set<string>,
 ) {
   state.fieldsByItemTypeId.set(current.id, fields);
   state.fieldsetsByItemTypeId.set(current.id, fieldsets);
 
+  // Discovery only needs IDs: do not allocate the complete edge/field graph twice.
+  for (const field of fields) {
+    for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
+      if (
+        !initialItemTypeIds.has(linkedItemTypeId) &&
+        !state.visitedItemTypeIds.has(linkedItemTypeId)
+      ) {
+        state.visitedItemTypeIds.add(linkedItemTypeId);
+        nextFrontierIds.add(linkedItemTypeId);
+      }
+    }
+    for (const linkedPluginId of findLinkedPluginIds(field, knownPluginIds)) {
+      if (!state.pluginsById.has(linkedPluginId)) {
+        newPluginIds.add(linkedPluginId);
+      }
+    }
+  }
+
   onProgress?.({
-    done: 0,
-    total: 0,
+    done: state.scannedItemTypeCount,
+    // This is the number discovered so far; it grows as links are scanned.
+    total: state.visitedItemTypeIds.size,
     label: `Scanning: ${current.attributes.name}`,
     phase: 'scan',
   });
-
-  const [, linkedItemTypeIds, linkedPluginIds] = buildEdgesForItemType(
-    current,
-    fields,
-    initialItemTypeIds,
-    knownPluginIds,
-  );
-
-  for (const linkedItemTypeId of linkedItemTypeIds) {
-    if (!state.visitedItemTypeIds.has(linkedItemTypeId)) {
-      state.visitedItemTypeIds.add(linkedItemTypeId);
-      nextFrontierIds.add(linkedItemTypeId);
-    }
-  }
-
-  for (const linkedPluginId of linkedPluginIds) {
-    if (!state.pluginsById.has(linkedPluginId)) {
-      newPluginIds.push(linkedPluginId);
-    }
-  }
 }
 
 /**
- * Process one BFS frontier level and schedule the next via recursion.
- * Each level's items are fetched in parallel; levels are chained recursively
- * to avoid await inside a loop construct.
+ * Traverse breadth-first without allocating one promise/request per model.
+ * Results are consumed in discovery order, regardless of request completion order.
  */
-async function processBfsFrontier(
-  frontier: SchemaTypes.ItemType[],
+async function processBfsFrontiers(
+  initialFrontier: SchemaTypes.ItemType[],
   source: ISchemaSource,
   initialItemTypeIds: Set<string>,
   knownPluginIds: Set<string>,
   onProgress: ((update: SchemaProgressUpdate) => void) | undefined,
   state: DiscoveryState,
+  shouldCancel: (() => boolean) | undefined,
 ): Promise<void> {
-  if (frontier.length === 0) return;
+  let frontier = initialFrontier;
+  const concurrency = source.maxConcurrentRequests ?? 2;
 
-  // Fetch fields for all item types in the current frontier level in parallel
-  const fieldResults = await Promise.all(
-    frontier.map((current) => source.getItemTypeFieldsAndFieldsets(current)),
-  );
-
-  const nextFrontierIds = new Set<string>();
-  const newPluginIds: string[] = [];
-
-  for (let i = 0; i < frontier.length; i++) {
-    processFrontierItem(
-      frontier[i],
-      fieldResults[i][0],
-      fieldResults[i][1],
-      initialItemTypeIds,
-      knownPluginIds,
-      onProgress,
-      state,
-      nextFrontierIds,
-      newPluginIds,
+  while (frontier.length > 0) {
+    // biome-ignore lint/performance/noAwaitInLoops: each bounded frontier discovers the next one.
+    const fieldResults = await mapWithConcurrency(
+      frontier,
+      concurrency,
+      async (current) => {
+        const result = await source.getItemTypeFieldsAndFieldsets(current);
+        ensureNotCancelled(shouldCancel);
+        state.scannedItemTypeCount += 1;
+        onProgress?.({
+          done: state.scannedItemTypeCount,
+          total: state.visitedItemTypeIds.size,
+          label: `Scanning: ${current.attributes.name}`,
+          phase: 'scan',
+        });
+        return result;
+      },
+      shouldCancel,
     );
-  }
+    const nextFrontierIds = new Set<string>();
+    const newPluginIds = new Set<string>();
 
-  // Fetch all newly discovered item types and plugins in parallel
-  const [newItemTypes, newPlugins] = await Promise.all([
-    Promise.all(
-      Array.from(nextFrontierIds).map((id) => source.getItemTypeById(id)),
-    ),
-    Promise.all(newPluginIds.map((id) => source.getPluginById(id))),
-  ]);
-
-  for (const itemType of newItemTypes) {
-    state.itemTypesById.set(itemType.id, itemType);
-  }
-
-  for (let i = 0; i < newPluginIds.length; i++) {
-    const pluginId = newPluginIds[i];
-    if (!state.pluginsById.has(pluginId)) {
-      state.pluginsById.set(pluginId, newPlugins[i]);
-      state.discoveredPluginIdsInOrder.push(pluginId);
+    for (let i = 0; i < frontier.length; i++) {
+      if (i > 0 && i % 50 === 0) {
+        // biome-ignore lint/performance/noAwaitInLoops: dependency scans must leave time for browser progress and cancellation.
+        await yieldGraphWork();
+      }
+      ensureNotCancelled(shouldCancel);
+      processFrontierItem(
+        frontier[i],
+        fieldResults[i][0],
+        fieldResults[i][1],
+        initialItemTypeIds,
+        knownPluginIds,
+        onProgress,
+        state,
+        nextFrontierIds,
+        newPluginIds,
+      );
     }
-  }
 
-  // Recurse into the next BFS level (avoids await-in-loop)
-  await processBfsFrontier(
-    newItemTypes,
-    source,
-    initialItemTypeIds,
-    knownPluginIds,
-    onProgress,
-    state,
-  );
+    const references = [
+      ...Array.from(nextFrontierIds, (id) => ({
+        id,
+        type: 'itemType' as const,
+      })),
+      ...Array.from(newPluginIds, (id) => ({ id, type: 'plugin' as const })),
+    ];
+    const newItemTypes: SchemaTypes.ItemType[] = [];
+    const entities = await mapWithConcurrency(
+      references,
+      concurrency,
+      async (reference): Promise<SchemaTypes.ItemType | SchemaTypes.Plugin> =>
+        reference.type === 'itemType'
+          ? source.getItemTypeById(reference.id)
+          : source.getPluginById(reference.id),
+      shouldCancel,
+    );
+    for (const entity of entities) {
+      if (entity.type === 'item_type') {
+        state.itemTypesById.set(entity.id, entity);
+        newItemTypes.push(entity);
+      } else {
+        state.pluginsById.set(entity.id, entity);
+        state.discoveredPluginIdsInOrder.push(entity.id);
+      }
+    }
+    frontier = newItemTypes;
+  }
 }
 
 /**
@@ -146,6 +179,7 @@ async function discoverReachableEntities(
   initialItemTypes: SchemaTypes.ItemType[],
   knownPluginIds: Set<string>,
   onProgress: ((update: SchemaProgressUpdate) => void) | undefined,
+  shouldCancel: (() => boolean) | undefined,
 ): Promise<DiscoveryState> {
   const initialItemTypeIds = new Set(initialItemTypes.map((it) => it.id));
 
@@ -156,17 +190,24 @@ async function discoverReachableEntities(
     fieldsetsByItemTypeId: new Map(),
     discoveredPluginIdsInOrder: [],
     pluginsById: new Map(),
+    scannedItemTypeCount: 0,
   };
 
-  onProgress?.({ done: 0, total: 0, label: 'Scanning schema…', phase: 'scan' });
+  onProgress?.({
+    done: 0,
+    total: initialItemTypeIds.size,
+    label: 'Scanning schema…',
+    phase: 'scan',
+  });
 
-  await processBfsFrontier(
-    [...initialItemTypes],
+  await processBfsFrontiers(
+    Array.from(state.itemTypesById.values()),
     source,
     initialItemTypeIds,
     knownPluginIds,
     onProgress,
     state,
+    shouldCancel,
   );
 
   return state;
@@ -178,26 +219,9 @@ type ProcessItemTypeOptions = {
   fieldsets: SchemaTypes.Fieldset[];
   rootItemTypeIds: Set<string>;
   knownPluginIds: Set<string>;
-  selectedItemTypeIds: string[];
-  itemTypeIdsToSkip: string[];
+  itemTypeIdsToSkip: Set<string>;
   graph: Graph;
-  hierarchyEdgeSet: Set<string>;
-  hierarchyEdges: Array<{ source: string; target: string }>;
 };
-
-function recordHierarchyEdge(
-  sourceId: string,
-  targetId: string,
-  hierarchyEdgeSet: Set<string>,
-  hierarchyEdges: Array<{ source: string; target: string }>,
-) {
-  const key = `${sourceId}->${targetId}`;
-  if (hierarchyEdgeSet.has(key)) {
-    return;
-  }
-  hierarchyEdgeSet.add(key);
-  hierarchyEdges.push({ source: sourceId, target: targetId });
-}
 
 function processItemTypeNode({
   itemType,
@@ -205,54 +229,23 @@ function processItemTypeNode({
   fieldsets,
   rootItemTypeIds,
   knownPluginIds,
-  selectedItemTypeIds,
   itemTypeIdsToSkip,
   graph,
-  hierarchyEdgeSet,
-  hierarchyEdges,
 }: ProcessItemTypeOptions) {
   graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 
-  if (itemTypeIdsToSkip.includes(itemType.id)) {
+  if (itemTypeIdsToSkip.has(itemType.id)) {
     return;
   }
 
-  const [edges, linkedItemTypeIds, linkedPluginIds] = buildEdgesForItemType(
+  const [edges] = buildEdgesForItemType(
     itemType,
     fields,
     rootItemTypeIds,
     knownPluginIds,
   );
 
-  for (const linkedItemTypeId of linkedItemTypeIds) {
-    recordHierarchyEdge(
-      `itemType--${itemType.id}`,
-      `itemType--${linkedItemTypeId}`,
-      hierarchyEdgeSet,
-      hierarchyEdges,
-    );
-  }
-
-  for (const linkedPluginId of linkedPluginIds) {
-    recordHierarchyEdge(
-      `itemType--${itemType.id}`,
-      `plugin--${linkedPluginId}`,
-      hierarchyEdgeSet,
-      hierarchyEdges,
-    );
-  }
-
-  const includeEdges =
-    selectedItemTypeIds.length === 0 ||
-    selectedItemTypeIds.includes(itemType.id) ||
-    Array.from(linkedItemTypeIds).some((id) =>
-      selectedItemTypeIds.includes(id),
-    ) ||
-    edges.length > 0;
-
-  if (includeEdges) {
-    graph.edges.push(...edges);
-  }
+  graph.edges.push(...edges);
 }
 
 export async function buildGraph({
@@ -261,11 +254,11 @@ export async function buildGraph({
   selectedItemTypeIds = [],
   itemTypeIdsToSkip = [],
   onProgress,
+  shouldCancel,
 }: BuildGraphOptions): Promise<Graph> {
   const graph: Graph = { nodes: [], edges: [] };
-  const hierarchyEdgeSet = new Set<string>();
-  const hierarchyEdges: Array<{ source: string; target: string }> = [];
 
+  ensureNotCancelled(shouldCancel);
   const knownPluginIds = await source.getKnownPluginIds();
   const rootItemTypeIds = new Set(initialItemTypes.map((it) => it.id));
 
@@ -281,13 +274,21 @@ export async function buildGraph({
     initialItemTypes,
     knownPluginIds,
     onProgress,
+    shouldCancel,
   );
+
+  const itemTypeIdsToSkipSet = new Set(itemTypeIdsToSkip);
 
   const total = visitedItemTypeIds.size + pluginsById.size;
   let done = 0;
   onProgress?.({ done, total, label: 'Preparing export…', phase: 'build' });
 
   for (const itemTypeId of visitedItemTypeIds) {
+    if (done > 0 && done % 50 === 0) {
+      // biome-ignore lint/performance/noAwaitInLoops: graph construction must remain responsive for large local schemas.
+      await yieldGraphWork();
+    }
+    ensureNotCancelled(shouldCancel);
     const itemType = itemTypesById.get(itemTypeId);
     if (!itemType) {
       continue;
@@ -308,11 +309,8 @@ export async function buildGraph({
       fieldsets,
       rootItemTypeIds,
       knownPluginIds,
-      selectedItemTypeIds,
-      itemTypeIdsToSkip,
+      itemTypeIdsToSkip: itemTypeIdsToSkipSet,
       graph,
-      hierarchyEdgeSet,
-      hierarchyEdges,
     });
 
     done += 1;
@@ -325,6 +323,7 @@ export async function buildGraph({
   }
 
   for (const pluginId of discoveredPluginIdsInOrder) {
+    ensureNotCancelled(shouldCancel);
     const plugin = pluginsById.get(pluginId);
     if (!plugin) continue;
     graph.nodes.push(buildPluginNode(plugin));
@@ -339,11 +338,24 @@ export async function buildGraph({
 
   const sortedGraph = deterministicGraphSort(graph);
   if (sortedGraph.nodes.length === 0) return sortedGraph;
+  ensureNotCancelled(shouldCancel);
 
-  const hierarchy = buildHierarchyNodes(
-    sortedGraph,
-    selectedItemTypeIds,
-    hierarchyEdges,
-  );
+  // The UI already switches to the list above this threshold. Keep the optional
+  // "Render it anyway" view usable without constructing a large D3 tree.
+  if (sortedGraph.nodes.length > GRAPH_NODE_THRESHOLD) {
+    const columns = Math.ceil(Math.sqrt(sortedGraph.nodes.length));
+    return {
+      ...sortedGraph,
+      nodes: sortedGraph.nodes.map((node, index) => ({
+        ...node,
+        position: {
+          x: (index % columns) * 250,
+          y: Math.floor(index / columns) * 250,
+        },
+      })),
+    };
+  }
+
+  const hierarchy = buildHierarchyNodes(sortedGraph, selectedItemTypeIds);
   return rebuildGraphWithPositionsFromHierarchy(hierarchy, sortedGraph.edges);
 }

@@ -261,8 +261,8 @@ describe('segmentsToTipTapDoc', () => {
       const content = doc.content?.[0].content ?? [];
 
       const mentionTypes = content
-        .filter((n: { type: string }) => n.type.endsWith('Mention'))
-        .map((n: { type: string }) => n.type);
+        .filter((node) => node.type?.endsWith('Mention'))
+        .map((node) => node.type);
 
       expect(mentionTypes).toContain('userMention');
       expect(mentionTypes).toContain('fieldMention');

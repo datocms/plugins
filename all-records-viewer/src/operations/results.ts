@@ -35,8 +35,11 @@ export function isPartialBulkResult(result: BulkOperationResult): boolean {
   return result.successful > 0 && result.failed > 0;
 }
 
-export function bulkResultMessage(result: BulkOperationResult): string {
+function resultCountsMessage(result: BulkOperationResult): string {
   const record = result.successful === 1 ? 'record' : 'records';
+  if (result.uncertain || result.unprocessed || result.cancelled) {
+    return incompleteBulkResultMessage(result);
+  }
 
   if (result.failed === 0) {
     return `${result.successful} ${record} ${pastTense[result.operation]}.`;
@@ -49,6 +52,24 @@ export function bulkResultMessage(result: BulkOperationResult): string {
 
   const failedRecord = result.failed === 1 ? 'record' : 'records';
   return `${result.successful} ${record} ${pastTense[result.operation]}; ${result.failed} ${failedRecord} failed.`;
+}
+
+export function bulkResultMessage(result: BulkOperationResult): string {
+  const message = resultCountsMessage(result);
+  return result.error ? `${message} ${result.error.slice(0, 600)}` : message;
+}
+
+function incompleteBulkResultMessage(result: BulkOperationResult): string {
+  const record = result.successful === 1 ? 'record' : 'records';
+  const parts = [
+    `${result.successful} ${record} ${pastTense[result.operation]}`,
+  ];
+  if (result.failed) parts.push(`${result.failed} records failed`);
+  if (result.uncertain)
+    parts.push(`${result.uncertain} records have an unconfirmed outcome`);
+  if (result.unprocessed)
+    parts.push(`${result.unprocessed} records were not submitted`);
+  return `${result.cancelled ? 'Cancelled. ' : ''}${parts.join('; ')}.${result.uncertain ? ' Check their current state before running another action.' : ''}`;
 }
 
 function errorDetail(error: unknown): string | null {

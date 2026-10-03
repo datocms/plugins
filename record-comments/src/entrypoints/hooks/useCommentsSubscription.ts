@@ -5,6 +5,7 @@ import {
   type QueryResult,
 } from '@ctypes/comments';
 import type { Client } from '@datocms/cma-client-browser';
+import { createCmaFallbackRead } from '@utils/cmaFallbackRead';
 import {
   categorizeSubscriptionError,
   normalizeError,
@@ -14,7 +15,7 @@ import { findCommentsModel } from '@utils/itemTypeUtils';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuerySubscription } from 'react-datocms/use-query-subscription';
-import { CMA_FETCH, COMMENTS_MODEL_API_KEY, TIMING } from '@/constants';
+import { COMMENTS_MODEL_API_KEY, TIMING } from '@/constants';
 import { logDebug, logError } from '@/utils/errorLogger';
 
 type Draft = {
@@ -135,6 +136,17 @@ function parseAggregateComments(content: unknown): {
   };
 }
 
+function isAggregateForRecord(
+  record: QueryResult['allProjectComments'][number] | undefined,
+  modelId: string,
+  recordId: string,
+) {
+  if (!record) return true;
+  if ('recordId' in record && record.recordId !== recordId) return false;
+  if ('modelId' in record && record.modelId !== modelId) return false;
+  return true;
+}
+
 export type SubscriptionErrorInfo = {
   error: Error;
   type: SubscriptionErrorType;
@@ -253,6 +265,22 @@ export function useCommentsSubscription({
     includeDrafts: true,
     reconnectionPeriod: subscriptionKey > 0 ? 100 : undefined,
   });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reset local state when the request scope changes.
+  useEffect(() => {
+    setCommentRecordId(null);
+    setComments([]);
+    setStorageProblem(null);
+    setIsLoading(true);
+    dataReceivedAtRef.current = 0;
+    syncBlockedAtRef.current = 0;
+  }, [
+    client,
+    ctx.environment,
+    filterParams.modelId,
+    filterParams.recordId,
+    setCommentRecordId,
+  ]);
 
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
@@ -402,7 +430,6 @@ export function useCommentsSubscription({
         modelId: requestContext.modelId,
         recordId: requestContext.recordId,
       });
-      cmaRetryCountRef.current = 0;
       setCmaFetchError(null);
       setCmaRetryKey((prev) => prev + 1);
     }
@@ -521,12 +548,36 @@ export function useCommentsSubscription({
     }
   }, [commentLogValue, onAfterSync, onBeforeSync, setCommentRecordId]);
 
+  const applyDuplicateAggregatesFound = useCallback(() => {
+    setCommentRecordId(null);
+    setComments([]);
+    setStorageProblem({
+      type: 'malformed_aggregate',
+      message: 'More than one comments record exists for this record.',
+    });
+  }, [setCommentRecordId]);
+
+  const notifyAfterSync = useCallback(() => {
+    if (onAfterSync) requestAnimationFrame(onAfterSync);
+  }, [onAfterSync]);
+
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
+    if (!data) return;
 
     const record = data?.allProjectComments[0];
-    if (data) setIsLoading(false);
+    if (
+      !isAggregateForRecord(record, filterParams.modelId, filterParams.recordId)
+    )
+      return;
+
+    setIsLoading(false);
     if (!isSyncAllowed) return;
+
+    if (data.allProjectComments.length > 1) {
+      applyDuplicateAggregatesFound();
+      return;
+    }
 
     if (!record) {
       applyNoAggregateFound();
@@ -553,9 +604,7 @@ export function useCommentsSubscription({
     onBeforeSync?.();
     applyAggregateSync(record.content, currentUserId, onOrphanedDraft);
 
-    if (onAfterSync) {
-      requestAnimationFrame(onAfterSync);
-    }
+    notifyAfterSync();
   }, [
     data,
     isSyncAllowed,
@@ -564,18 +613,21 @@ export function useCommentsSubscription({
     currentUserId,
     onOrphanedDraft,
     onBeforeSync,
-    onAfterSync,
+    notifyAfterSync,
     requestContext.modelId,
     requestContext.recordId,
     applyAggregateSync,
     applyNoAggregateFound,
+    applyDuplicateAggregatesFound,
+    filterParams.modelId,
+    filterParams.recordId,
     isSubscriptionDataStale,
   ]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
   const [cmaRetryKey, setCmaRetryKey] = useState(0);
-  const cmaRetryCountRef = useRef(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cmaRetryKey explicitly requests another fetch.
   useEffect(() => {
     if (isRealtimeSubscriptionEnabled) return;
     if (!client || !effectiveCommentsModelId || !filterParams.recordId) {
@@ -588,10 +640,14 @@ export function useCommentsSubscription({
       setIsLoading(false);
       return;
     }
+    if (!isSyncAllowed) return;
 
     let isMounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const read = createCmaFallbackRead(client, (error) => {
+      if (!isMounted) return;
+      setCmaFetchError(error);
+      setIsLoading(false);
+    });
 
     const syncAfterFetch = () => {
       if (onAfterSync) {
@@ -612,18 +668,17 @@ export function useCommentsSubscription({
 
     const applyFetchedRecords = (
       records: Awaited<ReturnType<typeof client.items.list>>,
-      attempt: number,
     ) => {
-      cmaRetryCountRef.current = 0;
       logDebug('Comments fetched via CMA fallback', {
-        attempt: attempt + 1,
         commentRecordId: records[0]?.id ?? null,
         modelId: requestContext.modelId,
         recordId: requestContext.recordId,
         recordsFound: records.length,
       });
 
-      if (records.length > 0) {
+      if (records.length > 1) {
+        applyDuplicateAggregatesFound();
+      } else if (records.length > 0) {
         applyRecordFound(records[0]);
       } else {
         applyNoAggregateFound();
@@ -632,97 +687,20 @@ export function useCommentsSubscription({
       setIsLoading(false);
     };
 
-    const scheduleRetry = (
-      attempt: number,
-      normalizedErr: Error,
-      retryFn: (next: number) => void,
-    ) => {
-      cmaRetryCountRef.current = attempt + 1;
-      const delayMs = Math.min(1000 * 2 ** attempt, 8000);
-
-      logError(
-        `CMA fetch failed (attempt ${attempt + 1}/${CMA_FETCH.MAX_RETRIES + 1}), retrying in ${delayMs}ms`,
-        normalizedErr,
-        { modelId: filterParams.modelId, recordId: filterParams.recordId },
-      );
-      logDebug('CMA fallback retry scheduled', {
-        attempt: attempt + 1,
-        delayMs,
-        errorMessage: normalizedErr.message,
-        modelId: requestContext.modelId,
-        recordId: requestContext.recordId,
-      });
-
-      retryTimeoutId = setTimeout(() => {
-        if (isMounted) {
-          retryFn(attempt + 1);
-        }
-      }, delayMs);
-    };
-
-    const handleFetchError = (
-      error: unknown,
-      attempt: number,
-      retryFn: (next: number) => void,
-    ) => {
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (!isMounted) return;
-
-      const normalizedErr =
-        error instanceof Error ? error : new Error(String(error));
-
-      if (attempt < CMA_FETCH.MAX_RETRIES) {
-        scheduleRetry(attempt, normalizedErr, retryFn);
-        return;
-      }
-
-      logError(
-        'Failed to fetch comments (CMA fallback) after max retries',
-        normalizedErr,
-        {
-          modelId: filterParams.modelId,
-          recordId: filterParams.recordId,
-          attempts: attempt + 1,
-        },
-      );
-      logDebug('CMA fallback retries exhausted', {
-        attempts: attempt + 1,
-        errorMessage: normalizedErr.message,
-        modelId: requestContext.modelId,
-        recordId: requestContext.recordId,
-      });
-      setCmaFetchError(normalizedErr);
-      setIsLoading(false);
-    };
-
-    const fetchComments = async (attempt = 0): Promise<void> => {
+    const fetchComments = async (): Promise<void> => {
       if (!isMounted) return;
 
       setIsLoading(true);
-      if (attempt === 0) setCmaFetchError(null);
+      setCmaFetchError(null);
       logDebug('Fetching comments via CMA fallback', {
-        attempt: attempt + 1,
         modelId: requestContext.modelId,
         recordId: requestContext.recordId,
       });
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          if (isMounted) {
-            reject(
-              new Error(
-                `CMA fetch timed out after ${CMA_FETCH.TIMEOUT_MS / 1000} seconds`,
-              ),
-            );
-          }
-        }, CMA_FETCH.TIMEOUT_MS);
-      });
-
       try {
-        const fetchPromise = client.items.list({
+        // The SDK owns timeout and transport retries; an outer race cannot
+        // cancel items.list and would start overlapping SDK retry chains.
+        const records = await read.client.items.list({
           filter: {
             type: COMMENTS_MODEL_API_KEY,
             fields: {
@@ -730,20 +708,23 @@ export function useCommentsSubscription({
               record_id: { eq: filterParams.recordId },
             },
           },
-          page: { limit: 1 },
+          page: { limit: 2 },
         });
 
-        const records = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!isMounted || read.isCanceled()) return;
 
-        if (timeoutId !== null) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (!isMounted) return;
-
-        applyFetchedRecords(records, attempt);
+        applyFetchedRecords(records);
       } catch (error) {
-        handleFetchError(error, attempt, fetchComments);
+        if (!isMounted || read.isCanceled()) return;
+        const normalizedErr = normalizeError(error);
+        logError('Failed to fetch comments (CMA fallback)', normalizedErr, {
+          modelId: filterParams.modelId,
+          recordId: filterParams.recordId,
+        });
+        setCmaFetchError(normalizedErr);
+        setIsLoading(false);
+      } finally {
+        read.cancel();
       }
     };
 
@@ -751,17 +732,11 @@ export function useCommentsSubscription({
 
     return () => {
       isMounted = false;
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (retryTimeoutId !== null) {
-        clearTimeout(retryTimeoutId);
-        retryTimeoutId = null;
-      }
+      read.cancel();
     };
   }, [
     isRealtimeSubscriptionEnabled,
+    isSyncAllowed,
     client,
     filterParams.modelId,
     filterParams.recordId,
@@ -775,6 +750,7 @@ export function useCommentsSubscription({
     requestContext.recordId,
     applyAggregateSync,
     applyNoAggregateFound,
+    applyDuplicateAggregatesFound,
     cmaRetryKey,
   ]);
 

@@ -9,6 +9,7 @@ import {
 } from '../schemaRepository';
 import { formatLocaleWithCode } from '../localeUtils';
 import { loadRecordBatches } from './BulkRecordLoader';
+import { cloneContent } from './ContentIntegrity';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
@@ -200,29 +201,21 @@ export async function fetchRecordsWithPagination(
   return allRecords;
 }
 
-/*
- * Checks if an object has a specific key (including in nested objects).
- * Supports both regular locale codes and hyphenated locales (e.g., "pt-br").
- */
-function hasKeyDeep(obj: Record<string, unknown>, targetKey: string): boolean {
-  if (!obj || typeof obj !== 'object') return false;
-
-  // Normalize targetKey to handle hyphenated locales like "pt-br"
-  const normalizedTargetKey = targetKey.toLowerCase();
-
-  // Direct match check (case-insensitive to handle inconsistencies)
-  for (const key in obj) {
-    if (key.toLowerCase() === normalizedTargetKey) {
-      return true;
-    }
-  }
-
-  // Recursive check in nested objects
-  return Object.values(obj).some((value) => {
-    if (typeof value === 'object' && value !== null) {
-      return hasKeyDeep(value as Record<string, unknown>, targetKey);
-    }
-    return false;
+/** Check actual localized fields, without traversing unrelated nested metadata. */
+function hasSourceLocale(
+  record: DatoCMSRecordFromAPI,
+  dictionary: FieldTypeDictionary,
+  locale: string,
+): boolean {
+  return Object.entries(dictionary).some(([field, metadata]) => {
+    if (!metadata.isLocalized) return false;
+    const value = record[field];
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      findExactLocaleKey(value as Record<string, unknown>, locale) !== undefined
+    );
   });
 }
 
@@ -250,6 +243,8 @@ export type ProgressUpdate = {
   itemTypeId?: string;
   /** CMA `updated_at` of the record after the write. */
   updatedAt?: string;
+  /** Revision acknowledged by CMA, used to avoid publishing later edits. */
+  currentVersion?: string;
   /** API keys of fields that were AI-translated on this record. */
   translatedFieldApiKeys?: string[];
   /** Field ids (UUIDs) of fields that were AI-translated on this record. */
@@ -283,14 +278,16 @@ export function summarizeReferenceCopies(
   copies: ReferenceCopy[],
 ): string | null {
   if (copies.length === 0) return null;
-  const fields: string[] = [];
-  const locales: string[] = [];
+  const fields = new Set<string>();
+  const locales = new Set<string>();
   for (const { field, toLocale } of copies) {
-    if (!fields.includes(field)) fields.push(field);
-    if (!locales.includes(toLocale)) locales.push(toLocale);
+    fields.add(field);
+    locales.add(toLocale);
   }
-  const fieldList = fields.map((f) => `"${f}"`).join(', ');
-  const localeList = locales.map((l) => formatLocaleWithCode(l)).join(', ');
+  const fieldList = [...fields].map((f) => `"${f}"`).join(', ');
+  const localeList = [...locales]
+    .map((l) => formatLocaleWithCode(l))
+    .join(', ');
   return `Copied linked records in ${fieldList} into ${localeList} — these are shared references and weren't translated; review whether they should differ per locale.`;
 }
 
@@ -378,6 +375,7 @@ export interface RecordTranslationOutcome
   copiedLinkFieldApiKeys: string[];
   copiedLinkFieldIds: string[];
   updatedAt?: string;
+  currentVersion?: string;
 }
 
 /**
@@ -528,6 +526,17 @@ export async function translateAndUpdateRecords(
   options: TranslateBatchOptions = {},
   schemaRepository?: SchemaRepository,
 ): Promise<void> {
+  // Do not pay for duplicate targets, or accidentally translate the source
+  // onto itself when a stale host selection contains the source locale.
+  const targetLocales = [...new Set(toLocales)].filter(
+    (locale) => locale.toLowerCase() !== fromLocale.toLowerCase(),
+  );
+  if (targetLocales.length === 0) return;
+
+  const debugError = (message: string) => {
+    if (pluginParams.enableDebugging) console.error(message);
+  };
+
   const updateProgress = (u: ProgressUpdate) => {
     // Normalize legacy in-progress message that included the word "fields"
     if (u.status === 'processing' && typeof u.message === 'string') {
@@ -564,10 +573,8 @@ export async function translateAndUpdateRecords(
     record: DatoCMSRecordFromAPI,
     recordIndex: number,
     recordLabel: string,
+    fieldTypeDictionary: FieldTypeDictionary,
   ): Promise<RecordTranslationOutcome> {
-    const fieldTypeDictionary = await getFieldTypeDictionary(
-      record.item_type.id,
-    );
     const itemTypeId = record.item_type.id;
     const toFieldIds = (apiKeys: string[]): string[] =>
       apiKeys
@@ -627,10 +634,10 @@ export async function translateAndUpdateRecords(
 
     // Sequential per-locale to keep within provider rate-limit budgets and
     // surface progress in the order the user picked.
-    await toLocales.reduce(
-      (chain, toLocale) => chain.then(() => translateForLocale(toLocale)),
-      Promise.resolve(),
-    );
+    for (const toLocale of targetLocales) {
+      // biome-ignore lint/performance/noAwaitInLoops: One locale at a time keeps requests and payloads bounded.
+      await translateForLocale(toLocale);
+    }
 
     // Keep the write's fresh `updated_at` when we touched the record,
     // otherwise retain the record's existing timestamp.
@@ -638,7 +645,8 @@ export async function translateAndUpdateRecords(
       record as { meta?: { updated_at?: string; current_version?: string } }
     ).meta;
     let updatedAt = recordMeta?.updated_at;
-    if (Object.keys(mergedPayload).length > 0) {
+    let currentVersion: string | undefined;
+    if (totalTranslatedFields + totalReferenceFieldsCopied > 0 && Object.keys(mergedPayload).length > 0) {
       throwIfTranslationCancelled(options);
       updateProgress({
         recordIndex,
@@ -650,16 +658,14 @@ export async function translateAndUpdateRecords(
         itemTypeId,
       });
       throwIfTranslationCancelled(options);
-      const updated = (await client.items.update(
-        record.id,
-        {
-          ...mergedPayload,
-          ...(recordMeta?.current_version
-            ? { meta: { current_version: recordMeta.current_version } }
-            : {}),
-        },
-      )) as { meta?: { updated_at?: string } };
+      const updated = (await client.items.update(record.id, {
+        ...mergedPayload,
+        ...(recordMeta?.current_version
+          ? { meta: { current_version: recordMeta.current_version } }
+          : {}),
+      })) as { meta?: { updated_at?: string; current_version?: string } };
       updatedAt = updated?.meta?.updated_at ?? updatedAt;
+      currentVersion = updated?.meta?.current_version;
     }
 
     const translatedFieldApiKeys = [...new Set(aggregatedTranslatedFields)];
@@ -679,6 +685,7 @@ export async function translateAndUpdateRecords(
       copiedLinkFieldApiKeys,
       copiedLinkFieldIds: toFieldIds(copiedLinkFieldApiKeys),
       updatedAt,
+      currentVersion,
     };
   }
 
@@ -709,6 +716,7 @@ export async function translateAndUpdateRecords(
       recordLabel,
       itemTypeId,
       updatedAt: outcome.updatedAt,
+      currentVersion: outcome.currentVersion,
       translatedFieldApiKeys: outcome.translatedFieldApiKeys,
       translatedFieldIds: outcome.translatedFieldIds,
       copiedLinkFieldApiKeys: outcome.copiedLinkFieldApiKeys,
@@ -786,10 +794,25 @@ export async function translateAndUpdateRecords(
     });
 
     try {
-      if (!hasKeyDeep(record as Record<string, unknown>, fromLocale)) {
+      if (
+        options.selectedFieldsByModel &&
+        !options.selectedFieldsByModel[itemTypeId]?.length
+      ) {
+        updateProgress({
+          recordIndex,
+          recordId: record.id,
+          status: 'completed',
+          statusText: 'No eligible fields to translate',
+          recordLabel,
+          itemTypeId,
+        });
+        return 'done';
+      }
+      const fieldTypeDictionary = await getFieldTypeDictionary(itemTypeId);
+      throwIfTranslationCancelled(options);
+      if (!hasSourceLocale(record, fieldTypeDictionary, fromLocale)) {
         const errorMsg = `Record "${recordLabel}" (#${record.id}) does not have the source locale ${formatLocaleWithCode(fromLocale)}`;
-        console.error(`Record ${record.id} ${errorMsg}`);
-        ctx.alert(`Error: Record ID ${record.id} ${errorMsg}`);
+        debugError(errorMsg);
         updateProgress({
           recordIndex,
           recordId: record.id,
@@ -808,6 +831,7 @@ export async function translateAndUpdateRecords(
         record,
         recordIndex,
         recordLabel,
+        fieldTypeDictionary,
       );
 
       return reportTranslationResult(
@@ -818,35 +842,53 @@ export async function translateAndUpdateRecords(
         itemTypeId,
       );
     } catch (error) {
-      rethrowIfTranslationCancelled(error, options);
-      const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
-      const norm = normalizeProviderError(error, provider.vendor);
-      if (isFatalProviderError(provider.vendor, norm)) throw error;
-      const formattedMessage = formatErrorForUser(norm);
-      const rawMessage = error instanceof Error ? error.message : String(error);
-      console.error(`Error translating record ${record.id}:`, rawMessage);
-      updateProgress({
+      return reportRecordError(
+        error,
+        record,
         recordIndex,
-        recordId: record.id,
-        status: 'error',
-        message:
-          friendlyMessage ??
-          `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
-        statusText: 'Failed',
         recordLabel,
-        itemTypeId,
-        updatedAt: recordUpdatedAt,
-        warnings: [friendlyMessage ?? formattedMessage],
-      });
-      return 'continue';
+        recordUpdatedAt,
+      );
     }
   }
 
-  // Process records sequentially using reduce to avoid await-in-loop
-  await records.reduce(async (previousRecord, record, i) => {
-    await previousRecord;
-    return processRecord(record, options.getRecordIndex?.(record.id, i) ?? i);
-  }, Promise.resolve<'continue' | 'done'>('done'));
+  function reportRecordError(
+    error: unknown,
+    record: DatoCMSRecordFromAPI,
+    recordIndex: number,
+    recordLabel: string,
+    recordUpdatedAt: string | undefined,
+  ): 'continue' {
+    rethrowIfTranslationCancelled(error, options);
+    const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
+    const norm = normalizeProviderError(error, provider.vendor);
+    if (isFatalProviderError(provider.vendor, norm)) throw error;
+    const formattedMessage = formatErrorForUser(norm);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    debugError(`Error translating record ${record.id}: ${rawMessage}`);
+    updateProgress({
+      recordIndex,
+      recordId: record.id,
+      status: 'error',
+      message:
+        friendlyMessage ??
+        `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
+      statusText: 'Failed',
+      recordLabel,
+      itemTypeId: record.item_type.id,
+      updatedAt: recordUpdatedAt,
+      warnings: [friendlyMessage ?? formattedMessage],
+    });
+    return 'continue';
+  }
+
+  for (const [index, record] of records.entries()) {
+    // biome-ignore lint/performance/noAwaitInLoops: Records are consumed sequentially and never queued as a large promise chain.
+    await processRecord(
+      record,
+      options.getRecordIndex?.(record.id, index) ?? index,
+    );
+  }
 }
 
 /**
@@ -862,27 +904,40 @@ export async function translateAndUpdateRecords(
  * nested blocks (e.g., modular content inside a block) are also handled.
  */
 export function stripBlockIds(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-
-  if (Array.isArray(value)) {
-    return value.map(stripBlockIds);
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-
-    // Detect a DatoCMS block: { type: "item", id: "..." }
-    const isBlock = obj.type === 'item' && typeof obj.id === 'string';
-
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(obj)) {
-      if (isBlock && key === 'id') continue;
-      result[key] = stripBlockIds(val);
+  const root = cloneContent(value);
+  if (root === null || typeof root !== 'object') return root;
+  const visited = new WeakSet<object>();
+  const pending: object[] = [root];
+  while (pending.length > 0) {
+    const obj = pending.pop() as Record<string, unknown>;
+    if (visited.has(obj)) continue;
+    visited.add(obj);
+    // A relationship linkage also uses type="item". Only hydrated blocks
+    // have attributes; stripping linkage IDs would corrupt references.
+    if (isHydratedBlock(obj)) {
+      delete obj.id;
     }
-    return result;
+    for (const child of Object.values(obj)) {
+      if (child !== null && typeof child === 'object') pending.push(child);
+    }
   }
+  return root;
+}
 
-  return value;
+function isHydratedBlock(value: Record<string, unknown>): boolean {
+  if (
+    value.type === 'item' &&
+    value.attributes !== null &&
+    typeof value.attributes === 'object'
+  )
+    return true;
+  const itemType = value.item_type;
+  return (
+    itemType !== null &&
+    typeof itemType === 'object' &&
+    'id' in itemType &&
+    typeof itemType.id === 'string'
+  );
 }
 
 /**
@@ -893,9 +948,24 @@ export function stripBlockIds(value: unknown): unknown {
 const BLOCK_EDITOR_TYPES = new Set([
   'rich_text',
   'structured_text',
+  'single_block',
   'framed_single_block',
   'frameless_single_block',
 ]);
+
+function translationEditor(meta: FieldTypeDictionary[string]): string {
+  return meta.field_type && BLOCK_EDITOR_TYPES.has(meta.field_type)
+    ? meta.field_type
+    : meta.editor;
+}
+
+function isReferenceMetadata(meta: FieldTypeDictionary[string]): boolean {
+  return (
+    meta.field_type === 'link' ||
+    meta.field_type === 'links' ||
+    isReferenceField(meta.validators)
+  );
+}
 
 /**
  * Counts how many record references a locale-sync value holds: array length for
@@ -926,7 +996,7 @@ function resolveLocaleSyncFallback(
   meta: FieldTypeDictionary[string],
   sourceValue: unknown,
 ): { value: unknown; referenceCopied: boolean } {
-  const isReference = isReferenceField(meta.validators);
+  const isReference = isReferenceMetadata(meta);
   const shouldCopySource =
     sourceValue != null &&
     (isFieldRequired(meta.validators) ||
@@ -937,7 +1007,7 @@ function resolveLocaleSyncFallback(
     return { value: null, referenceCopied: false };
   }
 
-  const value = BLOCK_EDITOR_TYPES.has(meta.editor)
+  const value = BLOCK_EDITOR_TYPES.has(translationEditor(meta))
     ? stripBlockIds(sourceValue)
     : sourceValue;
 
@@ -997,6 +1067,10 @@ export async function buildTranslatedUpdatePayload(
   let translatedFieldCount = 0;
   let referenceFieldsCopied = 0;
 
+  const debugError = (message: string) => {
+    if (pluginParams.enableDebugging) console.error(message);
+  };
+
   const recordContext = generateRecordContext(record, fromLocale);
 
   // Collect the fields that need translation before the async loop
@@ -1027,7 +1101,7 @@ export async function buildTranslatedUpdatePayload(
       fromLocale,
     );
 
-    const fieldType = fieldTypeDictionary[field].editor;
+    const fieldType = translationEditor(fieldTypeDictionary[field]);
     const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
 
     if (!hasTranslatableSourceValue(fieldType, sourceValue)) {
@@ -1071,7 +1145,7 @@ export async function buildTranslatedUpdatePayload(
       const norm = normalizeProviderError(error, provider.vendor);
       if (isFatalProviderError(provider.vendor, norm)) throw error;
       const formattedMessage = formatErrorForUser(norm);
-      console.error(
+      debugError(
         `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formattedMessage}`,
       );
       const suffix = formattedMessage.endsWith('.') ? '' : '.';
@@ -1081,11 +1155,10 @@ export async function buildTranslatedUpdatePayload(
     }
   }
 
-  // Process fields sequentially using reduce to avoid await-in-loop
-  await translatableFields.reduce(
-    (chain, field) => chain.then(() => translateField(field)),
-    Promise.resolve(),
-  );
+  for (const field of translatableFields) {
+    // biome-ignore lint/performance/noAwaitInLoops: Only the active field should retain a pending translation.
+    await translateField(field);
+  }
 
   throwIfTranslationCancelled(opts);
 
@@ -1162,8 +1235,14 @@ export function shouldTranslateField(
   }
 
   const fieldMeta = fieldTypeDictionary[field];
+  if (isReferenceMetadata(fieldMeta)) return false;
   if (
-    !shouldProcessField(fieldMeta.editor, fieldMeta.id, pluginParams, field)
+    !shouldProcessField(
+      translationEditor(fieldMeta),
+      fieldMeta.id,
+      pluginParams,
+      field,
+    )
   ) {
     return false;
   }
@@ -1187,7 +1266,7 @@ export function shouldTranslateField(
     record[field] as Record<string, unknown>,
     fromLocale,
   );
-  if (!hasTranslatableSourceValue(fieldMeta.editor, sourceVal)) {
+  if (!hasTranslatableSourceValue(translationEditor(fieldMeta), sourceVal)) {
     return false;
   }
 
@@ -1222,10 +1301,12 @@ export async function buildFieldTypeDictionary(
         id: string;
         localized: boolean;
         validators: FieldValidators;
+        field_type?: string;
       },
     ) => {
       acc[field.api_key] = {
         editor: field.appearance.editor,
+        field_type: field.field_type,
         id: field.id,
         isLocalized: field.localized,
         validators: field.validators,

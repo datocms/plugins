@@ -1,11 +1,20 @@
-import type { Client } from '@datocms/cma-client-browser';
 import styles from '@styles/configscreen.module.css';
 import {
-  type NormalizedComment,
-  migrateCommentsToUuid,
-  normalizeCommentIfValid,
-} from '@utils/migrations';
+  buildLegacyUserIdsByEmail,
+  emptyMigrationResults,
+  type MigrationProgress,
+  type MigrationResults,
+  type LegacyModel as ModelWithCommentLog,
+  retryMigrationRead,
+  runLegacyMigration,
+} from '@utils/legacyMigration';
+import { hasUnrestrictedModelReadPermission } from '@utils/permissions';
 import { buildPluginParams, parsePluginParams } from '@utils/pluginParams';
+import {
+  currentUserToUserInfo,
+  ownerToUserInfo,
+  transformUsersToUserInfo,
+} from '@utils/userTransformers';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -24,6 +33,25 @@ type PropTypes = {
   ctx: RenderConfigScreenCtx;
 };
 
+function cleanupErrorMessage(error: unknown) {
+  return `Error deleting fields: ${error instanceof Error ? error.message : 'Unknown error'}`;
+}
+
+function assertMigrationReadPermissions(
+  ctx: RenderConfigScreenCtx,
+  models: ModelWithCommentLog[],
+  commentsModelId: string,
+) {
+  if (ctx.currentUser.id === ctx.owner.id) return;
+  const modelIds = [...models.map((model) => model.modelId), commentsModelId];
+  for (const modelId of modelIds) {
+    if (!hasUnrestrictedModelReadPermission(ctx, modelId))
+      throw new Error(
+        'Migration and cleanup require unrestricted read access to every source and comments model. Restricted permissions can hide legacy comments.',
+      );
+  }
+}
+
 function buildScanNoticeMessage(
   foundCount: number,
   failedCount: number,
@@ -37,157 +65,12 @@ function buildScanNoticeMessage(
   return `Found ${foundCount} model(s) with comment_log fields.`;
 }
 
-function parseCommentLog(
-  commentLog: unknown,
-  recordId: string,
-): unknown[] | null {
-  if (!commentLog) return null;
-
-  if (typeof commentLog === 'string') {
-    try {
-      const parsed = JSON.parse(commentLog);
-      if (!Array.isArray(parsed)) return null;
-      return parsed;
-    } catch (parseError) {
-      logWarn('Skipping record with invalid JSON comment_log', {
-        recordId,
-        error: parseError,
-      });
-      return null;
-    }
-  }
-
-  if (Array.isArray(commentLog)) {
-    return commentLog;
-  }
-
-  return null;
-}
-
-type MigrationRecord = { id: string; comment_log: unknown };
-
-function normalizeCommentsFromArray(
-  commentsArray: unknown[],
-  record: MigrationRecord,
-  modelInfo: ModelWithCommentLog,
-  results: MigrationResults,
-): NormalizedComment[] {
-  const normalizedComments = commentsArray.flatMap((comment) => {
-    const normalizedComment = normalizeCommentIfValid(comment);
-    return normalizedComment ? [normalizedComment] : [];
-  });
-
-  const skippedInvalidComments =
-    commentsArray.length - normalizedComments.length;
-  if (skippedInvalidComments > 0) {
-    const allSkipped = skippedInvalidComments === commentsArray.length;
-    results.warnings.push({
-      recordId: record.id,
-      modelName: modelInfo.modelName,
-      message: allSkipped
-        ? 'All legacy comments were malformed and were skipped.'
-        : `${skippedInvalidComments} malformed legacy comment(s) were skipped during migration.`,
-    });
-  }
-
-  return normalizedComments;
-}
-
-async function createOrSkipCommentRecord(
-  client: Client,
-  record: MigrationRecord,
-  modelInfo: ModelWithCommentLog,
-  commentsModelId: string,
-  migratedComments: unknown[],
-  results: MigrationResults,
-): Promise<void> {
-  const existing = await client.items.list({
-    filter: {
-      type: COMMENTS_MODEL_API_KEY,
-      fields: {
-        model_id: { eq: modelInfo.modelId },
-        record_id: { eq: record.id },
-      },
-    },
-    page: { limit: 1 },
-  });
-
-  if (existing.length > 0) {
-    results.skipped++;
-    return;
-  }
-
-  try {
-    await client.items.create({
-      item_type: { type: 'item_type', id: commentsModelId },
-      model_id: modelInfo.modelId,
-      record_id: record.id,
-      content: JSON.stringify(migratedComments),
-    });
-    results.success++;
-  } catch (err) {
-    results.failed++;
-    results.errors.push(
-      `Record ${record.id} in ${modelInfo.modelName}: ${
-        err instanceof Error ? err.message : 'Unknown error'
-      }`,
-    );
-  }
-}
-
-async function fetchAllRecordsForModel(
-  client: Client,
-  modelApiKey: string,
-): Promise<Array<{ id: string; comment_log: unknown }>> {
-  const allRecords: Array<{ id: string; comment_log: unknown }> = [];
-
-  const iterator = client.items.listPagedIterator({
-    filter: { type: modelApiKey },
-  });
-
-  const collectRecords = async (): Promise<void> => {
-    const next = await iterator.next();
-    if (next.done) return;
-    allRecords.push({
-      id: next.value.id,
-      comment_log: next.value.comment_log,
-    });
-    return collectRecords();
-  };
-
-  await collectRecords();
-  return allRecords;
-}
-
 type MigrationStatus =
   | 'idle'
   | 'scanning'
   | 'migrating'
   | 'completed'
   | 'error';
-
-type ModelWithCommentLog = {
-  modelId: string;
-  modelName: string;
-  modelApiKey: string;
-  fieldId: string;
-};
-
-type MigrationProgress = {
-  currentModel: string;
-  currentRecord: number;
-  totalRecords: number;
-  processedModels: number;
-  totalModels: number;
-};
-
-type MigrationResults = {
-  success: number;
-  skipped: number;
-  failed: number;
-  errors: string[];
-  warnings: MigrationWarning[];
-};
 
 type ScanProgress = {
   phase: 'scanning-fields';
@@ -197,11 +80,38 @@ type ScanProgress = {
   foundCount: number;
 };
 
-type MigrationWarning = {
-  recordId: string;
-  modelName: string;
-  message: string;
-};
+async function deleteVerifiedLegacyField(
+  client: NonNullable<ReturnType<typeof createApiClient>>,
+  model: ModelWithCommentLog,
+  signal: AbortSignal,
+) {
+  await retryMigrationRead(async () => {
+    const fields = await client.fields.list(model.modelId);
+    const field = fields.find((candidate) => candidate.id === model.fieldId);
+    // A lost DELETE response can leave the field already removed. The full
+    // source/destination verification happened before this helper was called.
+    if (!field) return;
+    if (
+      field.api_key !== 'comment_log' ||
+      field.localized !== (model.localized ?? false)
+    ) {
+      throw new Error(
+        `Legacy field changed in ${model.modelName}; cleanup stopped.`,
+      );
+    }
+    if (signal.aborted) throw new Error('Cleanup stopped.');
+    try {
+      await client.fields.destroy(model.fieldId);
+    } catch (error) {
+      const remaining = await retryMigrationRead(
+        () => client.fields.list(model.modelId),
+        signal,
+      );
+      if (remaining.some((candidate) => candidate.id === model.fieldId))
+        throw error;
+    }
+  }, signal);
+}
 
 const ConfigScreen = ({ ctx }: PropTypes) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
@@ -223,9 +133,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     pluginParams.migrationCompleted,
   );
 
-  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>(
-    pluginParams.migrationCompleted ? 'completed' : 'idle',
-  );
+  const [migrationStatus, setMigrationStatus] =
+    useState<MigrationStatus>('idle');
   const [modelsWithComments, setModelsWithComments] = useState<
     ModelWithCommentLog[]
   >([]);
@@ -240,6 +149,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [scanErrors, setScanErrors] = useState<string[]>([]);
   const isMountedRef = useRef(false);
+  const operationController = useRef<AbortController | null>(null);
+  const operationScope = `${ctx.site?.id ?? ''}:${ctx.environment}`;
+  const previousOperationScope = useRef(operationScope);
+  const isCurrentScope = useCallback(
+    () =>
+      isMountedRef.current && previousOperationScope.current === operationScope,
+    [operationScope],
+  );
   const hasMigrationUiState =
     migrationStatus === 'scanning' ||
     migrationStatus === 'migrating' ||
@@ -254,8 +171,25 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
     return () => {
       isMountedRef.current = false;
+      operationController.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (previousOperationScope.current === operationScope) return;
+    previousOperationScope.current = operationScope;
+    operationController.current?.abort();
+    setMigrationCompleted(false);
+    setMigrationStatus('idle');
+    setModelsWithComments([]);
+    setMigrationResults(null);
+    setMigrationProgress(null);
+    setMigrationError(null);
+    setScanProgress(null);
+    setScanErrors([]);
+    setIsCleaningUp(false);
+    setShowCleanupConfirm(false);
+  }, [operationScope]);
 
   useEffect(() => {
     if (hasMigrationUiState) {
@@ -293,7 +227,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           migrationCompleted,
         }),
       );
-      if (!isMountedRef.current) return;
+      if (!isCurrentScope()) return;
       setSavedSettings({
         cdaToken: trimmedCdaToken,
         debugLoggingEnabled,
@@ -308,12 +242,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       });
       ctx.notice('Settings saved successfully!');
     } catch (error) {
-      if (!isMountedRef.current) return;
+      if (!isCurrentScope()) return;
       ctx.alert(
         `Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     } finally {
-      if (isMountedRef.current) {
+      if (isCurrentScope()) {
         setIsSaving(false);
       }
     }
@@ -324,6 +258,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       ctx.currentUserAccessToken,
       ctx.environment,
       ctx.cmaBaseUrl,
+      { autoRetry: false, requestTimeout: 30000 },
     );
   }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
@@ -347,7 +282,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       });
 
       try {
-        const fields = await ctx.loadItemTypeFields(model.id);
+        const fields = await retryMigrationRead(
+          () => ctx.loadItemTypeFields(model.id),
+          operationController.current?.signal ?? new AbortController().signal,
+        );
         const commentLogField = fields.find(
           (f) => f.attributes.api_key === 'comment_log',
         );
@@ -359,6 +297,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
               modelName: model.attributes.name,
               modelApiKey: model.attributes.api_key,
               fieldId: commentLogField.id,
+              localized: commentLogField.attributes.localized,
             },
             failed: null,
           };
@@ -379,6 +318,40 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     [ctx],
   );
 
+  const inspectModels = useCallback(
+    async (
+      modelsToScan: Array<NonNullable<(typeof ctx.itemTypes)[string]>>,
+    ) => {
+      const foundModels: ModelWithCommentLog[] = [];
+      const failedModels: string[] = [];
+      let scannedCount = 0;
+      for (const model of modelsToScan) {
+        if (!isCurrentScope()) return { foundModels, failedModels };
+        // biome-ignore lint/performance/noAwaitInLoops: Bound schema reads while scanning many models.
+        const result = await scanSingleModel(
+          model,
+          foundModels,
+          failedModels,
+          scannedCount,
+          modelsToScan.length,
+        );
+        if (result.found) foundModels.push(result.found);
+        if (result.failed) failedModels.push(result.failed);
+        scannedCount++;
+        if (!isCurrentScope()) return { foundModels, failedModels };
+        setScanProgress({
+          phase: 'scanning-fields',
+          currentModel: model.attributes.name,
+          scannedModels: scannedCount,
+          totalModels: modelsToScan.length,
+          foundCount: foundModels.length,
+        });
+      }
+      return { foundModels, failedModels };
+    },
+    [scanSingleModel, isCurrentScope],
+  );
+
   const handleScan = useCallback(async () => {
     const nonCommentModels = Object.values(ctx.itemTypes).filter(
       (model): model is NonNullable<typeof model> =>
@@ -390,6 +363,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       totalModels: nonCommentModels.length,
     });
 
+    operationController.current?.abort();
+    operationController.current = new AbortController();
+    setMigrationCompleted(false);
+    setMigrationResults(null);
     setMigrationStatus('scanning');
     setMigrationError(null);
     setModelsWithComments([]);
@@ -402,50 +379,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     });
 
     try {
-      const allModels = Object.values(ctx.itemTypes).filter(
-        (model): model is NonNullable<typeof model> => model !== undefined,
-      );
-      const foundModels: ModelWithCommentLog[] = [];
-      const failedModels: string[] = [];
-      const modelsToScan = allModels.filter(
-        (m) => m.attributes.api_key !== COMMENTS_MODEL_API_KEY,
-      );
+      const { foundModels, failedModels } =
+        await inspectModels(nonCommentModels);
 
-      let scannedCount = 0;
-
-      const scanNextModel = async (index: number): Promise<void> => {
-        if (index >= modelsToScan.length) return;
-        if (!isMountedRef.current) return;
-
-        const model = modelsToScan[index];
-        const { found, failed } = await scanSingleModel(
-          model,
-          foundModels,
-          failedModels,
-          scannedCount,
-          modelsToScan.length,
-        );
-
-        if (found) foundModels.push(found);
-        if (failed) failedModels.push(failed);
-
-        scannedCount++;
-        if (!isMountedRef.current) return;
-
-        setScanProgress({
-          phase: 'scanning-fields',
-          currentModel: model.attributes.name,
-          scannedModels: scannedCount,
-          totalModels: modelsToScan.length,
-          foundCount: foundModels.length,
-        });
-
-        return scanNextModel(index + 1);
-      };
-
-      await scanNextModel(0);
-
-      if (!isMountedRef.current) return;
+      if (!isCurrentScope()) return;
       setModelsWithComments(foundModels);
       setScanErrors(failedModels);
       setScanProgress(null);
@@ -459,7 +396,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         buildScanNoticeMessage(foundModels.length, failedModels.length),
       );
     } catch (error) {
-      if (!isMountedRef.current) return;
+      if (!isCurrentScope()) return;
       logDebug('Legacy comment scan failed', {
         message:
           error instanceof Error ? error.message : 'Unknown error during scan',
@@ -470,117 +407,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         error instanceof Error ? error.message : 'Unknown error during scan',
       );
     }
-  }, [ctx, scanSingleModel]);
-
-  const migrateRecord = useCallback(
-    async (
-      client: ReturnType<typeof getClient>,
-      record: MigrationRecord,
-      modelInfo: ModelWithCommentLog,
-      commentsModelId: string,
-      results: MigrationResults,
-    ): Promise<void> => {
-      if (!client) return;
-
-      const commentsArray = parseCommentLog(record.comment_log, record.id);
-      if (!commentsArray || commentsArray.length === 0) return;
-
-      const normalizedComments = normalizeCommentsFromArray(
-        commentsArray,
-        record,
-        modelInfo,
-        results,
-      );
-
-      if (normalizedComments.length === 0) {
-        results.failed++;
-        results.errors.push(
-          `Record ${record.id} in ${modelInfo.modelName}: all legacy comments were malformed`,
-        );
-        return;
-      }
-
-      const { comments: migratedComments } =
-        migrateCommentsToUuid(normalizedComments);
-
-      await createOrSkipCommentRecord(
-        client,
-        record,
-        modelInfo,
-        commentsModelId,
-        migratedComments,
-        results,
-      );
-    },
-    [],
-  );
-
-  const migrateModelRecords = useCallback(
-    async (
-      client: NonNullable<ReturnType<typeof getClient>>,
-      modelInfo: ModelWithCommentLog,
-      commentsModelId: string,
-      processedModels: number,
-      results: MigrationResults,
-    ): Promise<void> => {
-      if (!isMountedRef.current) return;
-
-      setMigrationProgress({
-        currentModel: modelInfo.modelName,
-        currentRecord: 0,
-        totalRecords: 0,
-        processedModels,
-        totalModels: modelsWithComments.length,
-      });
-
-      const allRecords = await fetchAllRecordsForModel(
-        client,
-        modelInfo.modelApiKey,
-      );
-      const totalRecords = allRecords.length;
-
-      const processRecordAt = async (index: number): Promise<void> => {
-        if (index >= allRecords.length) return;
-        if (!isMountedRef.current) return;
-
-        const record = allRecords[index];
-        setMigrationProgress({
-          currentModel: modelInfo.modelName,
-          currentRecord: index + 1,
-          totalRecords,
-          processedModels,
-          totalModels: modelsWithComments.length,
-        });
-
-        await migrateRecord(
-          client,
-          record,
-          modelInfo,
-          commentsModelId,
-          results,
-        );
-
-        if ((index + 1) % 10 === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        return processRecordAt(index + 1);
-      };
-
-      await processRecordAt(0);
-    },
-    [migrateRecord, modelsWithComments.length],
-  );
+  }, [ctx, inspectModels, isCurrentScope]);
 
   const finalizeMigrationSuccess = useCallback(async (): Promise<void> => {
-    if (!isMountedRef.current) return;
-    setMigrationCompleted(true);
-    setSavedSettings({
-      cdaToken: trimmedCdaToken,
-      debugLoggingEnabled,
-      realTimeEnabled,
-    });
-    setCdaToken(trimmedCdaToken);
+    if (!isCurrentScope()) return;
     await ctx.updatePluginParameters(
       buildPluginParams({
         cdaToken: trimmedCdaToken,
@@ -591,9 +421,18 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         migrationCompleted: true,
       }),
     );
+    if (!isCurrentScope()) return;
+    setSavedSettings({
+      cdaToken: trimmedCdaToken,
+      debugLoggingEnabled,
+      realTimeEnabled,
+    });
+    setCdaToken(trimmedCdaToken);
+    setMigrationCompleted(true);
     await ctx.notice('Migration completed successfully!');
   }, [
     ctx,
+    isCurrentScope,
     debugLoggingEnabled,
     pluginParams.commentsModelIdsByEnvironment,
     realTimeEnabled,
@@ -604,36 +443,71 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     async (
       client: NonNullable<ReturnType<typeof getClient>>,
       results: MigrationResults,
+      verifyOnly = false,
+      onModelVerified?: (model: ModelWithCommentLog) => Promise<void>,
     ): Promise<void> => {
       const commentsModel = Object.values(ctx.itemTypes).find(
         (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY,
       );
-
-      if (!commentsModel) {
+      if (!commentsModel)
         throw new Error(
           'project_comment model not found. Please reload the plugin to create it.',
         );
-      }
-
-      const migrateModelAt = async (index: number): Promise<void> => {
-        if (index >= modelsWithComments.length) return;
-        if (!isMountedRef.current) return;
-
-        const modelInfo = modelsWithComments[index];
-        await migrateModelRecords(
+      assertMigrationReadPermissions(ctx, modelsWithComments, commentsModel.id);
+      const controller = new AbortController();
+      operationController.current?.abort();
+      operationController.current = controller;
+      const [regularUsers, ssoUsers] = await Promise.all([
+        retryMigrationRead(() => ctx.loadUsers(), controller.signal),
+        retryMigrationRead(() => ctx.loadSsoUsers(), controller.signal),
+      ]);
+      const users = [
+        currentUserToUserInfo(ctx.currentUser),
+        ownerToUserInfo(ctx.owner),
+        ...transformUsersToUserInfo(regularUsers, ssoUsers),
+      ];
+      const userIdsByEmail = buildLegacyUserIdsByEmail(users);
+      await runLegacyMigration(
+        {
           client,
-          modelInfo,
-          commentsModel.id,
-          index,
-          results,
-        );
-
-        return migrateModelAt(index + 1);
-      };
-
-      await migrateModelAt(0);
+          commentsModelId: commentsModel.id,
+          models: modelsWithComments,
+          userIdsByEmail,
+          signal: controller.signal,
+          verifyOnly,
+          onModelVerified,
+          onProgress: (progress) => {
+            if (isCurrentScope()) setMigrationProgress(progress);
+          },
+        },
+        results,
+      );
     },
-    [ctx, migrateModelRecords, modelsWithComments],
+    [ctx, modelsWithComments, isCurrentScope],
+  );
+
+  const completeMigration = useCallback(
+    async (results: MigrationResults) => {
+      if (!isCurrentScope()) return;
+      setMigrationResults(results);
+      setMigrationProgress(null);
+      logDebug('Legacy comment migration completed', {
+        failed: results.failed,
+        skipped: results.skipped,
+        success: results.success,
+      });
+
+      setMigrationStatus(results.failed === 0 ? 'completed' : 'error');
+
+      if (results.failed === 0) {
+        await finalizeMigrationSuccess();
+      } else {
+        await ctx.notice(
+          `Migration completed with ${results.failed} error(s). Check details below.`,
+        );
+      }
+    },
+    [ctx, finalizeMigrationSuccess, isCurrentScope],
   );
 
   const handleMigrate = useCallback(async () => {
@@ -641,6 +515,13 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     if (!client) {
       ctx.alert(
         'Unable to access API. Please ensure you have proper permissions.',
+      );
+      return;
+    }
+
+    if (scanErrors.length > 0) {
+      ctx.alert(
+        'Some models could not be inspected. Run the scan successfully before migrating.',
       );
       return;
     }
@@ -654,13 +535,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     setMigrationError(null);
     setMigrationResults(null);
 
-    const results: MigrationResults = {
-      success: 0,
-      skipped: 0,
-      failed: 0,
-      errors: [],
-      warnings: [],
-    };
+    const results = emptyMigrationResults();
 
     try {
       logDebug('Starting legacy comment migration', {
@@ -669,109 +544,103 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
       await runMigration(client, results);
 
-      if (!isMountedRef.current) return;
-      setMigrationResults(results);
-      setMigrationProgress(null);
-      logDebug('Legacy comment migration completed', {
-        failed: results.failed,
-        skipped: results.skipped,
-        success: results.success,
-        warnings: results.warnings.length,
-      });
-
-      setMigrationStatus('completed');
-
-      if (results.failed === 0) {
-        await finalizeMigrationSuccess();
-      } else {
-        await ctx.notice(
-          `Migration completed with ${results.failed} error(s). Check details below.`,
-        );
-      }
+      await completeMigration(results);
     } catch (error) {
-      if (!isMountedRef.current) return;
+      if (!isCurrentScope()) return;
       const errorMessage =
         error instanceof Error
           ? error.message
           : 'Unknown error during migration';
       logDebug('Legacy comment migration failed', { message: errorMessage });
+      setMigrationResults(results);
+      setMigrationCompleted(false);
       setMigrationStatus('error');
       setMigrationError(errorMessage);
       setMigrationProgress(null);
     }
   }, [
     ctx,
-    finalizeMigrationSuccess,
+    completeMigration,
+    isCurrentScope,
     getClient,
     modelsWithComments.length,
+    scanErrors.length,
     runMigration,
   ]);
 
-  const destroyFieldsSequentially = useCallback(
+  const verifyAndCleanModels = useCallback(
     async (
       client: NonNullable<ReturnType<typeof getClient>>,
-      fieldIds: string[],
-      index: number,
-    ): Promise<void> => {
-      if (index >= fieldIds.length) return;
-      if (!isMountedRef.current) return;
-      await client.fields.destroy(fieldIds[index]);
-      return destroyFieldsSequentially(client, fieldIds, index + 1);
-    },
-    [],
-  );
-
-  const runCleanupOperation = useCallback(
-    async (
-      client: NonNullable<ReturnType<typeof getClient>>,
-      fieldIds: string[],
-    ): Promise<void> => {
-      logDebug('Deleting legacy comment_log fields', {
-        fieldsToDelete: fieldIds.length,
+      verified: MigrationResults,
+      removed: Set<string>,
+    ) => {
+      // Re-read every source and destination immediately before removing each model field.
+      await runMigration(client, verified, true, async (model) => {
+        const signal =
+          operationController.current?.signal ?? new AbortController().signal;
+        await deleteVerifiedLegacyField(client, model, signal);
+        removed.add(model.fieldId);
       });
-
-      await destroyFieldsSequentially(client, fieldIds, 0);
-
-      if (!isMountedRef.current) return;
-      setModelsWithComments([]);
-      logDebug('Legacy comment_log field cleanup completed');
-      await ctx.notice(
-        'Old comment_log fields have been deleted successfully!',
-      );
+      if (verified.failed > 0)
+        throw new Error(
+          `${verified.failed} record(s) failed verification. Their legacy fields were preserved. ${verified.errors.join(' ')}`,
+        );
     },
-    [ctx, destroyFieldsSequentially],
+    [runMigration],
   );
 
+  const canCleanup =
+    migrationCompleted &&
+    migrationResults?.failed === 0 &&
+    scanErrors.length === 0;
+  const finishCleanup = useCallback(
+    (removed: Set<string>) => {
+      if (!isCurrentScope()) return;
+      setModelsWithComments((models) =>
+        models.filter((model) => !removed.has(model.fieldId)),
+      );
+      setMigrationProgress(null);
+      setIsCleaningUp(false);
+    },
+    [isCurrentScope],
+  );
   const handleCleanup = useCallback(async () => {
     const client = getClient();
     if (!client) {
-      ctx.alert(
+      await ctx.alert(
         'Unable to access API. Please ensure you have proper permissions.',
       );
       return;
     }
-
+    if (!canCleanup) {
+      await ctx.alert(
+        'Cleanup requires a complete successful migration and scan.',
+      );
+      return;
+    }
     setIsCleaningUp(true);
     setShowCleanupConfirm(false);
-
-    const fieldIds = modelsWithComments.map((m) => m.fieldId);
-
+    const verified = emptyMigrationResults();
+    const removed = new Set<string>();
     try {
-      await runCleanupOperation(client, fieldIds);
+      await verifyAndCleanModels(client, verified, removed);
+      if (!isCurrentScope()) return;
+      await ctx.notice(
+        'Old comment_log fields have been deleted successfully!',
+      );
     } catch (error) {
-      if (!isMountedRef.current) return;
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      logDebug('Legacy comment_log field cleanup failed', {
-        message: errorMessage,
-      });
-      ctx.alert(`Error deleting fields: ${errorMessage}`);
+      if (isCurrentScope()) await ctx.alert(cleanupErrorMessage(error));
     } finally {
-      if (isMountedRef.current) {
-        setIsCleaningUp(false);
-      }
+      finishCleanup(removed);
     }
-  }, [ctx, getClient, modelsWithComments, runCleanupOperation]);
+  }, [
+    ctx,
+    getClient,
+    canCleanup,
+    verifyAndCleanModels,
+    finishCleanup,
+    isCurrentScope,
+  ]);
 
   const renderScanProgress = () => {
     if (migrationStatus !== 'scanning' || !scanProgress) return null;
@@ -812,7 +681,11 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   };
 
   const renderMigrationProgress = () => {
-    if (migrationStatus !== 'migrating' || !migrationProgress) return null;
+    if (
+      (migrationStatus !== 'migrating' && !isCleaningUp) ||
+      !migrationProgress
+    )
+      return null;
     const migrationPercentage =
       migrationProgress.totalRecords > 0
         ? (migrationProgress.currentRecord / migrationProgress.totalRecords) *
@@ -823,7 +696,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       <div className={styles.progressContainer}>
         <div className={styles.progressHeader}>
           <span>
-            Migrating: {migrationProgress.currentModel} (
+            {isCleaningUp ? 'Verifying' : 'Migrating'}:{' '}
+            {migrationProgress.currentModel} (
             {migrationProgress.processedModels + 1}/
             {migrationProgress.totalModels} models)
           </span>
@@ -878,30 +752,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
               {migrationResults.errors.slice(0, 10).map((err) => (
                 <li key={err}>{err}</li>
               ))}
-              {migrationResults.errors.length > 10 && (
-                <li>
-                  ...and {migrationResults.errors.length - 10} more errors
-                </li>
-              )}
-            </ul>
-          </div>
-        )}
-
-        {migrationResults.warnings.length > 0 && (
-          <div className={styles.errorList}>
-            <h4>Warnings:</h4>
-            <ul>
-              {migrationResults.warnings.slice(0, 10).map((warning) => (
-                <li
-                  key={`${warning.modelName}-${warning.recordId}-${warning.message}`}
-                >
-                  {warning.modelName} / {warning.recordId}: {warning.message}
-                </li>
-              ))}
-              {migrationResults.warnings.length > 10 && (
-                <li>
-                  ...and {migrationResults.warnings.length - 10} more warnings
-                </li>
+              {migrationResults.failed > 10 && (
+                <li>...and {migrationResults.failed - 10} more errors</li>
               )}
             </ul>
           </div>
@@ -911,7 +763,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   };
 
   const renderCleanupSection = () => {
-    if (migrationStatus !== 'completed' || modelsWithComments.length === 0) {
+    if (
+      migrationStatus !== 'completed' ||
+      !migrationCompleted ||
+      migrationResults?.failed !== 0 ||
+      modelsWithComments.length === 0
+    ) {
       return null;
     }
 
@@ -996,14 +853,16 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           </div>
         )}
 
-        {migrationStatus !== 'completed' && (
+        {(migrationStatus !== 'completed' ||
+          modelsWithComments.length === 0) && (
           <div className={styles.migrationActions}>
             <Button
               buttonType="muted"
               onClick={handleScan}
               disabled={
                 migrationStatus === 'scanning' ||
-                migrationStatus === 'migrating'
+                migrationStatus === 'migrating' ||
+                isCleaningUp
               }
             >
               {migrationStatus === 'scanning' ? (
@@ -1045,7 +904,11 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             </ul>
             {migrationStatus !== 'completed' && (
               <div className={styles.migrationActions}>
-                <Button buttonType="primary" onClick={handleMigrate}>
+                <Button
+                  buttonType="primary"
+                  onClick={handleMigrate}
+                  disabled={scanErrors.length > 0 || isCleaningUp}
+                >
                   Start Migration
                 </Button>
               </div>

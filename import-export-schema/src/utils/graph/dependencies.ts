@@ -52,6 +52,8 @@ export function expandSelectionWithDependencies({
   const initialPluginIds = Array.from(new Set(seedPluginIds));
   const nextItemTypeIds = new Set(initialItemIds);
   const nextPluginIds = new Set(initialPluginIds);
+  const initialItemIdSet = new Set(initialItemIds);
+  const initialPluginIdSet = new Set(initialPluginIds);
 
   if (!graph) {
     return {
@@ -62,13 +64,12 @@ export function expandSelectionWithDependencies({
     };
   }
 
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const queue = [...initialItemIds];
   while (queue.length > 0) {
     const currentId = queue.pop();
     if (!currentId) continue;
-    const node = graph.nodes.find(
-      (candidate) => candidate.id === `itemType--${currentId}`,
-    );
+    const node = nodesById.get(`itemType--${currentId}`);
     if (!node || node.type !== 'itemType') continue;
 
     collectFieldDependencies(
@@ -81,10 +82,10 @@ export function expandSelectionWithDependencies({
   }
 
   const addedItemTypeIds = Array.from(nextItemTypeIds).filter(
-    (id) => !initialItemIds.includes(id),
+    (id) => !initialItemIdSet.has(id),
   );
   const addedPluginIds = Array.from(nextPluginIds).filter(
-    (id) => !initialPluginIds.includes(id),
+    (id) => !initialPluginIdSet.has(id),
   );
 
   return {

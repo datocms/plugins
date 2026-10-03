@@ -488,7 +488,7 @@ describe('ReportLayout', () => {
     // The facts start with what the scan covers.
     expect(
       screen.getByText(
-        'All models • All locales • 60 records read • 1 of 2 URLs checked',
+        'All models • All locales • 60 records read • 1 of 2 URLs processed',
       ),
     ).toBeInTheDocument();
     // The bar is the only loading indicator: no spinner anywhere.
@@ -551,7 +551,7 @@ describe('ReportLayout', () => {
     ).toHaveAttribute('aria-valuenow', '50');
     expect(
       screen.getByText(
-        'All models • All locales • 60 of 120 records read • 0 of 2 URLs checked',
+        'All models • All locales • 60 of 120 records read • 0 of 2 URLs processed',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Search URLs')).not.toBeInTheDocument();
@@ -565,6 +565,31 @@ describe('ReportLayout', () => {
     expect(centered()).not.toBeInTheDocument();
     expect(table().getByText(urlOf(broken))).toBeInTheDocument();
     expect(screen.getByLabelText('Search URLs')).toBeInTheDocument();
+  });
+
+  it('keeps running when concurrent additions outgrow the earlier record count', () => {
+    renderLayout({
+      report: report([], {
+        state: 'running',
+        discovering: true,
+        recordsScanned: 200_001,
+        finishedAt: undefined,
+      }),
+      recordTotal: 200_000,
+      scanning: true,
+    });
+    expect(
+      screen.getByText(
+        'All models • All locales • 200,001 of 200,001 records read',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Scan progress' }),
+    ).toHaveAttribute('aria-valuenow', '99');
+    expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeEnabled();
+    expect(
+      screen.queryByRole('heading', { name: 'Scan complete' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the summary at the top once a scan ends with nothing needing attention', () => {
@@ -606,6 +631,43 @@ describe('ReportLayout', () => {
     ).not.toHaveAttribute('aria-valuenow');
     expect(
       screen.getByText('All models • All locales • 14 records read'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not announce 100% before a running scan has finished', () => {
+    const { rerender } = renderLayout({
+      report: report([], {
+        state: 'running',
+        discovering: true,
+        recordsScanned: 200_000,
+        finishedAt: undefined,
+      }),
+      recordTotal: 200_000,
+      scanning: true,
+    });
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '99',
+    );
+    rerender({
+      report: report([], {
+        state: 'running',
+        discovering: false,
+        recordsScanned: 200_000,
+        finishedAt: undefined,
+      }),
+    });
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '99',
+    );
+    rerender({
+      report: report([], { recordsScanned: 200_000 }),
+      scanning: false,
+    });
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Scan complete' }),
     ).toBeInTheDocument();
   });
 
@@ -920,7 +982,7 @@ describe('ReportLayout', () => {
     });
     expect(
       screen.getByText(
-        'All models • All locales • 3 records read • 1 of 3 URLs checked',
+        'All models • All locales • 3 records read • 1 of 3 URLs processed',
       ),
     ).toBeInTheDocument();
   });

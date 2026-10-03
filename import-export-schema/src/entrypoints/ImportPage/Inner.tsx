@@ -55,15 +55,20 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
 
   // Rebuild the graph when the export document or skip lists change.
   useEffect(() => {
+    let cancelled = false;
     const itemTypeIdsToSkip = JSON.parse(skippedItemTypeIdsKey) as string[];
 
     async function run() {
       try {
         setGraphError(undefined);
-        setGraph(
-          await buildGraphFromExportDoc(exportSchema, itemTypeIdsToSkip),
+        const nextGraph = await buildGraphFromExportDoc(
+          exportSchema,
+          itemTypeIdsToSkip,
+          () => cancelled,
         );
+        if (!cancelled) setGraph(nextGraph);
       } catch (error) {
+        if (cancelled) return;
         setGraph(undefined);
         setGraphError(
           error instanceof Error ? error : new Error('Unknown error'),
@@ -72,6 +77,9 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     }
 
     run();
+    return () => {
+      cancelled = true;
+    };
   }, [exportSchema, skippedItemTypeIdsKey]);
 
   const [selectedEntity, setSelectedEntity] = useState<

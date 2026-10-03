@@ -28,13 +28,22 @@
     "build": "tsc -b && vite build",
     "prepublishOnly": "npm run build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "biome lint src tests",
+    "lint:fix": "biome lint --write src tests",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "node tests/run.mjs",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@vitejs/plugin-react": "^5.2.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "@biomejs/biome": "2.4.10",
+    "@types/react-test-renderer": "19.1.0",
+    "esbuild": "0.27.4",
+    "react-test-renderer": "19.2.4"
   },
   "datoCmsPlugin": {
     "title": "AI Asset Source",

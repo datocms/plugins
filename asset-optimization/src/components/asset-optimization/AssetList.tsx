@@ -1,6 +1,6 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button } from 'datocms-react-ui';
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import s from '../../entrypoints/styles.module.css';
 import { formatFileSize } from '../../utils/formatters';
 import type {
@@ -8,6 +8,7 @@ import type {
   OptimizedAsset as OptimizedAssetType,
   ProcessedAsset,
 } from '../../utils/optimizationUtils';
+import { ASSET_PAGE_SIZE, getAssetPage } from './presentation';
 
 interface AssetListProps {
   assets: Asset[] | OptimizedAssetType[] | ProcessedAsset[];
@@ -99,6 +100,20 @@ const AssetListItem = ({
         </div>
         <div className={s.assetDetails}>
           <p className={s.assetPath}>{displayAsset.path}</p>
+          {'error' in asset &&
+            typeof asset.error === 'string' &&
+            asset.error && (
+              <p
+                style={{
+                  margin: 'var(--spacing-s) 0 0',
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color--ink-danger)',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {asset.error}
+              </p>
+            )}
           {showOptimizationStats && (
             <div className={s.optimizationStats}>
               <div className={s.sizeInfo}>
@@ -163,6 +178,16 @@ const AssetList = ({
   onClose,
   ctx,
 }: AssetListProps): ReactElement => {
+  const [page, setPage] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reset pagination whenever the selected result set changes.
+  useEffect(() => {
+    setPage(0);
+  }, [assets, category]);
+
+  const assetPage = getAssetPage<Asset | OptimizedAssetType | ProcessedAsset>(
+    assets,
+    page,
+  );
   const badgeClass = getCategoryBadgeClass(category);
   const categoryTitle = category.charAt(0).toUpperCase() + category.slice(1);
 
@@ -187,8 +212,8 @@ const AssetList = ({
           No {category} assets to display.
         </div>
       ) : (
-        <ul className={s.assetList}>
-          {assets.map((asset) => (
+        <ul key={`${category}-${assetPage.page}`} className={s.assetList}>
+          {assetPage.assets.map((asset) => (
             <AssetListItem
               key={asset.id}
               asset={asset}
@@ -197,6 +222,42 @@ const AssetList = ({
             />
           ))}
         </ul>
+      )}
+
+      {assets.length > ASSET_PAGE_SIZE && (
+        <nav
+          aria-label={`${categoryTitle} assets pagination`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--spacing-s)',
+            flexWrap: 'wrap',
+            padding: 'var(--spacing-m)',
+            borderTop: '1px solid var(--color--border)',
+          }}
+        >
+          <Button
+            buttonType="muted"
+            buttonSize="xxs"
+            disabled={assetPage.page === 0}
+            onClick={() => setPage(assetPage.page - 1)}
+          >
+            Previous
+          </Button>
+          <span aria-live="polite">
+            {assetPage.start + 1}–{assetPage.end} of {assets.length} assets
+            {' · '}Page {assetPage.page + 1} of {assetPage.totalPages}
+          </span>
+          <Button
+            buttonType="muted"
+            buttonSize="xxs"
+            disabled={assetPage.page === assetPage.totalPages - 1}
+            onClick={() => setPage(assetPage.page + 1)}
+          >
+            Next
+          </Button>
+        </nav>
       )}
     </div>
   );

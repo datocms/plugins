@@ -26,6 +26,7 @@ import {
   scanProgress,
   sortGroups,
 } from '../report/view';
+import { updateGroup } from '../state/group';
 import type { CheckResult, LinkGroup, ScanReport } from '../types';
 import { ProxyRefusedCallout } from '../ui/ProxyRefusedCallout';
 import { useWidth } from '../ui/useWidth';
@@ -33,7 +34,7 @@ import { CoverageCallout, hasCoverageCallout } from './CoverageCallout';
 import { FilterToolbar } from './FilterToolbar';
 import { InfoOverlay } from './InfoOverlay';
 import { InfoSidebar } from './InfoSidebar';
-import { PageToolbar } from './PageToolbar';
+import { type ExportState, PageToolbar } from './PageToolbar';
 import { PaginationBar, type PerPage, pageWindowFor } from './PaginationBar';
 import { ReportTable } from './ReportTable';
 import { ResultsEmpty } from './ResultsEmpty';
@@ -61,6 +62,7 @@ export type ReportLayoutProps = {
   onScan: () => void;
   onChooseScope: () => void;
   onCancel: () => void;
+  exporting?: boolean;
   onExport: () => void;
   onRecheck: (group: LinkGroup) => void;
   onOpenRecord: (recordId: string) => void;
@@ -80,10 +82,10 @@ function useReportView(groups: readonly LinkGroup[]) {
   );
   const counts = useMemo(() => countStatuses(groups), [groups]);
   const dimensions = useMemo(() => reportDimensions(groups), [groups]);
-  const filtered = useMemo(
-    () => sortGroups(filterGroups(groups, applied), sort),
-    [groups, applied, sort],
-  );
+  const filtered = useMemo(() => {
+    const matches = filterGroups(groups, applied);
+    return sort ? sortGroups(matches, sort) : matches;
+  }, [groups, applied, sort]);
   const pages = pageCount(filtered.length, perPage);
   // The filtered list shrinks and grows during a scan: keep the page it fell back to.
   if (page > pages) setPage(pages);
@@ -118,6 +120,11 @@ function useReportView(groups: readonly LinkGroup[]) {
 
 type ReportView = ReturnType<typeof useReportView>;
 
+function exportStateFor(hasGroups: boolean, exporting: boolean): ExportState {
+  if (exporting) return 'preparing';
+  return hasGroups ? 'enabled' : 'disabled';
+}
+
 /** The rows in the current view: "248 URLs". */
 function urlCountLabel(view: ReportView, uiLocale: string) {
   const shown = view.filtered.length;
@@ -141,7 +148,7 @@ function useViewGroups(
         ? groups
         : groups.map((group) =>
             group.key === recheckKey
-              ? { ...group, result: recheckResult }
+              ? updateGroup(group, { result: recheckResult })
               : group,
           ),
     [groups, recheckKey, recheckResult],
@@ -339,7 +346,9 @@ function useScanFraction(
     recordTotal,
   );
   if (fraction === null) return null;
-  highest.current = Math.max(highest.current, fraction);
+  // Reading the last counted record is not completion: extraction, late
+  // records and the queue can still add work before the final report arrives.
+  highest.current = Math.min(0.99, Math.max(highest.current, fraction));
   return highest.current;
 }
 
@@ -360,6 +369,7 @@ export function ReportLayout({
   onScan,
   onChooseScope,
   onCancel,
+  exporting = false,
   onExport,
   onRecheck,
   onOpenRecord,
@@ -380,10 +390,11 @@ export function ReportLayout({
   const bodyRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const paneWidth = useWidth(paneRef);
-  const groupsByKey = useMemo(
-    () => new Map(report.groups.map((group) => [group.key, group])),
-    [report.groups],
-  );
+  const groupsByKey = useMemo(() => {
+    const index = new Map<string, LinkGroup>();
+    for (const group of report.groups) index.set(group.key, group);
+    return index;
+  }, [report.groups]);
   // Filters never hide the selection: the sidebar keeps showing it.
   const selectedGroup =
     selectedKey === null ? undefined : groupsByKey.get(selectedKey);
@@ -473,7 +484,7 @@ export function ReportLayout({
             mode={scanning ? 'scanning' : rechecking ? 'rechecking' : 'idle'}
             countLabel={urlCountLabel(view, uiLocale)}
             paneWidth={paneWidth}
-            exportState={hasGroups ? 'enabled' : 'disabled'}
+            exportState={exportStateFor(hasGroups, exporting)}
             iconOnlyExport={iconOnlyExport}
             onScan={onScan}
             onChooseScope={onChooseScope}

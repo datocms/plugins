@@ -7,17 +7,11 @@ import YandexProvider from './providers/YandexProvider';
 import type { TranslationProvider, VendorId } from './types';
 import { ProviderConfigurationError } from './types';
 
-/**
- * Creates a safe cache key from an API key.
- * Uses first 8 chars + length + last 4 chars to identify uniquely without storing full key.
- * PERF-001: Avoids storing full API key in memory as cache key.
- *
- * @param apiKey - The full API key to create a safe cache key from.
- * @returns A shortened key suitable for cache lookups.
- */
+// Exact credential identity avoids selecting another client's credentials when
+// two API keys share a prefix/suffix. Keys already live in client memory; none
+// are logged or persisted, and the bounded cache limits retained identities.
 function safeCacheKey(apiKey: string): string {
-  if (!apiKey || apiKey.length < 16) return apiKey;
-  return `${apiKey.slice(0, 8)}...${apiKey.length}...${apiKey.slice(-4)}`;
+  return apiKey;
 }
 
 // Simple memoization by key to avoid recreating clients excessively
@@ -273,6 +267,10 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
       break;
   }
 
+  if (cache.size >= 16) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
   cache.set(cacheKey, provider);
   return provider;
 }

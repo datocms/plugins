@@ -22,6 +22,20 @@ describe('ProviderFactory', () => {
     enableDebugging: false,
   };
 
+  it('never reuses credentials that share only a prefix, length, and suffix', () => {
+    const first = { ...baseParams, vendor: 'yandex' as const, yandexApiKey: 'samehead-middle-A-sametail' };
+    const second = { ...first, yandexApiKey: 'samehead-middle-B-sametail' };
+    expect(getProvider(first)).toBe(getProvider(first));
+    expect(getProvider(first)).not.toBe(getProvider(second));
+  });
+
+  it('bounds retained credential identities', () => {
+    const first = { ...baseParams, vendor: 'yandex' as const, yandexApiKey: 'eviction-test-original-key' };
+    const original = getProvider(first);
+    for (let index = 0; index < 17; index += 1) getProvider({ ...first, yandexApiKey: `eviction-test-new-key-${index}` });
+    expect(getProvider(first)).not.toBe(original);
+  });
+
   describe('isProviderConfigured', () => {
     describe('OpenAI validation', () => {
       it('should return true for valid OpenAI config', () => {

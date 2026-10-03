@@ -33,6 +33,8 @@ import { PlaceLabel } from '../ui/PlaceLabel';
 
 const URLS_PER_STEP = 10;
 const PLACES_SHOWN = 5;
+const LARGE_PLACE_COUNT = 200;
+const PLACES_PER_PAGE = 50;
 const BY_SEVERITY: Sort = { key: 'status', direction: 'asc' };
 
 type Tone = 'success' | 'danger' | 'warning' | 'subtle';
@@ -181,8 +183,19 @@ function PanelResult({
   onGoToField,
 }: PanelResultProps) {
   const [allPlaces, setAllPlaces] = useState(false);
+  const [placePage, setPlacePage] = useState(1);
   const { result, occurrences } = group;
-  const places = allPlaces ? occurrences : occurrences.slice(0, PLACES_SHOWN);
+  const paginated = allPlaces && occurrences.length > LARGE_PLACE_COUNT;
+  const pages = Math.ceil(occurrences.length / PLACES_PER_PAGE);
+  const currentPage = Math.min(placePage, pages);
+  const places = paginated
+    ? occurrences.slice(
+        (currentPage - 1) * PLACES_PER_PAGE,
+        currentPage * PLACES_PER_PAGE,
+      )
+    : allPlaces
+      ? occurrences
+      : occurrences.slice(0, PLACES_SHOWN);
   const morePlaces = occurrences.length - places.length;
   return (
     <li className="blc-panel-result">
@@ -218,13 +231,41 @@ function PanelResult({
           />
         ))}
       </ul>
-      {morePlaces > 0 && (
+      {paginated && (
+        <nav className="dl-pagination" aria-label="Link places">
+          <button
+            type="button"
+            className="dl-pagination__nav"
+            disabled={currentPage <= 1}
+            onClick={() => setPlacePage(currentPage - 1)}
+          >
+            « Previous
+          </button>
+          <span>
+            {currentPage.toLocaleString(uiLocale)} of{' '}
+            {pages.toLocaleString(uiLocale)}
+          </span>
+          <button
+            type="button"
+            className="dl-pagination__nav"
+            disabled={currentPage >= pages}
+            onClick={() => setPlacePage(currentPage + 1)}
+          >
+            Next »
+          </button>
+        </nav>
+      )}
+      {!paginated && morePlaces > 0 && (
         <div className="blc-panel-where__more">
           <LinkButton onClick={() => setAllPlaces(true)}>
             {countLabel(
-              morePlaces,
+              occurrences.length > LARGE_PLACE_COUNT
+                ? occurrences.length
+                : morePlaces,
               'Show 1 more place',
-              'Show {n} more places',
+              occurrences.length > LARGE_PLACE_COUNT
+                ? 'Browse {n} places'
+                : 'Show {n} more places',
               uiLocale,
             )}
           </LinkButton>

@@ -2,18 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import type { TranslationProvider } from './types';
 
+const mockFieldsList = vi.hoisted(() => vi.fn(async () => [
+  { api_key: 'content', appearance: { editor: 'structured_text' }, id: 'field-content', localized: false, validators: {} },
+]));
+
 vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(() => ({
     fields: {
-      list: vi.fn(async () => [
-        {
-          api_key: 'content',
-          appearance: { editor: 'structured_text' },
-          id: 'field-content',
-          localized: false,
-          validators: {},
-        },
-      ]),
+      list: mockFieldsList,
     },
   })),
 }));
@@ -27,7 +23,7 @@ vi.mock('./translateArray', () => ({
 }));
 
 import { translateDefaultFieldValue } from './DefaultTranslation';
-import { translateFieldValue } from './TranslateField';
+import { fetchBlockFields, generateRecordContext, translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 
 type LogPayload = {
@@ -328,4 +324,114 @@ describe('TranslateField', () => {
       },
     ]);
   });
+  it('deduplicates concurrent schema reads, isolates project credentials and allows a failed read to retry', async () => {
+    await Promise.all(Array.from({ length: 100 }, () => fetchBlockFields('cache-project-one', 'main', 'shared-model')));
+    expect(mockFieldsList).toHaveBeenCalledTimes(1);
+    await fetchBlockFields('cache-project-two', 'main', 'shared-model');
+    expect(mockFieldsList).toHaveBeenCalledTimes(2);
+    mockFieldsList.mockRejectedValueOnce(new Error('temporary schema failure'));
+    await expect(fetchBlockFields('cache-recovery', 'main', 'retry-model')).rejects.toThrow('temporary schema failure');
+    await fetchBlockFields('cache-recovery', 'main', 'retry-model');
+    expect(mockFieldsList).toHaveBeenCalledTimes(4);
+  });
+
+  it('preserves localized source/other locales, unknown metadata and shallow record references inside blocks', async () => {
+    mockFieldsList.mockResolvedValueOnce([
+      { api_key: 'title', appearance: { editor: 'single_line' }, id: 'title-field', localized: true, validators: {} },
+      { api_key: 'references', appearance: { editor: 'single_line' }, id: 'references-field', localized: false, validators: { items_item_type: { item_types: ['linked-model'] } } },
+      { api_key: 'excluded', appearance: { editor: 'single_line' }, id: 'excluded-field', localized: false, validators: {} },
+    ]);
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('Título traduzido');
+    const source = [{ id: 'source-block', item_type: { type: 'item_type', id: 'content-model' },
+      title: { en: 'Source', 'pt-BR': 'Old target', fr: 'Keep French' },
+      references: ['record-one', 'record-two'], excluded: 'Do not translate',
+      arbitrary_metadata: { id: 'metadata-id', text: 'opaque' },
+    }];
+    const result = await translateFieldValue(source, { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['excluded-field'] }, 'pt-br', 'EN', 'rich_text', provider, '', 'integrity-project', '', 'main') as typeof source;
+    expect(result[0].title).toEqual({ en: 'Source', 'pt-BR': 'Título traduzido', fr: 'Keep French' });
+    expect(result[0].references).toEqual(source[0].references);
+    expect(result[0].arbitrary_metadata).toEqual(source[0].arbitrary_metadata);
+    expect(result[0].excluded).toBe('Do not translate');
+    expect(result[0].item_type.id).toBe('content-model');
+    expect(source[0].id).toBe('source-block');
+    expect(source[0].title.en).toBe('Source');
+    expect(source[0].title['pt-BR']).toBe('Old target');
+    expect(translateDefaultFieldValue).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cancellation within a block instead of returning partially translated fields', async () => {
+    mockFieldsList.mockResolvedValueOnce([
+      { api_key: 'first', appearance: { editor: 'single_line' }, id: 'first-field', localized: false, validators: {} },
+      { api_key: 'second', appearance: { editor: 'single_line' }, id: 'second-field', localized: false, validators: {} },
+    ]);
+    const controller = new AbortController();
+    vi.mocked(translateDefaultFieldValue).mockImplementation(async () => { controller.abort(); return 'partial'; });
+    const source = [{ itemTypeId: 'cancel-model', first: 'one', second: 'two' }];
+    await expect(translateFieldValue(source, pluginParams, 'it', 'en', 'rich_text', provider, '', 'cancel-project', '', 'main', { abortSignal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(translateDefaultFieldValue).toHaveBeenCalledTimes(1);
+    expect(source[0].first).toBe('one');
+  });
+
+  it('keeps nested branching blocks at one provider call in flight and resolves simplified CMA items', async () => {
+    mockFieldsList.mockImplementation(async () => [
+      { api_key: 'label', appearance: { editor: 'single_line' }, id: 'label-field', localized: false, validators: {} },
+      { api_key: 'children_blocks', appearance: { editor: 'rich_text' }, id: 'children-field', localized: false, validators: {} },
+    ]);
+    let active = 0;
+    let peak = 0;
+    vi.mocked(translateDefaultFieldValue).mockImplementation(async (value) => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return `Translated ${value}`;
+    });
+    const createBlock = (depth: number): Record<string, unknown> => ({
+      id: `block-${depth}`, item_type: { type: 'item_type', id: 'branch-model' },
+      label: `level-${depth}`, children_blocks: depth === 0 ? [] : Array.from({ length: 3 }, () => createBlock(depth - 1)),
+    });
+    const source = [{ type: 'inlineBlock', item: createBlock(5) }];
+    const result = await translateFieldValue(source, pluginParams, 'it', 'en', 'rich_text', provider, '', 'branch-project', '', 'main') as Array<{ item: Record<string, unknown> }>;
+    expect(peak).toBe(1);
+    expect(translateDefaultFieldValue).toHaveBeenCalledTimes(364);
+    expect(mockFieldsList).toHaveBeenCalledTimes(1);
+    expect(result[0].item.label).toBe('Translated level-5');
+    expect(result[0].item.id).toBeUndefined();
+    expect(source[0].item.id).toBe('block-5');
+  });
+
+  it('bounds generated record context despite thousands of matching fields and exact-cases the source locale', () => {
+    const values = Object.fromEntries(Array.from({ length: 10_000 }, (_, index) => [`title_${index}`, { 'pt-BR': `Source ${index} ${'x'.repeat(200)}` }]));
+    const context = generateRecordContext(values, 'pt-br');
+    expect(context.length).toBeLessThanOrEqual(2000);
+    expect(context).toContain('Source 0');
+    expect(context).not.toContain('Source 9999');
+  });
+
+  it('keeps nested localized block and Structured Text source trees independent from the translated target', async () => {
+    mockFieldsList.mockResolvedValueOnce([
+      { api_key: 'body', appearance: { editor: 'rich_text' }, id: 'body-field', localized: true, validators: {} },
+      { api_key: 'document', appearance: { editor: 'structured_text' }, id: 'document-field', localized: true, validators: {} },
+    ]);
+    mockFieldsList.mockResolvedValueOnce([
+      { api_key: 'heading', appearance: { editor: 'single_line' }, id: 'heading-field', localized: false, validators: {} },
+    ]);
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('Titolo tradotto');
+    vi.mocked(translateArray).mockResolvedValue(['Testo tradotto']);
+    const source = [{ itemTypeId: 'localized-outer',
+      body: { en: [{ itemId: 'nested-source-id', itemTypeId: 'localized-inner', heading: 'Source heading' }], it: [], de: [{ itemId: 'german-id', itemTypeId: 'localized-inner', heading: 'Deutsch' }] },
+      document: { en: [{ type: 'paragraph', id: 'paragraph-source-id', children: [{ text: 'Source text' }] }], it: [], de: [{ type: 'paragraph', children: [{ text: 'Deutsch' }] }] },
+    }];
+    const original = structuredClone(source);
+    const result = await translateFieldValue(source, pluginParams, 'it', 'en', 'rich_text', provider, '', 'nested-localized-project', '', 'main') as typeof source;
+    expect(result[0].body.en).toEqual(original[0].body.en);
+    expect(result[0].body.de).toEqual(original[0].body.de);
+    expect(result[0].body.it[0]).toMatchObject({ heading: 'Titolo tradotto' });
+    expect(result[0].body.it[0]).not.toHaveProperty('itemId');
+    expect(result[0].document.en).toEqual(original[0].document.en);
+    expect(result[0].document.de).toEqual(original[0].document.de);
+    expect(result[0].document.it[0]).toMatchObject({ children: [{ text: 'Testo tradotto' }] });
+    expect(source).toEqual(original);
+  });
+
 });

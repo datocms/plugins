@@ -1,5 +1,5 @@
 import type { CommentType } from '@ctypes/comments';
-import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 import type { CommentOperation } from '@ctypes/operations';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
@@ -137,7 +137,12 @@ export function useCommentActions({
   );
 
   const editComment = useCallback(
-    (id: string, newContent: CommentSegment[], parentCommentId?: string) => {
+    (
+      id: string,
+      newContent: CommentSegment[],
+      parentCommentId?: string,
+      expectedContent?: StoredCommentSegment[],
+    ) => {
       const isNewReply = pendingNewReplies.current?.has(id) ?? false;
       const existingComment = findCommentById(comments, id, parentCommentId);
 
@@ -173,6 +178,7 @@ export function useCommentActions({
           type: 'EDIT_COMMENT',
           id,
           newContent: storedContent,
+          expectedContent: expectedContent ?? existingComment?.content,
           parentCommentId,
         });
 

@@ -37,11 +37,12 @@ export const imageQualityOptions: Array<SelectOption<ImageQuality>> = [
   { value: 'high', label: 'High' },
 ];
 
-export const imageOutputFormatOptions: Array<SelectOption<ImageOutputFormat>> = [
-  { value: 'png', label: 'PNG' },
-  { value: 'jpeg', label: 'JPEG' },
-  { value: 'webp', label: 'WebP' },
-];
+export const imageOutputFormatOptions: Array<SelectOption<ImageOutputFormat>> =
+  [
+    { value: 'png', label: 'PNG' },
+    { value: 'jpeg', label: 'JPEG' },
+    { value: 'webp', label: 'WebP' },
+  ];
 
 const labelByAspectRatio: Record<AspectRatioOption['value'], string> = {
   '1:1': 'Square',
@@ -59,6 +60,12 @@ const googleImageSizeOptionsByAspectRatio = {
   '1:1': [{ value: 'native', label: '1024×1024 px' }],
   '2:3': [{ value: 'native', label: '832×1248 px' }],
   '3:2': [{ value: 'native', label: '1248×832 px' }],
+} satisfies Record<AspectRatio, ImageSizeOption[]>;
+
+const google3ImageSizeOptionsByAspectRatio = {
+  '1:1': [{ value: 'native', label: '1024×1024 px' }],
+  '2:3': [{ value: 'native', label: '848×1264 px' }],
+  '3:2': [{ value: 'native', label: '1264×848 px' }],
 } satisfies Record<AspectRatio, ImageSizeOption[]>;
 
 const openAiRequestSizeByAspectRatio: Record<
@@ -108,7 +115,11 @@ export function getCapabilities(
   return {
     supportsVariationCount: false,
     supportsOutputControls: false,
-    imageSizeOptionsByAspectRatio: googleImageSizeOptionsByAspectRatio,
+    imageSizeOptionsByAspectRatio: normalizeModelSignal(model).startsWith(
+      'gemini-3',
+    )
+      ? google3ImageSizeOptionsByAspectRatio
+      : googleImageSizeOptionsByAspectRatio,
   };
 }
 
@@ -157,11 +168,21 @@ export function getOpenAiRequestSize(
 }
 
 export function isOpenAiImageGenerationModel(model: string): boolean {
-  return hasImageFamilySignal(model) && !hasExcludedModelSignal(model);
+  const normalized = normalizeModelSignal(model);
+
+  return (
+    (normalized.startsWith('gpt-image-') ||
+      normalized === 'chatgpt-image-latest') &&
+    !hasExcludedModelSignal(model)
+  );
 }
 
 export function isGoogleImageGenerationModel(model: string): boolean {
-  return hasImageFamilySignal(model) && !hasExcludedModelSignal(model);
+  return (
+    normalizeModelSignal(model).startsWith('gemini-') &&
+    hasImageFamilySignal(model) &&
+    !hasExcludedModelSignal(model)
+  );
 }
 
 export function isGooglePredictImageModel(model: string): boolean {
@@ -185,7 +206,9 @@ export function normalizeModelSignal(value: string): string {
 function hasExcludedModelSignal(model: string): boolean {
   const normalizedModel = normalizeModelSignal(model);
 
-  return excludedModelSignals.some((signal) => normalizedModel.includes(signal));
+  return excludedModelSignals.some((signal) =>
+    normalizedModel.includes(signal),
+  );
 }
 
 function stripModelResourcePrefix(model: string): string {

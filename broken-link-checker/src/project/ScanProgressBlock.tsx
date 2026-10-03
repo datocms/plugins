@@ -22,8 +22,10 @@ function recordsFact(
 ) {
   if (discovering && recordTotal !== undefined) {
     const read = progress.records.toLocaleString(uiLocale);
+    // Concurrent additions can outgrow the earlier count without ending discovery.
+    const total = Math.max(recordTotal, progress.records);
     return countLabel(
-      recordTotal,
+      total,
       `${read} of 1 record read`,
       `${read} of {n} records read`,
       uiLocale,
@@ -42,15 +44,15 @@ function urlsFact(progress: ScanProgress, uiLocale: string) {
   const done = settledUrls(progress).toLocaleString(uiLocale);
   return countLabel(
     progress.found,
-    `${done} of 1 URL checked`,
-    `${done} of {n} URLs checked`,
+    `${done} of 1 URL processed`,
+    `${done} of {n} URLs processed`,
     uiLocale,
   );
 }
 
 /**
  * A running scan's one loading indicator: a title with the percentage, the
- * bar, and what has been read and checked so far. Without a record count the
+ * bar, and what has been read and processed so far. Without a record count the
  * bar sweeps until reading ends.
  */
 export function ScanProgressBlock({

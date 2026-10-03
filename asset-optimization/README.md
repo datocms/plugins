@@ -47,6 +47,7 @@ This approach allows you to safely experiment with different optimization parame
 
 1. Open **Configuration →  Optimize assets**.
 2. Configure the optimization settings according to your needs
+   Optionally choose an **Asset collection** to process only that collection's matching images. Subcollections are excluded; **All assets** keeps the environment-wide behavior. Preview and replacement use the same scope, and discovery stops before replacements if the API returns an asset outside the selected collection.
 3. Click **Preview Optimization** to dry-run the process and see expected savings without touching any assets
 4. When you're happy with the projected results, click **Start Optimization**. You'll be asked to confirm twice before any asset is replaced
 5. Watch the progress and the live activity log as the plugin processes your assets
@@ -104,13 +105,15 @@ A *Restore Defaults* button is available at any time.
 - Mass-update existing media libraries with optimized assets
 - Apply consistent optimization settings across your entire asset collection
 - Save time compared to manual optimization workflows
-- Up to 10 assets are processed in parallel for faster runs
+- Processing runs continuously with two workers (internally capped at three), automatic retries and live progress
+- The downloaded Blob is reused for replacement without a second conversion/download; transient GET failures can retry automatically
+- Asset lists show 100 entries per page; the activity log keeps the latest 300 entries
 
 ## Development
 
 ### Prerequisites
 
-- Node.js (v14+)
+- Node.js 24+ (used for the deterministic validation suite)
 - npm or yarn
 - DatoCMS account with developer access
 
@@ -120,6 +123,28 @@ A *Restore Defaults* button is available at any time.
 2. Install dependencies: `npm install`
 3. Start the development server: `npm run dev`
 4. Configure a local DatoCMS plugin in your project settings pointing to your local server
+
+### Validation
+
+```bash
+npm run check
+```
+
+This runs Biome using the repository rules, TypeScript for source and tests, deterministic synthetic tests, and the production build. The root `run-checks.js` targets a fixed list of other plugins and does not include this package.
+
+### Large libraries and replacement safety
+
+The plugin discovers all matching images before starting replacements, using [CMA upload pages](https://www.datocms.com/docs/content-management-api/resources/upload/instances) of at most 500. This is necessary because replacing an image can remove it from the size filter and would shift offset pages during a run. Discovery retains only lightweight asset metadata; image binaries are loaded only by active workers. No records or model schemas are enumerated, regardless of record count, locales or nested blocks.
+
+CMA requests share a 150 ms spacing and a rate-limit cooldown, leaving room below the documented [60 requests per three seconds](https://www.datocms.com/docs/content-management-api/technical-limits). CDN reads and signed binary uploads have bounded automatic retries and deadlines. An optimized image must be smaller than the original, achieve the configured reduction and fit the 32 MiB output limit. Oversized outputs are skipped without replacing the original. Unsupported, empty or obviously malformed responses fail individually; file extensions follow the detected image format.
+
+Replacement updates only the existing upload's `path`, preserving its ID, references, metadata for every locale, tags and collection. It checks path, size, checksum and update timestamp before transfer and immediately before the write. It waits for the [asynchronous job](https://www.datocms.com/docs/content-management-api/async-jobs) and confirms the returned ID, path and size. Only an explicit rejected rate-limit response can retry an asset write. A lost response is reconciled by reading the asset, without sending another replacement. Unconfirmed writes appear as failures with an explanation. Converted images use a new URL, as documented for [upload replacement](https://www.datocms.com/docs/content-management-api/resources/upload/update); saved external URLs are not rewritten.
+
+Cancel stops new work and pending downloads. Writes already sent are allowed to finish or be reconciled, and the summary retains confirmed successes, failures and the unprocessed count. Cancellation is optional; there is no mandatory pause or manual continuation workflow. Keep the plugin page open for the continuous run.
+
+Synthetic tests cover 10,000 assets, full pagination before writes, bounded concurrency, cancellation, failures, multiple locales, streaming size limits, timeouts, retries and async-job reconciliation. They do not measure production throughput, real browser heap use, image quality, complete image decoding or CDN behavior. The 32 MiB cap limits each optimized output, not total browser heap use. Original files may be larger if their optimized output fits this cap.
+
+The CMA does not document atomic version preconditions for upload replacement. An external edit between the final check and the write remains a race. Offset pagination is also not a transaction: concurrent external additions/deletions during discovery can change membership. Unknown job results can still complete later on the server. These limits are surfaced rather than hidden by blind retries.
 
 ### Building for Production
 

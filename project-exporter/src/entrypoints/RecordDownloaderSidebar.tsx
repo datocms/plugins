@@ -1,8 +1,9 @@
-import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 import { useState } from 'react';
 import downloadRecordsFile from '../utils/downloadRecordsFile';
+import { createExportClient, mapWithConcurrency } from '../utils/exportRuntime';
+import { readRecord } from '../utils/readRecords';
 import {
   buildRecordExportEnvelope,
   fetchProjectConfigurationExport,
@@ -24,33 +25,31 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
 
     const selectedFormat =
       (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON';
-    const recordValue = ctx.item;
-
-    if (selectedFormat !== 'JSON') {
-      await downloadRecordsFile([recordValue], selectedFormat);
-      return;
-    }
 
     if (!ctx.currentUserAccessToken) {
-      ctx.alert(
-        'A user access token is required to export JSON metadata for this record.',
-      );
+      ctx.alert('A user access token is required to export this record.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const client = buildClient({
+      const client = createExportClient({
         apiToken: ctx.currentUserAccessToken,
         environment: ctx.environment,
         baseUrl: ctx.cmaBaseUrl,
       });
 
+      const recordValue = await readRecord(client, ctx.item.id);
+      if (selectedFormat !== 'JSON') {
+        await downloadRecordsFile([recordValue], selectedFormat);
+        return;
+      }
+
       const itemTypes = await client.itemTypes.list();
       const fields = (
-        await Promise.all(
-          itemTypes.map((model) => client.fields.list(model.id)),
+        await mapWithConcurrency(itemTypes, 4, (model) =>
+          client.fields.list(model.id),
         )
       ).flat();
       const { projectConfiguration, siteInfo } =
@@ -64,13 +63,17 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
         records: [recordValue as unknown as Record<string, unknown>],
         itemTypes: itemTypes as unknown as Record<string, unknown>[],
         fields: fields as unknown as Record<string, unknown>[],
-        siteInfo,
+        siteInfo: { ...siteInfo, sourceEnvironment: ctx.environment },
         projectConfiguration,
         filtersUsed: {},
         scope: 'single-record',
       });
 
       await downloadRecordsFile(exportEnvelope, 'JSON');
+    } catch (error) {
+      await ctx.alert(
+        error instanceof Error ? error.message : 'The record export failed.',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +82,7 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <Button onClick={downloadTxtFile} disabled={isLoading}>
-        {isLoading ? 'Preparing JSON...' : 'Download this record'}
+        {isLoading ? 'Preparing file...' : 'Download this record'}
       </Button>
     </Canvas>
   );

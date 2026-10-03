@@ -19,7 +19,7 @@ import { extractLeadingEmoji } from '@utils/emojiUtils';
 import { getRecordTitles } from '@utils/recordTitleUtils';
 import type { UserInfo } from '@utils/userTransformers';
 import type { ItemType } from 'datocms-plugin-sdk';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { logError } from '@/utils/errorLogger';
 import { getGravatarUrl } from '@/utils/helpers';
 import type { FieldInfo, ModelInfo } from './useMentions';
@@ -77,9 +77,9 @@ type UseEntityResolverReturn = {
 
 function resolveAuthorById(
   userId: string,
-  projectUsers: UserInfo[],
+  projectUsers: Map<string, UserInfo>,
 ): ResolvedAuthor {
-  const user = projectUsers.find((u) => u.id === userId || u.email === userId);
+  const user = projectUsers.get(userId);
 
   if (user) {
     return {
@@ -89,6 +89,20 @@ function resolveAuthorById(
       avatarUrl:
         user.avatarUrl ?? (user.email ? getGravatarUrl(user.email, 48) : null),
     };
+  }
+
+  if (userId.startsWith('legacy-email:')) {
+    try {
+      const email = decodeURIComponent(userId.slice('legacy-email:'.length));
+      return {
+        id: userId,
+        email,
+        name: email,
+        avatarUrl: getGravatarUrl(email, 48),
+      };
+    } catch {
+      // Invalid historical IDs still use the ordinary unknown-user fallback.
+    }
   }
 
   // Fallback for unresolvable user ID
@@ -102,9 +116,9 @@ function resolveAuthorById(
 
 function resolveUserMention(
   stored: { id: string },
-  projectUsers: UserInfo[],
+  projectUsers: Map<string, UserInfo>,
 ): UserMention | null {
-  const user = projectUsers.find((u) => u.id === stored.id);
+  const user = projectUsers.get(stored.id);
   if (!user) return null;
 
   return {
@@ -118,9 +132,9 @@ function resolveUserMention(
 
 function resolveModelMention(
   stored: { id: string },
-  projectModels: ModelInfo[],
+  projectModels: Map<string, ModelInfo>,
 ): ModelMention | null {
-  const model = projectModels.find((m) => m.id === stored.id);
+  const model = projectModels.get(stored.id);
   if (!model) return null;
 
   return {
@@ -134,10 +148,10 @@ function resolveModelMention(
 
 function resolveFieldMention(
   stored: { fieldPath: string; locale?: string; modelId: string },
-  modelFields: FieldInfo[],
+  modelFields: Map<string, FieldInfo>,
 ): FieldMention | null {
   // Find field by fieldPath
-  const field = modelFields.find((f) => f.fieldPath === stored.fieldPath);
+  const field = modelFields.get(stored.fieldPath);
 
   if (field) {
     return {
@@ -250,9 +264,7 @@ function createResolvedRecordFromMention(
   };
 }
 
-function createResolvedAssetFromMention(
-  mention: AssetMention,
-): ResolvedAsset {
+function createResolvedAssetFromMention(mention: AssetMention): ResolvedAsset {
   return {
     id: mention.id,
     filename: mention.filename,
@@ -297,6 +309,70 @@ function isSameResolvedAsset(
   );
 }
 
+async function fetchReferencedAsset(
+  client: Client,
+  cache: ResolutionCache['assets'],
+  pending: Set<string>,
+  assetId: string,
+  shouldContinue: () => boolean,
+) {
+  const isPending = () => shouldContinue() && pending.has(assetId);
+  if (!isPending()) return;
+  try {
+    const upload = await client.uploads.find(assetId);
+    if (!isPending()) return;
+    cache.set(assetId, {
+      id: assetId,
+      filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
+      url: upload.url,
+      thumbnailUrl: getAssetThumbnailUrl(upload.mime_type ?? '', upload.url),
+      mimeType: upload.mime_type ?? 'application/octet-stream',
+    });
+  } catch (error) {
+    if (!isPending()) return;
+    logError('Failed to fetch asset', error, { assetId });
+    cache.set(assetId, 'error');
+  } finally {
+    if (shouldContinue()) pending.delete(assetId);
+  }
+}
+
+function pruneUnusedEntities<T>(
+  cache: Map<string, T>,
+  pending: Set<string>,
+  activeIds: Set<string>,
+) {
+  for (const id of cache.keys()) {
+    if (activeIds.has(id)) continue;
+    cache.delete(id);
+    pending.delete(id);
+  }
+}
+
+function markLoadingEntitiesAsError<T>(
+  cache: Map<string, T | 'loading' | 'error'>,
+  pending: Set<string>,
+  ids: string[],
+) {
+  for (const id of ids) {
+    pending.delete(id);
+    if (cache.get(id) === 'loading') cache.set(id, 'error');
+  }
+}
+
+function seedResolvedEntity<T>(
+  cache: Map<string, T | 'loading' | 'error'>,
+  pending: Set<string>,
+  id: string,
+  next: T,
+  isSame: (current: T | 'loading' | 'error' | undefined, next: T) => boolean,
+): boolean {
+  if (isSame(cache.get(id), next)) return false;
+  cache.set(id, next);
+  pending.delete(id);
+  return true;
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -325,6 +401,40 @@ export function useEntityResolver(
 
   // Cache version increments when async entities are resolved, triggering re-renders
   const [cacheVersion, setCacheVersion] = useState(0);
+  const generationRef = useRef(0);
+  const queuedFetchesRef = useRef(0);
+  const fetchQueueRef = useRef(Promise.resolve());
+
+  const usersById = useMemo(() => {
+    const users = new Map<string, UserInfo>();
+    for (const user of projectUsers) {
+      if (!users.has(user.id)) users.set(user.id, user);
+      if (user.email && !users.has(user.email)) users.set(user.email, user);
+    }
+    return users;
+  }, [projectUsers]);
+  const modelsById = useMemo(
+    () => new Map(projectModels.map((model) => [model.id, model])),
+    [projectModels],
+  );
+  const fieldsByPath = useMemo(
+    () => new Map(modelFields.map((field) => [field.fieldPath, field])),
+    [modelFields],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Client and locale changes invalidate the resolution cache.
+  useEffect(() => {
+    generationRef.current += 1;
+    cacheRef.current = { records: new Map(), assets: new Map() };
+    pendingRecordsRef.current.clear();
+    pendingAssetsRef.current.clear();
+    queuedFetchesRef.current = 0;
+    setIsResolving(false);
+    setCacheVersion((version) => version + 1);
+    return () => {
+      generationRef.current += 1;
+    };
+  }, [client, mainLocale]);
 
   const seedResolvedMentionsFromSegments = useCallback(
     (segments: CommentSegment[]) => {
@@ -334,23 +444,23 @@ export function useEntityResolver(
         if (segment.type !== 'mention') continue;
 
         if (segment.mention.type === 'record') {
-          const next = createResolvedRecordFromMention(segment.mention);
-          const current = cacheRef.current.records.get(segment.mention.id);
-
-          if (!isSameResolvedRecord(current, next)) {
-            cacheRef.current.records.set(segment.mention.id, next);
-            pendingRecordsRef.current.delete(segment.mention.id);
-            didSeed = true;
-          }
+          didSeed =
+            seedResolvedEntity(
+              cacheRef.current.records,
+              pendingRecordsRef.current,
+              segment.mention.id,
+              createResolvedRecordFromMention(segment.mention),
+              isSameResolvedRecord,
+            ) || didSeed;
         } else if (segment.mention.type === 'asset') {
-          const next = createResolvedAssetFromMention(segment.mention);
-          const current = cacheRef.current.assets.get(segment.mention.id);
-
-          if (!isSameResolvedAsset(current, next)) {
-            cacheRef.current.assets.set(segment.mention.id, next);
-            pendingAssetsRef.current.delete(segment.mention.id);
-            didSeed = true;
-          }
+          didSeed =
+            seedResolvedEntity(
+              cacheRef.current.assets,
+              pendingAssetsRef.current,
+              segment.mention.id,
+              createResolvedAssetFromMention(segment.mention),
+              isSameResolvedAsset,
+            ) || didSeed;
         }
       }
 
@@ -365,13 +475,13 @@ export function useEntityResolver(
     (stored: StoredMention): Mention | null => {
       switch (stored.type) {
         case 'user':
-          return resolveUserMention(stored, projectUsers);
+          return resolveUserMention(stored, usersById);
 
         case 'model':
-          return resolveModelMention(stored, projectModels);
+          return resolveModelMention(stored, modelsById);
 
         case 'field':
-          return resolveFieldMention(stored, modelFields);
+          return resolveFieldMention(stored, fieldsByPath);
 
         case 'record': {
           const cached = cacheRef.current.records.get(stored.id);
@@ -399,7 +509,7 @@ export function useEntityResolver(
           return null;
       }
     },
-    [projectUsers, projectModels, modelFields],
+    [usersById, modelsById, fieldsByPath],
   );
 
   const resolveSegment = useCallback(
@@ -422,22 +532,23 @@ export function useEntityResolver(
   const resolveComment = useCallback(
     (comment: CommentType): ResolvedCommentType => {
       const resolvedContent = comment.content.map(resolveSegment);
-      const resolvedAuthor = resolveAuthorById(comment.authorId, projectUsers);
+      const resolvedAuthor = resolveAuthorById(comment.authorId, usersById);
       const resolvedUpvoters = comment.upvoterIds.map((upvoterId) =>
-        resolveAuthorById(upvoterId, projectUsers),
+        resolveAuthorById(upvoterId, usersById),
       );
 
       return {
         id: comment.id,
         dateISO: comment.dateISO,
         content: resolvedContent,
+        storedContent: comment.content,
         author: resolvedAuthor,
         upvoters: resolvedUpvoters,
-        replies: comment.replies?.map((reply) => resolveComment(reply)),
+        replies: comment.replies ? [] : undefined,
         parentCommentId: comment.parentCommentId,
       };
     },
-    [resolveSegment, projectUsers],
+    [resolveSegment, usersById],
   );
 
   const collectAsyncMentions = useCallback((comments: CommentType[]) => {
@@ -451,9 +562,9 @@ export function useEntityResolver(
       const isUncached = !cached || cached === 'error';
       const isPending = pendingRecordsRef.current.has(mentionId);
       const isSeen = seenRecordIds.has(mentionId);
+      seenRecordIds.add(mentionId);
       if (isUncached && !isPending && !isSeen) {
         recordsToFetch.push({ id: mentionId, modelId });
-        seenRecordIds.add(mentionId);
       }
     };
 
@@ -462,9 +573,9 @@ export function useEntityResolver(
       const isUncached = !cached || cached === 'error';
       const isPending = pendingAssetsRef.current.has(mentionId);
       const isSeen = seenAssetIds.has(mentionId);
+      seenAssetIds.add(mentionId);
       if (isUncached && !isPending && !isSeen) {
         assetsToFetch.push(mentionId);
-        seenAssetIds.add(mentionId);
       }
     };
 
@@ -479,39 +590,38 @@ export function useEntityResolver(
       }
     };
 
-    const processComments = (cmts: CommentType[]) => {
-      for (const comment of cmts) {
-        processSegments(comment.content);
-        if (comment.replies) {
-          processComments(comment.replies);
-        }
-      }
-    };
-
-    processComments(comments);
-    return { recordsToFetch, assetsToFetch };
+    const pendingComments = [...comments];
+    while (pendingComments.length > 0) {
+      const comment = pendingComments.pop();
+      if (!comment) continue;
+      processSegments(comment.content);
+      for (const reply of comment.replies ?? []) pendingComments.push(reply);
+    }
+    return { recordsToFetch, assetsToFetch, seenRecordIds, seenAssetIds };
   }, []);
 
   const resolveRecordBatch = useCallback(
-    async (recordsToFetch: Array<{ id: string; modelId: string }>) => {
-      if (!client || recordsToFetch.length === 0) return;
+    async (
+      recordsToFetch: Array<{ id: string; modelId: string }>,
+      shouldContinue: () => boolean,
+    ) => {
+      if (!client || recordsToFetch.length === 0 || !shouldContinue()) return;
 
       const recordResults = await getRecordTitles(
         client,
-        recordsToFetch.map((r) => ({ recordId: r.id, modelId: r.modelId })),
+        recordsToFetch.map((record) => ({
+          recordId: record.id,
+          modelId: record.modelId,
+        })),
         mainLocale,
+        shouldContinue,
       );
+      if (!shouldContinue()) return;
 
       for (const record of recordsToFetch) {
-        if (!pendingRecordsRef.current.has(record.id)) {
-          continue;
-        }
-
+        if (!pendingRecordsRef.current.has(record.id)) continue;
         const result = recordResults.get(record.id);
-        const model = Object.values(itemTypes).find(
-          (it) => it?.id === record.modelId,
-        );
-
+        const model = itemTypes[record.modelId];
         if (result) {
           const { emoji: modelEmoji } = extractLeadingEmoji(result.modelName);
           cacheRef.current.records.set(record.id, {
@@ -534,75 +644,84 @@ export function useEntityResolver(
   );
 
   const resolveAssetBatch = useCallback(
-    async (assetsToFetch: string[]) => {
+    async (assetsToFetch: string[], shouldContinue: () => boolean) => {
       if (!client) return;
-
-      const assetPromises = assetsToFetch.map(async (assetId) => {
-        try {
-          const upload = await client.uploads.find(assetId);
-          if (!pendingAssetsRef.current.has(assetId)) {
-            return;
-          }
-
-          cacheRef.current.assets.set(assetId, {
-            id: assetId,
-            filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
-            url: upload.url,
-            thumbnailUrl: getAssetThumbnailUrl(
-              upload.mime_type ?? '',
-              upload.url,
-            ),
-            mimeType: upload.mime_type ?? 'application/octet-stream',
-          });
-        } catch (error) {
-          if (!pendingAssetsRef.current.has(assetId)) {
-            return;
-          }
-
-          logError('Failed to fetch asset', error, { assetId });
-          cacheRef.current.assets.set(assetId, 'error');
-        } finally {
-          pendingAssetsRef.current.delete(assetId);
+      let nextIndex = 0;
+      const worker = async () => {
+        while (nextIndex < assetsToFetch.length && shouldContinue()) {
+          // biome-ignore lint/performance/noAwaitInLoops: Each of four workers processes one request at a time.
+          await fetchReferencedAsset(
+            client,
+            cacheRef.current.assets,
+            pendingAssetsRef.current,
+            assetsToFetch[nextIndex++],
+            shouldContinue,
+          );
         }
-      });
-
-      await Promise.all(assetPromises);
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(4, assetsToFetch.length) }, worker),
+      );
     },
     [client],
-  );
-
-  const markEntitiesAsError = useCallback(
-    (
-      recordsToFetch: Array<{ id: string; modelId: string }>,
-      assetsToFetch: string[],
-    ) => {
-      for (const record of recordsToFetch) {
-        pendingRecordsRef.current.delete(record.id);
-        if (cacheRef.current.records.get(record.id) === 'loading') {
-          cacheRef.current.records.set(record.id, 'error');
-        }
-      }
-      for (const assetId of assetsToFetch) {
-        pendingAssetsRef.current.delete(assetId);
-        if (cacheRef.current.assets.get(assetId) === 'loading') {
-          cacheRef.current.assets.set(assetId, 'error');
-        }
-      }
-    },
-    [],
   );
 
   const fetchAsyncEntities = useCallback(
     async (
       recordsToFetch: Array<{ id: string; modelId: string }>,
       assetsToFetch: string[],
+      generation: number,
     ) => {
+      const shouldContinue = () => generationRef.current === generation;
+      if (!shouldContinue()) return;
+      try {
+        await resolveRecordBatch(recordsToFetch, shouldContinue);
+        if (shouldContinue()) setCacheVersion((version) => version + 1);
+        await resolveAssetBatch(assetsToFetch, shouldContinue);
+      } catch (error) {
+        if (!shouldContinue()) return;
+        logError('Failed to fetch async entities', error);
+        markLoadingEntitiesAsError(
+          cacheRef.current.records,
+          pendingRecordsRef.current,
+          recordsToFetch.map((record) => record.id),
+        );
+        markLoadingEntitiesAsError(
+          cacheRef.current.assets,
+          pendingAssetsRef.current,
+          assetsToFetch,
+        );
+      } finally {
+        if (shouldContinue()) {
+          queuedFetchesRef.current -= 1;
+          setIsResolving(queuedFetchesRef.current > 0);
+          setCacheVersion((version) => version + 1);
+        }
+      }
+    },
+    [resolveRecordBatch, resolveAssetBatch],
+  );
+
+  const prefetchEntities = useCallback(
+    (comments: CommentType[]) => {
       if (!client) return;
+      const { recordsToFetch, assetsToFetch, seenRecordIds, seenAssetIds } =
+        collectAsyncMentions(comments);
+      // Retain only display data needed by the current list, rather than every
+      // entity encountered while navigating many records in a long session.
+      pruneUnusedEntities(
+        cacheRef.current.records,
+        pendingRecordsRef.current,
+        seenRecordIds,
+      );
+      pruneUnusedEntities(
+        cacheRef.current.assets,
+        pendingAssetsRef.current,
+        seenAssetIds,
+      );
       if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
 
-      setIsResolving(true);
-
-      // Mark as pending
+      // Mark requests before queueing so repeated renders cannot duplicate them.
       for (const record of recordsToFetch) {
         pendingRecordsRef.current.add(record.id);
         cacheRef.current.records.set(record.id, 'loading');
@@ -611,33 +730,39 @@ export function useEntityResolver(
         pendingAssetsRef.current.add(assetId);
         cacheRef.current.assets.set(assetId, 'loading');
       }
+      const generation = generationRef.current;
+      queuedFetchesRef.current += 1;
+      setIsResolving(true);
 
-      try {
-        await resolveRecordBatch(recordsToFetch);
-        await resolveAssetBatch(assetsToFetch);
-      } catch (error) {
-        logError('Failed to fetch async entities', error);
-        markEntitiesAsError(recordsToFetch, assetsToFetch);
-      } finally {
-        setIsResolving(false);
-        setCacheVersion((n) => n + 1);
-      }
+      // One continuous queue also bounds overlapping prefetch calls. A context
+      // change discards old results and stops its remaining requests.
+      fetchQueueRef.current = fetchQueueRef.current.then(() =>
+        fetchAsyncEntities(recordsToFetch, assetsToFetch, generation),
+      );
     },
-    [client, resolveRecordBatch, resolveAssetBatch, markEntitiesAsError],
-  );
-
-  const prefetchEntities = useCallback(
-    (comments: CommentType[]) => {
-      const { recordsToFetch, assetsToFetch } = collectAsyncMentions(comments);
-      if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
-      void fetchAsyncEntities(recordsToFetch, assetsToFetch);
-    },
-    [collectAsyncMentions, fetchAsyncEntities],
+    [client, collectAsyncMentions, fetchAsyncEntities],
   );
 
   const resolveComments = useCallback(
-    (comments: CommentType[]): ResolvedCommentType[] =>
-      comments.map(resolveComment),
+    (comments: CommentType[]): ResolvedCommentType[] => {
+      const resolved = comments.map(resolveComment);
+      const pending = comments.map((comment, index) => ({
+        comment,
+        resolved: resolved[index],
+      }));
+      while (pending.length > 0) {
+        const entry = pending.pop();
+        if (!entry?.comment.replies) continue;
+        entry.resolved.replies = entry.comment.replies.map(resolveComment);
+        for (let index = 0; index < entry.comment.replies.length; index += 1) {
+          pending.push({
+            comment: entry.comment.replies[index],
+            resolved: entry.resolved.replies[index],
+          });
+        }
+      }
+      return resolved;
+    },
     [resolveComment],
   );
 

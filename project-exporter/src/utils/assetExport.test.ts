@@ -8,6 +8,10 @@ import {
   buildAssetZipEntryName,
   calculateAssetExportProgress,
   createAssetChunks,
+  getUploadSize,
+  LAST_ASSET_EXPORT_STORAGE_KEY,
+  persistLastAssetExportSnapshot,
+  readLastAssetExportSnapshot,
 } from './assetExport';
 
 describe('assetExport helpers', () => {
@@ -99,6 +103,118 @@ describe('assetExport helpers', () => {
     expect(chunks[1].assets.map((asset) => asset.sourceUploadId)).toEqual([
       'huge',
     ]);
+  });
+
+  test('unknown and invalid sizes are isolated rather than estimated as tiny files', () => {
+    const sizes = [10, 0, 10, Number.NaN, 10, -1, 10];
+    const chunks = createAssetChunks(
+      sizes.map((size, index) => ({
+        sourceUploadId: String(index),
+        originalFilename: `${index}.bin`,
+        size,
+        payload: {},
+      })),
+      { maxZipBytes: 100, maxFilesPerZip: 10, sizeSafetyFactor: 1 },
+    );
+    expect(chunks.map((chunk) => chunk.assets.length)).toEqual([
+      1, 1, 1, 1, 1, 1, 1,
+    ]);
+    expect(getUploadSize({ size: -10 })).toBe(0);
+    expect(getUploadSize({ size: Number.POSITIVE_INFINITY })).toBe(0);
+  });
+
+  test('invalid chunking limits cannot bypass bounded chunk sizes', () => {
+    expect(() => createAssetChunks([], { maxZipBytes: 0 })).toThrow();
+    expect(() => createAssetChunks([], { maxZipBytes: Number.NaN })).toThrow();
+    expect(() => createAssetChunks([], { maxFilesPerZip: 1.5 })).toThrow();
+    expect(() => createAssetChunks([], { sizeSafetyFactor: 0.5 })).toThrow();
+  });
+
+  test('10,000 synthetic assets are covered exactly once in bounded chunks', () => {
+    const assets = Array.from({ length: 10_000 }, (_, index) => ({
+      sourceUploadId: String(index),
+      originalFilename: `${index}.bin`,
+      size: 1000,
+      payload: { id: index },
+    }));
+    const chunks = createAssetChunks(assets);
+    expect(chunks).toHaveLength(100);
+    expect(chunks.every((chunk) => chunk.assets.length === 100)).toBe(true);
+    expect(chunks.flatMap((chunk) => chunk.assets)).toEqual(assets);
+  });
+
+  test('localized metadata contributes to the archive byte estimate', () => {
+    const chunks = createAssetChunks(
+      [
+        {
+          sourceUploadId: '1',
+          originalFilename: 'one.bin',
+          size: 1,
+          metadataBytes: 60,
+          payload: {},
+        },
+        {
+          sourceUploadId: '2',
+          originalFilename: 'two.bin',
+          size: 1,
+          metadataBytes: 60,
+          payload: {},
+        },
+      ],
+      { maxZipBytes: 100, maxFilesPerZip: 10, sizeSafetyFactor: 1 },
+    );
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].estimatedBytes).toBe(61);
+  });
+
+  test('denied localStorage getters cannot fail an otherwise successful export', () => {
+    const deniedWindow = Object.defineProperty({}, 'localStorage', {
+      get() {
+        throw new DOMException('Denied', 'SecurityError');
+      },
+    });
+    vi.stubGlobal('window', deniedWindow);
+    try {
+      expect(readLastAssetExportSnapshot()).toBeNull();
+      expect(() =>
+        persistLastAssetExportSnapshot({
+          packageVersion: '2.0.0',
+          generatedAt: 'synthetic',
+          chunkFilenames: [],
+          totalChunks: 0,
+          totalAssets: 0,
+          maxZipBytes: 100,
+          maxFilesPerZip: 100,
+          sizeSafetyFactor: 1.2,
+        }),
+      ).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('snapshots only match the project and environment that produced them', () => {
+    localStorage.setItem(
+      LAST_ASSET_EXPORT_STORAGE_KEY,
+      JSON.stringify({
+        sourceProjectId: 'one',
+        sourceEnvironment: 'sandbox',
+        chunkFilenames: ['part.zip'],
+      }),
+    );
+    try {
+      expect(readLastAssetExportSnapshot('one', 'sandbox')).not.toBeNull();
+      expect(readLastAssetExportSnapshot('two', 'sandbox')).toBeNull();
+      expect(readLastAssetExportSnapshot('one', 'production')).toBeNull();
+      expect(readLastAssetExportSnapshot(null, 'sandbox')).toBeNull();
+      localStorage.setItem(
+        LAST_ASSET_EXPORT_STORAGE_KEY,
+        JSON.stringify({ chunkFilenames: ['legacy.zip'] }),
+      );
+      expect(readLastAssetExportSnapshot('one', 'sandbox')).toBeNull();
+    } finally {
+      localStorage.removeItem(LAST_ASSET_EXPORT_STORAGE_KEY);
+    }
   });
 
   test('calculateAssetExportProgress maps downloaded ratio into visible range', () => {

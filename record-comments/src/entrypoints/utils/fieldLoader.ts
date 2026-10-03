@@ -36,6 +36,11 @@ function loadItemTypeFieldsCached(
 
   const fieldsPromise = ctx.loadItemTypeFields(itemTypeId);
   fieldCache.set(itemTypeId, fieldsPromise);
+  void fieldsPromise.catch(() => {
+    if (fieldCache.get(itemTypeId) === fieldsPromise) {
+      fieldCache.delete(itemTypeId);
+    }
+  });
   return fieldsPromise;
 }
 
@@ -136,8 +141,20 @@ function getAllowedBlockModelIds(
 ): string[] {
   if (!validators) return [];
 
-  if (fieldType === 'modular_content' || fieldType === 'single_block') {
-    return validators.item_item_type?.item_types ?? [];
+  if (fieldType === 'single_block') {
+    return (
+      validators.single_block_blocks?.item_types ??
+      validators.item_item_type?.item_types ??
+      []
+    );
+  }
+
+  if (fieldType === 'rich_text' || fieldType === 'modular_content') {
+    return (
+      validators.rich_text_blocks?.item_types ??
+      validators.item_item_type?.item_types ??
+      []
+    );
   }
 
   if (fieldType === 'structured_text') {
@@ -421,6 +438,7 @@ async function loadNestedFieldsUnified(
 
   if (
     parentFieldType === 'modular_content' ||
+    parentFieldType === 'rich_text' ||
     parentFieldType === 'structured_text'
   ) {
     const blocks = extractBlocksFromFieldValue(fieldValue, parentFieldType);
@@ -484,12 +502,29 @@ async function buildTopLevelFieldWithNested(
   return [topLevelEntry, ...nestedFields];
 }
 
+const FIELD_STRUCTURE_KEYS = new Set([
+  'type',
+  'itemTypeId',
+  'blockModelId',
+  '__dastIndex',
+]);
+
+/** Field mentions depend on locale presence and block structure, not typed text. */
+export function getFieldValuesMetadataKey(formValues: unknown): string {
+  return JSON.stringify(formValues, (key, value: unknown) => {
+    if (FIELD_STRUCTURE_KEYS.has(key)) return value;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    return value;
+  }) ?? '';
+}
+
 export async function loadAllFields(
   ctx: RenderItemFormSidebarCtx,
+  fieldCache: FieldLoadCache = new Map(),
 ): Promise<FieldInfo[]> {
   const formValues = ctx.formValues as Record<string, FieldValue>;
   const allLocales = ctx.site.attributes.locales;
-  const fieldCache: FieldLoadCache = new Map();
   const topLevelFields = await loadItemTypeFieldsCached(
     ctx,
     fieldCache,

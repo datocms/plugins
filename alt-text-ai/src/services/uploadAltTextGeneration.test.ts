@@ -6,6 +6,8 @@ import type {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAltTextProvider } from '../providers/factory';
 import type { AltTextProvider } from '../providers/types';
+import { AltTextProviderError } from '../providers/errors';
+import { withHttpRetries } from '../providers/http';
 import { runAltGenerationForUploads } from './altTextGeneration';
 
 vi.mock('@datocms/cma-client-browser', () => ({
@@ -166,6 +168,9 @@ describe('runAltGenerationForUploads', () => {
       apiToken: 'dato-token',
       environment: 'sandbox',
       baseUrl: 'https://cma.example.com',
+      autoRetry: false,
+      requestTimeout: 125_000,
+      fetchFn: expect.any(Function),
     });
     expect(createAltTextProvider).toHaveBeenCalledWith({
       provider: 'openai',
@@ -183,7 +188,7 @@ describe('runAltGenerationForUploads', () => {
     expect(uploadsUpdate).toHaveBeenCalledTimes(2);
     expect(uploadsUpdate).toHaveBeenCalledWith('first', {
       default_field_metadata: {
-        alt: { en: 'Existing description', it: 'first-it' },
+        alt: { it: 'first-it' },
       },
     });
     expect(uploadsUpdate).toHaveBeenCalledWith('second', {
@@ -252,7 +257,7 @@ describe('runAltGenerationForUploads', () => {
     expect(customToast).toHaveBeenNthCalledWith(2, {
       type: 'warning',
       message:
-        'Generating alt texts… 2 of 4 locale versions processed; 1 of 2 assets finished.',
+        'Generating alt texts… 2 of 2 assets checked; 4 locale versions processed; 2 assets finished; 4 alt texts saved.',
       dismissOnPageChange: true,
       dismissAfterTimeout: 5000,
     });
@@ -280,7 +285,7 @@ describe('runAltGenerationForUploads', () => {
     expect(openConfirm).toHaveBeenCalledWith({
       title: 'Regenerate asset alt texts?',
       content:
-        'This will immediately replace existing default alt text for 1 image asset in every locale. This action cannot be undone.',
+        'This will immediately replace existing default alt text for the selected image assets in every locale (1 asset selected). This action cannot be undone.',
       choices: [
         {
           label: 'Regenerate alt texts',
@@ -297,6 +302,42 @@ describe('runAltGenerationForUploads', () => {
     });
     expect(notice).toHaveBeenCalledWith(
       '2 alt texts generated for 1 asset with OpenAI.',
+    );
+  });
+
+  it('patches only missing field-keyed alt metadata while preserving other fields', async () => {
+    const current = cmaUpload('current', {
+      alts: { en: 'Existing English', it: null },
+      titles: { en: 'Existing title', it: 'Titolo esistente' },
+      customData: { en: { credit: 'Photographer' } },
+      focalPoint: { x: 0.2, y: 0.8 },
+    });
+    const uploadsFind = vi.fn<Client['uploads']['find']>();
+    uploadsFind.mockResolvedValue(current);
+    const uploadsUpdate = vi.fn<Client['uploads']['update']>();
+    uploadsUpdate.mockResolvedValue(current);
+    const generate = vi.fn<AltTextProvider['generate']>();
+    generate.mockImplementation(async ({ locale }) => `Generated ${locale}`);
+    mockDependencies(uploadsFind, uploadsUpdate, generate);
+    const { ctx, notice } = uploadContext();
+
+    await runAltGenerationForUploads(
+      ctx,
+      [selectedUpload('current')],
+      'missing-only',
+    );
+
+    expect(generate).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'current', locale: 'it' }),
+    );
+    expect(uploadsUpdate).toHaveBeenCalledWith('current', {
+      default_field_metadata: {
+        alt: { it: 'Generated it' },
+      },
+    });
+    expect(notice).toHaveBeenCalledWith(
+      '1 alt text generated for 1 asset with OpenAI.',
     );
   });
 
@@ -441,5 +482,56 @@ describe('runAltGenerationForUploads', () => {
       'This plugin needs the currentUserAccessToken permission to update asset metadata. Grant the permission and try again.',
     );
     expect(buildClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('provider retry deadline integration', () => {
+  it('allows a valid 70-second Retry-After to complete automatically', async () => {
+    vi.useFakeTimers();
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const upload = cmaUpload('one', { alts: { en: null } });
+      const find = vi.fn<Client['uploads']['find']>().mockResolvedValue(upload);
+      const update = vi
+        .fn<Client['uploads']['update']>()
+        .mockResolvedValue(upload);
+      let attempts = 0;
+      const generate = vi.fn<AltTextProvider['generate']>();
+      generate.mockImplementation(({ signal }) =>
+        withHttpRetries('openai', signal, false, async () => {
+          attempts += 1;
+          if (attempts === 1)
+            throw new AltTextProviderError(
+              'openai',
+              'rate_limit',
+              'Try later',
+              { status: 429, retryAfterMs: 70_000 },
+            );
+          return 'Generated after cooldown';
+        }),
+      );
+      mockDependencies(find, update, generate);
+      const { ctx, alert, notice } = uploadContext(undefined, ['en']);
+      const operation = runAltGenerationForUploads(
+        ctx,
+        [selectedUpload('one')],
+        'missing-only',
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(70_000);
+      await operation;
+      expect(attempts).toBe(2);
+      expect(alert).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith('one', {
+        default_field_metadata: { alt: { en: 'Generated after cooldown' } },
+      });
+      expect(notice).toHaveBeenCalledWith(
+        '1 alt text generated for 1 asset with OpenAI.',
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      random.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

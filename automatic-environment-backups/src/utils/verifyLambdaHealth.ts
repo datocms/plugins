@@ -9,8 +9,9 @@ import {
   LambdaAuthSecretError,
 } from './lambdaAuth';
 import {
-  createTimeoutController,
+  fetchLambdaText,
   isAbortError,
+  LambdaResponseTooLargeError,
   truncateResponseSnippet,
 } from './lambdaHttp';
 
@@ -49,6 +50,7 @@ export type VerifyLambdaHealthInput = {
   environment: string;
   phase: LambdaConnectionPhase;
   lambdaAuthSecret: string;
+  signal?: AbortSignal;
 };
 
 export type VerifyLambdaHealthResult = {
@@ -178,18 +180,26 @@ const extractHttpErrorMessage = (payload: string, status: number): string =>
     'health endpoint returned an error status',
   );
 
-const isExpectedResponse = (payload: LambdaHealthResponsePayload): boolean => {
+const isExpectedResponse = (payload: unknown): boolean => {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
+    return false;
+  }
+  const candidate = payload as LambdaHealthResponsePayload;
   return (
-    payload.ok === true &&
-    payload.mpi?.message === EXPECTED_PONG_MESSAGE &&
-    payload.mpi?.version === EXPECTED_MPI_VERSION &&
-    payload.service === EXPECTED_SERVICE_NAME &&
-    payload.status === EXPECTED_STATUS
+    candidate.ok === true &&
+    candidate.mpi?.message === EXPECTED_PONG_MESSAGE &&
+    candidate.mpi?.version === EXPECTED_MPI_VERSION &&
+    candidate.service === EXPECTED_SERVICE_NAME &&
+    candidate.status === EXPECTED_STATUS
   );
 };
 
 const assertExpectedResponse = (
-  payload: LambdaHealthResponsePayload,
+  payload: unknown,
   endpoint: string,
   phase: LambdaConnectionPhase,
   rawPayload: string,
@@ -214,6 +224,7 @@ export const verifyLambdaHealth = async ({
   environment,
   phase,
   lambdaAuthSecret,
+  signal,
 }: VerifyLambdaHealthInput): Promise<VerifyLambdaHealthResult> => {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, phase);
   const endpoint = new URL(
@@ -234,8 +245,6 @@ export const verifyLambdaHealth = async ({
     },
   });
 
-  const timeoutController = createTimeoutController(HEALTH_CHECK_TIMEOUT_MS);
-
   let requestHeaders: Record<string, string>;
   try {
     requestHeaders = buildLambdaJsonHeaders(lambdaAuthSecret);
@@ -252,15 +261,31 @@ export const verifyLambdaHealth = async ({
   }
 
   let response: Response;
+  let responsePayload: string;
 
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      body: requestBody,
-      headers: requestHeaders,
-      signal: timeoutController.controller.signal,
-    });
+    ({ response, payloadText: responsePayload } = await fetchLambdaText(
+      endpoint,
+      {
+        body: requestBody,
+        headers: requestHeaders,
+        timeoutMs: HEALTH_CHECK_TIMEOUT_MS,
+        signal,
+        retrySafeRead: true,
+      },
+    ));
   } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+    if (error instanceof LambdaResponseTooLargeError) {
+      throw new LambdaHealthCheckError({
+        code: 'UNEXPECTED_RESPONSE',
+        message: error.message,
+        phase,
+        endpoint,
+      });
+    }
     if (isAbortError(error)) {
       throw new LambdaHealthCheckError({
         code: 'TIMEOUT',
@@ -276,11 +301,7 @@ export const verifyLambdaHealth = async ({
       phase,
       endpoint,
     });
-  } finally {
-    timeoutController.clear();
   }
-
-  const responsePayload = await response.text();
 
   if (!response.ok) {
     throw new LambdaHealthCheckError({
@@ -296,12 +317,10 @@ export const verifyLambdaHealth = async ({
     });
   }
 
-  let parsedResponse: LambdaHealthResponsePayload;
+  let parsedResponse: unknown;
 
   try {
-    parsedResponse = parseJsonPayload(
-      responsePayload,
-    ) as LambdaHealthResponsePayload;
+    parsedResponse = parseJsonPayload(responsePayload);
   } catch {
     throw new LambdaHealthCheckError({
       code: 'INVALID_JSON',

@@ -20,7 +20,8 @@ import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 import { getCancellationOptions, rethrowAbortError } from './Cancellation';
 import type { StreamCallbacks, TranslationProvider } from './types';
-import { insertObjectAtIndex, removeIds } from './utils';
+import { checkCancellation } from './Cancellation';
+import { cloneContent } from './ContentIntegrity';
 
 /**
  * Interface representing a structured text node from DatoCMS.
@@ -56,7 +57,7 @@ function isAPIResponseFormat(value: unknown): value is APIResponseFormat {
   const obj = value as Record<string, unknown>;
   if (!obj.document || typeof obj.document !== 'object') return false;
   const doc = obj.document as Record<string, unknown>;
-  return Array.isArray(doc.children) && doc.children.length > 0;
+  return Array.isArray(doc.children);
 }
 
 /**
@@ -78,135 +79,104 @@ function isWhitespaceOnly(s: string): boolean {
   return s === '' || UNICODE_WHITESPACE_REGEX.test(s);
 }
 
-type PathSegment = string | number;
-
 interface StructuredTextTextLeaf {
-  path: PathSegment[];
+  node: Record<string, unknown>;
+  key: 'text' | 'value';
   value: string;
+}
+
+interface StructuredTextBlockLocation {
+  parent: unknown[];
+  index: number;
+  rootIndex?: number;
+  node: StructuredTextNode;
 }
 
 function buildNestedTranslationOptions(cmaBaseUrl?: string) {
   return cmaBaseUrl
-    ? { bypassFieldTypeAllowlist: true, cmaBaseUrl }
-    : { bypassFieldTypeAllowlist: true };
+    ? { bypassFieldTypeAllowlist: true, cmaBaseUrl, contentAlreadyCloned: true }
+    : { bypassFieldTypeAllowlist: true, contentAlreadyCloned: true };
 }
 
-/**
- * Creates a deep clone of a JSON-like structured text value.
- *
- * @param value - The value to clone.
- * @returns A deep clone of the structured text value.
- */
-function cloneStructuredTextValue<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((entry) => cloneStructuredTextValue(entry)) as T;
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        cloneStructuredTextValue(entry),
-      ]),
-    ) as T;
-  }
-
-  return value;
+function isBlockNode(node: StructuredTextNode): boolean {
+  return node.type === 'block' || node.type === 'inlineBlock';
 }
 
-/**
- * Collects visible text leaves from structured text, restricted to text nodes
- * and span.value leaves.
- *
- * @param value - The structured text subtree to inspect.
- * @param path - The current traversal path.
- * @returns An ordered list of visible text leaves.
- */
-function collectVisibleTextLeaves(
-  value: unknown,
-  path: PathSegment[] = [],
-): StructuredTextTextLeaf[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      collectVisibleTextLeaves(entry, [...path, index]),
-    );
-  }
-
-  if (!value || typeof value !== 'object') {
-    return [];
-  }
-
-  const node = value as Record<string, unknown>;
-  const nodeType = typeof node.type === 'string' ? node.type : undefined;
-
-  if (typeof node.text === 'string') {
-    return [{ path: [...path, 'text'], value: node.text }];
-  }
-
-  if (nodeType === 'span' && typeof node.value === 'string') {
-    return [{ path: [...path, 'value'], value: node.value }];
-  }
-
-  if (nodeType === 'block') {
-    return [];
-  }
-
-  if (Array.isArray(node.children)) {
-    return collectVisibleTextLeaves(node.children, [...path, 'children']);
-  }
-
-  return [];
+function getTextLeaf(node: StructuredTextNode): StructuredTextTextLeaf | undefined {
+  if (typeof node.text === 'string') return { node, key: 'text', value: node.text };
+  if (node.type === 'span' && typeof node.value === 'string') return { node, key: 'value', value: node.value };
+  return undefined;
 }
 
-/**
- * Writes a translated text value into a cloned structured text tree.
- *
- * @param root - The cloned structured text tree.
- * @param path - Path to the leaf to update.
- * @param value - The translated value.
- */
-function setLeafValueAtPath(
-  root: unknown,
-  path: PathSegment[],
-  value: string,
+function replaceTranslatedBlocks(
+  translatedNodes: StructuredTextNode[],
+  locations: StructuredTextBlockLocation[],
 ): void {
-  let current: unknown = root;
-
-  for (let index = 0; index < path.length - 1; index++) {
-    if (current === null || typeof current !== 'object') {
-      return;
-    }
-    current = (current as Record<string, unknown>)[path[index] as string];
+  if (!Array.isArray(translatedNodes) || translatedNodes.length !== locations.length) {
+    throw new Error('Embedded block translation returned an incomplete document');
   }
-
-  if (current !== null && typeof current === 'object') {
-    (current as Record<string, unknown>)[path[path.length - 1] as string] =
-      value;
+  for (let index = 0; index < locations.length; index++) {
+    const location = locations[index];
+    const { originalIndex: _originalIndex, ...node } = translatedNodes[index];
+    location.parent[location.index] = node;
   }
 }
 
-/**
- * Rebuilds structured text by replacing only the collected visible text leaves.
- *
- * @param originalValue - The original structured text subtree.
- * @param leaves - Ordered leaves collected from the original subtree.
- * @param translatedValues - Translated text values in matching order.
- * @returns A cloned structured text subtree with translated leaves applied.
- */
+/** Visit only document children: metadata and record references remain opaque. */
+function collectContent(
+  nodes: unknown[],
+): { leaves: StructuredTextTextLeaf[]; blocks: StructuredTextBlockLocation[] } {
+  const leaves: StructuredTextTextLeaf[] = [];
+  const blocks: StructuredTextBlockLocation[] = [];
+  const stack: Array<{ parent: unknown[]; index: number; isRoot: boolean }> = [];
+  const enqueue = (parent: unknown[], isRoot: boolean) => {
+    for (let index = parent.length - 1; index >= 0; index--) {
+      stack.push({ parent, index, isRoot });
+    }
+  };
+  enqueue(nodes, true);
+  while (stack.length > 0) {
+    const location = stack.pop();
+    if (!location) continue;
+    const value = location.parent[location.index];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const node = value as StructuredTextNode;
+    // Editor node IDs belong to the copied document. Do not descend into
+    // metadata or linked items, whose IDs carry independent identity.
+    delete node.id;
+    if (isBlockNode(node)) {
+      blocks.push({
+        parent: location.parent,
+        index: location.index,
+        ...(location.isRoot ? { rootIndex: location.index } : {}),
+        node,
+      });
+      continue;
+    }
+    const leaf = getTextLeaf(node);
+    if (leaf) {
+      leaves.push(leaf);
+    } else if (Array.isArray(node.children)) {
+      enqueue(node.children, false);
+    }
+  }
+  return { leaves, blocks };
+}
+
+/** Apply text to a private clone; the caller's source locale is never mutated. */
 function rebuildStructuredTextLeaves<T>(
   originalValue: T,
   leaves: StructuredTextTextLeaf[],
   translatedValues: string[],
 ): T {
-  const clonedValue = cloneStructuredTextValue(originalValue);
-
-  leaves.forEach((leaf, index) => {
+  for (let index = 0; index < leaves.length; index++) {
     const translatedValue = translatedValues[index];
-    if (translatedValue === undefined) return;
-    setLeafValueAtPath(clonedValue, leaf.path, translatedValue);
-  });
-
-  return clonedValue;
+    if (translatedValue !== undefined) {
+      const leaf = leaves[index];
+      leaf.node[leaf.key] = translatedValue;
+    }
+  }
+  return originalValue;
 }
 
 /**
@@ -513,8 +483,10 @@ export async function translateStructuredTextValue(
   recordContext = '',
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
+  contentAlreadyCloned = false,
 ): Promise<unknown> {
   // Create logger
+  checkCancellation(streamCallbacks ?? {});
   const logger = createLogger(pluginParams, 'StructuredTextTranslation');
 
   let fieldValue: unknown = initialValue;
@@ -536,39 +508,27 @@ export async function translateStructuredTextValue(
   // Skip translation if null or not an array
   if (!fieldValue || !Array.isArray(fieldValue) || fieldValue.length === 0) {
     logger.info('Invalid structured text value', fieldValue);
-    return fieldValue;
+    return initialValue;
   }
 
   logger.info('Translating structured text field', {
     nodeCount: fieldValue.length,
   });
 
-  // Remove any 'id' fields
-  const noIdFieldValue = removeIds(fieldValue) as StructuredTextNode[];
-
-  // Separate out block nodes and track their original positions
-  const blockNodes = noIdFieldValue.reduce<StructuredTextNode[]>(
-    (acc, node, index) => {
-      if (node?.type === 'block') {
-        acc.push({ ...node, originalIndex: index });
-      }
-      return acc;
-    },
-    [],
-  );
-
-  // Filter out block nodes for inline translation first
+  const noIdFieldValue = (contentAlreadyCloned ? fieldValue : cloneContent(fieldValue)) as StructuredTextNode[];
+  const { leaves: textLeaves, blocks: blockLocations } = collectContent(noIdFieldValue);
+  const blockNodes = blockLocations.map(({ node, rootIndex }) => ({
+    ...node,
+    ...(rootIndex !== undefined ? { originalIndex: rootIndex } : {}),
+  }));
   const fieldValueWithoutBlocks = noIdFieldValue.filter(
-    (node) => node?.type !== 'block',
+    (node) => !isBlockNode(node),
   );
-
-  // Extract only visible text leaves from the structured text
-  const textLeaves = collectVisibleTextLeaves(fieldValueWithoutBlocks);
   const textValues = textLeaves.map((leaf) => leaf.value);
 
   if (textValues.length === 0 && blockNodes.length === 0) {
     logger.info('No text values or block nodes found to translate');
-    return fieldValue;
+    return initialValue;
   }
 
   logTranslationPlan({
@@ -630,30 +590,23 @@ export async function translateStructuredTextValue(
         translatedBlockNodes,
       });
 
-      // Insert translated blocks back at their original positions
-      for (const node of translatedBlockNodes) {
-        if (node.originalIndex !== undefined) {
-          finalReconstructedObject = insertObjectAtIndex(
-            finalReconstructedObject,
-            node,
-            node.originalIndex,
-          );
-        }
-      }
+      checkCancellation(streamCallbacks ?? {});
+      // One pass replaces embedded blocks without copying the document per block.
+      replaceTranslatedBlocks(translatedBlockNodes, blockLocations);
+      finalReconstructedObject = noIdFieldValue;
     }
 
-    // Remove temporary 'originalIndex' keys
-    const cleanedReconstructedObject = (
-      finalReconstructedObject as StructuredTextNode[]
-    ).map(({ originalIndex, ...rest }) => rest);
+    checkCancellation(streamCallbacks ?? {});
+    const cleanedReconstructedObject = finalReconstructedObject;
 
     if (isAPIResponse) {
+      const originalWrapper = initialValue as APIResponseFormat;
       const apiResponsePayload = {
+        ...originalWrapper,
         document: {
+          ...originalWrapper.document,
           children: cleanedReconstructedObject,
-          type: 'root',
         },
-        schema: 'dast',
       };
       logger.info('Structured text translated payload', {
         fromLocale,

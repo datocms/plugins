@@ -1,7 +1,12 @@
 import { faPenToSquare } from '@fortawesome/free-regular-svg-icons';
 import { useId, useState } from 'react';
 import { countLabel, placeName } from '../report/format';
-import { type RecordUsage, recordsOf } from '../report/view';
+import {
+  groupFacts,
+  pageCount,
+  type RecordUsagePreview,
+  recordUsagePage,
+} from '../report/view';
 import type { LinkGroup } from '../types';
 import { Button } from '../ui/Button';
 import { ExternalLink } from '../ui/ExternalLink';
@@ -10,6 +15,7 @@ import { PlaceLabel } from '../ui/PlaceLabel';
 
 const RECORD_CHUNK = 50;
 const PLACES_PER_RECORD = 5;
+const PAGINATE_ABOVE = 200;
 
 type UsedInPanelProps = {
   group: LinkGroup;
@@ -21,7 +27,7 @@ type UsedInPanelProps = {
 };
 
 type RecordContentProps = {
-  record: RecordUsage;
+  record: RecordUsagePreview;
   groupUrl: string;
   changed: boolean;
   showLocale: boolean;
@@ -39,7 +45,7 @@ function RecordContent({
   showLocale,
   uiLocale,
 }: RecordContentProps) {
-  const extra = record.occurrences.length - PLACES_PER_RECORD;
+  const extra = record.occurrenceCount - PLACES_PER_RECORD;
   return (
     <span className="dl-record">
       <span className="dl-record__model">{record.modelName}</span>
@@ -79,7 +85,7 @@ function recordDescription({
   showLocale,
   uiLocale,
 }: RecordContentProps): string {
-  const extra = record.occurrences.length - PLACES_PER_RECORD;
+  const extra = record.occurrenceCount - PLACES_PER_RECORD;
   return [
     record.modelName,
     changed && 'Content changed',
@@ -139,12 +145,22 @@ export function UsedInPanel({
   onOpenRecord,
 }: UsedInPanelProps) {
   const [limit, setLimit] = useState(RECORD_CHUNK);
-  const records = recordsOf(group);
-  const remaining = records.length - limit;
+  const [page, setPage] = useState(1);
+  const total = groupFacts(group).recordCount;
+  const paginated = total > PAGINATE_ABOVE;
+  const pages = pageCount(total, RECORD_CHUNK);
+  const current = Math.min(page, pages);
+  const records = recordUsagePage(
+    group,
+    paginated ? current : 1,
+    paginated ? RECORD_CHUNK : limit,
+    PLACES_PER_RECORD,
+  );
+  const remaining = total - limit;
 
   return (
     <ul className="blc-records">
-      {records.slice(0, limit).map((record) => {
+      {records.map((record) => {
         const { recordId } = record;
         return (
           <li key={recordId ?? `${record.modelName}:${record.title}`}>
@@ -159,7 +175,32 @@ export function UsedInPanel({
           </li>
         );
       })}
-      {remaining > 0 && (
+      {paginated ? (
+        <li className="blc-records__more">
+          <nav className="dl-pagination" aria-label="Records using this URL">
+            <button
+              type="button"
+              className="dl-pagination__nav"
+              disabled={current <= 1}
+              onClick={() => setPage(current - 1)}
+            >
+              « Previous
+            </button>
+            <span>
+              Page {current.toLocaleString(uiLocale)} of{' '}
+              {pages.toLocaleString(uiLocale)}
+            </span>
+            <button
+              type="button"
+              className="dl-pagination__nav"
+              disabled={current >= pages}
+              onClick={() => setPage(current + 1)}
+            >
+              Next »
+            </button>
+          </nav>
+        </li>
+      ) : remaining > 0 ? (
         <li className="blc-records__more">
           <Button
             buttonSize="xs"
@@ -174,7 +215,7 @@ export function UsedInPanel({
             )}
           </Button>
         </li>
-      )}
+      ) : null}
     </ul>
   );
 }

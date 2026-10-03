@@ -1,5 +1,6 @@
 import type { Field, ItemType, RenderPageCtx } from 'datocms-plugin-sdk';
 import type { ContentModel, ContentSchema } from '../types';
+import { cancellableRead, retryCmaRead, throwIfAborted } from './cmaRequests';
 
 export type SchemaContext = Pick<
   RenderPageCtx,
@@ -72,7 +73,11 @@ function blockModelIds(fields: Field[]): Set<string> {
 
 export function createSchemaLoader(ctx: SchemaContext): {
   models: ContentModel[];
-  load: (modelId: string) => Promise<ContentSchema>;
+  load: (
+    modelId: string,
+    signal?: AbortSignal,
+    onWarning?: (warning: string) => void,
+  ) => Promise<ContentSchema>;
 } {
   const models = Object.values(ctx.itemTypes)
     .filter(
@@ -100,7 +105,9 @@ export function createSchemaLoader(ctx: SchemaContext): {
           `The schema for model ${modelId} is not available. Reload the page and try again.`,
         );
       }
-      const fields = await ctx.loadItemTypeFields(modelId);
+      // Cache one host request independently of its consumers. The SDK cannot
+      // abort it, so a late success remains reusable after a scan is cancelled.
+      const fields = await cancellableRead(ctx.loadItemTypeFields(modelId));
       const model: ContentModel = {
         ...modelSummary(itemType),
         fields: fields.map((field) => ({
@@ -122,20 +129,40 @@ export function createSchemaLoader(ctx: SchemaContext): {
 
   return {
     models,
-    async load(modelId) {
+    async load(modelId, signal, onWarning) {
       const schema: ContentSchema = new Map();
       const visited = new Set<string>();
-      async function visit(id: string): Promise<void> {
-        if (visited.has(id)) return;
-        visited.add(id);
-        const { model, blockIds } = await loadModel(id);
-        schema.set(id, model);
-        for (const blockId of blockIds) {
-          // biome-ignore lint/performance/noAwaitInLoops: Bound host schema requests and resolve recursive dependencies before returning.
-          await visit(blockId);
+      const pending = [modelId];
+      const loadDependency = async (id: string) => {
+        try {
+          // Retries belong to the caller, not the shared cache: cancellation
+          // stops this caller's backoff and any subsequent host requests.
+          return await retryCmaRead(
+            () => cancellableRead(loadModel(id), signal),
+            signal,
+          );
+        } catch (error) {
+          throwIfAborted(signal);
+          if (id === modelId || !onWarning) throw error;
+          onWarning(
+            `The schema for embedded block model ${ctx.itemTypes[id]?.attributes.name ?? id} could not be loaded; some links could not be checked.`,
+          );
+          return undefined;
         }
+      };
+      while (pending.length) {
+        throwIfAborted(signal);
+        const id = pending.pop();
+        if (id === undefined || visited.has(id)) continue;
+        visited.add(id);
+        // biome-ignore lint/performance/noAwaitInLoops: One host request at a time, with cancellation between dependencies.
+        const dependency = await loadDependency(id);
+        if (!dependency) continue;
+        schema.set(id, dependency.model);
+        // A stack preserves the previous depth-first order without recursive promises.
+        for (const blockId of [...dependency.blockIds].reverse())
+          pending.push(blockId);
       }
-      await visit(modelId);
       return schema;
     },
   };

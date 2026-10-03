@@ -19,6 +19,7 @@ describe('checkUrl', () => {
       .mockResolvedValue(response(204).value);
     const result = await checkUrl(prepared, newSignal(), {
       fetch: fetchRequest,
+      maxRetries: 0,
     });
     expect(result).toMatchObject({
       key: prepared.key,
@@ -48,6 +49,7 @@ describe('checkUrl', () => {
       .mockResolvedValueOnce(getResponse.value);
     const result = await checkUrl(prepared, newSignal(), {
       fetch: fetchRequest,
+      maxRetries: 0,
     });
     expect(result).toMatchObject({
       status: 'reachable',
@@ -66,7 +68,10 @@ describe('checkUrl', () => {
       .fn<typeof fetch>()
       .mockResolvedValue(response(status).value);
     expect(
-      await checkUrl(prepared, newSignal(), { fetch: fetchRequest }),
+      await checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+        maxRetries: 0,
+      }),
     ).toMatchObject({
       status: 'broken',
       httpStatus: status,
@@ -81,7 +86,10 @@ describe('checkUrl', () => {
       .fn<typeof fetch>()
       .mockResolvedValue(response(status).value);
     expect(
-      await checkUrl(prepared, newSignal(), { fetch: fetchRequest }),
+      await checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+        maxRetries: 0,
+      }),
     ).toMatchObject({
       status: 'unverified',
       httpStatus: status,
@@ -89,12 +97,15 @@ describe('checkUrl', () => {
     });
   });
 
-  it('falls back after HEAD network failure, but does not retry GET failures', async () => {
+  it('allows retries to be disabled while retaining the HEAD fallback', async () => {
     const fetchRequest = vi
       .fn<typeof fetch>()
       .mockRejectedValue(new TypeError('network'));
     expect(
-      await checkUrl(prepared, newSignal(), { fetch: fetchRequest }),
+      await checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+        maxRetries: 0,
+      }),
     ).toMatchObject({
       status: 'unverified',
       method: 'GET',
@@ -107,7 +118,10 @@ describe('checkUrl', () => {
     const fetchRequest = vi
       .fn<typeof fetch>()
       .mockImplementation(() => new Promise(() => {}));
-    const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+    const result = checkUrl(prepared, newSignal(), {
+      fetch: fetchRequest,
+      maxRetries: 0,
+    });
     await vi.advanceTimersByTimeAsync(9_999);
     expect(fetchRequest).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -129,6 +143,7 @@ describe('checkUrl', () => {
       .mockImplementation(() => new Promise(() => {}));
     const result = checkUrl(prepared, controller.signal, {
       fetch: fetchRequest,
+      maxRetries: 0,
     });
     await Promise.resolve();
     controller.abort();
@@ -142,18 +157,234 @@ describe('checkUrl', () => {
     const controller = new AbortController();
     controller.abort();
     expect(
-      (await checkUrl(prepared, controller.signal, { fetch: fetchRequest }))
-        .status,
+      (
+        await checkUrl(prepared, controller.signal, {
+          fetch: fetchRequest,
+          maxRetries: 0,
+        })
+      ).status,
     ).toBe('cancelled');
     await Promise.all(
       ['http://127.0.0.1', '/relative', 'https://'].map(async (url) => {
         const target = prepareUrl(url);
         expect(
-          (await checkUrl(target, newSignal(), { fetch: fetchRequest })).status,
+          (
+            await checkUrl(target, newSignal(), {
+              fetch: fetchRequest,
+              maxRetries: 0,
+            })
+          ).status,
         ).toBe(target.status);
       }),
     );
     expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  describe('bounded automatic retries', () => {
+    it('recovers a transient network failure with exponential backoff', async () => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(new TypeError('HEAD unavailable'))
+        .mockRejectedValueOnce(new TypeError('temporary network failure'))
+        .mockRejectedValueOnce(new TypeError('temporary network failure'))
+        .mockResolvedValueOnce(response(200).value);
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchRequest).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(fetchRequest).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await result).toMatchObject({
+        status: 'reachable',
+        method: 'GET',
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(4);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each([
+      408, 429, 500, 502, 503, 504,
+    ])('limits retries for persistent HTTP %s', async (status) => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValue(response(status).value);
+      const result = checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+        maxRetries: 999,
+      });
+      await vi.runAllTimersAsync();
+      expect(await result).toMatchObject({
+        status: status === 429 ? 'blocked' : 'unverified',
+        httpStatus: status,
+        method: 'GET',
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(4);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('honors a HEAD Retry-After before attempting GET', async () => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(null, { status: 429, headers: { 'Retry-After': '2' } }),
+        )
+        .mockResolvedValueOnce(response(200).value);
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(fetchRequest).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await result).toMatchObject({
+        status: 'reachable',
+        method: 'GET',
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('recovers a transient GET 500 after backoff', async () => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValueOnce(response(500).value)
+        .mockResolvedValueOnce(response(200).value);
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await result).toMatchObject({
+        status: 'reachable',
+        method: 'GET',
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(3);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('reads a HEAD 500 fallback immediately and does not retry the proxy bot refusal', async () => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(500).value)
+        .mockResolvedValueOnce(
+          new Response(
+            'Error proxying to API: RangeError: Responses may only be constructed with status codes in the range 200 to 599, inclusive.',
+            { status: 500 },
+          ),
+        );
+      const result = await checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+      });
+      expect(result).toMatchObject({
+        status: 'blocked',
+        reason: 'bot-protection',
+        method: 'GET',
+      });
+      expect(result.httpStatus).toBeUndefined();
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('honors Retry-After dates for GET retries', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-02T00:00:00Z'));
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 503,
+            headers: { 'Retry-After': 'Fri, 02 Oct 2026 00:00:05 GMT' },
+          }),
+        )
+        .mockResolvedValueOnce(response(200).value);
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await result).toMatchObject({
+        status: 'reachable',
+        method: 'GET',
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+      '60',
+      '99999999999999999999999999999999999999999999999999',
+    ])('ends the check without an early retry when Retry-After is %s seconds', async (retryAfter) => {
+      vi.useFakeTimers();
+      const fetchRequest = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(null, {
+          status: 429,
+          headers: { 'Retry-After': retryAfter },
+        }),
+      );
+      const result = await checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+      });
+      expect(result).toMatchObject({
+        status: 'blocked',
+        reason: 'rate-limited',
+        method: 'HEAD',
+      });
+      expect(fetchRequest).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('does not retry a bot protection page even when it uses a transient status', async () => {
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValueOnce(
+          new Response('<title>Just a moment...</title>', { status: 503 }),
+        );
+      expect(
+        await checkUrl(prepared, newSignal(), { fetch: fetchRequest }),
+      ).toMatchObject({ status: 'blocked', reason: 'bot-protection' });
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts a backoff immediately without another request or leftover timers', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(null, { status: 429, headers: { 'Retry-After': '30' } }),
+        );
+      const result = checkUrl(prepared, controller.signal, {
+        fetch: fetchRequest,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      expect(await result).toMatchObject({ status: 'cancelled' });
+      expect(fetchRequest).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('bounds the full retry budget even when fetch ignores every timeout abort', async () => {
+      vi.useFakeTimers();
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockImplementation(() => new Promise(() => {}));
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(43_000);
+      expect(await result).toMatchObject({
+        status: 'unverified',
+        message: expect.stringContaining('timed out'),
+      });
+      expect(fetchRequest).toHaveBeenCalledTimes(4);
+      for (const call of fetchRequest.mock.calls)
+        expect(call[1]?.signal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   describe('reading unclear answers', () => {
@@ -163,7 +394,10 @@ describe('checkUrl', () => {
         .fn<typeof fetch>()
         .mockResolvedValueOnce(new Response(null, { status }))
         .mockResolvedValueOnce(new Response(body, { status }));
-      return checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      return checkUrl(prepared, newSignal(), {
+        fetch: fetchRequest,
+        maxRetries: 0,
+      });
     }
 
     it.each([
@@ -269,6 +503,63 @@ describe('checkUrl', () => {
       const marker = '<title>Just a moment...</title>';
       const result = await check(403, marker + 'x'.repeat(2_000_000));
       expect(result.status).toBe('blocked');
+    });
+
+    it('does not decode an oversized single chunk beyond the snippet budget', async () => {
+      expect(
+        await check(
+          403,
+          `${'x'.repeat(20_000)}<title>Just a moment...</title>`,
+        ),
+      ).toMatchObject({ status: 'unverified' });
+    });
+
+    it('finishes a stalled reader even if its cancel method never settles', async () => {
+      vi.useFakeTimers();
+      const read = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const cancel = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const stalled = {
+        status: 403,
+        body: { getReader: () => ({ read, cancel }) },
+      } as unknown as Response;
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValueOnce(stalled);
+      const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(await result).toMatchObject({
+        status: 'unverified',
+        httpStatus: 403,
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchRequest.mock.calls[1][1]?.signal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('aborts a stalled body reader without waiting for the snippet timeout', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const read = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const cancel = vi.fn().mockResolvedValue(undefined);
+      const stalled = {
+        status: 403,
+        body: { getReader: () => ({ read, cancel }) },
+      } as unknown as Response;
+      const fetchRequest = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(response(405).value)
+        .mockResolvedValueOnce(stalled);
+      const result = checkUrl(prepared, controller.signal, {
+        fetch: fetchRequest,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledOnce();
+      controller.abort();
+      expect(await result).toMatchObject({ status: 'cancelled' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

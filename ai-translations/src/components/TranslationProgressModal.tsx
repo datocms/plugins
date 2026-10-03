@@ -17,8 +17,12 @@ import { ProgressRow } from './BulkTranslations/ProgressRow';
 import {
   bulkPublishTranslatedRecords,
   getDraftModeItemTypeIds,
-  getPublishableTranslatedRecordIds,
 } from '../utils/translation/BulkPublishUtils';
+import {
+  FULL_TRANSLATION_HISTORY_LIMIT,
+  TranslationProgressStore,
+  VISIBLE_TRANSLATION_UPDATE_LIMIT,
+} from '../utils/translation/TranslationProgressStore';
 import {
   formatErrorForUser,
   normalizeProviderError,
@@ -61,7 +65,7 @@ interface TranslationProgressModalProps {
   parameters: TranslationProgressModalParams;
 }
 
-const VISIBLE_UPDATE_LIMIT = 100;
+const PROGRESS_RENDER_INTERVAL_MS = 100;
 
 function getTranslationErrorMessage(
   error: unknown,
@@ -74,13 +78,18 @@ async function loadDraftModeItemTypeIds(
   records: DatoCMSRecordFromAPI[],
   schemaRepository: SchemaRepository,
   enableDebugging: boolean | undefined,
-): Promise<string[]> {
+  cancellation: { abortSignal: AbortSignal; checkCancellation: () => boolean },
+): Promise<string[] | undefined> {
   try {
     return await getDraftModeItemTypeIds(
       records.map((record) => record.item_type.id),
       (itemTypeId) => schemaRepository.getItemTypeById(itemTypeId),
+      cancellation,
     );
   } catch (error) {
+    if (cancellation.abortSignal.aborted || cancellation.checkCancellation()) {
+      throw error;
+    }
     // Translation can still proceed if this optional eligibility lookup fails;
     // the publish action simply remains unavailable.
     if (enableDebugging) {
@@ -89,7 +98,7 @@ async function loadDraftModeItemTypeIds(
         error,
       );
     }
-    return [];
+    return undefined;
   }
 }
 
@@ -99,10 +108,8 @@ type BatchTranslationJob = {
   schemaRepository: SchemaRepository;
   parameters: TranslationProgressModalParams;
   ctx: RenderModalCtx;
-  recordIndexes: Map<string, number>;
-  draftModeIds: Set<string>;
+  progressStore: TranslationProgressStore;
   onProgress: (update: ProgressUpdate) => void;
-  onDraftModeIds: (ids: string[]) => void;
   checkCancellation: () => boolean;
   abortSignal: AbortSignal;
 };
@@ -120,7 +127,7 @@ async function translateLoadedBatch(
   } = job.parameters;
   for (const recordId of batch.missingItemIds) {
     job.onProgress({
-      recordIndex: job.recordIndexes.get(recordId) ?? -1,
+      recordIndex: job.progressStore.getRecordIndex(recordId),
       recordId,
       status: 'error',
       message: 'DatoCMS error: Record is no longer available.',
@@ -133,9 +140,14 @@ async function translateLoadedBatch(
     batch.records,
     job.schemaRepository,
     pluginParams.enableDebugging,
+    { abortSignal: job.abortSignal, checkCancellation: job.checkCancellation },
   );
-  for (const id of modelIds) job.draftModeIds.add(id);
-  job.onDraftModeIds([...job.draftModeIds]);
+  if (modelIds !== undefined) {
+    job.progressStore.registerModelPublishingEligibility(
+      batch.records.map((record) => record.item_type.id),
+      modelIds,
+    );
+  }
 
   await translateAndUpdateRecords(
     batch.records,
@@ -149,7 +161,7 @@ async function translateLoadedBatch(
     accessToken,
     {
       onProgress: job.onProgress,
-      getRecordIndex: (id, index) => job.recordIndexes.get(id) ?? index,
+      getRecordIndex: (id) => job.progressStore.getRecordIndex(id),
       checkCancellation: job.checkCancellation,
       abortSignal: job.abortSignal,
       selectedFieldsByModel,
@@ -202,35 +214,112 @@ function getPartialPublishMessage(publishedCount: number): string {
   return ` ${publishedCount} record${publishedCount === 1 ? '' : 's'} were published before the operation stopped.`;
 }
 
+function getPublishedNotice(publishedCount: number): string {
+  return `Published ${publishedCount} translated record${publishedCount === 1 ? '' : 's'}.`;
+}
+
 function useBulkPublishing({
   ctx,
   accessToken,
   pluginParams,
-  publishableRecordIds,
+  progressStore,
+  publishableCount,
   canPublish,
 }: {
   ctx: RenderModalCtx;
   accessToken: string;
   pluginParams: ctxParamsType;
-  publishableRecordIds: string[];
+  progressStore: TranslationProgressStore;
+  publishableCount: number;
   canPublish: boolean;
 }) {
-  const [publishedRecordIds, setPublishedRecordIds] = useState<string[]>([]);
+  const publishedRecordIds = useRef(new Set<string>());
+  const [publishedCount, setPublishedCount] = useState(0);
   const [isPublishing, setIsPublishing] = useState(false);
-  const publishedRecordIdSet = new Set(publishedRecordIds);
-  const remainingRecordIds = publishableRecordIds.filter(
-    (recordId) => !publishedRecordIdSet.has(recordId),
-  );
-  const hasPublishedAll =
-    publishableRecordIds.length > 0 && remainingRecordIds.length === 0;
+  const [isCancellingPublishing, setIsCancellingPublishing] = useState(false);
+  const publishingController = useRef<AbortController | null>(null);
+  const publishRenderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted = useRef(false);
+  const remainingCount = publishableCount - publishedCount;
+  const hasPublishedAll = publishableCount > 0 && remainingCount === 0;
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      publishingController.current?.abort();
+      if (publishRenderTimer.current !== null) {
+        clearTimeout(publishRenderTimer.current);
+        publishRenderTimer.current = null;
+      }
+    };
+  }, []);
+
+  const cancelPublishing = () => {
+    publishingController.current?.abort();
+    setIsCancellingPublishing(true);
+  };
+
+  const flushPublishedCount = () => {
+    if (publishRenderTimer.current !== null) {
+      clearTimeout(publishRenderTimer.current);
+      publishRenderTimer.current = null;
+    }
+    if (isMounted.current) {
+      setPublishedCount(publishedRecordIds.current.size);
+    }
+  };
+
+  const registerPublishedRecords = (batchRecordIds: string[]) => {
+    for (const id of batchRecordIds) publishedRecordIds.current.add(id);
+    if (isMounted.current && publishRenderTimer.current === null) {
+      publishRenderTimer.current = setTimeout(
+        flushPublishedCount,
+        PROGRESS_RENDER_INTERVAL_MS,
+      );
+    }
+  };
+
+  const finishPublishing = () => {
+    publishingController.current = null;
+    flushPublishedCount();
+    if (isMounted.current) {
+      setIsPublishing(false);
+      setIsCancellingPublishing(false);
+    }
+  };
+
+  const reportPublishingFailure = async (
+    error: unknown,
+    publishedThisAttempt: number,
+    controller: AbortController,
+  ) => {
+    if (controller.signal.aborted || !isMounted.current) return;
+    await ctx.alert(
+      `Could not publish all translated records.${getPartialPublishMessage(
+        publishedThisAttempt,
+      )} ${getTranslationErrorMessage(error, pluginParams.vendor)}`,
+    );
+  };
 
   const handlePublish = async () => {
-    if (isPublishing || remainingRecordIds.length === 0 || !canPublish) return;
+    if (publishingController.current || remainingCount === 0 || !canPublish)
+      return;
 
+    const remainingRecordIds = progressStore
+      .getPublishableRecordIds()
+      .filter((recordId) => !publishedRecordIds.current.has(recordId));
+    if (remainingRecordIds.length === 0) return;
+
+    const controller = new AbortController();
+    publishingController.current = controller;
     setIsPublishing(true);
+    setIsCancellingPublishing(false);
     let publishedThisAttempt = 0;
 
     try {
+      // Do not abort an in-flight mutation: await its acknowledged result,
+      // then cooperatively stop before the next batch.
       const client = buildDatoCMSClient(
         accessToken,
         ctx.environment,
@@ -241,38 +330,117 @@ function useBulkPublishing({
         remainingRecordIds,
         (batchRecordIds) => {
           publishedThisAttempt += batchRecordIds.length;
-          setPublishedRecordIds((currentRecordIds) => [
-            ...new Set([...currentRecordIds, ...batchRecordIds]),
-          ]);
+          registerPublishedRecords(batchRecordIds);
+        },
+        {
+          abortSignal: controller.signal,
+          expectedVersions: progressStore.getPublishableRecordVersions(),
         },
       );
     } catch (error) {
-      await ctx.alert(
-        `Could not publish all translated records.${getPartialPublishMessage(
-          publishedThisAttempt,
-        )} ${getTranslationErrorMessage(error, pluginParams.vendor)}`,
-      );
+      await reportPublishingFailure(error, publishedThisAttempt, controller);
       return;
     } finally {
-      setIsPublishing(false);
+      finishPublishing();
     }
 
-    await ctx.notice(
-      `Published ${publishableRecordIds.length} translated record${publishableRecordIds.length === 1 ? '' : 's'}.`,
-    );
+    if (isMounted.current && !controller.signal.aborted) {
+      await ctx.notice(getPublishedNotice(publishedRecordIds.current.size));
+    }
   };
 
   return {
+    cancelPublishing,
     handlePublish,
     hasPublishedAll,
+    isCancellingPublishing,
     isPublishing,
     publishButtonLabel: getPublishButtonLabel(
       isPublishing,
-      publishedRecordIds.length,
-      publishableRecordIds.length,
-      remainingRecordIds.length,
+      publishedCount,
+      publishableCount,
+      remainingCount,
     ),
   };
+}
+
+function ProgressActions({
+  isCompleted,
+  isProcessing,
+  isCancelling,
+  hasFatalError,
+  isPublishing,
+  isCancellingPublishing,
+  hasPublishedAll,
+  publishableCount,
+  publishButtonLabel,
+  onCancel,
+  onCancelPublishing,
+  onPublish,
+  onClose,
+}: {
+  isCompleted: boolean;
+  isProcessing: boolean;
+  isCancelling: boolean;
+  hasFatalError: boolean;
+  isPublishing: boolean;
+  isCancellingPublishing: boolean;
+  hasPublishedAll: boolean;
+  publishableCount: number;
+  publishButtonLabel: string;
+  onCancel: () => void;
+  onCancelPublishing: () => void;
+  onPublish: () => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="TranslationProgressModal__footer">
+      {!isCompleted && isProcessing && (
+        <Button
+          type="button"
+          buttonType="negative"
+          onClick={onCancel}
+          disabled={isCancelling}
+          buttonSize="s"
+        >
+          {isCancelling ? 'Cancelling…' : 'Cancel'}
+        </Button>
+      )}
+      {isPublishing && publishableCount > FULL_TRANSLATION_HISTORY_LIMIT && (
+        <Button
+          type="button"
+          buttonType="negative"
+          onClick={onCancelPublishing}
+          disabled={isCancellingPublishing}
+          buttonSize="s"
+        >
+          {isCancellingPublishing ? 'Cancelling…' : 'Cancel publishing'}
+        </Button>
+      )}
+      {!isProcessing &&
+        (isCompleted || hasFatalError) &&
+        publishableCount > 0 && (
+          <Button
+            type="button"
+            buttonType="muted"
+            onClick={onPublish}
+            disabled={isPublishing || hasPublishedAll}
+            buttonSize="s"
+          >
+            {publishButtonLabel}
+          </Button>
+        )}
+      <Button
+        type="button"
+        buttonType="primary"
+        onClick={onClose}
+        disabled={isPublishing || (isProcessing && !isCompleted)}
+        buttonSize="s"
+      >
+        {isCompleted ? 'Close' : isProcessing ? 'Please wait...' : 'Close'}
+      </Button>
+    </div>
+  );
 }
 
 /**
@@ -284,55 +452,77 @@ export default function TranslationProgressModal({
   ctx,
   parameters,
 }: TranslationProgressModalProps) {
-  const { totalRecords, fromLocale, toLocales, accessToken, pluginParams } =
-    parameters;
-  const [progress, setProgress] = useState<ProgressUpdate[]>([]);
+  const jobInputs = useRef({ ctx, parameters });
+  const { fromLocale, toLocales } = jobInputs.current.parameters;
+  const [progressStore] = useState(
+    () => new TranslationProgressStore(parameters.itemIds),
+  );
+  const [progressSnapshot, setProgressSnapshot] = useState(() =>
+    progressStore.snapshot(),
+  );
   const [isCompleted, setIsCompleted] = useState(false);
   // Cancellation is read from inside a long-running async loop, so it must be a
   // ref: a state value would be captured stale in the once-only effect closure
   // (the `checkCancellation` callback would forever read its mount-time `false`).
   const isCancelledRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
-  const [loadedRecords, setLoadedRecords] = useState(0);
-  const [draftModeItemTypeIds, setDraftModeItemTypeIds] = useState<string[]>(
-    [],
-  );
   const abortRef = useRef<AbortController | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
+  const progressRenderTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const isMountedRef = useRef(false);
 
   // Use a ref to track if we've started the translation process
   const hasStartedTranslation = useRef(false);
-  const jobInputs = useRef({ ctx, parameters });
 
-  // Stable callback to add a progress update — wrapped in useCallback so it
-  // can be safely listed as a useEffect dependency without causing re-runs.
-  const addProgressUpdate = useCallback((update: ProgressUpdate) => {
-    // Drop updates that arrive after a cancel: the modal has already resolved
-    // and the loop is unwinding, so committing more state is wasted (and would
-    // warn about setting state on an unmounting component).
-    if (isCancelledRef.current) return;
-    setProgress((prev) => {
-      // Filter out previous updates for the same record and create a new array
-      const filteredUpdates = prev.filter(
-        (p) => p.recordIndex !== update.recordIndex,
+  const flushProgress = useCallback(() => {
+    if (progressRenderTimer.current !== null) {
+      clearTimeout(progressRenderTimer.current);
+      progressRenderTimer.current = null;
+    }
+    if (isMountedRef.current) {
+      setProgressSnapshot(progressStore.snapshot());
+    }
+  }, [progressStore]);
+
+  const scheduleProgressRender = useCallback(() => {
+    if (progressRenderTimer.current === null) {
+      progressRenderTimer.current = setTimeout(
+        flushProgress,
+        PROGRESS_RENDER_INTERVAL_MS,
       );
-      return [...filteredUpdates, update];
-    });
-  }, []);
+    }
+  }, [flushProgress]);
+
+  // Every event updates the counters immediately. UI snapshots copy at most
+  // 100 rows and are coalesced so rapid locale/field callbacks do not trigger
+  // a full React render for every step of a massive run.
+  const addProgressUpdate = useCallback(
+    (update: ProgressUpdate) => {
+      if (!isMountedRef.current) return;
+      // Writes already submitted before Cancel are allowed to settle. Keep
+      // their acknowledged completion in the final partial result.
+      if (isCancelledRef.current && update.status !== 'completed') return;
+      progressStore.add(update);
+      scheduleProgressRender();
+    },
+    [progressStore, scheduleProgressRender],
+  );
 
   // Handle the translation process - runs once on mount
   useEffect(() => {
     let isMounted = true;
+    isMountedRef.current = true;
     // The host may replace ctx during a run; use the job's original inputs.
     const { ctx, parameters } = jobInputs.current;
-    const { accessToken, pluginParams, itemIds } = parameters;
+    const { accessToken, pluginParams } = parameters;
     if (!hasStartedTranslation.current) isCancelledRef.current = false;
-    const setDraftModeIdsIfMounted = (itemTypeIds: string[]) => {
-      if (isMounted) setDraftModeItemTypeIds(itemTypeIds);
-    };
     const finishTranslation = () => {
       if (!isMounted || isCancelledRef.current) return;
+      flushProgress();
       setIsCompleted(true);
       setIsProcessing(false);
     };
@@ -350,6 +540,7 @@ export default function TranslationProgressModal({
         statusText: failureMessage,
         warnings: [failureMessage],
       });
+      flushProgress();
     };
 
     const processTranslation = async () => {
@@ -385,20 +576,31 @@ export default function TranslationProgressModal({
           schemaRepository,
           parameters,
           ctx,
-          recordIndexes: new Map(itemIds.map((id, index) => [id, index])),
-          draftModeIds: new Set<string>(),
+          progressStore,
           onProgress: addProgressUpdate,
-          onDraftModeIds: setDraftModeIdsIfMounted,
           checkCancellation: () => isCancelledRef.current,
           abortSignal: controller.signal,
         };
 
         await translateRecordBatches(job, loadingClient, (loaded) => {
-          if (isMounted) setLoadedRecords(loaded);
+          if (isMounted && !isCancelledRef.current) {
+            progressStore.setLoadedCount(loaded);
+            scheduleProgressRender();
+          }
         });
         finishTranslation();
       } catch (error) {
         reportFailure(error, controller);
+      } finally {
+        if (isMounted && isCancelledRef.current) {
+          flushProgress();
+          setIsProcessing(false);
+          ctx.resolve({
+            completed: false,
+            canceled: true,
+            summary: progressStore.getSummary(),
+          });
+        }
       }
     };
 
@@ -407,55 +609,48 @@ export default function TranslationProgressModal({
 
     return () => {
       isMounted = false;
+      isMountedRef.current = false;
       isCancelledRef.current = true;
       abortRef.current?.abort();
+      if (progressRenderTimer.current !== null) {
+        clearTimeout(progressRenderTimer.current);
+        progressRenderTimer.current = null;
+      }
     };
-  }, [addProgressUpdate]);
+  }, [addProgressUpdate, flushProgress, progressStore, scheduleProgressRender]);
 
-  // Translation handled by shared translateAndUpdateRecords utility
-
-  // Translation progress updates handled via shared translator callbacks
-
-  // Calculate completed counts correctly considering all processed records (completed or error)
-  // A fatal job error is a notice, not an additional failed record.
-  const processedRecords = progress.filter((update) => update.recordIndex >= 0);
-
-  const completedCount = processedRecords.filter(
-    (update) => update.status === 'completed' || update.status === 'error',
-  ).length;
-
-  const successfulCount = processedRecords.filter(
-    (update) => update.status === 'completed',
-  ).length;
-  const failedCount = processedRecords.filter(
-    (update) => update.status === 'error',
-  ).length;
-  // Records that finished but raised warnings (e.g. copied linked records),
-  // ordered by their position so the list reads top-to-bottom.
-  const recordsWithWarnings = processedRecords
-    .filter(
-      (update) =>
-        update.status === 'completed' && (update.warnings?.length ?? 0) > 0,
-    )
-    .sort((a, b) => a.recordIndex - b.recordIndex);
-  const publishableRecordIds = getPublishableTranslatedRecordIds(
-    processedRecords,
-    draftModeItemTypeIds,
-  );
-  const { handlePublish, hasPublishedAll, isPublishing, publishButtonLabel } =
-    useBulkPublishing({
-      ctx,
-      accessToken,
-      pluginParams,
-      publishableRecordIds,
-      canPublish: isCompleted && !hasFatalError,
-    });
+  const {
+    updates: progress,
+    totalRecords,
+    processedCount: completedCount,
+    successfulCount,
+    failedCount,
+    warningCount,
+    loadedCount: loadedRecords,
+    updateCount,
+    publishableCount,
+  } = progressSnapshot;
+  const {
+    cancelPublishing,
+    handlePublish,
+    hasPublishedAll,
+    isCancellingPublishing,
+    isPublishing,
+    publishButtonLabel,
+  } = useBulkPublishing({
+    ctx: jobInputs.current.ctx,
+    accessToken: jobInputs.current.parameters.accessToken,
+    pluginParams: jobInputs.current.parameters.pluginParams,
+    progressStore,
+    publishableCount,
+    canPublish: !isProcessing && (isCompleted || hasFatalError),
+  });
 
   const buildRecordUrl = (update: ProgressUpdate): string | undefined =>
     buildRecordEditorUrl({
-      internalDomain: ctx.site?.attributes?.internal_domain,
-      environment: ctx.environment,
-      isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+      internalDomain: jobInputs.current.ctx.site?.attributes?.internal_domain,
+      environment: jobInputs.current.ctx.environment,
+      isEnvironmentPrimary: jobInputs.current.ctx.isEnvironmentPrimary,
       itemTypeId: update.itemTypeId,
       recordId: update.recordId,
     });
@@ -477,21 +672,23 @@ export default function TranslationProgressModal({
   }, []);
 
   const handleClose = () => {
-    const hasErrors =
-      hasFatalError ||
-      processedRecords.some((update) => update.status === 'error');
+    const summary = progressStore.getSummary();
     ctx.resolve({
-      completed: isCompleted && !hasErrors,
+      completed: isCompleted && !hasFatalError && summary.failedCount === 0,
       canceled: false,
-      progress,
+      progress: progressStore.getResultUpdates(),
+      progressTruncated: progressStore.snapshot().historyTruncated,
+      summary,
     });
   };
 
   const handleCancel = () => {
+    if (isCancelledRef.current) return;
     isCancelledRef.current = true;
-    // Abort in-flight requests to stop streaming immediately
+    setIsCancelling(true);
+    // Abort reads/provider work, then await already-submitted writes before
+    // returning the partial result from the job's finally block.
     abortRef.current?.abort();
-    ctx.resolve({ completed: false, canceled: true });
   };
 
   return (
@@ -517,9 +714,8 @@ export default function TranslationProgressModal({
             </p>
             <p className="TranslationProgressModal__stats">
               {successfulCount} successful
-              {recordsWithWarnings.length > 0 &&
-                ` (${recordsWithWarnings.length} with warnings)`}
-              , {failedCount} failed
+              {warningCount > 0 && ` (${warningCount} with warnings)`},{' '}
+              {failedCount} failed
             </p>
             <p className="TranslationProgressModal__stats" role="status">
               Records loaded: {loadedRecords} of {totalRecords}
@@ -550,7 +746,7 @@ export default function TranslationProgressModal({
           {progress.length > 0 ? (
             <ul className="TranslationProgressModal__update-list">
               {progress
-                .slice(-VISIBLE_UPDATE_LIMIT)
+                .slice(-VISIBLE_TRANSLATION_UPDATE_LIMIT)
                 .reverse()
                 .map((update) => (
                   <ProgressRow
@@ -570,45 +766,28 @@ export default function TranslationProgressModal({
           )}
         </div>
 
-        {progress.length > VISIBLE_UPDATE_LIMIT && (
+        {updateCount > VISIBLE_TRANSLATION_UPDATE_LIMIT && (
           <p className="TranslationProgressModal__stats">
-            Showing the latest {VISIBLE_UPDATE_LIMIT} of {progress.length}{' '}
-            updates.
+            Showing the latest {VISIBLE_TRANSLATION_UPDATE_LIMIT} of{' '}
+            {updateCount} updates.
           </p>
         )}
 
-        <div className="TranslationProgressModal__footer">
-          {!isCompleted && isProcessing && (
-            <Button
-              type="button"
-              buttonType="negative"
-              onClick={handleCancel}
-              buttonSize="s"
-            >
-              Cancel
-            </Button>
-          )}
-          {isCompleted && !hasFatalError && publishableRecordIds.length > 0 && (
-            <Button
-              type="button"
-              buttonType="muted"
-              onClick={handlePublish}
-              disabled={isPublishing || hasPublishedAll}
-              buttonSize="s"
-            >
-              {publishButtonLabel}
-            </Button>
-          )}
-          <Button
-            type="button"
-            buttonType="primary"
-            onClick={handleClose}
-            disabled={isPublishing || (isProcessing && !isCompleted)}
-            buttonSize="s"
-          >
-            {isCompleted ? 'Close' : isProcessing ? 'Please wait...' : 'Close'}
-          </Button>
-        </div>
+        <ProgressActions
+          isCompleted={isCompleted}
+          isProcessing={isProcessing}
+          isCancelling={isCancelling}
+          hasFatalError={hasFatalError}
+          isPublishing={isPublishing}
+          isCancellingPublishing={isCancellingPublishing}
+          hasPublishedAll={hasPublishedAll}
+          publishableCount={publishableCount}
+          publishButtonLabel={publishButtonLabel}
+          onCancel={handleCancel}
+          onCancelPublishing={cancelPublishing}
+          onPublish={handlePublish}
+          onClose={handleClose}
+        />
       </div>
     </Canvas>
   );

@@ -1,4 +1,4 @@
-type PluginParameters = Record<string, unknown> | undefined;
+type PluginParameters = Record<string, unknown> | null | undefined;
 
 const isString = (value: unknown): value is string => typeof value === 'string';
 

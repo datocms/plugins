@@ -195,6 +195,14 @@ export default class GeminiProvider implements AltTextProvider {
       body.generationConfig = generationConfig;
     }
 
+    const serializedBody = JSON.stringify(body);
+    if (new TextEncoder().encode(serializedBody).byteLength > 20_000_000) {
+      throw new AltTextProviderError(
+        this.id,
+        'invalid_request',
+        'The image and prompt exceed the 20 MB inline request limit.',
+      );
+    }
     const modelPath = `models/${encodeURIComponent(this.model)}:generateContent`;
     const payload = await fetchProviderJson(
       this.id,
@@ -205,7 +213,7 @@ export default class GeminiProvider implements AltTextProvider {
           'Content-Type': 'application/json',
           'x-goog-api-key': this.apiKey,
         },
-        body: JSON.stringify(body),
+        body: serializedBody,
         signal: prepared.signal,
       },
     );

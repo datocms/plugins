@@ -37,6 +37,12 @@ function getCurrentField(stack: NavigationStep[]): FieldInfo | null {
   return null;
 }
 
+function getOnlyAvailableLocale(field: FieldInfo): string | undefined {
+  return field.localized && field.availableLocales?.length === 1
+    ? field.availableLocales[0]
+    : undefined;
+}
+
 function getSelectedLocale(stack: NavigationStep[]): string | undefined {
   // Return the MOST RECENT locale in the stack (iterate in reverse)
   // This is important for nested localized fields where each level has its own locale
@@ -44,6 +50,10 @@ function getSelectedLocale(stack: NavigationStep[]): string | undefined {
     const step = stack[i];
     if (step.type === 'locale') {
       return step.locale;
+    }
+    if (step.type === 'field') {
+      const onlyLocale = getOnlyAvailableLocale(step.field);
+      if (onlyLocale) return onlyLocale;
     }
   }
   return undefined;
@@ -53,10 +63,14 @@ function buildFieldPath(stack: NavigationStep[]): string {
   let path = '';
   let lastField: FieldInfo | null = null;
 
-  for (const step of stack) {
+  for (const [index, step] of stack.entries()) {
     if (step.type === 'field') {
       path = step.field.fieldPath;
       lastField = step.field;
+      const onlyLocale = getOnlyAvailableLocale(step.field);
+      if (onlyLocale && stack[index + 1]?.type !== 'locale') {
+        path = `${path}.${onlyLocale}`;
+      }
     } else if (step.type === 'locale') {
       path = `${path}.${step.locale}`;
     } else if (step.type === 'block') {
@@ -353,7 +367,8 @@ export function useFieldNavigation({
   useEffect(() => {
     if (
       pendingFieldForLocale?.isBlockContainer &&
-      !pendingFieldForLocale.localized &&
+      (!pendingFieldForLocale.localized ||
+        getOnlyAvailableLocale(pendingFieldForLocale)) &&
       navigationStack.length === 0
     ) {
       setNavigationStack([{ type: 'field', field: pendingFieldForLocale }]);
@@ -399,7 +414,7 @@ export function useFieldNavigation({
         localized: field.localized || !!selectedLocale,
       };
 
-      onSelect(finalField, selectedLocale);
+      onSelect(finalField, getOnlyAvailableLocale(field) ?? selectedLocale);
       setNavigationStack([]);
     },
     [navigationStack, selectedLocale, onSelect],

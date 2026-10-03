@@ -5,10 +5,89 @@
  * both behaviours working so older exports still import cleanly.
  */
 import type { SchemaTypes } from '@datocms/cma-client';
+import cloneDeep from 'lodash-es/cloneDeep';
 import get from 'lodash-es/get';
-import { findLinkedItemTypeIds } from '@/utils/datocms/schema';
+import set from 'lodash-es/set';
+import {
+  findLinkedItemTypeIds,
+  validatorsContainingBlocks,
+  validatorsContainingLinks,
+} from '@/utils/datocms/schema';
 import { isDefined } from '@/utils/isDefined';
 import type { ExportDoc, ExportDocV2 } from '@/utils/types';
+import { assertExportDoc } from '@/utils/validateExportDoc';
+
+type ExportEntity = ExportDoc['entities'][number];
+
+function normalizeEntity<T extends ExportEntity>(entity: T): T {
+  const relationships = get(entity, 'relationships', {}) as Record<
+    string,
+    {
+      data:
+        | { id: string; type: string }
+        | Array<{ id: string; type: string }>
+        | null;
+    }
+  >;
+  const normalized = Object.fromEntries(
+    Object.entries(relationships).map(([name, value]) => [
+      name,
+      {
+        ...value,
+        data: Array.isArray(value.data)
+          ? value.data.map((ref) => ({ ...ref, id: String(ref.id) }))
+          : value.data
+            ? { ...value.data, id: String(value.data.id) }
+            : value.data,
+      },
+    ]),
+  );
+  return {
+    ...entity,
+    id: String(entity.id),
+    ...('relationships' in entity ? { relationships: normalized } : {}),
+  };
+}
+
+function normalizeField(field: SchemaTypes.Field): SchemaTypes.Field {
+  const result = normalizeEntity(field);
+  const validators = cloneDeep(field.attributes.validators);
+  for (const spec of [
+    ...validatorsContainingLinks,
+    ...validatorsContainingBlocks,
+  ]) {
+    if (spec.field_type !== field.attributes.field_type) continue;
+    const values = get(validators, spec.validator) as unknown;
+    if (Array.isArray(values))
+      set(validators, spec.validator, values.map(String));
+  }
+  const slugTitleFieldId = get(validators, 'slug_title_field.title_field_id');
+  if (typeof slugTitleFieldId === 'number') {
+    set(
+      validators,
+      'slug_title_field.title_field_id',
+      String(slugTitleFieldId),
+    );
+  }
+  const appearance = field.attributes.appearance;
+  result.attributes = {
+    ...field.attributes,
+    validators,
+    ...(appearance
+      ? {
+          appearance: {
+            ...appearance,
+            editor: String(appearance.editor),
+            addons: appearance.addons?.map((addon) => ({
+              ...addon,
+              id: String(addon.id),
+            })),
+          },
+        }
+      : {}),
+  } as SchemaTypes.Field['attributes'];
+  return result;
+}
 
 /**
  * Normalizes an export document into easy-to-query maps, helping both import and graph builders.
@@ -22,10 +101,13 @@ export class ExportSchema {
   public fieldsetsById: Map<string, SchemaTypes.Fieldset>;
 
   constructor(exportDoc: ExportDoc) {
+    assertExportDoc(exportDoc);
     this.itemTypesById = this.buildItemTypesMap(exportDoc);
     this.pluginsById = this.buildPluginsMap(exportDoc);
     this.fieldsById = this.buildFieldsMap(exportDoc);
     this.fieldsetsById = this.buildFieldsetsMap(exportDoc);
+
+    this.validateRelationships();
 
     this.rootItemTypes = this.computeRootItemTypes();
 
@@ -47,7 +129,7 @@ export class ExportSchema {
       (e): e is SchemaTypes.ItemType => e.type === 'item_type',
     )) {
       // Normalize ID to string to avoid number/string key mismatches
-      map.set(String(itemType.id), itemType);
+      map.set(String(itemType.id), normalizeEntity(itemType));
     }
     return map;
   }
@@ -57,7 +139,7 @@ export class ExportSchema {
     for (const plugin of exportDoc.entities.filter(
       (e): e is SchemaTypes.Plugin => e.type === 'plugin',
     )) {
-      map.set(String(plugin.id), plugin);
+      map.set(String(plugin.id), normalizeEntity(plugin));
     }
     return map;
   }
@@ -67,7 +149,7 @@ export class ExportSchema {
     for (const field of exportDoc.entities.filter(
       (e): e is SchemaTypes.Field => e.type === 'field',
     )) {
-      map.set(String(field.id), field);
+      map.set(String(field.id), normalizeField(field));
     }
     return map;
   }
@@ -77,7 +159,7 @@ export class ExportSchema {
     for (const fieldset of exportDoc.entities.filter(
       (e): e is SchemaTypes.Fieldset => e.type === 'fieldset',
     )) {
-      map.set(String(fieldset.id), fieldset);
+      map.set(String(fieldset.id), normalizeEntity(fieldset));
     }
     return map;
   }
@@ -96,6 +178,105 @@ export class ExportSchema {
     return this.itemTypes.filter(
       (itemType) => !targetItemTypeIds.has(itemType.id),
     );
+  }
+
+  private validateRelationships() {
+    const fieldsByParent = new Map<string, number>();
+    const fieldsetsByParent = new Map<string, number>();
+    for (const entity of [
+      ...this.fieldsById.values(),
+      ...this.fieldsetsById.values(),
+    ]) {
+      const parentId = get(entity, 'relationships.item_type.data.id');
+      if (parentId === undefined || !this.itemTypesById.has(String(parentId))) {
+        throw new Error(
+          `Invalid export: missing parent model/block for ${entity.type} ${entity.id}.`,
+        );
+      }
+      const counts =
+        entity.type === 'field' ? fieldsByParent : fieldsetsByParent;
+      counts.set(String(parentId), (counts.get(String(parentId)) ?? 0) + 1);
+    }
+    for (const field of this.fieldsById.values()) {
+      this.validateFieldReferences(field);
+    }
+    for (const itemType of this.itemTypesById.values()) {
+      this.validateChildren(
+        itemType,
+        'fields',
+        this.fieldsById,
+        fieldsByParent.get(itemType.id) ?? 0,
+      );
+      this.validateChildren(
+        itemType,
+        'fieldsets',
+        this.fieldsetsById,
+        fieldsetsByParent.get(itemType.id) ?? 0,
+      );
+    }
+  }
+
+  private validateFieldReferences(field: SchemaTypes.Field) {
+    for (const linkedId of findLinkedItemTypeIds(field)) {
+      if (!this.itemTypesById.has(String(linkedId))) {
+        throw new Error(
+          `Invalid export: field ${field.id} references missing model/block ${linkedId}.`,
+        );
+      }
+    }
+    const fieldsetId = get(field, 'relationships.fieldset.data.id');
+    if (
+      fieldsetId !== undefined &&
+      !this.fieldsetsById.has(String(fieldsetId))
+    ) {
+      throw new Error(
+        `Invalid export: field ${field.id} references missing fieldset ${fieldsetId}.`,
+      );
+    }
+    if (
+      fieldsetId !== undefined &&
+      String(
+        this.fieldsetsById.get(String(fieldsetId))?.relationships.item_type.data
+          .id,
+      ) !== String(field.relationships.item_type.data.id)
+    ) {
+      throw new Error(
+        `Invalid export: field ${field.id} uses a fieldset from another model/block.`,
+      );
+    }
+  }
+
+  private validateChildren(
+    itemType: SchemaTypes.ItemType,
+    relationship: 'fields' | 'fieldsets',
+    entities: Map<string, SchemaTypes.Field | SchemaTypes.Fieldset>,
+    expectedCount: number,
+  ) {
+    const references = get(
+      itemType,
+      `relationships.${relationship}.data`,
+      [],
+    ) as Array<{ id: string }>;
+    const seen = new Set<string>();
+    for (const reference of references) {
+      const id = String(reference.id);
+      const child = entities.get(id);
+      if (
+        !child ||
+        seen.has(id) ||
+        String(child.relationships.item_type.data.id) !== itemType.id
+      ) {
+        throw new Error(
+          `Invalid export: inconsistent ${relationship} in model/block ${itemType.id}.`,
+        );
+      }
+      seen.add(id);
+    }
+    if (seen.size !== expectedCount) {
+      throw new Error(
+        `Invalid export: some ${relationship} are absent from parent model/block ${itemType.id}.`,
+      );
+    }
   }
 
   private resolveV1Root(): SchemaTypes.ItemType {
@@ -214,7 +395,6 @@ export class ExportSchema {
             continue;
           }
           neighbors.add(linkedId);
-          ensureNeighbors(linkedId).add(currentId);
         }
       }
     }
@@ -227,19 +407,21 @@ export class ExportSchema {
     adjacency: Map<string, Set<string>>,
     visited: Set<string>,
   ) {
+    if (visited.has(startId)) return;
     const queue: string[] = [startId];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current === undefined || visited.has(current)) {
+    visited.add(startId);
+    for (let head = 0; head < queue.length; head += 1) {
+      const current = queue[head];
+      if (current === undefined) {
         continue;
       }
-      visited.add(current);
       const neighbors = adjacency.get(current);
       if (!neighbors) {
         continue;
       }
       for (const neighbor of neighbors) {
         if (!visited.has(neighbor)) {
+          visited.add(neighbor);
           queue.push(neighbor);
         }
       }

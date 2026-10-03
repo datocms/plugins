@@ -48,6 +48,16 @@ To perform bulk exports, navigate to the plugin's configuration screen (typicall
 3.  **Filter by Text**: Enter a search term in the text field. Click "Download records from text query" to export matches.
 4.  **Export All**: Click "Download all records" to export everything.
 
+Large exports run continuously and download numbered parts automatically. Allow multiple downloads in your browser and keep the plugin open until completion. A cancellation button appears for exports of at least 1,000 entities. Cancellation stops further requests; files already prepared remain available.
+
+Records are requested by model in ID order, with complete nested blocks and pages of 30 (the [CMA nested-response limit](https://www.datocms.com/docs/content-management-api/resources/item/instances)). Each part holds at most 1,000 records and approximately 8 MiB of record input; XLSX also limits the number of populated cells to 50,000. Output exceeding 16 MiB is split further. JSON parts include the complete schema/configuration and references for the records in that part. Scheduled actions also belong to that part. Reference paths are relative to the part's `records` array, and source IDs remain unchanged across parts.
+
+Split exports finish with `allDatocmsRecords.<timestamp>.manifest.json`, listing every part, its record count and offset. JSON record manifests contain `partition: { exportId, index, recordOffset, isLast }`. A failure after any part has been prepared produces an `.incomplete.json` manifest; it must not be treated as a complete backup. Configuration resources that cannot be read are listed in `projectConfiguration.warnings` and reported at completion.
+
+CSV and XLSX use one column per top-level record property. Arrays, localized values, nested blocks and other objects are stored as JSON in a cell, avoiding a column for every nested array element. XLSX rejects values beyond Excel's [cell/column limits](https://support.microsoft.com/en-us/excel/excel-specifications-and-limits), without truncating them; use JSON, CSV or XML for those records. XML uses typed `<value>` elements and `<property name="...">` attributes to preserve arbitrary field names, arrays, nulls and primitive types. JSON is the format intended for re-import with schema and reference information.
+
+These exports read live data using offset pagination, without a transactional snapshot. Duplicate IDs and changes in record counts are detected, but edits or replacements that keep the count unchanged cannot be proven consistent. Avoid editing the project during export. API reads use bounded automatic retries for transient failures and rate limits, plus deadlines covering response bodies. Oversized record/asset metadata pages shrink automatically. Individual API responses still have a 32 MiB ceiling; complete project schema and project configuration each have an 8 MiB input budget. Exceeding those budgets produces an explicit error. Every JSON part repeats the schema and configuration, which can increase the total download size. The browser handoff cannot verify that every file was saved to disk, and browser memory/download policies still apply.
+
 ### Exporting Assets
 
 1.  On the main plugin screen, click the **Download all assets** button.
@@ -57,6 +67,8 @@ To perform bulk exports, navigate to the plugin's configuration screen (typicall
     - `manifest.json` with source upload IDs and metadata
 4.  ZIP entry filenames follow:
     - `u_<sourceUploadId>__<sanitizedOriginalFilename>`
+
+ZIPs are generated and handed to the browser one at a time; asset binaries are downloaded sequentially. Every archive is capped at 150 MiB, with a 125 MiB binary-data budget and at most 100 files. Unknown-size assets are isolated and their response bodies are checked as they arrive. Oversized assets, unavailable URLs, truncated responses and other failures are listed in a separate JSON report and in the affected ZIP manifest; successfully downloaded assets continue automatically. A partial export does not update the last successful asset-export snapshot. Individual assets exceeding the browser budget require a different export tool even though DatoCMS permits larger uploads.
 
 ### Exporting a Single Record
 
@@ -89,9 +101,8 @@ This plugin is built with React and the DatoCMS Plugin SDK. To contribute or mod
 
 - **Framework**: React, TypeScript
 - **DatoCMS**: `datocms-plugin-sdk`, `datocms-react-ui`
-- **Utilities**: 
-  - `json-2-csv` (CSV generation)
-  - `jsontoxml` (XML generation)
+- **Utilities**:
+  - Incremental JSON/CSV/XML serializers
   - `exceljs` (Excel generation)
   - `jszip` (Asset zipping)
 
@@ -104,15 +115,16 @@ This section documents the concrete output contract of this plugin so you can bu
 All record exports download with this filename pattern:
 
 ```txt
-allDatocmsRecords<ISO_TIMESTAMP>.<extension>
+allDatocmsRecords.<timestamp>.<extension>
+allDatocmsRecords.part-<PPP>.<timestamp>.<extension>  # split bulk exports
 ```
 
 Examples:
 
-- `allDatocmsRecords2026-02-10T18:12:33.271Z.json`
-- `allDatocmsRecords2026-02-10T18:12:33.271Z.csv`
+- `allDatocmsRecords.2026-02-10T18-12-33.271Z.json`
+- `allDatocmsRecords.part-001.2026-02-10T18-12-33.271Z.csv`
 
-Notes:
+Notes (single-record downloads retain the original `allDatocmsRecords<ISO_TIMESTAMP>.<extension>` filename):
 
 - `JSON` exports contain the full envelope described below (`manifest`, `schema`, `projectConfiguration`, `referenceIndex`, etc.).
 - `CSV`, `XML`, and `XLSX` exports contain only the exported record data (no manifest/schema/reference index).

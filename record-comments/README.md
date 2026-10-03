@@ -84,7 +84,27 @@ If your project still has old `comment_log` fields:
 5. Start the migration.
 6. After checking the migrated comments, optionally delete the old `comment_log` fields from the same screen.
 
-Avoid editing comments while the migration is running.
+Keep the configuration screen open until the operation finishes. The migration
+processes records in pages and retries temporary API failures automatically.
+It preserves all locales, nested replies, and historical author/vote metadata.
+Malformed source data, duplicate storage records, or a destination that differs
+from the source are reported without overwriting existing comments.
+
+Cleanup is available only after a complete successful scan and migration. It
+reads every source and destination again before deleting each model's old field;
+fields with failed verification are preserved. Avoid editing comments or
+creating/deleting source records until cleanup finishes. Schema deletion has no
+atomic comparison with record content, so simultaneous external writes cannot
+be made safe solely by this plugin.
+Run the operation as an owner or a user with unrestricted read access to the
+source models and comment storage. Creator, workflow, or locale restrictions
+can hide legacy data and therefore block migration and cleanup.
+
+Each record's discussion is still stored in one JSON field. It is subject to
+DatoCMS's [300 KB record limit](https://www.datocms.com/docs/content-management-api/technical-limits),
+including historical metadata. A discussion that exceeds that limit fails
+migration without deleting its legacy field. The plugin does not scan the
+project's media library; asset and record mentions resolve only referenced IDs.
 
 ## Troubleshooting
 

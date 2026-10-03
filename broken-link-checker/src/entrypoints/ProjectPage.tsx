@@ -20,6 +20,7 @@ import {
   type Scope,
   scopeLabel,
 } from '../report/scope';
+import { updateGroup } from '../state/group';
 import { useScan } from '../state/useScan';
 import type { CheckResult, LinkGroup } from '../types';
 import { useWidth } from '../ui/useWidth';
@@ -96,6 +97,8 @@ function ProjectScanner({ ctx }: PageProps) {
   // The progress bar's record count, per scan: a late count from an earlier scan is ignored.
   const [recordTotal, setRecordTotal] = useState<number>();
   const scanRun = useRef(0);
+  const exportRunning = useRef(false);
+  const [exporting, setExporting] = useState(false);
   // Read once: below 1800px the sidebar starts as a rail and opens on selection.
   const wide = useMediaQuery('(min-width: 1800px)').matches;
   const [collapsed, setCollapsed] = useState(!wide);
@@ -174,18 +177,20 @@ function ProjectScanner({ ctx }: PageProps) {
 
   // Always the whole report, whatever the filters. During a recheck the export
   // matches the page: the settled state, and the rechecked URL's previous result.
-  const exportCsv = () => {
+  const exportCsv = async () => {
     const { report } = scan;
-    if (!report) return;
+    if (!report || exportRunning.current) return;
+    exportRunning.current = true;
+    setExporting(true);
     try {
-      downloadReport(
+      await downloadReport(
         rechecking && settled
           ? {
               ...report,
               state: settled.state,
               groups: report.groups.map((group) =>
                 group.key === recheckKey && recheckResult
-                  ? { ...group, result: recheckResult }
+                  ? updateGroup(group, { result: recheckResult })
                   : group,
               ),
             }
@@ -194,6 +199,9 @@ function ProjectScanner({ ctx }: PageProps) {
     } catch (error) {
       console.error(error);
       void ctx.alert("Couldn't export the report!");
+    } finally {
+      exportRunning.current = false;
+      setExporting(false);
     }
   };
 
@@ -254,7 +262,8 @@ function ProjectScanner({ ctx }: PageProps) {
       onScan={() => startScan(scope)}
       onChooseScope={() => void chooseScope()}
       onCancel={scan.cancel}
-      onExport={exportCsv}
+      exporting={exporting}
+      onExport={() => void exportCsv()}
       onRecheck={(group) => void recheck(group)}
       onOpenRecord={(recordId) => void openRecord(recordId)}
     />

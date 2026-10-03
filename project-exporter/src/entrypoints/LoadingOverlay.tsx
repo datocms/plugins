@@ -1,12 +1,13 @@
-import { Spinner } from 'datocms-react-ui';
+import { Button, Spinner } from 'datocms-react-ui';
 import s from './styles.module.css';
 
 type Props = {
   status: string;
   progress?: number;
+  onCancel?: () => void;
 };
 
-export default function LoadingOverlay({ status, progress }: Props) {
+export default function LoadingOverlay({ status, progress, onCancel }: Props) {
   return (
     <div className={s.overlay}>
       <div className={s.overlayContent}>
@@ -23,6 +24,15 @@ export default function LoadingOverlay({ status, progress }: Props) {
               />
             </div>
             <div className={s.progressText}>{Math.round(progress)}%</div>
+          </>
+        )}
+        {onCancel && (
+          <>
+            <div className={s.progressText}>
+              Large exports create multiple files. Allow multiple downloads in
+              your browser.
+            </div>
+            <Button onClick={onCancel}>Cancel export</Button>
           </>
         )}
       </div>

@@ -2,11 +2,13 @@ import type { ReactElement } from 'react';
 import { useEffect, useRef } from 'react';
 import s from '../../entrypoints/styles.module.css';
 import { formatFileSize } from '../../utils/formatters';
+import { getVisibleActivityLog } from './presentation';
 
 /**
  * Interface for log entries in the activity log
  */
 export interface LogEntry {
+  id?: number;
   text: string;
   originalSize?: number;
   optimizedSize?: number;
@@ -18,15 +20,8 @@ export interface LogEntry {
  */
 interface ActivityLogProps {
   log: LogEntry[];
+  droppedLogCount?: number;
 }
-
-const buildLogEntryKey = (entry: LogEntry): string => {
-  const sizePart =
-    entry.originalSize !== undefined && entry.optimizedSize !== undefined
-      ? `${entry.originalSize}-${entry.optimizedSize}`
-      : 'no-size';
-  return `${entry.text}-${sizePart}`;
-};
 
 /**
  * ActivityLog component displays a log of optimization activities
@@ -37,9 +32,24 @@ const buildLogEntryKey = (entry: LogEntry): string => {
  * @param log - Array of log entries to display
  * @returns Rendered component or null if no logs are present
  */
-const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
+const ActivityLog = ({
+  log,
+  droppedLogCount = 0,
+}: ActivityLogProps): ReactElement | null => {
   // Create a ref for the logs container
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const entryKeys = useRef(new WeakMap<LogEntry, number>());
+  const nextEntryKey = useRef(0);
+
+  const getEntryKey = (entry: LogEntry): string => {
+    if (entry.id !== undefined) return `log-${entry.id}`;
+    let key = entryKeys.current.get(entry);
+    if (key === undefined) {
+      key = nextEntryKey.current++;
+      entryKeys.current.set(entry, key);
+    }
+    return `entry-${key}`;
+  };
 
   // Auto-scroll to the bottom whenever logs are updated
   useEffect(() => {
@@ -51,16 +61,25 @@ const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
 
   if (log.length === 0) return null;
 
+  const { entries, totalEntries, omittedEntries } = getVisibleActivityLog(
+    log,
+    droppedLogCount,
+  );
+
   return (
     <div className={s.logWrapper}>
       <div className={s.logHeader}>
         <h3>Activity Log</h3>
-        <span>{log.length} entries</span>
+        <span>
+          {omittedEntries > 0
+            ? `Latest ${entries.length} of ${totalEntries} entries`
+            : `${entries.length} entries`}
+        </span>
       </div>
       <div className={s.logsContainer} ref={logsContainerRef}>
         <div className={s.logs}>
-          {log.map((entry) => (
-            <div key={buildLogEntryKey(entry)} className={s.logEntry}>
+          {entries.map((entry) => (
+            <div key={getEntryKey(entry)} className={s.logEntry}>
               <span>{entry.text}</span>
               {entry.originalSize && entry.optimizedSize && (
                 <span className={s.sizeComparison}>

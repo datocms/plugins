@@ -1,24 +1,30 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Section, Spinner } from 'datocms-react-ui';
+import type { DuplicationProgress } from '../../services/duplicationTypes';
 import styles from './ProgressView.module.css';
 
 /**
  * Structure describing a single progress update event.
  */
-export interface ProgressUpdate {
-  message: string;
-  type: 'info' | 'success' | 'error';
-  timestamp: number;
-  progress?: number;
-  modelId?: string;
-  modelName?: string;
-  recordId?: string;
+export type ProgressUpdate = DuplicationProgress;
+
+const updateKeys = new WeakMap<ProgressUpdate, number>();
+let nextUpdateKey = 0;
+
+export function progressUpdateKey(update: ProgressUpdate): number {
+  let key = updateKeys.get(update);
+  if (key === undefined) {
+    key = ++nextUpdateKey;
+    updateKeys.set(update, key);
+  }
+  return key;
 }
 
 interface ProgressViewProps {
   ctx: RenderPageCtx;
   progressUpdates: ProgressUpdate[];
   progressPercentage: number;
+  operationCount: number;
   isAborting: boolean;
   sourceLocale: string;
   targetLocale: string;
@@ -29,13 +35,18 @@ interface ProgressViewProps {
 export function ProgressView({
   progressUpdates,
   progressPercentage,
+  operationCount,
   isAborting,
   sourceLocale,
   targetLocale,
   getLocaleLabel,
   onAbort,
 }: ProgressViewProps) {
+  const visibleUpdates = progressUpdates.slice(-500);
   const latestUpdate = progressUpdates[progressUpdates.length - 1];
+  const completion = Number.isFinite(progressPercentage)
+    ? Math.max(0, Math.min(100, progressPercentage))
+    : 0;
 
   return (
     <div className={styles.progressWrapper}>
@@ -51,7 +62,7 @@ export function ProgressView({
             {/* Progress percentage and spinner */}
             <div className={styles.progressHeader}>
               <div className={styles.progressPercentage}>
-                {progressPercentage}% Complete
+                {completion}% Complete
               </div>
               <Spinner size={24} />
             </div>
@@ -60,7 +71,7 @@ export function ProgressView({
             <div className={styles.progressBarContainer}>
               <div
                 className={styles.progressBar}
-                style={{ width: `${progressPercentage}%` }}
+                style={{ width: `${completion}%` }}
               />
             </div>
 
@@ -82,15 +93,18 @@ export function ProgressView({
               <h3 className={styles.consoleHeader}>
                 <span>Operation Console</span>
                 <span className={styles.consoleCount}>
-                  {progressUpdates.length} operations
+                  {operationCount} operations
                 </span>
               </h3>
+              {operationCount > visibleUpdates.length && (
+                <p>Showing the latest {visibleUpdates.length} operations.</p>
+              )}
 
               {/* Progress updates log */}
               <div className={styles.progressLog}>
-                {progressUpdates.map((update) => (
+                {visibleUpdates.map((update) => (
                   <div
-                    key={`${update.timestamp}-${update.message}`}
+                    key={progressUpdateKey(update)}
                     className={`${styles.progressItem} ${styles[update.type]}`}
                   >
                     <span className={styles.progressIcon}>

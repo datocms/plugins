@@ -14,6 +14,8 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('provider model discovery', () => {
@@ -50,7 +52,8 @@ describe('provider model discovery', () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
 
     expect(url).toBe('https://api.openai.com/v1/models');
-    expect(init?.signal).toBe(controller.signal);
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(false);
     expect(new Headers(init?.headers).get('Authorization')).toBe(
       'Bearer openai-key',
     );
@@ -196,17 +199,103 @@ describe('provider model discovery', () => {
   });
 
   it('normalizes model-list rate limits with the correct provider', async () => {
+    vi.useFakeTimers({ now: 0 });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(
+      .mockImplementation(async () =>
         jsonResponse({ error: { message: 'Too many requests' } }, 429),
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(listGeminiModels('gemini-key')).rejects.toMatchObject({
+    const assertion = expect(
+      listGeminiModels('gemini-key'),
+    ).rejects.toMatchObject({
       provider: 'gemini',
       code: 'rate_limit',
       status: 429,
     });
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    'anthropic',
+    'gemini',
+  ] as const)('rejects nonadjacent %s cursor cycles', async (provider) => {
+    let page = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
+      const cursor = ['a', 'b', 'a'][page];
+      page += 1;
+      return jsonResponse(
+        provider === 'anthropic'
+          ? { data: [{ id: `model-${page}` }], has_more: true, last_id: cursor }
+          : {
+              models: [{ name: `models/model-${page}` }],
+              nextPageToken: cursor,
+            },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const listModels =
+      provider === 'anthropic' ? listAnthropicModels : listGeminiModels;
+
+    await expect(listModels('key')).rejects.toMatchObject({
+      code: 'invalid_response',
+      provider,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('collects 10,000 synthetic models incrementally across complete pages', async () => {
+    let page = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
+      const models = Array.from({ length: 1000 }, (_, index) => ({
+        name: `models/model-${page * 1000 + index}`,
+      }));
+      page += 1;
+      return jsonResponse({
+        models,
+        nextPageToken: page < 10 ? `page-${page}` : '',
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const models = await listGeminiModels('key');
+    expect(models).toHaveLength(10_000);
+    expect(new Set(models).size).toBe(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+  });
+
+  it.each([
+    listOpenAIModels,
+    listAnthropicModels,
+    listGeminiModels,
+  ])('rejects malformed successful model lists', async (listModels) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ invalid: true })),
+    );
+    await expect(listModels('key')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+
+  it('fails visibly when every page continues beyond the model-list safety limit', async () => {
+    let page = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
+      page += 1;
+      return jsonResponse({
+        data: [{ id: `model-${page}` }],
+        has_more: true,
+        last_id: `cursor-${page}`,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(listAnthropicModels('key')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(50);
   });
 });

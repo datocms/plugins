@@ -1,6 +1,6 @@
 import { getDeploymentUrlFromParameters } from './getDeploymentUrlFromParameters';
 
-type PluginParameters = Record<string, unknown> | undefined;
+type PluginParameters = Record<string, unknown> | null | undefined;
 
 export type RuntimeMode = 'lambda' | 'lambdaless';
 

@@ -155,13 +155,19 @@ export function calculateRateLimitBackoff(retryCount: number): number {
 export function isRateLimitError(err: unknown): boolean {
   if (err === null || typeof err !== 'object') return false;
 
-  const anyErr = err as { status?: number; code?: string; message?: string };
-  const message = String(anyErr?.message ?? '');
+  const anyErr = err as {
+    status?: number;
+    code?: string;
+    message?: string;
+    error?: { code?: string; type?: string };
+    retryExhausted?: boolean;
+  };
+  const message = `${anyErr.message ?? ''} ${anyErr.code ?? ''} ${anyErr.error?.code ?? ''} ${anyErr.error?.type ?? ''}`;
 
   // Quota exhaustion is not transient, even when a provider reports it with
   // HTTP 429. Retrying it only repeats a request that cannot currently succeed.
   if (
-    /insufficient_quota|quota (?:limit )?exceeded|resource (?:has been )?exhausted|out of quota/i.test(
+    /insufficient_quota|quota (?:limit )?exceeded|resource (?:has been )?exhausted|out of quota|enforced_spend_limit_reached|monthly API usage threshold|specified (?:workspace )?API usage limits|per.?day|daily (?:quota|limit)/i.test(
       message,
     )
   ) {
@@ -184,6 +190,14 @@ export function shouldRetryRateLimitError(
   err: unknown,
   vendor: VendorId,
 ): boolean {
+  const seen = new Set<unknown>();
+  let current = err;
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const details = current as { retryExhausted?: boolean; cause?: unknown };
+    if (details.retryExhausted) return false;
+    current = details.cause;
+  }
   return vendor !== 'yandex' && isRateLimitError(err);
 }
 

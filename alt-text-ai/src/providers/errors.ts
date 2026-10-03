@@ -8,6 +8,7 @@ export type AltTextProviderErrorCode =
   | 'model'
   | 'invalid_request'
   | 'network'
+  | 'timeout'
   | 'invalid_response'
   | 'empty_response'
   | 'image_fetch'
@@ -25,12 +26,13 @@ export class AltTextProviderError extends Error {
   public readonly code: AltTextProviderErrorCode;
   public readonly status?: number;
   public readonly details?: unknown;
+  public readonly retryAfterMs?: number;
 
   constructor(
     provider: AltTextProviderId,
     code: AltTextProviderErrorCode,
     message: string,
-    options?: { status?: number; details?: unknown },
+    options?: { status?: number; details?: unknown; retryAfterMs?: number },
   ) {
     super(
       `${PROVIDER_LABELS[provider]}: ${message.trim() || 'Request failed'}`,
@@ -40,6 +42,7 @@ export class AltTextProviderError extends Error {
     this.code = code;
     this.status = options?.status;
     this.details = options?.details;
+    this.retryAfterMs = options?.retryAfterMs;
   }
 }
 
@@ -47,6 +50,34 @@ export function isAltTextProviderError(
   error: unknown,
 ): error is AltTextProviderError {
   return error instanceof AltTextProviderError;
+}
+
+export function isFatalProviderFailure(error: unknown): boolean {
+  return (
+    isAltTextProviderError(error) &&
+    ['configuration', 'auth', 'quota', 'model', 'rate_limit'].includes(
+      error.code,
+    )
+  );
+}
+
+export function parseRetryAfter(
+  value: string | null,
+  now = Date.now(),
+): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) {
+    const seconds = Number(normalized);
+    const delayMs = seconds * 1000;
+    return Number.isFinite(delayMs) && seconds >= 0 ? delayMs : undefined;
+  }
+
+  const date = Date.parse(normalized);
+  return Number.isFinite(date) ? Math.max(0, date - now) : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -105,10 +136,33 @@ export function extractProviderErrorMessage(
 function errorCodeForHttpStatus(
   status: number,
   message: string,
+  payload: unknown,
 ): AltTextProviderErrorCode {
   const normalized = message.toLowerCase();
+  const record = asRecord(payload);
+  const error = asRecord(record?.error);
+  const details = asRecord(error?.details);
+  const quotaCode = firstNonEmptyString([
+    error?.code,
+    details?.error_code,
+    error?.type,
+    record?.error_code,
+  ]);
+  const shortTermQuota = hasOnlyShortTermQuotaViolations(error?.details);
 
-  if (/quota|billing|credit|usage limit/.test(normalized)) {
+  if (
+    status === 402 ||
+    quotaCode === 'insufficient_quota' ||
+    quotaCode === 'enforced_spend_limit_reached' ||
+    /limit:\s*0/.test(normalized) ||
+    (!shortTermQuota &&
+      /billing|credit|monthly|daily|per day|usage (?:limit|threshold)|spend (?:limit|cap)/.test(
+        normalized,
+      )) ||
+    (/quota/.test(normalized) &&
+      !shortTermQuota &&
+      !/per minute|per second|rate|too many requests/.test(normalized))
+  ) {
     return 'quota';
   }
 
@@ -136,6 +190,48 @@ function errorCodeForHttpStatus(
   return 'provider';
 }
 
+function hasOnlyShortTermQuotaViolations(details: unknown): boolean {
+  if (!Array.isArray(details)) {
+    return false;
+  }
+  const quotaIds: string[] = [];
+  for (const detailValue of details) {
+    const detail = asRecord(detailValue);
+    if (!Array.isArray(detail?.violations)) {
+      continue;
+    }
+    for (const violationValue of detail.violations) {
+      const quotaId = asRecord(violationValue)?.quotaId;
+      if (typeof quotaId !== 'string') {
+        return false;
+      }
+      quotaIds.push(quotaId.toLowerCase());
+    }
+  }
+  return (
+    quotaIds.length > 0 &&
+    quotaIds.every((id) => /perminute|persecond/.test(id))
+  );
+}
+
+function retryDelayFromPayload(payload: unknown): number | undefined {
+  const details = asRecord(asRecord(payload)?.error)?.details;
+  if (!Array.isArray(details)) {
+    return undefined;
+  }
+  for (const detailValue of details) {
+    const detail = asRecord(detailValue);
+    if (detail?.['@type'] !== 'type.googleapis.com/google.rpc.RetryInfo') {
+      continue;
+    }
+    const duration = detail.retryDelay;
+    if (typeof duration === 'string' && /^\d+(?:\.\d+)?s$/.test(duration)) {
+      return parseRetryAfter(duration.slice(0, -1));
+    }
+  }
+  return undefined;
+}
+
 export function createProviderHttpError(
   provider: AltTextProviderId,
   response: Response,
@@ -147,9 +243,14 @@ export function createProviderHttpError(
 
   return new AltTextProviderError(
     provider,
-    errorCodeForHttpStatus(response.status, message),
+    errorCodeForHttpStatus(response.status, message, payload),
     message,
-    { status: response.status },
+    {
+      status: response.status,
+      retryAfterMs:
+        parseRetryAfter(response.headers.get('retry-after')) ??
+        retryDelayFromPayload(payload),
+    },
   );
 }
 

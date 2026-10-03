@@ -18,6 +18,8 @@ export type EditCommentOp = {
   type: 'EDIT_COMMENT';
   id: string;
   newContent: StoredCommentSegment[];
+  /** Content captured when editing began, before later subscription updates. */
+  expectedContent?: StoredCommentSegment[];
   parentCommentId?: string;
 };
 

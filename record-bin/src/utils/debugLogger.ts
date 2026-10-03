@@ -1,4 +1,4 @@
-type PluginParameters = Record<string, unknown> | undefined;
+type PluginParameters = Record<string, unknown> | null | undefined;
 
 type LogMethod = 'log' | 'warn' | 'error';
 

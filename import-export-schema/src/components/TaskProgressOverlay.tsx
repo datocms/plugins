@@ -41,7 +41,7 @@ export function TaskProgressOverlay({
   percentOverride,
   cancel,
 }: TaskProgressOverlayProps) {
-  if (task.state.status !== 'running') {
+  if (task.state.status !== 'running' && task.state.status !== 'cancelling') {
     // The overlay only renders while the task is active; once it resolves the modal
     // disappears so the page can show completion state instead.
     return null;

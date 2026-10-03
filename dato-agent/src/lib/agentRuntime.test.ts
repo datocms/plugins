@@ -18,6 +18,7 @@ import {
   DEFAULT_MAX_CONTINUATIONS,
   DEFAULT_MAX_TOOL_CALLS,
   MAX_AGENT_ATTACHMENTS_PER_MESSAGE,
+  MAX_AGENT_TOOL_CALLS_PER_TURN,
   MAX_CURRENT_FORM_STATE_FIELDS,
   MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
   MAX_HOST_CONTEXT_CHARACTERS,
@@ -3737,7 +3738,7 @@ describe('AgentRuntime', () => {
           max_tool_calls?: number;
         }
       ).max_tool_calls,
-    ).toBe(DEFAULT_MAX_TOOL_CALLS - MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN - 1);
+    ).toBe(DEFAULT_MAX_TOOL_CALLS);
     expect(getModelSchema).toHaveBeenCalledTimes(
       MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
     );
@@ -4485,6 +4486,137 @@ describe('AgentRuntime', () => {
     );
   });
 
+  it('executes 200 approved safe calls with credits and stops advertising new tools', async () => {
+    const batches = Array.from({ length: 10 }, (_, batch) =>
+      Array.from({ length: 20 }, (_, index) =>
+        scriptApproval('safe', `safe-batch-${batch}-${index}`),
+      ),
+    );
+    const client = new QueueResponsesClient([
+      ...batches.map((approvals, batch) =>
+        eventsFor(
+          response(`budget-${batch}`, [
+            ...(batch
+              ? batches[batch - 1].map((approval) =>
+                  completedApprovedScriptCall(approval),
+                )
+              : []),
+            ...approvals,
+          ]),
+        ),
+      ),
+      eventsFor(
+        response(
+          'budget-complete',
+          batches[9].map((approval) => completedApprovedScriptCall(approval)),
+        ),
+      ),
+    ]);
+    const { result } = await drain(
+      runtimeWith(client).streamTurn({ message: 'Read bounded batches.' }),
+    );
+    expect(result.status).toBe('completed');
+    expect(client.requests).toHaveLength(11);
+    const approvalCount = client.requests.reduce(
+      (total, request) =>
+        total +
+        (Array.isArray(request.input)
+          ? request.input.filter(
+              (item) => item.type === 'mcp_approval_response' && item.approve,
+            ).length
+          : 0),
+      0,
+    );
+    expect(approvalCount).toBe(MAX_AGENT_TOOL_CALLS_PER_TURN);
+    expect(client.requests[10]).toMatchObject({
+      tool_choice: 'auto',
+      max_tool_calls: 20,
+    });
+  });
+
+  it.each([false, true])(
+    'keeps the 200-call turn budget across local continuations (extra=%s)',
+    async (extra) => {
+      const call = (index: number): ResponseFunctionToolCall => ({
+        type: 'function_call',
+        id: `call-${index}`,
+        call_id: `call-${index}`,
+        name: 'open_record',
+        arguments: JSON.stringify({ item_id: 'item-1', field_path: null }),
+        status: 'completed',
+      });
+      const openRecord = vi.fn();
+      const client = new QueueResponsesClient([
+        ...Array.from({ length: 10 }, (_, batch) =>
+          eventsFor(
+            response(
+              `local-${batch}`,
+              Array.from({ length: 20 }, (_, index) =>
+                call(batch * 20 + index),
+              ),
+            ),
+          ),
+        ),
+        eventsFor(response('local-final', extra ? [call(200)] : [])),
+      ]);
+      const { result } = await drain(
+        runtimeWith(client, {
+          navigation: {
+            openRecord,
+            showRecords: vi.fn(),
+            presentRecords: vi.fn(),
+            presentAssets: vi.fn(),
+          },
+        }).streamTurn({
+          message: 'Navigate bounded batches.',
+        }),
+      );
+      expect(client.requests).toHaveLength(11);
+      expect(client.requests[10]).toMatchObject({
+        tool_choice: 'none',
+        max_tool_calls: 1,
+      });
+      expect(openRecord).toHaveBeenCalledTimes(MAX_AGENT_TOOL_CALLS_PER_TURN);
+      expect(result.status).toBe(extra ? 'failed' : 'completed');
+      if (extra)
+        expect(result.error).toMatchObject({
+          code: 'continuation_limit',
+          retryable: false,
+        });
+    },
+  );
+
+  it('stops at 100 provider steps without dispatching the next request', async () => {
+    const client = new QueueResponsesClient(
+      Array.from({ length: 101 }, (_, index) =>
+        eventsFor(
+          response(`step-${index}`, [
+            {
+              type: 'function_call',
+              id: `step-call-${index}`,
+              call_id: `step-call-${index}`,
+              name: 'open_record',
+              arguments: JSON.stringify({
+                item_id: 'item-1',
+                field_path: null,
+              }),
+              status: 'completed',
+            } satisfies ResponseFunctionToolCall,
+          ]),
+        ),
+      ),
+    );
+    const { result } = await drain(
+      runtimeWith(client).streamTurn({ message: 'Continue navigating.' }),
+    );
+    expect(client.requests).toHaveLength(100);
+    expect(result).toMatchObject({
+      status: 'failed',
+      continuationCount: 100,
+      error: { code: 'continuation_limit', retryable: false },
+    });
+  });
+
   it('stops a runaway local-tool continuation loop', async () => {
     const makeCall = (index: number) =>
       ({
@@ -4513,7 +4645,7 @@ describe('AgentRuntime', () => {
       status: 'failed',
       responseId: 'resp_2',
       continuationCount: 2,
-      error: { code: 'continuation_limit', retryable: true },
+      error: { code: 'continuation_limit', retryable: false },
     });
     const latestActivityStatuses = new Map<string, string>();
     for (const event of events) {

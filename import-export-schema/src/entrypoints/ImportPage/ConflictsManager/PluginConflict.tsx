@@ -4,8 +4,8 @@ import { useId } from 'react';
 import { Field } from 'react-final-form';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
 import { useResolutionStatusForPlugin } from '../ResolutionsForm';
-import { IdCollisionFallback } from './IdCollisionFallback';
 import type { PluginIdCollision, PluginLegacyIdIssue } from './buildConflicts';
+import { IdCollisionFallback } from './IdCollisionFallback';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {

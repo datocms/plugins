@@ -138,6 +138,272 @@ const coordinates = {
   uiLocale: 'en',
 } as const;
 
+describe('host context scale safety', () => {
+  it.each([
+    ['links', 200_000, 'record'],
+    ['gallery', 10_000, 'upload'],
+  ] as const)(
+    'samples only a bounded prefix of %s while preserving the exact entry count',
+    (fieldType, count, prefix) => {
+      const article = model({
+        id: 'article-id',
+        apiKey: 'article',
+        fieldIds: ['references-id'],
+      });
+      const references: unknown[] = new Array(count);
+      let reads = 0;
+      for (let index = 0; index < 12; index += 1) {
+        Object.defineProperty(references, index, {
+          get: () => {
+            reads += 1;
+            return { id: `${prefix}-${index}` };
+          },
+        });
+      }
+      Object.defineProperty(references, 12, {
+        get: () => {
+          throw new Error('The unsampled reference tail was accessed.');
+        },
+      });
+
+      const result = readCurrentRecordFormState({
+        model: article,
+        fields: [
+          field({
+            id: 'references-id',
+            modelId: article.id,
+            apiKey: 'references',
+            type: fieldType,
+          }),
+        ],
+        formValues: { references },
+        activeLocale: 'en',
+        locales: ['en'],
+        dirty: true,
+        requests: [{ fieldPath: 'references' }],
+      });
+
+      expect(reads).toBe(12);
+      expect(result.fields[0]?.summary).toContain(`count=${count}|ids=[`);
+      expect(result.fields[0]?.summary).toContain(`${prefix}-11`);
+      expect(result.fields[0]?.summary).toContain(`|omitted=${count - 12}`);
+      expect(result.fields[0]?.truncated).toBe(true);
+      expect(JSON.stringify(result).length).toBeLessThan(
+        MAX_CURRENT_RECORD_FORM_STATE_CHARACTERS,
+      );
+    },
+  );
+
+  it('bounds primitive traversal and never calls an uninspected rich value empty', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['body-id'],
+    });
+    const body: unknown[] = new Array(200_000);
+    let reads = 0;
+    for (let index = 0; index < 499; index += 1) {
+      Object.defineProperty(body, index, {
+        get: () => {
+          reads += 1;
+          return null;
+        },
+      });
+    }
+    Object.defineProperty(body, 499, {
+      get: () => {
+        throw new Error('The rich-value traversal budget was exceeded.');
+      },
+    });
+
+    const result = readCurrentRecordFormState({
+      model: article,
+      fields: [
+        field({
+          id: 'body-id',
+          modelId: article.id,
+          apiKey: 'body',
+          type: 'structured_text',
+        }),
+      ],
+      formValues: { body },
+      activeLocale: 'en',
+      locales: ['en'],
+      dirty: false,
+      requests: [{ fieldPath: 'body' }],
+    });
+
+    expect(reads).toBeLessThanOrEqual(1_000);
+    expect(result.fields[0]?.summary).toContain('counts_complete=false');
+    expect(result.fields[0]?.state).toBe('value');
+    expect(result.fields[0]?.truncated).toBe(true);
+  });
+
+  it('reports bounded counts for deeply nested and cyclic rich values', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['body-id'],
+    });
+    let deep: unknown = { text: 'Text below the traversal depth limit' };
+    for (let depth = 0; depth < 10_000; depth += 1) {
+      deep = { type: 'paragraph', children: [deep] };
+    }
+    const cycle: { type: string; children: unknown[] } = {
+      type: 'paragraph',
+      children: [],
+    };
+    cycle.children.push(cycle);
+
+    for (const body of [deep, cycle]) {
+      const result = readCurrentRecordFormState({
+        model: article,
+        fields: [
+          field({
+            id: 'body-id',
+            modelId: article.id,
+            apiKey: 'body',
+            type: 'structured_text',
+          }),
+        ],
+        formValues: { body },
+        activeLocale: 'en',
+        locales: ['en'],
+        dirty: false,
+        requests: [{ fieldPath: 'body' }],
+      });
+
+      expect(result.fields[0]?.summary).toContain('counts_complete=false');
+      expect(result.fields[0]?.state).toBe('value');
+      expect(result.fields[0]?.truncated).toBe(true);
+    }
+  });
+
+  it('preserves Unicode and whitespace normalization in bounded text summaries', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['title-id', 'metadata-id'],
+    });
+    const result = readCurrentRecordFormState({
+      model: article,
+      fields: [
+        field({ id: 'title-id', modelId: article.id, apiKey: 'title' }),
+        field({
+          id: 'metadata-id',
+          modelId: article.id,
+          apiKey: 'metadata',
+          type: 'json',
+        }),
+      ],
+      formValues: {
+        title: `  a\t😀\n b ${'z'.repeat(200_000)}`,
+        metadata: '😀a',
+      },
+      activeLocale: 'en',
+      locales: ['en'],
+      dirty: false,
+      maxValueCharacters: 4,
+      requests: [{ fieldPath: 'title' }, { fieldPath: 'metadata' }],
+    });
+
+    expect(result.fields[0]?.summary).toBe('"a 😀…"');
+    expect(result.fields[0]?.truncated).toBe(true);
+    expect(result.fields[1]?.summary).toBe('string(characters=2)');
+  });
+
+  it('keeps embedded blocks distinct from linked records in complex rich trees', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['body-id'],
+    });
+    const result = readCurrentRecordFormState({
+      model: article,
+      fields: [
+        field({
+          id: 'body-id',
+          modelId: article.id,
+          apiKey: 'body',
+          type: 'structured_text',
+        }),
+      ],
+      formValues: {
+        body: {
+          schema: 'dast',
+          document: {
+            type: 'root',
+            children: [
+              { type: 'block', item: 'embedded-block' },
+              { type: 'inlineBlock', item: 'inline-block' },
+              {
+                type: 'itemLink',
+                item: 'linked-record',
+                itemTypeId: 'linked-model',
+                children: [{ type: 'span', value: 'Link caption' }],
+              },
+              { type: 'inlineItem', item: 'inline-record' },
+            ],
+          },
+        },
+      },
+      activeLocale: 'en',
+      locales: ['en'],
+      dirty: false,
+      requests: [{ fieldPath: 'body' }],
+    });
+
+    expect(result.fields[0]?.summary).toContain('blocks=2|linked_records=2');
+    expect(result.fields[0]?.summary).toContain('Link caption');
+    expect(result.fields[0]?.truncated).toBeUndefined();
+  });
+
+  it('reads only the requested locale from a form with many locales', () => {
+    const article = model({
+      id: 'article-id',
+      apiKey: 'article',
+      fieldIds: ['title-id'],
+    });
+    const locales = Array.from(
+      { length: 300 },
+      (_, index) => `locale-${index}`,
+    );
+    const title: Record<string, unknown> = {};
+    let selectedReads = 0;
+    for (const locale of locales) {
+      Object.defineProperty(title, locale, {
+        get: () => {
+          if (locale !== 'locale-178') {
+            throw new Error('An unrequested locale value was inspected.');
+          }
+          selectedReads += 1;
+          return 'Selected locale text';
+        },
+      });
+    }
+
+    const result = readCurrentRecordFormState({
+      model: article,
+      fields: [
+        field({
+          id: 'title-id',
+          modelId: article.id,
+          apiKey: 'title',
+          localized: true,
+        }),
+      ],
+      formValues: { title },
+      activeLocale: 'locale-0',
+      locales,
+      dirty: false,
+      requests: [{ fieldPath: 'title', locale: 'locale-178' }],
+    });
+
+    expect(selectedReads).toBe(1);
+    expect(result.fields[0]?.summary).toBe('"Selected locale text"');
+  });
+});
+
 describe('buildRecordHostContext', () => {
   it('combines the current-model manifest with type-aware bounded live values', () => {
     const article = model({

@@ -1,14 +1,14 @@
 import { Button } from 'datocms-react-ui';
 import { Field } from 'react-final-form';
+import {
+  idCollisionFieldPrefix,
+  useResolutionStatusForIdCollision,
+} from '../ResolutionsForm';
 import type {
   IdCollision,
   IdCollisionEntityType,
   IdReplacementIssue,
 } from './buildConflicts';
-import {
-  idCollisionFieldPrefix,
-  useResolutionStatusForIdCollision,
-} from '../ResolutionsForm';
 
 type Props = {
   collision: IdReplacementIssue;
@@ -23,24 +23,20 @@ function entityTypeLabel(entityType: IdCollisionEntityType) {
 }
 
 function describeProjectTarget(collision: IdCollision) {
-  if (
-    collision.entityType === 'field' ||
-    collision.entityType === 'fieldset'
-  ) {
+  if (collision.entityType === 'field' || collision.entityType === 'fieldset') {
     return `${collision.projectLabel} in ${collision.projectParentItemType.attributes.name}`;
   }
 
   return collision.projectLabel;
 }
 
-function isOccupiedIssue(collision: IdReplacementIssue): collision is IdCollision {
+function isOccupiedIssue(
+  collision: IdReplacementIssue,
+): collision is IdCollision {
   return collision.reason === 'occupied';
 }
 
-export function IdCollisionFallback({
-  collision,
-  active = true,
-}: Props) {
+export function IdCollisionFallback({ collision, active = true }: Props) {
   const status = useResolutionStatusForIdCollision(
     collision.entityType,
     collision.exportId,

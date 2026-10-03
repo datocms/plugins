@@ -318,23 +318,6 @@ describe('translateArray.ts', () => {
     });
 
     describe('chat vendor translation (JSON array prompt)', () => {
-      it('should translate array via completeText for chat vendors', async () => {
-        vi.mocked(mockProvider.completeText).mockResolvedValue(
-          '["Hallo", "Welt"]',
-        );
-
-        const result = await translateArray(
-          mockProvider,
-          mockPluginParams,
-          ['Hello', 'World'],
-          'en',
-          'de',
-        );
-
-        expect(mockProvider.completeText).toHaveBeenCalled();
-        expect(result).toEqual(['Hallo', 'Welt']);
-      });
-
       it.each([1, 26])(
         'should apply the configured prompt and context to every request for %i segments',
         async (segmentCount) => {
@@ -507,6 +490,77 @@ Content: (see the JSON array below) / (see the JSON array below).`);
         );
       });
 
+
+      it('chunks thousands of Unicode leaves by count and bytes with stable ordering', async () => {
+        const texts = Array.from(
+          { length: 2_001 },
+          (_, index) => `${index}${'😀'.repeat(index % 10 === 0 ? 2_000 : 1)}`,
+        );
+        vi.mocked(mockProvider.completeText).mockImplementation(
+          async (prompt) => {
+            const textsJson = prompt.slice(prompt.lastIndexOf('\n') + 1);
+            expect(
+              new TextEncoder().encode(textsJson).length,
+            ).toBeLessThanOrEqual(24_000);
+            expect(JSON.parse(textsJson).length).toBeLessThanOrEqual(25);
+            return textsJson;
+          },
+        );
+        expect(
+          await translateArray(
+            mockProvider,
+            mockPluginParams,
+            texts,
+            'en',
+            'de',
+          ),
+        ).toEqual(texts);
+      });
+
+      it('rejects oversized opaque HTML before earlier segments become billable', async () => {
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Hello', `<p>${'😀'.repeat(8_000)}</p>`],
+            'en',
+            'de',
+            { isHTML: true },
+          ),
+        ).rejects.toThrow('No content was sent');
+        expect(mockProvider.completeText).not.toHaveBeenCalled();
+      });
+
+      it('rejects lost placeholders instead of saving corrupted content', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Hello {{name}}'],
+            'en',
+            'de',
+          ),
+        ).rejects.toThrow('protected placeholder');
+      });
+
+      it('should translate array via completeText for chat vendors', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["Hallo", "Welt"]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello', 'World'],
+          'en',
+          'de',
+        );
+
+        expect(mockProvider.completeText).toHaveBeenCalled();
+        expect(result).toEqual(['Hallo', 'Welt']);
+      });
+
       it('should rejoin when the model splits a single HTML segment into multiple elements', async () => {
         // Regression (Basecamp card 10026091779): a WYSIWYG/rich-text field is
         // sent as ONE segment containing several block-level <p> elements. Chat
@@ -544,15 +598,15 @@ Content: (see the JSON array below) / (see the JSON array below).`);
           '["Rojo", "verde", "azul"]',
         );
 
-        const result = await translateArray(
-          mockProvider,
-          mockPluginParams,
-          ['Red, green, blue'],
-          'en',
-          'es',
-        );
-
-        expect(result).toEqual(['Rojo']);
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Red, green, blue'],
+            'en',
+            'es',
+          ),
+        ).rejects.toThrow(/No content was saved/);
       });
 
       it('should suppress debug logs when debugging is disabled', async () => {
@@ -720,15 +774,15 @@ Content: (see the JSON array below) / (see the JSON array below).`);
       it('should handle array length mismatch by padding with originals', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
 
-        const result = await translateArray(
-          mockProvider,
-          mockPluginParams,
-          ['Hello', 'World'],
-          'en',
-          'de',
-        );
-
-        expect(result).toEqual(['Hallo', 'World']);
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Hello', 'World'],
+            'en',
+            'de',
+          ),
+        ).rejects.toThrow(/No content was saved/);
       });
 
       it('should handle non-string values in response', async () => {
@@ -736,16 +790,17 @@ Content: (see the JSON array below) / (see the JSON array below).`);
           '[123, null, "Welt"]',
         );
 
-        const result = await translateArray(
-          mockProvider,
-          mockPluginParams,
-          ['Hello', 'Goodbye', 'World'],
-          'en',
-          'de',
-        );
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Hello', 'Goodbye', 'World'],
+            'en',
+            'de',
+          ),
+        ).rejects.toThrow(/No content was saved/);
 
         // Non-strings should be replaced with originals
-        expect(result[2]).toBe('Welt');
       });
 
       it('should throw if model returns valid JSON non-array', async () => {
@@ -877,7 +932,10 @@ Content: (see the JSON array below) / (see the JSON array below).`);
 
         expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
           expect.any(Array),
-          expect.objectContaining({ targetLang: 'JA', formality: 'prefer_more' }),
+          expect.objectContaining({
+            targetLang: 'JA',
+            formality: 'prefer_more',
+          }),
         );
       });
 
@@ -1176,16 +1234,11 @@ Content: (see the JSON array below) / (see the JSON array below).`);
         // Then length repair fills with originals
         vi.mocked(mockProvider.completeText).mockResolvedValue('');
 
-        const result = await translateArray(
-          mockProvider,
-          mockPluginParams,
-          ['Hello'],
-          'en',
-          'de',
-        );
+        await expect(
+          translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de'),
+        ).rejects.toThrow(/No content was saved/);
 
         // Falls back to original since empty response defaults to []
-        expect(result).toEqual(['Hello']);
       });
     });
   });

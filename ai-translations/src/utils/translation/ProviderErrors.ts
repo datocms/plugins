@@ -1,4 +1,5 @@
 import type { Logger } from '../logging/Logger';
+import { providerRetryAfterMs } from './ProviderRequestControl';
 import {
   hasStatusCode,
   isProviderConfigurationError,
@@ -247,8 +248,7 @@ function normalizeDatoCMSError(
       code: 'datocms',
       message:
         'Cannot save translations because the record is locked for editing.',
-      hint:
-        'Close other tabs editing the record, wait for the lock to clear, then try again.',
+      hint: 'Close other tabs editing the record, wait for the lock to clear, then try again.',
     };
   }
 
@@ -316,6 +316,7 @@ function normalizeDatoCMSError(
 function extractErrorDetails(err: unknown): { code?: string; param?: string } {
   if (err !== null && typeof err === 'object') {
     const obj = err as Record<string, unknown>;
+    if (typeof obj.code === 'string') return { code: obj.code };
     if (obj.error && typeof obj.error === 'object') {
       const errorObj = obj.error as Record<string, unknown>;
       return {
@@ -328,9 +329,7 @@ function extractErrorDetails(err: unknown): { code?: string; param?: string } {
 }
 
 /** Per-vendor hint for rate limit errors. */
-function getRateLimitHint(
-  vendor: VendorId,
-): string {
+function getRateLimitHint(vendor: VendorId): string {
   if (vendor === 'openai')
     return 'Reduce concurrency, switch to a more available model, or increase limits.';
   if (vendor === 'google')
@@ -468,21 +467,23 @@ function normalizeYandexConfigurationError(
 ): NormalizedProviderError | null {
   if (vendor !== 'yandex') return null;
 
-  const isFolderError = includes(
-    message,
-    'folder id',
-    'folderid',
-    'folder not found',
-    'specified folder',
-    'cloud resource not found',
-  ) || status === 404 || status === 'NOT_FOUND';
+  const isFolderError =
+    includes(
+      message,
+      'folder id',
+      'folderid',
+      'folder not found',
+      'specified folder',
+      'cloud resource not found',
+    ) ||
+    status === 404 ||
+    status === 'NOT_FOUND';
   if (isFolderError) {
     return {
       source: 'provider',
       code: 'auth',
       message: 'Yandex Translate could not access the configured Folder ID.',
-      hint:
-        'Check the Folder ID and make sure the service account belongs to that folder and has the ai.translate.user role.',
+      hint: 'Check the Folder ID and make sure the service account belongs to that folder and has the ai.translate.user role.',
     };
   }
 
@@ -511,6 +512,29 @@ function normalizeKnownProviderError(
   message: string,
   errorDetails: { code?: string; param?: string },
 ): NormalizedProviderError | null {
+  if (
+    status === 456 ||
+    errorDetails.code === 'insufficient_quota' ||
+    errorDetails.code === 'enforced_spend_limit_reached' ||
+    includes(
+      message,
+      'monthly API usage threshold',
+      'specified API usage limits',
+      'specified workspace API usage limits',
+      'perday',
+      'per_day',
+      'per day',
+      'daily quota',
+      'daily limit',
+    )
+  ) {
+    return {
+      source: 'provider',
+      code: 'quota',
+      message: 'Quota exceeded for the selected translation provider.',
+      hint: getQuotaHint(vendor),
+    };
+  }
   const yandexConfigurationError = normalizeYandexConfigurationError(
     vendor,
     status,
@@ -523,8 +547,7 @@ function normalizeKnownProviderError(
       source: 'provider',
       code: 'auth',
       message,
-      hint:
-        'Verify your organization with the provider or choose a different model.',
+      hint: 'Verify your organization with the provider or choose a different model.',
     };
   }
 
@@ -635,8 +658,7 @@ function normalizeProviderQuotaModelNetworkError(
       source: 'provider',
       code: 'network',
       message,
-      hint:
-        'Yandex Translate may be temporarily unavailable. Wait and try again; use the request ID when contacting Yandex support.',
+      hint: 'Yandex Translate may be temporarily unavailable. Wait and try again; use the request ID when contacting Yandex support.',
     };
   }
 
@@ -664,8 +686,7 @@ function normalizeProviderQuotaModelNetworkError(
       code: 'auth',
       message:
         'DeepL: wrong endpoint for your API key. If your key ends with :fx, enable "Use DeepL Free endpoint (api-free.deepl.com)" in Settings. Otherwise, disable it to use api.deepl.com.',
-      hint:
-        'Match the endpoint to your plan: Free (:fx) → api-free.deepl.com; Pro → api.deepl.com.',
+      hint: 'Match the endpoint to your plan: Free (:fx) → api-free.deepl.com; Pro → api.deepl.com.',
     };
   }
 
@@ -702,6 +723,19 @@ export function normalizeProviderError(
   const stripped = stripSourcePrefix(rawMessage);
   const errorDetails = extractErrorDetails(err);
   const message = stripped.message;
+  if (
+    vendor === 'google' &&
+    status === 429 &&
+    providerRetryAfterMs(err) !== undefined &&
+    !/per.?day|daily (?:quota|limit)/i.test(message)
+  ) {
+    return {
+      source: 'provider',
+      code: 'rate_limit',
+      message: 'Rate limit reached. Please wait and try again.',
+      hint: getRateLimitHint(vendor),
+    };
+  }
 
   const prefixedError = normalizePrefixedError(stripped.source, message);
   if (prefixedError) return prefixedError;
@@ -738,6 +772,11 @@ export function isFatalProviderError(
   vendor: VendorId,
   error: NormalizedProviderError,
 ): boolean {
+  if (error.code === 'auth' || error.code === 'quota') return true;
+  if (
+    error.code === 'model' &&
+    !includes(error.message, 'unexpected response', 'target language')
+  ) return true;
   if (vendor === 'deepl' && includes(error.message, 'wrong endpoint')) {
     return true;
   }
@@ -745,10 +784,7 @@ export function isFatalProviderError(
     return true;
   }
   if (vendor === 'yandex') {
-    return (
-      error.code === 'auth' ||
-      includes(error.message, 'folder id', 'permission denied')
-    );
+    return includes(error.message, 'folder id', 'permission denied');
   }
   return false;
 }
@@ -797,12 +833,12 @@ export function handleTranslationError(
   // Include hint in thrown error for consistent user-facing messages
   const message = formatErrorForUser(normalized);
   if (isProviderError(error)) {
-    throw new ProviderError(
-      message,
-      error.status,
-      error.vendor ?? vendor,
-      { cause: error },
-    );
+    throw new ProviderError(message, error.status, error.vendor ?? vendor, {
+      cause: error,
+      retryAfterMs: error.retryAfterMs,
+      retryExhausted: error.retryExhausted,
+      code: error.code,
+    });
   }
   throw new Error(message, { cause: error });
 }

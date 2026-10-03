@@ -1,10 +1,41 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
 
+function isRetryableReadFailure(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (typeof error !== 'object' || !error || !('response' in error))
+    return false;
+  const response = error.response;
+  if (typeof response !== 'object' || !response || !('status' in response)) {
+    return false;
+  }
+  return (
+    typeof response.status === 'number' &&
+    [500, 502, 503, 504].includes(response.status)
+  );
+}
+
+async function retryRead<T>(fn: () => Promise<T>): Promise<T> {
+  // All users are read-only list endpoints. The SDK handles 429/transient API
+  // errors and timeouts; supplement it for network errors and plain 5xx only.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: Retry the same read after its previous attempt settles.
+      return await fn();
+    } catch (error) {
+      if (!isRetryableReadFailure(error) || attempt >= 2) throw error;
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, 500 * 2 ** attempt),
+      );
+    }
+  }
+}
+
 /**
  * Thin caching layer around the CMA client that smooths out rate limits and provides lookups.
  */
 export class ProjectSchema {
   public client: Client;
+  private cacheGeneration = 0;
   private itemTypesPromise: Promise<SchemaTypes.ItemType[]> | null = null;
   private pluginsPromise: Promise<SchemaTypes.Plugin[]> | null = null;
   private pluginsById: Map<string, SchemaTypes.Plugin> = new Map();
@@ -13,7 +44,6 @@ export class ProjectSchema {
   private itemTypesByName: Map<string, SchemaTypes.ItemType> = new Map();
   private fieldsByItemType: Map<string, SchemaTypes.Field[]> = new Map();
   private fieldsetsByItemType: Map<string, SchemaTypes.Fieldset[]> = new Map();
-  private alreadyFetchedRelatedFields: Map<string, true> = new Map();
   // In-flight promises to prevent duplicate requests per item type
   private fieldsPromisesByItemType: Map<string, Promise<SchemaTypes.Field[]>> =
     new Map();
@@ -28,6 +58,10 @@ export class ProjectSchema {
   private throttleMax = 2;
   private throttleActive = 0;
   private throttleQueue: Array<() => void> = [];
+  private nextRequestAt = 0;
+  // CMA permits 60 requests/3 seconds. Leave headroom for the dashboard and
+  // other plugins; the official client still handles server-directed retries.
+  private requestIntervalMs = 60;
 
   constructor(client: Client) {
     this.client = client;
@@ -51,24 +85,56 @@ export class ProjectSchema {
     return this.throttleMax;
   }
 
+  /** Discard a schema snapshot after imports, including partially completed ones. */
+  invalidate(): void {
+    this.cacheGeneration += 1;
+    this.itemTypesPromise = null;
+    this.pluginsPromise = null;
+    this.pluginsById.clear();
+    this.itemTypesByApiKey.clear();
+    this.itemTypesById.clear();
+    this.itemTypesByName.clear();
+    this.fieldsByItemType.clear();
+    this.fieldsetsByItemType.clear();
+    this.fieldsPromisesByItemType.clear();
+    this.fieldsetsPromisesByItemType.clear();
+  }
+
   private async withThrottle<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.throttleActive >= this.throttleMax) {
+    if (
+      this.throttleActive >= this.throttleMax ||
+      this.throttleQueue.length > 0
+    ) {
       await new Promise<void>((resolve) => this.throttleQueue.push(resolve));
+    } else {
+      this.throttleActive += 1;
     }
-    this.throttleActive += 1;
     try {
-      return await fn();
+      const now = Date.now();
+      const delay = Math.max(0, this.nextRequestAt - now);
+      this.nextRequestAt =
+        Math.max(now, this.nextRequestAt) + this.requestIntervalMs;
+      if (delay > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+      return await retryRead(fn);
     } finally {
-      this.throttleActive -= 1;
       const next = this.throttleQueue.shift();
+      // Transfer the reserved slot directly. Decrementing before waking a waiter
+      // lets newly-arriving work steal it and exceed the concurrency limit.
       if (next) next();
+      else this.throttleActive -= 1;
     }
   }
 
   private async loadItemTypes(): Promise<SchemaTypes.ItemType[]> {
     if (!this.itemTypesPromise) {
+      const generation = this.cacheGeneration;
       this.itemTypesPromise = (async () => {
-        const { data: itemTypes } = await this.client.itemTypes.rawList();
+        const { data: itemTypes } = await this.withThrottle(() =>
+          this.client.itemTypes.rawList(),
+        );
+        if (generation !== this.cacheGeneration) return this.loadItemTypes();
 
         // Populate the lookup maps
         for (const itemType of itemTypes) {
@@ -78,7 +144,10 @@ export class ProjectSchema {
         }
 
         return itemTypes;
-      })();
+      })().catch((error: unknown) => {
+        if (generation === this.cacheGeneration) this.itemTypesPromise = null;
+        throw error;
+      });
     }
 
     return this.itemTypesPromise;
@@ -86,8 +155,12 @@ export class ProjectSchema {
 
   private async loadPlugins(): Promise<SchemaTypes.Plugin[]> {
     if (!this.pluginsPromise) {
+      const generation = this.cacheGeneration;
       this.pluginsPromise = (async () => {
-        const { data: plugins } = await this.client.plugins.rawList();
+        const { data: plugins } = await this.withThrottle(() =>
+          this.client.plugins.rawList(),
+        );
+        if (generation !== this.cacheGeneration) return this.loadPlugins();
 
         // Populate the lookup maps
         for (const itemType of plugins) {
@@ -95,7 +168,10 @@ export class ProjectSchema {
         }
 
         return plugins;
-      })();
+      })().catch((error: unknown) => {
+        if (generation === this.cacheGeneration) this.pluginsPromise = null;
+        throw error;
+      });
     }
 
     return this.pluginsPromise;
@@ -167,49 +243,67 @@ export class ProjectSchema {
 
   async getItemTypeFieldsAndFieldsets(
     itemType: SchemaTypes.ItemType,
+    options: { shouldCancel?: () => boolean } = {},
   ): Promise<[SchemaTypes.Field[], SchemaTypes.Fieldset[]]> {
-    if (!itemType.attributes.modular_block) {
-      if (!this.fieldsetsByItemType.get(itemType.id)) {
-        let promise = this.fieldsetsPromisesByItemType.get(itemType.id);
-        if (!promise) {
-          promise = this.withThrottle(async () => {
-            const { data } = await this.client.fieldsets.rawList(itemType.id);
-            return data;
-          });
-          this.fieldsetsPromisesByItemType.set(itemType.id, promise);
-        }
-        const fieldsets = await promise;
-        this.fieldsetsByItemType.set(itemType.id, fieldsets);
-        this.fieldsetsPromisesByItemType.delete(itemType.id);
+    const generation = this.cacheGeneration;
+    const checkCancelled = () => {
+      if (options.shouldCancel?.()) throw new Error('Export cancelled');
+    };
+    checkCancelled();
+    // The fieldset endpoint includes block models too. Older code skipped them
+    // entirely, losing fieldsets (and their field relationships) in the export.
+    if (!this.fieldsetsByItemType.has(itemType.id)) {
+      let promise = this.fieldsetsPromisesByItemType.get(itemType.id);
+      if (!promise) {
+        promise = this.withThrottle(async () => {
+          const { data } = await this.client.fieldsets.rawList(itemType.id);
+          if (generation === this.cacheGeneration) {
+            this.fieldsetsByItemType.set(itemType.id, data);
+          }
+          return data;
+        }).finally(() => {
+          if (generation === this.cacheGeneration) {
+            this.fieldsetsPromisesByItemType.delete(itemType.id);
+          }
+        });
+        this.fieldsetsPromisesByItemType.set(itemType.id, promise);
       }
+      await promise;
+    }
+    checkCancelled();
+    if (generation !== this.cacheGeneration) {
+      return this.getItemTypeFieldsAndFieldsets(itemType, options);
     }
 
     // Check if we already have the fields cached
     const cachedFields = this.fieldsByItemType.get(itemType.id);
-    if (
-      cachedFields &&
-      (itemType.attributes.modular_block ||
-        this.alreadyFetchedRelatedFields.get(itemType.id))
-    ) {
+    if (cachedFields) {
       return [cachedFields, this.fieldsetsByItemType.get(itemType.id) || []];
     }
 
     let fields = this.fieldsByItemType.get(itemType.id);
-    if (!fields || !this.alreadyFetchedRelatedFields.get(itemType.id)) {
+    if (!fields) {
       let promise = this.fieldsPromisesByItemType.get(itemType.id);
       if (!promise) {
         promise = this.withThrottle(async () => {
           const { data } = await this.client.fields.rawList(itemType.id);
+          if (generation === this.cacheGeneration) {
+            this.fieldsByItemType.set(itemType.id, data);
+          }
           return data;
+        }).finally(() => {
+          if (generation === this.cacheGeneration) {
+            this.fieldsPromisesByItemType.delete(itemType.id);
+          }
         });
         this.fieldsPromisesByItemType.set(itemType.id, promise);
       }
       fields = await promise;
-      this.fieldsByItemType.set(itemType.id, fields);
-      this.alreadyFetchedRelatedFields.set(itemType.id, true);
-      this.fieldsPromisesByItemType.delete(itemType.id);
     }
-
+    checkCancelled();
+    if (generation !== this.cacheGeneration) {
+      return this.getItemTypeFieldsAndFieldsets(itemType, options);
+    }
     return [fields, this.fieldsetsByItemType.get(itemType.id) || []];
   }
 }

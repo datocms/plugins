@@ -3,6 +3,7 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { connect, type DropdownAction, type Field } from 'datocms-plugin-sdk';
 import get from 'lodash/get';
+import { observeFieldContext } from './services/fieldContext';
 import {
   type AltGenerationMode,
   hasGeneratableFieldValue,
@@ -48,6 +49,7 @@ connect({
   },
 
   fieldDropdownActions(field, ctx) {
+    observeFieldContext(ctx);
     if (!isMediaField(field)) {
       return [];
     }

@@ -43,12 +43,19 @@ function extractLocalizedAltText(
 ): string {
   const altTexts = asRecord(payload.alt_texts);
   if (altTexts) {
-    const exact = altTexts[locale];
-    if (typeof exact === 'string') {
-      return exact;
+    const normalizedLocale = locale.replace(/_/g, '-');
+    for (const candidate of [
+      locale,
+      normalizedLocale,
+      normalizedLocale.toLowerCase(),
+    ]) {
+      const exact = altTexts[candidate];
+      if (typeof exact === 'string') {
+        return exact;
+      }
     }
 
-    const language = locale.split('-')[0];
+    const language = normalizedLocale.toLowerCase().split('-')[0];
     const fallback = language ? altTexts[language] : undefined;
     if (typeof fallback === 'string') {
       return fallback;

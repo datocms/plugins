@@ -28,10 +28,13 @@
   },
   "scripts": {
     "build": "tsc -b && vite build",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --pool=threads --maxWorkers=1",
     "prepublishOnly": "npm run build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "biome check src",
+    "typecheck": "tsc -b",
+    "check": "npm run lint && npm run build && npm run test"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -41,7 +44,11 @@
     "globals": "^17.4.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "@biomejs/biome": "2.4.10",
+    "@testing-library/react": "16.3.2",
+    "@types/jsdom": "27.0.0",
+    "jsdom": "28.1.0"
   },
   "type": "module",
   "files": [

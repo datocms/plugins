@@ -120,14 +120,16 @@ describe('applyAddComment', () => {
 
   describe('comment data integrity', () => {
     it('preserves all comment properties', () => {
-      const newComment = createBaseComment({
-        id: 'full-comment',
-        dateISO: '2024-01-15T10:30:00.000Z',
-        content: [createTextSegment('Full content')],
+      const newComment = {
+        ...createBaseComment({
+          id: 'full-comment',
+          dateISO: '2024-01-15T10:30:00.000Z',
+          content: [createTextSegment('Full content')],
+          replies: [],
+        }),
         author: { name: 'Author Name', email: 'author@test.com' },
         usersWhoUpvoted: [{ name: 'Voter', email: 'voter@test.com' }],
-        replies: [],
-      });
+      };
       const op = createAddCommentOp(newComment);
 
       const result = applyOperation([], op);

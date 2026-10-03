@@ -1,6 +1,9 @@
+import { ApiError, TimeoutError } from '@datocms/cma-client-browser';
 import {
   categorizeGeneralError,
   categorizeSubscriptionError,
+  getCommentRetryInfo,
+  isQuotaOrBillingError,
   normalizeError,
 } from '@utils/errorCategorization';
 import { describe, expect, it } from 'vitest';
@@ -307,5 +310,116 @@ describe('normalizeError', () => {
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('error1,error2');
     });
+  });
+});
+
+describe('getCommentRetryInfo', () => {
+  function apiError(
+    status: number,
+    headers: Record<string, string> = {},
+    code?: string,
+  ) {
+    return new ApiError({
+      request: { method: 'PUT', url: 'https://example.test', headers: {} },
+      response: {
+        status,
+        statusText: 'Test failure',
+        headers,
+        body: {
+          data: code
+            ? [
+                {
+                  id: 'error',
+                  type: 'api_error',
+                  attributes: { code, details: {} },
+                },
+              ]
+            : [],
+        },
+      },
+    });
+  }
+
+  it('retries stale versions, server errors, rate limits and transport timeouts', () => {
+    expect(
+      getCommentRetryInfo(apiError(422, {}, 'STALE_ITEM_VERSION'))
+        .versionConflict,
+    ).toBe(true);
+    expect(getCommentRetryInfo(apiError(503)).retryable).toBe(true);
+    expect(getCommentRetryInfo(apiError(429)).retryable).toBe(true);
+    expect(
+      getCommentRetryInfo(new TypeError('Failed to fetch')).retryable,
+    ).toBe(true);
+    expect(
+      getCommentRetryInfo(
+        new TimeoutError({
+          request: { method: 'PUT', url: 'https://example.test', headers: {} },
+        }),
+      ).retryable,
+    ).toBe(true);
+  });
+
+  it('does not retry payment, plan or resource quota failures', () => {
+    for (const error of [
+      apiError(402),
+      apiError(422, {}, 'PLAN_UPGRADE_REQUIRED'),
+      apiError(429, {}, 'MONTHLY_USAGE_QUOTA_EXCEEDED'),
+      apiError(422, {}, 'MAX_ALLOWED_RECORDS_REACHED'),
+      apiError(422, {}, 'RESOURCE_LIMIT_REACHED'),
+      apiError(422, {}, 'STORAGE_LIMIT_EXCEEDED'),
+    ]) {
+      expect(isQuotaOrBillingError(error)).toBe(true);
+      expect(getCommentRetryInfo(error).retryable).toBe(false);
+    }
+  });
+
+  it('recognizes a plan rejection attached to an invalid field', () => {
+    const error = apiError(422, {}, 'INVALID_FIELD');
+    const fieldError = error.errors[0];
+    if (!fieldError) throw new Error('Missing field error');
+    fieldError.attributes.details.code = 'INVALID_FOR_CURRENT_PLAN';
+    expect(isQuotaOrBillingError(error)).toBe(true);
+    expect(getCommentRetryInfo(error).retryable).toBe(false);
+  });
+
+  it('keeps ordinary rate limits retryable and respects Retry-After', () => {
+    const error = apiError(429, { 'Retry-After': '3' }, 'RATE_LIMIT_EXCEEDED');
+    expect(isQuotaOrBillingError(error)).toBe(false);
+    expect(getCommentRetryInfo(error)).toMatchObject({
+      retryable: true, minimumDelayMs: 3000,
+    });
+    expect(isQuotaOrBillingError(apiError(422, {}, 'TECHNICAL_LIMIT_REACHED'))).toBe(false);
+    expect(isQuotaOrBillingError(apiError(422, {}, 'KEEP_URL_STORAGE_NOT_SUPPORTED'))).toBe(false);
+  });
+
+  it('does not retry malformed storage, permissions or ordinary application errors', () => {
+    for (const error of [
+      apiError(403),
+      apiError(422),
+      new Error('Malformed comments'),
+      new TypeError('Cannot read properties'),
+    ]) {
+      expect(getCommentRetryInfo(error).retryable).toBe(false);
+    }
+  });
+
+  it('respects numeric Retry-After, HTTP dates and rate-limit reset durations', () => {
+    expect(
+      getCommentRetryInfo(apiError(429, { 'Retry-After': '3' })).minimumDelayMs,
+    ).toBe(3000);
+    expect(
+      getCommentRetryInfo(
+        apiError(429, { 'Retry-After': 'Thu, 01 Jan 1970 00:00:05 GMT' }),
+        1000,
+      ).minimumDelayMs,
+    ).toBe(4000);
+    expect(
+      getCommentRetryInfo(apiError(429, { 'X-RateLimit-Reset': '4' }))
+        .minimumDelayMs,
+    ).toBe(4000);
+    expect(
+      getCommentRetryInfo(apiError(429, { 'Retry-After': 'invalid' }))
+        .minimumDelayMs,
+    ).toBe(0);
   });
 });

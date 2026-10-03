@@ -18,7 +18,7 @@ type ListQuery = {
   page: { offset: number; limit: number };
 };
 type DiscoveryQuery = {
-  filter: { type: string };
+  filter: { type: string; fields: { _created_at: { lte: string } } };
   version: string;
   order_by?: string;
   page: { offset: number; limit: number };
@@ -152,7 +152,34 @@ describe('loadRecordBatches', () => {
 });
 
 describe('collectRecordIds', () => {
-  it('discovers 2882 records in six non-nested pages with known progress', async () => {
+  it('discovers a synthetic 200,000-record model with at most one page of content in flight', async () => {
+    let calls = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const rawList = async (query: DiscoveryQuery) => {
+      calls++;
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      expect(query.page.limit).toBeLessThanOrEqual(500);
+      const count = Math.min(query.page.limit, 200_000 - query.page.offset);
+      const data = Array.from({ length: Math.max(0, count) }, (_, index) => ({
+        id: `record-${query.page.offset + index}`,
+      }));
+      await Promise.resolve();
+      active--;
+      return { data, meta: { total_count: 200_000 } };
+    };
+    const ids = await collectRecordIds(createClient({ rawList }), [
+      'large-model',
+    ]);
+    expect(ids).toHaveLength(200_000);
+    expect(ids[0]).toBe('record-0');
+    expect(ids.at(-1)).toBe('record-199999');
+    expect(calls).toBe(401);
+    expect(maximumActive).toBe(1);
+  });
+
+  it('discovers 2882 records in adaptive non-nested pages with known progress', async () => {
     const ids = createIds(2882);
     const rawList = vi.fn(async (query: DiscoveryQuery) => ({
       data: ids
@@ -166,20 +193,115 @@ describe('collectRecordIds', () => {
     });
 
     expect(result).toEqual(ids);
-    expect(rawList).toHaveBeenCalledTimes(6);
+    expect(rawList).toHaveBeenCalledTimes(7);
     for (const [query] of rawList.mock.calls) {
-      expect(query.page.limit).toBe(500);
+      expect(query.page.limit).toBeLessThanOrEqual(500);
       expect(query.order_by).toBe('id_ASC');
       expect(query.version).toBe('current');
       expect(query).not.toHaveProperty('nested', true);
       expect(query).not.toHaveProperty('only_fields');
+      expect(query.filter.fields._created_at.lte).toBe(
+        rawList.mock.calls[0][0].filter.fields._created_at.lte,
+      );
+      expect(
+        Number.isNaN(Date.parse(query.filter.fields._created_at.lte)),
+      ).toBe(false);
     }
     expect(progress.at(-1)).toEqual({
       loaded: 2882,
       total: 2882,
       modelId: 'm1',
     });
-    expect(progress[1]).toEqual({ loaded: 500, total: 2882, modelId: 'm1' });
+    expect(progress[1]).toEqual({ loaded: 30, total: 2882, modelId: 'm1' });
+  });
+
+  it('automatically reconciles offset shifts after a deletion without retaining deleted IDs', async () => {
+    const ids = createIds(1001);
+    let calls = 0;
+    const rawList = vi.fn(async (query: DiscoveryQuery) => {
+      calls++;
+      if (calls === 2) ids.shift();
+      return {
+        data: ids
+          .slice(query.page.offset, query.page.offset + query.page.limit)
+          .map((id) => ({ id })),
+        meta: { total_count: ids.length },
+      };
+    });
+    const result = await collectRecordIds(createClient({ rawList }), ['m1']);
+    expect(result).toEqual(ids);
+    expect(rawList).toHaveBeenCalledTimes(6);
+    expect(rawList.mock.calls.map(([query]) => query.page.offset)).toEqual([
+      0, 30, 530, 0, 30, 530,
+    ]);
+  });
+
+  it('shrinks discovery pages for content-heavy localized records', async () => {
+    const text = 'X'.repeat(150_000);
+    const rawList = vi.fn(async (query: DiscoveryQuery) => ({
+      data: Array.from(
+        { length: Math.min(query.page.limit, 75 - query.page.offset) },
+        (_, index) => ({
+          id: `r${query.page.offset + index}`,
+          attributes: { title: { en: text } },
+        }),
+      ),
+      meta: { total_count: 75 },
+    }));
+    await expect(
+      collectRecordIds(createClient({ rawList }), ['m1']),
+    ).resolves.toHaveLength(75);
+    expect(rawList.mock.calls[0][0].page.limit).toBe(30);
+    for (const [query] of rawList.mock.calls.slice(1)) {
+      expect(query.page.limit).toBeLessThanOrEqual(13);
+    }
+  });
+
+  it('does not skip a model that changed after its initial count', async () => {
+    const rawList = vi.fn(async (query: DiscoveryQuery) => ({
+      data:
+        query.page.limit === 1 ? [] : [{ id: `record-${query.filter.type}` }],
+      meta: { total_count: query.page.limit === 1 ? 0 : 1 },
+    }));
+    await expect(
+      collectRecordIds(createClient({ rawList }), ['m1', 'm2']),
+    ).resolves.toEqual(['record-m1', 'record-m2']);
+    expect(rawList).toHaveBeenCalledTimes(6);
+  });
+
+  it('does not silently omit records when an endpoint returns short pages', async () => {
+    const rawList = vi.fn(async (query: DiscoveryQuery) => ({
+      data: [{ id: `record-${query.page.offset}` }],
+      meta: { total_count: 4 },
+    }));
+    await expect(
+      collectRecordIds(createClient({ rawList }), ['m1']),
+    ).resolves.toEqual(['record-0', 'record-1', 'record-2', 'record-3']);
+    expect(rawList.mock.calls.map(([query]) => query.page.offset)).toEqual([
+      0, 1, 2, 3,
+    ]);
+  });
+
+  it('fails clearly after bounded automatic reconciliation for an inconsistent listing', async () => {
+    const rawList = vi.fn(async (query: DiscoveryQuery) => ({
+      data: query.page.offset === 0 ? [{ id: 'r1' }] : [],
+      meta: { total_count: 2 },
+    }));
+    await expect(
+      collectRecordIds(createClient({ rawList }), ['m1']),
+    ).rejects.toThrow('No translation was started');
+    expect(rawList).toHaveBeenCalledTimes(6);
+  });
+
+  it('rejects invalid total counts instead of making an unbounded page loop', async () => {
+    const rawList = vi.fn().mockResolvedValue({
+      data: [{ id: 'r1' }],
+      meta: { total_count: Number.NaN },
+    });
+    await expect(
+      collectRecordIds(createClient({ rawList }), ['m1']),
+    ).rejects.toThrow('Invalid record count');
+    expect(rawList).toHaveBeenCalledTimes(1);
   });
 
   it('counts all models before draining pages and reports the combined total', async () => {

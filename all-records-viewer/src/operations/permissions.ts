@@ -123,25 +123,63 @@ function itemRules(
   return rawRules as unknown as readonly ItemPermissionRule[];
 }
 
-function matchingRules(args: {
+type RuleCache = WeakMap<
+  ModelSummary,
+  Map<string, readonly ItemPermissionRule[]>
+>;
+const ruleCaches = new WeakMap<PermissionContext, RuleCache>();
+
+function scopedRules(args: {
+  model: ModelSummary;
+  permissions: PermissionContext;
+  action: PermissionAction;
+  destinationStageId?: string;
+  positive: boolean;
+}): readonly ItemPermissionRule[] {
+  let cache = ruleCaches.get(args.permissions);
+  if (!cache) {
+    cache = new WeakMap();
+    ruleCaches.set(args.permissions, cache);
+  }
+  let modelRules = cache.get(args.model);
+  if (!modelRules) {
+    modelRules = new Map();
+    cache.set(args.model, modelRules);
+  }
+  const key = `${args.action}:${args.destinationStageId ?? ''}:${args.positive}`;
+  const cached = modelRules.get(key);
+  if (cached) return cached;
+  const rules = itemRules(args.permissions, args.positive).filter(
+    (rule) =>
+      rule.environment === args.permissions.environment &&
+      matchesAction(rule, args.action) &&
+      matchesModel(rule, args.model) &&
+      matchesDestination(rule, args.action, args.destinationStageId),
+  );
+  modelRules.set(key, rules);
+  return rules;
+}
+
+function hasMatchingRule(args: {
   item: RawItem;
   model: ModelSummary;
   permissions: PermissionContext;
   action: PermissionAction;
   destinationStageId?: string;
   positive: boolean;
-}): Match[] {
-  const { item, model, permissions, action, destinationStageId, positive } =
-    args;
-  const creator = itemCreator(item);
-
-  return itemRules(permissions, positive)
-    .filter((rule) => rule.environment === permissions.environment)
-    .filter((rule) => matchesAction(rule, action))
-    .filter((rule) => matchesModel(rule, model))
-    .filter((rule) => matchesStage(rule, item))
-    .filter((rule) => matchesDestination(rule, action, destinationStageId))
-    .map((rule) => matchesCreator(rule, creator, permissions, positive));
+}): boolean {
+  const creator = itemCreator(args.item);
+  for (const rule of scopedRules(args)) {
+    if (!matchesStage(rule, args.item)) continue;
+    const match = matchesCreator(
+      rule,
+      creator,
+      args.permissions,
+      args.positive,
+    );
+    if (args.positive ? match !== 'no' : match === 'yes') return true;
+  }
+  return false;
 }
 
 export function isPotentiallyEligible(args: {
@@ -151,13 +189,8 @@ export function isPotentiallyEligible(args: {
   action: PermissionAction;
   destinationStageId?: string;
 }): boolean {
-  const positiveMatches = matchingRules({ ...args, positive: true });
-
-  if (!positiveMatches.some((match) => match !== 'no')) {
-    return false;
-  }
-
-  const negativeMatches = matchingRules({ ...args, positive: false });
-
-  return !negativeMatches.some((match) => match === 'yes');
+  return (
+    hasMatchingRule({ ...args, positive: true }) &&
+    !hasMatchingRule({ ...args, positive: false })
+  );
 }

@@ -41,7 +41,7 @@
  * a natural consequence of DatoCMS's recursive content structure.
  */
 
-import { buildClient } from '@datocms/cma-client-browser';
+import { buildDatoCMSClient } from '../clients';
 import type { ExecuteFieldDropdownActionCtx } from 'datocms-plugin-sdk';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { modularContentVariations } from '../../entrypoints/Config/configConstants';
@@ -52,6 +52,8 @@ import {
   getBlockFieldsFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
+import { checkCancellation } from './Cancellation';
+import { cloneContent } from './ContentIntegrity';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import { translateFileFieldValue } from './FileFieldTranslation';
 import { handleTranslationError } from './ProviderErrors';
@@ -62,6 +64,7 @@ import {
   getExactSourceValue,
   isFieldExcluded,
   isFieldTranslatable,
+  isReferenceField,
   normalizeTranslatedSlug,
   prepareFieldTypePrompt,
 } from './SharedFieldUtils';
@@ -87,6 +90,7 @@ interface BlockRelationships {
 interface BlockWithItem {
   item?: {
     attributes?: Record<string, unknown>;
+    item_type?: { id?: string };
     relationships?: BlockRelationships;
   };
   relationships?: BlockRelationships;
@@ -99,6 +103,7 @@ type DatoCMSBlock = Record<string, unknown> & {
   itemTypeId?: string;
   blockModelId?: string;
   attributes?: Record<string, unknown>;
+  item_type?: { id?: string };
 } & BlockWithItem;
 
 /**
@@ -115,6 +120,7 @@ function hasNestedItem(
     typeof block.item === 'object' &&
     block.item !== null &&
     'attributes' in block.item &&
+    block.item.attributes !== null &&
     typeof block.item.attributes === 'object'
   );
 }
@@ -130,6 +136,9 @@ function extractBlockModelId(block: DatoCMSBlock): string | undefined {
   if (block.itemTypeId) return String(block.itemTypeId);
   if (block.blockModelId) return String(block.blockModelId);
 
+  const simplifiedModelId = block.item_type?.id ?? block.item?.item_type?.id;
+  if (simplifiedModelId) return simplifiedModelId;
+
   // From relationships
   const relationshipId = block.relationships?.item_type?.data?.id;
   if (relationshipId) return relationshipId;
@@ -142,56 +151,13 @@ function extractBlockModelId(block: DatoCMSBlock): string | undefined {
 }
 
 /**
- * Represents a cancelled operation during concurrent execution.
- * Used internally by runWithConcurrency to signal early termination.
- */
-class CancellationError extends Error {
-  constructor() {
-    super('Operation cancelled');
-    this.name = 'CancellationError';
-  }
-}
-
-/**
- * Result wrapper for concurrent task execution.
- * Tracks both the result and whether the task completed successfully.
- */
-interface ConcurrencyResult<T> {
-  index: number;
-  result?: T;
-  completed: boolean;
-}
-
-/**
  * Internal options used to fine-tune translation behavior for special cases.
  */
 interface TranslateFieldValueOptions {
   bypassFieldTypeAllowlist?: boolean;
   fieldApiKey?: string;
   cmaBaseUrl?: string;
-}
-
-/**
- * Creates a deep clone of a JSON-like value while preserving nested identifiers.
- *
- * @param value - The value to clone.
- * @returns A deep clone of the provided value.
- */
-function deepCloneValue<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((entry) => deepCloneValue(entry)) as T;
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        deepCloneValue(entry),
-      ]),
-    ) as T;
-  }
-
-  return value;
+  contentAlreadyCloned?: boolean;
 }
 
 /**
@@ -200,8 +166,8 @@ function deepCloneValue<T>(value: T): T {
  * @param block - The block payload to sanitize.
  * @returns A cloned block with wrapper identifiers removed.
  */
-function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
-  const clonedBlock = deepCloneValue(block);
+function stripBlockWrapperIdentifiers(block: DatoCMSBlock, contentAlreadyCloned = false): DatoCMSBlock {
+  const clonedBlock = contentAlreadyCloned ? block : cloneContent(block);
   const wrapper = clonedBlock as Record<string, unknown>;
 
   delete wrapper.id;
@@ -213,73 +179,6 @@ function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
   }
 
   return clonedBlock;
-}
-
-/**
- * Executes an array of async tasks with a maximum concurrency limit.
- * Uses a worker-pool pattern where workers pull tasks from a shared queue.
- *
- * @param tasks - Array of async task functions to execute.
- * @param maxConcurrency - Maximum number of concurrent tasks.
- * @param checkCancellation - Optional function that throws if cancelled.
- * @returns Array of results in the same order as input tasks.
- *          Incomplete tasks (due to cancellation) will have undefined results.
- */
-async function runWithConcurrency<T>(
-  tasks: Array<() => Promise<T>>,
-  maxConcurrency: number,
-  checkCancellation?: () => void,
-): Promise<ConcurrencyResult<T>[]> {
-  const results: ConcurrencyResult<T>[] = tasks.map((_, index) => ({
-    index,
-    completed: false,
-  }));
-
-  let nextIndex = 0;
-  let cancelled = false;
-
-  /**
-   * Processes a single task and recursively continues to the next one.
-   * Recursive approach avoids await-in-loop lint errors while preserving
-   * the sequential-within-one-worker execution model.
-   */
-  async function processNextTask(): Promise<void> {
-    if (cancelled || nextIndex >= tasks.length) return;
-
-    const index = nextIndex++;
-
-    try {
-      checkCancellation?.();
-    } catch {
-      cancelled = true;
-      return;
-    }
-
-    try {
-      const result = await tasks[index]();
-      results[index] = { index, result, completed: true };
-    } catch (error) {
-      if (error instanceof CancellationError) {
-        cancelled = true;
-        return;
-      }
-      throw error;
-    }
-
-    return processNextTask();
-  }
-
-  // Each worker is an independent call to processNextTask
-  const worker = () => processNextTask();
-
-  // Start workers up to maxConcurrency or task count, whichever is smaller
-  const workerCount = Math.min(maxConcurrency, tasks.length);
-  const workers = Array(workerCount)
-    .fill(null)
-    .map(() => worker());
-
-  await Promise.all(workers);
-  return results;
 }
 
 // Re-export StreamCallbacks for backwards compatibility
@@ -325,6 +224,7 @@ export async function translateFieldValue(
   schemaRepository?: SchemaRepository,
   options: TranslateFieldValueOptions = {},
 ): Promise<unknown> {
+  checkCancellation(streamCallbacks ?? {});
   const logger = createLogger(pluginParams, 'translateFieldValue');
 
   logger.info(`Translating field of type: ${fieldType}`, {
@@ -382,6 +282,9 @@ export async function translateFieldValue(
     return fieldValue;
   }
 
+  // Record references are identities shared across locales, never prose.
+  if (fieldType === 'link' || fieldType === 'links') return fieldValue;
+
   let translatedValue: unknown;
 
   switch (fieldType) {
@@ -410,9 +313,11 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository,
         options.cmaBaseUrl,
+        options.contentAlreadyCloned,
       );
       break;
     case 'rich_text':
+    case 'single_block':
     case 'framed_single_block':
     case 'frameless_single_block':
       translatedValue = await translateBlockValue(
@@ -428,6 +333,7 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository,
         options.cmaBaseUrl,
+        options.contentAlreadyCloned,
       );
       break;
     case 'file':
@@ -459,6 +365,7 @@ export async function translateFieldValue(
       break;
   }
 
+  checkCancellation(streamCallbacks ?? {});
   if (fieldType === 'slug') {
     const normalizedSlug = normalizeTranslatedSlug(translatedValue);
     if (!normalizedSlug) {
@@ -492,12 +399,6 @@ export async function translateFieldValue(
  * SMELL-004: Prevents unbounded cache growth.
  */
 const BLOCK_FIELDS_CACHE_MAX_SIZE = 100;
-
-/**
- * Maximum number of block fields to translate in parallel.
- * Conservative value to avoid rate limits within a single block.
- */
-const BLOCK_FIELD_CONCURRENCY = 3;
 
 /**
  * Module-level cache for block field metadata.
@@ -565,17 +466,15 @@ export async function fetchBlockFields(
 
   // Fall back to manual cache for backwards compatibility
   // Check if we already have a pending or completed request for this block model
-  const cacheKey = `${cmaBaseUrl ?? ''}:${environment}:${blockModelId}`;
+  // Credentials can target distinct projects with identical environment/model IDs.
+  // The key stays private and is never included in debug output.
+  const cacheKey = JSON.stringify([apiToken, cmaBaseUrl, environment, blockModelId]);
   const cached = blockFieldsCache.get(cacheKey);
   if (cached) return cached;
 
   // Create the fetch Promise and cache it immediately to prevent race conditions
   const fetchPromise = (async () => {
-    const client = buildClient({
-      apiToken,
-      environment,
-      baseUrl: cmaBaseUrl,
-    });
+    const client = buildDatoCMSClient(apiToken, environment, cmaBaseUrl);
     const fields = await client.fields.list(blockModelId);
     return fields.reduce(
       (acc, field) => {
@@ -584,6 +483,7 @@ export async function fetchBlockFields(
           id: field.id,
           localized: field.localized,
           validators: field.validators,
+          field_type: field.field_type,
         };
         return acc;
       },
@@ -598,7 +498,9 @@ export async function fetchBlockFields(
     return await fetchPromise;
   } catch (error) {
     // On error, remove from cache so subsequent requests can retry
-    blockFieldsCache.delete(cacheKey);
+    if (blockFieldsCache.get(cacheKey) === fetchPromise) {
+      blockFieldsCache.delete(cacheKey);
+    }
     throw error;
   }
 }
@@ -634,6 +536,11 @@ const BLOCK_METADATA_FIELDS = [
   'children',
   'relationships',
   'attributes',
+  'item_type',
+  'meta',
+  'id',
+  'itemId',
+  'key',
 ] as const;
 
 /**
@@ -705,19 +612,12 @@ async function translateFramelessSingleBlockValue(
     ctx.cmaBaseUrl,
   );
 
-  const cleanedValue = deepCloneValue(fieldValue) as Record<string, unknown>;
+  // This nested value already belongs to the outer field's private clone.
+  const cleanedValue = fieldValue as Record<string, unknown>;
   delete cleanedValue.id;
   delete cleanedValue.itemId;
   await processBlockFields(cleanedValue, nestedFieldTypes, ctx);
   return cleanedValue;
-}
-
-/**
- * Represents a translated field result.
- */
-interface TranslatedFieldResult {
-  field: string;
-  value: unknown;
 }
 
 /**
@@ -773,7 +673,9 @@ function resolveFieldValueForTranslation(
   const targetLocaleKey = resolveLocaleKey(localizedContainer, toLocale);
 
   return {
-    valueToTranslate: sourceValue,
+    // Nested translators mutate their private working tree. The source locale
+    // inside this copied block must remain independent of its translated target.
+    valueToTranslate: cloneContent(sourceValue),
     localizedContainer,
     targetLocaleKey,
     skip: false,
@@ -789,13 +691,22 @@ function resolveFieldValueForTranslation(
  * @param ctx - Processing context with translation configuration.
  * @returns The translated value.
  */
+function resolveBlockFieldEditor(meta: BlockFieldMeta | undefined): string {
+  const editor = meta?.editor || 'text';
+  // Preserve editor variations, while structural types with custom editors
+  // still need their corresponding translator rather than a string prompt.
+  if (meta?.field_type === 'single_block' && editor.includes('single_block')) return editor;
+  if (meta?.field_type && ['single_block', 'rich_text', 'structured_text', 'file', 'gallery', 'seo', 'link', 'links'].includes(meta.field_type)) return meta.field_type;
+  return editor;
+}
+
 async function translateBlockFieldValue(
   field: string,
   fieldMeta: BlockFieldMeta | undefined,
   valueToTranslate: unknown,
   ctx: BlockFieldProcessingContext,
 ): Promise<unknown> {
-  const fieldEditor = fieldMeta?.editor || 'text';
+  const fieldEditor = resolveBlockFieldEditor(fieldMeta);
 
   if (fieldEditor === 'frameless_single_block') {
     return translateFramelessSingleBlockValue(valueToTranslate, fieldMeta, ctx);
@@ -819,22 +730,34 @@ async function translateBlockFieldValue(
     ctx.streamCallbacks,
     ctx.recordContext,
     ctx.schemaRepository,
-    { fieldApiKey: field, cmaBaseUrl: ctx.cmaBaseUrl },
+    { fieldApiKey: field, cmaBaseUrl: ctx.cmaBaseUrl, contentAlreadyCloned: true },
   );
 }
 
 /**
- * Processes fields within a block's source object using parallel execution.
- *
- * Translates multiple fields concurrently (up to BLOCK_FIELD_CONCURRENCY) to improve
- * performance while respecting rate limits. Supports cancellation and applies
- * partial results if translation is interrupted.
+ * Processes fields on a private block clone sequentially.
+ * Outer record/field scheduling controls concurrency; cancellation rejects the
+ * whole field so partially translated content is never written as success.
  *
  * @param source - The source object containing fields to translate.
  * @param fieldTypeDictionary - Dictionary mapping field API keys to their editor type and ID.
  * @param ctx - Processing context containing all translation configuration.
  * @returns Resolves when all fields in the block have been translated.
  */
+function skipBlockField(meta: BlockFieldMeta | undefined, field: string, params: ctxParamsType): boolean {
+  if (!meta) return true;
+  if (isReferenceField(meta.validators)) return true;
+  if (meta.field_type === 'link' || meta.field_type === 'links') return true;
+  return isFieldExcluded(params.apiKeysToBeExcludedFromThisPlugin, [meta.id, field]);
+}
+
+function getBlockSourceObject(block: DatoCMSBlock): Record<string, unknown> {
+  if (block.attributes) return block.attributes;
+  if (hasNestedItem(block)) return block.item.attributes;
+  if (block.item && typeof block.item === 'object') return block.item as Record<string, unknown>;
+  return block;
+}
+
 async function processBlockFields(
   source: Record<string, unknown>,
   fieldTypeDictionary: Record<string, BlockFieldMeta>,
@@ -866,14 +789,16 @@ async function processBlockFields(
     return;
   }
 
-  // Create translation tasks for each field
-  const tasks = translatableFields.map(
-    (field) => async (): Promise<TranslatedFieldResult> => {
+  // The record/field scheduler already bounds parallelism. A pool at each
+  // nested block level multiplies in-flight work exponentially with depth.
+  for (const field of translatableFields) {
+      checkCancellation(ctx.streamCallbacks ?? {});
       ctx.streamCallbacks?.onStream?.(`Translating block field: ${field}...`);
 
       const fieldMeta = fieldTypeDictionary[field];
+      if (skipBlockField(fieldMeta, field, ctx.pluginParams)) continue;
       const isLocalizedField = fieldMeta?.localized === true;
-      const fieldEditor = fieldMeta?.editor || 'text';
+      const fieldEditor = resolveBlockFieldEditor(fieldMeta);
 
       ctx.logger.info('Block field source payload', {
         fieldKey: field,
@@ -903,7 +828,7 @@ async function processBlockFields(
           toLocale: ctx.toLocale,
           value: source[field],
         });
-        return { field, value: source[field] };
+        continue;
       }
 
       ctx.logger.info('Block field translation input', {
@@ -916,6 +841,7 @@ async function processBlockFields(
         value: resolved.valueToTranslate,
       });
 
+      // biome-ignore lint/performance/noAwaitInLoops: the outer scheduler owns concurrency; nested pools multiply with depth.
       const translatedValue = await translateBlockFieldValue(
         field,
         fieldMeta,
@@ -936,7 +862,9 @@ async function processBlockFields(
           translatedValue,
           writtenValue: resolved.localizedContainer,
         });
-        return { field, value: resolved.localizedContainer };
+        checkCancellation(ctx.streamCallbacks ?? {});
+        source[field] = resolved.localizedContainer;
+        continue;
       }
 
       ctx.logger.info('Block field translated payload', {
@@ -950,31 +878,11 @@ async function processBlockFields(
         writtenValue: translatedValue,
       });
 
-      return { field, value: translatedValue };
-    },
-  );
-
-  // Execute tasks with concurrency limit, checking for cancellation between tasks
-  const results = await runWithConcurrency(
-    tasks,
-    BLOCK_FIELD_CONCURRENCY,
-    ctx.streamCallbacks?.checkCancellation,
-  );
-
-  // Apply completed results to source object
-  for (const result of results) {
-    if (result.completed && result.result) {
-      source[result.result.field] = result.result.value;
-    }
+      checkCancellation(ctx.streamCallbacks ?? {});
+      source[field] = translatedValue;
   }
 
-  // Log if cancelled mid-way
-  const completedCount = results.filter((r) => r.completed).length;
-  if (completedCount < translatableFields.length) {
-    ctx.logger.info(
-      `Translation cancelled: ${completedCount}/${translatableFields.length} fields translated`,
-    );
-  }
+
 }
 
 /**
@@ -1010,6 +918,7 @@ async function translateBlockValue(
   recordContext = '',
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
+  contentAlreadyCloned = false,
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
   logger.info('Translating block value', {
@@ -1020,12 +929,16 @@ async function translateBlockValue(
   });
 
   const isSingleBlock =
+    fieldType === 'single_block' ||
     fieldType === 'framed_single_block' ||
     fieldType === 'frameless_single_block';
   const rawBlocks = (
     isSingleBlock ? [fieldValue] : fieldValue
   ) as Array<DatoCMSBlock>;
-  const cleanedFieldValue = rawBlocks.map(stripBlockWrapperIdentifiers);
+  if (!Array.isArray(rawBlocks) || rawBlocks.some((block) => !block || typeof block !== 'object')) {
+    throw new Error('Invalid block content: expected block objects');
+  }
+  const cleanedFieldValue = rawBlocks.map((block) => stripBlockWrapperIdentifiers(block, contentAlreadyCloned));
   logger.info('Block payload before processing', {
     fieldType,
     fromLocale,
@@ -1095,6 +1008,7 @@ async function translateBlockValue(
    * Extracted to avoid await-in-loop lint errors.
    */
   async function processBlock(block: DatoCMSBlock): Promise<void> {
+    checkCancellation(streamCallbacks ?? {});
     const blockModelId = extractBlockModelId(block);
     if (!blockModelId) {
       logger.warning('Block model ID not found', block);
@@ -1113,11 +1027,7 @@ async function translateBlockValue(
       cmaBaseUrl,
     );
 
-    const sourceObject = block.attributes
-      ? block.attributes
-      : hasNestedItem(block)
-        ? block.item.attributes
-        : (block as Record<string, unknown>);
+    const sourceObject = getBlockSourceObject(block);
 
     let effectiveFieldTypes = fieldTypeDictionary;
     const framelessFields = Object.entries(fieldTypeDictionary).filter(
@@ -1127,8 +1037,9 @@ async function translateBlockValue(
     if (framelessFields.length > 0) {
       const merged: Record<string, BlockFieldMeta> = { ...fieldTypeDictionary };
 
-      await framelessFields.reduce(async (chain, [fieldKey, meta]) => {
-        await chain;
+      for (const [fieldKey, meta] of framelessFields) {
+        checkCancellation(streamCallbacks ?? {});
+        // biome-ignore lint/performance/noAwaitInLoops: bound CMA schema requests for deeply nested models.
         await mergeFramelessBlockFields(
           fieldKey,
           meta,
@@ -1136,7 +1047,7 @@ async function translateBlockValue(
           blockModelId,
           merged,
         );
-      }, Promise.resolve());
+      }
 
       effectiveFieldTypes = merged;
     }
@@ -1153,11 +1064,12 @@ async function translateBlockValue(
     });
   }
 
-  // Process blocks sequentially using reduce to avoid await-in-loop
-  await cleanedFieldValue.reduce(
-    (chain, block) => chain.then(() => processBlock(block)),
-    Promise.resolve(),
-  );
+  // One loop keeps promise/closure allocation bounded for large block arrays.
+  for (const block of cleanedFieldValue) {
+    // biome-ignore lint/performance/noAwaitInLoops: bound block traversal and provider work independently of document width.
+    await processBlock(block);
+  }
+  checkCancellation(streamCallbacks ?? {});
 
   const translatedBlockValue = isSingleBlock
     ? cleanedFieldValue[0]
@@ -1349,6 +1261,7 @@ async function TranslateField(
 
 /** Field name keywords that suggest a field carries meaningful context for translation. */
 const CONTEXT_FIELD_KEYWORDS = ['title', 'name', 'content', 'description'];
+const RECORD_CONTEXT_MAX_CHARACTERS = 2000;
 
 /**
  * Checks whether a field key is likely to provide useful context for translation.
@@ -1374,8 +1287,7 @@ function extractLocaleString(
   sourceLocale: string,
 ): string | null {
   if (typeof val !== 'object' || val === null) return null;
-  const localized = val as Record<string, unknown>;
-  const localeValue = localized[sourceLocale];
+  const localeValue = getExactSourceValue(val as Record<string, unknown>, sourceLocale);
   if (typeof localeValue !== 'string') return null;
   if (!localeValue || localeValue.length >= 300) return null;
   return localeValue;
@@ -1405,8 +1317,12 @@ export function generateRecordContext(
     if (!isContextField(key)) continue;
     const value = extractLocaleString(formValues[key], sourceLocale);
     if (value) {
-      contextStr += `${key}: ${value}. `;
+      const entry = `${key}: ${value}. `;
+      const remaining = RECORD_CONTEXT_MAX_CHARACTERS - contextStr.length;
+      if (remaining <= 0) break;
+      contextStr += entry.slice(0, remaining);
       hasAddedContext = true;
+      if (entry.length >= remaining) break;
     }
   }
 

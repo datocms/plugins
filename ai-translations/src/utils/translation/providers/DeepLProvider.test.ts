@@ -15,7 +15,6 @@ describe('DeepLProvider', () => {
   let provider: DeepLProvider;
 
   beforeEach(() => {
-    vi.useFakeTimers();
     mockFetch.mockReset();
 
     provider = new DeepLProvider({
@@ -59,16 +58,21 @@ describe('DeepLProvider', () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              translations: Array.from({ length: 45 }, () => ({ text: 'Hallo' })),
+              translations: Array.from({ length: 45 }, () => ({
+                text: 'Hallo',
+              })),
             }),
         };
       });
 
       await expect(
-        provider.translateArray(Array.from({ length: 46 }, () => 'Hello'), {
-          targetLang: 'DE',
-          abortSignal: controller.signal,
-        }),
+        provider.translateArray(
+          Array.from({ length: 46 }, () => 'Hello'),
+          {
+            targetLang: 'DE',
+            abortSignal: controller.signal,
+          },
+        ),
       ).rejects.toMatchObject({ name: 'AbortError' });
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
@@ -332,14 +336,14 @@ describe('DeepLProvider', () => {
 
     it('should handle batch splitting for large arrays', async () => {
       const largeArray = Array(100).fill('Hello');
-      const mockResponse = {
-        translations: Array(45).fill({ text: 'Hallo' }),
-      };
-
-      mockFetch.mockResolvedValue({
+      mockFetch.mockImplementation((_url, init) => ({
         ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
+        json: async () => ({
+          translations: JSON.parse(init.body).text.map(() => ({
+            text: 'Hallo',
+          })),
+        }),
+      }));
 
       await provider.translateArray(largeArray, { targetLang: 'DE' });
 
@@ -460,13 +464,13 @@ describe('DeepLProvider', () => {
             }),
         });
 
-        const result = await provider.translateArray(['Hello', 'World'], {
-          targetLang: 'DE',
-        });
+        await expect(
+          provider.translateArray(['Hello', 'World'], {
+            targetLang: 'DE',
+          }),
+        ).rejects.toThrow(/incomplete or invalid/);
 
         // Second item should fallback to original
-        expect(result[0]).toBe('Hallo');
-        expect(result[1]).toBe('World');
       });
 
       it('should handle JSON parse errors in error response', async () => {
@@ -490,12 +494,13 @@ describe('DeepLProvider', () => {
           json: () => Promise.resolve({}),
         });
 
-        const result = await provider.translateArray(['Hello'], {
-          targetLang: 'DE',
-        });
+        await expect(
+          provider.translateArray(['Hello'], {
+            targetLang: 'DE',
+          }),
+        ).rejects.toThrow(/incomplete or invalid/);
 
         // Should fallback to original
-        expect(result).toEqual(['Hello']);
       });
 
       it('should convert null text to empty string', async () => {
@@ -507,16 +512,80 @@ describe('DeepLProvider', () => {
             }),
         });
 
-        const result = await provider.translateArray(['Hello'], {
-          targetLang: 'DE',
-        });
-
-        expect(result[0]).toBe('');
+        await expect(
+          provider.translateArray(['Hello'], {
+            targetLang: 'DE',
+          }),
+        ).rejects.toThrow(/incomplete or invalid/);
       });
     });
   });
 
   describe('completeText', () => {
+    it('retries the rejected native chunk without paying for earlier chunks again', async () => {
+      vi.useFakeTimers();
+      let calls = 0;
+      mockFetch.mockImplementation(async (_url, init) => {
+        calls += 1;
+        if (calls === 2)
+          return {
+            ok: false,
+            status: 429,
+            statusText: 'Too Many Requests',
+            json: async () => ({ message: 'Rate limited' }),
+          };
+        return {
+          ok: true,
+          json: async () => ({
+            translations: JSON.parse(init.body).text.map((text: string) => ({
+              text,
+            })),
+          }),
+        };
+      });
+      const texts = Array.from({ length: 46 }, (_, index) => `text ${index}`);
+      const translation = provider.translateArray(texts, { targetLang: 'DE' });
+      await vi.runAllTimersAsync();
+      expect(await translation).toEqual(texts);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body).text).toHaveLength(45);
+      expect(mockFetch.mock.calls[1][1].body).toBe(
+        mockFetch.mock.calls[2][1].body,
+      );
+    });
+
+    it('splits UTF-8 JSON byte payloads below 128 KiB and preserves order', async () => {
+      mockFetch.mockImplementation(async (_url, init) => ({
+        ok: true,
+        json: async () => ({
+          translations: JSON.parse(init.body).text.map((text: string) => ({
+            text,
+          })),
+        }),
+      }));
+      const texts = Array.from(
+        { length: 8 },
+        (_, index) => `${index}${'😀'.repeat(8_000)}`,
+      );
+      expect(
+        await provider.translateArray(texts, { targetLang: 'DE' }),
+      ).toEqual(texts);
+      expect(mockFetch.mock.calls.length).toBeGreaterThan(1);
+      for (const [, init] of mockFetch.mock.calls)
+        expect(new TextEncoder().encode(init.body).length).toBeLessThanOrEqual(
+          128 * 1024,
+        );
+    });
+
+    it('rejects an oversized final segment before any paid request', async () => {
+      await expect(
+        provider.translateArray(['Hello', '😀'.repeat(40_000)], {
+          targetLang: 'DE',
+        }),
+      ).rejects.toMatchObject({ status: 413 });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('should translate single text to English', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -575,13 +644,9 @@ describe('DeepLProvider', () => {
           }),
       });
 
-      const chunks: string[] = [];
-      for await (const chunk of provider.streamText('Hallo')) {
-        chunks.push(chunk);
-      }
-
-      // Falls back to original text when no translation is returned
-      expect(chunks).toEqual(['Hallo']);
+      await expect(async () => {
+        for await (const chunk of provider.streamText('Hallo')) void chunk;
+      }).rejects.toThrow(/incomplete or invalid/);
     });
   });
 });

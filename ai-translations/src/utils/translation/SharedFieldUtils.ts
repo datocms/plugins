@@ -19,8 +19,11 @@ export type FieldTypeDictionary = Record<
     id: string;
     isLocalized: boolean;
     validators?: FieldValidators;
+    field_type?: string;
   }
 >;
+
+const normalizedExclusionCache = new WeakMap<string[], { length: number; tokens: Set<string> }>();
 
 /**
  * Normalizes a list of exclusion entries to support both current field IDs
@@ -30,6 +33,11 @@ export type FieldTypeDictionary = Record<
  * @returns A normalized set of exclusion tokens.
  */
 function normalizeExcludedFieldEntries(excludedFields: string[]): Set<string> {
+  // Plugin parameters are immutable React snapshots. Reusing their array
+  // avoids rebuilding thousands of exclusion tokens for every translated field.
+  // Length changes also invalidate legacy callers that append entries in place.
+  const cached = normalizedExclusionCache.get(excludedFields);
+  if (cached?.length === excludedFields.length) return cached.tokens;
   const normalized = new Set<string>();
 
   for (const raw of excludedFields) {
@@ -44,6 +52,7 @@ function normalizeExcludedFieldEntries(excludedFields: string[]): Set<string> {
     }
   }
 
+  normalizedExclusionCache.set(excludedFields, { length: excludedFields.length, tokens: normalized });
   return normalized;
 }
 
@@ -61,10 +70,11 @@ export function findExactLocaleKey(
   localeCode: string,
 ): string | undefined {
   if (!obj || typeof obj !== 'object') return undefined;
+  if (Object.hasOwn(obj, localeCode)) return localeCode;
 
   const normalizedLocale = localeCode.toLowerCase();
 
-  for (const key in obj) {
+  for (const key of Object.keys(obj)) {
     if (key.toLowerCase() === normalizedLocale) {
       return key; // Return the exact key with original casing
     }
@@ -93,7 +103,7 @@ export function isFieldTranslatable(
   // and gallery fields count as file fields
   if (
     (translationFields.includes('rich_text') &&
-      modularContentVariations.includes(fieldType)) ||
+      (modularContentVariations.includes(fieldType) || fieldType === 'single_block')) ||
     (translationFields.includes('file') && fieldType === 'gallery')
   ) {
     isTranslatable = true;

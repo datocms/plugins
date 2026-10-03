@@ -221,34 +221,57 @@ function isValidCommentOptionalFields(
   return isValidUpvoterIds(comment.upvoterIds) && parentIdIsValid;
 }
 
-function isValidCommentReplies(
-  replies: unknown,
+function isValidCommentNode(
+  comment: unknown,
   visited: WeakSet<object>,
-): boolean {
-  if (replies === undefined) return true;
-  if (!Array.isArray(replies)) return false;
-  return replies.every((reply) => isValidComment(reply, visited));
+  ids: Set<string>,
+): comment is Record<string, unknown> {
+  if (!isNonNullObject(comment) || visited.has(comment)) return false;
+  visited.add(comment);
+  if (
+    !isValidCommentBaseFields(comment) ||
+    !isValidCommentContentSegments(comment.content) ||
+    !isValidCommentOptionalFields(comment)
+  )
+    return false;
+  const id = String(comment.id);
+  if (ids.has(id)) return false;
+  ids.add(id);
+  return true;
 }
 
-/** Uses WeakSet for cycle detection to prevent infinite recursion on malformed data. */
+/** Iterative validation avoids call-stack limits and fails closed for ambiguous IDs/cycles. */
+function validateCommentTree(
+  comments: unknown[],
+  visited: WeakSet<object>,
+): boolean {
+  const stack: { comments: unknown[]; index: number }[] = [
+    { comments, index: 0 },
+  ];
+  const ids = new Set<string>();
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    if (frame.index >= frame.comments.length) {
+      stack.pop();
+      continue;
+    }
+    const comment = frame.comments[frame.index++];
+    if (!isValidCommentNode(comment, visited, ids)) return false;
+    if (comment.replies !== undefined) {
+      if (!Array.isArray(comment.replies)) return false;
+      stack.push({ comments: comment.replies, index: 0 });
+    }
+  }
+  return true;
+}
+
 export function isValidComment(
   comment: unknown,
   visited: WeakSet<object> = new WeakSet(),
 ): boolean {
-  if (!isNonNullObject(comment)) return false;
-  if (visited.has(comment)) return false;
-
-  visited.add(comment);
-
-  return (
-    isValidCommentBaseFields(comment) &&
-    isValidCommentContentSegments(comment.content) &&
-    isValidCommentOptionalFields(comment) &&
-    isValidCommentReplies(comment.replies, visited)
-  );
+  return validateCommentTree([comment], visited);
 }
 
 export function isValidCommentArray(data: unknown): boolean {
-  if (!Array.isArray(data)) return false;
-  return data.every((comment) => isValidComment(comment));
+  return Array.isArray(data) && validateCommentTree(data, new WeakSet());
 }

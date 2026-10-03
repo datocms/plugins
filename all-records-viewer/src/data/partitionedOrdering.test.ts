@@ -93,7 +93,10 @@ function testClient(records: readonly TestRecord[] = RECORDS) {
         | undefined;
       const status = filter?.fields?._status?.eq;
       const filtered = records
-        .filter((item) => !filter?.type || item.__modelId === filter.type)
+        .filter(
+          (item) =>
+            !filter?.type || filter.type.split(',').includes(item.__modelId),
+        )
         .filter((item) => !status || item.__status === status)
         .sort(
           (left, right) =>
@@ -242,9 +245,9 @@ describe('fetchPartitionedItemsPage', () => {
     });
 
     expect(result.items).toHaveLength(5);
-    // One total probe, five lazy bucket probes, and five singleton slices.
+    // One total probe, two four-probe windows, and five singleton slices.
     // Count probes return metadata only, so exactly one page of records is read.
-    expect(rawList).toHaveBeenCalledTimes(11);
+    expect(rawList).toHaveBeenCalledTimes(14);
     expect(
       rawList.mock.calls.reduce(
         (total, [query]) => total + (query.page?.limit ?? 0),
@@ -290,5 +293,157 @@ describe('fetchPartitionedItemsPage', () => {
         state: state('_model_ASC', { model: 'model-a' }),
       }),
     ).rejects.toThrow(/selected model/);
+  });
+
+  it('reads a deep page in 200,000 records and 10,000 models with bounded probes and concurrency', async () => {
+    const models = Array.from({ length: 10_000 }, (_, index) => ({
+      id: `model-${String(index).padStart(5, '0')}`,
+      name: String(index).padStart(5, '0'),
+      apiKey: `model_${index}`,
+      draftModeActive: true,
+      workflowId: null,
+    }));
+    let active = 0;
+    let maxActive = 0;
+    const rawList = vi.fn(
+      async (query: RawApiTypes.ItemInstancesHrefSchema) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await Promise.resolve();
+        active -= 1;
+        const modelIds = query.filter?.type?.split(',');
+        const total = modelIds ? modelIds.length * 20 : 200_000;
+        const offset = query.page?.offset ?? 0;
+        const limit = query.page?.limit ?? 0;
+        expect(modelIds?.length ?? 0).toBeLessThanOrEqual(50);
+        expect(limit).toBeLessThanOrEqual(200);
+        return {
+          data: Array.from(
+            { length: Math.min(limit, total - offset) },
+            (_, index) =>
+              record(
+                `${modelIds?.[0]}-${offset + index}`,
+                modelIds?.[0] ?? '',
+                'published',
+                '2026-01-01',
+              ),
+          ),
+          meta: { total_count: total },
+        } as RawApiTypes.ItemInstancesTargetSchema;
+      },
+    );
+    const client = { items: { rawList } } as unknown as Pick<Client, 'items'>;
+
+    const result = await fetchPartitionedItemsPage({
+      client,
+      models,
+      state: state('_model_ASC', { page: 999, perPage: 200 }),
+    });
+
+    expect(result.totalCount).toBe(200_000);
+    expect(result.items).toHaveLength(200);
+    expect(result.items[0].id).toBe('model-09990-0');
+    expect(result.items[199].id).toBe('model-09999-19');
+    // Total + 200 group counts + at most 50 detailed counts + 10 slices.
+    expect(rawList.mock.calls.length).toBeLessThanOrEqual(261);
+    expect(maxActive).toBe(4);
+    expect(
+      rawList.mock.calls.reduce(
+        (count, [query]) => count + (query.page?.limit ?? 0),
+        0,
+      ),
+    ).toBe(200);
+  });
+
+  it('limits concurrency even when a page spans 200 singleton models', async () => {
+    const models = Array.from({ length: 200 }, (_, index) => ({
+      ...MODELS[0],
+      id: `model-${index}`,
+      name: String(index).padStart(3, '0'),
+    }));
+    let active = 0;
+    let maxActive = 0;
+    const rawList = vi.fn(
+      async (query: RawApiTypes.ItemInstancesHrefSchema) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await Promise.resolve();
+        active -= 1;
+        const ids = query.filter?.type?.split(',');
+        const count = ids?.length ?? 200;
+        return {
+          data: query.page?.limit
+            ? [
+                record(
+                  ids?.[0] ?? '',
+                  ids?.[0] ?? '',
+                  'published',
+                  '2026-01-01',
+                ),
+              ]
+            : [],
+          meta: { total_count: count },
+        } as RawApiTypes.ItemInstancesTargetSchema;
+      },
+    );
+    const client = { items: { rawList } } as unknown as Pick<Client, 'items'>;
+    const result = await fetchPartitionedItemsPage({
+      client,
+      models,
+      state: state('_model_ASC', { perPage: 200 }),
+    });
+    expect(result.items).toHaveLength(200);
+    expect(maxActive).toBe(4);
+  });
+
+  it('rejects changed bucket totals rather than omitting records', async () => {
+    const { client, rawList } = testClient();
+    rawList.mockImplementationOnce(
+      async () =>
+        ({
+          data: [],
+          meta: { total_count: 200_000 },
+        }) as RawApiTypes.ItemInstancesTargetSchema,
+    );
+    await expect(
+      fetchPartitionedItemsPage({
+        client,
+        models: MODELS,
+        state: state('_model_ASC', { page: 200, perPage: 200 }),
+      }),
+    ).rejects.toThrow(/Records changed/);
+  });
+
+  it('stops scheduling count windows after cancellation and observes late errors', async () => {
+    let finishProbe: ((error: Error) => void) | undefined;
+    const pending = new Promise<RawApiTypes.ItemInstancesTargetSchema>(
+      (_, reject) => {
+        finishProbe = reject;
+      },
+    );
+    const rawList = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: [],
+        meta: { total_count: 200_000 },
+      })
+      .mockImplementation(() => pending);
+    const client = { items: { rawList } } as unknown as Pick<Client, 'items'>;
+    const controller = new AbortController();
+    const request = fetchPartitionedItemsPage({
+      client,
+      models: MODELS,
+      state: state('_model_ASC'),
+      signal: controller.signal,
+    });
+    const rejection = expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await vi.waitFor(() => expect(rawList).toHaveBeenCalledTimes(4));
+    controller.abort();
+    await rejection;
+    finishProbe?.(new Error('Late failed read'));
+    await Promise.resolve();
+    expect(rawList).toHaveBeenCalledTimes(4);
   });
 });

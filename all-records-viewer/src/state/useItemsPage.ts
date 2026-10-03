@@ -53,14 +53,21 @@ export function useItemsPage(args: {
       loaded: false,
       error: null,
     }));
+    const abortController = new AbortController();
 
     const request = shouldUsePartitionedOrdering(args.queryState)
       ? fetchPartitionedItemsPage({
           client: args.client,
           state: args.queryState,
           models: args.models ?? [],
+          signal: abortController.signal,
         })
-      : fetchItemsPage(args.client, args.queryState, args.serverOrderBy);
+      : fetchItemsPage(
+          args.client,
+          args.queryState,
+          args.serverOrderBy,
+          abortController.signal,
+        );
 
     void request
       .then((result) => {
@@ -90,6 +97,7 @@ export function useItemsPage(args: {
       });
 
     return () => {
+      abortController.abort();
       if (requestSequence.current === sequence) {
         requestSequence.current += 1;
       }

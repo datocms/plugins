@@ -1,10 +1,11 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { useCallback } from 'react';
-import buildExportDoc, {
+import { useCallback, useRef } from 'react';
+import {
+  buildExportBlob,
   calculateExportProgressTotal,
 } from '@/entrypoints/ExportPage/buildExportDoc';
 import { useLongTask } from '@/shared/tasks/useLongTask';
-import { downloadJSON } from '@/utils/downloadJson';
+import { downloadBlob } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
 type RunExportArgs = {
@@ -34,6 +35,7 @@ export function useSchemaExportTask({
   defaultFileName = 'export.json',
 }: UseSchemaExportTaskOptions): SchemaExportTask {
   const task = useLongTask();
+  const runningRef = useRef(false);
 
   const runExport = useCallback(
     async ({
@@ -42,10 +44,12 @@ export function useSchemaExportTask({
       pluginIds,
       fileName,
     }: RunExportArgs) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
       try {
         const total = calculateExportProgressTotal(
-          itemTypeIds.length,
-          pluginIds.length,
+          new Set(itemTypeIds).size,
+          new Set(pluginIds).size,
         );
         task.controller.start({
           done: 0,
@@ -53,7 +57,7 @@ export function useSchemaExportTask({
           label: 'Preparing export…',
         });
 
-        const exportDoc = await buildExportDoc(
+        const exportBlob = await buildExportBlob(
           schema,
           rootItemTypeId,
           itemTypeIds,
@@ -68,9 +72,8 @@ export function useSchemaExportTask({
           throw new Error('Export cancelled');
         }
 
-        downloadJSON(exportDoc, {
+        downloadBlob(exportBlob, {
           fileName: fileName ?? defaultFileName,
-          prettify: true,
         });
         task.controller.complete({
           done: total,
@@ -88,6 +91,7 @@ export function useSchemaExportTask({
           ctx.alert('Could not complete the export. Please try again.');
         }
       } finally {
+        runningRef.current = false;
         task.controller.reset();
       }
     },
