@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-find-and-replace",
   "homepage": "https://github.com/datocms/plugins/tree/master/find-and-replace#readme",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Find, preview, and safely replace content across DatoCMS records and models.",
   "keywords": [

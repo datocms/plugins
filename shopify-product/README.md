@@ -72,6 +72,10 @@ npm run build
 
 ## Changelog
 
+### 2.0.1
+
+Shorter README.
+
 ### 2.0.0
 
 A rebuild adding variants, collections, lists, new stored formats, a new picker and multiple stores. Existing fields keep working as before; see [Upgrading from 1.x](#upgrading-from-1x).

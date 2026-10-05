@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-shopify-product",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Pick Shopify products, variants and collections in DatoCMS",
   "type": "module",
   "author": "DatoCMS <support@datocms.com>",
