@@ -1,0 +1,4 @@
+/* No outer padding or margins: Canvas applies the host's 10px gutter. */
+.root {
+  min-width: 0;
+}

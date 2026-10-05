@@ -1,0 +1,182 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ConnectionTest",
+  "tokenless": false,
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "shop": {
+        "name": "DatoCMS Demo",
+        "primaryDomain": {
+          "url": "https://datocms-demo.myshopify.com"
+        }
+      },
+      "localization": {
+        "country": {
+          "isoCode": "IT"
+        },
+        "language": {
+          "isoCode": "EN"
+        },
+        "availableCountries": [
+          {
+            "isoCode": "AE",
+            "name": "United Arab Emirates",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "AU",
+            "name": "Australia",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "CA",
+            "name": "Canada",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "CH",
+            "name": "Switzerland",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "GB",
+            "name": "United Kingdom",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "HK",
+            "name": "Hong Kong SAR",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "IL",
+            "name": "Israel",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "IT",
+            "name": "Italy",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "JP",
+            "name": "Japan",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "KR",
+            "name": "South Korea",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "MX",
+            "name": "Mexico",
+            "currency": {
+              "isoCode": "MXN"
+            }
+          },
+          {
+            "isoCode": "MY",
+            "name": "Malaysia",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "NO",
+            "name": "Norway",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "NZ",
+            "name": "New Zealand",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "SG",
+            "name": "Singapore",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          },
+          {
+            "isoCode": "US",
+            "name": "United States",
+            "currency": {
+              "isoCode": "EUR"
+            }
+          }
+        ],
+        "availableLanguages": [
+          {
+            "isoCode": "EN",
+            "endonymName": "English"
+          }
+        ]
+      },
+      "publicApiVersions": [
+        {
+          "handle": "2025-10",
+          "supported": false
+        },
+        {
+          "handle": "2026-01",
+          "supported": true
+        },
+        {
+          "handle": "2026-04",
+          "supported": true
+        },
+        {
+          "handle": "2026-07",
+          "supported": true
+        },
+        {
+          "handle": "2026-10",
+          "supported": true
+        },
+        {
+          "handle": "2027-01",
+          "supported": false
+        },
+        {
+          "handle": "unstable",
+          "supported": false
+        }
+      ]
+    },
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 9
+      }
+    }
+  }
+}

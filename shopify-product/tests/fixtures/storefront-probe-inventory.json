@@ -1,0 +1,43 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ProbeInventory",
+  "tokenless": false,
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "errors": [
+      {
+        "message": "Access denied for totalInventory field. Required access: `unauthenticated_read_product_inventory` access scope.",
+        "locations": [
+          {
+            "line": 2,
+            "column": 35
+          }
+        ],
+        "path": ["products", "nodes", 0, "totalInventory"],
+        "extensions": {
+          "code": "ACCESS_DENIED",
+          "documentation": "https://shopify.dev/api/usage/access-scopes",
+          "requiredAccess": "`unauthenticated_read_product_inventory` access scope."
+        }
+      }
+    ],
+    "data": {
+      "products": {
+        "nodes": [
+          {
+            "id": "gid://shopify/Product/10080751681882",
+            "totalInventory": null
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 2
+      }
+    }
+  }
+}

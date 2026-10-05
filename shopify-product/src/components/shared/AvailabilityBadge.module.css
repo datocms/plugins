@@ -1,0 +1,37 @@
+.badge {
+  display: inline-flex;
+  gap: 0.45em;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--color--ink-subtle);
+}
+
+.dot {
+  flex: none;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  background-color: var(--color--ink-placeholder);
+}
+
+.success .dot {
+  background-color: var(--color--status-published--ink);
+}
+
+.danger .dot {
+  /* The solid danger fill, as on the form-error dot: the dark-mode danger ink
+     is a pale red-200 that reads as a neutral dot. */
+  background-color: var(--color--danger--surface);
+}
+
+.danger {
+  color: var(--color--ink-danger);
+}
+
+.quantity::before {
+  content: "·";
+  margin-right: 0.45em;
+  color: var(--color--ink-subtle);
+}

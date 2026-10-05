@@ -1,0 +1,123 @@
+.header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding-bottom: var(--spacing-m);
+  border-bottom: 1px solid var(--color--border);
+}
+
+.row {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+/* Search input (forms.md §17): a magnifier 12px from the left, a clear ✕ on the right. */
+.search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  z-index: 1;
+  display: flex;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.searchInput.searchInput {
+  height: 40px;
+  padding-right: 40px;
+  padding-left: 37px;
+}
+
+.searchInput::-webkit-search-cancel-button,
+.searchInput::-webkit-search-decoration {
+  appearance: none;
+}
+
+.clearSearch.clearSearch {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  z-index: 1;
+  width: 28px;
+  transform: translateY(-50%);
+}
+
+/* Segmented control (components.md §4), sized to the 40px input row. */
+.segmented {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+}
+
+.segment {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-left-width: 0;
+  transition:
+    color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+
+.segment:first-child {
+  border-left-width: 1px;
+  border-radius: 4px 0 0 4px;
+}
+
+.segment:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.segment:hover {
+  color: var(--color--ink);
+  background-color: var(--color--surface-hover);
+}
+
+.segment[aria-pressed="true"] {
+  z-index: 1;
+  margin-left: -1px;
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-left-width: 1px;
+}
+
+.segment[aria-pressed="true"]:first-child {
+  margin-left: 0;
+}
+
+.segment[aria-pressed="true"]:hover {
+  background-color: var(--color--selected--surface-hover);
+}
+
+.segment:focus-visible {
+  z-index: 2;
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment {
+    transition: none;
+  }
+}

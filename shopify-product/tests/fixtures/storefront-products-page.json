@@ -1,0 +1,240 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "BrowseProducts",
+  "tokenless": false,
+  "variables": {
+    "first": 5,
+    "after": null,
+    "query": null,
+    "sortKey": null,
+    "reverse": false,
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "products": {
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "eyJsYXN0X2lkIjoxMDA4MDc1MTgxMjk1NCwibGFzdF92YWx1ZSI6MTAwODA3NTE4MTI5NTQsIm9mZnNldCI6NH0="
+        },
+        "nodes": [
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751681882",
+            "handle": "the-inventory-not-tracked-snowboard",
+            "title": "The Inventory Not Tracked Snowboard",
+            "vendor": "DatoCMS Demo",
+            "productType": "snowboard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:39Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/snowboard_purple_hydrogen_400x400.png?v=1741717812",
+              "altText": "Top and bottom view of a snowboard. The top view shows a centred hexagonal logo for Hydrogen that\n          appears to radiate outwards, as well as some overlapping hexagons at the bottom. The bottom view shows an\n          abstract angular grid in purples."
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "949.95",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "949.95",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": "sku-untracked-1"
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751714650",
+            "handle": "gift-card",
+            "title": "Gift Card",
+            "vendor": "Snowboard Vendor",
+            "productType": "giftcard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:39Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/gift_card_400x400.png?v=1741717811",
+              "altText": "Gift card that shows text: Generated data gift card"
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "10.0",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "100.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 4
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": null
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751747418",
+            "handle": "the-out-of-stock-snowboard",
+            "title": "The Out of Stock Snowboard",
+            "vendor": "DatoCMS Demo",
+            "productType": "snowboard",
+            "availableForSale": false,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:39Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_f44a9605-cd62-464d-b095-d45cdaa0d0d7_400x400.jpg?v=1741717811",
+              "altText": "Top and bottom view of a snowboard. The top view shows a toggle at the top in shades of blue and\n        yellow. The bottom view shows an abstract illustration of toggles in blues and yellows."
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "885.95",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "885.95",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": null
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751780186",
+            "handle": "the-minimal-snowboard",
+            "title": "The Minimal Snowboard",
+            "vendor": "DatoCMS Demo",
+            "productType": "",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:40Z",
+            "featuredImage": null,
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "885.95",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "885.95",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": null
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751812954",
+            "handle": "the-collection-snowboard-hydrogen",
+            "title": "The Collection Snowboard: Hydrogen",
+            "vendor": "Hydrogen Vendor",
+            "productType": "snowboard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:40Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_0a40b01b-5021-48c1-80d1-aa8ab4876d3d_400x400.jpg?v=1741717811",
+              "altText": "Top and bottom view of a snowboard. The top view shows stylized hydrogen bonds and the bottom view\n        shows “H2” in a brush script typeface."
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "600.0",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "600.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 31
+      }
+    }
+  }
+}

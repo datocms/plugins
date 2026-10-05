@@ -1,0 +1,134 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "Hydrate",
+  "tokenless": false,
+  "variables": {
+    "ids": [
+      "gid://shopify/Product/10080752009562",
+      "gid://shopify/ProductVariant/50698338337114"
+    ],
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "errors": [
+      {
+        "message": "Access denied for totalInventory field. Required access: `unauthenticated_read_product_inventory` access scope.",
+        "locations": [
+          {
+            "line": 27,
+            "column": 5
+          }
+        ],
+        "path": ["nodes", 0, "totalInventory"],
+        "extensions": {
+          "code": "ACCESS_DENIED",
+          "documentation": "https://shopify.dev/api/usage/access-scopes",
+          "requiredAccess": "`unauthenticated_read_product_inventory` access scope."
+        }
+      },
+      {
+        "message": "Access denied for quantityAvailable field. Required access: `unauthenticated_read_product_inventory` access scope.",
+        "locations": [
+          {
+            "line": 50,
+            "column": 5
+          }
+        ],
+        "path": ["nodes", 1, "quantityAvailable"],
+        "extensions": {
+          "code": "ACCESS_DENIED",
+          "documentation": "https://shopify.dev/api/usage/access-scopes",
+          "requiredAccess": "`unauthenticated_read_product_inventory` access scope."
+        }
+      }
+    ],
+    "data": {
+      "nodes": [
+        {
+          "__typename": "Product",
+          "id": "gid://shopify/Product/10080752009562",
+          "handle": "the-complete-snowboard",
+          "title": "The Complete Snowboard",
+          "vendor": "Snowboard Vendor",
+          "productType": "snowboard",
+          "availableForSale": true,
+          "onlineStoreUrl": null,
+          "updatedAt": "2026-07-18T23:38:42Z",
+          "featuredImage": {
+            "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_400x400.jpg?v=1741717811",
+            "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+          },
+          "priceRange": {
+            "minVariantPrice": {
+              "amount": "699.95",
+              "currencyCode": "EUR"
+            },
+            "maxVariantPrice": {
+              "amount": "699.95",
+              "currencyCode": "EUR"
+            }
+          },
+          "compareAtPriceRange": {
+            "maxVariantPrice": {
+              "amount": "0.0",
+              "currencyCode": "EUR"
+            }
+          },
+          "variantsCount": {
+            "count": 5
+          },
+          "totalInventory": null
+        },
+        {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/50698338337114",
+          "title": "Default Title",
+          "sku": "sku-managed-1",
+          "barcode": null,
+          "availableForSale": true,
+          "currentlyNotInStock": false,
+          "selectedOptions": [
+            {
+              "name": "Title",
+              "value": "Default Title"
+            }
+          ],
+          "price": {
+            "amount": "629.95",
+            "currencyCode": "EUR"
+          },
+          "compareAtPrice": null,
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_200x200.jpg?v=1741717812",
+            "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+          },
+          "product": {
+            "id": "gid://shopify/Product/10080752271706",
+            "handle": "the-multi-managed-snowboard",
+            "title": "The Multi-managed Snowboard",
+            "vendor": "Multi-managed Vendor",
+            "onlineStoreUrl": null,
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_200x200.jpg?v=1741717812",
+              "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+            }
+          },
+          "quantityAvailable": null
+        }
+      ]
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 9
+      }
+    }
+  }
+}

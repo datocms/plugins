@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .tmplr-preview
+
+# Build info and coverage
+*.tsbuildinfo
+coverage/

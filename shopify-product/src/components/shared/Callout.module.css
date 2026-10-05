@@ -1,0 +1,93 @@
+.callout {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: flex-start;
+  padding: var(--spacing-m) 15px;
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+  border: 1px solid;
+  border-radius: 4px;
+}
+
+.icon {
+  flex: none;
+  padding-top: 1px;
+  font-size: var(--font-size-m);
+  line-height: 1;
+}
+
+.icon svg {
+  fill: currentColor;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin-bottom: 2px;
+  font-weight: var(--font-weight-bold);
+}
+
+.body p {
+  margin: 0;
+}
+
+.body p + p {
+  margin-top: var(--spacing-s);
+}
+
+.body a {
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  align-self: center;
+}
+
+.info {
+  color: var(--color--ink);
+  background: var(--color--primary-soft--surface);
+  border-color: transparent;
+}
+
+.info .icon {
+  color: var(--color--ink-subtle);
+}
+
+.warning {
+  color: var(--color--warning-soft--ink);
+  background: var(--color--warning-soft--surface);
+  border-color: var(--color--warning-soft--border);
+}
+
+.danger {
+  color: var(--color--danger-soft--ink);
+  background: var(--color--danger-soft--surface);
+  border-color: var(--color--danger-soft--border);
+}
+
+.neutral {
+  color: var(--color--ink-subtle);
+  background: var(--color--surface-muted);
+  border-color: transparent;
+}
+
+@media (max-width: 480px) {
+  .callout {
+    flex-wrap: wrap;
+  }
+
+  .actions {
+    align-self: flex-start;
+    width: 100%;
+    padding-left: calc(var(--font-size-m) + var(--spacing-m));
+  }
+}

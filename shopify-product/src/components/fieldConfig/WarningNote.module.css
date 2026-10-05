@@ -1,0 +1,14 @@
+/* .dl-field__warning: one of the few real 5px bars. */
+.note {
+  margin-top: var(--spacing-s);
+  padding-left: 10px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink);
+  border-left: 5px solid var(--color--warning-soft--border);
+}
+
+.icon.icon {
+  margin-right: 0.5em;
+  fill: var(--color--warning-soft--ink);
+}

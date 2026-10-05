@@ -1,0 +1,121 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "BrowseProducts",
+  "tokenless": false,
+  "note": "French is not published for the US market, so Shopify silently answers in English: see extensions.context.",
+  "variables": {
+    "first": 2,
+    "after": null,
+    "query": null,
+    "sortKey": null,
+    "reverse": false,
+    "country": "US",
+    "language": "FR"
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "products": {
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "eyJsYXN0X2lkIjoxMDA4MDc1MTcxNDY1MCwibGFzdF92YWx1ZSI6MTAwODA3NTE3MTQ2NTAsIm9mZnNldCI6MX0="
+        },
+        "nodes": [
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751681882",
+            "handle": "the-inventory-not-tracked-snowboard",
+            "title": "The Inventory Not Tracked Snowboard",
+            "vendor": "DatoCMS Demo",
+            "productType": "snowboard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:39Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/snowboard_purple_hydrogen_400x400.png?v=1741717812",
+              "altText": "Top and bottom view of a snowboard. The top view shows a centred hexagonal logo for Hydrogen that\n          appears to radiate outwards, as well as some overlapping hexagons at the bottom. The bottom view shows an\n          abstract angular grid in purples."
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "949.95",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "949.95",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": "sku-untracked-1"
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080751714650",
+            "handle": "gift-card",
+            "title": "Gift Card",
+            "vendor": "Snowboard Vendor",
+            "productType": "giftcard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:39Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/gift_card_400x400.png?v=1741717811",
+              "altText": "Gift card that shows text: Generated data gift card"
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "10.0",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "100.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 4
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "US",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 11
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ProbeTags",
+  "tokenless": false,
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "productTags": {
+        "nodes": ["Accessory"]
+      }
+    },
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 1
+      }
+    }
+  }
+}

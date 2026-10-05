@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shopify product harness</title>
+    <!--
+      Dev-only stand-in for the DatoCMS dashboard (npm run harness). It loads
+      the design tokens on its own <html>, paints the surface behind the plugin
+      iframe and hosts toasts and modals. Never part of the build.
+    -->
+    <script>
+      (() => {
+        const scheme =
+          new URLSearchParams(window.location.search).get('scheme') === 'dark'
+            ? 'dark'
+            : 'light';
+        document.documentElement.dataset.colorScheme = scheme;
+        document.documentElement.style.colorScheme = scheme;
+      })();
+    </script>
+    <link rel="stylesheet" href="./datocms-tokens.css" />
+    <link rel="stylesheet" href="./host.css" />
+  </head>
+  <body>
+    <script type="module" src="./host.ts"></script>
+  </body>
+</html>

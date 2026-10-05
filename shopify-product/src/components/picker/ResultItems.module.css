@@ -1,0 +1,497 @@
+/*
+ * Product and collection cards (grid) and rows (list). A card is the
+ * outline-card recipe (data-display.md §5 B): hairline, radius 4, no shadow,
+ * hover tints the border. Selected items use the selected context.
+ */
+
+/* ---- Card -------------------------------------------------------------- */
+
+.card {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font: inherit;
+  color: var(--color--ink);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  transition:
+    border-color 0.1s ease-in-out,
+    background-color 0.2s var(--material-ease),
+    box-shadow 0.2s var(--material-ease);
+}
+
+.card:hover {
+  border-color: var(--color--border-hover);
+}
+
+.card:focus-visible,
+.card:has(.checkbox:focus-visible) {
+  outline: 0;
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.media {
+  position: relative;
+  display: block;
+  flex: none;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background-color: var(--color--surface-raised);
+  border-bottom: 1px solid var(--color--border);
+}
+
+.mediaWide {
+  aspect-ratio: 2 / 1;
+}
+
+/*
+ * Product shots are contained, not cropped (iconography-and-imagery §12):
+ * flex-centered with breathing room, never upscaled, a 2px image radius. The
+ * inset keeps letterboxed and white-background shots reading as framed
+ * objects on the card in both schemes.
+ */
+.mediaContain.mediaContain {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border-radius: 0;
+}
+
+.mediaContain > img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 2px;
+}
+
+/* No image: a plain surface-muted fill, with no icon. */
+.mediaEmpty.mediaEmpty,
+.mediaCover.mediaCover {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color--surface-muted);
+  border-radius: 0;
+}
+
+/* Positioned on the card (it comes last in the button, after the text). */
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+}
+
+/* The checkbox leads the caption, level with the title's first line. */
+.body > .checkbox {
+  margin-top: 1px;
+}
+
+.bodyMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.code {
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+}
+
+.details {
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cardFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.price {
+  font-size: var(--font-size-s);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+
+.variants {
+  white-space: nowrap;
+}
+
+.chevron {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--color--ink-subtle);
+  transition: transform 0.2s var(--material-ease);
+}
+
+.chevron svg {
+  width: 0.85em;
+  height: 0.85em;
+  fill: currentColor;
+}
+
+.expanded .chevron {
+  transform: rotate(180deg);
+}
+
+/* ---- Selected, expanded and disabled ----------------------------------- */
+
+.card.selected {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+  box-shadow: 0 0 0 1px var(--color--selected--border);
+}
+
+.card.selected .media {
+  border-bottom-color: var(--color--selected--border);
+}
+
+.card.selected :is(.details, .meta) {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.card.selected:focus-visible,
+.card.selected:has(.checkbox:focus-visible) {
+  box-shadow:
+    0 0 0 1px var(--color--selected--border),
+    0 0 0 5px var(--color--focus--outline);
+}
+
+.card.expanded {
+  border-color: var(--color--selected--border);
+  box-shadow: 0 0 0 1px var(--color--selected--border);
+}
+
+.card.disabled,
+.row.disabled {
+  cursor: not-allowed;
+  background-color: var(--color--surface-muted);
+}
+
+.card.disabled:hover,
+.row.disabled:hover {
+  border-color: var(--color--border);
+}
+
+.disabled :is(.mediaContain, .mediaCover, .rowThumb, .checkbox) {
+  opacity: 0.6;
+}
+
+/* ---- Checkbox and tags --------------------------------------------------- */
+
+/*
+ * Native checkbox (forms.md §7): accent-color only, no custom drawing. Also
+ * used by the variant rows. The item around it shows the focus ring.
+ */
+.checkbox {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: inherit;
+  accent-color: var(--color--primary--surface);
+}
+
+.checkbox:focus-visible {
+  outline: 0;
+}
+
+.countTag {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--color--primary--ink);
+  background-color: var(--color--primary--surface);
+  border-radius: 3px;
+}
+
+/* ---- Row (list view) ------------------------------------------------------ */
+
+/* Keeps columns aligned on rows that have nothing to show in a slot. */
+.slot {
+  flex: none;
+  width: 16px;
+}
+
+.slotHidden {
+  visibility: hidden;
+}
+
+.row {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  width: 100%;
+  min-height: 60px;
+  margin: 0;
+  padding: 10px 15px 10px 23px;
+  font: inherit;
+  color: var(--color--ink);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color--border);
+  transition: background-color 0.2s var(--material-ease);
+}
+
+.row::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  content: "";
+  background-color: var(--color--selected--border);
+  transition: width 0.2s var(--material-ease);
+}
+
+.row:hover {
+  background-color: var(--color--surface-hover);
+}
+
+.row:focus-visible,
+.row:has(.checkbox:focus-visible) {
+  outline: 0;
+  box-shadow: inset 0 0 0 4px var(--color--focus--outline);
+}
+
+.row.selected,
+.row.expanded {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+}
+
+.row.selected:hover,
+.row.expanded:hover {
+  background-color: var(--color--selected--surface-hover);
+}
+
+.row.selected::before,
+.row.expanded::before {
+  width: 8px;
+}
+
+.row.selected :is(.rowDetails, .rowVariants, .none),
+.row.expanded :is(.rowDetails, .rowVariants, .none) {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/*
+ * Already in the field (Replace): the disabled surface, cursor and dimmed
+ * media, with the selected border (cards) or bar (rows), so they read as
+ * chosen without looking like the current choice. No hover change.
+ */
+.card.selected.disabled,
+.row.selected.disabled,
+.row.selected.disabled:hover {
+  color: var(--color--ink);
+  background-color: var(--color--surface-muted);
+}
+
+.card.selected.disabled:hover {
+  border-color: var(--color--selected--border);
+}
+
+.card.selected.disabled :is(.details, .meta),
+.row.selected.disabled :is(.rowDetails, .rowVariants) {
+  color: var(--color--ink-subtle);
+  opacity: 1;
+}
+
+.row.selected.disabled .none {
+  color: var(--color--ink-placeholder);
+  opacity: 1;
+}
+
+.rowThumb {
+  flex: none;
+}
+
+.rowMain {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.rowTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+/* The meta line, at the field editor's size. */
+.rowDetails {
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The only variant's SKU; same code style as the variant rows. */
+.rowSku {
+  flex: none;
+  width: 150px;
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.none {
+  color: var(--color--ink-placeholder);
+}
+
+.rowVariants {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  width: 140px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.rowPrice {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  width: 150px;
+  font-size: var(--font-size-s);
+}
+
+.rowAvailability {
+  display: flex;
+  flex: none;
+  width: 130px;
+}
+
+/* A fixed width, so the list header can make room for it. */
+.row .chevron {
+  flex: none;
+  justify-content: center;
+  width: 13px;
+  margin-left: 0;
+}
+
+.listHeader {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  padding: 0 15px var(--spacing-s) calc(23px + 40px + 15px);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--color--border);
+}
+
+.listHeader .rowSku,
+.listHeader .rowVariants,
+.listHeader .rowPrice {
+  font-size: inherit;
+}
+
+.listHeaderCheck {
+  padding-left: calc(23px + 16px + 15px + 40px + 15px);
+}
+
+.listHeaderChevron {
+  padding-right: calc(15px + 13px + 15px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .row,
+  .row::before,
+  .chevron {
+    transition: none;
+  }
+}
+
+.card[aria-busy="true"],
+.row[aria-busy="true"] {
+  cursor: progress;
+}

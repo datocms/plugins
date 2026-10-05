@@ -1,0 +1,137 @@
+/* A footer bar under a hairline (layout-and-navigation: footer toolbar). */
+.footer {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-m);
+  align-items: center;
+  min-height: 44px;
+  padding-top: var(--spacing-m);
+  border-top: 1px solid var(--color--border);
+}
+
+.summary {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.count {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.summary .hint {
+  font-size: var(--font-size-xs);
+}
+
+/*
+ * Previews in selection order; scrolls sideways when long. A scroller clips
+ * its overflow, so the padding makes room for the floating ✕ (6px out) and
+ * every 4px focus halo; the negative margin keeps the footer's height.
+ */
+.tray {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin: -6px 0 0;
+  padding: 10px 10px 4px 4px;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.item {
+  position: relative;
+  flex: none;
+}
+
+.preview {
+  display: flex;
+  border-radius: 4px;
+  outline: 1px solid var(--color--border);
+}
+
+.preview:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+/* An entry the storefront can't see: the field rows' eye-slash tile. */
+.unresolvedTile {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  color: var(--color--ink-subtle);
+  background-color: var(--color--surface-muted);
+  border-radius: 4px;
+}
+
+/* The remove ✕ appears on hover or focus (quiet until touched). */
+.remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  font-size: 10px;
+  color: var(--color--ink);
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border-hover);
+  border-radius: 50%;
+  box-shadow: var(--shadow--raised);
+  opacity: 0;
+  transition: opacity 0.2s var(--material-ease);
+}
+
+.item:is(:hover, :focus-within) .remove {
+  opacity: 1;
+}
+
+.remove:hover {
+  color: var(--color--danger-soft--ink);
+}
+
+.remove:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+@media (hover: none) {
+  .remove {
+    opacity: 1;
+  }
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-s);
+  align-items: center;
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remove {
+    transition: none;
+  }
+}

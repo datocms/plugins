@@ -1,0 +1,6 @@
+/* The control only: flush with the host's label column, no outer spacing. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}

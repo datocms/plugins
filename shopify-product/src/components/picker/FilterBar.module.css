@@ -1,0 +1,260 @@
+.bar {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/*
+ * Two groups: the locked scope, then the editor's filters. Groups wrap as
+ * wholes, so the editor's filters move to their own line together, never one
+ * control alone. On the xl modal the locked group shrinks first (its chips
+ * end in an ellipsis and their tooltip repeats them in full): it is laid out
+ * from a 200px basis and grows up to its content.
+ */
+.chips {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+.lockedGroup {
+  display: flex;
+  flex: 1 1 0;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 200px;
+  max-width: max-content;
+}
+
+.lockedGroup > .locked {
+  flex: none;
+}
+
+/* Only chips with a value shrink: "Available for sale" never turns into "Availab…". */
+.lockedGroup > .lockedValue {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.editorGroup {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+/* Narrow frames: no shrinking, the groups simply wrap. */
+@media (max-width: 899px) {
+  .lockedGroup {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .lockedGroup > .lockedValue {
+    flex: none;
+  }
+}
+
+.end {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-m);
+  align-items: center;
+}
+
+/*
+ * Filter chips: the toggle-chip recipe (forms.md §7) at the filter row's 32px
+ * height. Set filters take the selected context.
+ */
+.chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 260px;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  line-height: 1;
+  color: var(--color--ink);
+  white-space: nowrap;
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 3px;
+  transition:
+    border-color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+
+.chip:hover,
+.chip[aria-expanded="true"] {
+  border-color: var(--color--border-hover);
+}
+
+.chip:focus-visible {
+  outline: 0;
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.chip > svg:last-child:not(:first-child) {
+  flex: none;
+  width: 0.75em;
+  height: 0.75em;
+  fill: currentColor;
+  opacity: 0.7;
+}
+
+.chipText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chipValue {
+  font-weight: var(--font-weight-bold);
+}
+
+.active {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+}
+
+.active:hover,
+.active[aria-expanded="true"] {
+  background-color: var(--color--selected--surface-hover);
+  border-color: var(--color--selected--border);
+}
+
+/* Locked by the field settings: muted, not interactive (focusable for the tooltip). */
+.locked {
+  padding: 0 8px;
+  color: var(--color--ink-subtle);
+  cursor: default;
+  background-color: var(--color--surface-muted);
+  border-color: transparent;
+}
+
+.locked:hover {
+  border-color: transparent;
+}
+
+.locked .chipValue {
+  color: var(--color--ink);
+}
+
+.locked > svg:first-child {
+  flex: none;
+  width: 0.85em;
+  height: 0.85em;
+  fill: currentColor;
+}
+
+/* Unavailable here: the disabled tokens, with the reason in a tooltip. */
+.disabled,
+.disabled:hover {
+  color: var(--color--disabled--ink);
+  cursor: not-allowed;
+  background-color: var(--color--disabled--surface);
+  border-color: var(--color--border);
+}
+
+/* Set by the editor but not applied inside this collection. */
+.kept .chipText {
+  text-decoration: line-through;
+}
+
+/* Vendor: a compact text input that sits in the chip row (inputs keep radius 0). */
+.textChip.textChip {
+  width: 120px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: var(--font-size-s);
+}
+
+.textChipActive.textChipActive {
+  border-color: var(--color--selected--border);
+}
+
+/* Textual trigger (components.md §10): label plus caret, no chrome. */
+.sortTrigger {
+  display: inline-flex;
+  gap: 0.4em;
+  align-items: center;
+  height: 32px;
+  margin: 0;
+  padding: 0 4px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  transition: color 0.2s var(--material-ease);
+}
+
+.sortTrigger:hover,
+.sortTrigger[aria-expanded="true"] {
+  color: var(--color--ink);
+}
+
+.sortTrigger:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.sortTrigger > svg {
+  width: 0.75em;
+  height: 0.75em;
+  fill: var(--color--ink-subtle);
+}
+
+.sortValue {
+  color: var(--color--ink);
+}
+
+.clearFilters {
+  height: 32px;
+  margin: 0;
+  padding: 0 4px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  transition: color 0.2s var(--material-ease);
+}
+
+.clearFilters:hover {
+  color: var(--color--ink);
+  text-decoration: underline;
+}
+
+.clearFilters:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .sortTrigger,
+  .clearFilters {
+    transition: none;
+  }
+}

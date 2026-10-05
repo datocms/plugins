@@ -1,0 +1,13 @@
+/*
+ * The picker is the plugin's one fixed-height frame: the host sizes the
+ * iframe with ctx.setHeight(PICKER_MODAL_HEIGHT) and Canvas pads it by the
+ * 20px modal body padding, so the root fills the rest and only the results
+ * scroll.
+ */
+.root {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 2 * 20px);
+  min-height: 0;
+}

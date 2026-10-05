@@ -1,0 +1,25 @@
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* The kit's form label, with the form-text parity colour (ink). */
+.legend {
+  display: block;
+  float: left;
+  width: 100%;
+  margin-bottom: var(--spacing-s);
+  padding: 0;
+  color: var(--color--ink);
+}
+
+/* Floated legends sit inside the fieldset's flow; clear them before the control. */
+.legend + * {
+  clear: both;
+}
+
+.legendError {
+  color: var(--color--ink-danger);
+}

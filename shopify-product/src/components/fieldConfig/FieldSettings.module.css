@@ -1,0 +1,13 @@
+/* One column at the field rhythm (forms §2): 24px between fields. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+
+/* A field and the notice that belongs to it. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}

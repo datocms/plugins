@@ -1,0 +1,132 @@
+/*
+ * The inline variant panel: a full-width recessed band under the card's row,
+ * hairline-bordered like a raised table body (data-display.md §2).
+ */
+.panel {
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--color--surface);
+  border: 1px solid var(--color--selected--border);
+  border-radius: 4px;
+}
+
+.header {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 15px 10px 22px;
+  background-color: var(--color--surface-muted);
+  border-bottom: 1px solid var(--color--border);
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.count {
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+.table {
+  background-color: var(--color--surface-raised);
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s) var(--spacing-l);
+  padding: 10px 15px 10px 22px;
+  border-bottom: 1px solid var(--color--border);
+}
+
+.optionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.optionName {
+  margin-right: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+  text-transform: uppercase;
+}
+
+/* Toggle chips (forms.md §7). */
+.optionChip {
+  box-sizing: border-box;
+  height: 26px;
+  margin: 0;
+  padding: 0 9px;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink);
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 3px;
+  transition: border-color 0.2s var(--material-ease);
+}
+
+.optionChip:hover {
+  border-color: var(--color--border-hover);
+}
+
+.optionChip[aria-pressed="true"] {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+}
+
+.optionChip:focus-visible {
+  outline: 0;
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.loading {
+  position: relative;
+  height: 64px;
+  background-color: var(--color--surface-raised);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--spacing-m) 22px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+  background-color: var(--color--surface-raised);
+  border-top: 1px solid var(--color--border);
+}
+
+.callout {
+  margin: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optionChip {
+    transition: none;
+  }
+}
+
+/* Load more while its page loads: still focusable, the spinner says why. */
+.moreLoading.moreLoading {
+  cursor: progress;
+}

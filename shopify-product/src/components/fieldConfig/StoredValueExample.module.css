@@ -1,0 +1,62 @@
+/* The output, set off from the settings above by a hairline. */
+.example {
+  margin: 0;
+  padding-top: var(--spacing-l);
+  border-top: 1px solid var(--color--border);
+}
+
+/* Reads like a form label (form-text parity: ink). */
+.caption {
+  margin-bottom: var(--spacing-s);
+  color: var(--color--ink);
+}
+
+.block {
+  position: relative;
+}
+
+.code {
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--spacing-m) 48px var(--spacing-m) 15px;
+  font-family: var(--monospaced-font-family);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--color--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+  background-color: var(--color--surface-muted);
+  border-radius: 4px;
+}
+
+/* Quiet until touched (components §11): fades in on hover or focus. */
+.copy {
+  position: absolute;
+  top: var(--spacing-s);
+  right: var(--spacing-s);
+  font-size: var(--font-size-m);
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--material-ease),
+    color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+
+.block:hover .copy,
+.copy:focus-visible,
+.copy:hover {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .copy {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copy {
+    transition: none;
+  }
+}

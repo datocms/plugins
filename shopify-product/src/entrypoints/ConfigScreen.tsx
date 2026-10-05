@@ -1,168 +1,118 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import { Canvas, FieldError, Form, Spinner } from 'datocms-react-ui';
+import { useState } from 'react';
+import AdvancedSettings from '../components/settings/AdvancedSettings';
+import { StableButton } from '../components/settings/StableButton';
+import StoreList from '../components/settings/StoreList';
 import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  Section,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import { Field, Form as FormHandler } from 'react-final-form';
-import {
-  getShopifyClientConfig,
-  parseAndNormalizeConfig,
-  type ValidConfig,
-} from '../types';
-import ShopifyClient from '../utils/ShopifyClient';
-import s from './styles.module.css';
+  type FormMessage,
+  type SettingsForm,
+  useSettingsForm,
+} from '../components/settings/useSettingsForm';
+import Callout from '../components/shared/Callout';
+import styles from './ConfigScreen.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-export default function ConfigScreen({ ctx }: Props) {
-  const initialValues = parseAndNormalizeConfig(
-    ctx.plugin.attributes.parameters,
+const FORM_MESSAGES: Record<FormMessage, string> = {
+  invalid: 'Fix the errors above before saving',
+  connection:
+    "Couldn't connect to Shopify. Fix the connection above, or save anyway.",
+};
+
+const API_VERSION_MESSAGE =
+  'This plugin version targets an expired Shopify API version. Update the plugin to keep it working.';
+
+/** Nothing to save, a save running, or a read-only role. */
+function isSaveUnavailable(form: SettingsForm): boolean {
+  return !form.dirty || form.saving || form.readOnly;
+}
+
+/**
+ * Unavailable rather than disabled: pressing Save (or a save finishing with
+ * nothing left to save) keeps keyboard focus on it.
+ */
+function SaveButton({ form }: { form: SettingsForm }) {
+  return (
+    <StableButton
+      type="submit"
+      buttonType="primary"
+      buttonSize="xl"
+      fullWidth
+      unavailable={isSaveUnavailable(form)}
+    >
+      {form.saving ? (
+        <span className={styles.pending}>
+          Please wait
+          <Spinner size={20} />
+        </span>
+      ) : (
+        'Save settings'
+      )}
+    </StableButton>
   );
+}
+
+function SettingsScreen({ ctx }: Props) {
+  const form = useSettingsForm(ctx);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // An error in a closed section would be invisible: it opens the section,
+  // which stays open once fixed (it would close under the user's cursor).
+  const autoApplyError = Boolean(form.errors.autoApply);
+  if (autoApplyError && !advancedOpen) setAdvancedOpen(true);
+  const advancedShown = advancedOpen || autoApplyError;
 
   return (
-    <Canvas ctx={ctx}>
-      <FormHandler<ValidConfig>
-        initialValues={initialValues}
-        validate={(values: ValidConfig) => {
-          const errors: Record<string, string> = {};
-
-          if (!values.useDemoStore && !values.shopifyDomain) {
-            errors.shopifyDomain = 'This field is required!';
-          }
-
-          if (!values.useDemoStore && !values.storefrontAccessToken) {
-            errors.storefrontAccessToken = 'This field is required!';
-          }
-
-          return errors;
-        }}
-        onSubmit={async (values: ValidConfig) => {
-          try {
-            const client = new ShopifyClient(getShopifyClientConfig(values));
-            await client.productsMatching('foo');
-          } catch (e) {
-            console.log('test', e);
-
-            return {
-              tupleFailing:
-                'The API key seems to be invalid for the specified Shopify domain!',
-            };
-          }
-
-          await ctx.updatePluginParameters(values);
-          ctx.notice('Settings updated successfully!');
+    <div className="dl-kit-form-parity">
+      <Form
+        onSubmit={() => {
+          // Enter in a field submits too.
+          if (!isSaveUnavailable(form)) void form.save();
         }}
       >
-        {({
-          handleSubmit,
-          submitting,
-          dirty,
-          submitErrors,
-          values = initialValues,
-        }) => (
-          <Form onSubmit={handleSubmit}>
-            {submitErrors?.tupleFailing && (
-              <div className={s.error}>{submitErrors.tupleFailing}</div>
-            )}
-            <Section title="Credentials">
-              <FieldGroup>
-                <Field name="useDemoStore">
-                  {({ input }) => (
-                    <SwitchField
-                      id="useDemoStore"
-                      name={input.name}
-                      label="Use demo store?"
-                      hint="Use mock products from the DatoCMS demo Shopify store."
-                      value={Boolean(input.value)}
-                      onChange={input.onChange}
-                    />
-                  )}
-                </Field>
-                {!values.useDemoStore && (
-                  <Field name="shopifyDomain">
-                    {({ input, meta: { error } }) => (
-                      <TextField
-                        id="shopifyDomain"
-                        label="Shop ID"
-                        hint={
-                          <>
-                            If your shop is{' '}
-                            <code>foo-bar.myshopify.com</code>, then insert{' '}
-                            <code>foo-bar</code>
-                          </>
-                        }
-                        placeholder="my-shop"
-                        required
-                        error={error}
-                        {...input}
-                      />
-                    )}
-                  </Field>)}
-                {!values.useDemoStore && (
-                  <Field name="storefrontAccessToken">
-                    {({ input, meta: { error } }) => (
-                      <TextField
-                        id="storefrontAccessToken"
-                        label="Storefront access token"
-                        hint={
-                          <>
-                            You can get a Storefront access token by creating a
-                            private app. Take a look at{' '}
-                            <a
-                              href="https://help.shopify.com/en/api/custom-storefronts/storefront-api/getting-started#authentication"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Shopify documentation
-                            </a>{' '}
-                            for more info
-                          </>
-                        }
-                        textInputProps={{ monospaced: true }}
-                        placeholder="XXXYYY"
-                        required
-                        error={error}
-                        {...input}
-                      />
-                    )}
-                  </Field>
-                )}
-              </FieldGroup>
-            </Section>
-            <Section title="Auto-apply to fields">
-              <Field name="autoApplyToFieldsWithApiKey">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="autoApplyToFieldsWithApiKey"
-                    label="Auto-apply this plugin to all Single-line and JSON fields fields matching the following API identifier:"
-                    hint="A regular expression can be used"
-                    placeholder="shopify_product"
-                    error={error}
-                    textInputProps={{ monospaced: true }}
-                    {...input}
-                  />
-                )}
-              </Field>
-            </Section>
-            <Button
-              type="submit"
-              fullWidth
-              buttonSize="l"
-              buttonType="primary"
-              disabled={submitting || !dirty}
-            >
-              Save settings
-            </Button>
-          </Form>
+        {form.readOnly && (
+          <Callout tone="neutral" role="status">
+            Your role can view these settings but can't change them
+          </Callout>
         )}
-      </FormHandler>
+        {form.draft.useDemoStore && (
+          <Callout tone="neutral" role="status">
+            The demo store is on, so editors browse sample products. Switch it
+            off in Advanced settings.
+          </Callout>
+        )}
+        {form.checks.apiVersionOutdated && (
+          <Callout tone="warning" role="alert">
+            {API_VERSION_MESSAGE}
+          </Callout>
+        )}
+        <div className="dl-kit-sections">
+          <StoreList form={form} locale={ctx.ui.locale} />
+          <AdvancedSettings
+            form={form}
+            open={advancedShown}
+            onToggle={() => {
+              if (!autoApplyError) setAdvancedOpen(!advancedShown);
+            }}
+          />
+        </div>
+        {form.formMessage && (
+          <div role="alert">
+            <FieldError>{FORM_MESSAGES[form.formMessage]}</FieldError>
+          </div>
+        )}
+        <SaveButton form={form} />
+      </Form>
+    </div>
+  );
+}
+
+export default function ConfigScreen({ ctx }: Props) {
+  return (
+    <Canvas ctx={ctx}>
+      <SettingsScreen ctx={ctx} />
     </Canvas>
   );
 }

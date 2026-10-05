@@ -1,0 +1,139 @@
+/* Radio cards: design language forms §7 (.dl-option-card, small variant). */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-m);
+  cursor: pointer;
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  transition:
+    border-color 0.15s var(--material-ease),
+    box-shadow 0.15s var(--material-ease),
+    background-color 0.15s var(--material-ease);
+}
+
+.card:hover,
+.card:focus-within {
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.checked {
+  border-color: var(--color--selected--border);
+}
+
+/* Disabled radio cards use surface-muted (forms §7), not disabled--surface. */
+.disabled {
+  cursor: not-allowed;
+  background-color: var(--color--surface-muted);
+}
+
+.disabled:hover,
+.disabled:focus-within {
+  box-shadow: none;
+}
+
+.radio {
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+}
+
+.radio input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+.radio::before {
+  content: "";
+  display: block;
+  box-sizing: border-box;
+  width: 1.4em;
+  height: 1.4em;
+  background: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 100%;
+  transition:
+    border-color 0.15s var(--material-ease),
+    background 0.15s var(--material-ease);
+}
+
+.card:hover .radio::before {
+  background: var(--color--surface-hover);
+}
+
+.checked .radio::before,
+.checked:hover .radio::before {
+  border-color: var(--color--selected--border);
+  background: radial-gradient(
+    var(--color--selected--border) 30%,
+    transparent 35%
+  );
+}
+
+/*
+ * An empty ring: a surface-raised disc reads as a dark, checked dot on the
+ * muted card in dark mode. --color--border equals surface-muted, so the ring
+ * takes the stronger border token to stay visible.
+ */
+.disabled:not(.checked) .radio::before,
+.disabled:not(.checked):hover .radio::before {
+  background: transparent;
+  border-color: var(--color--border-hover);
+}
+
+.body {
+  min-width: 0;
+  margin-left: calc(1.5 * var(--spacing-m));
+}
+
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  line-height: 1.2;
+}
+
+.disabled .label {
+  color: var(--color--ink-subtle);
+}
+
+.description {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+
+/* .dl-badge (components §5), default flavour. */
+.badge {
+  display: inline-block;
+  padding: 0 0.6em;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.8em;
+  color: var(--color--primary-soft--ink);
+  text-transform: uppercase;
+  background-color: var(--color--primary-soft--surface);
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .radio::before {
+    transition: none;
+  }
+}

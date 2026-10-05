@@ -1,0 +1,285 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "BrowseCollectionProducts",
+  "tokenless": false,
+  "variables": {
+    "id": "gid://shopify/Collection/645261099354",
+    "first": 5,
+    "after": null,
+    "filters": [
+      {
+        "available": true
+      }
+    ],
+    "sortKey": "BEST_SELLING",
+    "reverse": false,
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "collection": {
+        "id": "gid://shopify/Collection/645261099354",
+        "products": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "eyJsYXN0X3ZhbHVlIjoiNCIsImxhc3RfaWQiOjEwMDgwNzUxOTQ0MDI2LCJvZmZzZXQiOjR9"
+          },
+          "filters": [
+            {
+              "id": "filter.v.availability",
+              "label": "Availability",
+              "type": "LIST",
+              "values": [
+                {
+                  "id": "filter.v.availability.1",
+                  "label": "In stock",
+                  "count": 7,
+                  "input": "{\"available\":true}"
+                },
+                {
+                  "id": "filter.v.availability.0",
+                  "label": "Out of stock",
+                  "count": 0,
+                  "input": "{\"available\":false}"
+                }
+              ]
+            },
+            {
+              "id": "filter.v.price",
+              "label": "Price",
+              "type": "PRICE_RANGE",
+              "values": [
+                {
+                  "id": "filter.v.price",
+                  "label": "Price",
+                  "count": 0,
+                  "input": "{\"price\":{\"min\":0,\"max\":785.95}}"
+                }
+              ]
+            }
+          ],
+          "nodes": [
+            {
+              "__typename": "Product",
+              "id": "gid://shopify/Product/10080752337242",
+              "handle": "the-collection-snowboard-liquid",
+              "title": "The Collection Snowboard: Liquid",
+              "vendor": "Hydrogen Vendor",
+              "productType": "snowboard",
+              "availableForSale": true,
+              "onlineStoreUrl": null,
+              "updatedAt": "2026-07-18T23:38:45Z",
+              "featuredImage": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_b13ad453-477c-4ed1-9b43-81f3345adfd6_400x400.jpg?v=1741717812",
+                "altText": "Top and bottom view of a snowboard. The top view shows a stylized scene of water, trees, mountains,\n        sky and a moon in blue colours. The bottom view has a blue liquid, drippy background with the text “liquid” in\n        a stylized script typeface."
+              },
+              "priceRange": {
+                "minVariantPrice": {
+                  "amount": "749.95",
+                  "currencyCode": "EUR"
+                },
+                "maxVariantPrice": {
+                  "amount": "749.95",
+                  "currencyCode": "EUR"
+                }
+              },
+              "compareAtPriceRange": {
+                "maxVariantPrice": {
+                  "amount": "0.0",
+                  "currencyCode": "EUR"
+                }
+              },
+              "variantsCount": {
+                "count": 1
+              },
+              "firstVariant": {
+                "nodes": [
+                  {
+                    "sku": null
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "Product",
+              "id": "gid://shopify/Product/10080752271706",
+              "handle": "the-multi-managed-snowboard",
+              "title": "The Multi-managed Snowboard",
+              "vendor": "Multi-managed Vendor",
+              "productType": "snowboard",
+              "availableForSale": true,
+              "onlineStoreUrl": null,
+              "updatedAt": "2026-07-18T23:38:44Z",
+              "featuredImage": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_400x400.jpg?v=1741717812",
+                "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+              },
+              "priceRange": {
+                "minVariantPrice": {
+                  "amount": "629.95",
+                  "currencyCode": "EUR"
+                },
+                "maxVariantPrice": {
+                  "amount": "629.95",
+                  "currencyCode": "EUR"
+                }
+              },
+              "compareAtPriceRange": {
+                "maxVariantPrice": {
+                  "amount": "0.0",
+                  "currencyCode": "EUR"
+                }
+              },
+              "variantsCount": {
+                "count": 1
+              },
+              "firstVariant": {
+                "nodes": [
+                  {
+                    "sku": "sku-managed-1"
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "Product",
+              "id": "gid://shopify/Product/10080752206170",
+              "handle": "the-multi-location-snowboard",
+              "title": "The Multi-location Snowboard",
+              "vendor": "DatoCMS Demo",
+              "productType": "snowboard",
+              "availableForSale": true,
+              "onlineStoreUrl": null,
+              "updatedAt": "2026-07-18T23:38:43Z",
+              "featuredImage": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_0a4e9096-021a-4c1e-8750-24b233166a12_400x400.jpg?v=1741717812",
+                "altText": "Top and bottom view of a snowboard. The top view shows a pixelated Shopify bag logo and a\n        pixelated character reviewing a clipboard with a questioning expression with a bright green-blue background.\n        The bottom view is a pattern of many pixel characters with a bright green-blue background."
+              },
+              "priceRange": {
+                "minVariantPrice": {
+                  "amount": "729.95",
+                  "currencyCode": "EUR"
+                },
+                "maxVariantPrice": {
+                  "amount": "729.95",
+                  "currencyCode": "EUR"
+                }
+              },
+              "compareAtPriceRange": {
+                "maxVariantPrice": {
+                  "amount": "0.0",
+                  "currencyCode": "EUR"
+                }
+              },
+              "variantsCount": {
+                "count": 1
+              },
+              "firstVariant": {
+                "nodes": [
+                  {
+                    "sku": null
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "Product",
+              "id": "gid://shopify/Product/10080752009562",
+              "handle": "the-complete-snowboard",
+              "title": "The Complete Snowboard",
+              "vendor": "Snowboard Vendor",
+              "productType": "snowboard",
+              "availableForSale": true,
+              "onlineStoreUrl": null,
+              "updatedAt": "2026-07-18T23:38:42Z",
+              "featuredImage": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_400x400.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "priceRange": {
+                "minVariantPrice": {
+                  "amount": "699.95",
+                  "currencyCode": "EUR"
+                },
+                "maxVariantPrice": {
+                  "amount": "699.95",
+                  "currencyCode": "EUR"
+                }
+              },
+              "compareAtPriceRange": {
+                "maxVariantPrice": {
+                  "amount": "0.0",
+                  "currencyCode": "EUR"
+                }
+              },
+              "variantsCount": {
+                "count": 5
+              },
+              "firstVariant": {
+                "nodes": [
+                  {
+                    "sku": null
+                  }
+                ]
+              }
+            },
+            {
+              "__typename": "Product",
+              "id": "gid://shopify/Product/10080751944026",
+              "handle": "the-hidden-snowboard",
+              "title": "The Hidden Snowboard",
+              "vendor": "Snowboard Vendor",
+              "productType": "snowboard",
+              "availableForSale": true,
+              "onlineStoreUrl": null,
+              "updatedAt": "2026-07-18T23:38:41Z",
+              "featuredImage": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_c8ff0b5d-c712-429a-be00-b29bd55cbc9d_400x400.jpg?v=1741717811",
+                "altText": "The top view and bottom view of a snowboard. The top view is black with a singular peach cube.\n        The bottom view has a graphic of a stack of blocks in a gradient from light blue, to pink to peach."
+              },
+              "priceRange": {
+                "minVariantPrice": {
+                  "amount": "749.95",
+                  "currencyCode": "EUR"
+                },
+                "maxVariantPrice": {
+                  "amount": "749.95",
+                  "currencyCode": "EUR"
+                }
+              },
+              "compareAtPriceRange": {
+                "maxVariantPrice": {
+                  "amount": "0.0",
+                  "currencyCode": "EUR"
+                }
+              },
+              "variantsCount": {
+                "count": 1
+              },
+              "firstVariant": {
+                "nodes": [
+                  {
+                    "sku": null
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 38
+      }
+    }
+  }
+}

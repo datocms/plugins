@@ -1,0 +1,35 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "hydrogen-preview.myshopify.com",
+  "operation": "ProbeTags",
+  "tokenless": true,
+  "note": "Shopify's public hydrogen-preview store, called without a token: its storefront has no unauthenticated_read_product_tags scope, so it shows how Shopify denies the non-null productTags root field (data: null).",
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "errors": [
+      {
+        "message": "Access denied for productTags field. Required access: `unauthenticated_read_product_tags` access scope.",
+        "locations": [
+          {
+            "line": 2,
+            "column": 3
+          }
+        ],
+        "path": ["productTags"],
+        "extensions": {
+          "code": "ACCESS_DENIED",
+          "documentation": "https://shopify.dev/api/usage/access-scopes",
+          "requiredAccess": "`unauthenticated_read_product_tags` access scope."
+        }
+      }
+    ],
+    "data": null,
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,877 @@
+/*
+ * datocms-tokens.css — DatoCMS dashboard color tokens, default theme, light + dark.
+ *
+ * WHAT THIS IS
+ *   A standalone reproduction of the color layer the DatoCMS dashboard paints
+ *   with, for web pages that are NOT DatoCMS plugins (plugins already receive
+ *   the resolved --color--* values from the host via ctx.cssDesignTokens and
+ *   datocms-react-ui's <Canvas>; they do not need this file).
+ *
+ * HOW IT WAS PRODUCED
+ *   - --pigment-* and --wash-* were computed by running the dashboard's own
+ *     generators (src/utils/color/pigmentRamp.ts pigmentRampFromHue(270),
+ *     src/utils/color/washRamp.ts buildLightWashRamp(270) /
+ *     buildDarkWashRamp(270)) for the default project theme:
+ *     { type: "monochromatic", hue: 270 } (backend Environment::DEFAULT_THEME;
+ *     also the pre-selected hue in the "new blank project" form).
+ *     The values are the exact oklch() strings the dashboard writes onto
+ *     <html style="..."> at runtime. The trailing hex comments are the sRGB
+ *     values Chrome actually renders for each stop (verified by canvas
+ *     read-back in headless Chrome); use them only as a fallback/preview.
+ *   - The static signal/diff ramps (--red-*, --amber-*, --green-*, --yellow-*,
+ *     --mint-*, --rose-*, --azure-*) are copied from styles/_primitive-ramps.css.
+ *   - Every --color--* and --shadow--* declaration is copied VERBATIM from
+ *     styles/_semantic-tokens.css (light + dark blocks), so tokens keep
+ *     referencing the primitives exactly like the dashboard does.
+ *   - The --color--navbar* family (dashboard-internal, NOT sent to plugins)
+ *     is copied from styles/blocks/_NavigationBar.css for UIs that want the
+ *     DatoCMS top bar look.
+ *   - Pigment ramp is identical in light and dark for monochromatic themes;
+ *     only the wash ramp (and which stops the semantic tokens pick) changes.
+ *
+ * HOW TO USE
+ *   <link rel="stylesheet" href="datocms-tokens.css">
+ *   Then paint ONLY with semantic tokens, never primitives:
+ *     html, body { background: var(--color--surface); color: var(--color--ink); }
+ *     .card  { background: var(--color--surface-raised); border: 1px solid var(--color--border);
+ *              border-radius: 4px; box-shadow: var(--shadow--raised); }
+ *     .cta   { background: var(--color--primary--surface); color: var(--color--primary--ink); }
+ *     input:focus { border-color: var(--color--focus--border);
+ *                   box-shadow: 0 0 0 4px var(--color--focus--outline); }
+ *   Scheme selection:
+ *     - no attribute on <html>          -> follows the OS (prefers-color-scheme)
+ *     - <html data-color-scheme="light"> -> forced light
+ *     - <html data-color-scheme="dark">  -> forced dark
+ *   A subtree can also be flipped by putting data-color-scheme on any element
+ *   (primitives and semantic tokens are declared together per scope, so
+ *   var() references resolve correctly on that element).
+ *
+ * RE-THEMING TO ANOTHER HUE
+ *   Re-run the generators for another hue (0..359); do not hand-edit stops.
+ *   The wash chroma is 0.005 (light) / 0.012 (dark) at the brand hue; the
+ *   pigment anchor (stop 450) is the brightest max-chroma color at that hue
+ *   that still has >= 4.5:1 contrast on white.
+ *
+ * VERIFIED (headless Chrome, getComputedStyle + canvas read-back):
+ *   light: --color--surface #ffffff, --color--ink #111114,
+ *          --color--primary--surface #3144be (pigment-550), anchor pigment-450 #4b67ff
+ *   dark:  --color--surface #14161c, --color--ink #ffffff,
+ *          --color--primary--surface #3e55de (pigment-500)
+ *
+ * Requires a browser with oklch() + color-mix() support (2023+).
+ */
+
+/* ========================================================================
+ * 1. Primitives shared by both schemes: static signal/diff ramps + pigment
+ * ===================================================================== */
+:root {
+  /* --- Static fixed-hue ramps (styles/_primitive-ramps.css) --- */
+  --red-100: #f6e2df;
+  --red-200: #edc9c4;
+  --red-450: #d66351;
+  --red-550: #cd3a24;
+  --red-600: #c92910; /* lockHex */
+  --red-700: #a01601;
+  --red-900: #4d0a00;
+
+  --yellow-450: #f9ea43; /* lockHex */
+  --yellow-850: #605800;
+
+  --amber-200: #f9e0b9;
+  --amber-400: #f4b74d;
+  --amber-500: #f1a10d; /* lockHex */
+  --amber-800: #683f00;
+  --amber-900: #3b2200;
+
+  --green-200: #ceeabe;
+  --green-500: #70ca2f; /* lockHex */
+  --green-600: #49ab09;
+  --green-900: #1a4d00;
+
+  --mint-50: #e1f5ef;
+  --mint-100: #d5ebe4;
+  --mint-400: #54b091;
+  --mint-500: #289c75;
+  --mint-750: #006a47;
+  --mint-800: #006040;
+
+  --rose-50: #f5e1e5;
+  --rose-100: #ebd5d9;
+  --rose-300: #c4858f;
+  --rose-400: #b05463;
+  --rose-500: #9c283b;
+  --rose-750: #6a0012;
+  --rose-800: #600010;
+
+  --azure-50: #e1ebf5;
+  --azure-100: #d5e0eb;
+  --azure-300: #85a4c4;
+  --azure-800: #003060;
+
+  /* --- Pigment ramp: high-chroma brand "signal" ramp, hue 270 (default theme).
+         Same values in light and dark mode. Anchor = --pigment-450. --- */
+  --pigment-0: oklch(1.0000 0.0000 0.00); /* ~#ffffff */
+  --pigment-50: oklch(0.9949 0.0024 270.00); /* ~#fdfdff */
+  --pigment-100: oklch(0.9794 0.0096 270.00); /* ~#f6f8ff */
+  --pigment-150: oklch(0.9537 0.0218 270.00); /* ~#eaefff */
+  --pigment-200: oklch(0.9177 0.0393 270.00); /* ~#d9e3ff */
+  --pigment-250: oklch(0.8715 0.0626 270.00); /* ~#c4d4ff */
+  --pigment-300: oklch(0.8149 0.0922 270.00); /* ~#abc0ff */
+  --pigment-350: oklch(0.7480 0.1289 270.00); /* ~#8ea8ff */
+  --pigment-400: oklch(0.6709 0.1735 270.00); /* ~#6d8cff */
+  --pigment-450: oklch(0.5835 0.2271 270.00); /* ~#4b67ff */
+  --pigment-500: oklch(0.5187 0.2081 270.00); /* ~#3e55de */
+  --pigment-550: oklch(0.4538 0.1912 270.00); /* ~#3144be */
+  --pigment-600: oklch(0.3890 0.1767 270.00); /* ~#2532a1 */
+  --pigment-650: oklch(0.3242 0.1643 270.00); /* ~#192086 */
+  --pigment-700: oklch(0.2593 0.1542 270.00); /* ~#0f0b6c */
+  --pigment-750: oklch(0.1945 0.1283 270.00); /* ~#07004d */
+  --pigment-800: oklch(0.1297 0.0867 270.00); /* ~#020029 */
+  --pigment-850: oklch(0.0648 0.0489 270.00); /* ~#00000b */
+  --pigment-900: oklch(0.0000 0.0517 270.00); /* ~#000002 */
+}
+
+/* ========================================================================
+ * 2. LIGHT (default): wash ramp (easeInQuad, chroma 0.005 @ hue 270)
+ *    + semantic tokens copied verbatim from styles/_semantic-tokens.css
+ * ===================================================================== */
+:root,
+[data-color-scheme="light"] {
+  color-scheme: light;
+
+  /* --- Wash ramp (light) --- */
+  --wash-0: oklch(1.0000 0 270); /* ~#ffffff */
+  --wash-30: oklch(0.9991 0.005 270); /* ~#fdffff */
+  --wash-50: oklch(0.9975 0.005 270); /* ~#fdfeff */
+  --wash-100: oklch(0.9899 0.005 270); /* ~#fafcff */
+  --wash-150: oklch(0.9772 0.005 270); /* ~#f6f7fb */
+  --wash-200: oklch(0.9595 0.005 270); /* ~#f0f1f5 */
+  --wash-250: oklch(0.9367 0.005 270); /* ~#e9eaed */
+  --wash-300: oklch(0.9089 0.005 270); /* ~#dfe1e4 */
+  --wash-350: oklch(0.8760 0.005 270); /* ~#d5d6d9 */
+  --wash-400: oklch(0.8380 0.005 270); /* ~#c8cacd */
+  --wash-450: oklch(0.7950 0.005 270); /* ~#bbbcbf */
+  --wash-500: oklch(0.7469 0.005 270); /* ~#acadb0 */
+  --wash-550: oklch(0.6938 0.005 270); /* ~#9b9ca0 */
+  --wash-600: oklch(0.6356 0.005 270); /* ~#898b8e */
+  --wash-650: oklch(0.5723 0.005 270); /* ~#77787b */
+  --wash-700: oklch(0.5040 0.005 270); /* ~#636467 */
+  --wash-750: oklch(0.4306 0.005 270); /* ~#4f5053 */
+  --wash-800: oklch(0.3521 0.005 270); /* ~#3a3b3e */
+  --wash-850: oklch(0.2686 0.005 270); /* ~#252629 */
+  --wash-900: oklch(0.1800 0.005 270); /* ~#111114 */
+
+  /* --- Standalone --- */
+  --color--border: var(--wash-200); /* default borders (semi-transparent) */
+  --color--border-hover: var(--wash-350);
+  --color--ink: var(--wash-900); /* primary text */
+  --color--ink-danger: var(--red-600); /* danger text/icon on a neutral surface */
+  --color--ink-disabled: var(--wash-450);
+  --color--ink-hover: var(--wash-750);
+  --color--ink-link: var(--pigment-550); /* links, accent text */
+  --color--ink-muted: var(--wash-350);
+  --color--ink-placeholder: var(--wash-450); /* placeholder text */
+  --color--ink-primary: var(--pigment-450); /* theme-colored text (icons, highlighted labels) */
+  --color--ink-subtle: var(--wash-700); /* secondary text */
+  --color--ink-success: var(--green-600); /* success text/icon on a neutral surface */
+  --color--ink-warning: var(--amber-800); /* warning text/icon on a neutral surface */
+  --color--surface: var(--wash-0); /* page background */
+  --color--surface-hover: var(--wash-150);
+  --color--surface-muted: var(--wash-200); /* section backgrounds */
+  --color--surface-raised-active: var(--wash-250);
+  --color--surface-raised-hover: var(--wash-200);
+  --color--surface-raised: var(--wash-0); /* modals, dropdowns, popovers */
+
+  /* --- Context: primary --- */
+  --color--primary--surface: var(--pigment-550); /* primary buttons */
+  --color--primary--surface-hover: var(--pigment-400);
+  --color--primary--surface-active: var(--pigment-350);
+  --color--primary--surface-muted: var(--wash-550);
+  --color--primary--surface-secondary: var(--pigment-350); /* quieter solid brand surface, same white ink */
+  --color--primary--ink: var(--wash-0);
+  --color--primary--border: rgba(0, 0, 0, 0.1);
+
+  /* --- Context: primary-soft (soft brand panel) --- */
+  --color--primary-soft--surface: var(--pigment-200); /* brand-tinted buttons */
+  --color--primary-soft--surface-hover: var(--pigment-200);
+  --color--primary-soft--surface-active: var(--pigment-250);
+  --color--primary-soft--ink: var(--pigment-550);
+  --color--primary-soft--border: var(--pigment-300);
+
+  /* --- Context: selected --- */
+  --color--selected--surface: var(--pigment-250);
+  --color--selected--surface-hover: var(--pigment-300);
+  --color--selected--ink: var(--wash-900);
+  --color--selected--border: var(--pigment-550);
+
+  /* --- Context: disabled --- */
+  --color--disabled--surface: var(--wash-250);
+  --color--disabled--ink: var(--wash-600);
+
+  /* --- Context: danger --- */
+  --color--danger--surface: var(--red-600);
+  --color--danger--ink: var(--wash-0);
+
+  /* --- Context: focus --- */
+  --color--focus--border: var(--pigment-550);
+  --color--focus--outline: var(--pigment-150);
+
+  /* --- Context: danger-soft (soft red panel) --- */
+  --color--danger-soft--ink: var(--red-600);
+  --color--danger-soft--border: var(--red-550);
+  --color--danger-soft--outline: color-mix(in oklch, var(--red-450) 30%, transparent);
+  --color--danger-soft--surface: var(--red-100);
+
+  /* --- Context: warning-soft (soft amber panel) --- */
+  --color--warning-soft--ink: var(--amber-800);
+  --color--warning-soft--border: var(--amber-500);
+  --color--warning-soft--outline: color-mix(in oklch, var(--amber-500) 30%, transparent);
+  --color--warning-soft--surface: var(--amber-200);
+
+  /* --- Context: success-soft (soft green panel) --- */
+  --color--success-soft--ink: var(--green-600);
+  --color--success-soft--border: var(--green-500);
+  --color--success-soft--outline: color-mix(in oklch, var(--green-500) 30%, transparent);
+  --color--success-soft--surface: var(--green-200);
+
+  /* --- Context: highlight (rich text inline highlights) --- */
+  --color--highlight--surface: var(--yellow-450);
+
+  /* --- Diffs --- */
+  --color--diff-added--ink-subtle: var(--mint-100);
+  --color--diff-added--ink: var(--mint-400);
+  --color--diff-added--outline: var(--mint-100);
+  --color--diff-added--surface: var(--mint-50);
+
+  --color--diff-changed--outline: var(--azure-100);
+  --color--diff-changed--surface: var(--azure-50);
+
+  --color--diff-removed--ink-subtle: var(--rose-100);
+  --color--diff-removed--ink: var(--rose-400);
+  --color--diff-removed--outline: var(--rose-100);
+  --color--diff-removed--surface: var(--rose-50);
+
+  /* --- Status --- */
+  --color--status-draft--ink: var(--wash-650);
+  --color--status-outdated--ink: var(--amber-400);
+  --color--status-published--ink: var(--green-500);
+  --color--status-published--fill: var(--green-500);
+  --color--status-published--outline: color-mix(
+    in srgb,
+    var(--green-500) 25%,
+    transparent
+  );
+
+  /* --- Backdrop --- */
+  --color--backdrop--surface: rgba(0, 0, 0, 0.6);
+  --color--backdrop--ink: var(--wash-250);
+
+  /* --- Overlay --- */
+  --color--overlay--surface: rgba(0, 0, 0, 0.2);
+  --color--overlay--surface-hover: rgba(0, 0, 0, 0.3);
+  --color--overlay--surface-active: rgba(0, 0, 0, 0.4);
+  --color--overlay--ink: var(--wash-250);
+
+  /* --- Stacked (dark inline surfaces with layered depth) --- */
+  --color--stacked--surface: var(--wash-800);
+  --color--stacked--surface-upper: var(--wash-850);
+  --color--stacked--ink: var(--wash-200);
+  --color--stacked--ink-subtle: var(--wash-500);
+  --color--stacked--border: color-mix(in oklch, var(--wash-30) 20%, transparent);
+  --color--stacked--surface-action: transparent;
+  --color--stacked--surface-action-hover: color-mix(in oklch, var(--wash-30) 10%, transparent);
+  --color--stacked--surface-action-active: color-mix(in oklch, var(--wash-30) 20%, transparent);
+
+  /* --- Context: progress --- */
+  --color--progress--track: var(--color--surface-muted);
+  --color--progress--fill: var(--pigment-450);
+  --color--progress--fill-hover: var(--wash-500);
+
+  /* --- Tooltip --- */
+  --color--tooltip--surface: var(--wash-100);
+  --color--tooltip--surface-hover: var(--wash-150);
+  --color--tooltip--ink: var(--wash-800);
+  --color--tooltip--ink-subtle: var(--wash-700);
+
+  /* --- Code (mirrors the Prism "github" theme used in SlateInput/codeTheme.ts) --- */
+  --color--code--surface: #f6f8fa;
+  --color--code--ink: #393a34;
+
+  /* --- Scrollbar --- */
+  --color--scrollbar--fill: color-mix(in oklch, var(--wash-900) 30%, transparent);
+
+  /* --- Field type group icon chips (fixed hues, soft recipe: pale surface + saturated ink) --- */
+  --color--field-group-text--ink: #998100;
+  --color--field-group-text--surface: #fff8d6;
+
+  --color--field-group-rich-text--ink: #38388d;
+  --color--field-group-rich-text--surface: #e2e2fa;
+
+  --color--field-group-media--ink: #38ada3;
+  --color--field-group-media--surface: #e5fbf9;
+
+  --color--field-group-datetime--ink: #d76f0e;
+  --color--field-group-datetime--surface: #fef0e2;
+
+  --color--field-group-number--ink: #008499;
+  --color--field-group-number--surface: #d7faff;
+
+  --color--field-group-boolean--ink: #c82b1d;
+  --color--field-group-boolean--surface: #fde5e3;
+
+  --color--field-group-location--ink: #1d9f2f;
+  --color--field-group-location--surface: #defce2;
+
+  --color--field-group-color--ink: #b02857;
+  --color--field-group-color--surface: #fce2eb;
+
+  --color--field-group-seo--ink: #7e2e86;
+  --color--field-group-seo--surface: #f8dffa;
+
+  --color--field-group-reference--ink: #1b5899;
+  --color--field-group-reference--surface: #ddecfc;
+
+  --color--field-group-json--ink: #80a617;
+  --color--field-group-json--surface: #f5fdde;
+
+  /* --- Shadow composites — elevation scale ---
+     raised    : card depth; small components sitting on the page
+     floating  : popovers/dropdowns lifted above content
+     lifted    : modals/dialogs at maximum elevation
+     ambient   : omnidirectional glow (no vertical offset) for halos and rims */
+  --shadow--raised:
+    0 0.5px 1.2px rgba(0, 0, 0, 0.035),
+    0 1.5px 3px rgba(0, 0, 0, 0.05),
+    0 4px 8px rgba(0, 0, 0, 0.07);
+  --shadow--floating:
+    0 0.9px 2.2px rgba(0, 0, 0, 0.02),
+    0 2.2px 5.3px rgba(0, 0, 0, 0.028),
+    0 4.1px 10px rgba(0, 0, 0, 0.035),
+    0 7.4px 17.9px rgba(0, 0, 0, 0.042),
+    0 13.8px 33.4px rgba(0, 0, 0, 0.05),
+    0 33px 80px rgba(0, 0, 0, 0.07);
+  --shadow--lifted:
+    0px 2.8px 2.2px rgba(0, 0, 0, 0.02),
+    0px 6.7px 5.3px rgba(0, 0, 0, 0.028),
+    0px 12.5px 10px rgba(0, 0, 0, 0.035),
+    0px 22.3px 17.9px rgba(0, 0, 0, 0.042),
+    0px 41.8px 33.4px rgba(0, 0, 0, 0.05),
+    0px 100px 80px rgba(0, 0, 0, 0.07);
+  --shadow--ambient:
+    0px 0px 2.2px rgba(0, 0, 0, 0.02),
+    0px 0px 5.3px rgba(0, 0, 0, 0.028),
+    0px 0px 10px rgba(0, 0, 0, 0.035),
+    0px 0px 17.9px rgba(0, 0, 0, 0.042),
+    0px 0px 33.4px rgba(0, 0, 0, 0.05),
+    0px 0px 80px rgba(0, 0, 0, 0.07);
+
+  /* --- Dashboard-internal nav-bar tokens (styles/blocks/_NavigationBar.css);
+         NOT part of the plugin-facing token set --- */
+  --color--navbar-bright--surface: var(--pigment-500);
+  --color--navbar-deep--surface: var(--pigment-600);
+
+  --color--navbar--surface-hover: var(--pigment-500);
+  --color--navbar--ink: var(--wash-0);
+  --color--navbar--border: rgba(0, 0, 0, 0.1);
+  --color--navbar--raised--surface: var(--wash-0);
+  --color--navbar--raised--surface-hover: var(--wash-200);
+  --color--navbar--raised--ink: var(--pigment-850);
+}
+
+/* ========================================================================
+ * 3. DARK: wash ramp (easeOutQuad, chroma 0.012 @ hue 270)
+ *    + semantic tokens copied verbatim from styles/_semantic-tokens.css
+ * ===================================================================== */
+[data-color-scheme="dark"] {
+  color-scheme: dark;
+
+  /* --- Wash ramp (dark) --- */
+  --wash-0: oklch(1.0000 0 270); /* ~#ffffff */
+  --wash-30: oklch(0.9462 0.012 270); /* ~#eaedf6 */
+  --wash-50: oklch(0.9114 0.012 270); /* ~#dee2ea */
+  --wash-100: oklch(0.8279 0.012 270); /* ~#c3c6cf */
+  --wash-150: oklch(0.7494 0.012 270); /* ~#abaeb6 */
+  --wash-200: oklch(0.6760 0.012 270); /* ~#94979f */
+  --wash-250: oklch(0.6077 0.012 270); /* ~#7f828a */
+  --wash-300: oklch(0.5444 0.012 270); /* ~#6d7077 */
+  --wash-350: oklch(0.4862 0.012 270); /* ~#5d5f66 */
+  --wash-400: oklch(0.4331 0.012 270); /* ~#4e5057 */
+  --wash-450: oklch(0.3850 0.012 270); /* ~#41434a */
+  --wash-500: oklch(0.3420 0.012 270); /* ~#36383f */
+  --wash-550: oklch(0.3040 0.012 270); /* ~#2c2f35 */
+  --wash-600: oklch(0.2711 0.012 270); /* ~#24272d */
+  --wash-650: oklch(0.2433 0.012 270); /* ~#1e2026 */
+  --wash-700: oklch(0.2205 0.012 270); /* ~#181b20 */
+  --wash-750: oklch(0.2028 0.012 270); /* ~#14161c */
+  --wash-800: oklch(0.1901 0.012 270); /* ~#121419 */
+  --wash-850: oklch(0.1825 0.012 270); /* ~#101218 */
+  --wash-900: oklch(0.1800 0.012 270); /* ~#0f1117 */
+
+  /* --- Standalone --- */
+  --color--border: var(--wash-500);
+  --color--border-hover: var(--wash-400);
+  --color--ink: var(--wash-0);
+  --color--ink-danger: var(--red-200); /* danger text/icon on a neutral surface */
+  --color--ink-disabled: var(--wash-400);
+  --color--ink-hover: var(--wash-200);
+  --color--ink-link: var(--wash-50);
+  --color--ink-muted: var(--wash-450);
+  --color--ink-placeholder: var(--wash-200);
+  --color--ink-primary: var(--pigment-450); /* theme-colored text (icons, highlighted labels) */
+  --color--ink-subtle: var(--wash-150);
+  --color--ink-success: var(--green-200); /* success text/icon on a neutral surface */
+  --color--ink-warning: var(--amber-200); /* warning text/icon on a neutral surface */
+  --color--surface: var(--wash-750);
+  --color--surface-hover: var(--wash-600);
+  --color--surface-muted: var(--wash-500);
+  --color--surface-raised-active: var(--wash-500);
+  --color--surface-raised-hover: var(--wash-550);
+  --color--surface-raised: var(--wash-650);
+
+  /* --- Context: primary --- */
+  --color--primary--surface: var(--pigment-500);
+  --color--primary--surface-hover: var(--pigment-450);
+  --color--primary--surface-active: var(--pigment-350);
+  --color--primary--surface-muted: color-mix(in oklch, var(--color--primary--surface), rgba(0, 0, 0, 0.1));
+  --color--primary--surface-secondary: var(--pigment-550); /* quieter solid brand surface, same white ink */
+  --color--primary--ink: var(--wash-0);
+  --color--primary--border: color-mix(in oklch, var(--wash-30) 10%, transparent);
+
+  /* --- Context: primary-soft (soft brand panel) --- */
+  --color--primary-soft--surface: var(--pigment-650);
+  --color--primary-soft--surface-hover: var(--pigment-600);
+  --color--primary-soft--surface-active: var(--pigment-550);
+  --color--primary-soft--ink: var(--wash-0);
+  --color--primary-soft--border: var(--pigment-600);
+
+  /* --- Context: selected --- */
+  --color--selected--surface: var(--pigment-600);
+  --color--selected--surface-hover: var(--pigment-550);
+  --color--selected--ink: var(--wash-0);
+  --color--selected--border: var(--pigment-450);
+
+  /* --- Context: disabled --- */
+  --color--disabled--surface: var(--wash-400);
+  --color--disabled--ink: var(--wash-600);
+
+  /* --- Context: danger --- */
+  --color--danger--surface: var(--red-700);
+  --color--danger--ink: var(--wash-0);
+
+  /* --- Context: focus --- */
+  --color--focus--border: var(--pigment-450);
+  --color--focus--outline: color-mix(in oklch, var(--pigment-500) 30%, transparent);
+
+  /* --- Context: danger-soft (soft red panel) --- */
+  --color--danger-soft--ink: var(--red-200);
+  --color--danger-soft--border: var(--red-550);
+  --color--danger-soft--outline: color-mix(in oklch, var(--red-550) 30%, transparent);
+  --color--danger-soft--surface: var(--red-900);
+
+  /* --- Context: warning-soft (soft amber panel) --- */
+  --color--warning-soft--ink: var(--amber-200);
+  --color--warning-soft--border: var(--amber-500);
+  --color--warning-soft--outline: color-mix(in oklch, var(--amber-500) 30%, transparent);
+  --color--warning-soft--surface: var(--amber-900);
+
+  /* --- Context: success-soft (soft green panel) --- */
+  --color--success-soft--ink: var(--green-200);
+  --color--success-soft--border: var(--green-500);
+  --color--success-soft--outline: color-mix(in oklch, var(--green-500) 30%, transparent);
+  --color--success-soft--surface: var(--green-900);
+
+  /* --- Context: highlight (rich text inline highlights) --- */
+  --color--highlight--surface: var(--yellow-850);
+
+  /* --- Diffs --- */
+  --color--diff-added--ink-subtle: var(--mint-750);
+  --color--diff-added--ink: var(--mint-500);
+  --color--diff-added--outline: var(--mint-400);
+  --color--diff-added--surface: var(--mint-800);
+
+  --color--diff-changed--outline: var(--azure-300);
+  --color--diff-changed--surface: var(--azure-800);
+
+  --color--diff-removed--ink-subtle: var(--rose-750);
+  --color--diff-removed--ink: var(--rose-500);
+  --color--diff-removed--outline: var(--rose-300);
+  --color--diff-removed--surface: var(--rose-800);
+
+  /* --- Status --- */
+  --color--status-draft--ink: var(--wash-350);
+  --color--status-outdated--ink: var(--amber-500);
+  --color--status-published--ink: var(--green-500);
+  --color--status-published--fill: var(--green-500);
+  --color--status-published--outline: color-mix(
+    in srgb,
+    var(--green-500) 25%,
+    transparent
+  );
+
+  /* --- Backdrop --- */
+  --color--backdrop--surface: rgba(0, 0, 0, 0.2);
+  --color--backdrop--ink: var(--wash-50);
+
+  /* --- Overlay --- */
+  --color--overlay--surface: rgba(0, 0, 0, 0.2);
+  --color--overlay--surface-hover: rgba(0, 0, 0, 0.3);
+  --color--overlay--surface-active: rgba(0, 0, 0, 0.4);
+  --color--overlay--ink: var(--wash-50);
+
+  /* --- Stacked (dark inline surfaces with layered depth) --- */
+  --color--stacked--surface: var(--wash-650);
+  --color--stacked--surface-upper: var(--wash-750);
+  --color--stacked--ink: var(--wash-100);
+  --color--stacked--ink-subtle: var(--wash-200);
+  --color--stacked--border: color-mix(in oklch, var(--wash-30) 10%, transparent);
+  --color--stacked--surface-action: transparent;
+  --color--stacked--surface-action-hover: color-mix(in oklch, var(--wash-30) 10%, transparent);
+  --color--stacked--surface-action-active: color-mix(in oklch, var(--wash-30) 20%, transparent);
+
+  /* --- Context: progress --- */
+  --color--progress--track: var(--color--surface-muted);
+  --color--progress--fill: var(--pigment-550);
+  --color--progress--fill-hover: var(--pigment-400);
+
+  /* --- Tooltip --- */
+  --color--tooltip--surface: var(--wash-600);
+  --color--tooltip--surface-hover: var(--wash-500);
+  --color--tooltip--ink: var(--wash-50);
+  --color--tooltip--ink-subtle: var(--wash-150);
+
+  /* --- Code (mirrors the Prism "palenight" theme used in SlateInput/codeTheme.ts) --- */
+  --color--code--surface: #292d3e;
+  --color--code--ink: #bfc7d5;
+
+  /* --- Scrollbar --- */
+  --color--scrollbar--fill: color-mix(in oklch, var(--wash-30) 30%, transparent);
+
+  /* --- Field type group icon chips (fixed hues, soft recipe: deep surface + light ink) --- */
+  --color--field-group-text--ink: #e6c840;
+  --color--field-group-text--surface: #2d2500;
+
+  --color--field-group-rich-text--ink: #9a9ae8;
+  --color--field-group-rich-text--surface: #11113d;
+
+  --color--field-group-media--ink: #70d9d2;
+  --color--field-group-media--surface: #00322f;
+
+  --color--field-group-datetime--ink: #f5b96a;
+  --color--field-group-datetime--surface: #3a1e00;
+
+  --color--field-group-number--ink: #60d0e4;
+  --color--field-group-number--surface: #00272e;
+
+  --color--field-group-boolean--ink: #f4a9a3;
+  --color--field-group-boolean--surface: #3d0a06;
+
+  --color--field-group-location--ink: #72d980;
+  --color--field-group-location--surface: #003909;
+
+  --color--field-group-color--ink: #f2a3bc;
+  --color--field-group-color--surface: #380016;
+
+  --color--field-group-seo--ink: #de9de6;
+  --color--field-group-seo--surface: #280030;
+
+  --color--field-group-reference--ink: #7db2f2;
+  --color--field-group-reference--surface: #00183d;
+
+  --color--field-group-json--ink: #c2e060;
+  --color--field-group-json--surface: #1e2d00;
+
+  /* --- Shadow composites — elevation scale ---
+     Stronger opacity ramp than light mode: 2–7% black on a near-black surface
+     shifts rendered color by less than one RGB unit per layer (functionally
+     invisible). Floating/lifted/ambient include a top inset highlight to
+     rim-light the surface against the page; raised omits it for small cards. */
+  --shadow--raised:
+    0 0.5px 1.2px rgba(0, 0, 0, 0.09),
+    0 1.5px 3px rgba(0, 0, 0, 0.13),
+    0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow--floating:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0.9px 2.2px rgba(0, 0, 0, 0.13),
+    0 2.2px 5.3px rgba(0, 0, 0, 0.13),
+    0 4.1px 10px rgba(0, 0, 0, 0.2),
+    0 7.4px 17.9px rgba(0, 0, 0, 0.26),
+    0 13.8px 33.4px rgba(0, 0, 0, 0.3),
+    0 33px 80px rgba(0, 0, 0, 0.4);
+  --shadow--lifted:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0px 2.8px 2.2px rgba(0, 0, 0, 0.1),
+    0px 6.7px 5.3px rgba(0, 0, 0, 0.13),
+    0px 12.5px 10px rgba(0, 0, 0, 0.13),
+    0px 22.3px 17.9px rgba(0, 0, 0, 0.2),
+    0px 41.8px 33.4px rgba(0, 0, 0, 0.26),
+    0px 100px 80px rgba(0, 0, 0, 0.4);
+  --shadow--ambient:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0px 0px 2.2px rgba(0, 0, 0, 0.08),
+    0px 0px 5.3px rgba(0, 0, 0, 0.09),
+    0px 0px 10px rgba(0, 0, 0, 0.1),
+    0px 0px 17.9px rgba(0, 0, 0, 0.13),
+    0px 0px 33.4px rgba(0, 0, 0, 0.2),
+    0px 0px 80px rgba(0, 0, 0, 0.2);
+
+  /* --- Dashboard-internal nav-bar tokens (styles/blocks/_NavigationBar.css) --- */
+  --color--navbar-bright--surface: var(--pigment-650);
+  --color--navbar-deep--surface: var(--pigment-700);
+
+  --color--navbar--surface-hover: var(--pigment-600);
+  --color--navbar--ink: var(--wash-50);
+  --color--navbar--border: var(--pigment-700);
+  --color--navbar--raised--surface: var(--wash-0);
+  --color--navbar--raised--surface-hover: var(--wash-30);
+  --color--navbar--raised--ink: var(--pigment-850);
+}
+
+/* ========================================================================
+ * 4. DARK via OS preference when no explicit light scheme is forced.
+ *    Same declarations as section 3.
+ * ===================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme="light"]) {
+    color-scheme: dark;
+
+    /* --- Wash ramp (dark) --- */
+    --wash-0: oklch(1.0000 0 270); /* ~#ffffff */
+    --wash-30: oklch(0.9462 0.012 270); /* ~#eaedf6 */
+    --wash-50: oklch(0.9114 0.012 270); /* ~#dee2ea */
+    --wash-100: oklch(0.8279 0.012 270); /* ~#c3c6cf */
+    --wash-150: oklch(0.7494 0.012 270); /* ~#abaeb6 */
+    --wash-200: oklch(0.6760 0.012 270); /* ~#94979f */
+    --wash-250: oklch(0.6077 0.012 270); /* ~#7f828a */
+    --wash-300: oklch(0.5444 0.012 270); /* ~#6d7077 */
+    --wash-350: oklch(0.4862 0.012 270); /* ~#5d5f66 */
+    --wash-400: oklch(0.4331 0.012 270); /* ~#4e5057 */
+    --wash-450: oklch(0.3850 0.012 270); /* ~#41434a */
+    --wash-500: oklch(0.3420 0.012 270); /* ~#36383f */
+    --wash-550: oklch(0.3040 0.012 270); /* ~#2c2f35 */
+    --wash-600: oklch(0.2711 0.012 270); /* ~#24272d */
+    --wash-650: oklch(0.2433 0.012 270); /* ~#1e2026 */
+    --wash-700: oklch(0.2205 0.012 270); /* ~#181b20 */
+    --wash-750: oklch(0.2028 0.012 270); /* ~#14161c */
+    --wash-800: oklch(0.1901 0.012 270); /* ~#121419 */
+    --wash-850: oklch(0.1825 0.012 270); /* ~#101218 */
+    --wash-900: oklch(0.1800 0.012 270); /* ~#0f1117 */
+
+    /* --- Standalone --- */
+    --color--border: var(--wash-500);
+    --color--border-hover: var(--wash-400);
+    --color--ink: var(--wash-0);
+    --color--ink-danger: var(--red-200); /* danger text/icon on a neutral surface */
+    --color--ink-disabled: var(--wash-400);
+    --color--ink-hover: var(--wash-200);
+    --color--ink-link: var(--wash-50);
+    --color--ink-muted: var(--wash-450);
+    --color--ink-placeholder: var(--wash-200);
+    --color--ink-primary: var(--pigment-450); /* theme-colored text (icons, highlighted labels) */
+    --color--ink-subtle: var(--wash-150);
+    --color--ink-success: var(--green-200); /* success text/icon on a neutral surface */
+    --color--ink-warning: var(--amber-200); /* warning text/icon on a neutral surface */
+    --color--surface: var(--wash-750);
+    --color--surface-hover: var(--wash-600);
+    --color--surface-muted: var(--wash-500);
+    --color--surface-raised-active: var(--wash-500);
+    --color--surface-raised-hover: var(--wash-550);
+    --color--surface-raised: var(--wash-650);
+
+    /* --- Context: primary --- */
+    --color--primary--surface: var(--pigment-500);
+    --color--primary--surface-hover: var(--pigment-450);
+    --color--primary--surface-active: var(--pigment-350);
+    --color--primary--surface-muted: color-mix(in oklch, var(--color--primary--surface), rgba(0, 0, 0, 0.1));
+    --color--primary--surface-secondary: var(--pigment-550); /* quieter solid brand surface, same white ink */
+    --color--primary--ink: var(--wash-0);
+    --color--primary--border: color-mix(in oklch, var(--wash-30) 10%, transparent);
+
+    /* --- Context: primary-soft (soft brand panel) --- */
+    --color--primary-soft--surface: var(--pigment-650);
+    --color--primary-soft--surface-hover: var(--pigment-600);
+    --color--primary-soft--surface-active: var(--pigment-550);
+    --color--primary-soft--ink: var(--wash-0);
+    --color--primary-soft--border: var(--pigment-600);
+
+    /* --- Context: selected --- */
+    --color--selected--surface: var(--pigment-600);
+    --color--selected--surface-hover: var(--pigment-550);
+    --color--selected--ink: var(--wash-0);
+    --color--selected--border: var(--pigment-450);
+
+    /* --- Context: disabled --- */
+    --color--disabled--surface: var(--wash-400);
+    --color--disabled--ink: var(--wash-600);
+
+    /* --- Context: danger --- */
+    --color--danger--surface: var(--red-700);
+    --color--danger--ink: var(--wash-0);
+
+    /* --- Context: focus --- */
+    --color--focus--border: var(--pigment-450);
+    --color--focus--outline: color-mix(in oklch, var(--pigment-500) 30%, transparent);
+
+    /* --- Context: danger-soft (soft red panel) --- */
+    --color--danger-soft--ink: var(--red-200);
+    --color--danger-soft--border: var(--red-550);
+    --color--danger-soft--outline: color-mix(in oklch, var(--red-550) 30%, transparent);
+    --color--danger-soft--surface: var(--red-900);
+
+    /* --- Context: warning-soft (soft amber panel) --- */
+    --color--warning-soft--ink: var(--amber-200);
+    --color--warning-soft--border: var(--amber-500);
+    --color--warning-soft--outline: color-mix(in oklch, var(--amber-500) 30%, transparent);
+    --color--warning-soft--surface: var(--amber-900);
+
+    /* --- Context: success-soft (soft green panel) --- */
+    --color--success-soft--ink: var(--green-200);
+    --color--success-soft--border: var(--green-500);
+    --color--success-soft--outline: color-mix(in oklch, var(--green-500) 30%, transparent);
+    --color--success-soft--surface: var(--green-900);
+
+    /* --- Context: highlight (rich text inline highlights) --- */
+    --color--highlight--surface: var(--yellow-850);
+
+    /* --- Diffs --- */
+    --color--diff-added--ink-subtle: var(--mint-750);
+    --color--diff-added--ink: var(--mint-500);
+    --color--diff-added--outline: var(--mint-400);
+    --color--diff-added--surface: var(--mint-800);
+
+    --color--diff-changed--outline: var(--azure-300);
+    --color--diff-changed--surface: var(--azure-800);
+
+    --color--diff-removed--ink-subtle: var(--rose-750);
+    --color--diff-removed--ink: var(--rose-500);
+    --color--diff-removed--outline: var(--rose-300);
+    --color--diff-removed--surface: var(--rose-800);
+
+    /* --- Status --- */
+    --color--status-draft--ink: var(--wash-350);
+    --color--status-outdated--ink: var(--amber-500);
+    --color--status-published--ink: var(--green-500);
+    --color--status-published--fill: var(--green-500);
+    --color--status-published--outline: color-mix(
+      in srgb,
+      var(--green-500) 25%,
+      transparent
+    );
+
+    /* --- Backdrop --- */
+    --color--backdrop--surface: rgba(0, 0, 0, 0.2);
+    --color--backdrop--ink: var(--wash-50);
+
+    /* --- Overlay --- */
+    --color--overlay--surface: rgba(0, 0, 0, 0.2);
+    --color--overlay--surface-hover: rgba(0, 0, 0, 0.3);
+    --color--overlay--surface-active: rgba(0, 0, 0, 0.4);
+    --color--overlay--ink: var(--wash-50);
+
+    /* --- Stacked (dark inline surfaces with layered depth) --- */
+    --color--stacked--surface: var(--wash-650);
+    --color--stacked--surface-upper: var(--wash-750);
+    --color--stacked--ink: var(--wash-100);
+    --color--stacked--ink-subtle: var(--wash-200);
+    --color--stacked--border: color-mix(in oklch, var(--wash-30) 10%, transparent);
+    --color--stacked--surface-action: transparent;
+    --color--stacked--surface-action-hover: color-mix(in oklch, var(--wash-30) 10%, transparent);
+    --color--stacked--surface-action-active: color-mix(in oklch, var(--wash-30) 20%, transparent);
+
+    /* --- Context: progress --- */
+    --color--progress--track: var(--color--surface-muted);
+    --color--progress--fill: var(--pigment-550);
+    --color--progress--fill-hover: var(--pigment-400);
+
+    /* --- Tooltip --- */
+    --color--tooltip--surface: var(--wash-600);
+    --color--tooltip--surface-hover: var(--wash-500);
+    --color--tooltip--ink: var(--wash-50);
+    --color--tooltip--ink-subtle: var(--wash-150);
+
+    /* --- Code (mirrors the Prism "palenight" theme used in SlateInput/codeTheme.ts) --- */
+    --color--code--surface: #292d3e;
+    --color--code--ink: #bfc7d5;
+
+    /* --- Scrollbar --- */
+    --color--scrollbar--fill: color-mix(in oklch, var(--wash-30) 30%, transparent);
+
+    /* --- Field type group icon chips (fixed hues, soft recipe: deep surface + light ink) --- */
+    --color--field-group-text--ink: #e6c840;
+    --color--field-group-text--surface: #2d2500;
+
+    --color--field-group-rich-text--ink: #9a9ae8;
+    --color--field-group-rich-text--surface: #11113d;
+
+    --color--field-group-media--ink: #70d9d2;
+    --color--field-group-media--surface: #00322f;
+
+    --color--field-group-datetime--ink: #f5b96a;
+    --color--field-group-datetime--surface: #3a1e00;
+
+    --color--field-group-number--ink: #60d0e4;
+    --color--field-group-number--surface: #00272e;
+
+    --color--field-group-boolean--ink: #f4a9a3;
+    --color--field-group-boolean--surface: #3d0a06;
+
+    --color--field-group-location--ink: #72d980;
+    --color--field-group-location--surface: #003909;
+
+    --color--field-group-color--ink: #f2a3bc;
+    --color--field-group-color--surface: #380016;
+
+    --color--field-group-seo--ink: #de9de6;
+    --color--field-group-seo--surface: #280030;
+
+    --color--field-group-reference--ink: #7db2f2;
+    --color--field-group-reference--surface: #00183d;
+
+    --color--field-group-json--ink: #c2e060;
+    --color--field-group-json--surface: #1e2d00;
+
+    /* --- Shadow composites — elevation scale ---
+       Stronger opacity ramp than light mode: 2–7% black on a near-black surface
+       shifts rendered color by less than one RGB unit per layer (functionally
+       invisible). Floating/lifted/ambient include a top inset highlight to
+       rim-light the surface against the page; raised omits it for small cards. */
+    --shadow--raised:
+      0 0.5px 1.2px rgba(0, 0, 0, 0.09),
+      0 1.5px 3px rgba(0, 0, 0, 0.13),
+      0 4px 8px rgba(0, 0, 0, 0.2);
+    --shadow--floating:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 0.9px 2.2px rgba(0, 0, 0, 0.13),
+      0 2.2px 5.3px rgba(0, 0, 0, 0.13),
+      0 4.1px 10px rgba(0, 0, 0, 0.2),
+      0 7.4px 17.9px rgba(0, 0, 0, 0.26),
+      0 13.8px 33.4px rgba(0, 0, 0, 0.3),
+      0 33px 80px rgba(0, 0, 0, 0.4);
+    --shadow--lifted:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0px 2.8px 2.2px rgba(0, 0, 0, 0.1),
+      0px 6.7px 5.3px rgba(0, 0, 0, 0.13),
+      0px 12.5px 10px rgba(0, 0, 0, 0.13),
+      0px 22.3px 17.9px rgba(0, 0, 0, 0.2),
+      0px 41.8px 33.4px rgba(0, 0, 0, 0.26),
+      0px 100px 80px rgba(0, 0, 0, 0.4);
+    --shadow--ambient:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0px 0px 2.2px rgba(0, 0, 0, 0.08),
+      0px 0px 5.3px rgba(0, 0, 0, 0.09),
+      0px 0px 10px rgba(0, 0, 0, 0.1),
+      0px 0px 17.9px rgba(0, 0, 0, 0.13),
+      0px 0px 33.4px rgba(0, 0, 0, 0.2),
+      0px 0px 80px rgba(0, 0, 0, 0.2);
+
+    /* --- Dashboard-internal nav-bar tokens --- */
+    --color--navbar-bright--surface: var(--pigment-650);
+    --color--navbar-deep--surface: var(--pigment-700);
+
+    --color--navbar--surface-hover: var(--pigment-600);
+    --color--navbar--ink: var(--wash-50);
+    --color--navbar--border: var(--pigment-700);
+    --color--navbar--raised--surface: var(--wash-0);
+    --color--navbar--raised--surface-hover: var(--wash-30);
+    --color--navbar--raised--ink: var(--pigment-850);
+  }
+}

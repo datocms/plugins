@@ -1,0 +1,170 @@
+/*
+ * Variant rows: a dense table of selectable rows (data-display.md §3 rows, §2
+ * cells), on the product rows' grid. In the list view the panel sits under
+ * its product row inside a 1px border, so a 22px inset puts the checkbox,
+ * thumbnail and name at the same x as the row above (23px inset, 15px gaps,
+ * 16px checkbox, 40px thumbnail). The 42px right inset lines Price and
+ * Availability up with that row's columns (15px gap + 13px chevron + 15px
+ * padding, less the border).
+ */
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: block;
+}
+
+.item + .item {
+  border-top: 1px solid var(--color--border);
+}
+
+.row {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  margin: 0;
+  padding: 7px 42px 7px 22px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  background-color: transparent;
+  border: 0;
+  transition: background-color 0.2s var(--material-ease);
+}
+
+.row::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  content: "";
+  background-color: var(--color--selected--border);
+  transition: width 0.2s var(--material-ease);
+}
+
+.row:hover {
+  background-color: var(--color--surface-hover);
+}
+
+.single:focus-visible,
+.row:has(input:focus-visible) {
+  outline: 0;
+  box-shadow: inset 0 0 0 4px var(--color--focus--outline);
+}
+
+.selected {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+}
+
+.selected:hover {
+  background-color: var(--color--selected--surface-hover);
+}
+
+.selected::before {
+  width: 8px;
+}
+
+.selected :is(.none, .availability) {
+  color: inherit;
+}
+
+.disabled {
+  cursor: not-allowed;
+  color: var(--color--ink-subtle);
+}
+
+.disabled:hover {
+  background-color: transparent;
+}
+
+/*
+ * Already in the field (Replace): the disabled look with the selected bar,
+ * as in the product rows.
+ */
+.selected.disabled,
+.selected.disabled:hover {
+  color: var(--color--ink);
+  background-color: var(--color--surface-muted);
+}
+
+.disabled :is(.thumb, input) {
+  opacity: 0.6;
+}
+
+.thumb {
+  flex: none;
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.sku {
+  flex: none;
+  width: 170px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.code {
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+}
+
+.none {
+  color: var(--color--ink-placeholder);
+}
+
+.price {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  width: 150px;
+}
+
+.availability {
+  display: flex;
+  flex: none;
+  width: 130px;
+}
+
+.header {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  padding: 6px 42px 6px calc(22px + 40px + 15px);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--color--border);
+}
+
+.headerMultiple {
+  padding-left: calc(22px + 16px + 15px + 40px + 15px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .row::before {
+    transition: none;
+  }
+}

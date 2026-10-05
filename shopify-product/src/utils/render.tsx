@@ -1,10 +1,26 @@
-import type React from 'react';
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { type ComponentType, StrictMode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 
-export function render(component: React.ReactNode): void {
-  const element = document.getElementById('root');
-  const root = element && createRoot(element);
+let root: Root | null = null;
 
-  root?.render(<StrictMode>{component}</StrictMode>);
+function getRoot(): Root {
+  if (!root) {
+    const container = document.getElementById('root');
+    if (!container) {
+      throw new Error('Root element not found');
+    }
+    root = createRoot(container);
+  }
+  return root;
+}
+
+export function renderEntrypoint<Ctx>(
+  Component: ComponentType<{ ctx: Ctx }>,
+  ctx: Ctx,
+): void {
+  getRoot().render(
+    <StrictMode>
+      <Component ctx={ctx} />
+    </StrictMode>,
+  );
 }

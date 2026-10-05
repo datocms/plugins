@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "hydrogen-preview.myshopify.com",
+  "operation": "FilterValues",
+  "tokenless": true,
+  "note": "The same store, retried without productTags.",
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "productTypes": {
+        "nodes": ["", "Snowboards"]
+      }
+    },
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+/* A collapsible Section's title as a real button, so the kit's clickable header works from the keyboard. */
+.toggle {
+  margin: 0;
+  padding: 0 2px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+}
+
+.toggle:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+/* The quiet in-block disclosure ("More options"). */
+.inline {
+  display: inline-flex;
+  gap: 0.4em;
+  align-items: center;
+  align-self: flex-start;
+  margin: 0;
+  padding: 2px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  transition: color 0.2s var(--material-ease);
+}
+
+.inline:hover {
+  color: var(--color--ink);
+}
+
+.inline:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.inline svg {
+  width: 0.8em;
+  height: 0.8em;
+  fill: currentColor;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inline {
+    transition: none;
+  }
+}

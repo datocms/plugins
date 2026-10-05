@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ConnectionTest",
+  "tokenless": false,
+  "variables": {},
+  "status": 401,
+  "apiVersion": null,
+  "body": {
+    "errors": [
+      {
+        "message": "",
+        "extensions": {
+          "code": "UNAUTHORIZED"
+        }
+      }
+    ]
+  }
+}

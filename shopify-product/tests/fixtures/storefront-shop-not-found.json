@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-no-such-shop-404.myshopify.com",
+  "operation": "ConnectionTest",
+  "tokenless": false,
+  "variables": {},
+  "status": 404,
+  "apiVersion": null,
+  "body": {
+    "errors": [
+      {
+        "message": "Not Found",
+        "extensions": {
+          "code": "NOT_FOUND"
+        }
+      }
+    ]
+  }
+}

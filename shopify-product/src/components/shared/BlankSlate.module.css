@@ -1,0 +1,41 @@
+.blankSlate {
+  padding: var(--spacing-xl) var(--spacing-l);
+  text-align: center;
+}
+
+.title {
+  margin-bottom: var(--spacing-s);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+
+.description {
+  max-width: 460px;
+  margin: 0 auto;
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+  color: var(--color--ink-subtle);
+}
+
+.description p {
+  margin: 0;
+}
+
+.description p + p {
+  margin-top: var(--spacing-s);
+}
+
+.description a {
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-link);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  justify-content: center;
+  margin-top: var(--spacing-l);
+}

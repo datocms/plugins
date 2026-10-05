@@ -1,0 +1,63 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "Collections",
+  "tokenless": false,
+  "variables": {
+    "first": 50,
+    "after": null,
+    "query": null,
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "collections": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "eyJsYXN0X2lkIjo2NDUyNjExMzIxMjIsImxhc3RfdmFsdWUiOiJIeWRyb2dlbiIsInRpdGxlIjoiSHlkcm9nZW4iLCJ0aXRsZV9ub3JtYWxpemVkIjoiaHlkcm9nZW4iLCJvZmZzZXQiOjJ9"
+        },
+        "nodes": [
+          {
+            "__typename": "Collection",
+            "id": "gid://shopify/Collection/645261099354",
+            "handle": "automated-collection",
+            "title": "Automated Collection",
+            "updatedAt": "2026-07-19T00:46:43Z",
+            "onlineStoreUrl": null,
+            "image": null
+          },
+          {
+            "__typename": "Collection",
+            "id": "gid://shopify/Collection/645260968282",
+            "handle": "frontpage",
+            "title": "Home page",
+            "updatedAt": "2026-07-19T00:46:43Z",
+            "onlineStoreUrl": null,
+            "image": null
+          },
+          {
+            "__typename": "Collection",
+            "id": "gid://shopify/Collection/645261132122",
+            "handle": "hydrogen",
+            "title": "Hydrogen",
+            "updatedAt": "2026-07-19T00:46:43Z",
+            "onlineStoreUrl": null,
+            "image": null
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 29
+      }
+    }
+  }
+}

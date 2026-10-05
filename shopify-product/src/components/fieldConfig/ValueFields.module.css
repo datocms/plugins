@@ -1,0 +1,7 @@
+/* .dl-field-pair (forms §19): side by side when there's room, stacked otherwise. */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-m);
+  align-items: start;
+}

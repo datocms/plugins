@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "FilterValues",
+  "tokenless": false,
+  "variables": {},
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "productTypes": {
+        "nodes": ["", "accessories", "giftcard", "snowboard"]
+      },
+      "productTags": {
+        "nodes": [
+          "Accessory",
+          "Archived",
+          "Premium",
+          "Snow",
+          "Snowboard",
+          "Sport",
+          "Winter"
+        ]
+      }
+    },
+    "extensions": {
+      "cost": {
+        "requestedQueryCost": 2
+      }
+    }
+  }
+}

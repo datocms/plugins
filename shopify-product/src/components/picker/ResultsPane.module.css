@@ -1,0 +1,89 @@
+/*
+ * The only scrolling region of the picker. A 5px inset (pulled back with a
+ * negative margin) keeps 4px focus halos inside the scroll box while card
+ * edges stay aligned with the header.
+ */
+.results {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 -5px;
+  padding: var(--spacing-m) 5px var(--spacing-l);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: var(--spacing-m);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--spacing-m);
+  align-items: stretch;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.list > section {
+  margin: var(--spacing-s) 0;
+}
+
+.section + .section,
+.section + div {
+  margin-top: var(--spacing-l);
+}
+
+.sectionTitle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-transform: uppercase;
+}
+
+.sectionTitle svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* A section loading inside visible content: 40px spinner, ~30vh box. */
+.spinnerBox {
+  position: relative;
+  height: 30vh;
+}
+
+.inlineEmpty {
+  margin: var(--spacing-m) 0;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  text-align: center;
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-l);
+}
+
+.loadMore > * {
+  max-width: 100%;
+}
+
+.sentinel {
+  height: 1px;
+}
+
+.empty {
+  padding-top: 10vh;
+}
+
+/* Load more while its page loads: still focusable, the spinner says why. */
+.loading.loading {
+  cursor: progress;
+}

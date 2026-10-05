@@ -1,116 +1,96 @@
-import {
-  connect,
-  type OnBootCtx,
-  type RenderModalCtx,
-} from 'datocms-plugin-sdk';
-import BrowseProductsModal from './components/BrowseProductsModal';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import FieldExtension from './entrypoints/FieldExtension';
-import { render } from './utils/render';
+import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './kit-fixes.css';
 import {
-  isConfigComplete,
-  isValidConfig,
-  parseAndNormalizeConfig,
-} from './types';
+  FIELD_EXTENSION_ID,
+  FIELD_EXTENSION_INITIAL_HEIGHT,
+  PICKER_MODAL_ID,
+} from './constants';
+import {
+  normalizePluginParameters,
+  validateFieldParameters,
+} from './lib/parameters';
+import { matchesAutoApplyPattern } from './utils/autoApply';
+import { bootPlugin } from './utils/boot';
+import { mount } from './utils/mount';
 
-const FIELD_EXTENSION_ID = 'shopifyProduct';
+const SUPPORTED_FIELD_TYPES = ['string', 'json'];
 
+// Screens load on demand (see utils/mount.ts): keep static imports here to
+// what the hidden hooks iframe needs.
 connect({
-  async onBoot(ctx: OnBootCtx) {
-    if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
-      return;
-    }
+  onBoot: bootPlugin,
 
-    const rawParams = ctx.plugin.attributes.parameters;
-
-    if (isValidConfig(rawParams)) {
-      if (!isConfigComplete(rawParams)) {
-        ctx.notice(
-          'Shopify product plugin is missing configuration. Please fill in the settings.',
-        );
-      }
-      return;
-    }
-
-    const normalized = parseAndNormalizeConfig(rawParams);
-
-    const fields = await ctx.loadFieldsUsingPlugin();
-
-    const someUpgraded = (
-      await Promise.all(
-        fields.map(async (field) => {
-          if (
-            field.attributes.appearance.editor !== ctx.plugin.id ||
-            field.attributes.appearance.field_extension === FIELD_EXTENSION_ID
-          ) {
-            return false;
-          }
-
-          await ctx.updateFieldAppearance(field.id, [
-            {
-              operation: 'updateEditor',
-              newFieldExtensionId: FIELD_EXTENSION_ID,
-            },
-          ]);
-
-          return true;
-        }),
-      )
-    ).some((x) => x);
-
-    await ctx.updatePluginParameters(normalized);
-
-    if (someUpgraded) {
-      ctx.notice('Plugin upgraded successfully!');
-    }
-
-    if (!isConfigComplete(normalized)) {
-      ctx.notice(
-        'Shopify product plugin is missing configuration. Please fill in the settings.',
-      );
-    }
-  },
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    mount(import('./entrypoints/ConfigScreen'), ctx);
   },
+
   manualFieldExtensions() {
     return [
       {
         id: FIELD_EXTENSION_ID,
-        name: 'Shopify Product',
+        name: 'Shopify',
         type: 'editor',
         fieldTypes: ['string', 'json'],
+        // About a new JSON field's settings (string fields ~750, 1.x JSON ~1300).
+        configurable: { initialHeight: 1000 },
+        initialHeight: FIELD_EXTENSION_INITIAL_HEIGHT,
       },
     ];
   },
-  overrideFieldExtensions(field, ctx) {
-    const config = parseAndNormalizeConfig(ctx.plugin.attributes.parameters);
 
-    if (!['string', 'json'].includes(field.attributes.field_type)) {
+  validateManualFieldExtensionParameters(fieldExtensionId, parameters) {
+    if (fieldExtensionId !== FIELD_EXTENSION_ID) return {};
+    return validateFieldParameters(parameters);
+  },
+
+  renderManualFieldExtensionConfigScreen(fieldExtensionId, ctx) {
+    if (fieldExtensionId === FIELD_EXTENSION_ID) {
+      mount(import('./entrypoints/FieldConfigScreen'), ctx);
+    }
+  },
+
+  overrideFieldExtensions(field, ctx) {
+    if (!SUPPORTED_FIELD_TYPES.includes(field.attributes.field_type)) {
       return;
     }
 
+    // A field set up manually with this plugin keeps its own settings.
+    if (field.attributes.appearance.editor === ctx.plugin.id) {
+      return;
+    }
+
+    const { autoApplyToFieldsWithApiKey } = normalizePluginParameters(
+      ctx.plugin.attributes.parameters,
+    );
+
     if (
-      !config.autoApplyToFieldsWithApiKey ||
-      !new RegExp(config.autoApplyToFieldsWithApiKey).test(
+      !matchesAutoApplyPattern(
+        autoApplyToFieldsWithApiKey,
         field.attributes.api_key,
       )
     ) {
       return;
     }
 
+    // No parameters: auto-applied fields keep the 1.x defaults.
     return {
-      editor: { id: FIELD_EXTENSION_ID },
+      editor: {
+        id: FIELD_EXTENSION_ID,
+        initialHeight: FIELD_EXTENSION_INITIAL_HEIGHT,
+      },
     };
   },
-  renderFieldExtension(_id, ctx) {
-    render(<FieldExtension ctx={ctx} />);
+
+  // Any extension ID: fields saved by very old versions may still carry a
+  // different one until a schema editor's onBoot upgrades them.
+  renderFieldExtension(_fieldExtensionId, ctx) {
+    mount(import('./entrypoints/FieldExtension'), ctx);
   },
-  renderModal(modalId: string, ctx: RenderModalCtx) {
-    switch (modalId) {
-      case 'browseProducts':
-        return render(<BrowseProductsModal ctx={ctx} />);
+
+  renderModal(modalId, ctx) {
+    if (modalId === PICKER_MODAL_ID) {
+      mount(import('./entrypoints/PickerModal'), ctx);
     }
   },
 });

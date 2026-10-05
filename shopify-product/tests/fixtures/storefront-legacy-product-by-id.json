@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "LegacyProductById",
+  "tokenless": false,
+  "variables": {
+    "ids": ["gid://shopify/Product/10080752009562"],
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "nodes": [
+        {
+          "__typename": "Product",
+          "id": "gid://shopify/Product/10080752009562",
+          "title": "The Complete Snowboard",
+          "handle": "the-complete-snowboard",
+          "description": "This PREMIUM snowboard is so SUPERDUPER awesome!",
+          "onlineStoreUrl": null,
+          "availableForSale": true,
+          "productType": "snowboard",
+          "priceRange": {
+            "maxVariantPrice": {
+              "amount": "699.95",
+              "currencyCode": "EUR"
+            },
+            "minVariantPrice": {
+              "amount": "699.95",
+              "currencyCode": "EUR"
+            }
+          },
+          "images": {
+            "edges": [
+              {
+                "node": {
+                  "src": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d.jpg?v=1741717811",
+                  "previewSrc": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 8
+      }
+    }
+  }
+}

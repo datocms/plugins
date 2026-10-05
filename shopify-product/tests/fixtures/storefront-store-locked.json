@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ConnectionTest",
+  "tokenless": true,
+  "variables": {},
+  "status": 400,
+  "apiVersion": "2026-10",
+  "body": {
+    "errors": [
+      {
+        "message": "Online Store channel is locked.",
+        "extensions": {
+          "code": "BAD_REQUEST"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+/* The button lays out as if the anchor weren't there. */
+.anchor {
+  display: contents;
+}
+
+/*
+ * The kit's disabled look (same tokens) on a button that stays focusable.
+ * `!important` because the kit and kit-fixes.css paint the hover, focus and
+ * active fills with stacked selectors (up to six classes and pseudo-classes).
+ */
+.unavailable.unavailable,
+.unavailable.unavailable:is(:hover, :focus, :active) {
+  color: var(--color--disabled--ink) !important;
+  background-color: var(--color--disabled--surface) !important;
+  cursor: not-allowed;
+  opacity: 1;
+}

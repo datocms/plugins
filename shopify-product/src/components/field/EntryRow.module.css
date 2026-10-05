@@ -1,0 +1,250 @@
+/* A linked-record row: an outline card, with the drag handle outside it. */
+.row {
+  display: flex;
+  gap: 15px;
+  align-items: stretch;
+}
+
+.card {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  transition: border-color 0.1s ease-in-out;
+}
+
+.card:hover,
+.card:focus-within {
+  border-color: var(--color--border-hover);
+}
+
+.cardWarning,
+.cardWarning:hover,
+.cardWarning:focus-within {
+  border-color: var(--color--warning-soft--border);
+}
+
+.main {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  padding: var(--spacing-m);
+}
+
+.content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Up to two lines, like the picker's titles; handles and IDs stay on one. */
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+  color: var(--color--ink);
+  overflow-wrap: anywhere;
+}
+
+.title.code {
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleLink {
+  align-self: flex-start;
+  max-width: 100%;
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.titleLink:hover {
+  text-decoration: underline;
+}
+
+.titleLink:focus-visible {
+  outline: 0;
+  text-decoration: underline;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.code {
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+  font-weight: normal;
+}
+
+.meta {
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta.code {
+  font-size: var(--font-size-xs);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.badges:empty {
+  display: none;
+}
+
+.price {
+  flex: none;
+  align-self: center;
+  font-size: var(--font-size-s);
+}
+
+.thumbPlaceholder {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  font-size: 20px;
+  background-color: var(--color--surface-muted);
+  border-radius: 4px;
+}
+
+/* The ⋮ trigger fades in on hover and focus, and stays visible on touch screens. */
+.actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.2s var(--material-ease);
+}
+
+.card:hover .actions,
+.card:focus-within .actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .actions {
+    opacity: 1;
+  }
+}
+
+.action {
+  padding: 6px;
+  font-size: var(--font-size-m);
+}
+
+.actionDanger:not(:disabled):is(:hover, :focus-visible) {
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
+}
+
+/* The lifted copy (drag overlay) keeps the actions' width, not their looks. */
+.actionsGhost {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  visibility: hidden;
+}
+
+/* Unresolved and drifted entries: a warning strip with the recovery actions. */
+.issue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--spacing-m);
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px var(--spacing-m);
+  font-size: var(--font-size-s);
+  line-height: 1.3;
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
+  border-top: 1px solid var(--color--warning-soft--border);
+  border-radius: 0 0 3px 3px;
+}
+
+.issueText {
+  display: flex;
+  flex: 1 1 260px;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.issueText > svg {
+  position: relative;
+  top: 2px;
+}
+
+.issueActions {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-s);
+}
+
+.inlineCode {
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+/* A row still loading while others are shown: a sweeping hairline. */
+.cardFetching::after {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  content: "";
+  background-color: var(--color--border-hover);
+  animation: rowLoading 2s linear infinite;
+}
+
+@keyframes rowLoading {
+  0% {
+    left: 0%;
+    width: 0;
+  }
+  50% {
+    width: 150px;
+  }
+  100% {
+    left: 100%;
+    width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .actions {
+    transition: none;
+  }
+
+  .cardFetching::after {
+    width: 100%;
+    animation: none;
+  }
+}
+
+/* The copy that follows the pointer while dragging. */
+.cardLifted,
+.cardLifted:hover {
+  background-color: var(--color--surface-raised);
+  border-color: var(--color--border-hover);
+  box-shadow: var(--shadow--floating);
+}

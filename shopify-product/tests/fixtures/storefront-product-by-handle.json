@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ProductByHandle",
+  "tokenless": false,
+  "variables": {
+    "handle": "the-complete-snowboard",
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "product": {
+        "__typename": "Product",
+        "id": "gid://shopify/Product/10080752009562",
+        "handle": "the-complete-snowboard",
+        "title": "The Complete Snowboard",
+        "vendor": "Snowboard Vendor",
+        "productType": "snowboard",
+        "availableForSale": true,
+        "onlineStoreUrl": null,
+        "updatedAt": "2026-07-18T23:38:42Z",
+        "featuredImage": {
+          "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_400x400.jpg?v=1741717811",
+          "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+        },
+        "priceRange": {
+          "minVariantPrice": {
+            "amount": "699.95",
+            "currencyCode": "EUR"
+          },
+          "maxVariantPrice": {
+            "amount": "699.95",
+            "currencyCode": "EUR"
+          }
+        },
+        "compareAtPriceRange": {
+          "maxVariantPrice": {
+            "amount": "0.0",
+            "currencyCode": "EUR"
+          }
+        },
+        "variantsCount": {
+          "count": 5
+        },
+        "firstVariant": {
+          "nodes": [
+            {
+              "sku": null
+            }
+          ]
+        }
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 9
+      }
+    }
+  }
+}

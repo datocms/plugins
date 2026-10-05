@@ -1,0 +1,23 @@
+.price {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 var(--spacing-s);
+  align-items: baseline;
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.current {
+  color: var(--color--ink);
+}
+
+.compareAt {
+  font-size: 0.9em;
+  color: var(--color--ink-subtle);
+  text-decoration: line-through;
+}
+
+.start {
+  justify-content: flex-start;
+}

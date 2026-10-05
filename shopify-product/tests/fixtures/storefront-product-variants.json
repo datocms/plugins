@@ -1,0 +1,239 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "ProductVariants",
+  "tokenless": false,
+  "variables": {
+    "id": "gid://shopify/Product/10080752009562",
+    "first": 250,
+    "after": null,
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "product": {
+        "id": "gid://shopify/Product/10080752009562",
+        "variantsCount": {
+          "count": 5
+        },
+        "options": [
+          {
+            "name": "Color",
+            "optionValues": [
+              {
+                "name": "Ice"
+              },
+              {
+                "name": "Dawn"
+              },
+              {
+                "name": "Powder"
+              },
+              {
+                "name": "Electric"
+              },
+              {
+                "name": "Sunset"
+              }
+            ]
+          }
+        ],
+        "variants": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "eyJsYXN0X2lkIjo1MDY5ODMzNzgxMjgyNiwibGFzdF92YWx1ZSI6NSwib2Zmc2V0Ijo0fQ=="
+          },
+          "nodes": [
+            {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/50698337681754",
+              "title": "Ice",
+              "sku": null,
+              "barcode": null,
+              "availableForSale": true,
+              "currentlyNotInStock": false,
+              "selectedOptions": [
+                {
+                  "name": "Color",
+                  "value": "Ice"
+                }
+              ],
+              "price": {
+                "amount": "699.95",
+                "currencyCode": "EUR"
+              },
+              "compareAtPrice": null,
+              "image": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "product": {
+                "id": "gid://shopify/Product/10080752009562",
+                "handle": "the-complete-snowboard",
+                "title": "The Complete Snowboard",
+                "vendor": "Snowboard Vendor",
+                "onlineStoreUrl": null,
+                "featuredImage": {
+                  "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                  "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+                }
+              }
+            },
+            {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/50698337714522",
+              "title": "Dawn",
+              "sku": null,
+              "barcode": null,
+              "availableForSale": true,
+              "currentlyNotInStock": false,
+              "selectedOptions": [
+                {
+                  "name": "Color",
+                  "value": "Dawn"
+                }
+              ],
+              "price": {
+                "amount": "699.95",
+                "currencyCode": "EUR"
+              },
+              "compareAtPrice": null,
+              "image": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "product": {
+                "id": "gid://shopify/Product/10080752009562",
+                "handle": "the-complete-snowboard",
+                "title": "The Complete Snowboard",
+                "vendor": "Snowboard Vendor",
+                "onlineStoreUrl": null,
+                "featuredImage": {
+                  "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                  "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+                }
+              }
+            },
+            {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/50698337747290",
+              "title": "Powder",
+              "sku": null,
+              "barcode": null,
+              "availableForSale": true,
+              "currentlyNotInStock": false,
+              "selectedOptions": [
+                {
+                  "name": "Color",
+                  "value": "Powder"
+                }
+              ],
+              "price": {
+                "amount": "699.95",
+                "currencyCode": "EUR"
+              },
+              "compareAtPrice": null,
+              "image": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "product": {
+                "id": "gid://shopify/Product/10080752009562",
+                "handle": "the-complete-snowboard",
+                "title": "The Complete Snowboard",
+                "vendor": "Snowboard Vendor",
+                "onlineStoreUrl": null,
+                "featuredImage": {
+                  "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                  "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+                }
+              }
+            },
+            {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/50698337780058",
+              "title": "Electric",
+              "sku": null,
+              "barcode": null,
+              "availableForSale": true,
+              "currentlyNotInStock": false,
+              "selectedOptions": [
+                {
+                  "name": "Color",
+                  "value": "Electric"
+                }
+              ],
+              "price": {
+                "amount": "699.95",
+                "currencyCode": "EUR"
+              },
+              "compareAtPrice": null,
+              "image": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "product": {
+                "id": "gid://shopify/Product/10080752009562",
+                "handle": "the-complete-snowboard",
+                "title": "The Complete Snowboard",
+                "vendor": "Snowboard Vendor",
+                "onlineStoreUrl": null,
+                "featuredImage": {
+                  "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                  "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+                }
+              }
+            },
+            {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/50698337812826",
+              "title": "Sunset",
+              "sku": null,
+              "barcode": null,
+              "availableForSale": true,
+              "currentlyNotInStock": false,
+              "selectedOptions": [
+                {
+                  "name": "Color",
+                  "value": "Sunset"
+                }
+              ],
+              "price": {
+                "amount": "699.95",
+                "currencyCode": "EUR"
+              },
+              "compareAtPrice": null,
+              "image": {
+                "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+              },
+              "product": {
+                "id": "gid://shopify/Product/10080752009562",
+                "handle": "the-complete-snowboard",
+                "title": "The Complete Snowboard",
+                "vendor": "Snowboard Vendor",
+                "onlineStoreUrl": null,
+                "featuredImage": {
+                  "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_589fc064-24a2-4236-9eaf-13b2bd35d21d_200x200.jpg?v=1741717811",
+                  "altText": "Top and bottom view of a snowboard. The top view shows abstract circles and lines in shades of\n          teal. The bottom view shows abstract circles and lines in shades of purple and blue with the text “SHOPIFY”\n          in a sans serif typeface on top."
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 104
+      }
+    }
+  }
+}

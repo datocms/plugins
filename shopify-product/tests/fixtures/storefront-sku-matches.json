@@ -1,0 +1,110 @@
+{
+  "recordedAt": "2026-10-03",
+  "shop": "datocms-demo.myshopify.com",
+  "operation": "SkuMatches",
+  "tokenless": false,
+  "variables": {
+    "q": "sku-managed-1",
+    "country": null,
+    "language": null
+  },
+  "status": 200,
+  "apiVersion": "2026-10",
+  "body": {
+    "data": {
+      "predictiveSearch": {
+        "products": [
+          {
+            "__typename": "Product",
+            "id": "gid://shopify/Product/10080752271706",
+            "handle": "the-multi-managed-snowboard",
+            "title": "The Multi-managed Snowboard",
+            "vendor": "Multi-managed Vendor",
+            "productType": "snowboard",
+            "availableForSale": true,
+            "onlineStoreUrl": null,
+            "updatedAt": "2026-07-18T23:38:44Z",
+            "featuredImage": {
+              "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_400x400.jpg?v=1741717812",
+              "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+            },
+            "priceRange": {
+              "minVariantPrice": {
+                "amount": "629.95",
+                "currencyCode": "EUR"
+              },
+              "maxVariantPrice": {
+                "amount": "629.95",
+                "currencyCode": "EUR"
+              }
+            },
+            "compareAtPriceRange": {
+              "maxVariantPrice": {
+                "amount": "0.0",
+                "currencyCode": "EUR"
+              }
+            },
+            "variantsCount": {
+              "count": 1
+            },
+            "firstVariant": {
+              "nodes": [
+                {
+                  "sku": "sku-managed-1"
+                }
+              ]
+            },
+            "variants": {
+              "nodes": [
+                {
+                  "__typename": "ProductVariant",
+                  "id": "gid://shopify/ProductVariant/50698338337114",
+                  "title": "Default Title",
+                  "sku": "sku-managed-1",
+                  "barcode": null,
+                  "availableForSale": true,
+                  "currentlyNotInStock": false,
+                  "selectedOptions": [
+                    {
+                      "name": "Title",
+                      "value": "Default Title"
+                    }
+                  ],
+                  "price": {
+                    "amount": "629.95",
+                    "currencyCode": "EUR"
+                  },
+                  "compareAtPrice": null,
+                  "image": {
+                    "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_200x200.jpg?v=1741717812",
+                    "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+                  },
+                  "product": {
+                    "id": "gid://shopify/Product/10080752271706",
+                    "handle": "the-multi-managed-snowboard",
+                    "title": "The Multi-managed Snowboard",
+                    "vendor": "Multi-managed Vendor",
+                    "onlineStoreUrl": null,
+                    "featuredImage": {
+                      "url": "https://cdn.shopify.com/s/files/1/0940/1522/6202/files/Main_9129b69a-0c7b-4f66-b6cf-c4222f18028a_200x200.jpg?v=1741717812",
+                      "altText": "Top and bottom view of a snowboard. The top view shows an illustration with varied outlined shapes\n        in black. The bottom view shows a black box character with an H pointing, and surrounded by black outlined\n        illustrative elements."
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "context": {
+        "country": "IT",
+        "language": "EN"
+      },
+      "cost": {
+        "requestedQueryCost": 99
+      }
+    }
+  }
+}

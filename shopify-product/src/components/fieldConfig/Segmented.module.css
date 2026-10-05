@@ -1,0 +1,66 @@
+/* .dl-segmented (components §4). */
+
+.segmented {
+  display: inline-flex;
+  align-items: stretch;
+  font-size: var(--font-size-s);
+}
+
+.button {
+  position: relative;
+  display: flex;
+  gap: 0.6em;
+  align-items: center;
+  min-width: 90px;
+  justify-content: center;
+  margin: 0;
+  padding: 7px 18px;
+  font: inherit;
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-left-width: 0;
+  transition:
+    color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+
+.button:first-child {
+  border-left-width: 1px;
+  border-radius: 4px 0 0 4px;
+}
+
+.button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.button:hover {
+  color: var(--color--ink);
+  background-color: var(--color--surface-hover);
+}
+
+.button[aria-pressed="true"] {
+  z-index: 1;
+  margin-left: -1px;
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+  border-left-width: 1px;
+}
+
+.button[aria-pressed="true"]:first-child {
+  margin-left: 0;
+}
+
+.button:focus-visible {
+  z-index: 2;
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

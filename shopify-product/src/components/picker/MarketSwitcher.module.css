@@ -1,0 +1,61 @@
+.market {
+  display: flex;
+  flex: none;
+}
+
+.trigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  height: 40px;
+  margin: 0;
+  padding: 0 12px;
+  font: inherit;
+  font-size: var(--font-size-s);
+  color: var(--color--ink);
+  white-space: nowrap;
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  transition:
+    border-color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background-color: var(--color--surface-hover);
+  border-color: var(--color--border-hover);
+}
+
+.trigger:focus-visible {
+  outline: 0;
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+.trigger > svg:last-child {
+  width: 0.8em;
+  height: 0.8em;
+  fill: var(--color--ink-subtle);
+}
+
+.label {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A quiet marker when Shopify answered in another language than asked. */
+.fallbackDot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background-color: var(--color--warning-soft--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    transition: none;
+  }
+}
