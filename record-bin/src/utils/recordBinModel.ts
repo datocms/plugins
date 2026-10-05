@@ -1,9 +1,4 @@
 import type { buildClient } from '@datocms/cma-client-browser';
-import {
-  type CmaRequestScheduler,
-  retryCmaRead,
-  throwIfAborted,
-} from './cmaRequests';
 
 type CmaClient = ReturnType<typeof buildClient>;
 type BinModel = Awaited<ReturnType<CmaClient['itemTypes']['find']>>;
@@ -11,30 +6,6 @@ type BinField = Awaited<ReturnType<CmaClient['fields']['list']>>[number];
 
 type RecordBinModel = {
   id: string;
-};
-
-export type RecordBinModelRequestOptions = {
-  scheduler?: CmaRequestScheduler;
-  signal?: AbortSignal;
-};
-
-const readModelResource = async <T>(
-  operation: () => Promise<T>,
-  options: RecordBinModelRequestOptions,
-): Promise<T> => {
-  throwIfAborted(options.signal);
-  return options.scheduler
-    ? retryCmaRead(operation, options.scheduler, options.signal)
-    : operation();
-};
-
-const writeModelResource = async <T>(
-  operation: () => Promise<T>,
-  options: RecordBinModelRequestOptions,
-): Promise<T> => {
-  await options.scheduler?.beforeRequest(options.signal);
-  throwIfAborted(options.signal);
-  return operation();
 };
 
 const REQUIRED_FIELDS = [
@@ -80,14 +51,10 @@ const assertCompatibleModel = (model: BinModel): void => {
 
 const findExistingRecordBinModel = async (
   client: CmaClient,
-  options: RecordBinModelRequestOptions,
 ): Promise<BinModel | undefined> => {
   let existingModel: BinModel;
   try {
-    existingModel = await readModelResource(
-      () => client.itemTypes.find('record_bin'),
-      options,
-    );
+    existingModel = await client.itemTypes.find('record_bin');
   } catch (error) {
     if (isNotFoundError(error)) {
       return undefined;
@@ -135,49 +102,25 @@ const ensureField = async (
   modelId: string,
   fields: BinField[],
   definition: (typeof REQUIRED_FIELDS)[number],
-  options: RecordBinModelRequestOptions,
 ): Promise<BinField[]> => {
   if (findCompatibleField(fields, definition)) {
     return fields;
   }
 
-  try {
-    const createdField = await writeModelResource(
-      () => client.fields.create(modelId, definition),
-      options,
+  const createdField = await client.fields.create(modelId, definition);
+  if (!findCompatibleField([createdField], definition)) {
+    throw new Error(
+      `Record Bin creation returned an invalid ${definition.api_key} field.`,
     );
-    if (!findCompatibleField([createdField], definition)) {
-      throw new Error(
-        `Record Bin creation returned an invalid ${definition.api_key} field.`,
-      );
-    }
-    return [...fields, createdField];
-  } catch (error) {
-    // A conflicting or timed-out create may already have committed. Re-read
-    // instead of repeating the mutation or accepting an incomplete model.
-    const refreshedFields = await readModelResource(
-      () => client.fields.list(modelId),
-      options,
-    );
-    if (
-      !Array.isArray(refreshedFields) ||
-      !findCompatibleField(refreshedFields, definition)
-    ) {
-      throw error;
-    }
-    return refreshedFields;
   }
+  return [...fields, createdField];
 };
 
 const ensureRequiredFields = async (
   client: CmaClient,
   modelId: string,
-  options: RecordBinModelRequestOptions,
 ): Promise<BinField[]> => {
-  let fields = await readModelResource(
-    () => client.fields.list(modelId),
-    options,
-  );
+  let fields = await client.fields.list(modelId);
   if (!Array.isArray(fields)) {
     throw new Error('Record Bin fields could not be read.');
   }
@@ -188,7 +131,7 @@ const ensureRequiredFields = async (
   }
 
   for (const definition of REQUIRED_FIELDS) {
-    fields = await ensureField(client, modelId, fields, definition, options);
+    fields = await ensureField(client, modelId, fields, definition);
   }
 
   // Concurrent repair must not introduce an incompatible remaining field.
@@ -203,31 +146,27 @@ const ensureRequiredFields = async (
 
 export const ensureRecordBinModel = async (
   client: CmaClient,
-  options: RecordBinModelRequestOptions = {},
 ): Promise<RecordBinModel> => {
-  let model = await findExistingRecordBinModel(client, options);
+  let model = await findExistingRecordBinModel(client);
 
   if (!model) {
     try {
-      model = await writeModelResource(
-        () =>
-          client.itemTypes.create({
-            name: '🗑 Record Bin',
-            api_key: 'record_bin',
-            collection_appearance: 'table',
-          }),
-        options,
-      );
+      model = await client.itemTypes.create({
+        name: '🗑 Record Bin',
+        api_key: 'record_bin',
+        collection_appearance: 'table',
+      });
       assertCompatibleModel(model);
     } catch (error) {
-      model = await findExistingRecordBinModel(client, options);
+      // Another deletion may have created the model in parallel.
+      model = await findExistingRecordBinModel(client);
       if (!model) {
         throw error;
       }
     }
   }
 
-  const fields = await ensureRequiredFields(client, model.id, options);
+  const fields = await ensureRequiredFields(client, model.id);
   const labelField = findCompatibleField(fields, REQUIRED_FIELDS[0]);
   if (!labelField) {
     throw new Error('Record Bin label field is missing.');
@@ -235,13 +174,9 @@ export const ensureRecordBinModel = async (
 
   if (!model.title_field) {
     const modelId = model.id;
-    await writeModelResource(
-      () =>
-        client.itemTypes.update(modelId, {
-          title_field: { type: 'field', id: labelField.id },
-        }),
-      options,
-    );
+    await client.itemTypes.update(modelId, {
+      title_field: { type: 'field', id: labelField.id },
+    });
   }
 
   return { id: model.id };

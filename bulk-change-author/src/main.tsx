@@ -46,11 +46,6 @@ function reportResult(result: BulkResult, ctx: ExecuteItemsDropdownActionCtx) {
   if (result.failed > 0) {
     messages.push(`Failed to update ${recordLabel(result.failed)}.`);
   }
-  if (result.uncertain > 0) {
-    messages.push(
-      `The outcome of ${recordLabel(result.uncertain)} could not be confirmed. Check their creators before running the action again.`,
-    );
-  }
   if (result.unprocessed > 0) {
     messages.push(
       `${result.unprocessed} record${result.unprocessed === 1 ? ' was' : 's were'} not processed.`,

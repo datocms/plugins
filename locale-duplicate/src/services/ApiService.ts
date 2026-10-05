@@ -1,7 +1,6 @@
 /** Centralized DatoCMS API operations with explicit, bounded collection reads. */
-import type { Client } from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type { Field, Item, ItemType } from '../types';
-import { type CmaClientOptions, createCmaClient } from './cmaClient';
 
 export interface PaginationOptions {
   page?: number;
@@ -35,13 +34,8 @@ function pageSize(perPage = 30): number {
 export class ApiService {
   private readonly client: Client;
 
-  constructor(
-    apiToken: string,
-    environment?: string,
-    baseUrl?: string,
-    options: CmaClientOptions = {},
-  ) {
-    this.client = createCmaClient(apiToken, environment, baseUrl, options);
+  constructor(apiToken: string, environment?: string, baseUrl?: string) {
+    this.client = buildClient({ apiToken, environment, baseUrl });
   }
 
   async fetchModels(excludeModularBlocks = true): Promise<ItemType[]> {
@@ -127,7 +121,7 @@ export class ApiService {
     return this.client.items.update(recordId, updates);
   }
 
-  /** Publish incrementally and stop if a batch fails or its outcome is uncertain. */
+  /** Publish incrementally and stop if a batch fails. */
   async publishRecords(
     records: Iterable<RecordReference> | AsyncIterable<RecordReference>,
   ): Promise<void> {

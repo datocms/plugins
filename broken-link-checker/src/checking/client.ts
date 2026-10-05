@@ -279,7 +279,10 @@ async function checkGet(
         timeoutMs,
       );
     } catch (error) {
-      if (signal.aborted || retries >= maxRetries) throw error;
+      // A host that didn't answer in time is unlikely to answer a retry.
+      const timedOut =
+        error instanceof AttemptError && error.kind === 'timeout';
+      if (signal.aborted || timedOut || retries >= maxRetries) throw error;
     }
     publishBackoff(lastAttempt, retries, onBackoff);
     if (lastAttempt && !canRetry(prepared, lastAttempt, retries, maxRetries))

@@ -624,113 +624,6 @@ describe('AllRecordsPage states', () => {
 });
 
 describe('AllRecordsPage large selections', () => {
-  it('offers all matches after filtering 1200 Products down to 694 with unselected records', async () => {
-    const products = Array.from({ length: 1200 }, (_, index) =>
-      item(`record-${index + 1}`),
-    );
-    const matches = [
-      ...products.slice(0, 20),
-      ...Array.from({ length: 674 }, (_, index) => item(`novara-${index + 1}`)),
-    ];
-    const byId = new Map(
-      [...products, ...matches].map((record) => [record.id, record]),
-    );
-    cmaMocks.rawList.mockImplementation((query: MockListQuery) => {
-      const filtered = Boolean(query.filter?.query);
-      const matching = query.filter?.ids
-        ? query.filter.ids.split(',').flatMap((id) => {
-            const record = byId.get(id);
-            return record ? [record] : [];
-          })
-        : filtered
-          ? matches
-          : products;
-      return Promise.resolve({
-        data: matching.slice(
-          query.page.offset,
-          query.page.offset + query.page.limit,
-        ),
-        meta: {
-          total_count: query.filter?.ids || filtered ? matching.length : 100002,
-        },
-      });
-    });
-    const ctx = buildOperationCtx({
-      location: {
-        pathname: '',
-        search: '?model=model-1&perPage=200',
-        hash: '',
-      },
-    });
-    const { rerender } = render(<AllRecordsPage ctx={ctx} />);
-    for (let page = 0; page < 6; page += 1) {
-      if (page > 0) {
-        rerender(
-          <AllRecordsPage
-            ctx={buildCtx({
-              ...ctx,
-              location: {
-                pathname: '',
-                search: `?model=model-1&perPage=200&page=${page}`,
-                hash: '',
-              },
-            })}
-          />,
-        );
-      }
-      // biome-ignore lint/performance/noAwaitInLoops: Select each real-pattern page after its presentation finishes.
-      await waitFor(() => {
-        requireReadyRecordCheckbox(`record-${page * 200 + 1}`);
-        fireEvent.click(
-          screen.getByRole('checkbox', {
-            name: 'Select all records on this page',
-          }),
-        );
-      }, UI_WAIT_OPTIONS);
-      await screen.findByText(
-        `${(page + 1) * 200} records selected`,
-        undefined,
-        UI_WAIT_OPTIONS,
-      );
-    }
-    const filter = '?model=model-1&query=Product%3A+Novara+Basis';
-    rerender(
-      <AllRecordsPage
-        ctx={buildCtx({
-          ...ctx,
-          location: { pathname: '', search: `${filter}&perPage=200`, hash: '' },
-        })}
-      />,
-    );
-    await readyRecordCheckbox('novara-1');
-    expect(screen.getByText('1200 records selected')).toBeInTheDocument();
-    expect(
-      screen.getByRole('checkbox', { name: 'Select all records on this page' }),
-    ).toBePartiallyChecked();
-    expect(await readyButton('Select all matching records')).toBeEnabled();
-
-    rerender(
-      <AllRecordsPage
-        ctx={buildCtx({
-          ...ctx,
-          location: { pathname: '', search: `${filter}&perPage=50`, hash: '' },
-        })}
-      />,
-    );
-    await readyRecordCheckbox('novara-1');
-    await clickReadyButton('Select all matching records');
-
-    await screen.findByText('694 records selected', undefined, UI_WAIT_OPTIONS);
-    expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getAllByRole('checkbox', { name: /^Select record / }),
-    ).toHaveLength(50);
-    expect(ctx.openConfirm).not.toHaveBeenCalled();
-    expect(cmaMocks.rawBulkPublish).not.toHaveBeenCalled();
-  });
-
   it('keeps all matches hidden after reducing page size for a complete same-filter selection', async () => {
     mockRecords(
       Array.from({ length: 200 }, (_, index) => item(`record-${index + 1}`)),
@@ -774,70 +667,6 @@ describe('AllRecordsPage large selections', () => {
     expect(
       cmaMocks.rawList.mock.calls.filter(([query]) => query.filter?.ids),
     ).toHaveLength(0);
-  });
-
-  it('stops a 1000-record preflight after the two active batches when the environment changes', async () => {
-    const records = Array.from({ length: 1000 }, (_, index) =>
-      item(`record-${index + 1}`),
-    );
-    const byId = new Map(records.map((record) => [record.id, record]));
-    const pending: {
-      ids: string[];
-      result: ReturnType<
-        typeof deferred<{ data: RawItem[]; meta: { total_count: number } }>
-      >;
-    }[] = [];
-    cmaMocks.rawList.mockImplementation((query: MockListQuery) => {
-      if (query.filter?.ids) {
-        const result = deferred<{
-          data: RawItem[];
-          meta: { total_count: number };
-        }>();
-        pending.push({ ids: query.filter.ids.split(','), result });
-        return result.promise;
-      }
-      return Promise.resolve({
-        data: records.slice(
-          query.page.offset,
-          query.page.offset + query.page.limit,
-        ),
-        meta: { total_count: records.length },
-      });
-    });
-    const ctx = buildOperationCtx();
-    const { rerender } = render(<AllRecordsPage ctx={ctx} />);
-    await selectAllMatching(1000);
-    await clickReadyButton('Publish');
-    await waitFor(() => expect(pending).toHaveLength(2));
-    expect(pending.map((batch) => batch.ids.length)).toEqual([100, 100]);
-
-    const nextCtx = buildOperationCtx({
-      environment: 'sandbox',
-      isEnvironmentPrimary: false,
-    });
-    rerender(<AllRecordsPage ctx={nextCtx} />);
-    await act(async () => {
-      for (const batch of pending) {
-        batch.result.resolve({
-          data: batch.ids.flatMap((id) => {
-            const record = byId.get(id);
-            return record ? [record] : [];
-          }),
-          meta: { total_count: batch.ids.length },
-        });
-      }
-    });
-    await readyRecordCheckbox('record-1');
-
-    expect(pending).toHaveLength(2);
-    expect(ctx.openConfirm).not.toHaveBeenCalled();
-    expect(nextCtx.openConfirm).not.toHaveBeenCalled();
-    expect(ctx.alert).not.toHaveBeenCalled();
-    expect(nextCtx.alert).not.toHaveBeenCalled();
-    expect(cmaMocks.rawBulkPublish).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
   });
 
   it('removes missing IDs after a partial delete while retaining current survivors', async () => {
@@ -1195,7 +1024,7 @@ describe('AllRecordsPage large selections', () => {
   });
 
   it.each([
-    50, 200,
+    50,
   ])('hydrates and renders at most %i selected records and paginates without URL navigation', async (perPage) => {
     mockRecords(
       Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),

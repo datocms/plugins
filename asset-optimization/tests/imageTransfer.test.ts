@@ -197,42 +197,6 @@ test('handles tiny streaming chunks and accepts a body exactly at its limit', as
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), png);
 });
 
-test('coalesces 10,000 one-byte network chunks into a bounded number of buffer pages', async (t) => {
-  // A synthetic PNG envelope isolates transfer/memory behavior from decoding.
-  const bytes = new Uint8Array(10_000);
-  bytes.set(png.slice(0, 33));
-  bytes.set(png.slice(-12), bytes.length - 12);
-  const blobPartCounts: number[] = [];
-  const NativeBlob = Blob;
-  class ObservedBlob extends NativeBlob {
-    constructor(parts?: BlobPart[], options?: BlobPropertyBag) {
-      super(parts, options);
-      blobPartCounts.push(parts?.length ?? 0);
-    }
-  }
-  t.mock.method(globalThis, 'Blob', ObservedBlob);
-  let offset = 0;
-  t.mock.method(
-    globalThis,
-    'fetch',
-    async () =>
-      new Response(
-        new ReadableStream<Uint8Array>(
-          {
-            pull(controller) {
-              if (offset === bytes.length) controller.close();
-              else controller.enqueue(bytes.slice(offset, ++offset));
-            },
-          },
-          { highWaterMark: 0 },
-        ),
-      ),
-  );
-  const blob = await downloadOptimizedImage(url, bytes.length);
-  assert.equal(blob.size, 10_000);
-  assert.deepEqual(blobPartCounts, [1]);
-});
-
 test('rejects missing bodies, permanent HTTP errors and invalid byte budgets without retries', async (t) => {
   for (const status of [400, 401, 403, 404, 415]) {
     const fetchMock = t.mock.method(

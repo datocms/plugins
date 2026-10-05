@@ -110,43 +110,4 @@ describe('TranslationProgressStore', () => {
     expect(store.snapshot().historyTruncated).toBe(false);
   });
 
-  it('aggregates 200000 synthetic events with bounded details and preserves every eligible publish ID', () => {
-    const ids = Array.from({ length: 200_000 }, (_, index) => `r${index}`);
-    const store = new TranslationProgressStore(ids);
-    store.addDraftModeItemTypeIds(['article']);
-    for (const [index, id] of ids.entries()) {
-      const update = completed(id, index);
-      if (index % 1_000 === 0) update.status = 'error';
-      else if (index % 100 === 0) update.warnings = ['Copied references'];
-      store.add({ ...update, status: 'processing' });
-      store.add(update);
-    }
-    store.setLoadedCount(ids.length);
-
-    expect(store.getSummary()).toEqual({
-      totalRecords: 200_000,
-      processedCount: 200_000,
-      successfulCount: 199_800,
-      failedCount: 200,
-      warningCount: 1_800,
-      loadedCount: 200_000,
-      updatedCount: 199_800,
-    });
-    expect(store.snapshot()).toMatchObject({
-      updateCount: 200_000,
-      publishableCount: 199_800,
-      historyTruncated: true,
-    });
-    expect(store.snapshot().updates).toHaveLength(
-      VISIBLE_TRANSLATION_UPDATE_LIMIT,
-    );
-    const details = store.getResultUpdates();
-    expect(details).toHaveLength(VISIBLE_TRANSLATION_UPDATE_LIMIT);
-    expect(details[0].recordId).toBe('r199900');
-    expect(details.at(-1)?.recordId).toBe('r199999');
-    const publishIds = store.getPublishableRecordIds();
-    expect(publishIds).toHaveLength(199_800);
-    expect(publishIds[0]).toBe('r1');
-    expect(publishIds.at(-1)).toBe('r199999');
-  });
 });

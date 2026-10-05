@@ -1,8 +1,9 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 import { useState } from 'react';
 import downloadRecordsFile from '../utils/downloadRecordsFile';
-import { createExportClient, mapWithConcurrency } from '../utils/exportRuntime';
+import { mapWithConcurrency } from '../utils/exportRuntime';
 import { readRecord } from '../utils/readRecords';
 import {
   buildRecordExportEnvelope,
@@ -34,7 +35,7 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
     setIsLoading(true);
 
     try {
-      const client = createExportClient({
+      const client = buildClient({
         apiToken: ctx.currentUserAccessToken,
         environment: ctx.environment,
         baseUrl: ctx.cmaBaseUrl,

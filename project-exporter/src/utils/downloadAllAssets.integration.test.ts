@@ -6,17 +6,21 @@ const fixture = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
+vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datocms/cma-client-browser')>()),
+  buildClient: vi.fn(() => ({
+    uploads: {
+      list: fixture.list,
+      rawList: vi.fn(async () => ({ meta: { total_count: 2 } })),
+    },
+    site: { find: vi.fn(async () => ({ id: 'synthetic-project' })) },
+  })),
+}));
+
 vi.mock('./exportRuntime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./exportRuntime')>();
   return {
     ...actual,
-    createExportClient: vi.fn(() => ({
-      uploads: {
-        list: fixture.list,
-        rawList: vi.fn(async () => ({ meta: { total_count: 2 } })),
-      },
-      site: { find: vi.fn(async () => ({ id: 'synthetic-project' })) },
-    })),
     yieldToBrowser: vi.fn(async () => undefined),
     downloadBlob: vi.fn(async (blob: Blob) => {
       fixture.archive = blob;

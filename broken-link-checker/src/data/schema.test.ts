@@ -32,55 +32,6 @@ function field(id: string, validators: Record<string, unknown> = {}): Field {
 afterEach(() => vi.useRealTimers());
 
 describe('createSchemaLoader', () => {
-  it('cancels schema retry backoff without launching another host request', async () => {
-    vi.useFakeTimers();
-    const controller = new AbortController();
-    const loadItemTypeFields = vi
-      .fn()
-      .mockRejectedValue(new TypeError('Transient host failure'));
-    const loader = createSchemaLoader({
-      itemTypes: { article: model('article') },
-      loadItemTypeFields,
-    });
-    const pending = loader.load('article', controller.signal);
-    const result = expect(pending).rejects.toMatchObject({
-      name: 'AbortError',
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(loadItemTypeFields).toHaveBeenCalledOnce();
-    controller.abort();
-    await vi.runAllTimersAsync();
-    await result;
-    expect(loadItemTypeFields).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('observes a late transient SDK failure after cancellation without retrying it', async () => {
-    vi.useFakeTimers();
-    const controller = new AbortController();
-    let rejectLate: ((error: Error) => void) | undefined;
-    const loadItemTypeFields = vi.fn(
-      () =>
-        new Promise<Field[]>((_resolve, reject) => {
-          rejectLate = reject;
-        }),
-    );
-    const loader = createSchemaLoader({
-      itemTypes: { article: model('article') },
-      loadItemTypeFields,
-    });
-    const pending = loader.load('article', controller.signal);
-    const result = expect(pending).rejects.toMatchObject({
-      name: 'AbortError',
-    });
-    controller.abort();
-    await result;
-    rejectLate?.(new TypeError('Late transient SDK failure'));
-    await vi.runAllTimersAsync();
-    expect(loadItemTypeFields).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   it('preserves a late successful SDK result in the shared cache after cancellation', async () => {
     const controller = new AbortController();
     let resolveLate: ((fields: Field[]) => void) | undefined;
@@ -162,39 +113,6 @@ describe('createSchemaLoader', () => {
     rejectLate?.(new Error('Late host failure'));
     await Promise.resolve();
     expect(loadItemTypeFields).toHaveBeenCalledOnce();
-  });
-
-  it('loads a wide cyclic graph once per model with bounded sequential host requests', async () => {
-    const blockIds = Array.from(
-      { length: 500 },
-      (_, index) => `block-${index}`,
-    );
-    const itemTypes = Object.fromEntries([
-      ['article', model('article')],
-      ...blockIds.map((id) => [id, model(id, true)]),
-    ]);
-    let active = 0;
-    let peak = 0;
-    const loadItemTypeFields = vi.fn(async (id: string) => {
-      active += 1;
-      peak = Math.max(active, peak);
-      await Promise.resolve();
-      active -= 1;
-      return [
-        field('body', {
-          structured_text_blocks: {
-            item_types: id === 'article' ? blockIds : ['block-0'],
-          },
-        }),
-      ];
-    });
-    const schema = await createSchemaLoader({
-      itemTypes,
-      loadItemTypeFields,
-    }).load('article');
-    expect(schema.size).toBe(501);
-    expect(loadItemTypeFields).toHaveBeenCalledTimes(501);
-    expect(peak).toBe(1);
   });
   it('discovers regular models and loads recursive/inline blocks with cycle-safe caching', async () => {
     const itemTypes = {

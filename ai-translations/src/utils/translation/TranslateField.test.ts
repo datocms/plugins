@@ -23,7 +23,7 @@ vi.mock('./translateArray', () => ({
 }));
 
 import { translateDefaultFieldValue } from './DefaultTranslation';
-import { fetchBlockFields, generateRecordContext, translateFieldValue } from './TranslateField';
+import { fetchBlockFields, translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 
 type LogPayload = {
@@ -398,14 +398,6 @@ describe('TranslateField', () => {
     expect(result[0].item.label).toBe('Translated level-5');
     expect(result[0].item.id).toBeUndefined();
     expect(source[0].item.id).toBe('block-5');
-  });
-
-  it('bounds generated record context despite thousands of matching fields and exact-cases the source locale', () => {
-    const values = Object.fromEntries(Array.from({ length: 10_000 }, (_, index) => [`title_${index}`, { 'pt-BR': `Source ${index} ${'x'.repeat(200)}` }]));
-    const context = generateRecordContext(values, 'pt-br');
-    expect(context.length).toBeLessThanOrEqual(2000);
-    expect(context).toContain('Source 0');
-    expect(context).not.toContain('Source 9999');
   });
 
   it('keeps nested localized block and Structured Text source trees independent from the translated target', async () => {

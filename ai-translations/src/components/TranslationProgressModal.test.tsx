@@ -21,10 +21,7 @@ import type {
   TranslateBatchOptions,
   translateAndUpdateRecords,
 } from '../utils/translation/ItemsDropdownUtils';
-import {
-  TranslationProgressStore,
-  VISIBLE_TRANSLATION_UPDATE_LIMIT,
-} from '../utils/translation/TranslationProgressStore';
+import { TranslationProgressStore } from '../utils/translation/TranslationProgressStore';
 import TranslationProgressModal from './TranslationProgressModal';
 
 type LoadingOptions = NonNullable<Parameters<typeof loadRecordBatches>[2]>;
@@ -588,63 +585,6 @@ describe('TranslationProgressModal', () => {
     expect(ctx.resolve).not.toHaveBeenCalled();
   });
 
-  it('limits visible updates while retaining all 2882 results for totals, publishing, and the modal result', async () => {
-    const itemIds = Array.from({ length: 2882 }, (_, index) => `r${index}`);
-    mocks.loadRecordBatches.mockImplementation(async function* () {
-      for (let offset = 0; offset < itemIds.length; offset += 100) {
-        yield batch(itemIds.slice(offset, offset + 100).map(record));
-      }
-    });
-    const { ctx } = renderModal(itemIds);
-
-    const publish = await screen.findByRole('button', {
-      name: 'Publish all translated records (2882)',
-    });
-    expect(screen.getByText('2882 successful, 0 failed')).toBeTruthy();
-    expect(
-      screen.getByText(/Progress: 2882 of 2882 records processed/),
-    ).toBeTruthy();
-    expect(screen.getAllByRole('listitem')).toHaveLength(100);
-    expect(screen.queryByText('Article r0')).toBeNull();
-    expect(screen.getByText('Article r2881')).toBeTruthy();
-    expect(
-      screen.getByText('Showing the latest 100 of 2882 updates.'),
-    ).toBeTruthy();
-
-    fireEvent.click(publish);
-
-    await waitFor(() => {
-      expect(ctx.notice).toHaveBeenCalledWith(
-        'Published 2882 translated records.',
-      );
-    });
-    const publishedIds = mocks.bulkPublish.mock.calls.flatMap(([body]) =>
-      body.data.relationships.items.data.map((item) => item.id),
-    );
-    expect(publishedIds).toEqual(itemIds);
-    expect(mocks.bulkPublish).toHaveBeenCalledTimes(15);
-    expect(
-      mocks.bulkPublish.mock.calls.every(
-        ([body]) => body.data.relationships.items.data.length <= 200,
-      ),
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(ctx.resolve).toHaveBeenCalledWith(
-      expect.objectContaining({
-        completed: true,
-        progress: expect.arrayContaining([
-          expect.objectContaining({ recordId: 'r0', status: 'completed' }),
-          expect.objectContaining({ recordId: 'r2881', status: 'completed' }),
-        ]),
-      }),
-    );
-    const result = ctx.resolve.mock.calls[0][0] as {
-      progress: ProgressUpdate[];
-    };
-    expect(result.progress).toHaveLength(2882);
-  });
-
   it('coalesces rapid progress events while counting them immediately', async () => {
     vi.useFakeTimers();
     const translation = deferred();
@@ -690,71 +630,6 @@ describe('TranslationProgressModal', () => {
       'disabled',
       false,
     );
-  });
-
-  it('bounds massive job details and cancels publication after acknowledging the current batch', async () => {
-    const itemIds = Array.from({ length: 6_001 }, (_, index) => `r${index}`);
-    mocks.loadRecordBatches.mockImplementation(async function* () {
-      for (let offset = 0; offset < itemIds.length; offset += 30) {
-        yield batch(itemIds.slice(offset, offset + 30).map(record));
-      }
-    });
-    const publishing = deferred();
-    mocks.bulkPublish.mockImplementation(async ({ data }) => {
-      await publishing.promise;
-      return {
-        data: [],
-        meta: { successful: data.relationships.items.data.length, failed: 0 },
-      };
-    });
-    const { ctx } = renderModal(itemIds);
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Publish all translated records (6001)',
-      }),
-    );
-    await waitFor(() => expect(mocks.bulkPublish).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel publishing' }));
-    expect(screen.getByRole('button', { name: 'Cancelling…' })).toHaveProperty(
-      'disabled',
-      true,
-    );
-    expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
-      'disabled',
-      true,
-    );
-    expect(ctx.resolve).not.toHaveBeenCalled();
-
-    await act(async () => publishing.resolve());
-
-    expect(mocks.bulkPublish).toHaveBeenCalledTimes(1);
-    expect(ctx.alert).not.toHaveBeenCalled();
-    expect(ctx.notice).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('button', {
-        name: 'Retry publishing remaining (5801)',
-      }),
-    ).toBeTruthy();
-    expect(screen.getAllByRole('listitem')).toHaveLength(
-      VISIBLE_TRANSLATION_UPDATE_LIMIT,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(ctx.resolve).toHaveBeenCalledWith(
-      expect.objectContaining({
-        completed: true,
-        progressTruncated: true,
-        progress: expect.any(Array),
-        summary: expect.objectContaining({
-          totalRecords: 6_001,
-          processedCount: 6_001,
-          updatedCount: 6_001,
-        }),
-      }),
-    );
-    const result = ctx.resolve.mock.calls[0][0] as {
-      progress: ProgressUpdate[];
-    };
-    expect(result.progress).toHaveLength(VISIBLE_TRANSLATION_UPDATE_LIMIT);
   });
 
   it('retries only IDs not confirmed by a partially successful publication', async () => {

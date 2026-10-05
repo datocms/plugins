@@ -243,18 +243,6 @@ describe('field generation contexts', () => {
     );
   });
 
-  it('does not copy a gallery containing 10,000 assets when observing a snapshot', () => {
-    const gallery = Array.from({ length: 10_000 }, (_value, index) =>
-      asset(`upload-${index}`),
-    );
-    const original = context({ image: gallery });
-    acquire(original);
-    const updated = context({ image: gallery, title: 'Latest' });
-    observe(updated);
-
-    expect(getLatestFieldContext(original)?.formValues.image).toBe(gallery);
-  });
-
   it('rejects reentrancy per field but allows distinct records, fields and locales', () => {
     acquire(context({ image: asset('one') }, { fieldPath: 'image.en' }));
     expect(

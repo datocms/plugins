@@ -1,9 +1,8 @@
 import { ApiError, TimeoutError } from '@datocms/cma-client-browser';
-import { throwIfAborted, waitForRead } from '../data/cmaRequests';
+import { cancellable, throwIfAborted } from '../data/cancellation';
 import {
   buildCmaClient,
   type CmaClientContext,
-  readCma,
   readRecords,
   toRecordInput,
 } from '../data/records';
@@ -66,7 +65,8 @@ async function scanModel(
       await session.waitForCapacity();
       if (performance.now() - yieldedAt >= 12) {
         // Async iteration only yields microtasks; let the browser paint and process cancellation.
-        await waitForRead(0, signal);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        throwIfAborted(signal);
         yieldedAt = performance.now();
       }
     }
@@ -89,14 +89,12 @@ export async function countRecords(
     if (!batch.length) return;
     const type = batch.join(',');
     batch = [];
-    const response = await readCma(
-      client,
-      () =>
-        client.items.rawList({
-          filter: { type },
-          page: { limit: 0 },
-          version: 'current',
-        }),
+    const response = await cancellable(
+      client.items.rawList({
+        filter: { type },
+        page: { limit: 0 },
+        version: 'current',
+      }),
       signal,
     );
     const count = response.meta?.total_count;
@@ -137,7 +135,7 @@ export function createProjectProducer(
   onRecordTotal?: (total: number) => void,
 ): ScanProducer {
   return async (session, signal) => {
-    const client = buildCmaClient(ctx, signal);
+    const client = buildCmaClient(ctx);
     if (onRecordTotal && models.length > 0)
       void countRecords(client, models, signal).then(
         (total) => {

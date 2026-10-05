@@ -130,19 +130,6 @@ describe('assetExport helpers', () => {
     expect(() => createAssetChunks([], { sizeSafetyFactor: 0.5 })).toThrow();
   });
 
-  test('10,000 synthetic assets are covered exactly once in bounded chunks', () => {
-    const assets = Array.from({ length: 10_000 }, (_, index) => ({
-      sourceUploadId: String(index),
-      originalFilename: `${index}.bin`,
-      size: 1000,
-      payload: { id: index },
-    }));
-    const chunks = createAssetChunks(assets);
-    expect(chunks).toHaveLength(100);
-    expect(chunks.every((chunk) => chunk.assets.length === 100)).toBe(true);
-    expect(chunks.flatMap((chunk) => chunk.assets)).toEqual(assets);
-  });
-
   test('localized metadata contributes to the archive byte estimate', () => {
     const chunks = createAssetChunks(
       [

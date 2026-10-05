@@ -1,3 +1,4 @@
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type { AvailableFormats } from '../entrypoints/ConfigScreen';
 import {
   prepareRecordDownload,
@@ -5,10 +6,8 @@ import {
   XLSX_MAX_COLUMNS,
 } from './downloadRecordsFile';
 import {
-  createExportClient,
   downloadBlob,
   mapWithConcurrency,
-  ResponseSizeError,
   throwIfAborted,
   yieldToBrowser,
 } from './exportRuntime';
@@ -30,8 +29,7 @@ export const PROJECT_METADATA_INPUT_BYTES = 8 * 1024 * 1024;
 type Options = { modelIDs?: string[]; textQuery?: string };
 type RecordRow = Record<string, unknown>;
 type PartInfo = { filename: string; recordCount: number; recordOffset: number };
-type ExportClient = ReturnType<typeof createExportClient>;
-type Model = Awaited<ReturnType<ExportClient['itemTypes']['list']>>[number];
+type Model = Awaited<ReturnType<Client['itemTypes']['list']>>[number];
 type Configuration = Awaited<
   ReturnType<typeof fetchProjectConfigurationExport>
 >;
@@ -54,7 +52,7 @@ function selectModels(itemTypes: Model[], options: Options): Model[] {
 }
 
 class RecordExportTask {
-  private readonly client: ExportClient;
+  private readonly client: Client;
   private readonly exportId = new Date().toISOString().replace(/:/g, '-');
   private readonly parts: PartInfo[] = [];
   private readonly seenIds = new Set<string>();
@@ -79,10 +77,7 @@ class RecordExportTask {
     private readonly onProgress?: Progress,
     private readonly signal?: AbortSignal,
   ) {
-    this.client = createExportClient(
-      { apiToken, environment, baseUrl },
-      signal,
-    );
+    this.client = buildClient({ apiToken, environment, baseUrl });
   }
 
   private progress(): number {
@@ -166,27 +161,14 @@ class RecordExportTask {
     });
   }
 
-  private async fetchPage(
-    model: Model,
-    offset: number,
-    limit: number,
-  ): Promise<{ records: RecordRow[]; limit: number }> {
-    while (true) {
-      throwIfAborted(this.signal);
-      try {
-        // biome-ignore lint/performance/noAwaitInLoops: A smaller page is retried only when its response exceeds the byte budget.
-        const records = await readRecordPage(this.client, {
-          nested: true,
-          filter: this.filterForModel(model.id),
-          order_by: 'id_ASC',
-          page: { limit, offset },
-        });
-        return { records, limit };
-      } catch (error) {
-        if (!(error instanceof ResponseSizeError) || limit <= 1) throw error;
-        limit = Math.max(1, Math.floor(limit / 2));
-      }
-    }
+  private fetchPage(model: Model, offset: number): Promise<RecordRow[]> {
+    throwIfAborted(this.signal);
+    return readRecordPage(this.client, {
+      nested: true,
+      filter: this.filterForModel(model.id),
+      order_by: 'id_ASC',
+      page: { limit: NESTED_RECORDS_PER_PAGE, offset },
+    });
   }
 
   private async *modelRecords(
@@ -194,19 +176,17 @@ class RecordExportTask {
     expectedCount: number,
   ): AsyncGenerator<RecordRow> {
     let offset = 0;
-    let limit = NESTED_RECORDS_PER_PAGE;
     while (true) {
       // biome-ignore lint/performance/noAwaitInLoops: Read only one page into memory and consume it before requesting the next.
-      const page = await this.fetchPage(model, offset, limit);
-      limit = page.limit;
-      for (const record of page.records) yield record;
-      offset += page.records.length;
+      const records = await this.fetchPage(model, offset);
+      for (const record of records) yield record;
+      offset += records.length;
       this.onProgress?.(
         this.progress(),
         `Fetched ${this.fetchedCount}/${this.totalCount} records${this.split ? `; ${this.parts.length} file(s) prepared` : ''}...`,
       );
       await yieldToBrowser();
-      if (page.records.length < limit) break;
+      if (records.length < NESTED_RECORDS_PER_PAGE) break;
     }
     const finalCount = await this.countModel(model.id);
     if (offset !== expectedCount || finalCount !== expectedCount) {

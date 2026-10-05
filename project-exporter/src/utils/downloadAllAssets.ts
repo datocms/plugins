@@ -1,3 +1,4 @@
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import JSZip from 'jszip';
 import { downloadAssetFile } from './assetDownload';
 import {
@@ -21,46 +22,29 @@ import {
   persistLastAssetExportSnapshot,
   SIZE_SAFETY_FACTOR,
 } from './assetExport';
-import {
-  createExportClient,
-  downloadBlob,
-  ResponseSizeError,
-  throwIfAborted,
-  yieldToBrowser,
-} from './exportRuntime';
+import { downloadBlob, throwIfAborted, yieldToBrowser } from './exportRuntime';
 
 type ExportAsset = AssetForChunk<AssetManifestEntry> & {
   metadataError?: string;
 };
 type ProgressHandler = (progress: number, msg: string) => void;
 
-async function listUploadsWithinLimit(
-  client: ReturnType<typeof createExportClient>,
+const ASSET_PAGE_SIZE = 500;
+
+function listUploads(
+  client: Client,
   limit: number,
   offset: number,
-  ids: string | undefined,
-  signal?: AbortSignal,
+  ids?: string,
 ) {
-  let pageSize = limit;
-  while (true) {
-    throwIfAborted(signal);
-    try {
-      // biome-ignore lint/performance/noAwaitInLoops: Oversized metadata pages shrink automatically without retaining prior responses.
-      const uploads = await client.uploads.list({
-        ...(ids ? { filter: { ids } } : { order_by: '_created_at_ASC' }),
-        page: { limit: pageSize, offset },
-      });
-      return { uploads, pageSize };
-    } catch (error) {
-      throwIfAborted(signal);
-      if (!(error instanceof ResponseSizeError) || pageSize <= 1) throw error;
-      pageSize = Math.max(1, Math.floor(pageSize / 2));
-    }
-  }
+  return client.uploads.list({
+    ...(ids ? { filter: { ids } } : { order_by: '_created_at_ASC' }),
+    page: { limit, offset },
+  });
 }
 
 async function loadChunkMetadata(
-  client: ReturnType<typeof createExportClient>,
+  client: Client,
   assets: ExportAsset[],
   signal?: AbortSignal,
 ): Promise<ExportAsset[]> {
@@ -71,25 +55,23 @@ async function loadChunkMetadata(
     >();
     const ids = assets.map((asset) => asset.sourceUploadId).join(',');
     let offset = 0;
-    let pageSize = assets.length;
     while (offset < assets.length) {
-      // biome-ignore lint/performance/noAwaitInLoops: Only current ZIP metadata is loaded, with adaptive response sizes.
-      const page = await listUploadsWithinLimit(
+      throwIfAborted(signal);
+      // biome-ignore lint/performance/noAwaitInLoops: Only the current ZIP's metadata is loaded.
+      const uploads = await listUploads(
         client,
-        pageSize,
+        assets.length - offset,
         offset,
         ids,
-        signal,
       );
       throwIfAborted(signal);
-      if (!page.uploads.length) break;
-      for (const upload of page.uploads) {
+      if (!uploads.length) break;
+      for (const upload of uploads) {
         if (byId.has(upload.id))
           throw new Error('Duplicate upload IDs while loading ZIP metadata');
         byId.set(upload.id, upload);
       }
-      offset += page.uploads.length;
-      pageSize = page.pageSize;
+      offset += uploads.length;
     }
     return assets.map((asset) => {
       const upload = byId.get(asset.sourceUploadId);
@@ -179,7 +161,7 @@ function trackUnique(
 }
 
 async function scanAssets(
-  client: ReturnType<typeof createExportClient>,
+  client: Client,
   expectedAssets: number,
   onProgress?: ProgressHandler,
   signal?: AbortSignal,
@@ -191,20 +173,13 @@ async function scanAssets(
   // The SDK iterator eagerly schedules its later pages. Await each page here
   // so complete localized metadata is retained for at most one page and ZIP.
   let offset = 0;
-  let pageSize = 500;
   while (offset < expectedAssets) {
     throwIfAborted(signal);
     // biome-ignore lint/performance/noAwaitInLoops: Sequential pages bound localized metadata memory.
-    const page = await listUploadsWithinLimit(
-      client,
-      pageSize,
-      offset,
-      undefined,
-      signal,
-    );
-    if (!page.uploads.length)
+    const uploads = await listUploads(client, ASSET_PAGE_SIZE, offset);
+    if (!uploads.length)
       throw new Error('Asset list ended before the expected total count');
-    for (const upload of page.uploads) {
+    for (const upload of uploads) {
       throwIfAborted(signal);
       const filename = getUploadFilename(upload);
       const sourceUploadId = String(upload.id ?? 'unknown');
@@ -229,8 +204,7 @@ async function scanAssets(
         await yieldToBrowser();
       }
     }
-    offset += page.uploads.length;
-    pageSize = page.pageSize;
+    offset += uploads.length;
   }
   throwIfAborted(signal);
   const scannedCount = (
@@ -313,7 +287,7 @@ async function downloadSingleAsset(
 }
 
 async function verifyFinalAssetCount(
-  client: ReturnType<typeof createExportClient>,
+  client: Client,
   expectedAssets: number,
   signal?: AbortSignal,
 ): Promise<string[]> {
@@ -456,7 +430,7 @@ export default async function downloadAllAssets(
   signal?: AbortSignal,
 ) {
   throwIfAborted(signal);
-  const client = createExportClient({ apiToken, environment, baseUrl }, signal);
+  const client = buildClient({ apiToken, environment, baseUrl });
   const site = await client.site.find();
   const expectedAssets = (
     await client.uploads.rawList({ page: { limit: 1, offset: 0 } })

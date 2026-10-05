@@ -386,12 +386,6 @@
   border-color: var(--color--danger-soft--border);
 }
 
-.calloutWarning {
-  color: var(--color--warning-soft--ink);
-  background: var(--color--warning-soft--surface);
-  border-color: var(--color--warning-soft--border);
-}
-
 /* End page */
 
 .summaryHeader {

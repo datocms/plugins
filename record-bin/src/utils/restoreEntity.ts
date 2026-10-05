@@ -61,7 +61,6 @@ const cloneEntity = (
 };
 
 type RestoreField = { api_key: string; field_type: string; localized: boolean };
-type Read = <T>(operation: () => Promise<T>) => Promise<T>;
 type BlockTask = { entity: Record<string, unknown>; isRoot: boolean };
 
 const sanitizeItemEnvelope = (
@@ -184,12 +183,12 @@ const archivedModelId = (item: Record<string, unknown>): string => {
 };
 
 /** Only traverse block fields declared by the model, keeping JSON/file metadata opaque. */
-export const createRestoreEntitySanitizer = (client: Client, read: Read) => {
+export const createRestoreEntitySanitizer = (client: Client) => {
   const schemas = new Map<string, Promise<RestoreField[]>>();
   const fieldsFor = (modelId: string): Promise<RestoreField[]> => {
     const cached = schemas.get(modelId);
     if (cached) return cached;
-    const pending = read(() => client.fields.list(modelId));
+    const pending = client.fields.list(modelId);
     schemas.set(modelId, pending);
     return pending;
   };
@@ -212,57 +211,4 @@ export const createRestoreEntitySanitizer = (client: Client, read: Read) => {
     }
     return root;
   };
-};
-
-type ComparisonQueue = [unknown, unknown][];
-
-const compareObjectValues = (
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-  pending: ComparisonQueue,
-): boolean => {
-  const keys = Object.keys(a);
-  if (keys.length !== Object.keys(b).length) return false;
-  for (const key of keys) {
-    if (!Object.hasOwn(b, key)) return false;
-    pending.push([a[key], b[key]]);
-  }
-  return true;
-};
-
-const compareArrayValues = (
-  a: unknown[],
-  b: unknown[],
-  pending: ComparisonQueue,
-): boolean => {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) pending.push([a[i], b[i]]);
-  return true;
-};
-
-const appendComparisons = (
-  a: unknown,
-  b: unknown,
-  pending: ComparisonQueue,
-): boolean => {
-  if (Array.isArray(a) && Array.isArray(b))
-    return compareArrayValues(a, b, pending);
-  if (isRecord(a) && isRecord(b)) return compareObjectValues(a, b, pending);
-  return false;
-};
-
-/** Equality ignores object key order, preserving array order and every field value. */
-export const equalRestoreEntities = (
-  left: unknown,
-  right: unknown,
-): boolean => {
-  const pending: [unknown, unknown][] = [[left, right]];
-  while (pending.length > 0) {
-    const pair = pending.pop();
-    if (!pair) continue;
-    const [a, b] = pair;
-    if (a === b) continue;
-    if (!appendComparisons(a, b, pending)) return false;
-  }
-  return true;
 };

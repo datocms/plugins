@@ -29,7 +29,6 @@ function successfulResult(total: number): BulkResult {
     total,
     succeeded: total,
     failed: 0,
-    uncertain: 0,
     unprocessed: 0,
     failureSamples: [],
     stopped: false,
@@ -66,29 +65,6 @@ describe('creator dropdown workflow', () => {
     expect(mocked.notice).toHaveBeenCalledWith('Creator changed on 2 records.');
   });
 
-  it('passes only IDs for 200,000 selected records and does not start a second execution outside the modal', async () => {
-    const items = Array.from({ length: 200_000 }, (_, index) => ({
-      id: `record-${index}`,
-      attributes: { unused: 'content' },
-    }));
-    const { ctx, mocked } = context({
-      bulkResult: successfulResult(items.length),
-    });
-    await executeItemsDropdownAction('bulkChangeCreator', items, ctx);
-    const options = mocked.openModal.mock.calls[0][0];
-    expect(options.closeDisabled).toBe(true);
-    expect(Object.keys(options.parameters).sort()).toEqual([
-      'itemCount',
-      'itemIds',
-    ]);
-    expect(options.parameters.itemIds).toHaveLength(200_000);
-    expect(options.parameters.itemIds[199_999]).toBe('record-199999');
-    expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-    expect(mocked.notice).toHaveBeenCalledWith(
-      'Creator changed on 200000 records.',
-    );
-  });
-
   it.each([
     { userId: 'user-1', userType: 'invalid' },
     { userId: '', userType: 'user' },
@@ -96,18 +72,21 @@ describe('creator dropdown workflow', () => {
     { userId: 1, userType: 'user' },
     { userId: 'user-1' },
     'unexpected',
-  ])('rejects an invalid modal selection without mutation: %j', async (selection) => {
-    const { ctx, mocked } = context(selection);
-    await executeItemsDropdownAction(
-      'bulkChangeCreator',
-      [{ id: 'record' }],
-      ctx,
-    );
-    expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-    expect(mocked.alert).toHaveBeenCalledWith(
-      'The selected creator is invalid. No records were updated.',
-    );
-  });
+  ])(
+    'rejects an invalid modal selection without mutation: %j',
+    async (selection) => {
+      const { ctx, mocked } = context(selection);
+      await executeItemsDropdownAction(
+        'bulkChangeCreator',
+        [{ id: 'record' }],
+        ctx,
+      );
+      expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
+      expect(mocked.alert).toHaveBeenCalledWith(
+        'The selected creator is invalid. No records were updated.',
+      );
+    },
+  );
 
   it('blocks duplicate dropdown invocations until the first execution finishes', async () => {
     const { ctx, mocked } = context();
@@ -166,13 +145,12 @@ describe('creator dropdown workflow', () => {
     expect(mocked.openModal).toHaveBeenCalledTimes(2);
   });
 
-  it('reports failures, uncertain outcomes and records not processed with a bounded preview', async () => {
+  it('reports failures and records not processed with a bounded preview', async () => {
     const result: BulkResult = {
       total: 500,
       succeeded: 100,
       failed: 2,
-      uncertain: 3,
-      unprocessed: 395,
+      unprocessed: 398,
       stopped: true,
       stopReason: 'Stopped by the user.',
       failureSamples: Array.from({ length: 5 }, (_, index) => ({
@@ -191,8 +169,7 @@ describe('creator dropdown workflow', () => {
     );
     const alert = mocked.alert.mock.calls[0][0];
     expect(alert).toContain('Failed to update 2 records.');
-    expect(alert).toContain('The outcome of 3 records could not be confirmed.');
-    expect(alert).toContain('395 records were not processed.');
+    expect(alert).toContain('398 records were not processed.');
     expect(alert).toContain('Stopped by the user.');
     expect(alert).toContain('record-2: Access denied');
     expect(alert).not.toContain('record-3');

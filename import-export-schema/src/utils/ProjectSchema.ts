@@ -1,35 +1,5 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
 
-function isRetryableReadFailure(error: unknown): boolean {
-  if (error instanceof TypeError) return true;
-  if (typeof error !== 'object' || !error || !('response' in error))
-    return false;
-  const response = error.response;
-  if (typeof response !== 'object' || !response || !('status' in response)) {
-    return false;
-  }
-  return (
-    typeof response.status === 'number' &&
-    [500, 502, 503, 504].includes(response.status)
-  );
-}
-
-async function retryRead<T>(fn: () => Promise<T>): Promise<T> {
-  // All users are read-only list endpoints. The SDK handles 429/transient API
-  // errors and timeouts; supplement it for network errors and plain 5xx only.
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      // biome-ignore lint/performance/noAwaitInLoops: Retry the same read after its previous attempt settles.
-      return await fn();
-    } catch (error) {
-      if (!isRetryableReadFailure(error) || attempt >= 2) throw error;
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, 500 * 2 ** attempt),
-      );
-    }
-  }
-}
-
 /**
  * Thin caching layer around the CMA client that smooths out rate limits and provides lookups.
  */
@@ -58,10 +28,6 @@ export class ProjectSchema {
   private throttleMax = 2;
   private throttleActive = 0;
   private throttleQueue: Array<() => void> = [];
-  private nextRequestAt = 0;
-  // CMA permits 60 requests/3 seconds. Leave headroom for the dashboard and
-  // other plugins; the official client still handles server-directed retries.
-  private requestIntervalMs = 60;
 
   constructor(client: Client) {
     this.client = client;
@@ -110,14 +76,7 @@ export class ProjectSchema {
       this.throttleActive += 1;
     }
     try {
-      const now = Date.now();
-      const delay = Math.max(0, this.nextRequestAt - now);
-      this.nextRequestAt =
-        Math.max(now, this.nextRequestAt) + this.requestIntervalMs;
-      if (delay > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, delay));
-      }
-      return await retryRead(fn);
+      return await fn();
     } finally {
       const next = this.throttleQueue.shift();
       // Transfer the reserved slot directly. Decrementing before waking a waiter

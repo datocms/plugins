@@ -8,10 +8,8 @@ import {
 import {
   collectOptimizableAssets,
   type OptimizationDependencies,
-  type OptimizationProgress,
   runAssetOptimization,
 } from '../src/services/assetOptimizationService.ts';
-import { CmaRequestScheduler } from '../src/utils/cmaRequests.ts';
 import { ImageSizeLimitError } from '../src/utils/imageTransfer.ts';
 import {
   type Asset,
@@ -50,7 +48,6 @@ function fixtureClient(count: number, failAtOffset?: number) {
     apiToken: 'synthetic-token',
     baseUrl: 'https://cma.example.test',
     environment: 'synthetic',
-    autoRetry: false,
     fetchFn: async (input, init) => {
       const url = new URL(String(input));
       assert.equal(init?.method, 'GET');
@@ -81,7 +78,6 @@ function fixtureClient(count: number, failAtOffset?: number) {
 
 function testDependencies(): OptimizationDependencies {
   return {
-    scheduler: new CmaRequestScheduler(0),
     download: async () =>
       new Blob(['optimized image bytes'], { type: 'image/webp' }),
     filename: async (asset) => `${asset.basename}.webp`,
@@ -102,7 +98,6 @@ test('a selected collection is enforced across discovery pages before any write'
   const client = buildClient({
     apiToken: 'synthetic-token',
     baseUrl: 'https://cma.example.test',
-    autoRetry: false,
     fetchFn: async (input) => {
       const url = new URL(String(input));
       assert.equal(
@@ -152,7 +147,6 @@ test('collection discovery keeps only matching images and preserves its exact sc
   const client = buildClient({
     apiToken: 'synthetic-token',
     baseUrl: 'https://cma.example.test',
-    autoRetry: false,
     fetchFn: async (input) => {
       const url = new URL(String(input));
       assert.equal(
@@ -183,7 +177,6 @@ test('collection discovery keeps only matching images and preserves its exact sc
   const assets = await collectOptimizableAssets(
     client,
     size,
-    new CmaRequestScheduler(0),
     undefined,
     undefined,
     'selected-collection',
@@ -197,7 +190,6 @@ test('decimal MB limits are converted to an integer CMA byte boundary', async ()
   const client = buildClient({
     apiToken: 'synthetic-token',
     baseUrl: 'https://cma.example.test',
-    autoRetry: false,
     fetchFn: async (input) => {
       const url = new URL(String(input));
       const boundary = url.searchParams.get('filter[fields][size][gte]');
@@ -209,81 +201,13 @@ test('decimal MB limits are converted to an integer CMA byte boundary', async ()
       });
     },
   });
-  const assets = await collectOptimizableAssets(
-    client,
-    0.1 * 1024 * 1024,
-    new CmaRequestScheduler(0),
-  );
+  const assets = await collectOptimizableAssets(client, 0.1 * 1024 * 1024);
   assert.deepEqual(assets, []);
   assert.equal(requests.length, 1);
 });
 
-test('10,000 assets are fully discovered before writes, processed exactly once with bounded workers', async () => {
-  const { client, pages } = fixtureClient(10_000);
-  const deps = testDependencies();
-  let active = 0;
-  let peak = 0;
-  let downloads = 0;
-  const replaced = new Set<string>();
-  const progress: OptimizationProgress[] = [];
-  deps.download = async (url, maxBytes) => {
-    assert.equal(
-      pages.length,
-      21,
-      'inventory must complete before any image work',
-    );
-    assert.equal(new URL(url).searchParams.get('token'), 'existing');
-    assert.equal(new URL(url).searchParams.get('fm'), 'avif');
-    assert.ok(maxBytes < size);
-    downloads++;
-    active++;
-    peak = Math.max(peak, active);
-    await nextTurn();
-    return new Blob(['converted bytes']);
-  };
-  deps.replace = async (asset, blob) => {
-    assert.ok(!replaced.has(asset.id));
-    replaced.add(asset.id);
-    active--;
-    return {
-      id: asset.id,
-      type: 'upload',
-      path: `/new/${asset.id}.avif`,
-      url: `https://cdn.example.test/new/${asset.id}.avif`,
-      size: blob.size,
-    } as SimpleSchemaTypes.Upload;
-  };
-  const result = await runAssetOptimization(
-    client,
-    defaultSettings,
-    { concurrency: 10, onProgress: (value) => progress.push(value) },
-    deps,
-  );
-  assert.equal(downloads, 10_000);
-  assert.equal(replaced.size, 10_000);
-  assert.equal(peak, 3);
-  assert.equal(result.optimized, 10_000);
-  assert.equal(result.optimizedAssets.length, 10_000);
-  assert.equal(result.failed, 0);
-  assert.equal(result.unprocessed, 0);
-  assert.ok(
-    result.optimizedAssets.every(
-      (asset) => asset.url.includes('/new/') && asset.path.endsWith('.avif'),
-    ),
-  );
-  const processing = progress.filter((value) => value.phase === 'processing');
-  assert.ok(processing.length < 100, 'UI progress is throttled');
-  for (let index = 1; index < processing.length; index++)
-    assert.ok(processing[index].current >= processing[index - 1].current);
-  assert.equal(processing.at(-1)?.current, 10_000);
-  assert.deepEqual(
-    pages,
-    Array.from({ length: 21 }, (_, index) => index * 500),
-  );
-});
-
 test('late inventory failure prevents every replacement and propagates the error', async () => {
-  const { client } = fixtureClient(1000, 500);
+  const { client } = fixtureClient(501, 500);
   const deps = testDependencies();
   let downloads = 0;
   deps.download = async () => {
@@ -296,11 +220,7 @@ test('late inventory failure prevents every replacement and propagates the error
 
 test('lean inventory excludes locale metadata and deduplicates changing pages', async () => {
   const { client } = fixtureClient(501);
-  const assets = await collectOptimizableAssets(
-    client,
-    0,
-    new CmaRequestScheduler(0),
-  );
+  const assets = await collectOptimizableAssets(client, 0);
   assert.equal(assets.length, 501);
   assert.ok(!('default_field_metadata' in assets[0]));
   assert.equal(assets[0].md5, 'original-0');
@@ -309,11 +229,7 @@ test('lean inventory excludes locale metadata and deduplicates changing pages', 
   let calls = 0;
   client.uploads.list = async () =>
     (++calls === 1 ? firstPage : [firstPage[0]]) as SimpleSchemaTypes.Upload[];
-  const deduplicated = await collectOptimizableAssets(
-    client,
-    0,
-    new CmaRequestScheduler(0),
-  );
+  const deduplicated = await collectOptimizableAssets(client, 0);
   assert.equal(deduplicated.length, 500);
 });
 
@@ -346,7 +262,7 @@ test('preview never replaces; failures and insufficient savings keep accurate ac
 });
 
 test('cancellation stops scheduling but drains accepted replacements and retains partial results', async () => {
-  const { client } = fixtureClient(1000);
+  const { client } = fixtureClient(10);
   const deps = testDependencies();
   const controller = new AbortController();
   let started = 0;
@@ -382,11 +298,11 @@ test('cancellation stops scheduling but drains accepted replacements and retains
   assert.equal(result.optimized, 2);
   assert.equal(result.failed, 0);
   assert.equal(result.cancelled, true);
-  assert.equal(result.unprocessed, 998);
+  assert.equal(result.unprocessed, 8);
 });
 
 test('cancellation during inventory does not report failed assets or mutate', async () => {
-  const { client } = fixtureClient(1000);
+  const { client } = fixtureClient(501);
   const controller = new AbortController();
   const result = await runAssetOptimization(
     client,

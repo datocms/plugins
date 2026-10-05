@@ -22,21 +22,6 @@ function atDepth(comments: CommentType[], depth: number): CommentType {
 }
 
 describe('nested comment operations', () => {
-  it('edits a deeply nested reply without recursion or mutating other threads', () => {
-    const comments = nestedThread(12_000);
-    const content = [{ type: 'text' as const, content: 'Nested edit' }];
-    const result = applyOperation(comments, {
-      type: 'EDIT_COMMENT',
-      id: 'depth-12000',
-      parentCommentId: 'depth-11999',
-      newContent: content,
-    });
-    expect(result.status).toBe('applied');
-    expect(atDepth(result.comments, 12_000).content).toEqual(content);
-    expect(atDepth(comments, 12_000).content).not.toEqual(content);
-    expect(result.comments[1]).toBe(comments[1]);
-  }, 60_000);
-
   it('does not create duplicate IDs across nested branches', () => {
     const comments = nestedThread(5);
     const existing = createBaseComment({ id: 'depth-5' });

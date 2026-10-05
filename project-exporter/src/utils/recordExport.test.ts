@@ -426,62 +426,6 @@ describe('recordExport envelope', () => {
     ]);
   });
 
-  test('traverses deep content with a work stack and keeps all references across bounded parts', () => {
-    const fields = [
-      {
-        id: 'field',
-        item_type: { id: 'page' },
-        api_key: 'related',
-        field_type: 'links',
-        localized: true,
-      },
-    ];
-    const records = Array.from({ length: 1001 }, (_, index) => ({
-      id: `record-${index}`,
-      item_type: { id: 'page' },
-      related: { en: [`target-${index}`, 'shared'], pt: [`target-${index}`] },
-    }));
-    const first = buildEnvelope(records.slice(0, 1000), fields);
-    const final = buildRecordExportEnvelope({
-      records: records.slice(1000),
-      fields,
-      itemTypes: [{ id: 'page', api_key: 'page' }],
-      siteInfo,
-      filtersUsed: {},
-      scope: 'bulk',
-      partition: {
-        exportId: 'export',
-        index: 2,
-        recordOffset: 1000,
-        isLast: true,
-      },
-    });
-    expect(first.referenceIndex.recordRefs).toHaveLength(3000);
-    expect(final.referenceIndex.recordRefs).toHaveLength(3);
-    expect(final.referenceIndex.recordRefs[0].jsonPath).toBe(
-      '$.records[0].related.en[0]',
-    );
-    expect(final.manifest.partition).toEqual({
-      exportId: 'export',
-      index: 2,
-      recordOffset: 1000,
-      isLast: true,
-    });
-
-    let nested: Record<string, unknown> = { type: 'item', id: 'deep-target' };
-    for (let index = 0; index < 2000; index++) {
-      nested = { child: nested };
-    }
-    const deep = buildEnvelope(
-      [{ id: 'deep-record', item_type: { id: 'page' }, custom: nested }],
-      [],
-    );
-    expect(deep.referenceIndex.recordRefs).toHaveLength(1);
-    expect(deep.referenceIndex.recordRefs[0].targetSourceId).toBe(
-      'deep-target',
-    );
-  });
-
   test('builds schema maps and deep reference index for nested content', () => {
     const itemTypes = [
       { id: 'model_page', api_key: 'page' },

@@ -1,11 +1,9 @@
 import { ApiError, type Client } from '@datocms/cma-client-browser';
-import { CmaRequestTimeoutError } from '../src/data/requests';
 import { describe, expect, it, vi } from 'vitest';
 import {
   loadStage,
   mapWithConcurrency,
   resolveLinkedTitles,
-  MIN_STAGE_PAGE_SIZE,
   STAGE_PAGE_SIZE,
   workflowModels,
 } from '../src/data/loadStage';
@@ -343,82 +341,5 @@ describe('loading robustness', () => {
 
     expect(new Set(data.rows.map(({ id }) => id)).size).toBe(data.rows.length);
     expect(data.rows).toHaveLength(items.length);
-  });
-
-  it('retries a page that times out with a smaller page', async () => {
-    const items = Array.from({ length: 30 }, (_, i) =>
-      buildItem(`r${i}`, { title: `R ${i}` }),
-    );
-    const { client, rawList } = fakeClient({ items: { m1: items } });
-    const original = rawList.getMockImplementation();
-    if (!original) throw new Error('Missing mock');
-    rawList.mockImplementation(async (query) => {
-      if (query.page.limit > 50) throw new CmaRequestTimeoutError();
-      return original(query);
-    });
-
-    const data = await loadStage(
-      { ...sourceFor(client), itemTypes: { m1: twoModels.m1 } },
-      { workflowId: 'wf1', stageId: 'review' },
-      new AbortController().signal,
-    );
-
-    expect(data.rows).toHaveLength(30);
-    expect(rawList.mock.calls.map(([query]) => query.page.limit)).toEqual([
-      200, 100, 50,
-    ]);
-  });
-
-  it('gives up once pages can shrink no further', async () => {
-    const { client, rawList } = fakeClient({ items: { m1: [] } });
-    rawList.mockRejectedValue(new CmaRequestTimeoutError());
-
-    await expect(
-      loadStage(
-        { ...sourceFor(client), itemTypes: { m1: twoModels.m1 } },
-        { workflowId: 'wf1', stageId: 'review' },
-        new AbortController().signal,
-      ),
-    ).rejects.toBeInstanceOf(CmaRequestTimeoutError);
-    const calls = rawList.mock.calls;
-    expect(calls[calls.length - 1]?.[0].page.limit).toBe(MIN_STAGE_PAGE_SIZE);
-  });
-});
-
-describe('which client each read uses', () => {
-  it('sends only shrinkable stage pages to the no-retry page client', async () => {
-    const items = Array.from({ length: 10 }, (_, i) =>
-      buildItem(`r${i}`, { title: `R ${i}` }),
-    );
-    // The page client times out until pages reach the minimum size, which
-    // then goes to the retrying client.
-    const page = fakeClient({ items: { m1: items } });
-    page.rawList.mockRejectedValue(new CmaRequestTimeoutError());
-    const main = fakeClient({ items: { m1: items } });
-
-    const data = await loadStage(
-      {
-        client: main.client,
-        pageClient: page.client,
-        itemTypes: {
-          m1: buildItemType('m1', 'Article', { workflowId: 'wf1' }),
-        },
-        locales: ['en'],
-        loadItemTypeFields: async () => [buildField('f1', 'title')],
-      },
-      { workflowId: 'wf1', stageId: 'review' },
-      new AbortController().signal,
-    );
-
-    expect(data.rows).toHaveLength(10);
-    // The workflow is read with the retrying client.
-    expect(main.find).toHaveBeenCalled();
-    expect(page.find).not.toHaveBeenCalled();
-    expect(page.rawList.mock.calls.map(([query]) => query.page.limit)).toEqual([
-      200, 100, 50,
-    ]);
-    expect(main.rawList.mock.calls.map(([query]) => query.page.limit)).toEqual([
-      MIN_STAGE_PAGE_SIZE,
-    ]);
   });
 });

@@ -166,9 +166,6 @@ describe('readFormRecord', () => {
       apiToken: 'test-user-token',
       environment: 'main',
       baseUrl: 'https://cma.example',
-      autoRetry: false,
-      requestTimeout: 31_000,
-      fetchFn: expect.any(Function),
     });
   });
 

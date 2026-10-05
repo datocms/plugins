@@ -318,7 +318,6 @@ export function completedWithoutErrors(
   const failures =
     stats.failedRecords +
     stats.failedPublications +
-    stats.uncertainPublications +
     stats.pendingPublications +
     stats.modelFailures;
   return (
@@ -373,12 +372,6 @@ export function OverallSummary({
       {duplicationStats.skippedRecords > 0 && (
         <p>{duplicationStats.skippedRecords} records needed no changes.</p>
       )}
-      {duplicationStats.uncertainRecords > 0 && (
-        <p>
-          {duplicationStats.uncertainRecords} update outcomes could not be
-          confirmed; these are included in the failed operation count.
-        </p>
-      )}
       {duplicationStats.totalRecords < duplicationStats.totalToProcess && (
         <p>
           {duplicationStats.totalToProcess - duplicationStats.totalRecords}{' '}
@@ -393,14 +386,12 @@ export function OverallSummary({
       )}
       {duplicationStats.publishedRecords +
         duplicationStats.failedPublications +
-        duplicationStats.uncertainPublications +
         duplicationStats.pendingPublications >
         0 && (
         <p>
           {duplicationStats.publishedRecords} records published;{' '}
           {duplicationStats.failedPublications} publication failures;{' '}
-          {duplicationStats.uncertainPublications} publication outcomes
-          unconfirmed; {duplicationStats.pendingPublications} pending.
+          {duplicationStats.pendingPublications} pending.
         </p>
       )}
     </div>

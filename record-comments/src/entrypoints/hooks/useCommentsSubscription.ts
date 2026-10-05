@@ -5,7 +5,6 @@ import {
   type QueryResult,
 } from '@ctypes/comments';
 import type { Client } from '@datocms/cma-client-browser';
-import { createCmaFallbackRead } from '@utils/cmaFallbackRead';
 import {
   categorizeSubscriptionError,
   normalizeError,
@@ -643,11 +642,6 @@ export function useCommentsSubscription({
     if (!isSyncAllowed) return;
 
     let isMounted = true;
-    const read = createCmaFallbackRead(client, (error) => {
-      if (!isMounted) return;
-      setCmaFetchError(error);
-      setIsLoading(false);
-    });
 
     const syncAfterFetch = () => {
       if (onAfterSync) {
@@ -698,9 +692,7 @@ export function useCommentsSubscription({
       });
 
       try {
-        // The SDK owns timeout and transport retries; an outer race cannot
-        // cancel items.list and would start overlapping SDK retry chains.
-        const records = await read.client.items.list({
+        const records = await client.items.list({
           filter: {
             type: COMMENTS_MODEL_API_KEY,
             fields: {
@@ -711,11 +703,11 @@ export function useCommentsSubscription({
           page: { limit: 2 },
         });
 
-        if (!isMounted || read.isCanceled()) return;
+        if (!isMounted) return;
 
         applyFetchedRecords(records);
       } catch (error) {
-        if (!isMounted || read.isCanceled()) return;
+        if (!isMounted) return;
         const normalizedErr = normalizeError(error);
         logError('Failed to fetch comments (CMA fallback)', normalizedErr, {
           modelId: filterParams.modelId,
@@ -723,8 +715,6 @@ export function useCommentsSubscription({
         });
         setCmaFetchError(normalizedErr);
         setIsLoading(false);
-      } finally {
-        read.cancel();
       }
     };
 
@@ -732,7 +722,6 @@ export function useCommentsSubscription({
 
     return () => {
       isMounted = false;
-      read.cancel();
     };
   }, [
     isRealtimeSubscriptionEnabled,

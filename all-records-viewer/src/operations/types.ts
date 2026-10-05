@@ -77,7 +77,6 @@ export type BulkOperationResult = {
   requested: number;
   successful: number;
   failed: number;
-  uncertain?: number;
   unprocessed?: number;
   cancelled?: boolean;
   remainingItemIds?: string[];

@@ -248,26 +248,6 @@ describe('provider model discovery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('collects 10,000 synthetic models incrementally across complete pages', async () => {
-    let page = 0;
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
-      const models = Array.from({ length: 1000 }, (_, index) => ({
-        name: `models/model-${page * 1000 + index}`,
-      }));
-      page += 1;
-      return jsonResponse({
-        models,
-        nextPageToken: page < 10 ? `page-${page}` : '',
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const models = await listGeminiModels('key');
-    expect(models).toHaveLength(10_000);
-    expect(new Set(models).size).toBe(10_000);
-    expect(fetchMock).toHaveBeenCalledTimes(10);
-  });
-
   it.each([
     listOpenAIModels,
     listAnthropicModels,

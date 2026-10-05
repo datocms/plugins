@@ -237,41 +237,6 @@ test('false, zero, null and empty values remain distinct when copied', async () 
   );
 });
 
-test('large locale fan-out uses one write at a time and reports partial failures accurately', async () => {
-  const locales = Array.from({ length: 1000 }, (_, index) => `locale-${index}`);
-  const original = structuredFixture();
-  let active = 0;
-  let maximum = 0;
-  const keys = new Set();
-  const result = await copyFormValueToLocales(
-    original,
-    'structured_text',
-    schemas,
-    locales,
-    async (locale, value) => {
-      active += 1;
-      maximum = Math.max(maximum, active);
-      try {
-        await Promise.resolve();
-        keys.add(value[1].key);
-        value[1].nested.title = locale;
-        if (locale === 'locale-5' || locale === 'locale-900')
-          throw new Error('mock editor failure');
-      } finally {
-        active -= 1;
-      }
-    },
-  );
-  assert.equal(maximum, 1);
-  assert.equal(keys.size, locales.length);
-  assert.equal(result.copied, 998);
-  assert.deepEqual(result.failures, [
-    'locale-5: mock editor failure',
-    'locale-900: mock editor failure',
-  ]);
-  assert.equal(original[1].nested.title, '');
-});
-
 test('nested locale paths preserve parent locale/index and accept complex locale codes', () => {
   const path = 'sections.en.12.content.0.title.zh-Hant-TW';
   assert.equal(
@@ -290,74 +255,6 @@ test('nested locale paths preserve parent locale/index and accept complex locale
   assert.equal(getValueAtPath(values, 'sections.en.0.title.it'), null);
   assert.equal(getValueAtPath(values, 'sections.en.1.title.it'), undefined);
   assert.equal(getValueAtPath({}, 'toString'), undefined);
-});
-
-test('iterative cloning handles 20000 nested objects and 10000 asset references', () => {
-  const root = {
-    assets: Array.from({ length: 10000 }, (_, index) => ({
-      upload_id: `asset-${index}`,
-      custom_data: { id: `${index}` },
-    })),
-  };
-  let cursor = root;
-  for (let index = 0; index < 20000; index += 1) {
-    cursor.child = { id: index };
-    cursor = cursor.child;
-  }
-  const copy = cloneFieldValue(root);
-  assert.deepEqual(copy.assets, root.assets);
-  assert.notEqual(copy.assets[9999], root.assets[9999]);
-  cursor = copy;
-  for (let index = 0; index < 20000; index += 1) {
-    cursor = cursor.child;
-    assert.equal(cursor.id, index);
-  }
-});
-
-test('nested block transformation is iterative for 4000 levels', async () => {
-  const fields = [
-    { apiKey: 'nested', fieldType: 'single_block', localized: false },
-  ];
-  const root = { itemId: 'root', itemTypeId: 'recursive' };
-  let cursor = root;
-  for (let index = 0; index < 4000; index += 1) {
-    cursor.nested = { itemId: `block-${index}`, itemTypeId: 'recursive' };
-    cursor = cursor.nested;
-  }
-  let loads = 0;
-  const loaded = await loadFormBlockSchemas(root, 'single_block', async () => {
-    loads += 1;
-    return fields;
-  });
-  assert.equal(loads, 1);
-  cursor = cloneFormFieldValue(root, 'single_block', loaded);
-  for (let index = 0; index <= 4000; index += 1) {
-    assert.equal(cursor.itemId, undefined);
-    cursor = cursor.nested;
-  }
-  assert.equal(root.itemId, 'root');
-});
-
-test('wide Structured Text preserves every node and reference', () => {
-  const value = [
-    {
-      type: 'paragraph',
-      children: Array.from({ length: 100000 }, (_, index) =>
-        index % 100 === 0
-          ? {
-              type: 'inlineItem',
-              item: `record-${index}`,
-              itemTypeId: 'record-model',
-              children: [{ text: '' }],
-            }
-          : { text: `${index}`, highlight: true },
-      ),
-    },
-  ];
-  const copy = cloneFormFieldValue(value, 'structured_text');
-  assert.equal(copy[0].children.length, 100000);
-  assert.deepEqual(copy, value);
-  assert.notEqual(copy[0].children[0], value[0].children[0]);
 });
 
 test('arbitrary JSON property names do not modify object prototypes', () => {

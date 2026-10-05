@@ -16,7 +16,7 @@ Only assets placed in asset fields, SEO fields and blocks count. Asset URLs past
 
 The plugin doesn't change the dashboard's bulk deletion limit of 200 records.
 
-Asset cleanup runs in the browser after the records are deleted. Reloading the page, logging out or switching environments before it finishes can interrupt it. Cancelling the cleanup stops further asset deletions, but the records still get deleted.
+Asset cleanup runs in the browser after the records are deleted. Reloading the page, logging out or switching environments before it finishes can interrupt it.
 
 ## Development
 

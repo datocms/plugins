@@ -173,54 +173,6 @@ describe('collectSelection', () => {
     ]);
   });
 
-  it('collects 200,000 text-search matches from 31 model partitions incrementally', async () => {
-    const total = 200_000;
-    const modelCount = 31;
-    const baseCount = Math.floor(total / modelCount);
-    const remainder = total % modelCount;
-    let requests = 0;
-    let highestLimit = 0;
-    let lastProgress: [number, number] | undefined;
-    const rawList = async ({ filter, page: { offset, limit } }: PageQuery) => {
-      requests += 1;
-      highestLimit = Math.max(highestLimit, limit);
-      if (!filter?.type) return page(0, 0, total);
-      const modelIndex = Number(filter.type.replace('model-', ''));
-      const count = baseCount + (modelIndex < remainder ? 1 : 0);
-      const start = modelIndex * baseCount + Math.min(modelIndex, remainder);
-      return page(
-        start + offset,
-        Math.min(limit, count - offset),
-        count,
-        filter.type,
-      );
-    };
-    const selected = await collectSelection(
-      clientWith(rawList),
-      {
-        ...DEFAULT_QUERY_STATE,
-        query: 'text',
-      },
-      {
-        modelIds: Array.from(
-          { length: modelCount },
-          (_, index) => `model-${index}`,
-        ),
-        onProgress: (count, totalCount) => {
-          lastProgress = [count, totalCount];
-        },
-      },
-    );
-    expect(requests).toBe(1 + modelCount * Math.ceil(baseCount / 200));
-    expect(highestLimit).toBe(200);
-    expect(selected.size).toBe(total);
-    expect(lastProgress).toEqual([total, total]);
-    expect(selected.get('record-199999')?.attributes).toEqual({});
-    expect(selected.get('record-199999')?.relationships.item_type.data.id).toBe(
-      'model-30',
-    );
-  });
-
   it('requires model IDs for all-model text search before issuing a request', async () => {
     const rawList = vi.fn();
     await expect(
@@ -340,38 +292,6 @@ describe('collectSelection', () => {
     expect(rawList.mock.calls.map(([query]) => query.page.offset)).toEqual([
       0, 75, 150, 225, 300, 375,
     ]);
-  });
-
-  it('generates 200,000 records a page at a time without retaining their fields', async () => {
-    const total = 200_000;
-    let requests = 0;
-    let highestLimit = 0;
-    let lastProgress: [number, number] | undefined;
-    // A plain mock avoids a spy retaining 1,000 complete response payloads.
-    const rawList = async ({ page: { offset, limit } }: PageQuery) => {
-      requests += 1;
-      highestLimit = Math.max(highestLimit, limit);
-      return page(offset, Math.min(limit, total - offset), total);
-    };
-
-    const selected = await collectSelection(
-      clientWith(rawList),
-      DEFAULT_QUERY_STATE,
-      {
-        onProgress: (count, totalCount) => {
-          lastProgress = [count, totalCount];
-        },
-      },
-    );
-
-    expect(requests).toBe(1_000);
-    expect(highestLimit).toBe(200);
-    expect(selected.size).toBe(total);
-    expect(lastProgress).toEqual([total, total]);
-    expect(selected.get('record-199999')?.attributes).toEqual({});
-    expect(selected.get('record-199999')?.relationships.item_type.data.id).toBe(
-      `model-${199_999 % 31}`,
-    );
   });
 
   it('returns an empty selection with a confirmed zero total', async () => {

@@ -14,7 +14,6 @@ import {
   type OptimizationProgress,
   runAssetOptimization,
 } from '../services/assetOptimizationService';
-import { createBoundedCmaFetch } from '../utils/assetReplacer';
 import { formatFileSize } from '../utils/formatters';
 import {
   type AssetOptimizerResult,
@@ -71,7 +70,6 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
       requestTimeout: 30_000,
-      fetchFn: createBoundedCmaFetch(),
     });
     void client.uploadCollections
       .list()
@@ -234,9 +232,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
       apiToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
-      autoRetry: false,
       requestTimeout: 30_000,
-      fetchFn: createBoundedCmaFetch(),
     });
     addLog(`Starting asset optimization ${preview ? 'preview' : 'process'}...`);
     addLog(

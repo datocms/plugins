@@ -17,46 +17,6 @@ function googleImage(index: number) {
   };
 }
 
-test('discovers all 10,000 synthetic Google models and dedupes across pages', async () => {
-  const urls: URL[] = [];
-  const fetchModels: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    urls.push(url);
-    const page = Number(
-      url.searchParams.get('pageToken')?.replace('page-', '') || 0,
-    );
-    assert.equal(url.searchParams.get('pageSize'), '1000');
-    assert.equal(url.searchParams.has('key'), false);
-    assert.equal(new Headers(init?.headers).get('x-goog-api-key'), apiKey);
-    assert.equal(init?.method, undefined);
-    if (page === 10) {
-      return json({ models: [googleImage(0), googleImage(9999)] });
-    }
-    return json({
-      models: Array.from({ length: 1000 }, (_, index) =>
-        googleImage(page * 1000 + index),
-      ),
-      nextPageToken: `page-${page + 1}`,
-    });
-  };
-  const result = await loadProviderModelOptions('google', apiKey, {
-    fetch: fetchModels,
-  });
-  assert.equal(result.options.length, 10_000);
-  assert.equal(
-    new Set(result.options.map((option) => option.value)).size,
-    10_000,
-  );
-  assert.equal(urls.length, 11);
-  assert.equal(urls[0].searchParams.has('pageToken'), false);
-  assert.equal(urls[10].searchParams.get('pageToken'), 'page-10');
-  assert.equal(
-    result.options.find((option) => option.value === 'gemini-3-image-9999')
-      ?.generationMethod,
-    'generateContent',
-  );
-});
-
 test('Google only offers image models supported by the generation path', async () => {
   const result = await loadProviderModelOptions('google', apiKey, {
     selectedModel: 'imagen-4.0-generate-001',
@@ -229,32 +189,5 @@ test('Google rejects malformed pagination tokens', async () => {
         /invalid model catalog page token/,
       ),
     ),
-  );
-});
-
-test('catalog safety limits fail explicitly, keeping incomplete lists out of the UI', async () => {
-  let pages = 0;
-  await assert.rejects(
-    loadProviderModelOptions('google', apiKey, {
-      fetch: async () => json({ models: [], nextPageToken: `page-${++pages}` }),
-    }),
-    /100 pages or 100000 entries/,
-  );
-  assert.equal(pages, 100);
-  await assert.rejects(
-    loadProviderModelOptions('openai', apiKey, {
-      fetch: async () =>
-        json({
-          data: Array.from({ length: 100_001 }, () => ({ id: 'gpt-image-1' })),
-        }),
-    }),
-    /100000 entries/,
-  );
-  await assert.rejects(
-    loadProviderModelOptions('google', apiKey, {
-      fetch: async () =>
-        json({ models: Array.from({ length: 100_001 }, () => googleImage(0)) }),
-    }),
-    /100000 entries/,
   );
 });

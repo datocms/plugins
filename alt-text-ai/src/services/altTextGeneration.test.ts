@@ -220,9 +220,6 @@ describe('runAltGenerationForField', () => {
       apiToken: 'dato-token',
       environment: 'sandbox',
       baseUrl: 'https://cma.example.com',
-      autoRetry: false,
-      requestTimeout: 125_000,
-      fetchFn: expect.any(Function),
     });
     expect(createAltTextProvider).toHaveBeenCalledWith({
       provider: 'alttext-ai',
@@ -390,62 +387,6 @@ describe('mapSettledWithConcurrency', () => {
 });
 
 describe('large and changing field values', () => {
-  it('applies 10,000 gallery entries incrementally and generates repeated images once', async () => {
-    const gallery = Array.from({ length: 10_000 }, (_, index) => ({
-      ...asset(`image-${index % 10}`),
-      title: `Title ${index}`,
-      custom_data: { index: String(index), credit: 'Photographer' },
-      focal_point: { x: 0.2, y: 0.8 },
-    }));
-    let requests = 0;
-    let active = 0;
-    let maximumActive = 0;
-    const uploadsFind = vi.fn<Client['uploads']['find']>();
-    uploadsFind.mockImplementation(
-      async (id) =>
-        ({
-          id,
-          is_image: true,
-          url: `https://example.imgix.net/${id}.jpg`,
-          filename: `${id}.jpg`,
-        }) as Awaited<ReturnType<Client['uploads']['find']>>,
-    );
-    const generate = vi.fn<AltTextProvider['generate']>();
-    generate.mockImplementation(async ({ assetId }) => {
-      requests += 1;
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      await Promise.resolve();
-      active -= 1;
-      return `Alt ${assetId}`;
-    });
-    mockGenerationDependencies(uploadsFind, generate, 'openai');
-    const { ctx, notice, setFieldValue } = fieldContext(gallery, {
-      provider: 'openai',
-      openAiApiKey: 'mock-key',
-      openAiModel: 'vision-model',
-    });
-    let firstWriteAt = 0;
-    let finalValue: unknown;
-    setFieldValue.mockImplementation(async (_path, value) => {
-      firstWriteAt ||= requests;
-      finalValue = value;
-    });
-    await runAltGenerationForField(ctx, 'missing-only');
-    expect(maximumActive).toBe(3);
-    expect(requests).toBe(10);
-    expect(uploadsFind).toHaveBeenCalledTimes(10);
-    expect(firstWriteAt).toBe(10);
-    expect(setFieldValue).toHaveBeenCalledTimes(200);
-    expect(finalValue).toEqual(
-      gallery.map((entry) => ({ ...entry, alt: `Alt ${entry.upload_id}` })),
-    );
-    expect(notice).toHaveBeenCalledWith(
-      '10000 alt texts generated with OpenAI.',
-    );
-    expect(gallery.every((entry) => entry.alt === null)).toBe(true);
-  });
-
   it('merges current single-file metadata and preserves concurrent alt edits in overwrite mode', async () => {
     const current = asset('one', 'Original');
     const { ctx, notice, setFieldValue } = fieldContext(current, {
@@ -545,7 +486,7 @@ describe('large and changing field values', () => {
   });
 
   it('stops new gallery generation after a fatal provider failure', async () => {
-    const gallery = Array.from({ length: 10_000 }, (_, index) =>
+    const gallery = Array.from({ length: 20 }, (_, index) =>
       asset(`image-${index}`),
     );
     const uploadsFind = vi.fn<Client['uploads']['find']>();

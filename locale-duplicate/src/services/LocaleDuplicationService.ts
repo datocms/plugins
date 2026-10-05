@@ -1,16 +1,15 @@
-import { ApiError, type Client } from '@datocms/cma-client-browser';
+import {
+  ApiError,
+  buildClient,
+  type Client,
+} from '@datocms/cma-client-browser';
 import type { Item, ItemType } from '../types';
-import { CmaUncertainOutcomeError, createCmaClient } from './cmaClient';
 import {
   type DuplicationProgress,
   type DuplicationStats,
   initialDuplicationStats,
 } from './duplicationTypes';
-import {
-  buildLocaleUpdates,
-  containsUpdates,
-  type FieldSchema,
-} from './localeUpdates';
+import { buildLocaleUpdates, type FieldSchema } from './localeUpdates';
 
 export type ProgressCallback = (update: DuplicationProgress) => void;
 
@@ -51,7 +50,6 @@ function describeError(error: unknown): string {
 }
 
 function fatalError(error: unknown): boolean {
-  if (error instanceof CmaUncertainOutcomeError) return fatalError(error.cause);
   return (
     error instanceof ApiError && [401, 403].includes(error.response.status)
   );
@@ -59,23 +57,6 @@ function fatalError(error: unknown): boolean {
 
 function isStaleVersion(error: unknown): boolean {
   return error instanceof ApiError && !!error.findError('STALE_ITEM_VERSION');
-}
-
-/** Only call after invoking a write: successful HTTP responses can fail decoding. */
-function classifyWriteError(error: unknown): unknown {
-  if (error instanceof CmaUncertainOutcomeError) return error;
-  if (
-    error instanceof SyntaxError ||
-    error instanceof TypeError ||
-    (error instanceof ApiError &&
-      error.response.status >= 200 &&
-      error.response.status < 300)
-  )
-    return new CmaUncertainOutcomeError(
-      'The CMA write response could not be read; its outcome must be confirmed.',
-      error,
-    );
-  return error;
 }
 
 /** One run holds IDs and counters, one nested page, and at most three record updates. */
@@ -252,8 +233,6 @@ class DuplicationRun {
     if (result === 'error') {
       modelStats.error++;
       this.stats.failedRecords++;
-      if (error instanceof CmaUncertainOutcomeError)
-        this.stats.uncertainRecords++;
       this.emit(
         `Could not update ${id} in ${model.name}: ${describeError(error)}`,
         'error',
@@ -300,43 +279,13 @@ class DuplicationRun {
           meta: { current_version: current.meta.current_version },
         });
       } catch (error) {
-        if (isStaleVersion(error)) {
-          current = await this.client.items.find(current.id, { nested: true });
-          source = this.config.useDraftRecords === false ? source : current;
-          continue;
-        }
-        return this.reconcileWrite(
-          classifyWriteError(error),
-          current.id,
-          updates,
-          fields,
-        );
+        if (!isStaleVersion(error)) throw error;
+        current = await this.client.items.find(current.id, { nested: true });
+        source = this.config.useDraftRecords === false ? source : current;
       }
     }
     throw new Error(
       'Record kept changing during duplication; no overwrite was forced',
-    );
-  }
-
-  private async reconcileWrite(
-    error: unknown,
-    id: string,
-    updates: Record<string, unknown>,
-    fields: FieldSchema[],
-  ): Promise<Item> {
-    if (!(error instanceof CmaUncertainOutcomeError)) throw error;
-    try {
-      const after = await this.client.items.find(id, { nested: true });
-      if (await containsUpdates(after, updates, fields, this.loadFields))
-        return after;
-    } catch (readError) {
-      throw new CmaUncertainOutcomeError(
-        `Could not confirm the update: ${describeError(readError)}. Its payload was not replayed.`,
-        readError,
-      );
-    }
-    throw new CmaUncertainOutcomeError(
-      'Update outcome is uncertain; its payload was not replayed',
     );
   }
 
@@ -469,26 +418,12 @@ class DuplicationRun {
         },
       });
     } catch (error) {
-      await this.reconcilePublication(batch, classifyWriteError(error));
+      this.stats.failedPublications += batch.length;
+      this.emit(`Publication batch failed: ${describeError(error)}`, 'error');
+      if (fatalError(error)) throw error;
       return;
     }
-    const successful = result?.meta?.successful;
-    const failed = result?.meta?.failed;
-    if (
-      !Number.isSafeInteger(successful) ||
-      !Number.isSafeInteger(failed) ||
-      successful < 0 ||
-      failed < 0 ||
-      successful + failed !== batch.length
-    ) {
-      await this.reconcilePublication(
-        batch,
-        new CmaUncertainOutcomeError(
-          'The publication job returned inconsistent totals',
-        ),
-      );
-      return;
-    }
+    const { successful, failed } = result.meta;
     this.stats.publishedRecords += successful;
     this.stats.failedPublications += failed;
     if (failed > 0)
@@ -496,39 +431,6 @@ class DuplicationRun {
         `Publication completed with ${failed} failed records in this batch.`,
         'error',
       );
-  }
-
-  private async reconcilePublication(batch: Publication[], error: unknown) {
-    // A submitted batch with unavailable read-back is uncertain, never merely pending.
-    let after: Map<string, Item>;
-    try {
-      after = await this.publishedVersions(batch);
-    } catch (readError) {
-      this.stats.uncertainPublications += batch.length;
-      this.emit(
-        `Could not confirm the submitted publication batch: ${describeError(readError)}. The job was not resubmitted.`,
-        'error',
-      );
-      if (fatalError(readError)) throw readError;
-      if (fatalError(error)) throw error;
-      return;
-    }
-    for (const record of batch) {
-      const latest = after.get(record.id);
-      if (
-        latest?.meta.status === 'published' &&
-        latest.meta.current_version === record.version
-      )
-        this.stats.publishedRecords++;
-      else if (error instanceof CmaUncertainOutcomeError)
-        this.stats.uncertainPublications++;
-      else this.stats.failedPublications++;
-    }
-    this.emit(
-      `Publication batch failed: ${describeError(error)}. Confirmed results are included in the summary.`,
-      'error',
-    );
-    if (fatalError(error)) throw error;
   }
 
   private async publish() {
@@ -615,12 +517,10 @@ class DuplicationRun {
     this.stats.pendingPublications =
       this.publications.length -
       this.stats.publishedRecords -
-      this.stats.failedPublications -
-      this.stats.uncertainPublications;
+      this.stats.failedPublications;
     const failed =
       this.stats.failedRecords +
       this.stats.failedPublications +
-      this.stats.uncertainPublications +
       this.stats.modelFailures;
     this.snapshot(
       this.cancelled
@@ -658,14 +558,7 @@ export class LocaleDuplicationService {
       throw new Error(
         'CMA access is unavailable. Enable the currentUserAccessToken permission.',
       );
-    this.client = createCmaClient(apiToken, environment, baseUrl, {
-      onRetry: () =>
-        this.onProgress?.({
-          message: 'Waiting before retrying a temporary CMA request failure...',
-          type: 'info',
-          timestamp: Date.now(),
-        }),
-    });
+    this.client = buildClient({ apiToken, environment, baseUrl });
   }
 
   duplicateContent(

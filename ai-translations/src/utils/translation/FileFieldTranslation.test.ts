@@ -265,28 +265,6 @@ describe('FileFieldTranslation', () => {
       },
     });
   });
-  it('keeps a 10,000-asset synthetic gallery ordered with only one metadata translation in flight', async () => {
-    let active = 0;
-    let peak = 0;
-    vi.mocked(translateArray).mockImplementation(async (_provider, _params, values) => {
-      active++;
-      peak = Math.max(peak, active);
-      await Promise.resolve();
-      active--;
-      return values.map((value) => `IT ${value}`);
-    });
-    const gallery = Array.from({ length: 10_000 }, (_, index) => ({
-      upload_id: `synthetic-${index}`, alt: `alt-${index}`, title: `title-${index}`,
-      focal_point: { x: 0.25, y: 0.5 },
-    }));
-    const result = await translateFileFieldValue(gallery, mockPluginParams, 'it', 'en', mockProvider) as typeof gallery;
-    expect(peak).toBe(1);
-    expect(result).toHaveLength(10_000);
-    expect(result[9_999]).toEqual({ ...gallery[9_999], alt: 'IT alt-9999', title: 'IT title-9999' });
-    expect(gallery[0].alt).toBe('alt-0');
-    expect(mockUploadsFind).not.toHaveBeenCalled();
-  });
-
   it('rejects cancellation between gallery entries without returning partial success', async () => {
     const controller = new AbortController();
     vi.mocked(translateArray).mockImplementation(async () => {

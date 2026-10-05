@@ -34,7 +34,6 @@ export function isBulkResult(value: unknown): value is BulkResult {
     result.total,
     result.succeeded,
     result.failed,
-    result.uncertain,
     result.unprocessed,
   ];
 
@@ -65,8 +64,8 @@ export function isBulkResult(value: unknown): value is BulkResult {
     return false;
   }
 
-  const [total, succeeded, failed, uncertain, unprocessed] = counts as number[];
-  return total === succeeded + failed + uncertain + unprocessed;
+  const [total, succeeded, failed, unprocessed] = counts as number[];
+  return total === succeeded + failed + unprocessed;
 }
 
 export function resolveExecutionError(error: unknown): string {

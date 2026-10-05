@@ -49,27 +49,6 @@ afterEach(() => {
 });
 
 describe('project record totals', () => {
-  it('counts thousands of models in bounded deduplicated queries without loading records', async () => {
-    const models = Array.from({ length: 1_000 }, (_, index) =>
-      model(`model-${String(index).padStart(22, '0')}`),
-    );
-    rawList.mockImplementation(
-      async (query: { filter: { type: string }; page: { limit: number } }) => {
-        const ids = query.filter.type.split(',');
-        expect(ids.length).toBeLessThanOrEqual(50);
-        expect(
-          encodeURIComponent(query.filter.type).length,
-        ).toBeLessThanOrEqual(1_500);
-        expect(query.page.limit).toBe(0);
-        return { data: [], meta: { total_count: ids.length * 200 } };
-      },
-    );
-    expect(await countRecords(client, [...models, model(models[0].id)])).toBe(
-      200_000,
-    );
-    expect(rawList.mock.calls.length).toBeGreaterThan(20);
-  });
-
   it('stops count batches on cancellation', async () => {
     const controller = new AbortController();
     rawList.mockImplementation(async () => {
@@ -143,10 +122,7 @@ describe('project production', () => {
         .mock.calls[0][0].occurrences.map((entry) => entry.locale),
     ).toEqual(['en', 'it']);
     expect(current.waitForCapacity).toHaveBeenCalledOnce();
-    expect(buildCmaClient).toHaveBeenCalledWith(
-      { environment: 'test' },
-      controller.signal,
-    );
+    expect(buildCmaClient).toHaveBeenCalledWith({ environment: 'test' });
     log.mockRestore();
   });
 

@@ -10,11 +10,9 @@ export interface DuplicationStats {
   totalRecords: number;
   successfulRecords: number;
   failedRecords: number;
-  uncertainRecords: number;
   skippedRecords: number;
   publishedRecords: number;
   failedPublications: number;
-  uncertainPublications: number;
   pendingPublications: number;
   modelFailures: number;
   totalToProcess: number;
@@ -41,11 +39,9 @@ export function initialDuplicationStats(): DuplicationStats {
     totalRecords: 0,
     successfulRecords: 0,
     failedRecords: 0,
-    uncertainRecords: 0,
     skippedRecords: 0,
     publishedRecords: 0,
     failedPublications: 0,
-    uncertainPublications: 0,
     pendingPublications: 0,
     modelFailures: 0,
     totalToProcess: 0,

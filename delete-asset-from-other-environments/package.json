@@ -29,7 +29,7 @@
     "prepublishOnly": "npm run build",
     "typecheck": "tsc -b",
     "lint": "biome lint ./src",
-    "test": "vitest run --pool=threads --maxWorkers=1 --testTimeout=60000",
+    "test": "vitest run",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

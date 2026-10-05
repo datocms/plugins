@@ -168,9 +168,6 @@ describe('runAltGenerationForUploads', () => {
       apiToken: 'dato-token',
       environment: 'sandbox',
       baseUrl: 'https://cma.example.com',
-      autoRetry: false,
-      requestTimeout: 125_000,
-      fetchFn: expect.any(Function),
     });
     expect(createAltTextProvider).toHaveBeenCalledWith({
       provider: 'openai',

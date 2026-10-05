@@ -1,6 +1,6 @@
 import type { CommentType } from '@ctypes/comments';
 import type { Client } from '@datocms/cma-client-browser';
-import { getCommentRetryInfo, isQuotaOrBillingError } from '@utils/errorCategorization';
+import { isQuotaOrBillingError } from '@utils/errorCategorization';
 import {
   commentIdWasMigrated,
   type MigratedComment,
@@ -52,58 +52,6 @@ function checkActive(signal: AbortSignal) {
     throw new Error(
       'Migration stopped because the screen was closed. Legacy fields were preserved.',
     );
-}
-
-export function isTransientMigrationError(error: unknown): boolean {
-  const retry = getCommentRetryInfo(error);
-  return retry.retryable && !retry.versionConflict;
-}
-
-function retryDelay(error: unknown, attempt: number): number {
-  return Math.max(
-    getCommentRetryInfo(error).minimumDelayMs,
-    Math.min(1000 * 2 ** attempt, 15000),
-  );
-}
-
-async function waitForRetry(
-  error: unknown,
-  attempt: number,
-  signal: AbortSignal,
-) {
-  checkActive(signal);
-  await new Promise<void>((resolve, reject) => {
-    const abort = () => {
-      clearTimeout(timer);
-      reject(new Error('Migration stopped. Legacy fields were preserved.'));
-    };
-    const timer = setTimeout(
-      () => {
-        signal.removeEventListener('abort', abort);
-        resolve();
-      },
-      retryDelay(error, attempt),
-    );
-    signal.addEventListener('abort', abort, { once: true });
-  });
-}
-
-export async function retryMigrationRead<T>(
-  operation: () => Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    checkActive(signal);
-    try {
-      // biome-ignore lint/performance/noAwaitInLoops: Retry attempts depend on the preceding response.
-      const result = await operation();
-      checkActive(signal);
-      return result;
-    } catch (error) {
-      if (attempt >= 4 || !isTransientMigrationError(error)) throw error;
-      await waitForRetry(error, attempt, signal);
-    }
-  }
 }
 
 function parseArray(value: unknown): unknown[] {
@@ -354,16 +302,6 @@ export function assertMigrationMatches(
   }
 }
 
-function migrationRecordId() {
-  const bytes = crypto.randomUUID().replace(/-/g, '').match(/../g) ?? [];
-  return btoa(
-    String.fromCharCode(...bytes.map((byte) => Number.parseInt(byte, 16))),
-  )
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
-
 type Destination = Awaited<ReturnType<Client['items']['list']>>[number];
 
 async function createVerifiedDestination(
@@ -373,48 +311,14 @@ async function createVerifiedDestination(
   comments: CommentType[],
 ) {
   const { client, commentsModelId, signal } = options;
-  // A stable request ID plus the unique record_id validator makes response-loss retries safe.
-  const body = {
-    id: migrationRecordId(),
+  checkActive(signal);
+  const created = await client.items.create({
     item_type: { type: 'item_type' as const, id: commentsModelId },
     model_id: model.modelId,
     record_id: recordId,
     content: JSON.stringify(comments),
-  };
-  for (let attempt = 0; ; attempt++) {
-    checkActive(signal);
-    try {
-      // biome-ignore lint/performance/noAwaitInLoops: Reconcile each attempt before repeating this stable request ID.
-      const created = await client.items.create(body);
-      assertMigrationMatches(comments, created.content);
-      return;
-    } catch (error) {
-      checkActive(signal);
-      if (isQuotaOrBillingError(error)) throw error;
-      const existing = await retryMigrationRead(
-        () =>
-          client.items.list({
-            filter: {
-              type: commentsModelId,
-              fields: { record_id: { eq: recordId } },
-            },
-            page: { limit: 2 },
-          }),
-        signal,
-      );
-      if (existing.length === 1 && existing[0].model_id === model.modelId) {
-        assertMigrationMatches(comments, existing[0].content);
-        return;
-      }
-      if (
-        existing.length > 0 ||
-        attempt >= 4 ||
-        !isTransientMigrationError(error)
-      )
-        throw error;
-      await waitForRetry(error, attempt, signal);
-    }
-  }
+  });
+  assertMigrationMatches(comments, created.content);
 }
 
 async function destinationsForPage(
@@ -422,15 +326,11 @@ async function destinationsForPage(
   ids: string[],
 ): Promise<Map<string, Destination>> {
   const destinations = new Map<string, Destination>();
-  const { client, commentsModelId, signal } = options;
-  const page = await retryMigrationRead(
-    () =>
-      client.items.rawList({
-        filter: { type: commentsModelId, fields: { record_id: { in: ids } } },
-        page: { limit: MIGRATION_PAGE_SIZE },
-      }),
-    signal,
-  );
+  const { client, commentsModelId } = options;
+  const page = await client.items.rawList({
+    filter: { type: commentsModelId, fields: { record_id: { in: ids } } },
+    page: { limit: MIGRATION_PAGE_SIZE },
+  });
   if (page.meta.total_count > ids.length)
     throw new Error(
       'Duplicate destination record_id values; cleanup is blocked.',
@@ -504,11 +404,8 @@ function requireStorageField(
 }
 
 async function validateCommentStorage(options: MigrationOptions) {
-  const { client, signal, commentsModelId } = options;
-  const fields = await retryMigrationRead(
-    () => client.fields.list(commentsModelId),
-    signal,
-  );
+  const { client, commentsModelId } = options;
+  const fields = await client.fields.list(commentsModelId);
   const identityMessage =
     'Comment storage requires a non-localized unique record_id field.';
   const identity = requireStorageField(
@@ -534,16 +431,12 @@ async function validateCommentStorage(options: MigrationOptions) {
 }
 
 function readSourceRevision(options: MigrationOptions, model: LegacyModel) {
-  return retryMigrationRead(
-    () =>
-      options.client.items.rawList({
-        filter: { type: model.modelId },
-        version: 'current',
-        order_by: '_updated_at_DESC',
-        page: { limit: 1 },
-      }),
-    options.signal,
-  );
+  return options.client.items.rawList({
+    filter: { type: model.modelId },
+    version: 'current',
+    order_by: '_updated_at_DESC',
+    page: { limit: 1 },
+  });
 }
 
 function readSourcePage(
@@ -551,16 +444,12 @@ function readSourcePage(
   model: LegacyModel,
   offset: number,
 ) {
-  return retryMigrationRead(
-    () =>
-      options.client.items.rawList({
-        filter: { type: model.modelId },
-        version: 'current',
-        order_by: 'id_ASC',
-        page: { offset, limit: MIGRATION_PAGE_SIZE },
-      }),
-    options.signal,
-  );
+  return options.client.items.rawList({
+    filter: { type: model.modelId },
+    version: 'current',
+    order_by: 'id_ASC',
+    page: { offset, limit: MIGRATION_PAGE_SIZE },
+  });
 }
 
 function hasRecordsToInspect(

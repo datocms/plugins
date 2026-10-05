@@ -3,14 +3,7 @@ import {
   buildClient,
   TimeoutError,
 } from '@datocms/cma-client-browser';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +54,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  vi.useRealTimers();
 });
 
 /** The record reads, without the one request that counts records for the progress bar. */
@@ -242,9 +234,6 @@ describe('project page', () => {
       apiToken: 'test-user-token',
       environment: 'main',
       baseUrl: 'https://cma.example',
-      autoRetry: false,
-      requestTimeout: 31_000,
-      fetchFn: expect.any(Function),
     });
     expect(recordReads()).toHaveLength(2);
     for (const type of ['page', 'news'])
@@ -582,7 +571,7 @@ describe('project page', () => {
       "News: The records couldn't be loaded. Scan again to retry.",
     ],
   ])('explains a failed model read in plain words (%#)', async (error, message) => {
-    vi.useFakeTimers();
+    const user = userEvent.setup();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
@@ -591,20 +580,10 @@ describe('project page', () => {
       return { data: [rawRecord()], meta: { total_count: 1 } };
     });
     render(<ProjectPage ctx={pageContext()} />);
-    // This test drives the scan's retry timers itself. A synchronous click
-    // avoids waiting for user-event's interaction timers before advancing them.
-    fireEvent.click(screen.getByRole('button', { name: 'Scan links' }));
-    await act(async () => vi.runAllTimersAsync());
-    expect(
-      screen.getByRole('heading', { name: 'Scan incomplete' }),
-    ).toBeInTheDocument();
+    await scanAll(user);
+    await screen.findByRole('heading', { name: 'Scan incomplete' });
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledWith(error);
-    expect(
-      recordReads().filter(([query]) => query.filter.type === 'news'),
-    ).toHaveLength(
-      error instanceof ApiError && error.response.status < 500 ? 1 : 4,
-    );
   });
 
   it('alerts when the scan dialog cannot be opened', async () => {

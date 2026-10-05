@@ -172,11 +172,10 @@ async function translateLoadedBatch(
 
 async function translateRecordBatches(
   job: BatchTranslationJob,
-  loadingClient: ReturnType<typeof buildDatoCMSClient>,
   onLoaded: (loaded: number) => void,
 ) {
   for await (const batch of loadRecordBatches(
-    loadingClient,
+    job.client,
     job.parameters.itemIds,
     {
       checkCancellation: job.checkCancellation,
@@ -559,16 +558,10 @@ export default function TranslationProgressModal({
           ctx.environment,
           ctx.cmaBaseUrl,
         );
-        const loadingClient = buildDatoCMSClient(
-          accessToken,
-          ctx.environment,
-          ctx.cmaBaseUrl,
-          controller.signal,
-        );
         const provider = getProvider(pluginParams);
 
         // Create SchemaRepository for cached schema lookups
-        const schemaRepository = createSchemaRepository(loadingClient);
+        const schemaRepository = createSchemaRepository(client);
 
         const job: BatchTranslationJob = {
           client,
@@ -582,7 +575,7 @@ export default function TranslationProgressModal({
           abortSignal: controller.signal,
         };
 
-        await translateRecordBatches(job, loadingClient, (loaded) => {
+        await translateRecordBatches(job, (loaded) => {
           if (isMounted && !isCancelledRef.current) {
             progressStore.setLoadedCount(loaded);
             scheduleProgressRender();
@@ -686,8 +679,8 @@ export default function TranslationProgressModal({
     if (isCancelledRef.current) return;
     isCancelledRef.current = true;
     setIsCancelling(true);
-    // Abort reads/provider work, then await already-submitted writes before
-    // returning the partial result from the job's finally block.
+    // Stop provider work and further scheduling, then return the partial
+    // result from the job's finally block.
     abortRef.current?.abort();
   };
 

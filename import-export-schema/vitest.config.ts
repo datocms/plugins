@@ -10,9 +10,5 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    pool: 'threads',
-    maxWorkers: 2,
-    minWorkers: 1,
-    testTimeout: 30000,
   },
 });

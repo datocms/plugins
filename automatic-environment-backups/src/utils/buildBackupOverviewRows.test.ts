@@ -240,22 +240,4 @@ describe('buildBackupOverviewRows', () => {
       environmentLinked: false,
     });
   });
-
-  it('keeps overview output bounded to the enabled cadences with a synthetic large environment list', () => {
-    const ids = Array.from({ length: 10000 }, (_, index) => `staging-${index}`);
-    ids.push(' backup-plugin-daily-2026-02-27 ');
-    const rows = buildBackupOverviewRows({
-      scheduleConfig: {
-        ...baseScheduleConfig,
-        enabledCadences: ['daily', 'weekly', 'biweekly', 'monthly'],
-      },
-      lambdaStatus: status,
-      availableEnvironmentIds: ids,
-    });
-
-    expect(rows).toHaveLength(4);
-    expect(rows[0].environmentLinked).toBe(true);
-    expect(rows[2].lastBackup).toBe('Unavailable');
-    expect(ids[ids.length - 1]).toBe(' backup-plugin-daily-2026-02-27 ');
-  });
 });

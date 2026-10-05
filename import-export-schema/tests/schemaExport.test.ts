@@ -5,7 +5,6 @@ import buildExportDoc, {
 } from '../src/entrypoints/ExportPage/buildExportDoc';
 import { downloadBlob } from '../src/utils/downloadJson';
 import type { ProjectSchema } from '../src/utils/ProjectSchema';
-import type { ExportDocV2 } from '../src/utils/types';
 
 vi.mock('@/utils/datocms/fieldTypeInfo', () => ({
   isHardcodedEditor: async (editor: string) =>
@@ -163,7 +162,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('schema export integrity and scale', () => {
+describe('schema export integrity', () => {
   it('keeps cyclic dependencies, localized defaults, block fieldsets and selected plugin appearances', async () => {
     const { schema, ids, getItemTypeFieldsAndFieldsets } = makeSchema();
     const original = field('model-field-0');
@@ -238,78 +237,6 @@ describe('schema export integrity and scale', () => {
       [2, 3],
       [3, 3],
     ]);
-  });
-
-  it('exports a synthetic complex schema incrementally with bounded model work and exact ordering', async () => {
-    const { schema, ids, plugins, getItemTypeFieldsAndFieldsets } = makeSchema(
-      512,
-      40,
-      128,
-    );
-    const read = getItemTypeFieldsAndFieldsets.getMockImplementation();
-    let active = 0;
-    let maximumActive = 0;
-    getItemTypeFieldsAndFieldsets.mockImplementation(async (model) => {
-      active += 1;
-      maximumActive = Math.max(maximumActive, active);
-      await new Promise<void>((resolve) => setTimeout(resolve, 2));
-      active -= 1;
-      if (!read) throw new Error('Missing fixture implementation');
-      return read(model);
-    });
-    const updates: Array<{ done: number; total: number }> = [];
-    const blob = await finishTimers(
-      buildExportBlob(
-        schema,
-        ids[0],
-        ids,
-        plugins.map((plugin) => plugin.id),
-        {
-          onProgress: (update) => updates.push(update),
-        },
-      ),
-    );
-    const doc = JSON.parse(await blob.text()) as ExportDocV2;
-    expect(doc.entities).toHaveLength(128 + 512 * 42);
-    const entityIds = new Set(doc.entities.map((entity) => entity.id));
-    expect(entityIds.size).toBe(doc.entities.length);
-    for (const entity of doc.entities) {
-      if (entity.type === 'item_type') {
-        expect(
-          entity.relationships.fields.data.every((ref) =>
-            entityIds.has(ref.id),
-          ),
-        ).toBe(true);
-        expect(
-          entity.relationships.fieldsets.data.every((ref) =>
-            entityIds.has(ref.id),
-          ),
-        ).toBe(true);
-      }
-    }
-    expect(
-      doc.entities
-        .filter((entity) => entity.type === 'item_type')
-        .map((entity) => entity.id),
-    ).toEqual(ids);
-    expect(maximumActive).toBe(2);
-    expect(updates).toHaveLength(640);
-    expect(
-      updates.every(
-        (update, index) => update.done === index + 1 && update.total === 640,
-      ),
-    ).toBe(true);
-    expect(blob.type).toBe('application/json');
-    expect(blob.size).toBeGreaterThan(256 * 1024);
-    expect(
-      (
-        doc.entities.find(
-          (entity) => entity.id === 'model-511-field-39',
-        ) as SchemaTypes.Field
-      ).attributes.validators,
-    ).toMatchObject({
-      items_item_type: { item_types: [...ids.slice(0, 12), 'model-511'] },
-    });
   });
 
   it('produces the same v2 document through the download path', async () => {

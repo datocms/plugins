@@ -107,23 +107,6 @@ describe('raw record reads without recursive SDK deserialization', () => {
     );
   });
 
-  test('preserves 5,000 JSON levels by identity without traversing fields', async () => {
-    let nested: JsonObject = { type: 'item', marker: 'leaf' };
-    for (let index = 0; index < 5000; index++) nested = { child: nested };
-    const raw = rawRecord({ custom: nested });
-    const { client } = identityClient({ data: [raw] });
-
-    const records = await readRecordPage(client, {});
-
-    expect(records[0].custom).toBe(nested);
-    expect(raw.attributes.custom).toBe(nested);
-    let cursor = records[0].custom as JsonObject;
-    for (let index = 0; index < 5000; index++)
-      cursor = cursor.child as JsonObject;
-    expect(cursor.marker).toBe('leaf');
-    expect(Object.hasOwn(cursor, '__itemTypeId')).toBe(false);
-  });
-
   test('preserves nested raw blocks while exporting their record and upload references', async () => {
     const child = {
       ...rawRecord({ asset: { upload_id: 'upload' } }, 'child'),

@@ -1,15 +1,14 @@
 import { parseComments } from '@ctypes/comments';
 import type { CommentOperation } from '@ctypes/operations';
-import { buildClient, type Client } from '@datocms/cma-client-browser';
+import { ApiError, type Client } from '@datocms/cma-client-browser';
 import { calculateBackoffDelay, delay } from '@utils/backoff';
-import { getCommentRetryInfo } from '@utils/errorCategorization';
 import {
   applyOperation,
   findOperationComment,
 } from '@utils/operationApplicators';
 import { isValidCommentArray } from '@utils/typeGuards';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ERROR_MESSAGES, RETRY_LIMITS, TIMING } from '@/constants';
 import { logDebug, logError } from '@/utils/errorLogger';
 import { validateCommentsStorageFields } from '@/utils/commentsStorage';
@@ -23,7 +22,6 @@ type OperationContext = {
   op: CommentOperation;
   onRecordCreated: (id: string) => void;
   editBaselineContent?: string;
-  creationId: string;
 };
 
 type OperationCallbacks = {
@@ -79,17 +77,6 @@ function getCurrentVersion(record: CommentRecord): string {
     throw new Error('Comment storage version is missing.');
   }
   return String(currentVersion);
-}
-
-function generateAggregateId(): string {
-  const hex = crypto.randomUUID().replace(/-/g, '');
-  const bytes = hex.match(/.{2}/g) ?? [];
-  return btoa(
-    String.fromCharCode(...bytes.map((byte) => Number.parseInt(byte, 16))),
-  )
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
 }
 
 async function executeWithExistingRecord(
@@ -225,7 +212,6 @@ async function executeWithoutExistingRecord(
 
   try {
     const newRecord = await client.items.create({
-      id: ctx.creationId,
       item_type: { type: 'item_type', id: currentCommentsModelId },
       model_id: modelId,
       record_id: recordId,
@@ -383,17 +369,6 @@ export function useOperationQueue({
   onRecordCreated,
   resolveCommentsModelId,
 }: UseOperationQueueParams) {
-  const writeClient = useMemo(
-    () =>
-      client?.config
-        ? buildClient({
-            ...client.config,
-            autoRetry: false,
-            requestTimeout: 30000,
-          })
-        : client,
-    [client],
-  );
   const queue = useRef<CommentOperation[]>([]);
   const validatedStorageRef = useRef(new WeakMap<Client, Set<string>>());
   const activeTargetRef = useRef({ client, modelId, recordId });
@@ -424,21 +399,18 @@ export function useOperationQueue({
     });
   }, []);
 
-  const updateRetryState = useCallback(
-    (opType: string, count: number, message: string) => {
-      if (!isMountedRef.current) return;
+  const updateRetryState = useCallback((opType: string, count: number) => {
+    if (!isMountedRef.current) return;
 
-      setRetryState({
-        isRetrying: true,
-        operationType: opType,
-        retryCount: count,
-        message,
-        wasTerminated: false,
-        terminationReason: null,
-      });
-    },
-    [],
-  );
+    setRetryState({
+      isRetrying: true,
+      operationType: opType,
+      retryCount: count,
+      message: ERROR_MESSAGES.VERSION_CONFLICT_RETRYING,
+      wasTerminated: false,
+      terminationReason: null,
+    });
+  }, []);
 
   const [isInCooldown, setIsInCooldown] = useState(false);
   const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -654,14 +626,13 @@ export function useOperationQueue({
     [alertIfMounted],
   );
 
-  const retryAfterFailure = useCallback(
+  const retryAfterVersionConflict = useCallback(
     async (
       op: CommentOperation,
       opCtx: OperationContext,
       callbacks: OperationCallbacks,
       attempt: number,
       operationStartTime: number,
-      retryInfo: ReturnType<typeof getCommentRetryInfo>,
     ): Promise<boolean> => {
       if (!callbacks.isActive()) return false;
 
@@ -674,39 +645,22 @@ export function useOperationQueue({
         return false;
       }
 
-      updateRetryState(
-        op.type,
-        attempt,
-        retryInfo.versionConflict
-          ? ERROR_MESSAGES.VERSION_CONFLICT_RETRYING
-          : 'Connection interrupted. Retrying...',
-      );
+      updateRetryState(op.type, attempt);
 
-      const backoffDelay = Math.max(
-        retryInfo.minimumDelayMs,
-        calculateBackoffDelay(
-          attempt,
-          TIMING.VERSION_CONFLICT_BACKOFF_BASE,
-          TIMING.VERSION_CONFLICT_BACKOFF_MAX,
-        ),
+      const backoffDelay = calculateBackoffDelay(
+        attempt,
+        TIMING.VERSION_CONFLICT_BACKOFF_BASE,
+        TIMING.VERSION_CONFLICT_BACKOFF_MAX,
       );
-      logDebug('Retrying queued comment operation', {
+      logDebug('Retrying queued comment operation after version conflict', {
         attempt,
         backoffDelayMs: backoffDelay,
         modelId,
         op: sanitizeOperationForLogging(op),
         recordId,
       });
-      // Never start another request after the operation budget expires.
-      const remainingDuration =
-        RETRY_LIMITS.MAX_DURATION_MS - (Date.now() - operationStartTime);
-      await delay(Math.min(backoffDelay, remainingDuration));
+      await delay(backoffDelay);
       if (!callbacks.isActive()) return false;
-
-      if (Date.now() - operationStartTime >= RETRY_LIMITS.MAX_DURATION_MS) {
-        terminateRetry(op, attempt, 'timeout', operationStartTime);
-        return false;
-      }
 
       return executeWithVersionConflictRetryRef.current(
         op,
@@ -732,8 +686,8 @@ export function useOperationQueue({
       } catch (e) {
         if (!callbacks.isActive()) return false;
 
-        const retryInfo = getCommentRetryInfo(e);
-        if (!retryInfo.retryable) {
+        // Another save changed the comments record: re-read it and reapply.
+        if (!(e instanceof ApiError && e.findError('STALE_ITEM_VERSION'))) {
           logError('Failed to save comment operation:', e, {
             op: sanitizeOperationForLogging(op),
           });
@@ -742,24 +696,28 @@ export function useOperationQueue({
           return false;
         }
 
-        return retryAfterFailure(
+        return retryAfterVersionConflict(
           op,
           opCtx,
           callbacks,
           attempt + 1,
           operationStartTime,
-          retryInfo,
         );
       }
     },
-    [alertIfMounted, clearRetryState, executeAttemptOnce, retryAfterFailure],
+    [
+      alertIfMounted,
+      clearRetryState,
+      executeAttemptOnce,
+      retryAfterVersionConflict,
+    ],
   );
 
   executeWithVersionConflictRetryRef.current = executeWithVersionConflictRetry;
 
   const executeWithRetry = useCallback(
     async (op: CommentOperation): Promise<boolean> => {
-      if (!writeClient || !recordId || !isMountedRef.current) {
+      if (!client || !recordId || !isMountedRef.current) {
         logDebug('Skipped queued comment operation before execution', {
           hasClient: !!client,
           isMounted: isMountedRef.current,
@@ -776,7 +734,7 @@ export function useOperationQueue({
         activeTargetRef.current.modelId === modelId &&
         activeTargetRef.current.recordId === recordId;
       const opCtx: OperationContext = {
-        client: writeClient,
+        client,
         modelId,
         recordId,
         op,
@@ -784,7 +742,6 @@ export function useOperationQueue({
           op.type === 'EDIT_COMMENT' && op.expectedContent !== undefined
             ? JSON.stringify(op.expectedContent)
             : undefined,
-        creationId: generateAggregateId(),
         onRecordCreated: (id) => {
           if (!isActive()) return;
           commentRecordIdRef.current = id;
@@ -816,7 +773,6 @@ export function useOperationQueue({
     [
       alertIfMounted,
       client,
-      writeClient,
       clearRetryState,
       executeWithVersionConflictRetry,
       modelId,

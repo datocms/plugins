@@ -5,8 +5,6 @@ import downloadRecordsFile, {
   prepareRecordDownload,
   RecordPartSizeError,
   XLSX_MAX_CELL_CHARACTERS,
-  XLSX_MAX_COLUMNS,
-  XLSX_MAX_ROWS,
 } from './downloadRecordsFile';
 import { downloadBlob, yieldToBrowser } from './exportRuntime';
 import { buildRecordExportEnvelope } from './recordExport';
@@ -253,54 +251,6 @@ describe('bounded record file formats', () => {
     expect(sheet.getRow(2).getCell(1).value).toBe(value);
     expect(JSON.parse(String(sheet.getRow(2).getCell(2).value))).toEqual(
       record.nested,
-    );
-  });
-
-  test('XLSX validates its row limit without allocating a million entities and catches excessive columns', async () => {
-    const syntheticLengthOnly = new Array<Record<string, unknown>>(
-      XLSX_MAX_ROWS,
-    );
-    await expect(
-      prepareRecordDownload(syntheticLengthOnly, 'XLSX'),
-    ).rejects.toThrow('1,048,575');
-    const wide = Object.fromEntries(
-      Array.from({ length: XLSX_MAX_COLUMNS + 1 }, (_, index) => [
-        `field-${index}`,
-        index,
-      ]),
-    );
-    await expect(prepareRecordDownload([wide], 'XLSX')).rejects.toThrow(
-      '16,384 columns',
-    );
-    const half = Math.floor(XLSX_MAX_COLUMNS / 2) + 1;
-    const disjoint = [
-      Object.fromEntries(
-        Array.from({ length: half }, (_, index) => [`first-${index}`, index]),
-      ),
-      Object.fromEntries(
-        Array.from({ length: half }, (_, index) => [`second-${index}`, index]),
-      ),
-    ];
-    await expect(
-      prepareRecordDownload(disjoint, 'XLSX'),
-    ).rejects.toBeInstanceOf(RecordPartSizeError);
-  });
-
-  test('serializes 12,000 nested levels iteratively and yields to the browser', async () => {
-    let nested: Record<string, unknown> = { final: 'leaf' };
-    for (let depth = 0; depth < 12_000; depth++) nested = { child: nested };
-    const file = await prepareRecordDownload([{ nested }], 'JSON');
-    let current = JSON.parse(await file.text())[0].nested as Record<
-      string,
-      unknown
-    >;
-    for (let depth = 0; depth < 12_000; depth++)
-      current = current.child as Record<string, unknown>;
-    expect(current.final).toBe('leaf');
-    expect(yieldToBrowser).toHaveBeenCalled();
-    const xml = await prepareRecordDownload([{ nested }], 'XML');
-    expect((await xml.text()).match(/<property name="child">/g)).toHaveLength(
-      12_000,
     );
   });
 

@@ -317,7 +317,6 @@ describe('AIBulkTranslationsPage', () => {
       'cma-token',
       'main',
       'https://cma.example.test',
-      collectionOptions?.abortSignal,
     );
     await act(async () => collection.resolve(['r1']));
 

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MAX_BULK_ITEMS } from '../constants';
-import { CmaRateLimitWaitError, JobPollingError } from '../data/requests';
 import { executeBulkOperation } from './execute';
 import {
   buildBulkDestroyPayload,
@@ -174,60 +173,7 @@ describe('bulk result helpers', () => {
   });
 });
 
-describe('continuous bulk execution at scale', () => {
-  it.each([
-    'publish',
-    'unpublish',
-    'delete',
-    'move_to_stage',
-  ] as const)('executes 200,000 IDs for %s in sequential bounded batches with exact progress', async (operation) => {
-    const mocks = mockClient();
-    let active = 0;
-    let peak = 0;
-    const submit = vi.fn().mockImplementation(async (payload) => {
-      active++;
-      peak = Math.max(peak, active);
-      const ids = payload.data.relationships.items.data;
-      expect(ids.length).toBeLessThanOrEqual(200);
-      await Promise.resolve();
-      active--;
-      return job(ids.length, 0);
-    });
-    mocks.client.items.rawBulkPublish = submit;
-    mocks.client.items.rawBulkUnpublish = submit;
-    mocks.client.items.rawBulkDestroy = submit;
-    mocks.client.items.rawBulkMoveToStage = submit;
-    const ids = Array.from({ length: 200_000 }, (_, index) => `id-${index}`);
-    const progress = vi.fn();
-    const result = await executeBulkOperation(
-      mocks.client,
-      {
-        operation,
-        itemIds: [...ids, ids[0]],
-        stage: 'review',
-      },
-      { onProgress: progress },
-    );
-    expect(result).toMatchObject({
-      requested: 200_000,
-      successful: 200_000,
-      failed: 0,
-      unprocessed: 0,
-      remainingItemIds: [],
-    });
-    expect(submit).toHaveBeenCalledTimes(1000);
-    expect(peak).toBe(1);
-    expect(progress).toHaveBeenLastCalledWith({
-      requested: 200_000,
-      completed: 200_000,
-      successful: 200_000,
-      failed: 0,
-    });
-    expect(
-      submit.mock.calls[999][0].data.relationships.items.data[199].id,
-    ).toBe('id-199999');
-  });
-
+describe('batched bulk execution', () => {
   it('continues after a partial job but conservatively retains its IDs', async () => {
     const mocks = mockClient();
     mocks.rawBulkPublish
@@ -245,7 +191,7 @@ describe('continuous bulk execution at scale', () => {
     });
   });
 
-  it('stops an ambiguous mutation without replay or a false failed count', async () => {
+  it('stops after a failed batch without replaying it', async () => {
     const mocks = mockClient();
     mocks.rawBulkDestroy
       .mockResolvedValueOnce(job(200, 0))
@@ -257,13 +203,12 @@ describe('continuous bulk execution at scale', () => {
     });
     expect(result).toMatchObject({
       successful: 200,
-      failed: 0,
-      uncertain: 200,
+      failed: 200,
       unprocessed: 50,
       remainingItemIds: ids.slice(200),
     });
     expect(mocks.rawBulkDestroy).toHaveBeenCalledTimes(2);
-    expect(bulkResultMessage(result)).toContain('unconfirmed outcome');
+    expect(bulkResultMessage(result)).toContain('connection lost');
   });
 
   it('awaits an accepted job before honoring cancellation of remaining batches', async () => {
@@ -291,7 +236,7 @@ describe('continuous bulk execution at scale', () => {
     expect(mocks.rawBulkMoveToStage).toHaveBeenCalledTimes(1);
   });
 
-  it('stops on lost permissions, and refuses inconsistent API counters', async () => {
+  it('stops on lost permissions', async () => {
     const mocks = mockClient();
     mocks.rawBulkPublish.mockRejectedValueOnce({ response: { status: 403 } });
     const ids = Array.from({ length: 201 }, (_, index) => `id-${index}`);
@@ -301,45 +246,7 @@ describe('continuous bulk execution at scale', () => {
         itemIds: ids,
       }),
     ).toMatchObject({ failed: 200, unprocessed: 1 });
-    mocks.rawBulkPublish.mockResolvedValueOnce(job(199, 0));
-    expect(
-      await executeBulkOperation(mocks.client, {
-        operation: 'publish',
-        itemIds: ids,
-      }),
-    ).toMatchObject({ failed: 0, uncertain: 200, unprocessed: 1 });
-  });
-
-  it('distinguishes a rejected request from failure after a job was accepted', async () => {
-    const ids = Array.from({ length: 201 }, (_, index) => `id-${index}`);
-    const rejected = mockClient();
-    rejected.rawBulkPublish.mockRejectedValueOnce(
-      new CmaRateLimitWaitError(61_000),
-    );
-    expect(
-      await executeBulkOperation(rejected.client, {
-        operation: 'publish',
-        itemIds: ids,
-      }),
-    ).toMatchObject({ failed: 200, uncertain: 0, unprocessed: 1 });
-    expect(rejected.rawBulkPublish).toHaveBeenCalledTimes(1);
-
-    const accepted = mockClient();
-    accepted.rawBulkDestroy.mockRejectedValueOnce(
-      new JobPollingError('job-1', { response: { status: 422 } }),
-    );
-    expect(
-      await executeBulkOperation(accepted.client, {
-        operation: 'delete',
-        itemIds: ids,
-      }),
-    ).toMatchObject({
-      failed: 0,
-      uncertain: 200,
-      unprocessed: 1,
-      remainingItemIds: ids,
-    });
-    expect(accepted.rawBulkDestroy).toHaveBeenCalledTimes(1);
+    expect(mocks.rawBulkPublish).toHaveBeenCalledTimes(1);
   });
 
   it('preserves the first confirmed rejection detail across later successful batches', async () => {

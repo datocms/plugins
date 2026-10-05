@@ -26,5 +26,3 @@ npm run dev
 npm run test
 npm run build
 ```
-
-See [docs/scale-audit.md](docs/scale-audit.md) for how large projects and selections are handled.

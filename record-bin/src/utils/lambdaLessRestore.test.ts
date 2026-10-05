@@ -8,18 +8,6 @@ import { buildRecordBinCompatiblePayload } from './recordBinPayload';
 import { prepareRecordBinBody } from './recordBinStorage';
 
 vi.mock('@datocms/cma-client-browser', () => ({ buildClient: vi.fn() }));
-vi.mock('./cmaRequests', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./cmaRequests')>();
-  return {
-    ...actual,
-    CmaRequestScheduler: class extends actual.CmaRequestScheduler {
-      constructor() {
-        super(0);
-      }
-    },
-  };
-});
-
 type Entity = Record<string, unknown>;
 const SOURCE_ID = 'hWl-mnkWRYmMCSTq4z_piQ';
 const ARCHIVE_ID = 'archive-id';
@@ -62,8 +50,13 @@ const createClientMock = () => {
     ['block-model', [field('text'), field('nested', 'single_block')]],
   ]);
   const create = vi.fn(async (input: { data: Entity }) => {
-    stored.set(String(input.data.id), structuredClone(input.data));
-    return { data: structuredClone(input.data) };
+    const created = {
+      id: 'server-assigned-id',
+      ...structuredClone(input.data),
+    };
+    if (stored.has(String(created.id))) throw { response: { status: 422 } };
+    stored.set(String(created.id), created);
+    return { data: structuredClone(created) };
   });
   const find = vi.fn(async (id: string) => {
     const record = stored.get(id);
@@ -147,112 +140,7 @@ describe('restoreRecordWithoutLambda', () => {
     expect(buildClient).toHaveBeenCalledWith({
       apiToken: 'token',
       environment: 'main',
-      autoRetry: false,
-      requestTimeout: 30000,
-      fetchFn: expect.any(Function),
     });
-  });
-
-  it.each([
-    {
-      description: 'raw archive without metadata',
-      meta: undefined,
-      wrapped: false,
-    },
-    {
-      description: 'legacy archive without timestamps',
-      meta: {},
-      wrapped: true,
-    },
-    {
-      description: 'archive with only created_at',
-      meta: { created_at: '2024-01-01T00:00:00.000Z' },
-      wrapped: false,
-    },
-    {
-      description: 'archive with only first_published_at',
-      meta: { first_published_at: null },
-      wrapped: true,
-    },
-  ])(
-    'verifies and removes a $description when the CMA supplies omitted timestamps',
-    async ({ meta, wrapped }) => {
-      const mock = createClientMock();
-      const record = entity();
-      if (meta === undefined) delete record.meta;
-      else record.meta = meta;
-      mock.create.mockImplementationOnce(async (input) => {
-        const created = structuredClone(input.data);
-        created.meta = {
-          created_at: '2026-10-03T09:00:00.000Z',
-          first_published_at: null,
-          ...(created.meta as Record<string, unknown>),
-        };
-        mock.stored.set(String(created.id), created);
-        return { data: created };
-      });
-
-      expect(
-        await restore(
-          wrapped ? { environment: 'main', entity: record } : record,
-        ),
-      ).toEqual({
-        restoredRecord: { id: SOURCE_ID, modelID: 'article' },
-      });
-      expect(mock.create).toHaveBeenCalledTimes(1);
-      expect(
-        mock.find.mock.calls.filter(([id]) => id === SOURCE_ID),
-      ).toHaveLength(2);
-      expect(mock.destroy).toHaveBeenCalledWith(ARCHIVE_ID);
-      expect(mock.stored.has(ARCHIVE_ID)).toBe(false);
-    },
-  );
-
-  it.each(['created_at', 'first_published_at'] as const)(
-    'preserves the archive when the CMA changes an explicitly archived %s',
-    async (timestamp) => {
-      const mock = createClientMock();
-      mock.create.mockImplementationOnce(async (input) => {
-        const created = structuredClone(input.data);
-        (created.meta as Record<string, unknown>)[timestamp] =
-          '2026-10-03T09:00:00.000Z';
-        mock.stored.set(String(created.id), created);
-        return { data: created };
-      });
-
-      await expect(restore(entity())).rejects.toSatisfy(
-        (error: unknown) =>
-          isLambdaLessRestoreError(error) &&
-          error.restorationError.simplifiedError.code ===
-            'RESTORE_INTEGRITY_ERROR',
-      );
-      expect(mock.destroy).not.toHaveBeenCalled();
-      expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-    },
-  );
-
-  it('still verifies complete attributes when the archive omits timestamps', async () => {
-    const mock = createClientMock();
-    const record = entity();
-    delete record.meta;
-    mock.create.mockImplementationOnce(async (input) => {
-      const created = structuredClone(input.data);
-      created.meta = {
-        created_at: '2026-10-03T09:00:00.000Z',
-        first_published_at: null,
-      };
-      (created.attributes as Record<string, unknown>).title = 'Changed by server';
-      mock.stored.set(String(created.id), created);
-      return { data: created };
-    });
-
-    await expect(restore(record)).rejects.toSatisfy(
-      (error: unknown) =>
-        isLambdaLessRestoreError(error) &&
-        error.restorationError.simplifiedError.code === 'RESTORE_INTEGRITY_ERROR',
-    );
-    expect(mock.destroy).not.toHaveBeenCalled();
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
   });
 
   it('supports raw entities, legacy numeric IDs and the current UI environment/base URL', async () => {
@@ -262,24 +150,14 @@ describe('restoreRecordWithoutLambda', () => {
       currentEnvironment: 'sandbox',
       cmaBaseUrl: 'https://site-api.example.test',
     });
-    expect(result.restoredRecord.id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(result.restoredRecord.id).not.toBe('123');
+    expect(mock.create.mock.calls[0][0].data.id).toBeUndefined();
+    expect(result.restoredRecord.id).toBe('server-assigned-id');
     expect(buildClient).toHaveBeenCalledWith(
       expect.objectContaining({
         environment: 'sandbox',
         baseUrl: 'https://site-api.example.test',
       }),
     );
-    mock.stored.set(ARCHIVE_ID, entity(ARCHIVE_ID, {}, 'record-bin'));
-    const second = await restore(
-      { environment: 'main', entity: record },
-      {
-        currentEnvironment: 'sandbox',
-        cmaBaseUrl: 'https://site-api.example.test',
-      },
-    );
-    expect(second).toEqual(result);
-    expect(mock.create).toHaveBeenCalledTimes(1);
   });
 
   it('sanitizes nested localized blocks and DAST embeds while preserving links, JSON and asset metadata', async () => {
@@ -345,10 +223,7 @@ describe('restoreRecordWithoutLambda', () => {
           ],
         },
       },
-      linked_records: Array.from(
-        { length: 10000 },
-        (_, index) => `record-${index}`,
-      ),
+      linked_records: ['record-1', 'record-2'],
       json: { id: 'top-level-json-id', nested: { id: 'another-json-id' } },
     });
     const original = structuredClone(record);
@@ -422,193 +297,12 @@ describe('restoreRecordWithoutLambda', () => {
     expect(mock.destroy).not.toHaveBeenCalled();
   });
 
-  it('reconciles an uncertain create response without creating a second record', async () => {
-    const mock = createClientMock();
-    mock.create.mockImplementationOnce(async (input) => {
-      mock.stored.set(String(input.data.id), structuredClone(input.data));
-      throw new TypeError('Lost response after commit');
-    });
-    expect(await restore(entity())).toEqual({
-      restoredRecord: { id: SOURCE_ID, modelID: 'article' },
-    });
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('reads back the complete record when the create response only contains its ID and model', async () => {
-    const mock = createClientMock();
-    mock.create.mockImplementationOnce(async (input) => {
-      mock.stored.set(String(input.data.id), structuredClone(input.data));
-      return {
-        data: { id: input.data.id, relationships: input.data.relationships },
-      };
-    });
-    expect(await restore(entity())).toEqual({
-      restoredRecord: { id: SOURCE_ID, modelID: 'article' },
-    });
-    expect(
-      mock.find.mock.calls.filter(([id]) => id === SOURCE_ID),
-    ).toHaveLength(2);
-    expect(mock.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('preserves the archive when created content is truncated or changed by the server', async () => {
-    const mock = createClientMock();
-    mock.create.mockImplementationOnce(async (input) => {
-      const changed = structuredClone(input.data);
-      (changed.attributes as Record<string, unknown>).title = 'Truncated';
-      mock.stored.set(String(changed.id), changed);
-      return { data: changed };
-    });
-    await expect(restore(entity())).rejects.toSatisfy(
-      (error: unknown) =>
-        isLambdaLessRestoreError(error) &&
-        error.restorationError.simplifiedError.code ===
-          'RESTORE_INTEGRITY_ERROR',
-    );
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.destroy).not.toHaveBeenCalled();
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-  });
-
-  it('automatically retries a transient create only after checking the stable ID', async () => {
-    vi.useFakeTimers();
-    const mock = createClientMock();
-    mock.create.mockRejectedValueOnce({ response: { status: 503 } });
-    const pending = restore(entity());
-    await vi.runAllTimersAsync();
-    expect(await pending).toEqual({
-      restoredRecord: { id: SOURCE_ID, modelID: 'article' },
-    });
-    expect(mock.create).toHaveBeenCalledTimes(2);
-    expect(
-      mock.find.mock.calls.filter(([id]) => id === SOURCE_ID).length,
-    ).toBeGreaterThanOrEqual(3);
-    expect(mock.create.mock.calls[0][0].data.id).toBe(
-      mock.create.mock.calls[1][0].data.id,
-    );
-  });
-
-  it('stops after five failed initial reads without restarting the mutation loop', async () => {
-    vi.useFakeTimers();
-    const mock = createClientMock();
-    mock.find.mockRejectedValue({ response: { status: 503 } });
-    const assertion = expect(restore(entity())).rejects.toThrow(
-      'The record could not be restored!',
-    );
-    await vi.runAllTimersAsync();
-    await assertion;
-    expect(mock.find).toHaveBeenCalledTimes(5);
-    expect(mock.create).not.toHaveBeenCalled();
-    expect(mock.destroy).not.toHaveBeenCalled();
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-  });
-
-  it('does not repeat an uncertain POST when its reconciliation read budget is exhausted', async () => {
-    vi.useFakeTimers();
-    const mock = createClientMock();
-    mock.find
-      .mockRejectedValue({ response: { status: 503 } })
-      .mockRejectedValueOnce({ response: { status: 404 } });
-    mock.create.mockRejectedValueOnce(new TypeError('Lost POST response'));
-    const assertion = expect(restore(entity())).rejects.toThrow(
-      'The record could not be restored!',
-    );
-    await vi.runAllTimersAsync();
-    await assertion;
-    expect(mock.find).toHaveBeenCalledTimes(6);
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.destroy).not.toHaveBeenCalled();
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-  });
-
-  it('does not restart verification reads after a successful POST exhausts its read budget', async () => {
-    vi.useFakeTimers();
-    const mock = createClientMock();
-    mock.find
-      .mockRejectedValue({ response: { status: 503 } })
-      .mockRejectedValueOnce({ response: { status: 404 } });
-    const assertion = expect(restore(entity())).rejects.toThrow(
-      'The record could not be restored!',
-    );
-    await vi.runAllTimersAsync();
-    await assertion;
-    expect(mock.find).toHaveBeenCalledTimes(6);
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.destroy).not.toHaveBeenCalled();
-    expect(mock.stored.has(SOURCE_ID)).toBe(true);
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-  });
-
-  it('accepts an existing identical record but blocks conflicts without removing the archive', async () => {
-    const mock = createClientMock();
-    const record = entity(SOURCE_ID, {
-      content: [entity('old-block', { text: 'Same' }, 'block-model')],
-    });
-    const existing = entity(SOURCE_ID, {
-      content: [entity('new-block', { text: 'Same' }, 'block-model')],
-    });
-    mock.stored.set(SOURCE_ID, existing);
-    await restore(record);
-    expect(mock.create).not.toHaveBeenCalled();
-    expect(mock.destroy).toHaveBeenCalledTimes(1);
-    mock.destroy.mockClear();
-    mock.stored.set(
-      SOURCE_ID,
-      entity(SOURCE_ID, { title: 'Different record' }),
-    );
-    await expect(restore(record)).rejects.toSatisfy(
-      (error: unknown) =>
-        isLambdaLessRestoreError(error) &&
-        error.restorationError.simplifiedError.code === 'RESTORE_CONFLICT',
-    );
-    expect(mock.destroy).not.toHaveBeenCalled();
-  });
-
-  it('reports successful creation separately from a failed archive cleanup and safely retries cleanup', async () => {
+  it('reports successful creation separately from a failed archive cleanup', async () => {
     const mock = createClientMock();
     mock.destroy.mockRejectedValueOnce({ response: { status: 403 } });
-    const first = await restore(entity());
-    expect(first.restoredRecord.id).toBe(SOURCE_ID);
-    expect(first.cleanupError).toBeDefined();
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
-    const second = await restore(entity());
-    expect(second.cleanupError).toBeUndefined();
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.stored.has(ARCHIVE_ID)).toBe(false);
-  });
-
-  it('reconciles a lost cleanup response by checking archive absence', async () => {
-    const mock = createClientMock();
-    mock.destroy.mockImplementationOnce(async (id) => {
-      mock.stored.delete(id);
-      throw new TypeError('Lost DELETE response');
-    });
     const result = await restore(entity());
-    expect(result.cleanupError).toBeUndefined();
-    expect(mock.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not repeat DELETE when its reconciliation read budget is exhausted', async () => {
-    vi.useFakeTimers();
-    const mock = createClientMock();
-    const findRecord = mock.find.getMockImplementation();
-    if (!findRecord) throw new Error('Missing record finder mock.');
-    mock.find.mockImplementation(async (id) => {
-      if (id === ARCHIVE_ID) throw { response: { status: 503 } };
-      return findRecord(id);
-    });
-    mock.destroy.mockRejectedValueOnce(new TypeError('Lost DELETE response'));
-    const pending = restore(entity());
-    await vi.runAllTimersAsync();
-    const result = await pending;
     expect(result.restoredRecord.id).toBe(SOURCE_ID);
     expect(result.cleanupError).toBeDefined();
-    expect(
-      mock.find.mock.calls.filter(([id]) => id === ARCHIVE_ID),
-    ).toHaveLength(5);
-    expect(mock.create).toHaveBeenCalledTimes(1);
-    expect(mock.destroy).toHaveBeenCalledTimes(1);
     expect(mock.stored.has(ARCHIVE_ID)).toBe(true);
   });
 

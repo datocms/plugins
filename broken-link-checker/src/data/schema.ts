@@ -1,6 +1,6 @@
 import type { Field, ItemType, RenderPageCtx } from 'datocms-plugin-sdk';
 import type { ContentModel, ContentSchema } from '../types';
-import { cancellableRead, retryCmaRead, throwIfAborted } from './cmaRequests';
+import { cancellable, throwIfAborted } from './cancellation';
 
 export type SchemaContext = Pick<
   RenderPageCtx,
@@ -107,7 +107,7 @@ export function createSchemaLoader(ctx: SchemaContext): {
       }
       // Cache one host request independently of its consumers. The SDK cannot
       // abort it, so a late success remains reusable after a scan is cancelled.
-      const fields = await cancellableRead(ctx.loadItemTypeFields(modelId));
+      const fields = await ctx.loadItemTypeFields(modelId);
       const model: ContentModel = {
         ...modelSummary(itemType),
         fields: fields.map((field) => ({
@@ -122,7 +122,7 @@ export function createSchemaLoader(ctx: SchemaContext): {
       return { model, blockIds: blockModelIds(fields) };
     })();
     cache.set(modelId, promise);
-    // Failed loads must be retryable after a transient host/API failure.
+    // A failed load is requested again by the next scan.
     void promise.catch(() => cache.delete(modelId));
     return promise;
   }
@@ -135,12 +135,7 @@ export function createSchemaLoader(ctx: SchemaContext): {
       const pending = [modelId];
       const loadDependency = async (id: string) => {
         try {
-          // Retries belong to the caller, not the shared cache: cancellation
-          // stops this caller's backoff and any subsequent host requests.
-          return await retryCmaRead(
-            () => cancellableRead(loadModel(id), signal),
-            signal,
-          );
+          return await cancellable(loadModel(id), signal);
         } catch (error) {
           throwIfAborted(signal);
           if (id === modelId || !onWarning) throw error;

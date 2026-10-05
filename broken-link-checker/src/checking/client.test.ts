@@ -369,18 +369,18 @@ describe('checkUrl', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('bounds the full retry budget even when fetch ignores every timeout abort', async () => {
+    it('does not retry a GET that timed out, even when fetch ignores the abort', async () => {
       vi.useFakeTimers();
       const fetchRequest = vi
         .fn<typeof fetch>()
         .mockImplementation(() => new Promise(() => {}));
       const result = checkUrl(prepared, newSignal(), { fetch: fetchRequest });
-      await vi.advanceTimersByTimeAsync(43_000);
+      await vi.advanceTimersByTimeAsync(20_000);
       expect(await result).toMatchObject({
         status: 'unverified',
         message: expect.stringContaining('timed out'),
       });
-      expect(fetchRequest).toHaveBeenCalledTimes(4);
+      expect(fetchRequest).toHaveBeenCalledTimes(2);
       for (const call of fetchRequest.mock.calls)
         expect(call[1]?.signal?.aborted).toBe(true);
       expect(vi.getTimerCount()).toBe(0);

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { setImmediate } from 'node:timers/promises';
 import { ApiError } from '@datocms/cma-client-browser';
-import { CmaUncertainOutcomeError } from '../src/services/cmaClient.ts';
 import { runLocaleDuplication } from '../src/services/LocaleDuplicationService.ts';
 import { ProgressLog } from '../src/utils/progressLog.ts';
 
@@ -123,8 +122,6 @@ function mockProject(counts = [35], options = {}) {
             },
           };
           records.set(id, updated);
-          if (options.uncertain?.has(id))
-            throw new CmaUncertainOutcomeError('Lost write response');
           return clone(updated);
         } finally {
           calls.active--;
@@ -185,54 +182,6 @@ test('copies multiple models in bounded pages/workers and publishes all in CMA-s
   assert.ok(log.entries().length <= 500);
 });
 
-test('discovers 200000 synthetic IDs through 2000 bounded pages without retaining record payloads', async () => {
-  let pages = 0;
-  let nestedCalls = 0;
-  const abortSignal = { current: false };
-  const client = {
-    itemTypes: {
-      list: async () => [
-        {
-          id: 'massive',
-          api_key: 'massive',
-          name: 'Massive',
-          modular_block: false,
-        },
-      ],
-    },
-    items: {
-      rawList: async ({ page, order_by }) => {
-        assert.equal(order_by, 'id_ASC');
-        assert.equal(page.limit, 100);
-        pages++;
-        return {
-          data: Array.from(
-            { length: Math.min(100, 200_000 - page.offset) },
-            (_, index) => ({ id: `virtual-${page.offset + index}` }),
-          ),
-          meta: { total_count: 200_000 },
-        };
-      },
-      list: async () => {
-        nestedCalls++;
-        return { data: [], meta: { successful: items.length, failed: 0 } };
-      },
-    },
-  };
-  const result = await runLocaleDuplication(
-    client,
-    { ...config, abortSignal },
-    (update) => {
-      if (update.stats?.totalToProcess === 200_000) abortSignal.current = true;
-    },
-  );
-  assert.equal(pages, 2000);
-  assert.equal(nestedCalls, 0);
-  assert.equal(result.stats.totalToProcess, 200_000);
-  assert.equal(result.stats.cancelled, true);
-  assert.equal(result.totalRecordsProcessed, 0);
-});
-
 test('per-record failures and missing records are counted and never published', async () => {
   const project = mockProject([35], {
     fail: new Set(['0-00002']),
@@ -277,53 +226,19 @@ test('cancellation settles active writes and prevents additional pages and publi
   assert.equal(updates.at(-1).type, 'error');
 });
 
-test('partial publication failure reconciles known outcomes and continues later batches', async () => {
+test('a failed publication batch is counted as failed and later batches continue', async () => {
   const project = mockProject([405], {
     publish: async (items, records, calls) => {
-      if (calls.batches.length === 2) {
-        for (const item of items.slice(0, 17))
-          records.get(item.id).meta.status = 'published';
-        throw apiError();
-      }
+      if (calls.batches.length === 2) throw apiError();
       for (const item of items) records.get(item.id).meta.status = 'published';
       return [];
     },
   });
   const result = await run(project);
-  assert.equal(result.publishedRecords, 222);
-  assert.equal(result.stats.failedPublications, 183);
+  assert.equal(result.publishedRecords, 205);
+  assert.equal(result.stats.failedPublications, 200);
   assert.equal(result.stats.pendingPublications, 0);
   assert.equal(project.calls.batches.length, 3);
-});
-
-test('uncertain writes are read back and never replayed', async () => {
-  const project = mockProject([1], { uncertain: new Set(['0-00000']) });
-  const result = await run(project);
-  assert.equal(result.successfulRecords, 1);
-  assert.equal(result.failedRecords, 0);
-  assert.equal(project.calls.updates.length, 1);
-  assert.equal(project.calls.find, 1);
-  const failed = mockProject([1]);
-  failed.client.items.update = async () => {
-    failed.calls.updates.push({});
-    throw new CmaUncertainOutcomeError('Lost response');
-  };
-  const rejected = await run(failed);
-  assert.equal(rejected.failedRecords, 1);
-  assert.equal(failed.calls.updates.length, 1);
-  assert.equal(failed.calls.batches.length, 0);
-});
-
-test('unconfirmed publication remains uncertain without resubmitting its accepted job', async () => {
-  const project = mockProject([3], {
-    publish: async () => {
-      throw new CmaUncertainOutcomeError('Job observation timed out');
-    },
-  });
-  const result = await run(project);
-  assert.equal(result.publishedRecords, 0);
-  assert.equal(result.stats.uncertainPublications, 3);
-  assert.equal(project.calls.batches.length, 1);
 });
 
 test('changed drafts are excluded before publication and selected empty models do not mean all', async () => {
@@ -371,25 +286,6 @@ test('authentication failure stops launching writes and preserves completed coun
   assert.equal(result.failedRecords, project.calls.updates.length);
   assert.equal(result.stats.modelFailures, 1);
   assert.equal(project.calls.batches.length, 0);
-});
-
-test('the operation log retains bounded samples while counting 200000 events exactly', () => {
-  const log = new ProgressLog();
-  for (let i = 0; i < 200_000; i++)
-    log.add({
-      message: `Record ${i}`,
-      type: i % 10 === 0 ? 'error' : 'success',
-      timestamp: i,
-      stats: { modelStats: {} },
-    });
-  const entries = log.entries();
-  assert.equal(log.total, 200_000);
-  assert.equal(log.totalErrors, 20_000);
-  assert.equal(entries.length, 500);
-  assert.equal(log.errors.length, 100);
-  assert.equal(entries[0].message, 'Record 199500');
-  assert.equal(entries.at(-1).message, 'Record 199999');
-  assert.equal(entries[0].stats, undefined);
 });
 
 test('a completed bulk job can contain partial failures without rejecting its promise', async () => {
@@ -456,106 +352,6 @@ test('short discovery pages continue by their actual length, without truncating 
   );
 });
 
-test('a submitted publication with unavailable read-back is uncertain while unsent batches stay pending', async () => {
-  let sent = false;
-  const project = mockProject([205], {
-    publish: async () => {
-      sent = true;
-      throw new CmaUncertainOutcomeError('Accepted job response lost');
-    },
-  });
-  const list = project.client.items.list;
-  project.client.items.list = async (query) => {
-    if (sent && !query.nested) throw apiError(403, 'INSUFFICIENT_PERMISSIONS');
-    return list(query);
-  };
-  const result = await run(project);
-  assert.equal(project.calls.batches.length, 1);
-  assert.equal(result.stats.uncertainPublications, 200);
-  assert.equal(result.stats.pendingPublications, 5);
-  assert.equal(result.publishedRecords, 0);
-  assert.equal(result.stats.modelFailures, 1);
-});
-
-test('an uncertain update with unavailable read-back remains unconfirmed and stops on permission failure', async () => {
-  const project = mockProject([35]);
-  project.client.items.update = async () => {
-    project.calls.updates.push({});
-    throw new CmaUncertainOutcomeError('Lost response');
-  };
-  project.client.items.find = async () => {
-    throw apiError(403, 'INSUFFICIENT_PERMISSIONS');
-  };
-  const result = await run(project);
-  assert.ok(result.failedRecords > 0 && result.failedRecords <= 3);
-  assert.equal(result.stats.uncertainRecords, result.failedRecords);
-  assert.equal(result.stats.modelFailures, 1);
-  assert.equal(result.publishedRecords, 0);
-});
-
-test('an applied HTTP 200 write with malformed JSON is confirmed without replaying its payload', async () => {
-  const project = mockProject([1]);
-  const update = project.client.items.update;
-  project.client.items.update = async (...args) => {
-    await update(...args);
-    return new Response('{invalid JSON', { status: 200 }).json();
-  };
-  const result = await run(project);
-  assert.equal(result.successfulRecords, 1);
-  assert.equal(result.failedRecords, 0);
-  assert.equal(result.stats.uncertainRecords, 0);
-  assert.equal(result.publishedRecords, 1);
-  assert.equal(project.calls.find, 1);
-  assert.equal(project.calls.updates.length, 1);
-});
-
-test('post-write type errors and successful-status API errors are confirmed by read-back', async () => {
-  for (const error of [
-    new TypeError('Could not deserialize the successful write response'),
-    apiError(200, 'INVALID_RESPONSE_CONTENT_TYPE'),
-  ]) {
-    const project = mockProject([1]);
-    const update = project.client.items.update;
-    project.client.items.update = async (...args) => {
-      await update(...args);
-      throw error;
-    };
-    // biome-ignore lint/performance/noAwaitInLoops: settle each independent failure fixture before the next.
-    const result = await run(project);
-    assert.equal(result.successfulRecords, 1);
-    assert.equal(result.failedRecords, 0);
-    assert.equal(project.calls.find, 1);
-    assert.equal(project.calls.updates.length, 1);
-  }
-});
-
-test('a publication parse failure stays uncertain when read-back has not confirmed publication', async () => {
-  const project = mockProject([3], {
-    publish: async () => new Response('{invalid JSON', { status: 200 }).json(),
-  });
-  const result = await run(project);
-  assert.equal(result.publishedRecords, 0);
-  assert.equal(result.stats.failedPublications, 0);
-  assert.equal(result.stats.uncertainPublications, 3);
-  assert.equal(result.stats.pendingPublications, 0);
-  assert.equal(project.calls.batches.length, 1);
-});
-
-test('an applied publication with an unreadable successful result is counted from read-back', async () => {
-  const project = mockProject([3], {
-    publish: async (items, records) => {
-      for (const item of items) records.get(item.id).meta.status = 'published';
-      throw apiError(202, 'INVALID_RESPONSE_CONTENT_TYPE');
-    },
-  });
-  const result = await run(project);
-  assert.equal(result.publishedRecords, 3);
-  assert.equal(result.stats.failedPublications, 0);
-  assert.equal(result.stats.uncertainPublications, 0);
-  assert.equal(result.stats.pendingPublications, 0);
-  assert.equal(project.calls.batches.length, 1);
-});
-
 function blockRecordProject() {
   const project = mockProject([1]);
   const block = (id, modelId) => ({
@@ -579,29 +375,6 @@ function blockRecordProject() {
   return project;
 }
 
-test('a schema failure while comparing an uncertain write remains uncertain and stops on permission failure', async () => {
-  const project = blockRecordProject();
-  const fields = project.client.fields.list;
-  project.client.fields.list = async (modelId) => {
-    if (modelId === 'preserved-model')
-      throw apiError(403, 'INSUFFICIENT_PERMISSIONS');
-    return fields(modelId);
-  };
-  const update = project.client.items.update;
-  project.client.items.update = async (...args) => {
-    await update(...args);
-    throw new CmaUncertainOutcomeError('Lost write response');
-  };
-  const result = await run(project);
-  assert.equal(result.failedRecords, 1);
-  assert.equal(result.stats.uncertainRecords, 1);
-  assert.equal(result.stats.modelFailures, 1);
-  assert.equal(result.successfulRecords, 0);
-  assert.equal(project.calls.updates.length, 1);
-  assert.equal(project.calls.find, 1);
-  assert.equal(project.calls.batches.length, 0);
-});
-
 test('a type error while preparing block payloads is a pre-write failure without read-back', async () => {
   const project = blockRecordProject();
   const fields = project.client.fields.list;
@@ -612,7 +385,6 @@ test('a type error while preparing block payloads is a pre-write failure without
   };
   const result = await run(project);
   assert.equal(result.failedRecords, 1);
-  assert.equal(result.stats.uncertainRecords, 0);
   assert.equal(project.calls.updates.length, 0);
   assert.equal(project.calls.find, 0);
   assert.equal(project.calls.batches.length, 0);

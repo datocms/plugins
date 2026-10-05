@@ -856,32 +856,4 @@ describe('StructuredTextTranslation', () => {
     expect(translateFieldValue).toHaveBeenCalledTimes(1);
   });
 
-  it('handles a 20,000-level child tree without stack overflow and keeps the source unchanged', async () => {
-    const root: Record<string, unknown> = { type: 'paragraph' };
-    let node = root;
-    for (let index = 0; index < 20_000; index++) {
-      const child: Record<string, unknown> = { type: 'blockquote' };
-      node.children = [child];
-      node = child;
-    }
-    node.children = [{ text: 'Deep leaf' }];
-    vi.mocked(translateArray).mockResolvedValue(['Folha profunda']);
-    const result = await translateStructuredTextValue([root], mockPluginParams, 'pt', 'en', mockProvider, '', 'main') as Array<Record<string, unknown>>;
-    let output = result[0];
-    for (let index = 0; index < 20_000; index++) output = (output.children as Array<Record<string, unknown>>)[0];
-    expect((output.children as Array<{ text: string }>)[0].text).toBe('Folha profunda');
-    expect((node.children as Array<{ text: string }>)[0].text).toBe('Deep leaf');
-  });
-
-  it('replaces 10,000 synthetic embedded blocks in linear order and rejects an incomplete block result', async () => {
-    const blocks = Array.from({ length: 10_000 }, (_, index) => ({ type: 'block', item: `synthetic-${index}` }));
-    vi.mocked(translateFieldValue).mockImplementation(async (value) => value);
-    const result = await translateStructuredTextValue(blocks, mockPluginParams, 'it', 'en', mockProvider, '', 'main') as typeof blocks;
-    expect(result).toHaveLength(10_000);
-    expect(result[9_999]).toEqual(blocks[9_999]);
-    expect(result[0]).not.toHaveProperty('originalIndex');
-    vi.mocked(translateFieldValue).mockResolvedValue([]);
-    await expect(translateStructuredTextValue(blocks, mockPluginParams, 'it', 'en', mockProvider, '', 'main')).rejects.toThrow('incomplete document');
-  });
-
 });

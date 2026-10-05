@@ -1,8 +1,8 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../ui/Button';
-import { createAssetClient } from '../utils/assetClient';
 import {
   type DeletionProgress,
   type DeletionResult,
@@ -359,8 +359,7 @@ type CountRow = [label: string, value: number];
 function progressRows(progress: DeletionProgress): CountRow[] {
   return [
     ['Deleted', progress.deleted],
-    ['Kept because they are in use', progress.skipped],
-    ['Already removed', progress.missing],
+    ['Skipped (in use or already removed)', progress.skipped],
     ['Failed', progress.failed],
   ];
 }
@@ -383,7 +382,6 @@ function isComplete(result: DeletionResult) {
     !result.cancelled &&
     !result.error &&
     result.failed === 0 &&
-    result.uncertain === 0 &&
     result.processed === result.total
   );
 }
@@ -431,16 +429,11 @@ function summaryCopy(result: DeletionResult, complete: boolean) {
 function DeletionSummary({ result }: { result: DeletionResult }) {
   const complete = isComplete(result);
   const { title, description } = summaryCopy(result, complete);
-  const notProcessed = Math.max(
-    0,
-    result.total - result.processed - result.uncertain,
-  );
   const details = (
     [
-      ['Kept because they are in use', result.skipped],
-      ['Already removed', result.missing],
+      ['Skipped (in use or already removed)', result.skipped],
       ['Failed', result.failed],
-      ['Not processed', notProcessed],
+      ['Not processed', result.total - result.processed],
     ] satisfies CountRow[]
   ).filter(([, value]) => value > 0);
 
@@ -469,12 +462,6 @@ function DeletionSummary({ result }: { result: DeletionResult }) {
           <dd>{formatBytes(result.freedBytes)}</dd>
         </div>
       </dl>
-      {result.uncertain > 0 && (
-        <p role="alert" className={`${s.callout} ${s.calloutWarning}`}>
-          Could not confirm deletion of {pluralizeAssets(result.uncertain)}.
-          Check your asset library before starting another deletion.
-        </p>
-      )}
       {result.error && (
         <p role="alert" className={`${s.callout} ${s.calloutDanger}`}>
           {result.error}
@@ -492,15 +479,8 @@ function DiscoveryStatus({ progress }: { progress: DiscoveryProgress }) {
       <p className={s.statusTitle}>Looking for unused assets…</p>
       {progress.total > ASSETS_PER_PAGE && (
         <p className={s.meta}>
-          {(progress.attempt ?? 1) > 1 && (
-            <>
-              Asset library changed; checking again (attempt {progress.attempt}{' '}
-              of 3)…{' '}
-            </>
-          )}
-          Checking {formatCount(progress.scanned)} of{' '}
-          {formatCount(progress.total)} assets… {formatCount(progress.found)}{' '}
-          unused assets found.
+          Loaded {formatCount(progress.found)} of {formatCount(progress.total)}{' '}
+          unused assets…
         </p>
       )}
     </div>
@@ -579,7 +559,7 @@ export default function CustomModal({ ctx }: PropTypes) {
   const [unusedAssets, setUnusedAssets] = useState<UnusedAsset[]>([]);
   const [phase, setPhase] = useState<Phase>('discovering');
   const [discoveryProgress, setDiscoveryProgress] = useState<DiscoveryProgress>(
-    { scanned: 0, found: 0, total: 0 },
+    { found: 0, total: 0 },
   );
   const [deletionProgress, setDeletionProgress] =
     useState<DeletionProgress | null>(null);
@@ -588,31 +568,27 @@ export default function CustomModal({ ctx }: PropTypes) {
   );
   const [errorMessage, setErrorMessage] = useState('');
   const [stopRequested, setStopRequested] = useState(false);
-  const mountedRef = useRef(false);
-  const deletionControllerRef = useRef<AbortController | null>(null);
-  const deletionInProgressRef = useRef(false);
+  // The running deletion; cleared on unmount or when the client changes.
+  const deletionRef = useRef<AbortController | null>(null);
   const frameRef = useFrameHeight(ctx);
 
-  const client = useMemo(() => {
-    if (!ctx.currentUserAccessToken) {
-      return null;
-    }
-
-    return createAssetClient({
-      apiToken: ctx.currentUserAccessToken,
-      environment: ctx.environment,
-      baseUrl: ctx.cmaBaseUrl,
-    });
-  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
-  const selectionClientRef = useRef<typeof client>(null);
+  const { currentUserAccessToken, environment, cmaBaseUrl } = ctx;
+  const client = useMemo(
+    () =>
+      currentUserAccessToken
+        ? buildClient({
+            apiToken: currentUserAccessToken,
+            environment,
+            baseUrl: cmaBaseUrl,
+          })
+        : null,
+    [currentUserAccessToken, environment, cmaBaseUrl],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    let active = true;
-    mountedRef.current = true;
-    selectionClientRef.current = null;
     setUnusedAssets([]);
-    setDiscoveryProgress({ scanned: 0, found: 0, total: 0 });
+    setDiscoveryProgress({ found: 0, total: 0 });
     setDeletionProgress(null);
     setDeletionResult(null);
     setErrorMessage('');
@@ -628,37 +604,27 @@ export default function CustomModal({ ctx }: PropTypes) {
       discoverUnusedAssets(client, {
         signal: controller.signal,
         onProgress: (progress) => {
-          if (active && !controller.signal.aborted) {
-            setDiscoveryProgress(progress);
-          }
+          if (!controller.signal.aborted) setDiscoveryProgress(progress);
         },
       })
         .then((assets) => {
-          if (active && !controller.signal.aborted) {
-            selectionClientRef.current = client;
-            setUnusedAssets(assets);
-            setPhase('ready');
-          }
+          if (controller.signal.aborted) return;
+          setUnusedAssets(assets);
+          setPhase('ready');
         })
-        .catch((error: unknown) => {
-          if (active && !controller.signal.aborted) {
-            setErrorMessage(
-              error instanceof Error
-                ? error.message
-                : "Couldn't find unused assets. Please close this window and try again.",
-            );
-            setPhase('error');
-          }
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setErrorMessage(
+            "Couldn't find unused assets. Please close this window and try again.",
+          );
+          setPhase('error');
         });
     }
 
     return () => {
-      active = false;
-      mountedRef.current = false;
       controller.abort();
-      deletionControllerRef.current?.abort();
-      deletionControllerRef.current = null;
-      deletionInProgressRef.current = false;
+      deletionRef.current?.abort();
+      deletionRef.current = null;
     };
   }, [client]);
 
@@ -667,65 +633,27 @@ export default function CustomModal({ ctx }: PropTypes) {
   };
 
   const startDeletion = async (selected: UnusedAsset[]) => {
-    if (
-      !client ||
-      selected.length === 0 ||
-      selectionClientRef.current !== client ||
-      phase !== 'ready' ||
-      deletionInProgressRef.current
-    ) {
-      return;
-    }
+    if (!client || phase !== 'ready' || deletionRef.current) return;
 
     const controller = new AbortController();
-    deletionControllerRef.current = controller;
-    deletionInProgressRef.current = true;
-    const isCurrentRun = () =>
-      mountedRef.current && deletionControllerRef.current === controller;
-    setDeletionProgress({
-      total: selected.length,
-      processed: 0,
-      deleted: 0,
-      skipped: 0,
-      missing: 0,
-      failed: 0,
-      freedBytes: 0,
-    });
+    deletionRef.current = controller;
+    const isCurrentRun = () => deletionRef.current === controller;
     setStopRequested(false);
     setPhase('deleting');
 
-    try {
-      const result = await deleteUnusedAssets(client, selected, {
-        signal: controller.signal,
-        onProgress: (progress) => {
-          if (isCurrentRun()) {
-            setDeletionProgress(progress);
-          }
-        },
-      });
-
-      if (!isCurrentRun()) {
-        return;
-      }
-
-      setDeletionResult(result);
-      setPhase('finished');
-    } catch {
-      if (isCurrentRun()) {
-        setErrorMessage(
-          "Couldn't complete deletion. Counts show the last confirmed progress. Check your asset library before starting another deletion.",
-        );
-        setPhase('error');
-      }
-    } finally {
-      if (isCurrentRun()) {
-        deletionInProgressRef.current = false;
-      }
-    }
+    const result = await deleteUnusedAssets(client, selected, {
+      signal: controller.signal,
+      onProgress: (progress) => {
+        if (isCurrentRun()) setDeletionProgress(progress);
+      },
+    });
+    if (!isCurrentRun()) return;
+    setDeletionResult(result);
+    setPhase('finished');
   };
 
   const stopDeletion = () => {
-    deletionControllerRef.current?.abort();
+    deletionRef.current?.abort();
     setStopRequested(true);
   };
 
@@ -761,14 +689,9 @@ export default function CustomModal({ ctx }: PropTypes) {
         {(phase === 'error' || phase === 'finished') && (
           <div className={s.stack}>
             {phase === 'error' && (
-              <>
-                <p role="alert" className={`${s.callout} ${s.calloutDanger}`}>
-                  {errorMessage}
-                </p>
-                {deletionProgress && (
-                  <DeletionCounts rows={progressRows(deletionProgress)} />
-                )}
-              </>
+              <p role="alert" className={`${s.callout} ${s.calloutDanger}`}>
+                {errorMessage}
+              </p>
             )}
             {phase === 'finished' && deletionResult && (
               <DeletionSummary result={deletionResult} />

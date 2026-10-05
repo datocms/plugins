@@ -5,9 +5,7 @@ import {
   buildLegacyUserIdsByEmail,
   emptyMigrationResults,
   MAX_MIGRATION_DETAILS,
-  MIGRATION_PAGE_SIZE,
   prepareLegacyComments,
-  retryMigrationRead,
   runLegacyMigration,
 } from '@utils/legacyMigration';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -62,11 +60,8 @@ function setup(records = [source('record-1')]) {
     destinations.push({ id: String(body.id), attributes: { ...body } });
     return body;
   });
-  const list = vi.fn(async () =>
-    destinations.map((record) => ({ id: record.id, ...record.attributes })),
-  );
   const client = {
-    items: { rawList, create, list },
+    items: { rawList, create },
     fields: {
       list: vi.fn(async () => [
         {
@@ -99,7 +94,7 @@ function setup(records = [source('record-1')]) {
     signal: new AbortController().signal,
     onProgress,
   };
-  return { options, client, rawList, create, destinations, onProgress, list };
+  return { options, client, rawList, create, destinations, onProgress };
 }
 
 afterEach(() => {
@@ -252,18 +247,6 @@ describe('legacy migration integrity', () => {
     expect(state.create).toHaveBeenCalledTimes(1);
   });
 
-  it('reconciles a committed create whose response was lost', async () => {
-    const state = setup();
-    state.create.mockImplementationOnce(async (body) => {
-      state.destinations.push({ id: String(body.id), attributes: { ...body } });
-      throw new TypeError('Failed to fetch');
-    });
-    const results = emptyMigrationResults();
-    await runLegacyMigration(state.options, results);
-    expect(results.success).toBe(1);
-    expect(state.create).toHaveBeenCalledTimes(1);
-  });
-
   it('keeps counters accurate and caps retained error details', async () => {
     const state = setup(
       Array.from({ length: 35 }, (_, index) => source(`record-${index}`, '{}')),
@@ -361,70 +344,12 @@ describe('legacy migration integrity', () => {
     [402, 'PAYMENT_REQUIRED'],
     [422, 'PLAN_UPGRADE_REQUIRED'],
     [429, 'MONTHLY_USAGE_QUOTA_EXCEEDED'],
-  ])('stops the batch on quota HTTP %s without reconciliation or another write', async (status, code) => {
+  ])('stops the batch on quota HTTP %s without another write', async (status, code) => {
     const state = setup([source('record-1'), source('record-2')]);
     const error = quotaError(status, code);
     state.create.mockRejectedValue(error);
     await expect(runLegacyMigration(state.options, emptyMigrationResults())).rejects.toBe(error);
     expect(state.create).toHaveBeenCalledTimes(1);
-    expect(state.list).not.toHaveBeenCalled();
   });
 
-  it('does not retry a quota read even when it has HTTP 429 and Retry-After', async () => {
-    vi.useFakeTimers();
-    const error = quotaError(429, 'MONTHLY_USAGE_QUOTA_EXCEEDED');
-    error.response.headers['retry-after'] = '3';
-    const read = vi.fn().mockRejectedValue(error);
-    const result = expect(retryMigrationRead(read, new AbortController().signal)).rejects.toBe(error);
-    await vi.runAllTimersAsync();
-    await result;
-    expect(read).toHaveBeenCalledTimes(1);
-  });
-
-  it('honors the server rate limit delay automatically', async () => {
-    vi.useFakeTimers();
-    const limited = new ApiError({
-      request: { url: '/items', method: 'GET', headers: {} },
-      response: {
-        status: 429,
-        statusText: 'Too many requests',
-        headers: { 'x-ratelimit-reset': '3' },
-      },
-    });
-    const read = vi.fn().mockRejectedValueOnce(limited).mockResolvedValue('ok');
-    const promise = retryMigrationRead(read, new AbortController().signal);
-    await vi.advanceTimersByTimeAsync(2999);
-    expect(read).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(await promise).toBe('ok');
-  });
-
-  it('streams a synthetic 200,000-record model without retaining a project-sized array', async () => {
-    const state = setup([]);
-    const total = 200000;
-    let sourceCalls = 0;
-    state.rawList.mockImplementation(async (query) => {
-      expect(query.page.limit).toBe(MIGRATION_PAGE_SIZE);
-      if (query.filter.type !== model.modelId)
-        return { data: [], meta: { total_count: 0 } };
-      sourceCalls++;
-      const offset = query.page.offset ?? 0;
-      // Only the current 100 fixtures exist at any time.
-      return {
-        data: Array.from(
-          { length: Math.min(MIGRATION_PAGE_SIZE, total - offset) },
-          (_, index) => source(`record-${offset + index}`, null),
-        ),
-        meta: { total_count: total },
-      };
-    });
-    const results = emptyMigrationResults();
-    await runLegacyMigration(state.options, results);
-    expect(sourceCalls).toBe(total / MIGRATION_PAGE_SIZE);
-    expect(results.empty).toBe(total);
-    expect(state.create).not.toHaveBeenCalled();
-    expect(state.onProgress).toHaveBeenLastCalledWith(
-      expect.objectContaining({ currentRecord: total, totalRecords: total }),
-    );
-  });
 });

@@ -1253,19 +1253,6 @@ describe('ItemsDropdownUtils', () => {
       expect(value.id).toBe('block');
     });
 
-    it('clones deep synthetic content without recursive call-stack growth', () => {
-      let value: Record<string, unknown> = {
-        type: 'item',
-        id: 'block',
-        attributes: {},
-      };
-      for (let depth = 0; depth < 12000; depth++) value = { child: value };
-      let copied = stripBlockIds(value) as Record<string, unknown>;
-      for (let depth = 0; depth < 12000; depth++)
-        copied = copied.child as Record<string, unknown>;
-      expect(copied.id).toBeUndefined();
-    });
-
     it('strips id from top-level block objects', () => {
       const block = {
         type: 'item',

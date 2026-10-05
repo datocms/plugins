@@ -26,8 +26,6 @@ export function createCmaClient(
     apiToken,
     environment: ctx.environment,
     baseUrl: ctx.cmaBaseUrl,
-    // Sensible defaults for plugin usage
-    autoRetry: true,
     requestTimeout: 60000,
     ...(overrides || {}),
   });

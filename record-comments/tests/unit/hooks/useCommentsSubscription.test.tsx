@@ -10,14 +10,6 @@ import { flushPromises, renderHook } from '../testUtils/react';
 
 const useQuerySubscriptionMock = vi.fn();
 
-vi.mock('@utils/cmaFallbackRead', () => ({
-  createCmaFallbackRead: (client: Client) => ({
-    client,
-    cancel: vi.fn(),
-    isCanceled: () => false,
-  }),
-}));
-
 vi.mock('react-datocms/use-query-subscription', () => ({
   useQuerySubscription: (...args: unknown[]) =>
     useQuerySubscriptionMock(...args),

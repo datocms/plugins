@@ -31,5 +31,3 @@ npm ci
 npm run dev
 npm run check
 ```
-
-Notes on how large schemas are handled are in [docs/scale-audit.md](docs/scale-audit.md).

@@ -1,19 +1,9 @@
 import {
   ApiError,
-  buildClient,
   type Client,
   type SimpleSchemaTypes,
 } from '@datocms/cma-client-browser';
-import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import {
-  createBoundedCmaFetch,
-  replaceAssetFromBlob,
-} from '../utils/assetReplacer';
-import {
-  CmaRequestScheduler,
-  retryCmaRead,
-  throwIfAborted,
-} from '../utils/cmaRequests';
+import { replaceAssetFromBlob } from '../utils/assetReplacer';
 import { formatFileSize } from '../utils/formatters';
 import {
   downloadOptimizedImage,
@@ -51,10 +41,14 @@ interface OptimizationOptions {
 }
 
 export interface OptimizationDependencies {
-  scheduler?: CmaRequestScheduler;
   download?: typeof downloadOptimizedImage;
   filename?: typeof getOptimizedFilename;
   replace?: typeof replaceAssetFromBlob;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted)
+    throw new DOMException('Operation cancelled', 'AbortError');
 }
 
 function uploadToAsset(upload: SimpleSchemaTypes.Upload): Asset {
@@ -86,7 +80,6 @@ function assertAssetCollection(
 export async function collectOptimizableAssets(
   client: Client,
   threshold: number,
-  scheduler: CmaRequestScheduler,
   signal?: AbortSignal,
   onLoaded?: (count: number) => void,
   collectionId?: string,
@@ -96,24 +89,20 @@ export async function collectOptimizableAssets(
   // Replacing during offset pagination shrinks the size filter and skips uploads.
   // Complete discovery first; retain only lightweight metadata, never image data.
   for (let offset = 0; ; offset += 500) {
+    throwIfAborted(signal);
     // biome-ignore lint/performance/noAwaitInLoops: Discover sequential pages before writing to the filtered collection.
-    const page = await retryCmaRead(
-      () =>
-        client.uploads.list({
-          filter: {
-            fields: {
-              type: { eq: 'image' },
-              // The CMA accepts integer byte counts, including decimal MB settings.
-              size: { gte: Math.ceil(threshold) },
-            },
-            ...(collectionId ? { collection_id: { eq: collectionId } } : {}),
-          },
-          order_by: 'id_ASC',
-          page: { limit: 500, offset },
-        }),
-      scheduler,
-      signal,
-    );
+    const page = await client.uploads.list({
+      filter: {
+        fields: {
+          type: { eq: 'image' },
+          // The CMA accepts integer byte counts, including decimal MB settings.
+          size: { gte: Math.ceil(threshold) },
+        },
+        ...(collectionId ? { collection_id: { eq: collectionId } } : {}),
+      },
+      order_by: 'id_ASC',
+      page: { limit: 500, offset },
+    });
     for (const upload of page) {
       assertAssetCollection(upload, collectionId);
       if (seen.has(upload.id)) continue;
@@ -147,7 +136,6 @@ async function processAsset(
   asset: Asset,
   settings: OptimizationSettings,
   client: Client,
-  scheduler: CmaRequestScheduler,
   options: OptimizationOptions,
   dependencies: OptimizationDependencies,
   result: AssetOptimizerResult,
@@ -205,12 +193,6 @@ async function processAsset(
       blob,
       filename,
       client,
-      {
-        signal: options.signal,
-        beforeRequest: (signal?: AbortSignal) =>
-          scheduler.beforeRequest(signal),
-        onRateLimit: (ms: number) => scheduler.onRateLimit(ms),
-      },
     );
     reference = { id: updated.id, path: updated.path, url: updated.url };
     optimizedSize = updated.size;
@@ -253,14 +235,12 @@ export async function runAssetOptimization(
   dependencies: OptimizationDependencies = {},
 ): Promise<AssetOptimizerResult> {
   const settings = normalizeSettings(inputSettings);
-  const scheduler = dependencies.scheduler ?? new CmaRequestScheduler();
   const result = emptyResult();
   let assets: Asset[];
   try {
     assets = await collectOptimizableAssets(
       client,
       settings.largeAssetThreshold * 1024 * 1024,
-      scheduler,
       options.signal,
       (total) => {
         result.totalAssets = total;
@@ -315,7 +295,6 @@ export async function runAssetOptimization(
           asset,
           settings,
           client,
-          scheduler,
           options,
           dependencies,
           result,
@@ -337,37 +316,4 @@ export async function runAssetOptimization(
     total: assets.length,
   });
   return result;
-}
-
-export async function optimizeAssets(
-  ctx: RenderPageCtx,
-  settings: OptimizationSettings,
-  addLog: (message: string) => void,
-  addSizeComparisonLog: (
-    path: string,
-    originalSize: number,
-    optimizedSize: number,
-  ) => void,
-  setProgress: (progress: number) => void,
-  concurrency = 2,
-): Promise<AssetOptimizerResult> {
-  if (!ctx.currentUserAccessToken)
-    throw new Error('Access token not available');
-  const client = buildClient({
-    apiToken: ctx.currentUserAccessToken,
-    environment: ctx.environment,
-    baseUrl: ctx.cmaBaseUrl,
-    autoRetry: false,
-    requestTimeout: 30_000,
-    fetchFn: createBoundedCmaFetch(),
-  });
-  return runAssetOptimization(client, settings, {
-    concurrency,
-    addLog,
-    addSizeComparisonLog,
-    onProgress: ({ phase, current, total }) =>
-      setProgress(
-        phase === 'processing' ? (total ? (current / total) * 100 : 100) : 0,
-      ),
-  });
 }

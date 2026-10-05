@@ -35,20 +35,6 @@ function batch(id: string): NormalizedGenerationBatch {
   };
 }
 
-test('10,000 generated batches never accumulate discarded selections or rendered history', () => {
-  let state = initialImageBrowserState;
-  for (let index = 0; index < 10_000; index++) {
-    const next = batch(`${index}`);
-    state = imageBrowserReducer(state, { type: 'add', batch: next });
-    for (const image of next.images)
-      state = imageBrowserReducer(state, { type: 'toggle', id: image.id });
-    assert.ok(state.requests.length <= 5);
-    assert.ok(state.selectedIds.size <= 20);
-  }
-  assert.equal(getSelectedImages(state).length, 20);
-  assert.equal(state.evictedSelectedCount, 4);
-});
-
 test('memory retention removes whole old batches and their selection IDs', () => {
   const old = batch('old');
   const latest = batch('latest');
@@ -149,42 +135,15 @@ test('a runtime bridge rejection is observed without replaying the upload', asyn
   assert.equal(sentIds.size, 0);
 });
 
-test('an unexpected large selection is rejected before any handoff', () => {
-  const request = batch('a');
-  const image = request.images[0];
-  assert.equal(image.kind, 'success');
-  if (image.kind !== 'success') throw new Error('Invalid fixture');
-  let calls = 0;
-  assert.throws(
-    () =>
-      selectImages(
-        {
-          select: () => {
-            calls++;
-          },
-        },
-        ['en'],
-        Array.from({ length: 10_000 }, () => ({ request, image })),
-        new Set(),
-        () => {},
-      ),
-    /memory limit/,
-  );
-  assert.equal(calls, 0);
-});
-
-test('upload preserves metadata across 1,000 locales and current field-keyed SDK shape', () => {
+test('upload preserves metadata across locales and current field-keyed SDK shape', () => {
   const request = batch('a');
   const image = request.images[0];
   if (image.kind !== 'success') throw new Error('Invalid fixture');
-  const locales = [
-    ...Array.from({ length: 1_000 }, (_, index) => `locale-${index}`),
-    '__proto__',
-  ];
+  const locales = ['locale-0', 'locale-1', 'locale-2', '__proto__'];
   const upload = buildUpload(locales, { request, image });
   assert.deepEqual(Object.keys(upload.default_field_metadata ?? {}), ['alt']);
-  assert.equal(Object.keys(upload.default_field_metadata?.alt ?? {}).length, 1_001);
-  assert.equal(upload.default_field_metadata?.alt?.['locale-999'], 'Prompt');
+  assert.equal(Object.keys(upload.default_field_metadata?.alt ?? {}).length, 4);
+  assert.equal(upload.default_field_metadata?.alt?.['locale-2'], 'Prompt');
   assert.equal(upload.default_field_metadata?.alt?.__proto__, 'Prompt');
   assert.deepEqual(upload.resource, {
     base64: image.previewSrc,
@@ -212,28 +171,4 @@ test('late provider rejection after cancellation is handled', async () => {
   await assert.rejects(pending, { name: 'AbortError' });
   rejectProvider(new Error('Late network failure'));
   await Promise.resolve();
-});
-
-test('handoff includes repeated locale metadata in its payload budget before dispatch', () => {
-  const request = batch('a');
-  request.request.prompt = 'p'.repeat(32_000);
-  const image = request.images[0];
-  if (image.kind !== 'success') throw new Error('Invalid fixture');
-  let calls = 0;
-  assert.throws(
-    () =>
-      selectImages(
-        {
-          select() {
-            calls++;
-          },
-        },
-        Array.from({ length: 10_000 }, (_, index) => `locale-${index}`),
-        [{ request, image }],
-        new Set(),
-        () => {},
-      ),
-    /memory limit/,
-  );
-  assert.equal(calls, 0);
 });

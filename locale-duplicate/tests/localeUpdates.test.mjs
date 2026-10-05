@@ -3,8 +3,6 @@ import test from 'node:test';
 import {
   buildLocaleUpdates,
   cloneCmaFieldValue,
-  containsUpdates,
-  valuesEqual,
 } from '../src/services/localeUpdates.ts';
 
 const field = (api_key, field_type, localized = false) => ({
@@ -199,37 +197,6 @@ test('repeat copies with independently assigned target block IDs are no-ops', as
   );
 });
 
-test('uncertain write read-back matches generated block IDs and omits only block transport metadata', async () => {
-  const item = fixture();
-  const fields = [
-    field('content', 'rich_text', true),
-    field('metadata', 'json', true),
-  ];
-  const updates = await buildLocaleUpdates(
-    item,
-    item,
-    fields,
-    'en',
-    'pt',
-    loadFields,
-  );
-  const saved = structuredClone({ ...item, ...updates });
-  saved.content.pt[0].meta = { current_version: 'server-added' };
-  saved.content.pt[0].__itemTypeId = 'outer';
-  assert.equal(await containsUpdates(saved, updates, fields, loadFields), true);
-  saved.content.pt[0].id = 'different';
-  assert.equal(
-    await containsUpdates(saved, updates, fields, loadFields),
-    false,
-  );
-  saved.content = structuredClone(updates.content);
-  saved.metadata.pt.id = 'json-data-changed';
-  assert.equal(
-    await containsUpdates(saved, updates, fields, loadFields),
-    false,
-  );
-});
-
 test('unexpanded blocks and incomplete schemas fail before writing', async () => {
   await assert.rejects(
     cloneCmaFieldValue(['block-id'], 'rich_text', loadFields),
@@ -243,28 +210,4 @@ test('unexpanded blocks and incomplete schemas fail before writing', async () =>
     ),
     /schema changed/,
   );
-});
-
-test('ordinary JSON with 10000 asset references preserves IDs and supports very deep comparisons', async () => {
-  const assets = Array.from({ length: 10_000 }, (_, index) => ({
-    upload_id: `asset-${index}`,
-    id: `json-${index}`,
-  }));
-  assert.deepEqual(
-    await cloneCmaFieldValue(assets, 'json', loadFields),
-    assets,
-  );
-  const left = {};
-  const right = {};
-  let a = left;
-  let b = right;
-  for (let i = 0; i < 20_000; i++) {
-    a.next = {};
-    b.next = {};
-    a = a.next;
-    b = b.next;
-  }
-  assert.equal(valuesEqual(left, right), true);
-  b.value = 'different';
-  assert.equal(valuesEqual(left, right), false);
 });

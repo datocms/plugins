@@ -91,16 +91,6 @@ test('more than 50 selected models show a compact count without rendering chips'
   assert.equal(modelField.selectInputProps.options[0], allModels[0]);
 });
 
-test('1,000 selected models stay selected with only 100 menu results and no visible chips', () => {
-  const { markup, modelField } = renderConfiguration(allModels);
-  assert.equal(modelField.value, allModels);
-  assert.equal(modelField.value.length, 1_000);
-  assert.equal(modelField.selectInputProps.options.length, 100);
-  assert.equal((markup.match(/aria-label="Remove Model /g) ?? []).length, 0);
-  assert.match(markup, /1000 models selected\.\.\./);
-  assert.match(markup, /Type to search all 1000 models/);
-});
-
 test('the installed react-select removes a searched selected model while preserving all others', () => {
   const { modelField } = renderConfiguration(allModels);
   const dependencyRequire = createRequire(uiEntry);

@@ -258,12 +258,6 @@ function setupMigration(commentLog: unknown) {
     setCommentLog: (value: unknown) => {
       commentLog = value;
     },
-    loseDeleteResponse: () => {
-      destroy.mockImplementationOnce(async () => {
-        fieldExists = false;
-        throw new TypeError('Failed to fetch');
-      });
-    },
   };
 }
 
@@ -306,26 +300,6 @@ describe('ConfigScreen', () => {
     expect(state.destroy).not.toHaveBeenCalled();
     expect(state.alert).toHaveBeenCalledWith(
       expect.stringContaining('failed verification'),
-    );
-    state.view.unmount();
-  });
-
-  it('reconciles a deleted field after a lost response', async () => {
-    const state = setupMigration([oldComment]);
-    click(state.button('Scan for Legacy Comments'));
-    await flushPromises();
-    click(state.button('Start Migration'));
-    await flushPromises();
-    state.loseDeleteResponse();
-    click(state.button('Delete Old comment_log Fields'));
-    click(state.button('Yes, Delete Fields'));
-    await flushPromises();
-    expect(state.destroy).toHaveBeenCalledTimes(1);
-    expect(state.notice).toHaveBeenCalledWith(
-      'Old comment_log fields have been deleted successfully!',
-    );
-    expect(state.view.container.textContent).not.toContain(
-      'Delete Old comment_log Fields',
     );
     state.view.unmount();
   });

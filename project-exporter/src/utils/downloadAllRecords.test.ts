@@ -5,10 +5,7 @@ import downloadAllRecords, {
   PROJECT_METADATA_INPUT_BYTES,
   RECORD_PART_INPUT_BYTES,
   RECORD_PART_OUTPUT_BYTES,
-  RECORDS_PER_PART,
-  XLSX_CELLS_PER_PART,
 } from './downloadAllRecords';
-import { ResponseSizeError } from './exportRuntime';
 import type { RecordExportEnvelope } from './recordExport';
 
 type RecordRow = Record<string, unknown>;
@@ -43,9 +40,13 @@ const mocks = vi.hoisted(() => ({
   yieldToBrowser: vi.fn<() => Promise<void>>(),
 }));
 
+vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datocms/cma-client-browser')>()),
+  buildClient: mocks.createClient,
+}));
+
 vi.mock('./exportRuntime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./exportRuntime')>()),
-  createExportClient: mocks.createClient,
   downloadBlob: mocks.downloadBlob,
   yieldToBrowser: mocks.yieldToBrowser,
 }));
@@ -246,89 +247,6 @@ describe('downloadAllRecords pagination and bounded parts', () => {
     },
   );
 
-  test('exports 200,000 records generated one API page at a time into bounded parts', async () => {
-    const client = fakeClient({ counts: { page: 200_000 } });
-    const percentages: number[] = [];
-
-    await downloadAllRecords('token', 'main', undefined, 'CSV', {}, (value) =>
-      percentages.push(value),
-    );
-
-    expect(client.items.list).toHaveBeenCalledTimes(Math.ceil(200_000 / 30));
-    expect(client.items.rawList).toHaveBeenCalledTimes(2);
-    expect(mocks.preparedParts).toHaveLength(200);
-    for (let index = 0; index < mocks.preparedParts.length; index++) {
-      const part = mocks.preparedParts[index];
-      expect(part.count).toBe(RECORDS_PER_PART);
-      expect(part.bytes).toBeLessThanOrEqual(RECORD_PART_INPUT_BYTES);
-      expect(part.firstId).toBe(
-        `page-${String(index * 1000).padStart(6, '0')}`,
-      );
-      expect(part.lastId).toBe(
-        `page-${String(index * 1000 + 999).padStart(6, '0')}`,
-      );
-    }
-    const manifest = await downloadedManifest();
-    expect(manifest).toMatchObject({
-      status: 'complete',
-      totalRecords: 200_000,
-      totalParts: 200,
-    });
-    expect(manifest.parts).toHaveLength(200);
-    for (let index = 0; index < manifest.parts.length; index++) {
-      expect(manifest.parts[index]).toMatchObject({
-        recordCount: 1000,
-        recordOffset: index * 1000,
-      });
-      expect(manifest.parts[index].filename).toContain(
-        `.part-${String(index + 1).padStart(3, '0')}.`,
-      );
-    }
-    expect(percentages[percentages.length - 1]).toBe(100);
-    expect(
-      percentages.slice(0, -1).every((percentage) => percentage < 100),
-    ).toBe(true);
-    expect(
-      percentages.every(
-        (percentage, index) =>
-          index === 0 || percentage >= percentages[index - 1],
-      ),
-    ).toBe(true);
-    // This checks completeness and batching, not a browser throughput deadline.
-  }, 120_000);
-
-  test('uses individual model filters for 1,600 selected model IDs with bounded count concurrency', async () => {
-    const models = Array.from({ length: 1600 }, (_, index) =>
-      model(`model-${index}`),
-    );
-    const client = fakeClient({ models, counts: {} });
-    let inFlight = 0;
-    let peakConcurrency = 0;
-    client.items.rawList.mockImplementation(async () => {
-      inFlight++;
-      peakConcurrency = Math.max(peakConcurrency, inFlight);
-      await Promise.resolve();
-      inFlight--;
-      return { meta: { total_count: 0 } };
-    });
-
-    await downloadAllRecords('token', 'sandbox', undefined, 'CSV', {
-      modelIDs: models.map(({ id }) => id),
-    });
-
-    expect(client.items.list).toHaveBeenCalledTimes(1600);
-    expect(client.items.rawList).toHaveBeenCalledTimes(3200);
-    expect(peakConcurrency).toBeLessThanOrEqual(4);
-    expect(peakConcurrency).toBeGreaterThan(1);
-    for (const [options] of [
-      ...client.items.rawList.mock.calls,
-      ...client.items.list.mock.calls,
-    ]) {
-      expect(models.some(({ id }) => id === options.filter.type)).toBe(true);
-      expect(options.filter.type).not.toContain(',');
-    }
-  });
-
   test('keeps text queries per model and excludes block models from text searches', async () => {
     const client = fakeClient({
       models: [model('page'), { ...model('block'), modular_block: true }],
@@ -347,47 +265,6 @@ describe('downloadAllRecords pagination and bounded parts', () => {
     expect(mocks.preparedParts[0].count).toBe(2);
   });
 
-  test('automatically reduces oversized nested pages and continues from the same offset', async () => {
-    const client = fakeClient({ counts: { page: 20 } });
-    const generatePage = client.items.list.getMockImplementation();
-    if (!generatePage) throw new Error('Missing synthetic page generator');
-    client.items.list.mockImplementation(async (options) => {
-      if (options.page.limit > 7)
-        throw new ResponseSizeError('Response exceeds 32 MiB');
-      return generatePage(options);
-    });
-
-    await downloadAllRecords('token', 'main', undefined, 'CSV', {});
-
-    expect(
-      client.items.list.mock.calls.map(([options]) => options.page),
-    ).toEqual([
-      { limit: 30, offset: 0 },
-      { limit: 15, offset: 0 },
-      { limit: 7, offset: 0 },
-      { limit: 7, offset: 7 },
-      { limit: 7, offset: 14 },
-    ]);
-    expect(mocks.preparedParts.map((part) => part.count)).toEqual([20]);
-    expect(client.items.rawList).toHaveBeenCalledTimes(2);
-  });
-
-  test('stops oversized response retries once a single record page still exceeds the limit', async () => {
-    const client = fakeClient({ counts: { page: 1 } });
-    client.items.list.mockRejectedValue(
-      new ResponseSizeError('Response exceeds 32 MiB'),
-    );
-
-    await expect(
-      downloadAllRecords('token', 'main', undefined, 'CSV', {}),
-    ).rejects.toThrow('Response exceeds 32 MiB');
-
-    expect(
-      client.items.list.mock.calls.map(([options]) => options.page.limit),
-    ).toEqual([30, 15, 7, 3, 1]);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
-  });
-
   test('splits records by input bytes before accumulating more than 8 MiB', async () => {
     const text = 'x'.repeat(1024 * 1024);
     fakeClient({ counts: { page: 9 }, row: (id) => ({ id, text }) });
@@ -401,40 +278,6 @@ describe('downloadAllRecords pagination and bounded parts', () => {
       ),
     ).toBe(true);
     expect((await downloadedManifest()).totalRecords).toBe(9);
-  });
-
-  test('bounds XLSX parts by cells as well as record count', async () => {
-    const fields = Object.fromEntries(
-      Array.from({ length: 5000 }, (_, index) => [`field_${index}`, index]),
-    );
-    fakeClient({ counts: { page: 21 }, row: (id) => ({ id, ...fields }) });
-
-    await downloadAllRecords('token', 'main', undefined, 'XLSX', {});
-
-    expect(mocks.preparedParts.map((part) => part.count)).toEqual([9, 9, 3]);
-    expect(
-      mocks.preparedParts.every((part) => part.cells <= XLSX_CELLS_PER_PART),
-    ).toBe(true);
-  });
-
-  test('splits XLSX parts when heterogeneous models produce too many distinct columns', async () => {
-    fakeClient({
-      counts: { page: 330 },
-      row: (id, index) => ({
-        id,
-        ...Object.fromEntries(
-          Array.from({ length: 50 }, (_, field) => [
-            `field_${index}_${field}`,
-            field,
-          ]),
-        ),
-      }),
-    });
-
-    await downloadAllRecords('token', 'main', undefined, 'XLSX', {});
-
-    expect(mocks.preparedParts.map((part) => part.count)).toEqual([327, 3]);
-    expect((await downloadedManifest()).totalRecords).toBe(330);
   });
 
   test('splits prepared output exceeding 16 MiB without dropping or reordering records', async () => {

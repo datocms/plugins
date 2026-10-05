@@ -37,7 +37,7 @@ export function isPartialBulkResult(result: BulkOperationResult): boolean {
 
 function resultCountsMessage(result: BulkOperationResult): string {
   const record = result.successful === 1 ? 'record' : 'records';
-  if (result.uncertain || result.unprocessed || result.cancelled) {
+  if (result.unprocessed || result.cancelled) {
     return incompleteBulkResultMessage(result);
   }
 
@@ -65,11 +65,9 @@ function incompleteBulkResultMessage(result: BulkOperationResult): string {
     `${result.successful} ${record} ${pastTense[result.operation]}`,
   ];
   if (result.failed) parts.push(`${result.failed} records failed`);
-  if (result.uncertain)
-    parts.push(`${result.uncertain} records have an unconfirmed outcome`);
   if (result.unprocessed)
     parts.push(`${result.unprocessed} records were not submitted`);
-  return `${result.cancelled ? 'Cancelled. ' : ''}${parts.join('; ')}.${result.uncertain ? ' Check their current state before running another action.' : ''}`;
+  return `${result.cancelled ? 'Cancelled. ' : ''}${parts.join('; ')}.`;
 }
 
 function errorDetail(error: unknown): string | null {

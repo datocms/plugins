@@ -44,7 +44,7 @@ const {
   RecordStatistics,
   SummaryView,
 } = await import('../src/components/SummaryView/SummaryView.tsx');
-const { ProgressView, progressUpdateKey } = await import(
+const { progressUpdateKey } = await import(
   '../src/components/ProgressView/ProgressView.tsx'
 );
 
@@ -89,11 +89,10 @@ test('an exception before the first stats snapshot is never shown as successful'
   );
 });
 
-test('failed, uncertain, pending, incomplete, and cancelled runs cannot show green success', () => {
+test('failed, pending, incomplete, and cancelled runs cannot show green success', () => {
   for (const field of [
     'failedRecords',
     'failedPublications',
-    'uncertainPublications',
     'pendingPublications',
     'modelFailures',
     'totalToProcess',
@@ -113,14 +112,13 @@ test('failed, uncertain, pending, incomplete, and cancelled runs cannot show gre
   );
 });
 
-test('summary retains confirmed publication counts and pending/uncertain outcomes', () => {
+test('summary retains confirmed publication counts and pending outcomes', () => {
   const stats = {
     ...initialDuplicationStats(),
     totalRecords: 20,
     totalToProcess: 30,
     publishedRecords: 10,
     failedPublications: 2,
-    uncertainPublications: 3,
     pendingPublications: 5,
     cancelled: true,
   };
@@ -132,60 +130,10 @@ test('summary retains confirmed publication counts and pending/uncertain outcome
   );
   assert.match(
     markup,
-    /10 records published; 2 publication failures; 3 publication outcomes unconfirmed; 5 pending/,
+    /10 records published; 2 publication failures; 5 pending/,
   );
   assert.match(markup, /10 selected records were not processed/);
   assert.match(markup, /Duplication Aborted/);
-});
-
-test('thousands of model statistics render only a page of 100 rows', () => {
-  const modelStats = Object.fromEntries(
-    Array.from({ length: 2_001 }, (_, index) => [
-      `${index}`,
-      { name: `Model ${index}`, success: 100, error: 0, total: 100 },
-    ]),
-  );
-  const markup = renderToStaticMarkup(
-    createElement(RecordStatistics, {
-      duplicationStats: { ...initialDuplicationStats(), modelStats },
-    }),
-  );
-  assert.equal((markup.match(/<td>Model /g) ?? []).length, 100);
-  assert.match(markup, /Page 1 of 21/);
-  assert.match(markup, /Next models/);
-});
-
-test('operation console renders latest 500 entries while preserving total count and progress bounds', () => {
-  const updates = Array.from({ length: 2_000 }, (_, index) => ({
-    message: `Operation ${index}`,
-    type: 'info',
-    timestamp: index,
-  }));
-  const props = {
-    progressUpdates: updates,
-    progressPercentage: 150,
-    operationCount: 200_000,
-    isAborting: false,
-    sourceLocale: 'en',
-    targetLocale: 'pt',
-    getLocaleLabel: (locale) => locale,
-    onAbort() {},
-  };
-  const markup = renderToStaticMarkup(createElement(ProgressView, props));
-  assert.equal((markup.match(/class="progressItem info"/g) ?? []).length, 500);
-  assert.match(markup, /200000 operations/);
-  assert.match(markup, /Showing the latest 500 operations/);
-  assert.match(markup, /Operation 1500/);
-  assert.match(markup, /Operation 1999/);
-  assert.doesNotMatch(markup, />Operation 1499</);
-  assert.match(markup, /width:100%/);
-  const invalid = renderToStaticMarkup(
-    createElement(ProgressView, {
-      ...props,
-      progressPercentage: Number.NaN,
-    }),
-  );
-  assert.match(invalid, /width:0%/);
 });
 
 test('distinct log events with identical timestamps/messages have stable unique keys', () => {

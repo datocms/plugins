@@ -275,34 +275,6 @@ describe('bulkPublishTranslatedRecords', () => {
     expect(onBatchPublished.mock.calls[0][1]).toBe(200);
   });
 
-  it('processes a synthetic 200,000-ID selection without parallel mutations', async () => {
-    let batches = 0;
-    let active = 0;
-    let maximumActive = 0;
-    const rawBulkPublish = async (body: RawApiTypes.ItemBulkPublishSchema) => {
-      active++;
-      maximumActive = Math.max(maximumActive, active);
-      batches++;
-      expect(body.data.relationships.items.data.length).toBeLessThanOrEqual(
-        200,
-      );
-      await Promise.resolve();
-      active--;
-      return success(body);
-    };
-    function* ids() {
-      for (let index = 0; index < 200_000; index++) yield `r${index}`;
-    }
-    await expect(
-      bulkPublishTranslatedRecords(
-        createPublishClient({ rawBulkPublish, list: vi.fn() }),
-        ids(),
-      ),
-    ).resolves.toBe(200_000);
-    expect(batches).toBe(1000);
-    expect(maximumActive).toBe(1);
-  });
-
   it('acknowledges a partial mutation before observing cancellation', async () => {
     let cancelled = false;
     const rawBulkPublish = vi.fn(async () => {

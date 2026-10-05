@@ -183,18 +183,7 @@ async function fetchUserOptions(
   });
 }
 
-function progressStatusMessage(progress: BulkProgress): string | null {
-  if (progress.stopping) {
-    return 'Waiting for requests already started to finish. No further records will be started.';
-  }
-  if (progress.waitingUntil !== null) {
-    return 'Waiting for the API rate limit. Updates will continue automatically.';
-  }
-  return progress.retries > 0 ? `${progress.retries} automatic retries.` : null;
-}
-
 function ExecutionProgress({ progress }: { progress: BulkProgress }) {
-  const statusMessage = progressStatusMessage(progress);
   return (
     <div
       className={styles.progress}
@@ -214,10 +203,13 @@ function ExecutionProgress({ progress }: { progress: BulkProgress }) {
       <p>
         {progress.succeeded} changed, {progress.active} in progress.
         {progress.failed > 0 && ` ${progress.failed} failed.`}
-        {progress.uncertain > 0 &&
-          ` ${progress.uncertain} could not be confirmed.`}
       </p>
-      {statusMessage && <p>{statusMessage}</p>}
+      {progress.stopping && (
+        <p>
+          Waiting for requests already started to finish. No further records
+          will be started.
+        </p>
+      )}
     </div>
   );
 }
@@ -407,11 +399,8 @@ export default function SelectCreatorModal({ ctx }: Props) {
       total: itemIds.length,
       succeeded: 0,
       failed: 0,
-      uncertain: 0,
       processed: 0,
       active: 0,
-      retries: 0,
-      waitingUntil: null,
       stopping: false,
     });
 

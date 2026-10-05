@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,7 +10,6 @@ import {
 } from '../components/ProgressView/ProgressView';
 import { SummaryView } from '../components/SummaryView/SummaryView';
 import { useDuplicationStats } from '../hooks/useDuplicationStats';
-import { createCmaClient } from '../services/cmaClient';
 import type { DuplicationStats } from '../services/duplicationTypes';
 import { LocaleDuplicationService } from '../services/LocaleDuplicationService';
 import { getErrorMessage, type ModelOption } from '../types';
@@ -19,10 +19,7 @@ import { ProgressLog } from '../utils/progressLog';
 function completionNotice(stats: DuplicationStats): string {
   if (stats.cancelled) return 'Duplication process was aborted';
   const failed =
-    stats.failedRecords +
-    stats.failedPublications +
-    stats.uncertainPublications +
-    stats.modelFailures;
+    stats.failedRecords + stats.failedPublications + stats.modelFailures;
   return failed > 0
     ? 'Locale duplication completed with errors. See the summary for confirmed results.'
     : 'Locale content duplicated successfully';
@@ -76,7 +73,11 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
       );
       return;
     }
-    createCmaClient(currentUserAccessToken, environment, cmaBaseUrl)
+    buildClient({
+      apiToken: currentUserAccessToken,
+      environment,
+      baseUrl: cmaBaseUrl,
+    })
       .itemTypes.list()
       .then((models) => {
         if (!active) return;

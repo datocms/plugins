@@ -45,12 +45,7 @@ export function useStageData(
         const latest = ctxRef.current;
         const data = await loadStage(
           {
-            client: buildCmaClient(latest, controller.signal),
-            // The loader retries a slow page smaller itself, so the
-            // transport shouldn't repeat it at the same size first.
-            pageClient: buildCmaClient(latest, controller.signal, {
-              retryTimeouts: false,
-            }),
+            client: buildCmaClient(latest),
             itemTypes: latest.itemTypes,
             locales: latest.site.attributes.locales,
             timeZone: latest.site.attributes.timezone ?? undefined,
@@ -65,8 +60,6 @@ export function useStageData(
       } catch (error) {
         if (!controller.signal.aborted) {
           setState({ status: 'error', error });
-          // Cancel whatever the failed load still has queued or in flight.
-          controller.abort();
         }
       }
     };

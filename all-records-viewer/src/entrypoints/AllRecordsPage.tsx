@@ -316,7 +316,7 @@ function reportBulkResult(
   result: BulkOperationResult,
 ): void {
   const message = bulkResultMessage(result);
-  if (result.failed > 0 || result.uncertain || result.unprocessed) {
+  if (result.failed > 0 || result.unprocessed) {
     ctx.alert(message);
   } else {
     ctx.notice(message);

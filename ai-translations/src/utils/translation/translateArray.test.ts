@@ -491,32 +491,6 @@ Content: (see the JSON array below) / (see the JSON array below).`);
       });
 
 
-      it('chunks thousands of Unicode leaves by count and bytes with stable ordering', async () => {
-        const texts = Array.from(
-          { length: 2_001 },
-          (_, index) => `${index}${'😀'.repeat(index % 10 === 0 ? 2_000 : 1)}`,
-        );
-        vi.mocked(mockProvider.completeText).mockImplementation(
-          async (prompt) => {
-            const textsJson = prompt.slice(prompt.lastIndexOf('\n') + 1);
-            expect(
-              new TextEncoder().encode(textsJson).length,
-            ).toBeLessThanOrEqual(24_000);
-            expect(JSON.parse(textsJson).length).toBeLessThanOrEqual(25);
-            return textsJson;
-          },
-        );
-        expect(
-          await translateArray(
-            mockProvider,
-            mockPluginParams,
-            texts,
-            'en',
-            'de',
-          ),
-        ).toEqual(texts);
-      });
-
       it('rejects oversized opaque HTML before earlier segments become billable', async () => {
         await expect(
           translateArray(

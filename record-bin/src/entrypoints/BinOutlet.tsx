@@ -2,7 +2,7 @@ import type { RenderItemFormOutletCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, FieldGroup, Form } from 'datocms-react-ui';
 import { useCallback, useRef, useState } from 'react';
 import type { errorObject } from '../types/types';
-import { createBoundedFetch } from '../utils/cmaRequests';
+import { createBoundedFetch } from '../utils/boundedFetch';
 import { createDebugLogger, isDebugEnabled } from '../utils/debugLogger';
 import { getDeploymentUrlFromParameters } from '../utils/getDeploymentUrlFromParameters';
 import { getRuntimeMode } from '../utils/getRuntimeMode';
@@ -83,14 +83,11 @@ const executeRestoreViaLambda = async ({
   try {
     // A legacy lambda may commit a POST even if the response is lost. Bound the
     // wait, but never automatically repeat an unreconciled remote restoration.
-    restoreResponse = await createBoundedFetch(undefined, 60000)(
-      deploymentURL,
-      {
-        method: 'POST',
-        body: requestBody,
-        headers: { Accept: '*/*', 'Content-Type': 'application/json' },
-      },
-    );
+    restoreResponse = await createBoundedFetch(60000)(deploymentURL, {
+      method: 'POST',
+      body: requestBody,
+      headers: { Accept: '*/*', 'Content-Type': 'application/json' },
+    });
   } catch (error) {
     const restorationError = buildRestoreErrorPayload(error);
     setError(restorationError);
@@ -214,7 +211,7 @@ const executeRestoreWithoutLambda = async ({
       parsedResponse.cleanupError,
     );
     await alertFn(
-      'The record was restored, but its archive could not be removed. Restoring this archive again will check the existing record before creating anything.',
+      'The record was restored, but its archive could not be removed.',
     );
   }
   noticeFn('The record has been successfully restored!');
@@ -376,7 +373,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         parsedRecordBody !== null &&
         '__record_bin' in parsedRecordBody;
       // Existing deployments retain the legacy webhook flow. Locally captured
-      // archives use the local runtime for integrity checks and safe retries.
+      // archives are restored by the plugin itself.
       if (
         runtimeMode === 'lambda' &&
         !isPackedRecordBinBody(parsedRecordBody) &&

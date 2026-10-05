@@ -60,31 +60,25 @@ type Data = {
   attributes: Record<string, unknown>;
   relationships?: Record<string, { data: { id: string; type: string } | null }>;
 };
-type Call = { path: string; method: string; data?: Data; at: number };
+type Call = { path: string; method: string; data?: Data };
 type Reply = {
   status: number;
   body?: unknown;
-  headers?: Record<string, string>;
 };
 type MockOptions = {
   latency?: number;
   locales?: string[];
   reply?: (call: Call, calls: Call[]) => Reply | undefined;
-  fail?: (call: Call) => Error | undefined;
 };
 
-function jsonResponse(
-  body: unknown,
-  status = 200,
-  headers?: Record<string, string>,
-) {
+function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
-function apiFailure(status = 422, transient = false): Reply {
+function apiFailure(status = 422): Reply {
   return {
     status,
     body: {
@@ -94,7 +88,6 @@ function apiFailure(status = 422, transient = false): Reply {
           type: 'api_error',
           attributes: {
             code: 'INVALID_FIELD',
-            transient: transient || undefined,
             details: {},
             doc_url: '',
           },
@@ -109,31 +102,24 @@ function mockProject(options: MockOptions = {}) {
   const models = new Set<string>();
   const fields = new Set<string>();
   let active = 0;
-  let maxActive = 0;
   const client = buildClient({
     apiToken: null,
-    // The import must use its own policy without changing this shared setting.
-    autoRetry: true,
     fetchFn: async (url, init) => {
       const call: Call = {
         path: new URL(String(url)).pathname,
         method: init?.method ?? 'GET',
-        at: Date.now(),
         data: init?.body
           ? (JSON.parse(String(init.body)) as { data: Data }).data
           : undefined,
       };
       calls.push(call);
       active += 1;
-      maxActive = Math.max(maxActive, active);
       try {
         await new Promise<void>((resolve) =>
           setTimeout(resolve, options.latency ?? 250),
         );
-        const failure = options.fail?.(call);
-        if (failure) throw failure;
         const reply = options.reply?.(call, calls);
-        if (reply) return jsonResponse(reply.body, reply.status, reply.headers);
+        if (reply) return jsonResponse(reply.body, reply.status);
         return defaultReply(
           call,
           models,
@@ -152,9 +138,6 @@ function mockProject(options: MockOptions = {}) {
     fields,
     get active() {
       return active;
-    },
-    get maxActive() {
-      return maxActive;
     },
   };
 }
@@ -335,62 +318,12 @@ function progressRecorder() {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ loopLimit: 100_000 });
+  vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-02T12:00:00Z'));
 });
 afterEach(() => vi.useRealTimers());
 
-describe('schema import at scale', () => {
-  it('imports thousands of fields with bounded global concurrency, pacing and precise progress', async () => {
-    const doc = document(90, 30, 4, 12);
-    for (const itemType of doc.itemTypes.entitiesToCreate) {
-      for (const localized of itemType.fields.slice(0, 5)) {
-        localized.attributes.localized = true;
-        localized.attributes.default_value = { locale_0: 'Default value' };
-      }
-    }
-    const project = mockProject({
-      latency: 500,
-      locales: Array.from({ length: 20 }, (_, i) => `locale_${i}`),
-    });
-    const progress = progressRecorder();
-    const result = await finish(
-      importSchema(doc, project.client, progress.update),
-    );
-    expect(project.models.size).toBe(90);
-    expect(project.fields.size).toBe(2700);
-    expect(Object.keys(result.fieldsetIdByExportId)).toHaveLength(360);
-    expect(project.maxActive).toBeLessThanOrEqual(4);
-    expect(project.active).toBe(0);
-    expect(project.client.config.autoRetry).toBe(true);
-    expect(progress.values[0].finished).toBe(0);
-    expect(progress.values.at(-1)?.finished).toBe(
-      progress.values.at(-1)?.total,
-    );
-    for (let i = 1; i < progress.values.length; i += 1)
-      expect(progress.values[i].finished).toBeGreaterThanOrEqual(
-        progress.values[i - 1].finished,
-      );
-    for (let i = 1; i < project.calls.length; i += 1)
-      expect(
-        project.calls[i].at - project.calls[i - 1].at,
-      ).toBeGreaterThanOrEqual(75);
-    const pluginUpdates = project.calls.filter(
-      (call) => call.method === 'PUT' && call.path.startsWith('/plugins/'),
-    );
-    expect(pluginUpdates).toHaveLength(12);
-    expect(pluginUpdates[5].data?.attributes.parameters).toEqual({
-      globalSetting: 5,
-    });
-    const localized = project.calls.find(
-      (call) => call.data?.attributes.localized,
-    )?.data;
-    const defaultValues = localized?.attributes.default_value as
-      | Record<string, unknown>
-      | undefined;
-    expect(Object.keys(defaultValues ?? {})).toHaveLength(20);
-  }, 30_000);
-
+describe('schema import', () => {
   it('maps cyclic links, nested block validators, replacement IDs, slugs and localized defaults without mutating the export', async () => {
     const doc = document(2, 0, 1, 1);
     const first = doc.itemTypes.entitiesToCreate[0];
@@ -596,28 +529,6 @@ describe('schema import failures and cancellation', () => {
     expect(project.fields.size).toBe(0);
   });
 
-  it('can cancel automatic 429 backoff without replaying the request', async () => {
-    const project = mockProject({
-      reply: (call) =>
-        call.method === 'POST'
-          ? { status: 429, headers: { 'x-ratelimit-reset': '30' }, body: {} }
-          : undefined,
-    });
-    let cancel = false;
-    setTimeout(() => {
-      cancel = true;
-    }, 1500);
-    const error = await rejected(
-      importSchema(document(), project.client, () => {}, {
-        shouldCancel: () => cancel,
-      }),
-    );
-    expect((error as Error).message).toBe('Import cancelled');
-    expect(project.calls.filter((call) => call.method === 'POST')).toHaveLength(
-      1,
-    );
-  });
-
   it('rejects an unexpected API-created ID instead of returning broken mappings', async () => {
     const project = mockProject({
       reply: (call) =>
@@ -633,7 +544,7 @@ describe('schema import failures and cancellation', () => {
   });
 });
 
-describe('safe automatic retries', () => {
+describe('plugin import', () => {
   it('preserves private legacy plugin definitions and exported global settings', async () => {
     const doc = document(0, 0, 0, 1);
     const plugin = doc.plugins.entitiesToCreate[0];
@@ -661,272 +572,5 @@ describe('safe automatic retries', () => {
       (call) => call.method === 'PUT',
     )?.data;
     expect(configured?.attributes.parameters).toEqual({ globalSetting: 0 });
-  });
-
-  it('reconciles a lost create response by ID and matching attributes without replaying its POST', async () => {
-    let created: Data | undefined;
-    const project = mockProject({
-      fail: (call) => {
-        if (call.method === 'POST') {
-          created = call.data;
-          return new TypeError('response lost after commit');
-        }
-        return undefined;
-      },
-      reply: (call) =>
-        call.method === 'GET' && call.path.startsWith('/item-types/')
-          ? {
-              status: 200,
-              body: {
-                data: { ...created, relationships: emptyRelationships() },
-              },
-            }
-          : undefined,
-    });
-    const result = await finish(
-      importSchema(document(1, 0, 0), project.client, () => {}),
-    );
-    expect(result.itemTypeIdByExportId.model_0).toBe('model_0');
-    expect(project.calls.filter((call) => call.method === 'POST')).toHaveLength(
-      1,
-    );
-    expect(
-      project.calls.some(
-        (call) => call.method === 'GET' && call.path === '/item-types/model_0',
-      ),
-    ).toBe(true);
-  });
-
-  it('does not accept an existing entity with a different payload after an ambiguous create', async () => {
-    const project = mockProject({
-      fail: (call) =>
-        call.method === 'POST' ? new TypeError('response lost') : undefined,
-      reply: (call) =>
-        call.path === '/item-types/model_0' && call.method === 'GET'
-          ? {
-              status: 200,
-              body: {
-                data: {
-                  id: 'model_0',
-                  type: 'item_type',
-                  attributes: { name: 'Different model' },
-                },
-              },
-            }
-          : undefined,
-    });
-    expect(
-      await rejected(importSchema(document(1, 0, 0), project.client, () => {})),
-    ).toBeInstanceOf(Error);
-    expect(project.calls.filter((call) => call.method === 'POST')).toHaveLength(
-      1,
-    );
-  });
-
-  it('does not replay an accepted create when fetching its async job result fails', async () => {
-    const project = mockProject({
-      reply: (call) => {
-        if (call.method === 'POST')
-          return { status: 202, body: { data: { id: 'job_1', type: 'job' } } };
-        if (call.path.startsWith('/job-results/'))
-          return {
-            status: 429,
-            headers: { 'x-ratelimit-reset': '1' },
-            body: {},
-          };
-        return undefined;
-      },
-    });
-    expect(
-      await rejected(importSchema(document(), project.client, () => {})),
-    ).toBeInstanceOf(Error);
-    expect(project.calls.filter((call) => call.method === 'POST')).toHaveLength(
-      1,
-    );
-    expect(
-      project.calls.filter((call) => call.path.startsWith('/job-results/')),
-    ).toHaveLength(9);
-  });
-
-  it.each([429, 503])(
-    'does not replay an accepted create after its job returns HTTP %s',
-    async (status) => {
-      const project = mockProject({
-        reply: (call) => {
-          if (call.method === 'POST')
-            return {
-              status: 202,
-              body: { data: { id: 'job_1', type: 'job' } },
-            };
-          if (call.path.startsWith('/job-results/'))
-            return {
-              status: 200,
-              body: {
-                data: {
-                  id: 'job_1',
-                  type: 'job_result',
-                  attributes: {
-                    status,
-                    payload: apiFailure(status, true).body,
-                  },
-                },
-              },
-            };
-          return undefined;
-        },
-      });
-      expect(
-        await rejected(
-          importSchema(document(1, 0, 0), project.client, () => {}),
-        ),
-      ).toBeInstanceOf(Error);
-      expect(
-        project.calls.filter((call) => call.method === 'POST'),
-      ).toHaveLength(1);
-      expect(
-        project.calls.filter((call) => call.path.startsWith('/job-results/')),
-      ).toHaveLength(1);
-    },
-  );
-
-  it('keeps accepted-job tracking local to concurrent requests', async () => {
-    let accepted: Data | undefined;
-    let rejectedSibling = false;
-    const project = mockProject({
-      reply: (call) => {
-        if (call.method === 'POST' && call.data?.id === 'model_0') {
-          accepted = call.data;
-          return { status: 202, body: { data: { id: 'job_1', type: 'job' } } };
-        }
-        if (call.path.startsWith('/job-results/'))
-          return {
-            status: 200,
-            body: {
-              data: {
-                id: 'job_1',
-                type: 'job_result',
-                attributes: {
-                  status: 200,
-                  payload: {
-                    data: { ...accepted, relationships: emptyRelationships() },
-                  },
-                },
-              },
-            },
-          };
-        if (
-          call.method === 'POST' &&
-          call.data?.id === 'model_1' &&
-          !rejectedSibling
-        ) {
-          rejectedSibling = true;
-          return apiFailure(503, true);
-        }
-        return undefined;
-      },
-    });
-    await finish(importSchema(document(2, 0, 0), project.client, () => {}));
-    expect(
-      project.calls.filter(
-        (call) => call.method === 'POST' && call.data?.id === 'model_0',
-      ),
-    ).toHaveLength(1);
-    expect(
-      project.calls.filter(
-        (call) => call.method === 'POST' && call.data?.id === 'model_1',
-      ),
-    ).toHaveLength(2);
-  });
-
-  it.each(['429', 'transient'])(
-    'retries a confirmed %s rejection with the same create ID',
-    async (kind) => {
-      let rejectedOnce = false;
-      const project = mockProject({
-        reply: (call) => {
-          if (call.method === 'POST' && !rejectedOnce) {
-            rejectedOnce = true;
-            return kind === '429'
-              ? { status: 429, headers: { 'x-ratelimit-reset': '2' }, body: {} }
-              : apiFailure(503, true);
-          }
-          return undefined;
-        },
-      });
-      const progress = progressRecorder();
-      await finish(importSchema(document(), project.client, progress.update));
-      const creates = project.calls.filter(
-        (call) => call.path === '/item-types' && call.method === 'POST',
-      );
-      expect(creates).toHaveLength(2);
-      expect(creates[0].data?.id).toBe(creates[1].data?.id);
-      expect(creates[1].at - creates[0].at).toBeGreaterThanOrEqual(
-        kind === '429' ? 2000 : 1000,
-      );
-      expect(
-        progress.values.some(
-          (value) => value.label === 'Waiting to retry an API request',
-        ),
-      ).toBe(true);
-      expect(progress.values.at(-1)?.finished).toBe(
-        progress.values.at(-1)?.total,
-      );
-    },
-  );
-
-  it.each(['network', 'timeout'])(
-    'does not replay a create after an ambiguous %s error',
-    async (kind) => {
-      const project = mockProject({
-        fail: (call) =>
-          call.method === 'POST'
-            ? kind === 'network'
-              ? new TypeError('network lost')
-              : Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })
-            : undefined,
-      });
-      expect(
-        await rejected(importSchema(document(), project.client, () => {})),
-      ).toBeInstanceOf(Error);
-      expect(
-        project.calls.filter((call) => call.method === 'POST'),
-      ).toHaveLength(1);
-    },
-  );
-
-  it('retries an idempotent update after a network error', async () => {
-    let failedOnce = false;
-    const project = mockProject({
-      fail: (call) => {
-        if (call.method === 'PUT' && !failedOnce) {
-          failedOnce = true;
-          return new TypeError('network lost');
-        }
-        return undefined;
-      },
-    });
-    await finish(importSchema(document(), project.client, () => {}));
-    expect(
-      project.calls.filter(
-        (call) => call.path === '/item-types/model_0' && call.method === 'PUT',
-      ),
-    ).toHaveLength(2);
-  });
-
-  it('bounds repeated server rejections and reports incomplete progress', async () => {
-    const project = mockProject({
-      reply: (call) =>
-        call.method === 'POST'
-          ? { status: 429, headers: { 'x-ratelimit-reset': '1' }, body: {} }
-          : undefined,
-    });
-    const progress = progressRecorder();
-    expect(
-      await rejected(importSchema(document(), project.client, progress.update)),
-    ).toBeInstanceOf(Error);
-    expect(project.calls.filter((call) => call.method === 'POST')).toHaveLength(
-      9,
-    );
-    expect(progress.values.at(-1)?.finished).toBe(1);
   });
 });

@@ -14,7 +14,7 @@ const comment = createBaseComment({
 });
 const addition = { type: 'ADD_COMMENT' as const, comment };
 
-function apiFailure(status: number, headers: Record<string, string> = {}) {
+function apiFailure(status: number, code?: string) {
   return new ApiError({
     request: {
       method: 'PUT',
@@ -24,8 +24,12 @@ function apiFailure(status: number, headers: Record<string, string> = {}) {
     response: {
       status,
       statusText: 'Test failure',
-      headers,
-      body: { data: [] },
+      headers: {},
+      body: {
+        data: code
+          ? [{ id: 'error', type: 'api_error', attributes: { code, details: {} } }]
+          : [],
+      },
     },
   });
 }
@@ -204,29 +208,7 @@ describe('comment persistence integrity', () => {
     hook.unmount();
   });
 
-  it('rereads after response loss and avoids duplicating the successful update', async () => {
-    vi.useFakeTimers();
-    const items = {
-      find: vi
-        .fn()
-        .mockResolvedValueOnce(aggregate('[]'))
-        .mockResolvedValueOnce(aggregate()),
-      update: vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')),
-    };
-    const hook = mountQueue({ items });
-    enqueue(hook);
-    await settle();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    await settle();
-    expect(items.find).toHaveBeenCalledTimes(2);
-    expect(items.update).toHaveBeenCalledTimes(1);
-    expect(hook.ctx.alert).not.toHaveBeenCalled();
-    hook.unmount();
-  });
-
-  it('preserves a concurrent edit after an ambiguous write result', async () => {
+  it('preserves a concurrent edit found after a version conflict', async () => {
     vi.useFakeTimers();
     const changedComment = {
       ...comment,
@@ -241,7 +223,7 @@ describe('comment persistence integrity', () => {
         ),
       update: vi
         .fn()
-        .mockRejectedValueOnce(new TypeError('Network request failed')),
+        .mockRejectedValueOnce(apiFailure(422, 'STALE_ITEM_VERSION')),
     };
     const hook = mountQueue({ items });
     act(() => {
@@ -294,40 +276,6 @@ describe('comment persistence integrity', () => {
     hook.unmount();
   });
 
-  it('confirms an edit after response loss even when its baseline differs from the saved result', async () => {
-    vi.useFakeTimers();
-    const newContent = [{ type: 'text' as const, content: 'My committed edit' }];
-    const items = {
-      find: vi
-        .fn()
-        .mockResolvedValueOnce(aggregate())
-        .mockResolvedValueOnce(
-          aggregate(JSON.stringify([{ ...comment, content: newContent }]), 'v2'),
-        ),
-      update: vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')),
-    };
-    const hook = mountQueue({ items });
-    act(() => {
-      hook.result.current?.enqueue({
-        type: 'EDIT_COMMENT',
-        id: comment.id,
-        expectedContent: comment.content,
-        newContent,
-      });
-    });
-    await settle();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    await settle();
-
-    expect(items.find).toHaveBeenCalledTimes(2);
-    expect(items.update).toHaveBeenCalledTimes(1);
-    expect(hook.ctx.alert).not.toHaveBeenCalled();
-    expect(hook.result.current?.pendingCount).toBe(0);
-    hook.unmount();
-  });
-
   it('preserves newer votes when comment content still matches the editor baseline', async () => {
     const items = {
       find: vi.fn().mockResolvedValue(
@@ -354,75 +302,6 @@ describe('comment persistence integrity', () => {
       upvoterIds: ['other-user'],
     });
     expect(hook.ctx.alert).not.toHaveBeenCalled();
-    hook.unmount();
-  });
-
-  it('reuses its creation ID across ambiguous create retries', async () => {
-    vi.useFakeTimers();
-    const items = {
-      list: vi.fn().mockResolvedValue([]),
-      create: vi
-        .fn()
-        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-        .mockResolvedValueOnce({ id: 'aggregate' }),
-    };
-    const hook = mountQueue({ items }, null);
-    enqueue(hook);
-    await settle();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    await settle();
-    expect(items.create).toHaveBeenCalledTimes(2);
-    expect(items.create.mock.calls[0][0].id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(items.create.mock.calls[1][0].id).toBe(
-      items.create.mock.calls[0][0].id,
-    );
-    hook.unmount();
-  });
-
-  it('respects rate-limit delay before retrying', async () => {
-    vi.useFakeTimers();
-    const items = {
-      find: vi
-        .fn()
-        .mockRejectedValueOnce(apiFailure(429, { 'Retry-After': '2' }))
-        .mockResolvedValueOnce(aggregate()),
-      update: vi.fn(),
-    };
-    const hook = mountQueue({ items });
-    enqueue(hook);
-    await settle();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1999);
-    });
-    expect(items.find).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    await settle();
-    expect(items.find).toHaveBeenCalledTimes(2);
-    expect(hook.ctx.alert).not.toHaveBeenCalled();
-    hook.unmount();
-  });
-
-  it('ends the operation budget without another request when Retry-After exceeds it', async () => {
-    vi.useFakeTimers();
-    const items = {
-      find: vi
-        .fn()
-        .mockRejectedValue(apiFailure(429, { 'Retry-After': '300' })),
-      update: vi.fn(),
-    };
-    const hook = mountQueue({ items });
-    enqueue(hook);
-    await settle();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
-    });
-    await settle();
-    expect(items.find).toHaveBeenCalledTimes(1);
-    expect(hook.result.current?.retryState.terminationReason).toBe('timeout');
     hook.unmount();
   });
 

@@ -758,7 +758,6 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         ctx.currentUserAccessToken,
         ctx.environment,
         ctx.cmaBaseUrl,
-        collectionController.signal,
       );
       const allRecordIds = await collectRecordIds(client, selectedModelIds, {
         onProgress: setCollectionProgress,

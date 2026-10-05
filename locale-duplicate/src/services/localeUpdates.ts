@@ -3,7 +3,7 @@ import { cloneFieldValue } from '../utils/fieldUtils';
 
 export type FieldSchema = Pick<Field, 'api_key' | 'field_type' | 'localized'>;
 export type LoadFields = (modelId: string) => Promise<FieldSchema[]>;
-type BlockIdentity = 'new' | 'keep' | 'omit';
+type BlockIdentity = 'new' | 'omit';
 const BLOCK_FIELDS = new Set(['rich_text', 'single_block', 'structured_text']);
 
 function hasOwn(value: object, key: string): boolean {
@@ -82,9 +82,7 @@ async function cloneBlock(
     );
   }
   return {
-    ...(identity === 'omit'
-      ? {}
-      : { id: identity === 'new' ? newBlockId() : block.id }),
+    ...(identity === 'new' ? { id: newBlockId() } : {}),
     type: 'item',
     attributes: result,
     relationships: { item_type: { data: { type: 'item_type', id: model.id } } },
@@ -231,31 +229,4 @@ export async function buildLocaleUpdates(
     updates[field.api_key] = { ...original, [targetLocale]: clone };
   }
   return updates;
-}
-
-/** Match exact newly assigned block IDs, while omitting only schema-defined block transport metadata. */
-export async function containsUpdates(
-  current: Item,
-  updates: Record<string, unknown>,
-  fields: FieldSchema[],
-  loadFields: LoadFields,
-): Promise<boolean> {
-  for (const field of fields) {
-    if (!hasOwn(updates, field.api_key)) continue;
-    // biome-ignore lint/performance/noAwaitInLoops: This independent read-back only runs after an uncertain write.
-    const actual = await cloneLocalizedValue(
-      current[field.api_key],
-      field.field_type,
-      loadFields,
-      'keep',
-    );
-    const expected = await cloneLocalizedValue(
-      updates[field.api_key],
-      field.field_type,
-      loadFields,
-      'keep',
-    );
-    if (!valuesEqual(actual, expected)) return false;
-  }
-  return true;
 }

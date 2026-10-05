@@ -11,14 +11,12 @@ describe('serialized workflow boundaries', () => {
       resolveExecutionError(new Error('Authorization: Bearer secret-token')),
     ).toBe('The creator change could not be completed. Request failed.');
   });
-  it.each([
-    'user',
-    'sso_user',
-    'account',
-    'organization',
-  ])('accepts creator type %s', (userType) => {
-    expect(isCreatorSelection({ userId: 'opaque-id', userType })).toBe(true);
-  });
+  it.each(['user', 'sso_user', 'account', 'organization'])(
+    'accepts creator type %s',
+    (userType) => {
+      expect(isCreatorSelection({ userId: 'opaque-id', userType })).toBe(true);
+    },
+  );
 
   it.each([
     null,
@@ -35,8 +33,7 @@ describe('serialized workflow boundaries', () => {
     total: 5,
     succeeded: 1,
     failed: 1,
-    uncertain: 1,
-    unprocessed: 2,
+    unprocessed: 3,
     failureSamples: [{ id: 'a', error: 'Denied' }],
     stopped: true,
   };

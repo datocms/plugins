@@ -159,49 +159,6 @@ describe('CheckQueue', () => {
     expect(check).toHaveBeenCalledTimes(2);
   });
 
-  it('schedules a skewed large backlog without rescanning pending URLs and yields to the event loop', async () => {
-    vi.useFakeTimers();
-    const total = 4_096;
-    let hostnameReads = 0;
-    let checks = 0;
-    const completed = new Set<string>();
-    const queue = new CheckQueue({
-      signal: new AbortController().signal,
-      check: async (prepared) => {
-        checks += 1;
-        return reachable(prepared);
-      },
-      onResult: (result) => {
-        if (result.status === 'reachable') completed.add(result.key);
-      },
-    });
-    for (let index = 0; index < total; index += 1) {
-      const hostname =
-        index % 10 === 0 ? `other-${index}.example` : 'busy.example';
-      const prepared = prepareUrl(`https://${hostname}/${index}`);
-      Object.defineProperty(prepared, 'hostname', {
-        get: () => {
-          hostnameReads += 1;
-          return hostname;
-        },
-      });
-      queue.enqueue(prepared);
-      queue.enqueue(prepared);
-    }
-    const drained = queue.drain();
-    await flush(3_000);
-    expect(checks).toBe(256);
-    expect(completed.size).toBe(256);
-    expect(hostnameReads).toBe(total);
-    expect(vi.getTimerCount()).toBe(1);
-    await vi.runAllTimersAsync();
-    await drained;
-    expect(completed.size).toBe(total);
-    expect(checks).toBe(total);
-    expect(hostnameReads).toBe(total);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   it('automatically releases discovery backpressure as checks complete', async () => {
     const finishes: (() => void)[] = [];
     const queue = new CheckQueue({

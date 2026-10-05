@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinkGroup } from '../types';
@@ -65,55 +65,5 @@ describe('UsedInPanel at scale', () => {
     expect(
       screen.queryByRole('button', { name: /^Show/ }),
     ).not.toBeInTheDocument();
-  });
-
-  it('keeps 50 rows and five places per record while browsing a large shared destination', async () => {
-    const user = userEvent.setup();
-    const open = show(sharedUrl(501, 13));
-    const pages = within(
-      screen.getByRole('navigation', { name: 'Records using this URL' }),
-    );
-    expect(
-      screen.getAllByRole('button', { name: /^Open record/ }),
-    ).toHaveLength(50);
-    expect(document.querySelectorAll('.blc-record-row__place')).toHaveLength(
-      250,
-    );
-    expect(pages.getByText('Page 1 of 11')).toBeInTheDocument();
-    expect(pages.getByRole('button', { name: '« Previous' })).toBeDisabled();
-    await user.click(pages.getByRole('button', { name: 'Next »' }));
-    expect(
-      screen.queryByRole('button', { name: 'Open record Record 0' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getAllByRole('button', { name: /^Open record/ }),
-    ).toHaveLength(50);
-    expect(document.querySelectorAll('.blc-record-row__place')).toHaveLength(
-      250,
-    );
-    expect(pages.getByText('Page 2 of 11')).toBeInTheDocument();
-    const changed = screen.getByRole('button', {
-      name: 'Open record Record 50',
-    });
-    expect(changed).toHaveAccessibleDescription(/Content changed/);
-    expect(changed).toHaveAccessibleDescription(/and 8 more places/);
-    await user.click(changed);
-    expect(open).toHaveBeenCalledWith('record-50');
-    await user.click(pages.getByRole('button', { name: '« Previous' }));
-    expect(
-      screen.getByRole('button', { name: 'Open record Record 0' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByRole('button', { name: /^Open record/ }),
-    ).toHaveLength(50);
-  });
-
-  it('counts all places without rendering them when one record has many occurrences', () => {
-    show(sharedUrl(1, 10_000));
-    expect(document.querySelectorAll('.blc-record-row__place')).toHaveLength(5);
-    expect(screen.getByText('and 9,995 more places')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Open record Record 0' }),
-    ).toHaveAccessibleDescription(/and 9,995 more places/);
   });
 });

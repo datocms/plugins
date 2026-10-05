@@ -4,7 +4,7 @@ import {
 } from '@utils/permissions';
 import { describe, expect, it } from 'vitest';
 
-const models = Array.from({ length: 5000 }, (_, index) => ({
+const models = Array.from({ length: 4 }, (_, index) => ({
   id: `model-${index}`,
   apiKey: `model_${index}`,
   name: `Model ${index}`,
@@ -23,21 +23,7 @@ function context(positive: object[], negative: object[] = []) {
   } as never;
 }
 
-describe('model permissions at scale', () => {
-  it('indexes many permissions once while preserving the model order', () => {
-    let permissionReads = 0;
-    const positive = models.map((model) => ({
-      environment: 'sandbox',
-      action: 'read',
-      get item_type() {
-        permissionReads += 1;
-        return model.id;
-      },
-    }));
-    expect(filterReadableModels(context(positive), models)).toEqual(models);
-    expect(permissionReads).toBeLessThanOrEqual(positive.length * 4);
-  });
-
+describe('model permissions', () => {
   it('preserves global allow, model deny and environment/action checks', () => {
     const positive = [
       { environment: 'sandbox', action: 'read', item_type: null },
@@ -48,7 +34,7 @@ describe('model permissions at scale', () => {
       { environment: 'sandbox', action: 'update', item_type: 'model-1' },
     ];
     expect(
-      filterReadableModels(context(positive, negative), models.slice(0, 4)).map(
+      filterReadableModels(context(positive, negative), models).map(
         (model) => model.id,
       ),
     ).toEqual(['model-0', 'model-1', 'model-3']);

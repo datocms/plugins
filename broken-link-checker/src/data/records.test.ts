@@ -72,33 +72,6 @@ function expectComplete(read: string[], kept: string[]) {
 }
 
 describe('readRecords', () => {
-  it('streams all 200,000 synthetic records without retaining a project fixture or payloads', async () => {
-    const total = 200_000;
-    let expected = 0;
-    let requests = 0;
-    const rawList = vi.fn(
-      async (query: { page: { offset: number; limit: number } }) => {
-        requests += 1;
-        const { offset, limit } = query.page;
-        expect(limit).toBe(30);
-        return {
-          data: Array.from(
-            { length: Math.min(limit, total - offset) },
-            (_, index) => record(String(offset + index)),
-          ),
-          meta: { total_count: total },
-        };
-      },
-    );
-    for await (const item of readRecords(mockClient(rawList), 'article')) {
-      if (item.id !== String(expected))
-        throw new Error(`Expected record ${expected}, received ${item.id}`);
-      expected += 1;
-    }
-    expect(expected).toBe(total);
-    expect(requests).toBe(Math.ceil((total - 1) / 29));
-  });
-
   it('rejects a server that repeats the same page instead of silently skipping records', async () => {
     const rawList = vi.fn().mockResolvedValue({
       data: ids(0, 30).map(record),

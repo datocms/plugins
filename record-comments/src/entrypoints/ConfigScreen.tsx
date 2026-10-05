@@ -5,7 +5,6 @@ import {
   type MigrationProgress,
   type MigrationResults,
   type LegacyModel as ModelWithCommentLog,
-  retryMigrationRead,
   runLegacyMigration,
 } from '@utils/legacyMigration';
 import { hasUnrestrictedModelReadPermission } from '@utils/permissions';
@@ -85,32 +84,19 @@ async function deleteVerifiedLegacyField(
   model: ModelWithCommentLog,
   signal: AbortSignal,
 ) {
-  await retryMigrationRead(async () => {
-    const fields = await client.fields.list(model.modelId);
-    const field = fields.find((candidate) => candidate.id === model.fieldId);
-    // A lost DELETE response can leave the field already removed. The full
-    // source/destination verification happened before this helper was called.
-    if (!field) return;
-    if (
-      field.api_key !== 'comment_log' ||
-      field.localized !== (model.localized ?? false)
-    ) {
-      throw new Error(
-        `Legacy field changed in ${model.modelName}; cleanup stopped.`,
-      );
-    }
-    if (signal.aborted) throw new Error('Cleanup stopped.');
-    try {
-      await client.fields.destroy(model.fieldId);
-    } catch (error) {
-      const remaining = await retryMigrationRead(
-        () => client.fields.list(model.modelId),
-        signal,
-      );
-      if (remaining.some((candidate) => candidate.id === model.fieldId))
-        throw error;
-    }
-  }, signal);
+  const fields = await client.fields.list(model.modelId);
+  const field = fields.find((candidate) => candidate.id === model.fieldId);
+  if (!field) return;
+  if (
+    field.api_key !== 'comment_log' ||
+    field.localized !== (model.localized ?? false)
+  ) {
+    throw new Error(
+      `Legacy field changed in ${model.modelName}; cleanup stopped.`,
+    );
+  }
+  if (signal.aborted) throw new Error('Cleanup stopped.');
+  await client.fields.destroy(model.fieldId);
 }
 
 const ConfigScreen = ({ ctx }: PropTypes) => {
@@ -258,7 +244,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       ctx.currentUserAccessToken,
       ctx.environment,
       ctx.cmaBaseUrl,
-      { autoRetry: false, requestTimeout: 30000 },
     );
   }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
@@ -282,10 +267,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       });
 
       try {
-        const fields = await retryMigrationRead(
-          () => ctx.loadItemTypeFields(model.id),
-          operationController.current?.signal ?? new AbortController().signal,
-        );
+        const fields = await ctx.loadItemTypeFields(model.id);
         const commentLogField = fields.find(
           (f) => f.attributes.api_key === 'comment_log',
         );
@@ -458,8 +440,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       operationController.current?.abort();
       operationController.current = controller;
       const [regularUsers, ssoUsers] = await Promise.all([
-        retryMigrationRead(() => ctx.loadUsers(), controller.signal),
-        retryMigrationRead(() => ctx.loadSsoUsers(), controller.signal),
+        ctx.loadUsers(),
+        ctx.loadSsoUsers(),
       ]);
       const users = [
         currentUserToUserInfo(ctx.currentUser),

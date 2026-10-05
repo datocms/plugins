@@ -191,7 +191,6 @@ describe('useOperationQueue', () => {
     });
     expect(client.items.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/),
         item_type: { type: 'item_type', id: 'comments-model' },
         model_id: 'model-1',
         record_id: 'record-1',

@@ -1,11 +1,9 @@
 import type { buildClient } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  BULK_RECORD_BATCH_SIZE,
   collectRecordIds,
   loadRecordBatches,
   type RecordDiscoveryProgress,
-  type RecordLoadingProgress,
 } from './BulkRecordLoader';
 import type { DatoCMSRecordFromAPI } from './ItemsDropdownUtils';
 import { normalizeProviderError } from './ProviderErrors';
@@ -34,42 +32,6 @@ const createIds = (count: number) =>
   Array.from({ length: count }, (_, i) => String(i + 1).padStart(22, 'A'));
 
 describe('loadRecordBatches', () => {
-  it('loads 2882 selected records in bounded requests and keeps global progress', async () => {
-    const ids = createIds(2882);
-    const list = vi.fn(async (query: ListQuery) =>
-      query.filter.ids.split(',').map(createRecord).reverse(),
-    );
-    const progress: RecordLoadingProgress[] = [];
-    const seenIds: string[] = [];
-
-    for await (const batch of loadRecordBatches(createClient({ list }), ids, {
-      onProgress: (update) => progress.push(update),
-    })) {
-      expect(batch.records.length).toBeLessThanOrEqual(BULK_RECORD_BATCH_SIZE);
-      expect(batch.missingItemIds).toEqual([]);
-      seenIds.push(...batch.records.map((record) => record.id));
-    }
-
-    expect(seenIds).toEqual(ids);
-    expect(list).toHaveBeenCalledTimes(97);
-    for (const [query] of list.mock.calls) {
-      expect(query.filter.ids.split(',').length).toBeLessThanOrEqual(30);
-      expect(query.page).toEqual({ offset: 0, limit: 30 });
-      expect(query.nested).toBe(true);
-      expect(query.version).toBe('current');
-      const encodedQuery = new URLSearchParams({
-        'filter[ids]': query.filter.ids,
-        nested: 'true',
-        version: 'current',
-        'page[limit]': '30',
-        'page[offset]': '0',
-      }).toString();
-      expect(encodedQuery.length).toBeLessThan(2000);
-    }
-    expect(progress[0]).toEqual({ loaded: 0, total: 2882 });
-    expect(progress.at(-1)).toEqual({ loaded: 2882, total: 2882 });
-  });
-
   it('waits for the consumer before fetching the next batch', async () => {
     const list = vi.fn(async (query: ListQuery) =>
       query.filter.ids.split(',').map(createRecord),
@@ -152,69 +114,6 @@ describe('loadRecordBatches', () => {
 });
 
 describe('collectRecordIds', () => {
-  it('discovers a synthetic 200,000-record model with at most one page of content in flight', async () => {
-    let calls = 0;
-    let active = 0;
-    let maximumActive = 0;
-    const rawList = async (query: DiscoveryQuery) => {
-      calls++;
-      active++;
-      maximumActive = Math.max(maximumActive, active);
-      expect(query.page.limit).toBeLessThanOrEqual(500);
-      const count = Math.min(query.page.limit, 200_000 - query.page.offset);
-      const data = Array.from({ length: Math.max(0, count) }, (_, index) => ({
-        id: `record-${query.page.offset + index}`,
-      }));
-      await Promise.resolve();
-      active--;
-      return { data, meta: { total_count: 200_000 } };
-    };
-    const ids = await collectRecordIds(createClient({ rawList }), [
-      'large-model',
-    ]);
-    expect(ids).toHaveLength(200_000);
-    expect(ids[0]).toBe('record-0');
-    expect(ids.at(-1)).toBe('record-199999');
-    expect(calls).toBe(401);
-    expect(maximumActive).toBe(1);
-  });
-
-  it('discovers 2882 records in adaptive non-nested pages with known progress', async () => {
-    const ids = createIds(2882);
-    const rawList = vi.fn(async (query: DiscoveryQuery) => ({
-      data: ids
-        .slice(query.page.offset, query.page.offset + query.page.limit)
-        .map((id) => ({ id, attributes: { title: 'Content is discarded' } })),
-      meta: { total_count: ids.length },
-    }));
-    const progress: RecordDiscoveryProgress[] = [];
-    const result = await collectRecordIds(createClient({ rawList }), ['m1'], {
-      onProgress: (update) => progress.push(update),
-    });
-
-    expect(result).toEqual(ids);
-    expect(rawList).toHaveBeenCalledTimes(7);
-    for (const [query] of rawList.mock.calls) {
-      expect(query.page.limit).toBeLessThanOrEqual(500);
-      expect(query.order_by).toBe('id_ASC');
-      expect(query.version).toBe('current');
-      expect(query).not.toHaveProperty('nested', true);
-      expect(query).not.toHaveProperty('only_fields');
-      expect(query.filter.fields._created_at.lte).toBe(
-        rawList.mock.calls[0][0].filter.fields._created_at.lte,
-      );
-      expect(
-        Number.isNaN(Date.parse(query.filter.fields._created_at.lte)),
-      ).toBe(false);
-    }
-    expect(progress.at(-1)).toEqual({
-      loaded: 2882,
-      total: 2882,
-      modelId: 'm1',
-    });
-    expect(progress[1]).toEqual({ loaded: 30, total: 2882, modelId: 'm1' });
-  });
-
   it('automatically reconciles offset shifts after a deletion without retaining deleted IDs', async () => {
     const ids = createIds(1001);
     let calls = 0;

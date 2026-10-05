@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -6,9 +7,7 @@ import type {
   LambdaBackupStatus,
 } from '../types/types';
 import {
-  type BackupEnvironment,
   enrichBackupStatusWithEnvironments,
-  getBackupEnvironmentProgress,
   getCreatingBackupCadences,
 } from '../utils/backupEnvironments';
 import {
@@ -18,11 +17,9 @@ import {
 import {
   BACKUP_CADENCES,
   BACKUP_SCHEDULE_VERSION,
-  getCadenceLabel,
   normalizeBackupScheduleConfig,
   toLocalDateKey,
 } from '../utils/backupSchedule';
-import { readCma } from '../utils/cmaRead';
 import { createDebugLogger } from '../utils/debugLogger';
 import { fetchLambdaBackupStatus } from '../utils/fetchLambdaBackupStatus';
 import {
@@ -154,13 +151,11 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   >(undefined);
   const [overviewError, setOverviewError] = useState('');
   const [isLoadingOverview, setIsLoadingOverview] = useState(false);
-  const [hasUncertainBackup, setHasUncertainBackup] = useState(false);
 
   // Imperative locks take effect before React's next render, preventing double
   // clicks and overlapping connect/save/manual actions from dispatching twice.
   const actionInFlightRef = useRef(false);
   const backupRunRef = useRef<AbortController | null>(null);
-  const uncertainBackupRef = useRef(false);
   const overviewRequestRef = useRef<AbortController | null>(null);
   const latestCtxRef = useRef(ctx);
   latestCtxRef.current = ctx;
@@ -206,14 +201,11 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         if (!pluginId || !currentCtx.currentUserAccessToken) {
           return undefined;
         }
-        const plugin = await readCma(
-          {
-            apiToken: currentCtx.currentUserAccessToken,
-            environment: currentCtx.environment,
-            baseUrl: currentCtx.cmaBaseUrl,
-          },
-          (client) => client.plugins.find(pluginId),
-        );
+        const plugin = await buildClient({
+          apiToken: currentCtx.currentUserAccessToken,
+          environment: currentCtx.environment,
+          baseUrl: currentCtx.cmaBaseUrl,
+        }).plugins.find(pluginId);
         return toPluginParameterRecord(plugin.parameters);
       },
       write: (parameters) =>
@@ -224,22 +216,18 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   // actually saved. A failed authoritative read blocks the write.
   const persistPluginParameters = persistRef.current;
 
-  const fetchBackupEnvironments = useCallback(async (signal?: AbortSignal) => {
+  const fetchBackupEnvironments = useCallback(async () => {
     const currentCtx = latestCtxRef.current;
     if (!currentCtx.currentUserAccessToken) {
       throw new Error(
         'Environment read access is required to verify backup completion.',
       );
     }
-    return readCma(
-      {
-        apiToken: currentCtx.currentUserAccessToken,
-        environment: currentCtx.environment,
-        baseUrl: currentCtx.cmaBaseUrl,
-        signal,
-      },
-      (client) => client.environments.list(),
-    );
+    return buildClient({
+      apiToken: currentCtx.currentUserAccessToken,
+      environment: currentCtx.environment,
+      baseUrl: currentCtx.cmaBaseUrl,
+    }).environments.list();
   }, []);
 
   const readVerifiedBackupStatus = useCallback(
@@ -250,8 +238,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         lambdaAuthSecret: secret,
         signal,
       });
-      const environments: BackupEnvironment[] =
-        await fetchBackupEnvironments(signal);
+      const environments = await fetchBackupEnvironments();
       if (signal?.aborted) {
         throw new DOMException('Backup observation aborted.', 'AbortError');
       }
@@ -260,28 +247,11 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         .map((environment) => environment.id);
       // Reconcile snapshots: cron may start a fork after the service read but
       // before the CMA read. Creation timestamps still require readiness.
-      const verifiedStatus = enrichBackupStatusWithEnvironments(
-        status,
-        environments,
-      );
-      if (backupRunRef.current) {
-        const creating = getCreatingBackupCadences(environments);
-        if (creating.length > 0) {
-          setProgressMessage(
-            creating
-              .map((cadence) => {
-                const percentage = getBackupEnvironmentProgress(
-                  cadence,
-                  environments,
-                );
-                return `Cloning ${getCadenceLabel(cadence).toLowerCase()} backup${percentage === undefined ? '…' : `: ${percentage}%`}`;
-              })
-              .join(' | '),
-          );
-        }
-      }
       setAvailableEnvironmentIds(readyIds);
-      return verifiedStatus;
+      return {
+        status: enrichBackupStatusWithEnvironments(status, environments),
+        creating: getCreatingBackupCadences(environments),
+      };
     },
     [fetchBackupEnvironments],
   );
@@ -307,7 +277,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
       setIsLoadingOverview(true);
       try {
-        const status = await readVerifiedBackupStatus(
+        const { status } = await readVerifiedBackupStatus(
           candidateUrl,
           secret,
           controller.signal,
@@ -332,8 +302,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       baseUrl: string,
       lambdaAuthSecret: string,
     ) => {
-      uncertainBackupRef.current = outcome.uncertain;
-      setHasUncertainBackup(outcome.uncertain);
       if (outcome.completed.length > 0) {
         const plural = outcome.completed.length > 1 ? 's' : '';
         latestCtxRef.current.notice(
@@ -361,7 +329,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       cadences: BackupCadence[];
       onlyMissing: boolean;
     }) => {
-      if (backupRunRef.current || uncertainBackupRef.current) {
+      if (backupRunRef.current) {
         return;
       }
       const controller = new AbortController();
@@ -376,16 +344,12 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         const outcome = await executeBackupCadences({
           cadences,
           onlyMissing,
-          continuousObservation: true,
-          signal: controller.signal,
           readStatus: () =>
             readVerifiedBackupStatus(
               baseUrl,
               lambdaAuthSecret,
               controller.signal,
             ),
-          confirmCompletion: async (cadence, status) =>
-            Boolean(status.slots[cadence]?.lastManagedEnvironmentId),
           trigger: (scope) =>
             triggerLambdaBackupNow({
               baseUrl,
@@ -396,7 +360,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
             }),
           onCadence: setBackupNowInFlightCadence,
           onProgress: setProgressMessage,
-          onStatus: setLambdaBackupStatus,
         });
         if (controller.signal.aborted) {
           return;
@@ -993,11 +956,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   );
 
   const saveSchedule = useCallback(async () => {
-    if (
-      actionInFlightRef.current ||
-      backupRunRef.current ||
-      uncertainBackupRef.current
-    ) {
+    if (actionInFlightRef.current || backupRunRef.current) {
       return false;
     }
     const normalized = BACKUP_CADENCES.filter((cadence) =>
@@ -1064,11 +1023,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
   const backupNow = useCallback(
     async (scope: BackupCadence) => {
-      if (
-        actionInFlightRef.current ||
-        backupRunRef.current ||
-        uncertainBackupRef.current
-      ) {
+      if (actionInFlightRef.current || backupRunRef.current) {
         return;
       }
       const currentParams = latestCtxRef.current.plugin.attributes
@@ -1116,8 +1071,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     !isDisconnecting &&
     !isSavingSecret &&
     !isSavingDeployment &&
-    !isSavingSchedule &&
-    !hasUncertainBackup;
+    !isSavingSchedule;
 
   const isBusy =
     isSavingSecret ||
@@ -1183,7 +1137,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     isLoadingOverview,
     canBackupNow,
     isBusy,
-    hasUncertainBackup,
   };
 };
 

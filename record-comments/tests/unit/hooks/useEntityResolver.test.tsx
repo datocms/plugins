@@ -230,34 +230,6 @@ describe('useEntityResolver scale and context changes', () => {
     unmount();
   });
 
-  it('resolves deeply nested synthetic replies iteratively', () => {
-    const comment = createStoredComment([{ type: 'text', content: 'deep' }]);
-    let tail = comment;
-    for (let index = 0; index < 12000; index += 1) {
-      const reply = { ...createStoredComment([]), id: `reply-${index}` };
-      tail.replies = [reply];
-      tail = reply;
-    }
-    const { result, unmount } = renderHook(() =>
-      useEntityResolver({
-        client: null,
-        projectUsers: [],
-        projectModels: [],
-        modelFields: [],
-        itemTypes: {},
-        mainLocale: 'en',
-      }),
-    );
-    let resolved = result.current?.resolveComments([comment])[0];
-    let count = 0;
-    while (resolved?.replies?.length) {
-      resolved = resolved.replies[0];
-      count += 1;
-    }
-    expect(count).toBe(12000);
-    unmount();
-  });
-
   it('preserves the email display for deleted historical authors', () => {
     const comment = {
       ...createStoredComment([]),

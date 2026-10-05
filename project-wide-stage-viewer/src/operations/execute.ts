@@ -33,40 +33,7 @@ async function executeBatch(
   }
 }
 
-function responseStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null || !('response' in error)) {
-    return undefined;
-  }
-  const response = error.response;
-  return typeof response === 'object' &&
-    response !== null &&
-    'status' in response &&
-    typeof response.status === 'number'
-    ? response.status
-    : undefined;
-}
-
-type BatchOutcome = {
-  successful: number;
-  failed: number;
-  uncertain: number;
-  stop: boolean;
-  error?: string;
-};
-
-function validCounts(
-  successful: number,
-  failed: number,
-  count: number,
-): boolean {
-  return (
-    Number.isInteger(successful) &&
-    Number.isInteger(failed) &&
-    successful >= 0 &&
-    failed >= 0 &&
-    successful + failed === count
-  );
-}
+type BatchOutcome = { successful: number; failed: number; error?: string };
 
 async function runBatch(
   client: BulkClient,
@@ -75,39 +42,17 @@ async function runBatch(
 ): Promise<BatchOutcome> {
   try {
     const job = await executeBatch(client, request, batch);
-    const counts = normalizeBulkOperationResult(
+    const { successful, failed } = normalizeBulkOperationResult(
       request.operation,
       batch.length,
       job,
     );
-    if (!validCounts(counts.successful, counts.failed, batch.length)) {
-      throw new Error('The API returned inconsistent bulk result counts.');
-    }
-    return {
-      successful: counts.successful,
-      failed: counts.failed,
-      uncertain: 0,
-      stop: false,
-    };
+    return { successful, failed };
   } catch (error) {
-    const status = responseStatus(error);
-    const detail =
-      error instanceof Error ? error.message : 'The request failed.';
-    if (status !== undefined && status >= 400 && status < 500) {
-      return {
-        successful: 0,
-        failed: batch.length,
-        uncertain: 0,
-        stop: [401, 403, 429].includes(status),
-        error: detail,
-      };
-    }
     return {
       successful: 0,
-      failed: 0,
-      uncertain: batch.length,
-      stop: true,
-      error: detail,
+      failed: batch.length,
+      error: error instanceof Error ? error.message : 'The request failed.',
     };
   }
 }
@@ -151,8 +96,7 @@ export function buildBatches(
 
 /**
  * Await each job before submitting the next batch. Cancellation stops future
- * submissions and lets an accepted job finish. An ambiguous outcome is never
- * retried: doing so could delete or publish a newer version of a record.
+ * submissions and lets an accepted job finish. A failed request stops the run.
  */
 export async function executeBulkOperation(
   client: BulkClient,
@@ -187,18 +131,19 @@ export async function executeBulkOperation(
     const outcome = await runBatch(client, request, batch);
     result.successful += outcome.successful;
     result.failed += outcome.failed;
-    completed += outcome.successful + outcome.failed;
-    result.error = result.error ?? outcome.error;
-    result.uncertain = outcome.uncertain;
+    completed += batch.length;
     // The API guarantees counts rather than a per-record success map. Retain
     // a partially failed batch instead of guessing which IDs succeeded.
     if (outcome.successful === batch.length) {
       for (const id of batch) remaining.delete(id);
     }
     report();
-    if (outcome.stop) break;
+    if (outcome.error) {
+      result.error = outcome.error;
+      break;
+    }
   }
-  result.unprocessed = itemIds.length - completed - (result.uncertain ?? 0);
+  result.unprocessed = itemIds.length - completed;
   result.remainingItemIds = [...remaining];
   return result;
 }

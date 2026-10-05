@@ -90,7 +90,7 @@ export function reportBulkResult(
   result: BulkOperationResult,
 ): void {
   const message = bulkResultMessage(result);
-  if (result.failed > 0 || result.uncertain || result.unprocessed) {
+  if (result.failed > 0 || result.unprocessed) {
     void ctx.alert(message);
   } else {
     void ctx.notice(message);

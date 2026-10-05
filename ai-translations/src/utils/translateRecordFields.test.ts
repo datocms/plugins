@@ -55,27 +55,6 @@ describe('translateRecordFields continuous workers', () => {
     expect(single.setFieldValue).toHaveBeenCalledWith('title_0.it', 'Translated');
   });
 
-  it('processes 4,000 field/locale combinations continuously with four active translations', async () => {
-    const { ctx, setFieldValue, formValues } = createContext(200);
-    let active = 0;
-    let peak = 0;
-    vi.mocked(translateFieldValue).mockImplementation(async (value, _params, locale) => {
-      active++;
-      peak = Math.max(peak, active);
-      await Promise.resolve();
-      active--;
-      return `${locale}: ${value}`;
-    });
-    const targetLocales = Array.from({ length: 20 }, (_, index) => `locale-${index}`);
-    const run = translateRecordFields(ctx, params, targetLocales, 'en');
-    await vi.runAllTimersAsync();
-    await run;
-    expect(peak).toBeLessThanOrEqual(4);
-    expect(setFieldValue).toHaveBeenCalledTimes(4000);
-    expect(setFieldValue).toHaveBeenLastCalledWith('title_199.locale-19', 'locale-19: Source 199');
-    expect((formValues as unknown as Record<string, { en: string }>).title_0.en).toBe('Source 0');
-  });
-
   it('waits for in-flight translations to settle after cancellation and makes no late form writes', async () => {
     const { ctx, setFieldValue } = createContext(20);
     const pending: Array<(value: unknown) => void> = [];

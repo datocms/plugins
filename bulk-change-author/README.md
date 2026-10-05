@@ -12,9 +12,7 @@ Only the creator changes. The records aren't published and their content isn't t
 
 ## Large selections
 
-Records are updated one at a time, at about 10 per second, so very large selections take a while (around five and a half hours for 200,000 records). For 500 records or more the dialog shows progress and a **Stop** button. Keep the browser window open until it finishes.
-
-If the plugin loses the response for an update and can't confirm whether it went through, it stops and reports those records as uncertain. Check their creators before running the action again on them.
+Very large selections take a while. For 500 records or more the dialog shows progress and a **Stop** button. Keep the browser window open until it finishes.
 
 ## Development
 

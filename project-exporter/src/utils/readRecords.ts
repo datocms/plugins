@@ -1,9 +1,6 @@
-import type { createExportClient } from './exportRuntime';
+import type { Client } from '@datocms/cma-client-browser';
 
-export type RecordReadClient = Pick<
-  ReturnType<typeof createExportClient>,
-  'request'
->;
+export type RecordReadClient = Pick<Client, 'request'>;
 export type ExportRecord = Record<string, unknown> & { id: string };
 
 function isObject(value: unknown): value is Record<string, unknown> {

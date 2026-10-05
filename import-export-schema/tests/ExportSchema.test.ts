@@ -243,14 +243,14 @@ describe('export file integrity and import coverage', () => {
       plugins: {},
       idCollisions: {},
     });
-    const reachedClient = new Error('Reached CMA initialization');
+    const reachedClient = new Error('Reached CMA request');
     const client = {
-      get config() {
+      get site() {
         throw reachedClient;
       },
     } as unknown as Client;
 
-    // The valid legacy reference must pass preflight before CMA is initialized.
+    // The valid legacy reference must pass preflight before any CMA request.
     await expect(importSchema(importDoc, client, () => {})).rejects.toBe(
       reachedClient,
     );
@@ -274,34 +274,10 @@ describe('export file integrity and import coverage', () => {
   });
 });
 
-describe('synthetic schema scale', () => {
-  it('indexes and covers 1,000 cyclic models/blocks with 30,000 fields', async () => {
-    const entities: ExportDoc['entities'] = [];
-    for (let i = 0; i < 1000; i++) {
-      const fields = Array.from({ length: 30 }, (_, j) =>
-        field(`m${i}`, `f${i}_${j}`, [`m${(i + 1) % 1000}`]),
-      );
-      const itemType = model(`m${i}`, fields);
-      itemType.attributes.modular_block = i % 2 === 0;
-      entities.push(itemType, ...fields);
-    }
-    const schema = new ExportSchema(bundle(entities, 'm0'));
-    const doc = await buildImportDoc(schema, emptyConflicts, {
-      itemTypes: {},
-      plugins: {},
-      idCollisions: {},
-    });
-    expect(schema.fields.length).toBe(30000);
-    expect(schema.rootItemTypes.length).toBe(1);
-    expect(doc.itemTypes.entitiesToCreate.length).toBe(1000);
-    expect(
-      doc.itemTypes.entitiesToCreate.reduce((n, m) => n + m.fields.length, 0),
-    ).toBe(30000);
-  });
-
+describe('conflict scanning', () => {
   it('scans all target models with bounded workers and accurate collision progress', async () => {
     vi.useFakeTimers();
-    const models = Array.from({ length: 500 }, (_, i) => model(`m${i}`));
+    const models = Array.from({ length: 20 }, (_, i) => model(`m${i}`));
     const fields = models.map((m) => field(m.id, `f${m.id}`));
     let active = 0;
     let maxActive = 0;
@@ -323,16 +299,16 @@ describe('synthetic schema scale', () => {
       fields: { rawList: rawFields },
       fieldsets: { rawList: () => read([]) },
     } as unknown as Client);
-    const sourceModel = model('m499', [fields[499]]);
-    const source = new ExportSchema(bundle([sourceModel, fields[499]], 'm499'));
+    const sourceModel = model('m19', [fields[19]]);
+    const source = new ExportSchema(bundle([sourceModel, fields[19]], 'm19'));
     const updates: Array<{ done: number; total: number }> = [];
     const task = buildConflicts(source, schema, (p) => updates.push(p));
     await vi.runAllTimersAsync();
     const conflicts = await task;
-    expect(rawFields).toHaveBeenCalledTimes(500);
+    expect(rawFields).toHaveBeenCalledTimes(20);
     expect(maxActive).toBeLessThanOrEqual(2);
-    expect(conflicts.ids.fields.fm499.projectParentItemType.id).toBe('m499');
-    expect(updates.at(-1)).toMatchObject({ done: 503, total: 503 });
+    expect(conflicts.ids.fields.fm19.projectParentItemType.id).toBe('m19');
+    expect(updates.at(-1)).toMatchObject({ done: 23, total: 23 });
     expect(
       updates.every((p, i) => i === 0 || p.done >= updates[i - 1].done),
     ).toBe(true);

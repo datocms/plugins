@@ -5,8 +5,8 @@ import type {
   ContentSchema,
   RecordInput,
 } from '../types';
-import { cancellableRead, throwIfAborted } from './cmaRequests';
-import { buildCmaClient, readCma, toRecordInput } from './records';
+import { cancellable, throwIfAborted } from './cancellation';
+import { buildCmaClient, toRecordInput } from './records';
 
 export type FormReadContext = Pick<
   RenderItemFormSidebarPanelCtx,
@@ -272,18 +272,15 @@ async function restoreSavedContainers(
   if (!missing.length || !ctx.item?.id || !ctx.currentUserAccessToken) return;
   try {
     throwIfAborted(signal);
-    const client = buildCmaClient(ctx, signal);
-    const saved = await readCma(
-      client,
-      () =>
-        client.items.rawFind(ctx.item?.id ?? '', {
-          nested: true,
-          version: 'current',
-        }),
+    const saved = await cancellable(
+      buildCmaClient(ctx).items.rawFind(ctx.item.id, {
+        nested: true,
+        version: 'current',
+      }),
       signal,
     );
     throwIfAborted(signal);
-    const savedForm = await cancellableRead(
+    const savedForm = await cancellable(
       ctx.itemToFormValues(saved.data),
       signal,
     );
@@ -318,7 +315,7 @@ export async function readFormRecord(
   throwIfAborted(signal);
   const model = schema.get(ctx.itemType.id);
   if (!model) throw new Error('The record model is unavailable.');
-  const converted = await cancellableRead(
+  const converted = await cancellable(
     ctx.formValuesToItem(ctx.formValues, false),
     signal,
   );

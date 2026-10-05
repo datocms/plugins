@@ -22,9 +22,6 @@
     "datocms-plugin-sdk": "^2.3.0",
     "datocms-react-ui": "^2.2.4",
     "exceljs": "^4.4.0",
-    "flat": "^6.0.1",
-    "json-2-csv": "^5.5.10",
-    "jsontoxml": "^1.0.1",
     "jszip": "^3.10.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
@@ -50,7 +47,6 @@
     ]
   },
   "devDependencies": {
-    "@types/jsontoxml": "^1.0.6",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

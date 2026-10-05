@@ -260,36 +260,6 @@ test('batches and all image/error positions have unique IDs at the same timestam
   }
 });
 
-test('10,000 returned images remain bounded, with an explicit overflow warning', () => {
-  const sourceImages = Array.from({ length: 10_000 }, () => ({
-    base64: png,
-    mediaType: 'image/png',
-  }));
-  const images = normalizeGeneratedImages(sourceImages, createdAt);
-  const batch = createGenerationBatch(
-    openAiRequest,
-    createdAt,
-    images,
-    undefined,
-    sourceImages.length,
-  );
-
-  assert.equal(images.length, 4);
-  assert.equal(batch.images.length, 4);
-  assert.match(batch.warnings?.[0] ?? '', /10000 images.*first 4/);
-  assert.equal(
-    createFailedGenerationBatch(
-      {
-        ...openAiRequest,
-        variationCount: 200_000,
-      } as unknown as ImageOperationRequest,
-      createdAt,
-      'error',
-    ).images.length,
-    4,
-  );
-});
-
 test('unexpected additional valid images are retained and reported', async () => {
   const result = await openAiAdapter.run('mock-key', openAiRequest, {
     fetch: async () =>

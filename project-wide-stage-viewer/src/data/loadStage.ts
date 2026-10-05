@@ -17,19 +17,12 @@ import {
   readFieldValue,
 } from '../lib/presentation';
 import { itemsPageTotal, loadItemsById } from './loadById';
-import { CmaRequestTimeoutError } from './requests';
 
 type ItemType = RawApiTypes.ItemType;
 type Field = RawApiTypes.Field;
 
 export type StageSource = {
   client: Client;
-  /**
-   * Reads stage pages that can still shrink. It fails a timed-out page at
-   * once so the loader retries it smaller, instead of repeating it at the
-   * same size. Everything else, and pages at the minimum size, use `client`.
-   */
-  pageClient?: Client;
   itemTypes: Partial<Record<string, ItemType>>;
   locales: readonly string[];
   /** The project's timezone, for date and date-time titles. */
@@ -116,8 +109,6 @@ export async function mapWithConcurrency<T, R>(
 
 /** Records per request: small enough to download well within the timeout. */
 export const STAGE_PAGE_SIZE = 200;
-/** After timeouts, pages shrink down to this size before the load gives up. */
-export const MIN_STAGE_PAGE_SIZE = 25;
 
 function fetchStagePage(
   source: StageSource,
@@ -125,11 +116,7 @@ function fetchStagePage(
   stageId: string,
   page: { offset: number; limit: number },
 ) {
-  const client =
-    page.limit > MIN_STAGE_PAGE_SIZE
-      ? (source.pageClient ?? source.client)
-      : source.client;
-  return client.items.rawList({
+  return source.client.items.rawList({
     filter: { type: itemTypeId, fields: { _stage: { eq: stageId } } },
     version: 'current',
     // A stable order keeps the pages consistent with each other.
@@ -150,29 +137,15 @@ async function loadModelRows(
   // the next page and come back twice.
   const rows = new Map<string, RecordRow>();
   let offset = 0;
-  let limit = STAGE_PAGE_SIZE;
   let total = Number.POSITIVE_INFINITY;
   // One page at a time, so an abort stops the download between pages.
   while (offset < total && !signal.aborted) {
-    let page: Awaited<ReturnType<typeof fetchStagePage>>;
-    try {
-      // biome-ignore lint/performance/noAwaitInLoops: pages load in order so an abort stops the rest
-      page = await fetchStagePage(source, itemType.id, stageId, {
-        offset,
-        limit,
-      });
-    } catch (error) {
-      // A page too heavy to download in time: try it again, smaller.
-      if (
-        error instanceof CmaRequestTimeoutError &&
-        limit > MIN_STAGE_PAGE_SIZE
-      ) {
-        limit = Math.max(MIN_STAGE_PAGE_SIZE, Math.floor(limit / 2));
-        continue;
-      }
-      throw error;
-    }
-    total = itemsPageTotal(page, offset, limit);
+    // biome-ignore lint/performance/noAwaitInLoops: pages load in order so an abort stops the rest
+    const page = await fetchStagePage(source, itemType.id, stageId, {
+      offset,
+      limit: STAGE_PAGE_SIZE,
+    });
+    total = itemsPageTotal(page, offset, STAGE_PAGE_SIZE);
     if (page.data.length === 0) break;
     offset += page.data.length;
     for (const item of page.data) {

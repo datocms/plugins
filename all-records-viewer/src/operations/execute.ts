@@ -49,24 +49,9 @@ function responseStatus(error: unknown): number | undefined {
 type BatchOutcome = {
   successful: number;
   failed: number;
-  uncertain: number;
   stop: boolean;
   error?: string;
 };
-
-function validCounts(
-  successful: number,
-  failed: number,
-  count: number,
-): boolean {
-  return (
-    Number.isInteger(successful) &&
-    Number.isInteger(failed) &&
-    successful >= 0 &&
-    failed >= 0 &&
-    successful + failed === count
-  );
-}
 
 async function runBatch(
   client: BulkClient,
@@ -80,34 +65,24 @@ async function runBatch(
       batch.length,
       job,
     );
-    if (!validCounts(counts.successful, counts.failed, batch.length)) {
-      throw new Error('The API returned inconsistent bulk result counts.');
-    }
     return {
       successful: counts.successful,
       failed: counts.failed,
-      uncertain: 0,
       stop: false,
     };
   } catch (error) {
     const status = responseStatus(error);
-    const detail =
-      error instanceof Error ? error.message : 'The request failed.';
-    if (status !== undefined && status >= 400 && status < 500) {
-      return {
-        successful: 0,
-        failed: batch.length,
-        uncertain: 0,
-        stop: [401, 403, 429].includes(status),
-        error: detail,
-      };
-    }
     return {
       successful: 0,
-      failed: 0,
-      uncertain: batch.length,
-      stop: true,
-      error: detail,
+      failed: batch.length,
+      // Rejected records (for example, already deleted) do not affect other
+      // batches. Any other failure stops the remaining submissions.
+      stop:
+        status === undefined ||
+        status < 400 ||
+        status >= 500 ||
+        [401, 403, 429].includes(status),
+      error: error instanceof Error ? error.message : 'The request failed.',
     };
   }
 }
@@ -126,8 +101,7 @@ function validateRequest(
 
 /**
  * Await each job before submitting the next batch. Cancellation stops future
- * submissions and lets an accepted job finish. An ambiguous outcome is never
- * retried: doing so could delete or publish a newer version of a record.
+ * submissions and lets an accepted job finish.
  */
 export async function executeBulkOperation(
   client: BulkClient,
@@ -165,7 +139,6 @@ export async function executeBulkOperation(
     result.failed += outcome.failed;
     completed += outcome.successful + outcome.failed;
     result.error = result.error ?? outcome.error;
-    result.uncertain = outcome.uncertain;
     // The API guarantees counts rather than a per-record success map. Retain
     // a partially failed batch instead of guessing which IDs succeeded.
     if (outcome.successful === batch.length) {
@@ -174,7 +147,7 @@ export async function executeBulkOperation(
     report();
     if (outcome.stop) break;
   }
-  result.unprocessed = itemIds.length - completed - (result.uncertain ?? 0);
+  result.unprocessed = itemIds.length - completed;
   result.remainingItemIds = [...remaining];
   return result;
 }

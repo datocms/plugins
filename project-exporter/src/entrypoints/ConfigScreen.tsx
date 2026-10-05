@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -13,7 +14,6 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import downloadAllAssets from '../utils/downloadAllAssets';
 import downloadAllRecords from '../utils/downloadAllRecords';
-import { createExportClient } from '../utils/exportRuntime';
 import LoadingOverlay from './LoadingOverlay';
 import s from './styles.module.css';
 
@@ -59,14 +59,11 @@ export default function ConfigScreen({ ctx }: Props) {
     }
 
     const controller = new AbortController();
-    const client = createExportClient(
-      {
-        apiToken: accessToken,
-        environment: ctx.environment,
-        baseUrl: ctx.cmaBaseUrl,
-      },
-      controller.signal,
-    );
+    const client = buildClient({
+      apiToken: accessToken,
+      environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
+    });
 
     client.itemTypes
       .list()

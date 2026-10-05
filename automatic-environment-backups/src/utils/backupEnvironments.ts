@@ -7,7 +7,6 @@ export type BackupEnvironment = {
     primary: boolean;
     status: 'creating' | 'ready' | 'destroying';
     created_at: string;
-    fork_completion_percentage?: number;
   };
 };
 
@@ -148,31 +147,3 @@ export const getCreatingBackupCadences = (
         environment.meta.status === 'creating',
     ),
   );
-
-/** Show the least complete active fork, without inventing unknown progress. */
-export const getBackupEnvironmentProgress = (
-  cadence: BackupCadence,
-  environments: readonly BackupEnvironment[],
-): number | undefined => {
-  let progress: number | undefined;
-  for (const environment of environments) {
-    if (
-      !isBackupEnvironment(environment, cadence) ||
-      environment.meta.status !== 'creating'
-    ) {
-      continue;
-    }
-
-    const percentage = environment.meta.fork_completion_percentage;
-    if (typeof percentage !== 'number' || !Number.isFinite(percentage)) {
-      return undefined;
-    }
-
-    const clampedPercentage = Math.max(0, Math.min(100, percentage));
-    progress =
-      progress === undefined
-        ? clampedPercentage
-        : Math.min(progress, clampedPercentage);
-  }
-  return progress;
-};

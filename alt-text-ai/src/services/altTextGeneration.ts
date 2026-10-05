@@ -1,7 +1,4 @@
-import {
-  buildClient,
-  type Client,
-} from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
   ExecuteUploadsDropdownActionCtx,
@@ -15,18 +12,17 @@ import {
   type PluginConfiguration,
   PROVIDER_LABELS,
 } from '../config';
-import { createAltTextProvider } from '../providers/factory';
 import { isFatalProviderFailure } from '../providers/errors';
-import { createCmaFetch } from './cmaTransport';
+import { createAltTextProvider } from '../providers/factory';
+import type {
+  AltTextProvider,
+  AltTextProviderConfig,
+} from '../providers/types';
 import {
   acquireFieldGenerationLock,
   getLatestFieldContext,
   recordFieldValueWrite,
 } from './fieldContext';
-import type {
-  AltTextProvider,
-  AltTextProviderConfig,
-} from '../providers/types';
 
 const IMGIX_FORMAT = 'jpg';
 const IMGIX_QUALITY = '80';
@@ -34,7 +30,7 @@ const IMGIX_FIT = 'max';
 const IMGIX_WIDTH = '1024';
 const IMGIX_HEIGHT = '1024';
 const GENERATION_CONCURRENCY = 3;
-// Allows the bounded CMA read, Gemini image download and provider retry budgets.
+// Allows the CMA read, Gemini image download and provider retry budgets.
 // Individual HTTP attempts still time out and abort at 30/60 seconds.
 const GENERATION_TIMEOUT_MS = 365_000;
 const GENERATION_TOAST_DURATION_MS = 5_000;
@@ -45,7 +41,6 @@ const MAX_DISPLAYED_ERRORS = 8;
 const UPLOAD_BATCH_SIZE = 50;
 const LOCALE_SAVE_BATCH_SIZE = 10;
 const activeUploadRuns = new Set<string>();
-const cmaFetch = createCmaFetch();
 const UNKNOWN_ERROR = 'Unknown error';
 
 export type AltGenerationMode = 'missing-only' | 'overwrite-all';
@@ -665,34 +660,10 @@ async function saveUploadAlts(
   if (updatedAltCount === 0) {
     return 0;
   }
-  try {
-    await client.uploads.update(latest.id, {
-      default_field_metadata: metadata as UploadMetadataUpdate,
-    });
-    return updatedAltCount;
-  } catch (error) {
-    if (fatalCmaFailure(error)) throw error;
-    // The server may have saved a timed-out write. Verify; never replay a stale patch.
-    let verified: CmaUpload;
-    try {
-      verified = await client.uploads.find(original.id);
-    } catch {
-      throw new Error(
-        `Save outcome could not be verified; no write was retried. ${getErrorMessage(error)}`,
-      );
-    }
-    const saved = Array.from(alts).filter(
-      ([locale, alt]) =>
-        uploadAltForLocale(verified, locale) === alt &&
-        uploadAltForLocale(latest, locale) !== alt &&
-        uploadAltForLocale(latest, locale) ===
-          uploadAltForLocale(original, locale),
-    ).length;
-    if (saved === updatedAltCount) {
-      return saved;
-    }
-    throw error;
-  }
+  await client.uploads.update(latest.id, {
+    default_field_metadata: metadata as UploadMetadataUpdate,
+  });
+  return updatedAltCount;
 }
 
 type UploadRunState = {
@@ -1004,9 +975,6 @@ export async function runAltGenerationForUploads(
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
-      autoRetry: false,
-      requestTimeout: 125_000,
-      fetchFn: cmaFetch,
     });
     if (
       mode === 'overwrite-all' &&
@@ -1081,9 +1049,6 @@ export async function runAltGenerationForField(
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
-      autoRetry: false,
-      requestTimeout: 125_000,
-      fetchFn: cmaFetch,
     });
     const provider = createAltTextProvider(providerConfig(configuration));
 

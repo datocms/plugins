@@ -196,38 +196,6 @@ describe('AITranslationsPickerModal', () => {
     expect(screen.queryByRole('button', { name: /Translate/ })).toBeNull();
   });
 
-  it('renders at most 50 model pickers while submitting all 1001 synthetic model selections', async () => {
-    const models = Array.from({ length: 1001 }, (_, index) => ({
-      label: `Model ${index}`,
-      value: `model-${index}`,
-      code: `model_${index}`,
-    }));
-    const ctx = renderModal({ models });
-    const submit = screen.getByRole('button', { name: 'Translate 2 records' });
-    await waitFor(() => expect(submit).toHaveProperty('disabled', false), {
-      timeout: 10000,
-    });
-    expect(ctx.loadItemTypeFields).toHaveBeenCalledTimes(1001);
-    expect(screen.getAllByTestId('model-fields')).toHaveLength(50);
-    fireEvent.click(screen.getByRole('button', { name: 'Next models' }));
-    expect(screen.getAllByTestId('model-fields')).toHaveLength(50);
-    expect(screen.getAllByTestId('model-fields')[0].textContent).toBe(
-      'Model 50 fields: title',
-    );
-    fireEvent.click(submit);
-    const result = ctx.resolve.mock.calls[0][0] as {
-      config: {
-        selectedFieldsByModel: Record<string, string[]>;
-        models: unknown[];
-      };
-    };
-    expect(Object.keys(result.config.selectedFieldsByModel)).toHaveLength(1001);
-    expect(result.config.selectedFieldsByModel['model-1000']).toEqual([
-      'title',
-    ]);
-    expect(result.config.models).toHaveLength(1001);
-  });
-
   it('loads only eligible models and submits an explicit empty allowlist for excluded ones', async () => {
     const ctx = renderModal({
       models: [

@@ -121,18 +121,6 @@ async function chooseOwner() {
   });
 }
 
-function successfulResult(total: number): BulkResult {
-  return {
-    total,
-    succeeded: total,
-    failed: 0,
-    uncertain: 0,
-    unprocessed: 0,
-    failureSamples: [],
-    stopped: false,
-  };
-}
-
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.usersList.mockResolvedValue([]);
@@ -157,46 +145,6 @@ describe('SelectCreatorModal', () => {
       userType: 'account',
     });
     expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-  });
-
-  it('keeps a 200,000 ID selection compact and executes continuously in the same modal', async () => {
-    const itemIds = Array.from(
-      { length: 200_000 },
-      (_, index) => `record-${index}`,
-    );
-    const ctx = context({ itemIds, itemCount: itemIds.length });
-    let finish: (result: BulkResult) => void = () => {
-      throw new Error('Execution did not start');
-    };
-    mocks.bulkChangeCreator.mockImplementation(
-      () =>
-        new Promise<BulkResult>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const { container } = render(<SelectCreatorModal ctx={ctx} />);
-    await chooseOwner();
-    expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-    expect(container.querySelectorAll('*').length).toBeLessThan(40);
-    expect(container.textContent).not.toContain('record-199999');
-    expect(screen.getByText(/Large selections can take hours/)).toBeTruthy();
-
-    const form = screen
-      .getByRole('button', { name: 'Change creator' })
-      .closest('form');
-    if (!form) throw new Error('Missing creator form');
-    fireEvent.submit(form);
-    fireEvent.submit(form);
-    expect(mocks.bulkChangeCreator).toHaveBeenCalledTimes(1);
-    const execution = mocks.bulkChangeCreator.mock.calls[0][0];
-    expect(execution.itemIds).toBe(itemIds);
-    expect(execution.signal).toBeInstanceOf(AbortSignal);
-    expect(ctx.resolve).not.toHaveBeenCalled();
-
-    await act(async () => finish(successfulResult(itemIds.length)));
-    expect(ctx.resolve).toHaveBeenCalledWith({
-      bulkResult: successfulResult(itemIds.length),
-    });
   });
 
   it('shows real settled counts, stops future scheduling and waits for current requests to settle', async () => {
@@ -227,19 +175,15 @@ describe('SelectCreatorModal', () => {
         total: 500,
         succeeded: 20,
         failed: 1,
-        uncertain: 1,
-        processed: 22,
+        processed: 21,
         active: 6,
-        retries: 3,
-        waitingUntil: null,
         stopping: false,
       }),
     );
-    expect(screen.getByRole('progressbar')).toHaveProperty('value', 22);
+    expect(screen.getByRole('progressbar')).toHaveProperty('value', 21);
     expect(screen.getByText(/20 changed, 6 in progress/).textContent).toContain(
-      '1 could not be confirmed',
+      '1 failed',
     );
-    expect(screen.getByText('3 automatic retries.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(execution.signal.aborted).toBe(true);
@@ -256,46 +200,12 @@ describe('SelectCreatorModal', () => {
       total: 500,
       succeeded: 26,
       failed: 1,
-      uncertain: 1,
-      unprocessed: 472,
+      unprocessed: 473,
       failureSamples: [{ id: 'record-20', error: 'Denied' }],
       stopped: true,
     };
     await act(async () => finish(result));
     expect(ctx.resolve).toHaveBeenCalledWith({ bulkResult: result });
-  });
-
-  it('explains automatic rate limit waits without offering pause or resume', async () => {
-    mocks.bulkChangeCreator.mockReturnValue(new Promise(() => {}));
-    render(
-      <SelectCreatorModal
-        ctx={context({ itemIds: Array(500).fill('record') })}
-      />,
-    );
-    await chooseOwner();
-    fireEvent.click(screen.getByRole('button', { name: 'Change creator' }));
-    const execution = mocks.bulkChangeCreator.mock.calls[0][0];
-    act(() =>
-      execution.onProgress({
-        total: 500,
-        succeeded: 0,
-        failed: 0,
-        uncertain: 0,
-        processed: 0,
-        active: 6,
-        retries: 1,
-        waitingUntil: Date.now() + 1000,
-        stopping: false,
-      }),
-    );
-    expect(
-      screen.getByText(
-        'Waiting for the API rate limit. Updates will continue automatically.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: /pause|resume|continue later/i }),
-    ).toBeNull();
   });
 
   it('allows available creators but warns when one creator endpoint fails', async () => {

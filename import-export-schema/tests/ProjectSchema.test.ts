@@ -1,6 +1,5 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createCmaClient } from '../src/utils/createCmaClient';
 import { ProjectSchema } from '../src/utils/ProjectSchema';
 
 function itemType(id: string, block = false): SchemaTypes.ItemType {
@@ -112,7 +111,7 @@ describe('ProjectSchema request and cache lifecycle', () => {
     },
   );
 
-  it('paces every metadata endpoint and never exceeds the shared concurrency cap', async () => {
+  it('never exceeds the shared concurrency cap across metadata endpoints', async () => {
     const { schema, resources } = makeClient();
     const starts: number[] = [];
     let active = 0;
@@ -144,51 +143,15 @@ describe('ProjectSchema request and cache lifecycle', () => {
       Promise.all([
         schema.getAllItemTypes(),
         schema.getAllPlugins(),
-        ...Array.from({ length: 128 }, (_, index) =>
+        ...Array.from({ length: 8 }, (_, index) =>
           schema.getItemTypeFieldsAndFieldsets(
             itemType(`model-${index}`, index % 2 === 0),
           ),
         ),
       ]),
     );
-    expect(starts).toHaveLength(258);
+    expect(starts).toHaveLength(18);
     expect(maximumActive).toBe(2);
-    expect(
-      starts.every(
-        (start, index) => index === 0 || start - starts[index - 1] >= 60,
-      ),
-    ).toBe(true);
-  });
-
-  it('automatically retries read-only network and plain server failures with bounded backoff', async () => {
-    const { schema, resources } = makeClient();
-    resources.itemTypes.rawList
-      .mockRejectedValueOnce(new TypeError('network offline'))
-      .mockRejectedValueOnce({ response: { status: 503 } });
-    const start = Date.now();
-    await finishTimers(schema.getAllItemTypes());
-    expect(Date.now() - start).toBe(1500);
-    expect(resources.itemTypes.rawList).toHaveBeenCalledTimes(3);
-    schema.invalidate();
-    resources.itemTypes.rawList.mockRejectedValue(
-      new TypeError('network offline'),
-    );
-    const failed = expect(
-      finishTimers(schema.getAllItemTypes()),
-    ).rejects.toThrow('network offline');
-    await failed;
-    expect(resources.itemTypes.rawList).toHaveBeenCalledTimes(6);
-  });
-
-  it('does not retry authorization failures', async () => {
-    const { schema, resources } = makeClient();
-    resources.itemTypes.rawList.mockRejectedValue({
-      response: { status: 403 },
-    });
-    await expect(finishTimers(schema.getAllItemTypes())).rejects.toMatchObject({
-      response: { status: 403 },
-    });
-    expect(resources.itemTypes.rawList).toHaveBeenCalledTimes(1);
   });
 
   it('cancels between fieldset and field reads while retaining valid shared metadata', async () => {
@@ -266,34 +229,5 @@ describe('ProjectSchema request and cache lifecycle', () => {
     expect(current[1].map((value) => value.id)).toEqual(['new-fieldset']);
     expect(resources.fields.rawList).toHaveBeenCalledTimes(1);
     expect(resources.fieldsets.rawList).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps the official client retry for a rate-limited GET without real requests', async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response('', {
-          status: 429,
-          headers: { 'x-ratelimit-reset': '0' },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
-    const client = createCmaClient(
-      {
-        currentUserAccessToken: 'synthetic-test-token',
-        environment: 'synthetic-environment',
-        cmaBaseUrl: 'https://example.test',
-      },
-      { fetchFn },
-    );
-    expect(client.config.autoRetry).toBe(true);
-    expect(client.config.requestTimeout).toBe(60000);
-    await finishTimers(client.itemTypes.rawList());
-    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 });

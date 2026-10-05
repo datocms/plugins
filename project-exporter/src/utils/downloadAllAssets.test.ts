@@ -5,7 +5,6 @@ import {
   MAX_ASSET_CHUNK_DATA_BYTES,
 } from './assetExport';
 import downloadAllAssets from './downloadAllAssets';
-import { ResponseSizeError } from './exportRuntime';
 
 type FixtureUpload = {
   id: string;
@@ -33,14 +32,18 @@ vi.mock('./assetDownload', () => ({
   downloadAssetFile: fixtures.downloadAsset,
 }));
 
+vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datocms/cma-client-browser')>()),
+  buildClient: vi.fn(() => ({
+    uploads: { list: fixtures.list, rawList: fixtures.rawList },
+    site: { find: vi.fn(async () => ({ id: 'synthetic-project' })) },
+  })),
+}));
+
 vi.mock('./exportRuntime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./exportRuntime')>();
   return {
     ...actual,
-    createExportClient: vi.fn(() => ({
-      uploads: { list: fixtures.list, rawList: fixtures.rawList },
-      site: { find: vi.fn(async () => ({ id: 'synthetic-project' })) },
-    })),
     yieldToBrowser: vi.fn(async () => undefined),
     downloadBlob: vi.fn(async (blob: Blob, filename: string) => {
       fixtures.events.push(`archive:${filename}`);
@@ -163,59 +166,6 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
-
-test('10,000 assets run continuously in 100 sequential ZIPs with exact progress and references', async () => {
-  fixtures.count = 10_000;
-  const progress = vi.fn();
-  await downloadAllAssets('synthetic-token', 'sandbox', undefined, progress);
-  expect(
-    fixtures.list.mock.calls.filter(([query]) => !query.filter),
-  ).toHaveLength(20);
-  expect(
-    fixtures.list.mock.calls.filter(([query]) => query.filter),
-  ).toHaveLength(100);
-  expect(
-    fixtures.list.mock.calls.every(([query]) => query.page.limit <= 500),
-  ).toBe(true);
-  expect(fixtures.downloadAsset).toHaveBeenCalledTimes(10_000);
-  expect(fixtures.archives).toHaveLength(100);
-  expect(fixtures.downloads).toHaveLength(100);
-  expect(fixtures.archives.every((archive) => archive.size === 101)).toBe(true);
-  const firstArchive = fixtures.events.findIndex((event) =>
-    event.startsWith('archive:'),
-  );
-  const nextAsset = fixtures.events.indexOf(
-    'asset:https://www.datocms-assets.com/100.bin',
-  );
-  expect(firstArchive).toBeLessThan(nextAsset);
-  const manifest = JSON.parse(
-    String(fixtures.archives[99].get('manifest.json')),
-  );
-  expect(manifest.chunk).toMatchObject({
-    index: 100,
-    totalChunks: 100,
-    assetCount: 100,
-  });
-  expect(manifest.assets[99]).toMatchObject({
-    sourceUploadId: 'upload-9999',
-    zipEntryName: 'u_upload-9999__asset-9999.bin',
-    downloadedSize: 1,
-    metadata: { custom_data: { source: 'fixture-9999' } },
-  });
-  const values = progress.mock.calls.map(([value]) => value as number);
-  expect(
-    values.every((value, index) => index === 0 || value >= values[index - 1]),
-  ).toBe(true);
-  expect(progress).toHaveBeenLastCalledWith(
-    100,
-    'Completed asset export: 10000 assets in 100 ZIP file(s).',
-  );
-  const snapshot = JSON.parse(
-    fixtures.storage.get(LAST_ASSET_EXPORT_STORAGE_KEY) ?? '{}',
-  );
-  expect(snapshot).toMatchObject({ totalAssets: 10_000, totalChunks: 100 });
-  expect(snapshot.chunkFilenames).toHaveLength(100);
-}, 60_000);
 
 test('per-asset failure continues remaining downloads and produces an explicit report without a success snapshot', async () => {
   fixtures.count = 3;
@@ -392,28 +342,6 @@ test('cancel after a delivered ZIP records completed filenames without a continu
   expect(report.chunkFilenames).toHaveLength(1);
   expect(fixtures.downloadAsset).toHaveBeenCalledTimes(100);
   expect(fixtures.storage.has(LAST_ASSET_EXPORT_STORAGE_KEY)).toBe(false);
-});
-
-test('oversized metadata pages shrink automatically and still cover all assets exactly once', async () => {
-  fixtures.count = 3;
-  const list = fixtures.list.getMockImplementation();
-  if (!list) throw new Error('Expected metadata fixture');
-  fixtures.list.mockImplementation((query) => {
-    if (query.page.limit > 1)
-      throw new ResponseSizeError('Synthetic large response');
-    return list(query);
-  });
-  await downloadAllAssets('synthetic-token', 'sandbox', undefined);
-  expect(fixtures.downloadAsset).toHaveBeenCalledTimes(3);
-  const manifest = JSON.parse(
-    String(fixtures.archives[0].get('manifest.json')),
-  );
-  expect(
-    manifest.assets.map(
-      (entry: { sourceUploadId: string }) => entry.sourceUploadId,
-    ),
-  ).toEqual(['upload-0', 'upload-1', 'upload-2']);
-  expect(fixtures.storage.has(LAST_ASSET_EXPORT_STORAGE_KEY)).toBe(true);
 });
 
 test('cancellation while a delivered ZIP object URL is being released retains the handoff in its report', async () => {

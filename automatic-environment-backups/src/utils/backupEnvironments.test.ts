@@ -3,7 +3,6 @@ import type { BackupCadence, LambdaBackupStatus } from '../types/types';
 import {
   type BackupEnvironment,
   enrichBackupStatusWithEnvironments,
-  getBackupEnvironmentProgress,
   getCreatingBackupCadences,
   getReadyBackupEnvironment,
 } from './backupEnvironments';
@@ -70,7 +69,6 @@ describe('getReadyBackupEnvironment', () => {
     'never confirms a %s environment reported as the latest backup by the service',
     (status) => {
       const backup = environment('daily', status);
-      backup.meta.fork_completion_percentage = 100;
       expect(
         getReadyBackupEnvironment(serviceStatus(), 'daily', [backup]),
       ).toBeUndefined();
@@ -334,123 +332,5 @@ describe('getCreatingBackupCadences', () => {
       ]),
     ).toEqual([]);
     expect(getCreatingBackupCadences([])).toEqual([]);
-  });
-});
-
-describe('getBackupEnvironmentProgress', () => {
-  it.each([
-    [0, 0],
-    [42.5, 42.5],
-    [100, 100],
-    [-10, 0],
-    [150, 100],
-  ])('normalizes progress %s to %s', (percentage, expected) => {
-    const backup = environment('daily', 'creating');
-    backup.meta.fork_completion_percentage = percentage;
-    expect(getBackupEnvironmentProgress('daily', [backup])).toBe(expected);
-  });
-
-  it.each([undefined, Number.NaN, Number.POSITIVE_INFINITY])(
-    'does not invent progress for an invalid percentage %s',
-    (percentage) => {
-      const backup = environment('daily', 'creating');
-      backup.meta.fork_completion_percentage = percentage;
-      expect(getBackupEnvironmentProgress('daily', [backup])).toBeUndefined();
-    },
-  );
-
-  it('uses the least complete creating backup and preserves unknown progress', () => {
-    const early = environment('daily', 'creating');
-    early.meta.fork_completion_percentage = 10;
-    const late = {
-      ...environment('daily', 'creating'),
-      id: 'backup-plugin-daily-new',
-    };
-    late.meta.fork_completion_percentage = 90;
-    expect(getBackupEnvironmentProgress('daily', [early, late])).toBe(10);
-    expect(
-      getBackupEnvironmentProgress('daily', [
-        early,
-        environment('daily', 'creating'),
-      ]),
-    ).toBeUndefined();
-  });
-
-  it('ignores percentages on ready, destroying, primary and unrelated backups', () => {
-    const primary = environment('daily', 'creating');
-    primary.meta.primary = true;
-    primary.meta.fork_completion_percentage = 1;
-    const weekly = environment('weekly', 'creating');
-    weekly.meta.fork_completion_percentage = 2;
-    const ready = environment();
-    ready.meta.fork_completion_percentage = 100;
-    expect(
-      getBackupEnvironmentProgress('daily', [
-        primary,
-        weekly,
-        ready,
-        environment('daily', 'destroying'),
-      ]),
-    ).toBeUndefined();
-    expect(getBackupEnvironmentProgress('daily', [])).toBeUndefined();
-  });
-});
-
-describe('massive project metadata envelope', () => {
-  it('checks snapshots and clone progress without accessing 200k records or 10k assets', () => {
-    const massiveProject = Object.freeze({
-      counts: Object.freeze({
-        records: 200_000,
-        assets: 10_000,
-        models: 300,
-        locales: 80,
-      }),
-      get records(): never {
-        throw new Error('Record payloads must not be loaded');
-      },
-      get assets(): never {
-        throw new Error('Asset payloads must not be loaded');
-      },
-      environments: Object.freeze([
-        Object.freeze({
-          ...environment(),
-          meta: Object.freeze(environment().meta),
-        }),
-        Object.freeze({
-          ...environment('monthly', 'creating'),
-          meta: Object.freeze({
-            ...environment('monthly', 'creating').meta,
-            fork_completion_percentage: 25,
-          }),
-        }),
-      ]),
-    });
-
-    expect(massiveProject.counts).toMatchObject({
-      records: 200_000,
-      assets: 10_000,
-    });
-    expect(
-      getReadyBackupEnvironment(
-        serviceStatus(),
-        'daily',
-        massiveProject.environments,
-      ),
-    ).toBe('backup-plugin-daily-snapshot');
-    expect(
-      enrichBackupStatusWithEnvironments(
-        serviceStatus('monthly', null),
-        massiveProject.environments,
-      ).slots.monthly,
-    ).toMatchObject({
-      lastBackupAt: CREATED_AT,
-      lastManagedEnvironmentId: null,
-    });
-    expect(getCreatingBackupCadences(massiveProject.environments)).toEqual([
-      'monthly',
-    ]);
-    expect(
-      getBackupEnvironmentProgress('monthly', massiveProject.environments),
-    ).toBe(25);
   });
 });

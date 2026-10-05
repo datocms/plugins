@@ -1,10 +1,4 @@
-import {
-  ApiError,
-  Client,
-  generateId,
-  type SchemaTypes,
-  TimeoutError,
-} from '@datocms/cma-client';
+import { type Client, generateId, type SchemaTypes } from '@datocms/cma-client';
 import cloneDeep from 'lodash-es/cloneDeep';
 import get from 'lodash-es/get';
 import isEqual from 'lodash-es/isEqual';
@@ -20,9 +14,6 @@ import { debugLog } from '@/utils/debug';
 import type { ImportDoc } from './buildImportDoc';
 
 const CONCURRENCY = 4;
-// Leave room below the CMA's 60 requests / 3 seconds for other dashboard activity.
-const REQUEST_INTERVAL_MS = 75;
-const MAX_RETRIES = 8;
 const itemTypeRelationships = [
   'ordering_field',
   'title_field',
@@ -98,163 +89,6 @@ class ProgressTracker {
     } catch (error) {
       this.stop(error);
       throw error;
-    }
-  }
-
-  async wait(milliseconds: number) {
-    const until = Date.now() + milliseconds;
-    while (Date.now() < until) {
-      this.checkCancel();
-      // biome-ignore lint/performance/noAwaitInLoops: Small waits allow cancellation during backoff.
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, Math.min(100, until - Date.now())),
-      );
-    }
-    this.checkCancel();
-  }
-}
-
-function retryDelay(error: unknown, attempt: number): number {
-  if (error instanceof ApiError && error.response.status === 429) {
-    const headers = error.response.headers;
-    const reset = Number(
-      headers['x-ratelimit-reset'] ?? headers['X-RateLimit-Reset'],
-    );
-    if (Number.isFinite(reset) && reset > 0) return reset * 1000;
-  }
-  return Math.min(30_000, 1000 * 2 ** attempt);
-}
-
-function canRetry(error: unknown, method: string): boolean {
-  if (error instanceof ApiError) {
-    // A failed job-result GET is not a rejection of the original create POST.
-    if (method === 'POST' && error.request.method !== 'POST') return false;
-    if (error.response.status === 429) return true;
-    if (error.errors.some((entry) => entry.attributes.transient)) return true;
-    return method !== 'POST' && error.response.status >= 500;
-  }
-  // A create timeout/network failure has an ambiguous outcome. Replaying its POST
-  // could duplicate work or turn an already-created entity into an ID collision.
-  return (
-    method !== 'POST' &&
-    (error instanceof TimeoutError || error instanceof TypeError)
-  );
-}
-
-function creationLookup(options: Parameters<Client['request']>[0]) {
-  const paths: Record<string, string> = {
-    item_type: '/item-types',
-    field: '/fields',
-    fieldset: '/fieldsets',
-    plugin: '/plugins',
-  };
-  const type = get(options.body, 'data.type') as string | undefined;
-  const id = get(options.body, 'data.id') as string | undefined;
-  if (!type || !id || !paths[type]) return undefined;
-  return `${paths[type]}/${encodeURIComponent(id)}`;
-}
-
-function creationMatches(response: unknown, body: unknown) {
-  // Compare the actual JSON sent over the wire (optional undefined properties
-  // such as appearance.field_extension are absent in API read responses).
-  const data =
-    body && typeof body === 'object' && 'data' in body ? body.data : undefined;
-  if (!data || typeof data !== 'object') return false;
-  const expected = JSON.parse(JSON.stringify(data)) as {
-    id: string;
-    type: string;
-    attributes: Record<string, unknown>;
-    relationships?: Record<string, unknown>;
-  };
-  if (
-    get(response, 'data.id') !== expected.id ||
-    get(response, 'data.type') !== expected.type
-  )
-    return false;
-  if (
-    !isEqual(
-      pick(get(response, 'data.attributes'), Object.keys(expected.attributes)),
-      expected.attributes,
-    )
-  )
-    return false;
-  return (
-    !expected.relationships ||
-    isEqual(
-      pick(
-        get(response, 'data.relationships'),
-        Object.keys(expected.relationships),
-      ),
-      expected.relationships,
-    )
-  );
-}
-
-/** Isolate retry policy from the shared client, including async job polling. */
-class ImportClient extends Client {
-  private nextRequestAt = 0;
-
-  constructor(
-    client: Client,
-    private readonly tracker: ProgressTracker,
-  ) {
-    super({ ...client.config, autoRetry: false });
-  }
-
-  private async reconcileCreate<T>(
-    options: Parameters<Client['request']>[0],
-    error: unknown,
-  ): Promise<T | undefined> {
-    if (
-      options.method !== 'POST' ||
-      !(error instanceof TimeoutError || error instanceof TypeError)
-    )
-      return undefined;
-    const url = creationLookup(options);
-    if (!url) return undefined;
-    this.tracker.report('Checking whether an API create completed');
-    try {
-      const response = await this.request<T>({ method: 'GET', url });
-      return creationMatches(response, options.body) ? response : undefined;
-    } catch {
-      this.tracker.checkCancel();
-      // A 404 cannot prove that the original request will not commit later.
-      return undefined;
-    }
-  }
-
-  override async request<T>(
-    options: Parameters<Client['request']>[0],
-  ): Promise<T> {
-    for (let attempt = 0; ; attempt += 1) {
-      this.tracker.checkCancel();
-      const startAt = Math.max(Date.now(), this.nextRequestAt);
-      this.nextRequestAt = startAt + REQUEST_INTERVAL_MS;
-      // biome-ignore lint/performance/noAwaitInLoops: Each attempt must obey the shared pacing and cancellation signal.
-      await this.tracker.wait(startAt - Date.now());
-      let acceptedJob = false;
-      const fetchFn: typeof fetch = async (input, init) => {
-        const response = await (this.config.fetchFn ?? globalThis.fetch)(
-          input,
-          init,
-        );
-        acceptedJob = response.status === 202;
-        return response;
-      };
-      const requestOptions = { ...options, fetchFn };
-      try {
-        return await super.request<T>(requestOptions);
-      } catch (error) {
-        // The SDK polls an accepted job and reports its final error using the
-        // original request method. Retrying here would submit the mutation again.
-        if (acceptedJob) throw error;
-        const recovered = await this.reconcileCreate<T>(options, error);
-        if (recovered !== undefined) return recovered;
-        if (attempt >= MAX_RETRIES || !canRetry(error, options.method))
-          throw error;
-        this.tracker.report('Waiting to retry an API request');
-        await this.tracker.wait(retryDelay(error, attempt));
-      }
     }
   }
 }
@@ -712,12 +546,11 @@ export default async function importSchema(
   tracker.checkCancel();
   const mappings = prepareMappings(importDoc);
   validateImport(importDoc, mappings);
-  const importClient = new ImportClient(client, tracker);
   const { locales } = await tracker.run('Loading project locales', () =>
-    importClient.site.find(),
+    client.site.find(),
   );
   const context: ImportContext = {
-    client: importClient,
+    client,
     tracker,
     locales,
     importDoc,

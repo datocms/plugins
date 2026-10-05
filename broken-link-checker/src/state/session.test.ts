@@ -235,36 +235,6 @@ describe('ScanSession', () => {
     session.dispose();
   });
 
-  it('publishes hundreds of growing shared-link snapshots without reading their full location arrays', async () => {
-    const { session, latest } = fixture();
-    let first: ScanReport | undefined;
-    for (let batch = 0; batch < 250; batch += 1) {
-      session.addRecord(
-        extraction(
-          Array.from({ length: 40 }, (_, index) =>
-            occurrence('/shared', `${batch}:${index}`, `record-${batch}`),
-          ),
-        ),
-      );
-      session.flush();
-      first ??= latest();
-      const group = latest().groups[0];
-      const getter = Object.getOwnPropertyDescriptor(group, 'occurrences')?.get;
-      if (!getter) throw new Error('Expected a lazy location snapshot.');
-      const read = vi.fn(() => getter.call(group));
-      Object.defineProperty(group, 'occurrences', { get: read });
-      expect(groupFacts(group).recordCount).toBe(batch + 1);
-      expect(read).not.toHaveBeenCalled();
-    }
-    await session.finish();
-    expect(latest().groups[0].occurrences).toHaveLength(10_000);
-    // The first snapshot is read only after all later appends have finished.
-    expect(first?.groups[0].occurrences).toHaveLength(40);
-    expect(first && groupFacts(first.groups[0]).recordCount).toBe(1);
-    expect(latest().recordsScanned).toBe(250);
-    session.dispose();
-  });
-
   it('marks running and newly discovered occurrences stale without changing prior snapshots', async () => {
     const { session, latest } = fixture();
     session.addRecord(extraction([occurrence('/shared', 'one', 'record-1')]));
@@ -286,23 +256,5 @@ describe('ScanSession', () => {
     expect(flushDelay(50_000)).toBe(200);
     expect(flushDelay(500_000)).toBe(2_000);
     expect(flushDelay(50_000_000)).toBe(2_000);
-  });
-
-  it('waits longer before publishing a report that has grown large', () => {
-    vi.useFakeTimers();
-    const { session, reports } = fixture();
-    session.addRecord(
-      extraction(
-        Array.from({ length: 200_000 }, (_, i) =>
-          occurrence('/everywhere', `link-${i}`),
-        ),
-      ),
-    );
-    vi.advanceTimersByTime(799);
-    expect(reports).toHaveLength(0);
-    vi.advanceTimersByTime(1);
-    expect(reports).toHaveLength(1);
-    expect(reports[0].groups[0].occurrences).toHaveLength(200_000);
-    session.dispose();
   });
 });

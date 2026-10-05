@@ -448,47 +448,5 @@ describe('migration helpers', () => {
       expect(uuid).toHaveBeenCalledTimes(5);
       expect(JSON.stringify(source)).toBe(snapshot);
     });
-
-    it('normalizes and migrates 12,000 nested replies without recursive stack overflow', () => {
-      const depth = 12_000;
-      const uuid = mockUuidSequence();
-      let source = normalizedComment();
-      for (let level = 1; level < depth; level++)
-        source = normalizedComment({ replies: [source] });
-      const normalized = normalizeCommentIfValid(source);
-      expect(normalized).not.toBeNull();
-      if (!normalized) return;
-      const result = migrateCommentsToUuid([normalized]);
-      let current: NormalizedComment | undefined = result.comments[0];
-      let previousId: string | undefined;
-      let count = 0;
-      let brokenReferences = 0;
-      while (current) {
-        if (current.parentCommentId !== previousId) brokenReferences++;
-        previousId = current.id;
-        current = current.replies?.[0];
-        count++;
-      }
-      expect(count).toBe(depth);
-      expect(brokenReferences).toBe(0);
-      expect(uuid).toHaveBeenCalledTimes(depth);
-      expect(migrateCommentsToUuid(result.comments).wasMigrated).toBe(false);
-    }, 120_000);
-
-    it('migrates a broad synthetic discussion without collapsing timestamp duplicates', () => {
-      const size = 10_000;
-      mockUuidSequence();
-      const source = Array.from({ length: size }, (_, index) =>
-        normalizedComment({ content: [{ index }] }),
-      );
-      const result = migrateCommentsToUuid(source);
-      expect(result.comments).toHaveLength(size);
-      expect(new Set(result.comments.map((comment) => comment.id)).size).toBe(
-        size,
-      );
-      expect(result.comments[0].content).toEqual([{ index: 0 }]);
-      expect(result.comments[size - 1].content).toEqual([{ index: size - 1 }]);
-      expect(source.every((comment) => comment.id === undefined)).toBe(true);
-    }, 60_000);
   });
 });

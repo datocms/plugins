@@ -5,14 +5,7 @@ import {
   type RawApiTypes,
 } from '@datocms/cma-client-browser';
 import type { ContentModel, RecordInput } from '../types';
-import {
-  CMA_READ_TIMEOUT_MS,
-  CmaReadScheduler,
-  cancellableRead,
-  createCmaReadFetch,
-  retryCmaRead,
-  throwIfAborted,
-} from './cmaRequests';
+import { cancellable, throwIfAborted } from './cancellation';
 
 export type CmaClientContext = {
   currentUserAccessToken?: string | null;
@@ -20,40 +13,17 @@ export type CmaClientContext = {
   cmaBaseUrl?: string;
 };
 
-const schedulers = new WeakMap<object, CmaReadScheduler>();
-
-export function buildCmaClient(
-  ctx: CmaClientContext,
-  signal?: AbortSignal,
-): Client {
+export function buildCmaClient(ctx: CmaClientContext): Client {
   if (!ctx.currentUserAccessToken) {
     throw new Error(
       'Scanning saved records requires API access. Enable the plugin permission and reload the page.',
     );
   }
-  const client = buildClient({
+  return buildClient({
     apiToken: ctx.currentUserAccessToken,
     environment: ctx.environment,
     baseUrl: ctx.cmaBaseUrl,
-    autoRetry: false,
-    requestTimeout: CMA_READ_TIMEOUT_MS + 1_000,
-    fetchFn: createCmaReadFetch(signal),
   });
-  schedulers.set(client, new CmaReadScheduler());
-  return client;
-}
-
-/** All project record/count reads share pacing and a 429 cooldown. */
-export function readCma<T>(
-  client: object,
-  operation: () => Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  return retryCmaRead(
-    () => cancellableRead(operation(), signal, CMA_READ_TIMEOUT_MS + 2_000),
-    signal,
-    schedulers.get(client),
-  );
 }
 
 // Nested block payloads have a lower CMA page limit than flat record lists.
@@ -183,16 +153,14 @@ export async function* readRecords(
   while (true) {
     throwIfAborted(signal);
     // biome-ignore lint/performance/noAwaitInLoops: Each page depends on the previous page and is cancellable before the next request.
-    const response = await readCma(
-      client,
-      () =>
-        client.items.rawList({
-          nested: true,
-          version: 'current',
-          filter: { type: modelId },
-          order_by: 'id_ASC',
-          page: { offset, limit: RECORDS_PAGE_SIZE },
-        }),
+    const response = await cancellable(
+      client.items.rawList({
+        nested: true,
+        version: 'current',
+        filter: { type: modelId },
+        order_by: 'id_ASC',
+        page: { offset, limit: RECORDS_PAGE_SIZE },
+      }),
       signal,
     );
     throwIfAborted(signal);

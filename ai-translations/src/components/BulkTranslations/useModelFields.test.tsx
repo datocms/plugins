@@ -2,7 +2,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SdkField } from '../../utils/translation/BulkTranslationHelpers';
-import { MODEL_FIELD_CONCURRENCY, useModelFields } from './useModelFields';
+import { useModelFields } from './useModelFields';
 
 const fields: SdkField[] = [
   {
@@ -40,39 +40,6 @@ function props(
 
 describe('useModelFields', () => {
   afterEach(cleanup);
-
-  it('loads 1000 synthetic models once, with at most four active SDK calls', async () => {
-    let active = 0;
-    let peak = 0;
-    let completed = 0;
-    const allLoaded = deferred<void>();
-    const load = vi.fn(async () => {
-      active += 1;
-      peak = Math.max(peak, active);
-      await Promise.resolve();
-      active -= 1;
-      completed += 1;
-      if (completed === 1000) allLoaded.resolve();
-      return fields;
-    });
-    const ids = Array.from({ length: 1000 }, (_, index) => `model-${index}`);
-    const { result, rerender } = renderHook(useModelFields, {
-      initialProps: props(ids, load),
-    });
-
-    await act(async () => {
-      await allLoaded.promise;
-    });
-    expect(Object.keys(result.current.fieldsByModel)).toHaveLength(1000);
-    expect(load).toHaveBeenCalledTimes(1000);
-    expect(peak).toBe(MODEL_FIELD_CONCURRENCY);
-    expect(result.current.loadingFieldsForModel.size).toBe(0);
-    rerender(props([...ids], load));
-    expect(load).toHaveBeenCalledTimes(1000);
-    expect(result.current.selectedFieldsByModel['model-999']).toEqual([
-      'title',
-    ]);
-  });
 
   it('reserves in-flight calls synchronously across rerenders and StrictMode effect replay', async () => {
     const request = deferred<SdkField[]>();

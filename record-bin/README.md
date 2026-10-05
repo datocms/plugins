@@ -10,7 +10,7 @@ Install the plugin. There's nothing to configure for records deleted from the da
 
 To try it, create and save a record, then delete it. Within a few seconds a "🗑 Record Bin" model appears in the sidebar with a copy of that record. The copy is stored as JSON, so it won't look like the original. Open it and click **Restore record ♻️** to re-create it in its original model. If the restore fails, you'll see the API error and the copy stays in the bin.
 
-Before a record is deleted, the plugin saves and verifies its copy. If that fails, the deletion is cancelled and the record is kept.
+Before a record is deleted, the plugin saves its copy. If that fails, the deletion is cancelled and the record is kept.
 
 ## Catching deletions made through the API
 

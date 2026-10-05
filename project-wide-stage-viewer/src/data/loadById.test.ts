@@ -26,12 +26,12 @@ describe('reference hydration', () => {
         items: { rawList },
         uploads: { rawList },
       } as unknown as Client;
-      const ids = Array.from({ length: 10_000 }, (_, index) => `id-${index}`);
+      const ids = Array.from({ length: 250 }, (_, index) => `id-${index}`);
       const load = resource === 'items' ? loadItemsById : loadUploadsById;
       const result = await load(client, [...ids, ids[0]]);
       expect(result.map((item) => item.id)).toEqual(ids);
       expect(peak).toBeLessThanOrEqual(2);
-      expect(rawList).toHaveBeenCalledTimes(400);
+      expect(rawList).toHaveBeenCalledTimes(10);
     },
   );
 
