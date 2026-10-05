@@ -1,84 +1,44 @@
-Dato Agent is still in beta. The Remote MCP can access the whole DatoCMS project
-through the connected user's account; it is not confined to the record or
-environment currently open in the CMS. Within that user's permissions, it can
-read and change data across the project, including other environments, and can
-perform destructive operations that may be difficult or impossible to undo.
-Auto-approve lets those operations run without review. Manually approving an
-operation without reading its details carries the same risk.
+# Dato Agent (Beta)
 
-During the required DatoCMS connection, select only the project where this
-plugin is installed. Do not authorize any additional projects.
+Dato Agent lets editors and marketers work with DatoCMS in natural language. It can explain how a project is set up, find and open records, answer questions about content and prepare content changes.
 
-For now, we strongly recommend using this plugin only with a dedicated sandbox
-or test project, never a production project or one containing irreplaceable
-data. Review every operation before approving it and keep recoverable backups.
+## Before you use it
 
-If you encounter any error, contact
-[support@datocms.com](mailto:support@datocms.com) and include your request, the
-error message, and what you expected to happen.
+Dato Agent is in beta. It works through the DatoCMS [MCP server](https://www.datocms.com/docs/mcp-server) with the connected user's account, so it isn't limited to the record or environment you have open. Within that user's permissions it can read and change data anywhere in the project, other environments included, and it can run destructive operations that may be hard or impossible to undo.
 
-Dato Agent helps editors and marketers work with DatoCMS using natural language.
-It can explain a project, find and open records, answer questions about content,
-and prepare content changes.
+Changes wait for your approval unless you turn on auto-approve, which lets them run without review. Approving an operation without reading its details is just as risky.
 
-## Get started
+For now, use it only on a sandbox or test project, never on production or on a project with data you can't replace. Review every operation before approving it and keep backups you can restore.
 
-1. A project administrator selects OpenAI or Anthropic, adds the provider API
-   key, and chooses a model in the plugin settings.
-2. Each user connects their own DatoCMS account and, when asked which projects
-   to authorize, selects only the project where this plugin is installed.
+## Setup
+
+1. A project administrator picks OpenAI or Anthropic in the plugin settings, adds the provider API key and chooses a model.
+2. Each user connects their own DatoCMS account. When asked which projects to authorize, select only the project where the plugin is installed.
 3. Open **Agent (Beta)** or the record sidebar and describe what you need.
 
-## Access, approvals, and privacy
+The provider API key is shared by the whole project. Each user's DatoCMS connection and recent chats are stored in their browser.
 
-- The Remote MCP can access the whole project, including other environments,
-  wherever the connected user's DatoCMS permissions allow it.
-- It can perform destructive operations throughout the project. Read-only
-  actions can run automatically; changes require approval unless auto-approve
-  is enabled.
-- The provider API key is configured for the project. Your DatoCMS connection
-  and recent chats are stored in your browser.
+## Permissions
 
-- The plugin's Read Only setting, OAuth access level, and project role all apply.
-  **Only read content** disables every agent write, including local asset creation.
-  **Read and edit content** permits content changes while schema and management
-  restrictions remain enforced by Remote MCP.
-- If access cannot be verified, reads remain available and writes pause. Use
-  **Check access again** to refresh it. A narrower access level invalidates pending
-  write approvals; Auto-approve stays off after writes become available again.
-- If authentication expires, click **Reconnect DatoCMS**. Chat history and local
-  attachments stay available. Reconnection never repeats an uncertain write.
+The agent can never do more than the user's role allows. On top of that, the access level chosen when connecting DatoCMS applies (**Only read content** blocks every write), and the plugin's **Read Only** setting turns off all agent writes for everyone.
 
-## Large projects
+If the plugin can't verify access, reads keep working and writes pause until you click **Check access again**. If the DatoCMS connection expires, click **Reconnect DatoCMS**; your chats are kept.
 
-The agent can continue up to 100 provider steps and 200 tool calls in one turn,
-including approved continuations. Auto-approve retains the same access, editor
-state and durable dispatch checks throughout the turn. Reaching a limit leaves
-the operation incomplete and does not replay or undo completed changes.
+## Limitations
 
-Anthropic keeps bounded tool-result previews and compacts older tool outputs
-while preserving signed assistant blocks and tool identifiers. Truncated output
-is marked incomplete; a model-context limit stops before another request.
+A single request stops after 100 model steps or 200 tool calls. The agent often works from samples of your content, so treat lists and counts it gives you as possibly incomplete. Operations over 200,000 records or 10,000 assets may not finish within the MCP server's time and usage limits.
 
-The agent uses bounded context and result samples. A sample or truncated result
-does not establish an exhaustive record or asset selection. Generated scripts
-are instructed to paginate incrementally, limit concurrency, respect endpoint
-and bulk limits, and preserve localized values, nested blocks and references.
-These instructions guide the model; the plugin does not implement the remote
-script runner or validate every generated transformation.
+Stopping a request, hitting a limit or losing the connection never undoes changes already made, and the agent won't retry a write it couldn't confirm. Check the affected content before asking for it again.
 
-The [MCP server](https://www.datocms.com/docs/mcp-server) has finite execution
-time, output and account usage budgets. A client timeout cannot extend the
-runner's execution limit. Operations over 200,000 records or 10,000 assets
-cannot be guaranteed to finish through this finite runner; a durable
-server-side execution capability would be needed for workloads that exceed it.
-Stopping or losing a connection does not undo remote changes. An unconfirmed
-result prevents automatic replay; verify the affected data before explicitly
-requesting another write.
+If something goes wrong, email [support@datocms.com](mailto:support@datocms.com) with your request, the error message and what you expected to happen.
 
-## Development validation
+## Development
 
-Run `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` from
-this directory. Synthetic tests exercise large collections, bounded context
-and journal storage without creating DatoCMS entities. They do not establish
-production throughput or remote runner capacity.
+```sh
+npm install
+npm run dev
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```

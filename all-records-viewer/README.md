@@ -6,22 +6,25 @@ Browse records from every model in one paginated table.
 
 Open **Content → All Records** to search, filter by model or status, sort columns, and choose which columns to display.
 
-![Browse records from every model](docs/all-records.png)
+![The All Records table showing records from several models](docs/all-records.png)
 
-Select records to publish, unpublish, delete, or move to a workflow stage when available.
+Select records to publish, unpublish, delete, or move to a workflow stage when available. To act on more than the current page, use **Select all matching records**, which selects everything matching the current filters. Changing filters afterwards keeps your selection.
 
-![Manage selected records](docs/bulk-actions.png)
+![Bulk actions for the selected records](docs/bulk-actions.png)
 
-## Large projects
+## Large selections
 
-Selections larger than 200 records run continuously in sequential API batches of up to 200. For selections spanning multiple pages, **Select all matching records** collects the current filter's results with progress. **Show selection** uses the existing page size instead of rendering the entire selection.
+Actions on large selections are sent in batches of up to 200 records, so they can take a while. **Cancel remaining** stops after the batch in progress.
 
-Changing filters keeps the existing selection. **Select all matching records** replaces that selection with the current filter's records.
+If a batch fails, its records stay selected. Some of them may have been updated anyway, so check their state before running the action again.
 
-Large operations show completed, successful, and failed counts. **Cancel remaining** stops future submissions after the accepted batch finishes. Failed or unconfirmed batches remain selected; check their current state before submitting another action. The API provides counts rather than guaranteed per-record results, so a partially failed batch may include records that already succeeded.
+## Development
 
-Actions reload the selected records before evaluating permissions and workflow destinations. Partially applied operations refresh the remaining selection; records missing from a preflight require refreshing and selecting again. List refreshes also reload linked titles and upload previews.
+```sh
+npm install
+npm run dev
+npm run test
+npm run build
+```
 
-Read requests use bounded concurrency and automatic backoff. Accepted mutations are never replayed after an ambiguous timeout or network error. Selection uses offset pagination, which cannot provide an immutable snapshot while other editors change the project.
-
-See [the scale audit](docs/scale-audit.md) for the implementation constraints and synthetic validation.
+See [docs/scale-audit.md](docs/scale-audit.md) for how large projects and selections are handled.

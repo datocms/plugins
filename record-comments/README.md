@@ -1,135 +1,44 @@
 # Record Comments
 
-Record Comments adds a **Comments** sidebar panel to DatoCMS records, so editors can discuss work without leaving the record they are editing.
+Adds a **Comments** panel to the record sidebar so editors can discuss a record right where they're editing it. Comments can be replied to, upvoted, edited and deleted, and can mention users, fields, records, assets and models.
 
-Comments support replies, upvotes, editing, deletion, and rich mentions for users, fields, records, assets, and models.
+## Setup
 
-## Features
+Install the plugin from **Configuration → Plugins**. The first time it runs, it creates a model called `project_comment` to store all comments, so the user who first opens it needs permission to manage models and fields. After that, editors need to be able to create and update records in that model.
 
-- Threaded comments on saved records
-- Replies, upvotes, editing, and deletion
-- Realtime updates when a Content Delivery API token is configured
-- Standard mode that works without a delivery token
-- Mentions for users, fields, records, assets, and models
+Realtime updates are optional but recommended if more than one person comments on the same record. In the plugin settings, turn on **Enable Real-Time Updates**, paste a read-only Content Delivery API token (from your project's API tokens settings) and save. Without a token the plugin still works, but other people's comments only show up when you reload the record.
 
-## Installation
+## Usage
 
-1. In your DatoCMS project, open **Settings → Plugins**.
-2. Search for **Record Comments**.
-3. Install the plugin.
-4. Open the plugin settings and choose whether to use realtime updates.
+Open a saved record and expand the **Comments** panel. Press **Enter** to send and **Shift + Enter** for a new line. New records need to be saved once before they can be commented on.
 
-## First-time setup and permissions
+To mention something, type `/` or use the toolbar buttons:
 
-The first time the plugin runs, it creates or verifies an internal model called `project_comment`. This model stores comments in three fields:
+- `/user` mentions a project user or SSO user
+- `/field` references a field of the record, including fields inside blocks, and scrolls to it when clicked
+- `/record` links to another record (pick the model first)
+- `/asset` links to an asset from the media library
+- `/model` references a model, for users with schema access
 
-- `model_id`
-- `record_id`
-- `content`
+## Migrating from older versions
 
-The user who performs the first setup must be able to manage models and fields. After setup, editors can use the sidebar from any saved record.
+Older versions stored comments in a `comment_log` field on each model. To move them to `project_comment`, open the plugin settings, expand **Advanced settings** and click **Scan for Legacy Comments**. Review the models it finds, start the migration, and once you've checked the result you can delete the old `comment_log` fields from the same screen.
 
-## Realtime updates vs. standard mode
-
-Realtime updates are recommended when more than one person may comment on the same record.
-
-To enable them:
-
-1. Open **Settings → API Tokens**.
-2. Copy a read-only Content Delivery API token.
-3. Open **Settings → Plugins → Record Comments**.
-4. Enable realtime updates, paste the token, and save.
-
-With realtime updates enabled, new comments, replies, edits, deletes, and upvotes appear for other editors as they happen.
-
-Without realtime updates, the plugin still works. It loads comments through the project API when the sidebar opens and saves your own changes immediately, but comments from other editors will not appear instantly. Reload the record or sidebar to see updates made elsewhere.
-
-## Using comments
-
-Open a saved record and expand the **Comments** sidebar panel.
-
-- Write a comment and press **Enter** to send it.
-- Press **Shift + Enter** for a new line.
-- Reply to an existing thread from the comment actions.
-- Edit or delete your own comments when the action is shown.
-- Upvote a comment to mark it as useful.
-- Use the toolbar buttons or type `/` to insert mentions.
-
-New, unsaved records cannot receive comments yet because the plugin needs the record ID.
-
-## Mentions
-
-Type `/` in the composer to open the command menu, or type a command directly:
-
-| Command | What it inserts | Notes |
-| --- | --- | --- |
-| `/user` | A project user mention | Searches regular users and SSO users. User mentions link to the relevant user settings page when possible. |
-| `/field` | A field reference | Supports top-level fields, localized fields, and fields inside modular content, single block, and Structured Text blocks. Clicking the mention tries to scroll to that field in the record. |
-| `/record` | A record link | First choose a model, then choose a record. Clicking the mention opens the referenced record. |
-| `/asset` | An asset link | Opens the upload picker. Requires upload read permission. Images and videos show a small preview when one is available. |
-| `/model` | A model reference | Available to users with schema access. Clicking the mention opens the model or block model in the schema area. |
-
-You can use the same mention tools in replies. Existing mention chips are clickable when the current user has the right access and the target still exists.
-
-## Migrating older comments
-
-Older versions of this plugin stored comments in a `comment_log` field on each model. The current version uses the central `project_comment` model instead.
-
-If your project still has old `comment_log` fields:
-
-1. Open **Settings → Plugins → Record Comments**.
-2. Expand **Advanced settings**.
-3. Run **Scan for Legacy Comments**.
-4. Review the models found by the scan.
-5. Start the migration.
-6. After checking the migrated comments, optionally delete the old `comment_log` fields from the same screen.
-
-Keep the configuration screen open until the operation finishes. The migration
-processes records in pages and retries temporary API failures automatically.
-It preserves all locales, nested replies, and historical author/vote metadata.
-Malformed source data, duplicate storage records, or a destination that differs
-from the source are reported without overwriting existing comments.
-
-Cleanup is available only after a complete successful scan and migration. It
-reads every source and destination again before deleting each model's old field;
-fields with failed verification are preserved. Avoid editing comments or
-creating/deleting source records until cleanup finishes. Schema deletion has no
-atomic comparison with record content, so simultaneous external writes cannot
-be made safe solely by this plugin.
-Run the operation as an owner or a user with unrestricted read access to the
-source models and comment storage. Creator, workflow, or locale restrictions
-can hide legacy data and therefore block migration and cleanup.
-
-Each record's discussion is still stored in one JSON field. It is subject to
-DatoCMS's [300 KB record limit](https://www.datocms.com/docs/content-management-api/technical-limits),
-including historical metadata. A discussion that exceeds that limit fails
-migration without deleting its legacy field. The plugin does not scan the
-project's media library; asset and record mentions resolve only referenced IDs.
+Run it as the project owner or a user who can read every record in those models, since role restrictions can hide comments and block the migration. Keep the screen open until it finishes, and avoid editing comments or creating and deleting records in those models until cleanup is done. A record whose discussion exceeds the [300 KB record limit](https://www.datocms.com/docs/content-management-api/technical-limits) can't be migrated, and its old field is left in place.
 
 ## Troubleshooting
 
-**The sidebar says the record must be saved**
+If the plugin can't verify comment storage, the user who loaded it probably can't manage models and fields. Ask a project admin to reload the plugin once so the setup can run.
 
-Save the record once, then reopen or refresh the sidebar.
+If comments fail to save, check that the current role can create and update records in `project_comment`.
 
-**Realtime updates are not working**
+## Development
 
-Check that realtime updates are enabled in the plugin settings and that a read-only Content Delivery API token has been saved.
+```bash
+npm install
+npm run dev
+npm run test:unit
+npm run build
+```
 
-**Other editors' comments do not appear immediately**
-
-The plugin is probably running without realtime updates. Reload the record or configure a Content Delivery API token.
-
-**The plugin cannot verify comment storage**
-
-The setup user may not be able to manage models and fields. Ask a project admin to reload the plugin once, or grant the needed schema permissions during setup.
-
-**Comments fail to save**
-
-Check that the current user can create and update records in the internal `project_comment` model.
-
-## Support
-
-- [DatoCMS documentation](https://www.datocms.com/docs)
-- [DatoCMS community](https://community.datocms.com/)
-- [Report an issue](https://github.com/datocms/plugins/issues)
+Report issues at [github.com/datocms/plugins](https://github.com/datocms/plugins/issues).
