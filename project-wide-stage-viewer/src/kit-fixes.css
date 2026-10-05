@@ -1,0 +1,182 @@
+/*
+ * Global datocms-react-ui drift fixes and a few shared recipes, from the
+ * DatoCMS design language. Imported right after 'datocms-react-ui/styles.css'.
+ * Component styles live in CSS modules next to each component.
+ */
+
+/* Buttons (always). Pair with the wrapper in src/ui/Button.tsx. */
+.dl-kit-button.dl-kit-button svg {
+  fill: currentColor;
+  color: currentColor;
+}
+.dl-kit-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:not(
+  :active
+) {
+  background-color: var(--color--primary--surface);
+}
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:hover:not(
+  :active
+) {
+  background-color: var(--color--primary--surface-hover);
+}
+
+/* Buttons (parity): swap fills on hover instead of fading. */
+.dl-kit-button.dl-kit-button:hover,
+.dl-kit-button.dl-kit-button:focus,
+.dl-kit-button.dl-kit-button:active {
+  opacity: 1;
+}
+.dl-kit-button--muted:not(:disabled):hover {
+  background-color: var(--color--primary-soft--surface-hover);
+}
+.dl-kit-button--muted:not(:disabled):active {
+  background-color: var(--color--primary-soft--surface-active);
+}
+
+/* Toolbar title (always). */
+.dl-toolbar__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-l);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 480px) {
+  .dl-toolbar__title {
+    font-size: var(--font-size-xl);
+  }
+}
+
+/* Toolbar meta text: counts and context after the title or before actions. */
+.dl-toolbar__subtitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Red option-action icon (always). */
+.dl-kit-danger-icon.dl-kit-danger-icon {
+  fill: var(--color--danger-soft--ink);
+  color: var(--color--danger-soft--ink);
+}
+
+/* Tooltip anchor (always) and dashboard-like tooltip text. */
+.dl-tooltip-anchor {
+  display: inline-flex;
+  border-radius: 4px;
+}
+.dl-tooltip-anchor:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-tooltip-text {
+  max-width: 250px;
+  font-size: 0.9em;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Icons: FA 6 glyphs rendered by src/ui/Icon.tsx. */
+.dl-icon {
+  flex-shrink: 0;
+  vertical-align: middle;
+  fill: var(--color--ink-subtle);
+  transition: fill 0.2s var(--material-ease);
+}
+.dl-icon.dl-icon--current {
+  fill: currentColor;
+  color: inherit;
+}
+
+/* Icon-only button: always pair with a tooltip or aria-label. */
+.dl-icon-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 8px;
+  font-size: inherit;
+  line-height: 1;
+  color: var(--color--ink-subtle);
+  vertical-align: middle;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  transition:
+    color 0.2s var(--material-ease),
+    background-color 0.2s var(--material-ease);
+}
+.dl-icon-button svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+.dl-icon-button:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--color--ink);
+  background-color: var(--color--surface-hover);
+}
+.dl-icon-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-icon-button:disabled {
+  color: var(--color--disabled--ink);
+  cursor: not-allowed;
+  background-color: transparent;
+}
+
+/* Visually hidden, still announced. */
+.dl-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Form text parity: on the root of every entrypoint (dl-kit-form-parity). */
+.dl-kit-form-parity label[class^="_formLabel_"]:not([class*="--error_"]) {
+  color: var(--color--ink);
+}
+.dl-kit-form-parity [class^="_fieldHint_"],
+.dl-kit-form-parity [class^="_fieldError_"] {
+  font-size: var(--font-size-s);
+}
+.dl-kit-form-parity [class^="_fieldError_"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background-color: var(--color--danger--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-icon,
+  .dl-icon-button {
+    transition: none;
+  }
+}

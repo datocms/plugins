@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workflow Stage View preview</title>
+    <link rel="stylesheet" href="./datocms-tokens.css" />
+    <style>
+      html, body { margin: 0; height: 100%; }
+      body { background: var(--color--surface); font-family: sans-serif; }
+      .frame { display: block; border: 0; }
+      .frame--page { width: 100%; height: 100%; }
+      .frame--config { width: 710px; margin: 24px auto; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      const params = new URLSearchParams(location.search);
+      const scheme = params.get('scheme') === 'dark' ? 'dark' : 'light';
+      document.documentElement.dataset.colorScheme = scheme;
+      document.documentElement.style.colorScheme = scheme;
+      const surface = params.get('surface') === 'config' ? 'config' : 'page';
+      const frame = document.createElement('iframe');
+      frame.className = `frame frame--${surface}`;
+      frame.src = `./frame.html${location.search}`;
+      document.body.append(frame);
+    </script>
+  </body>
+</html>

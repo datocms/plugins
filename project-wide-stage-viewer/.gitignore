@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .tmplr-preview
+
+# TypeScript build info
+*.tsbuildinfo

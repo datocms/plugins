@@ -1,16 +1,16 @@
 {
   "name": "datocms-plugin-project-wide-stage-viewer",
   "homepage": "https://github.com/datocms/plugins/tree/master/project-wide-stage-viewer#readme",
-  "version": "0.1.12",
+  "version": "0.2.0",
   "author": "DatoCMS <support@datocms.com>",
-  "description": "A plugin that allows you to view all records (across multiple models) belonging to a workflow stage.",
+  "description": "View every record sitting in a workflow stage, across all models, in one table.",
   "keywords": [
     "datocms",
     "datocms-plugin"
   ],
   "type": "module",
   "datoCmsPlugin": {
-    "title": "Project Wide Stage Viewer",
+    "title": "Workflow Stage View",
     "coverImage": "docs/cover-1200x800.png",
     "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
@@ -24,24 +24,38 @@
   ],
   "scripts": {
     "dev": "vite",
+    "harness": "vite --config harness/vite.config.ts",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "preview": "vite preview",
+    "lint": "biome lint ./src ./tests",
+    "lint:fix": "biome lint --write ./src ./tests",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",
-    "datocms-plugin-sdk": "^2.3.0",
-    "datocms-react-ui": "^2.2.4",
+    "@fortawesome/free-regular-svg-icons": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "datocms-plugin-sdk": "^2.5.0",
+    "datocms-react-ui": "^2.5.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "globals": "^17.4.0",
+    "jsdom": "^28.1.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.1.11"
   },
   "packageManager": "npm@11.11.0",
   "overrides": {

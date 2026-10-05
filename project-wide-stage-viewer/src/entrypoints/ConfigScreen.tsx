@@ -1,488 +1,515 @@
+import { faTrashCan } from '@fortawesome/free-regular-svg-icons';
+import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
-  Button,
   Canvas,
-  CreatableSelectField,
+  FieldError,
   Form,
-  Section,
-  SelectField,
+  FormLabel,
+  SelectInput,
   Spinner,
-  TextField,
+  TextInput,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from 'datocms-react-ui';
-import type { JSX } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PluginParameters, StageMenuItem } from '../types';
-import { buildCmaClient } from '../utils/cma';
-import s from './styles.module.css';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { buildCmaClient, describeError, fetchWorkflows } from '../lib/cma';
+import { ICON_OPTIONS, iconByName } from '../lib/icons';
+import {
+  buildPageId,
+  DEFAULT_ICON,
+  readMenuItems,
+  serializeMenuItems,
+} from '../lib/parameters';
+import type { StageMenuItem, Workflow } from '../types';
+import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
+import s from './ConfigScreen.module.css';
 
-type Props = {
-  ctx: RenderConfigScreenCtx;
-};
+type Props = { ctx: RenderConfigScreenCtx };
 
-type WorkflowStage = {
-  id: string;
-  name: string;
-};
-
-type WorkflowSummary = {
-  id: string;
-  name: string;
-  stages: WorkflowStage[];
-};
-
-type SelectOption = {
-  value: string;
+type EntryDraft = {
+  key: string;
+  /** The stage's page ID, or null until one is picked. */
+  pageId: string | null;
   label: string;
+  icon: string;
+  /** The saved entry, kept to describe stages that no longer exist. */
+  saved?: StageMenuItem;
 };
 
-const BasicSelectField = SelectField as unknown as (
-  props: Record<string, unknown>,
-) => JSX.Element;
-const IconSelectField = CreatableSelectField as unknown as (
-  props: Record<string, unknown>,
-) => JSX.Element;
+type StageOption = { value: string; label: string; workflowName: string };
+type StageGroup = { label: string; options: StageOption[] };
+type IconOption = { value: string; label: string };
 
-const FONT_AWESOME_LINK_ID = 'project-stage-viewer-fa';
+type WorkflowsState =
+  | { status: 'loading' }
+  | { status: 'error'; error: unknown }
+  | { status: 'ready'; workflows: Workflow[] };
 
-async function fetchWorkflowSummaries(
-  ctx: RenderConfigScreenCtx,
-): Promise<WorkflowSummary[]> {
-  const client = buildCmaClient(ctx);
-  const raw = await client.workflows.list();
-  const workflowArray = Array.isArray(raw) ? raw : [];
+let nextKey = 0;
+function newKey(): string {
+  nextKey += 1;
+  return `entry-${nextKey}`;
+}
 
-  return workflowArray.map((wf) => ({
-    id: wf.id,
-    name: wf.name ?? wf.id,
-    stages: (wf.stages ?? []).map((stage) => ({
-      id: stage.id,
-      name: stage.name ?? stage.id,
+function draftFromItem(item: StageMenuItem): EntryDraft {
+  return {
+    key: newKey(),
+    pageId: item.id,
+    label: item.label ?? '',
+    icon: item.icon ?? DEFAULT_ICON,
+    saved: item,
+  };
+}
+
+function findStage(workflows: Workflow[], pageId: string | null) {
+  for (const workflow of workflows) {
+    for (const stage of workflow.stages) {
+      if (buildPageId(workflow.id, stage.id) === pageId) {
+        return { workflow, stage };
+      }
+    }
+  }
+  return null;
+}
+
+/** Turns the drafts into saved entries, refreshing the workflow and stage names. */
+function buildMenuItems(
+  drafts: EntryDraft[],
+  workflows: Workflow[],
+): StageMenuItem[] {
+  const items: StageMenuItem[] = [];
+  for (const draft of drafts) {
+    const match = findStage(workflows, draft.pageId);
+    if (!match) continue;
+    items.push({
+      id: buildPageId(match.workflow.id, match.stage.id),
+      workflowId: match.workflow.id,
+      workflowName: match.workflow.name,
+      stageId: match.stage.id,
+      stageName: match.stage.name,
+      label: draft.label.trim() || undefined,
+      icon: draft.icon === DEFAULT_ICON ? undefined : draft.icon,
+    });
+  }
+  return items;
+}
+
+function draftError(
+  draft: EntryDraft,
+  workflows: Workflow[],
+): string | undefined {
+  if (!draft.pageId) return 'Field is required';
+  if (!findStage(workflows, draft.pageId)) return 'This stage no longer exists';
+  return undefined;
+}
+
+function stageGroups(workflows: Workflow[]): StageGroup[] {
+  return workflows.map((workflow) => ({
+    label: workflow.name,
+    options: workflow.stages.map((stage) => ({
+      value: buildPageId(workflow.id, stage.id),
+      label: stage.name,
+      workflowName: workflow.name,
     })),
   }));
 }
 
-type WorkflowSetters = {
-  setWorkflows: (v: WorkflowSummary[]) => void;
-  setLoadError: (v: string | null) => void;
-  setWorkflowsLoading: (v: boolean) => void;
+function stageOption(
+  draft: EntryDraft,
+  groups: StageGroup[],
+): StageOption | null {
+  if (!draft.pageId) return null;
+  for (const group of groups) {
+    const option = group.options.find(({ value }) => value === draft.pageId);
+    if (option) return option;
+  }
+  // A stage that was deleted since the settings were saved.
+  return {
+    value: draft.pageId,
+    label: draft.saved?.stageName ?? draft.pageId,
+    workflowName: draft.saved?.workflowName ?? '',
+  };
+}
+
+/**
+ * The config frame grows to fit open menus, but react-select sizes a menu to
+ * the room left in the frame when it opens. Asking for the full height up
+ * front opens it at full size, and the frame grows around it.
+ */
+const FULL_HEIGHT_MENU = { minMenuHeight: 300, maxMenuHeight: 300 };
+
+const ICON_SELECT_OPTIONS: IconOption[] = ICON_OPTIONS.map(({ value }) => ({
+  value,
+  label: value,
+}));
+
+function iconOption(name: string): IconOption {
+  return (
+    ICON_SELECT_OPTIONS.find(({ value }) => value === name) ?? {
+      value: name,
+      label: name,
+    }
+  );
+}
+
+function IconOptionLabel({ option }: { option: IconOption }) {
+  const icon = iconByName(option.value);
+  return (
+    <span className={s.iconOption}>
+      <span className={s.iconPreview} aria-hidden="true">
+        {icon ? <Icon icon={icon} /> : null}
+      </span>
+      <span className={s.iconName}>{option.label}</span>
+    </span>
+  );
+}
+
+/** The parts people edit here; names are refreshed on every save anyway. */
+function editableParts(items: StageMenuItem[]): string {
+  return JSON.stringify(
+    items.map(({ id, label, icon }) => [
+      id,
+      label ?? '',
+      icon && icon !== DEFAULT_ICON ? icon : '',
+    ]),
+  );
+}
+
+function useWorkflows(ctx: RenderConfigScreenCtx) {
+  const [state, setState] = useState<WorkflowsState>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is the retry trigger
+  useEffect(() => {
+    let active = true;
+    setState({ status: 'loading' });
+    const load = async () => {
+      try {
+        const workflows = await fetchWorkflows(buildCmaClient(ctxRef.current));
+        if (active) setState({ status: 'ready', workflows });
+      } catch (error) {
+        if (active) setState({ status: 'error', error });
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { state, retry };
+}
+
+type EntryRowProps = {
+  draft: EntryDraft;
+  index: number;
+  groups: StageGroup[];
+  takenPageIds: Set<string>;
+  error: string | undefined;
+  disabled: boolean;
+  onChange: (patch: Partial<EntryDraft>) => void;
+  onRemove: () => void;
 };
 
-async function loadWorkflowsIntoState(
-  ctx: RenderConfigScreenCtx,
-  isMountedCheck: () => boolean,
-  setters: WorkflowSetters,
-): Promise<void> {
-  setters.setWorkflowsLoading(true);
-  setters.setLoadError(null);
+function EntryRow({
+  draft,
+  index,
+  groups,
+  takenPageIds,
+  error,
+  disabled,
+  onChange,
+  onRemove,
+}: EntryRowProps) {
+  const option = stageOption(draft, groups);
+  const name = option?.label ?? `entry ${index + 1}`;
 
-  try {
-    const mapped = await fetchWorkflowSummaries(ctx);
-    if (isMountedCheck()) {
-      setters.setWorkflows(mapped);
-    }
-  } catch (error) {
-    if (isMountedCheck()) {
-      setters.setLoadError(
-        error instanceof Error ? error.message : 'Failed to load workflows.',
-      );
-    }
-  } finally {
-    if (isMountedCheck()) {
-      setters.setWorkflowsLoading(false);
-    }
-  }
+  return (
+    <li className={s.entry}>
+      <div className={s.entryFields}>
+        <SelectInput<StageOption, false, StageGroup>
+          inputId={`stage-${index}`}
+          aria-label={
+            index === 0 ? undefined : `Workflow stage of entry ${index + 1}`
+          }
+          options={groups}
+          value={option}
+          placeholder="Select a stage…"
+          {...FULL_HEIGHT_MENU}
+          isDisabled={disabled}
+          error={Boolean(error)}
+          isOptionDisabled={(candidate) =>
+            candidate.value !== draft.pageId &&
+            takenPageIds.has(candidate.value)
+          }
+          formatOptionLabel={(candidate, { context }) => {
+            if (context === 'value') {
+              return (
+                <span className={s.stageValue}>
+                  {candidate.label}
+                  <span className={s.stageWorkflow}>
+                    {candidate.workflowName}
+                  </span>
+                </span>
+              );
+            }
+            const taken =
+              candidate.value !== draft.pageId &&
+              takenPageIds.has(candidate.value);
+            return taken ? (
+              <span className={s.stageTaken}>
+                {candidate.label} (already added)
+              </span>
+            ) : (
+              candidate.label
+            );
+          }}
+          onChange={(selected) => onChange({ pageId: selected?.value ?? null })}
+        />
+        <TextInput
+          id={`label-${index}`}
+          labelText={
+            index === 0 ? undefined : `Sidebar label of entry ${index + 1}`
+          }
+          value={draft.label}
+          placeholder={option?.label ?? 'Stage name'}
+          disabled={disabled}
+          onChange={(label) => onChange({ label })}
+        />
+        <SelectInput<IconOption, false>
+          inputId={`icon-${index}`}
+          aria-label={index === 0 ? undefined : `Icon of entry ${index + 1}`}
+          options={ICON_SELECT_OPTIONS}
+          {...FULL_HEIGHT_MENU}
+          value={iconOption(draft.icon)}
+          isDisabled={disabled}
+          isSearchable
+          formatOptionLabel={(candidate) => (
+            <IconOptionLabel option={candidate} />
+          )}
+          onChange={(selected) =>
+            onChange({ icon: selected?.value ?? DEFAULT_ICON })
+          }
+        />
+        {disabled ? null : (
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                type="button"
+                className={`dl-icon-button ${s.remove}`}
+                aria-label={`Remove ${name}`}
+                onClick={onRemove}
+              >
+                <Icon icon={faTrashCan} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="dl-tooltip-text">Remove</div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+      {error ? (
+        <div className={s.entryError}>
+          <FieldError>{error}</FieldError>
+        </div>
+      ) : null}
+    </li>
+  );
 }
 
 export default function ConfigScreen({ ctx }: Props) {
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [workflowsLoading, setWorkflowsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [menuItems, setMenuItems] = useState<StageMenuItem[]>(() => {
-    const rawParams = (ctx.plugin.attributes.parameters ??
-      {}) as Partial<PluginParameters>;
-    return rawParams.menuItems ?? [];
-  });
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
-    null,
+  const savedItems = readMenuItems(ctx.plugin.attributes.parameters);
+  const canEdit = ctx.currentRole.meta.final_permissions.can_edit_schema;
+  const { state, retry } = useWorkflows(ctx);
+  const [drafts, setDrafts] = useState<EntryDraft[]>(() =>
+    savedItems.map(draftFromItem),
   );
-  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
-  const [labelOverride, setLabelOverride] = useState('');
-  const [iconOverride, setIconOverride] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const canEditSchema = ctx.currentRole?.attributes.can_edit_schema ?? false;
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const rawParams = (ctx.plugin.attributes.parameters ??
-      {}) as Partial<PluginParameters>;
-    setMenuItems(rawParams.menuItems ?? []);
-  }, [ctx.plugin.attributes.parameters]);
+  if (state.status === 'loading') {
+    return (
+      <Canvas ctx={ctx}>
+        <div className={s.loading}>
+          <Spinner size={40} placement="centered" />
+        </div>
+      </Canvas>
+    );
+  }
 
-  useEffect(() => {
-    if (document.getElementById(FONT_AWESOME_LINK_ID)) {
-      return;
-    }
+  if (state.status === 'error') {
+    const reason = describeError(state.error);
+    return (
+      <Canvas ctx={ctx}>
+        <div className={s.callout} role="alert">
+          <div className={s.calloutText}>
+            <strong>Couldn't load the workflows.</strong>{' '}
+            {reason ?? 'Check your connection and try again.'}
+          </div>
+          <Button buttonSize="s" onClick={retry}>
+            Try again
+          </Button>
+        </div>
+      </Canvas>
+    );
+  }
 
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.id = FONT_AWESOME_LINK_ID;
-    link.href =
-      'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css';
-    document.head.append(link);
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const isMountedCheck = () => isMounted;
-
-    const setters: WorkflowSetters = {
-      setWorkflows,
-      setLoadError,
-      setWorkflowsLoading,
-    };
-
-    void loadWorkflowsIntoState(ctx, isMountedCheck, setters);
-
-    return () => {
-      isMounted = false;
-    };
-  }, [ctx]);
-
-  const workflowOptions = useMemo<SelectOption[]>(
-    () => workflows.map((wf) => ({ value: wf.id, label: wf.name })),
-    [workflows],
+  const { workflows } = state;
+  const groups = stageGroups(workflows);
+  const errors = drafts.map((draft) => draftError(draft, workflows));
+  const hasErrors = errors.some(Boolean);
+  const nextItems = buildMenuItems(drafts, workflows);
+  const dirty =
+    drafts.length !== savedItems.length ||
+    editableParts(nextItems) !== editableParts(savedItems);
+  const takenPageIds = new Set(
+    drafts.flatMap((draft) => (draft.pageId ? [draft.pageId] : [])),
+  );
+  const allStagesTaken = groups.every((group) =>
+    group.options.every((option) => takenPageIds.has(option.value)),
   );
 
-  const selectedWorkflow = useMemo(
-    () => workflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
-    [workflows, selectedWorkflowId],
-  );
+  const updateDraft = (key: string, patch: Partial<EntryDraft>) =>
+    setDrafts((current) =>
+      current.map((draft) =>
+        draft.key === key ? { ...draft, ...patch } : draft,
+      ),
+    );
 
-  const stageOptions = useMemo<SelectOption[]>(
-    () =>
-      selectedWorkflow?.stages.map((stage) => ({
-        value: stage.id,
-        label: stage.name,
-      })) ?? [],
-    [selectedWorkflow],
-  );
+  const addDraft = () =>
+    setDrafts((current) => [
+      ...current,
+      { key: newKey(), pageId: null, label: '', icon: DEFAULT_ICON },
+    ]);
 
-  const selectedStage = useMemo(
-    () =>
-      selectedWorkflow?.stages.find((stage) => stage.id === selectedStageId) ??
-      null,
-    [selectedWorkflow, selectedStageId],
-  );
+  const handleSubmit = async () => {
+    setSubmitted(true);
+    if (hasErrors) return;
 
-  const handleWorkflowChange = useCallback((option: SelectOption | null) => {
-    const nextWorkflowId = option?.value ?? null;
-    setSelectedWorkflowId(nextWorkflowId);
-    setSelectedStageId(null);
-    setActionError(null);
-  }, []);
-
-  const handleStageChange = useCallback((option: SelectOption | null) => {
-    setSelectedStageId(option?.value ?? null);
-    setActionError(null);
-  }, []);
-
-  const resetForm = useCallback(() => {
-    setSelectedWorkflowId(null);
-    setSelectedStageId(null);
-    setLabelOverride('');
-    setIconOverride('');
-  }, []);
-
-  const iconOptions = useMemo<SelectOption[]>(
-    () =>
-      [
-        'tasks',
-        'flag',
-        'check',
-        'check-circle',
-        'clipboard-list',
-        'clock',
-        'comments',
-        'edit',
-        'inbox',
-        'lightbulb',
-        'list',
-        'list-alt',
-        'play-circle',
-        'project-diagram',
-        'rocket',
-        'star',
-        'sticky-note',
-        'stream',
-        'table',
-        'thermometer-half',
-        'thumbs-up',
-        'tools',
-        'user-check',
-        'wrench',
-      ].map((icon) => ({ value: icon, label: icon })),
-    [],
-  );
-
-  const selectedIconOption = useMemo<SelectOption | null>(() => {
-    if (!iconOverride) {
-      return null;
-    }
-
-    const match = iconOptions.find((option) => option.value === iconOverride);
-    if (match) {
-      return match;
-    }
-
-    return { value: iconOverride, label: iconOverride };
-  }, [iconOptions, iconOverride]);
-
-  const handleAdd = useCallback(async () => {
-    if (!selectedWorkflow || !selectedStage || isSaving) {
-      return;
-    }
-
-    setIsSaving(true);
-    setActionError(null);
-
-    const id = `wf:${selectedWorkflow.id}__st:${selectedStage.id}`;
-    const trimmedLabel = labelOverride.trim();
-    const trimmedIcon = iconOverride.trim();
-
-    const nextItem: StageMenuItem = {
-      id,
-      workflowId: selectedWorkflow.id,
-      workflowName: selectedWorkflow.name,
-      stageId: selectedStage.id,
-      stageName: selectedStage.name,
-      label: trimmedLabel !== '' ? trimmedLabel : undefined,
-      icon: trimmedIcon !== '' ? trimmedIcon : undefined,
-    };
-
-    const currentParams = (ctx.plugin.attributes.parameters ??
-      {}) as Partial<PluginParameters>;
-    const filteredItems = menuItems.filter((item) => item.id !== id);
-    const nextMenuItems = [...filteredItems, nextItem];
-
+    setSaving(true);
     try {
       await ctx.updatePluginParameters({
-        ...currentParams,
-        menuItems: nextMenuItems,
+        ...ctx.plugin.attributes.parameters,
+        ...serializeMenuItems(nextItems),
       });
-      setMenuItems(nextMenuItems);
-      resetForm();
-    } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'Failed to save menu item.',
-      );
+      setDrafts(nextItems.map(draftFromItem));
+      setSubmitted(false);
+      ctx.notice('Settings successfully saved!');
+    } catch {
+      ctx.alert("Couldn't save the settings!");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
-  }, [
-    ctx,
-    iconOverride,
-    isSaving,
-    labelOverride,
-    menuItems,
-    resetForm,
-    selectedStage,
-    selectedWorkflow,
-  ]);
+  };
 
-  const handleRemove = useCallback(
-    async (itemId: string) => {
-      if (isSaving) {
-        return;
-      }
-
-      setIsSaving(true);
-      setActionError(null);
-
-      const currentParams = (ctx.plugin.attributes.parameters ??
-        {}) as Partial<PluginParameters>;
-      const nextMenuItems = menuItems.filter((item) => item.id !== itemId);
-
-      try {
-        await ctx.updatePluginParameters({
-          ...currentParams,
-          menuItems: nextMenuItems,
-        });
-        setMenuItems(nextMenuItems);
-      } catch (error) {
-        setActionError(
-          error instanceof Error
-            ? error.message
-            : 'Failed to remove menu item.',
-        );
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [ctx, isSaving, menuItems],
-  );
+  if (workflows.length === 0 && drafts.length === 0) {
+    return (
+      <Canvas ctx={ctx}>
+        <div className="dl-kit-form-parity">
+          <p className={s.intro}>
+            This plugin gives workflow stages their own page in the content
+            sidebar, listing every record in the stage across all models.
+          </p>
+          <p className={s.empty}>
+            This project has no workflows yet. Create one in Settings, under
+            Workflows, then come back here to pick its stages.
+          </p>
+        </div>
+      </Canvas>
+    );
+  }
 
   return (
     <Canvas ctx={ctx}>
-      <div className={s.container}>
-        {actionError ? <p className={s.error}>{actionError}</p> : null}
+      <Form className="dl-kit-form-parity" onSubmit={handleSubmit}>
+        <p className={s.intro}>
+          Each stage you add gets its own page in the content sidebar, listing
+          every record in that stage across all the models that use its
+          workflow.
+        </p>
 
-        <div className={s.section}>
-          <Section title="Workflow stage menu items">
-            <p className={s.instructions}>
-              Pick a workflow stage, optionally customise its label/icon, then
-              add it. Each saved stage appears in the content sidebar and opens
-              a paginated view of every record currently in that stage.
-            </p>
-            {workflowsLoading ? (
-              <div className={s.loading}>
-                <Spinner />
-                <span className={s.loadingLabel}>Loading workflows...</span>
-              </div>
-            ) : loadError ? (
-              <p className={s.error}>{loadError}</p>
-            ) : (
-              <Form
-                className={s.form}
-                onSubmit={(event) => event.preventDefault()}
-              >
-                {!canEditSchema ? (
-                  <p className={s.notice}>
-                    You need schema permissions to add or remove menu items.
-                  </p>
-                ) : null}
-                <BasicSelectField
-                  id="workflow"
-                  name="workflow"
-                  label="Workflow"
-                  required
-                  value={
-                    workflowOptions.find(
-                      (option) => option.value === selectedWorkflowId,
-                    ) ?? null
-                  }
-                  onChange={(option: SelectOption | null) =>
-                    handleWorkflowChange(option)
-                  }
-                  selectInputProps={{
-                    options: workflowOptions,
-                    isClearable: true,
-                    isDisabled: !canEditSchema,
-                  }}
-                />
-                <BasicSelectField
-                  id="stage"
-                  name="stage"
-                  label="Stage"
-                  required
-                  value={
-                    stageOptions.find(
-                      (option) => option.value === selectedStageId,
-                    ) ?? null
-                  }
-                  onChange={(option: SelectOption | null) =>
-                    handleStageChange(option)
-                  }
-                  selectInputProps={{
-                    options: stageOptions,
-                    isClearable: true,
-                    isDisabled: !selectedWorkflow || !canEditSchema,
-                  }}
-                />
-                <TextField
-                  id="label"
-                  name="label"
-                  label="Custom label"
-                  placeholder="Optional label override"
-                  value={labelOverride}
-                  onChange={(newValue) => setLabelOverride(newValue)}
-                  textInputProps={{ disabled: !canEditSchema }}
-                />
-                <IconSelectField
-                  id="icon"
-                  name="icon"
-                  label="Custom icon"
-                  value={selectedIconOption}
-                  onChange={(option: SelectOption | null) =>
-                    setIconOverride(option?.value ?? '')
-                  }
-                  selectInputProps={{
-                    options: iconOptions,
-                    isClearable: true,
-                    isSearchable: true,
-                    placeholder: 'Optional FontAwesome icon name',
-                    isDisabled: !canEditSchema,
-                    formatOptionLabel: (option: SelectOption) => (
-                      <span className={s.iconOption}>
-                        <span className={s.iconPreview}>
-                          <span
-                            className={`fa-solid fa-${option.value}`}
-                            aria-hidden="true"
-                          />
-                        </span>
-                        <span>{option.label}</span>
-                      </span>
-                    ),
-                  }}
-                />
-                <div className={s.actions}>
-                  <Button
-                    buttonType="primary"
-                    buttonSize="l"
-                    disabled={
-                      !canEditSchema ||
-                      !selectedWorkflow ||
-                      !selectedStage ||
-                      isSaving
-                    }
-                    onClick={handleAdd}
-                  >
-                    Add this
-                  </Button>
-                </div>
-              </Form>
-            )}
-          </Section>
-        </div>
+        {canEdit ? null : (
+          <div className={s.callout} role="status">
+            <div className={s.calloutText}>
+              You need permission to edit the schema to change these settings.
+            </div>
+          </div>
+        )}
 
-        <div className={s.section}>
-          <Section title="Configured menu items">
-            {menuItems.length === 0 ? (
-              <p className={s.empty}>No menu items configured yet.</p>
+        {drafts.length > 0 ? (
+          <div>
+            <div className={s.entryFields}>
+              <FormLabel htmlFor="stage-0" required>
+                Workflow stage
+              </FormLabel>
+              <FormLabel htmlFor="label-0">Sidebar label</FormLabel>
+              <FormLabel htmlFor="icon-0">Icon</FormLabel>
+            </div>
+            <ul className={s.entries}>
+              {drafts.map((draft, index) => (
+                <EntryRow
+                  key={draft.key}
+                  draft={draft}
+                  index={index}
+                  groups={groups}
+                  takenPageIds={takenPageIds}
+                  error={submitted ? errors[index] : undefined}
+                  disabled={!canEdit || saving}
+                  onChange={(patch) => updateDraft(draft.key, patch)}
+                  onRemove={() =>
+                    setDrafts((current) =>
+                      current.filter(({ key }) => key !== draft.key),
+                    )
+                  }
+                />
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className={s.empty}>
+            No stages in the sidebar yet. Add the first one below.
+          </p>
+        )}
+
+        {canEdit ? (
+          <div className={s.add}>
+            <Button
+              buttonSize="xs"
+              leftIcon={<Icon icon={faPlus} />}
+              disabled={saving || allStagesTaken}
+              onClick={addDraft}
+            >
+              Add new stage
+            </Button>
+          </div>
+        ) : null}
+
+        {canEdit ? (
+          <Button
+            type="submit"
+            buttonType="primary"
+            buttonSize="xl"
+            fullWidth
+            disabled={!dirty || saving}
+          >
+            {saving ? (
+              <>
+                Please wait&nbsp;
+                <Spinner size={20} />
+              </>
             ) : (
-              <ul className={s.menuItems}>
-                {menuItems.map((item) => (
-                  <li key={item.id} className={s.menuItem}>
-                    <div className={s.menuItemDetails}>
-                      <span className={s.menuItemLabel}>
-                        {item.label ??
-                          `${item.stageName} (${item.workflowName})`}
-                      </span>
-                      <span className={s.menuItemMeta}>
-                        {item.workflowName}
-                        {' -> '}
-                        {item.stageName}
-                      </span>
-                      {item.icon ? (
-                        <span className={s.menuItemMeta}>
-                          Icon: {item.icon}
-                        </span>
-                      ) : null}
-                    </div>
-                    <Button
-                      buttonType="muted"
-                      buttonSize="s"
-                      onClick={() => handleRemove(item.id)}
-                      disabled={!canEditSchema || isSaving}
-                    >
-                      Remove
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+              'Save settings'
             )}
-          </Section>
-        </div>
-      </div>
+          </Button>
+        ) : null}
+      </Form>
     </Canvas>
   );
 }
