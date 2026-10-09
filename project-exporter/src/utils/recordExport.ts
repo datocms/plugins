@@ -16,7 +16,7 @@ import { mapWithConcurrency, throwIfAborted } from './exportRuntime';
 
 export const RECORD_EXPORT_VERSION = '2.1.0';
 
-const PLUGIN_VERSION =
+export const PLUGIN_VERSION =
   process.env.REACT_APP_PLUGIN_VERSION ??
   process.env.npm_package_version ??
   '1.0.0';

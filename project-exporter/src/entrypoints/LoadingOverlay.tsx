@@ -4,10 +4,16 @@ import s from './styles.module.css';
 type Props = {
   status: string;
   progress?: number;
+  note?: string;
   onCancel?: () => void;
 };
 
-export default function LoadingOverlay({ status, progress, onCancel }: Props) {
+export default function LoadingOverlay({
+  status,
+  progress,
+  note,
+  onCancel,
+}: Props) {
   return (
     <div className={s.overlay}>
       <div className={s.overlayContent}>
@@ -26,15 +32,8 @@ export default function LoadingOverlay({ status, progress, onCancel }: Props) {
             <div className={s.progressText}>{Math.round(progress)}%</div>
           </>
         )}
-        {onCancel && (
-          <>
-            <div className={s.progressText}>
-              Large exports create multiple files. Allow multiple downloads in
-              your browser.
-            </div>
-            <Button onClick={onCancel}>Cancel export</Button>
-          </>
-        )}
+        {note && <div className={s.progressText}>{note}</div>}
+        {onCancel && <Button onClick={onCancel}>Cancel export</Button>}
       </div>
     </div>
   );

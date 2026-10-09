@@ -12,6 +12,18 @@ Pick a format at the top of the screen. It's saved and used for every export, in
 
 To export one record, open it and click **Download this record** in the **Record Downloader** sidebar panel.
 
+## Project dumps
+
+**Download project dump** saves the whole environment as one ZIP file: the schema, every record with its current and published versions and schedules, and every upload and folder. Turn on **Include asset files** to also store each asset's file, checked against its MD5; without them, the dump keeps asset metadata and URLs only, so it cannot bring back a deleted asset.
+
+The file is the same project dump that `datocms content:export` writes with the [`@datocms/cli-plugin-content-diff`](https://www.npmjs.com/package/@datocms/cli-plugin-content-diff) CLI plugin, so the CLI can compare it with an environment that has the same schema (the same locales, models and fields) and write the changes that bring that environment back to it:
+
+```sh
+npx datocms content:diff restore --source-dump=./1791556200_main.dump-records.zip --destination=main
+```
+
+A dump needs a role that can read every record and asset, and the plugin refuses to start otherwise. The export takes no lock, so keep content unchanged while it runs; reads that disagree, such as a page whose total changed or a record listed twice, stop it. The browser builds the whole ZIP before downloading it, so for very large projects, especially with asset files, run `datocms content:export` instead.
+
 ## Large exports
 
 Big exports are split into numbered files that download one after another, so let your browser download multiple files and keep the plugin open until it's done. A split record export ends with a `.manifest.json` file listing every part. If that file ends in `.incomplete.json` instead, the export was cancelled or failed partway and isn't a complete backup.
