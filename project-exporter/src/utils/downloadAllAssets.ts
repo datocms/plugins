@@ -19,6 +19,7 @@ import {
   MAX_ASSET_CHUNK_DATA_BYTES,
   MAX_FILES_PER_ZIP,
   MAX_ZIP_BYTES,
+  originalFileUrl,
   persistLastAssetExportSnapshot,
   SIZE_SAFETY_FACTOR,
 } from './assetExport';
@@ -278,7 +279,7 @@ async function downloadSingleAsset(
     );
   }
   return downloadAssetFile(
-    entry.url,
+    originalFileUrl(entry.url),
     remainingBytes,
     signal,
     undefined,

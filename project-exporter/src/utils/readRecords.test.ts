@@ -90,6 +90,24 @@ describe('raw record reads without recursive SDK deserialization', () => {
     expect((await readRecord(client, 'record')).custom).toEqual(custom);
   });
 
+  test('reads a record of a model without fields, which the CMA returns without attributes', async () => {
+    const { attributes: _, ...record } = rawRecord();
+    const expected = {
+      __itemTypeId: 'page',
+      id: 'record',
+      type: 'item',
+      item_type: { type: 'item_type', id: 'page' },
+      meta: record.meta,
+    };
+
+    expect(
+      await readRecordPage(identityClient({ data: [record] }).client, {}),
+    ).toEqual([expected]);
+    expect(
+      await readRecord(identityClient({ data: record }).client, 'record'),
+    ).toEqual(expected);
+  });
+
   test('preserves a complete CMA-shaped object inside a JSON field without injecting SDK properties', async () => {
     const custom = rawRecord(
       { title: 'This object belongs to a JSON field' },

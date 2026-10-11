@@ -110,6 +110,14 @@ export function buildAssetZipEntryName(
   )}`;
 }
 
+/** The asset's file as uploaded, without image optimizations or SVG sanitizing. */
+export function originalFileUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set('skip-default-optimizations', 'true');
+  parsed.searchParams.set('svg-sanitize', 'false');
+  return parsed.toString();
+}
+
 export function buildAssetChunkZipFilename(args: {
   part: number;
   totalParts: number;

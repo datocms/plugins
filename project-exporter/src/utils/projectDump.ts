@@ -5,6 +5,7 @@ import {
 } from '@datocms/cma-client-browser';
 import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
 import SparkMD5 from 'spark-md5';
+import { originalFileUrl } from './assetExport';
 import {
   downloadBlob,
   mapWithConcurrency,
@@ -91,14 +92,6 @@ function unproven(message: string): Error {
 /** Where an asset's file sits in a dump. */
 export function assetEntryName(id: string, filename: string): string {
   return `assets/${id}/${filename.replace(/[/\\]/g, '_')}`;
-}
-
-/** The asset's file as uploaded, without image optimizations or SVG sanitizing. */
-export function originalFileUrl(url: string): string {
-  const parsed = new URL(url);
-  parsed.searchParams.set('skip-default-optimizations', 'true');
-  parsed.searchParams.set('svg-sanitize', 'false');
-  return parsed.toString();
 }
 
 export function dumpFilename(

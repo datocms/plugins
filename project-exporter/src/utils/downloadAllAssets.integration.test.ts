@@ -94,6 +94,11 @@ test('real JSZip output preserves full bytes and source IDs in the import manife
     .mockResolvedValueOnce(new Response(new Uint8Array([128, 4])));
   vi.stubGlobal('fetch', fetchMock);
   await downloadAllAssets('synthetic-token', 'sandbox', undefined);
+  // Files as uploaded: the CDN's SVG sanitizing changes their size.
+  expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+    'https://www.datocms-assets.com/one.bin?skip-default-optimizations=true&svg-sanitize=false',
+    'https://www.datocms-assets.com/two.bin?skip-default-optimizations=true&svg-sanitize=false',
+  ]);
   expect(fixture.archive).toBeDefined();
   if (!fixture.archive) throw new Error('Expected an archive');
   const zip = await JSZip.loadAsync(await blobBytes(fixture.archive));

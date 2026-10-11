@@ -26,7 +26,8 @@ function normalizeRecord(value: unknown): ExportRecord {
     value.type !== 'item' ||
     typeof value.id !== 'string' ||
     !value.id.trim() ||
-    !isObject(value.attributes) ||
+    // Records of a model without fields come without attributes.
+    (value.attributes !== undefined && !isObject(value.attributes)) ||
     !isObject(value.relationships)
   ) {
     invalidRecord();
