@@ -1,6 +1,7 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  DOWNLOAD_URL_LIFETIME_MS,
   downloadBlob,
   mapWithConcurrency,
   waitForExport,
@@ -47,7 +48,7 @@ describe('bounded export runtime', () => {
     expect(started).toBe(2);
   });
 
-  test('removes download links and revokes object URLs after browser handoff', async () => {
+  test('returns at the handoff and revokes the object URL later', async () => {
     const create = vi.fn(() => 'blob:export');
     const revoke = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', {
@@ -61,11 +62,11 @@ describe('bounded export runtime', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
       () => undefined,
     );
-    const promise = downloadBlob(new Blob(['file']), 'file.json');
-    expect(document.querySelectorAll('a')).toHaveLength(1);
-    await vi.runAllTimersAsync();
-    await promise;
+    downloadBlob(new Blob(['file']), 'file.json');
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
     expect(document.querySelectorAll('a')).toHaveLength(0);
+    expect(revoke).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_URL_LIFETIME_MS);
     expect(revoke).toHaveBeenCalledWith('blob:export');
   });
 });

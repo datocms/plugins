@@ -1,47 +1,16 @@
-export const ASSET_EXPORT_VERSION = '2.0.0';
+export const ASSET_EXPORT_VERSION = '3.0.0';
 export const ASSET_MANIFEST_FILENAME = 'manifest.json';
 export const ASSET_ZIP_ENTRY_PATTERN =
   'u_<sourceUploadId>__<sanitizedOriginalFilename>';
-export const ASSET_ZIP_FILENAME_TEMPLATE =
-  'allAssets.part-{part}-of-{total}.{timestamp}.zip';
+export const ASSET_ZIP_FILENAME_TEMPLATE = 'allAssets.{timestamp}.zip';
 export const LAST_ASSET_EXPORT_STORAGE_KEY =
   'datocms.project-exporter.last-asset-export';
-
-export const MAX_ZIP_BYTES = 150 * 1024 * 1024;
-export const MAX_FILES_PER_ZIP = 100;
-export const SIZE_SAFETY_FACTOR = 1.2;
-// Leave room for the manifest, ZIP headers and JSZip's in-memory result.
-export const MAX_ASSET_CHUNK_DATA_BYTES = Math.floor(
-  MAX_ZIP_BYTES / SIZE_SAFETY_FACTOR,
-);
-export const ASSET_EXPORT_PROGRESS_START = 5;
-export const ASSET_EXPORT_PROGRESS_END = 95;
-
-export type AssetChunkingOptions = {
-  maxZipBytes?: number;
-  maxFilesPerZip?: number;
-  sizeSafetyFactor?: number;
-};
-
-export type AssetForChunk<TPayload = unknown> = {
-  sourceUploadId: string;
-  originalFilename: string;
-  size: number;
-  metadataBytes?: number;
-  payload: TPayload;
-};
-
-export type AssetChunk<TPayload = unknown> = {
-  assets: AssetForChunk<TPayload>[];
-  estimatedBytes: number;
-};
 
 export type AssetManifestEntry = {
   sourceUploadId: string;
   zipEntryName: string;
   originalFilename: string;
   size: number | null;
-  downloadedSize?: number;
   mimeType: string | null;
   width: number | null;
   height: number | null;
@@ -64,12 +33,8 @@ export type LastAssetExportSnapshot = {
   sourceEnvironment?: string;
   packageVersion: string;
   generatedAt: string;
-  chunkFilenames: string[];
-  totalChunks: number;
+  filename: string;
   totalAssets: number;
-  maxZipBytes: number;
-  maxFilesPerZip: number;
-  sizeSafetyFactor: number;
 };
 
 function asString(value: unknown): string | null {
@@ -110,150 +75,12 @@ export function buildAssetZipEntryName(
   )}`;
 }
 
-/** The asset's file as uploaded, without image optimizations or SVG sanitizing. */
-export function originalFileUrl(url: string): string {
-  const parsed = new URL(url);
-  parsed.searchParams.set('skip-default-optimizations', 'true');
-  parsed.searchParams.set('svg-sanitize', 'false');
-  return parsed.toString();
-}
-
-export function buildAssetChunkZipFilename(args: {
-  part: number;
-  totalParts: number;
-  timestamp: string;
-}): string {
-  const paddedPart = String(args.part).padStart(3, '0');
-  const paddedTotal = String(args.totalParts).padStart(3, '0');
-
-  return `allAssets.part-${paddedPart}-of-${paddedTotal}.${args.timestamp}.zip`;
-}
-
 export function getUploadFilename(upload: Record<string, unknown>): string {
   return (
     asString(upload.filename) ??
     asString(upload.basename) ??
     `asset-${asString(upload.id) ?? 'unknown'}`
   );
-}
-
-export function getUploadSize(upload: Record<string, unknown>): number {
-  const size = asNumber(upload.size);
-  return size !== null && size >= 0 ? size : 0;
-}
-
-export function calculateAssetExportProgress(
-  downloadedAssets: number,
-  totalAssets: number,
-): number {
-  if (totalAssets <= 0) {
-    return ASSET_EXPORT_PROGRESS_END;
-  }
-
-  const normalizedRatio = Math.min(
-    Math.max(downloadedAssets / totalAssets, 0),
-    1,
-  );
-  const progressRange = ASSET_EXPORT_PROGRESS_END - ASSET_EXPORT_PROGRESS_START;
-
-  return ASSET_EXPORT_PROGRESS_START + normalizedRatio * progressRange;
-}
-
-function estimateAssetSizeBytes(
-  size: number,
-  sizeSafetyFactor: number,
-): number {
-  if (!Number.isFinite(size) || size <= 0) {
-    return 1;
-  }
-
-  return Math.max(1, Math.ceil(size * sizeSafetyFactor));
-}
-
-function chunkingLimits(options: AssetChunkingOptions) {
-  const maxZipBytes = options.maxZipBytes ?? MAX_ZIP_BYTES;
-  const maxFilesPerZip = options.maxFilesPerZip ?? MAX_FILES_PER_ZIP;
-  const sizeSafetyFactor = options.sizeSafetyFactor ?? SIZE_SAFETY_FACTOR;
-
-  if (!Number.isFinite(maxZipBytes) || maxZipBytes <= 0) {
-    throw new Error('maxZipBytes must be a positive finite number');
-  }
-  if (!Number.isInteger(maxFilesPerZip) || maxFilesPerZip <= 0) {
-    throw new Error('maxFilesPerZip must be a positive integer');
-  }
-  if (!Number.isFinite(sizeSafetyFactor) || sizeSafetyFactor < 1) {
-    throw new Error('sizeSafetyFactor must be at least 1');
-  }
-  return { maxZipBytes, maxFilesPerZip, sizeSafetyFactor };
-}
-
-function estimateTotalAssetBytes(
-  asset: AssetForChunk,
-  sizeSafetyFactor: number,
-) {
-  const metadataBytes =
-    typeof asset.metadataBytes === 'number' &&
-    Number.isFinite(asset.metadataBytes)
-      ? Math.max(0, asset.metadataBytes)
-      : 0;
-  return (
-    estimateAssetSizeBytes(asset.size, sizeSafetyFactor) +
-    Math.ceil(metadataBytes * sizeSafetyFactor)
-  );
-}
-
-export function createAssetChunks<TPayload>(
-  assets: AssetForChunk<TPayload>[],
-  options: AssetChunkingOptions = {},
-): AssetChunk<TPayload>[] {
-  const { maxZipBytes, maxFilesPerZip, sizeSafetyFactor } =
-    chunkingLimits(options);
-
-  if (!assets.length) {
-    return [];
-  }
-
-  const chunks: AssetChunk<TPayload>[] = [];
-  let currentChunk: AssetChunk<TPayload> = { assets: [], estimatedBytes: 0 };
-
-  function flushCurrentChunk() {
-    if (!currentChunk.assets.length) {
-      return;
-    }
-
-    chunks.push(currentChunk);
-    currentChunk = { assets: [], estimatedBytes: 0 };
-  }
-
-  for (const asset of assets) {
-    const estimatedSize = estimateTotalAssetBytes(asset, sizeSafetyFactor);
-    const isOversized = estimatedSize > maxZipBytes;
-    const isUnknownSize = !Number.isFinite(asset.size) || asset.size <= 0;
-
-    // Unknown sizes must not share a ZIP: a missing estimate is not one byte.
-    if (isOversized || isUnknownSize) {
-      flushCurrentChunk();
-      chunks.push({
-        assets: [asset],
-        estimatedBytes: estimatedSize,
-      });
-      continue;
-    }
-
-    const wouldExceedFileLimit = currentChunk.assets.length >= maxFilesPerZip;
-    const wouldExceedByteLimit =
-      currentChunk.estimatedBytes + estimatedSize > maxZipBytes;
-
-    if (wouldExceedFileLimit || wouldExceedByteLimit) {
-      flushCurrentChunk();
-    }
-
-    currentChunk.assets.push(asset);
-    currentChunk.estimatedBytes += estimatedSize;
-  }
-
-  flushCurrentChunk();
-  return chunks;
 }
 
 export function buildAssetManifestEntry(
@@ -354,7 +181,7 @@ export function readLastAssetExportSnapshot(
       return null;
     }
 
-    if (!Array.isArray(parsed.chunkFilenames)) {
+    if (typeof parsed.filename !== 'string') {
       return null;
     }
 

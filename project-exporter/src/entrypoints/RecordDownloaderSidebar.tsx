@@ -1,7 +1,8 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import { Canvas } from 'datocms-react-ui';
 import { useState } from 'react';
+import { Button } from '../ui/Button';
 import downloadRecordsFile from '../utils/downloadRecordsFile';
 import { mapWithConcurrency } from '../utils/exportRuntime';
 import { readRecord } from '../utils/readRecords';

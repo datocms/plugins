@@ -7,14 +7,11 @@ import {
   ASSET_MANIFEST_FILENAME,
   ASSET_ZIP_ENTRY_PATTERN,
   ASSET_ZIP_FILENAME_TEMPLATE,
-  MAX_FILES_PER_ZIP,
-  MAX_ZIP_BYTES,
   readLastAssetExportSnapshot,
-  SIZE_SAFETY_FACTOR,
 } from './assetExport';
 import { mapWithConcurrency, throwIfAborted } from './exportRuntime';
 
-export const RECORD_EXPORT_VERSION = '2.1.0';
+export const RECORD_EXPORT_VERSION = '3.0.0';
 
 export const PLUGIN_VERSION =
   process.env.REACT_APP_PLUGIN_VERSION ??
@@ -174,11 +171,6 @@ export type RecordExportEnvelope = {
     zipNamingConvention: string;
     zipEntryNamingConvention: string;
     manifestFilename: string;
-    chunkingDefaults: {
-      maxZipBytes: number;
-      maxFilesPerZip: number;
-      sizeSafetyFactor: number;
-    };
     lastAssetExportSnapshot: ReturnType<typeof readLastAssetExportSnapshot>;
   };
 };
@@ -1366,11 +1358,6 @@ export function buildRecordExportEnvelope(args: {
       zipNamingConvention: ASSET_ZIP_FILENAME_TEMPLATE,
       zipEntryNamingConvention: ASSET_ZIP_ENTRY_PATTERN,
       manifestFilename: ASSET_MANIFEST_FILENAME,
-      chunkingDefaults: {
-        maxZipBytes: MAX_ZIP_BYTES,
-        maxFilesPerZip: MAX_FILES_PER_ZIP,
-        sizeSafetyFactor: SIZE_SAFETY_FACTOR,
-      },
       lastAssetExportSnapshot: readLastAssetExportSnapshot(
         args.siteInfo.sourceProjectId,
         args.siteInfo.sourceEnvironment,

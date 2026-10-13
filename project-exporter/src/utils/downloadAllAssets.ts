@@ -1,216 +1,106 @@
 import { buildClient, type Client } from '@datocms/cma-client-browser';
-import JSZip from 'jszip';
-import { downloadAssetFile } from './assetDownload';
+import { BlobReader } from '@zip.js/zip.js';
+import { downloadAssetFile, originalFileUrl } from './assetDownload';
 import {
-  ASSET_EXPORT_PROGRESS_START,
   ASSET_EXPORT_VERSION,
   ASSET_MANIFEST_FILENAME,
   ASSET_ZIP_ENTRY_PATTERN,
   ASSET_ZIP_FILENAME_TEMPLATE,
   type AssetExportFailure,
-  type AssetForChunk,
-  type AssetManifestEntry,
-  buildAssetChunkZipFilename,
   buildAssetManifestEntry,
   buildAssetZipEntryName,
-  calculateAssetExportProgress,
-  createAssetChunks,
   getUploadFilename,
-  MAX_ASSET_CHUNK_DATA_BYTES,
-  MAX_FILES_PER_ZIP,
-  MAX_ZIP_BYTES,
-  originalFileUrl,
   persistLastAssetExportSnapshot,
-  SIZE_SAFETY_FACTOR,
 } from './assetExport';
-import { downloadBlob, throwIfAborted, yieldToBrowser } from './exportRuntime';
+import { throwIfAborted, yieldToBrowser } from './exportRuntime';
+import { ExportWorkspace } from './exportWorkspace';
 
-type ExportAsset = AssetForChunk<AssetManifestEntry> & {
-  metadataError?: string;
-};
 type ProgressHandler = (progress: number, msg: string) => void;
+type ExportClient = Client;
 
-const ASSET_PAGE_SIZE = 500;
+/** What the download pass needs; the full metadata is already in the manifest. */
+type PendingAsset = {
+  sourceUploadId: string;
+  originalFilename: string;
+  zipEntryName: string;
+  url: string | null;
+  size: number | null;
+  md5: string | null;
+};
 
-function listUploads(
-  client: Client,
-  limit: number,
-  offset: number,
-  ids?: string,
-) {
-  return client.uploads.list({
-    ...(ids ? { filter: { ids } } : { order_by: '_created_at_ASC' }),
-    page: { limit, offset },
-  });
+// Workspace files besides the zip: the manifest, written while uploads are
+// listed, and the asset being downloaded.
+const MANIFEST_FILE = 'manifest.json';
+const ASSET_FILE = 'asset.download';
+
+const UPLOADS_PER_PAGE = 500;
+const encoder = new TextEncoder();
+
+async function uploadCount(client: ExportClient): Promise<number> {
+  return (await client.uploads.rawList({ page: { limit: 1, offset: 0 } })).meta
+    .total_count;
 }
 
-async function loadChunkMetadata(
-  client: Client,
-  assets: ExportAsset[],
-  signal?: AbortSignal,
-): Promise<ExportAsset[]> {
-  try {
-    const byId = new Map<
-      string,
-      Awaited<ReturnType<typeof client.uploads.list>>[number]
-    >();
-    const ids = assets.map((asset) => asset.sourceUploadId).join(',');
-    let offset = 0;
-    while (offset < assets.length) {
-      throwIfAborted(signal);
-      // biome-ignore lint/performance/noAwaitInLoops: Only the current ZIP's metadata is loaded.
-      const uploads = await listUploads(
-        client,
-        assets.length - offset,
-        offset,
-        ids,
-      );
-      throwIfAborted(signal);
-      if (!uploads.length) break;
-      for (const upload of uploads) {
-        if (byId.has(upload.id))
-          throw new Error('Duplicate upload IDs while loading ZIP metadata');
-        byId.set(upload.id, upload);
-      }
-      offset += uploads.length;
-    }
-    return assets.map((asset) => {
-      const upload = byId.get(asset.sourceUploadId);
-      return upload
-        ? {
-            ...asset,
-            payload: buildAssetManifestEntry(
-              upload,
-              asset.payload.zipEntryName,
-            ),
-          }
-        : {
-            ...asset,
-            metadataError: 'Asset disappeared while loading ZIP metadata',
-          };
-    });
-  } catch (error) {
-    throwIfAborted(signal);
-    const message = error instanceof Error ? error.message : String(error);
-    return assets.map((asset) => ({ ...asset, metadataError: message }));
-  }
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-function generateAssetZip(
-  zip: JSZip,
-  onProgress: (percent: number) => void,
-  signal?: AbortSignal,
-): Promise<Blob> {
-  throwIfAborted(signal);
-  return new Promise((resolve, reject) => {
-    const stream = zip.generateInternalStream({
-      type: 'uint8array',
-      compression: 'STORE',
-      streamFiles: true,
-    });
-    const output: BlobPart[] = [];
-    let bytes = 0;
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) return;
-      settled = true;
-      stream.pause();
-      output.length = 0;
-      signal?.removeEventListener('abort', onAbort);
-      reject(error);
-    };
-    const onAbort = () =>
-      fail(new DOMException('Asset export cancelled', 'AbortError'));
-    signal?.addEventListener('abort', onAbort, { once: true });
-    stream.on('data', (data, metadata) => {
-      if (settled) return;
-      try {
-        bytes += data.byteLength;
-        if (bytes > MAX_ZIP_BYTES) {
-          throw new Error('Generated archive exceeds the ZIP byte limit');
-        }
-        output.push(new Uint8Array(data));
-        onProgress(metadata.percent);
-      } catch (error) {
-        fail(error);
-      }
-    });
-    stream.on('error', fail);
-    stream.on('end', () => {
-      if (settled) return;
-      try {
-        const result = new Blob(output, { type: 'application/zip' });
-        settled = true;
-        signal?.removeEventListener('abort', onAbort);
-        resolve(result);
-        output.length = 0;
-      } catch (error) {
-        fail(error);
-      }
-    });
-    stream.resume();
-  });
-}
-
-function trackUnique(
-  value: string,
-  seen: Set<string>,
-  duplicateMessage: string,
-) {
-  if (seen.has(value)) throw new Error(`${duplicateMessage} ${value}.`);
-  seen.add(value);
-}
-
+/**
+ * Lists every upload, writing its manifest entry as it goes, and returns what
+ * the downloads need. The list must not change while it is read.
+ */
 async function scanAssets(
-  client: Client,
+  client: ExportClient,
   expectedAssets: number,
+  write: (text: string) => Promise<void>,
   onProgress?: ProgressHandler,
   signal?: AbortSignal,
-): Promise<ExportAsset[]> {
-  const assets: ExportAsset[] = [];
+): Promise<PendingAsset[]> {
+  const assets: PendingAsset[] = [];
   const seenIds = new Set<string>();
-  const seenEntryNames = new Set<string>();
   onProgress?.(0, 'Scanning assets...');
-  // The SDK iterator eagerly schedules its later pages. Await each page here
-  // so complete localized metadata is retained for at most one page and ZIP.
   let offset = 0;
   while (offset < expectedAssets) {
     throwIfAborted(signal);
     // biome-ignore lint/performance/noAwaitInLoops: Sequential pages bound localized metadata memory.
-    const uploads = await listUploads(client, ASSET_PAGE_SIZE, offset);
+    const uploads = await client.uploads.list({
+      order_by: '_created_at_ASC',
+      page: { limit: UPLOADS_PER_PAGE, offset },
+    });
     if (!uploads.length)
       throw new Error('Asset list ended before the expected total count');
     for (const upload of uploads) {
       throwIfAborted(signal);
-      const filename = getUploadFilename(upload);
-      const sourceUploadId = String(upload.id ?? 'unknown');
-      trackUnique(
-        sourceUploadId,
-        seenIds,
-        'Asset list changed while scanning: duplicate upload ID',
+      if (seenIds.has(upload.id))
+        throw new Error(
+          `Asset list changed while scanning: duplicate upload ID ${upload.id}.`,
+        );
+      seenIds.add(upload.id);
+      const originalFilename = getUploadFilename(upload);
+      const entry = buildAssetManifestEntry(
+        upload,
+        buildAssetZipEntryName(upload.id, originalFilename),
       );
-      const zipEntryName = buildAssetZipEntryName(sourceUploadId, filename);
-      trackUnique(zipEntryName, seenEntryNames, 'Duplicate ZIP entry name:');
-      const manifestEntry = buildAssetManifestEntry(upload, zipEntryName);
+      // biome-ignore lint/performance/noAwaitInLoops: Manifest entries are written in order.
+      await write(`${assets.length ? ',' : ''}${JSON.stringify(entry)}`);
       assets.push({
-        sourceUploadId,
-        originalFilename: filename,
-        size: manifestEntry.size ?? 0,
-        metadataBytes: new Blob([JSON.stringify(manifestEntry)]).size,
-        payload: { ...manifestEntry, metadata: {} },
+        sourceUploadId: upload.id,
+        originalFilename,
+        zipEntryName: entry.zipEntryName,
+        url: entry.url,
+        size: entry.size,
+        md5: entry.checksum,
       });
-      if (assets.length % 50 === 0) {
-        onProgress?.(0, `Scanned ${assets.length} assets...`);
-        // biome-ignore lint/performance/noAwaitInLoops: Yield keeps the scanning UI responsive.
-        await yieldToBrowser();
-      }
     }
     offset += uploads.length;
+    onProgress?.(
+      5 * (assets.length / expectedAssets),
+      `Scanned ${assets.length}/${expectedAssets} assets...`,
+    );
+    await yieldToBrowser();
   }
   throwIfAborted(signal);
-  const scannedCount = (
-    await client.uploads.rawList({ page: { limit: 1, offset: 0 } })
-  ).meta.total_count;
+  const scannedCount = await uploadCount(client);
   if (scannedCount !== expectedAssets || assets.length !== expectedAssets) {
     throw new Error(
       `Asset list changed while scanning: expected ${expectedAssets} assets, scanned ${assets.length}, found ${scannedCount}.`,
@@ -219,83 +109,13 @@ async function scanAssets(
   return assets;
 }
 
-async function writeIncompleteReport(
-  timestamp: string,
-  report: Record<string, unknown>,
-): Promise<string> {
-  const filename = `allAssets.failures.${timestamp}.json`;
-  await downloadBlob(
-    new Blob(
-      [
-        JSON.stringify(
-          {
-            manifestVersion: ASSET_EXPORT_VERSION,
-            generatedAt: new Date().toISOString(),
-            ...report,
-          },
-          null,
-          2,
-        ),
-      ],
-      { type: 'application/json' },
-    ),
-    filename,
-  );
-  return filename;
-}
-
-function assetFailure(asset: ExportAsset, error: unknown): AssetExportFailure {
-  return {
-    sourceUploadId: asset.sourceUploadId,
-    originalFilename: asset.originalFilename,
-    zipEntryName: asset.payload.zipEntryName,
-    url: asset.payload.url,
-    message: error instanceof Error ? error.message : String(error),
-  };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function downloadSingleAsset(
-  asset: ExportAsset,
-  remainingBytes: number,
-  addedNames: Set<string>,
-  signal?: AbortSignal,
-): Promise<Blob> {
-  const entry = asset.payload;
-  if (asset.metadataError) throw new Error(asset.metadataError);
-  if (asset.sourceUploadId === 'unknown' || !asset.sourceUploadId) {
-    throw new Error('Asset does not have a source upload ID');
-  }
-  if (!entry.url) throw new Error('Asset does not have a downloadable URL');
-  if (addedNames.has(entry.zipEntryName)) {
-    throw new Error(`Duplicate ZIP entry name: ${entry.zipEntryName}`);
-  }
-  if (asset.size > remainingBytes) {
-    throw new Error(
-      `Asset exceeds this ZIP's remaining ${remainingBytes} byte budget (${asset.size} bytes in metadata)`,
-    );
-  }
-  return downloadAssetFile(
-    originalFileUrl(entry.url),
-    remainingBytes,
-    signal,
-    undefined,
-    entry.size ?? undefined,
-  );
-}
-
 async function verifyFinalAssetCount(
-  client: Client,
+  client: ExportClient,
   expectedAssets: number,
   signal?: AbortSignal,
 ): Promise<string[]> {
   try {
-    const finalCount = (
-      await client.uploads.rawList({ page: { limit: 1, offset: 0 } })
-    ).meta.total_count;
+    const finalCount = await uploadCount(client);
     throwIfAborted(signal);
     return finalCount === expectedAssets
       ? []
@@ -308,119 +128,80 @@ async function verifyFinalAssetCount(
   }
 }
 
-async function exportChunk(
-  assets: ExportAsset[],
-  chunkInfo: {
-    index: number;
-    totalChunks: number;
-    filename: string;
-    estimatedBytes: number;
-  },
-  onProcessedAsset: (message: string) => void,
-  onGeneratingZip: (percent: number) => void,
-  signal?: AbortSignal,
-): Promise<{
-  successfulAssets: number;
-  failures: AssetExportFailure[];
-  delivered: boolean;
-}> {
-  const zip = new JSZip();
-  const manifestEntries: AssetManifestEntry[] = [];
-  const failures: AssetExportFailure[] = [];
-  const addedNames = new Set<string>();
-  let dataBytes = 0;
-
-  // One download and one archive at a time: memory does not grow with the
-  // total number of assets or ZIPs, and a retry cannot duplicate ZIP output.
-  for (const asset of assets) {
-    throwIfAborted(signal);
-    try {
-      const entry = asset.payload;
-      const remainingBytes = MAX_ASSET_CHUNK_DATA_BYTES - dataBytes;
-
-      // biome-ignore lint/performance/noAwaitInLoops: One active binary download keeps ZIP memory bounded.
-      const file = await downloadSingleAsset(
-        asset,
-        remainingBytes,
-        addedNames,
-        signal,
-      );
-      zip.file(entry.zipEntryName, file);
-      addedNames.add(entry.zipEntryName);
-      dataBytes += file.size;
-      manifestEntries.push({ ...entry, downloadedSize: file.size });
-    } catch (error) {
-      throwIfAborted(signal);
-      failures.push(assetFailure(asset, error));
-    }
-
-    onProcessedAsset(
-      `ZIP ${chunkInfo.index}/${chunkInfo.totalChunks}: processed ${manifestEntries.length + failures.length}/${assets.length} assets${failures.length ? ` (${failures.length} failed)` : ''}`,
-    );
-    // Keep cancellation and progress responsive between assets.
-    await yieldToBrowser();
-  }
-
-  throwIfAborted(signal);
-  const manifest = JSON.stringify(
-    {
-      manifestVersion: ASSET_EXPORT_VERSION,
-      generatedAt: new Date().toISOString(),
-      chunk: {
-        ...chunkInfo,
-        assetCount: manifestEntries.length,
-        requestedAssetCount: assets.length,
-        downloadedBytes: dataBytes,
-      },
-      conventions: {
-        zipEntryName: ASSET_ZIP_ENTRY_PATTERN,
-        zipFilename: ASSET_ZIP_FILENAME_TEMPLATE,
-      },
-      limits: {
-        maxZipBytes: MAX_ZIP_BYTES,
-        maxFilesPerZip: MAX_FILES_PER_ZIP,
-        sizeSafetyFactor: SIZE_SAFETY_FACTOR,
-        maxAssetChunkDataBytes: MAX_ASSET_CHUNK_DATA_BYTES,
-      },
-      assets: manifestEntries,
-      ...(failures.length ? { failedAssets: failures } : {}),
-    },
-    null,
-    2,
+/**
+ * Writes every asset file and the manifest into the workspace zip `filename`.
+ * An asset that cannot be downloaded is listed in the manifest's
+ * `failedAssets`; anything else stops the export.
+ */
+async function writeAssetZip(args: {
+  client: ExportClient;
+  workspace: ExportWorkspace;
+  filename: string;
+  expectedAssets: number;
+  manifestHeader: Record<string, unknown>;
+  onProgress?: ProgressHandler;
+  signal?: AbortSignal;
+}) {
+  const { client, workspace, expectedAssets, onProgress, signal } = args;
+  const manifest = (await workspace.writable(MANIFEST_FILE)).getWriter();
+  const write = (text: string) => manifest.write(encoder.encode(text));
+  await write(`${JSON.stringify(args.manifestHeader).slice(0, -1)},"assets":[`);
+  const assets = await scanAssets(
+    client,
+    expectedAssets,
+    write,
+    onProgress,
+    signal,
   );
 
-  try {
-    // Check the manifest before asking JSZip to allocate the complete result.
-    if (dataBytes + new Blob([manifest]).size > MAX_ZIP_BYTES) {
-      throw new Error('Asset metadata and files exceed the ZIP byte limit');
-    }
-    zip.file(ASSET_MANIFEST_FILENAME, manifest);
-    const finishedZip = await generateAssetZip(zip, onGeneratingZip, signal);
+  const zip = await workspace.zip(args.filename);
+  const failures: AssetExportFailure[] = [];
+  for (let index = 0; index < assets.length; index++) {
     throwIfAborted(signal);
-    if (finishedZip.size > MAX_ZIP_BYTES) {
-      throw new Error('Generated archive exceeds the ZIP byte limit');
+    const asset = assets[index];
+    let file: File | undefined;
+    try {
+      if (!asset.url) throw new Error('Asset does not have a downloadable URL');
+      // biome-ignore lint/performance/noAwaitInLoops: One download at a time keeps a single asset file on disk besides the zip.
+      file = await downloadAssetFile(
+        originalFileUrl(asset.url),
+        workspace,
+        ASSET_FILE,
+        { signal, expectedBytes: asset.size, md5: asset.md5 },
+      );
+    } catch (error) {
+      throwIfAborted(signal);
+      failures.push({
+        sourceUploadId: asset.sourceUploadId,
+        originalFilename: asset.originalFilename,
+        zipEntryName: asset.zipEntryName,
+        url: asset.url,
+        message: errorMessage(error),
+      });
     }
-    await downloadBlob(finishedZip, chunkInfo.filename);
-    // The handoff already happened even if cancellation arrived while its
-    // object URL was being released. Keep it in the incomplete report.
-    return {
-      successfulAssets: manifestEntries.length,
-      failures,
-      delivered: true,
-    };
-  } catch (error) {
-    throwIfAborted(signal);
-    // A ZIP that could not be delivered contributes no successful assets.
-    const failedIds = new Set(
-      failures.map((failure) => failure.sourceUploadId),
+    if (file)
+      await zip.add(asset.zipEntryName, new BlobReader(file), { level: 0 });
+    onProgress?.(
+      5 + 90 * ((index + 1) / assets.length),
+      `Downloaded ${index + 1}/${assets.length} assets${failures.length ? ` (${failures.length} failed)` : ''}...`,
     );
-    for (const asset of assets) {
-      if (!failedIds.has(asset.sourceUploadId)) {
-        failures.push(assetFailure(asset, error));
-      }
-    }
-    return { successfulAssets: 0, failures, delivered: false };
   }
+  await workspace.remove(ASSET_FILE);
+
+  throwIfAborted(signal);
+  const issues = await verifyFinalAssetCount(client, expectedAssets, signal);
+  await write(
+    `],"failedAssets":${JSON.stringify(failures)},"issues":${JSON.stringify(issues)}}`,
+  );
+  await manifest.close();
+  onProgress?.(95, 'Finishing the zip file...');
+  await zip.add(
+    ASSET_MANIFEST_FILENAME,
+    new BlobReader(await workspace.file(MANIFEST_FILE)),
+  );
+  await zip.close();
+  await workspace.remove(MANIFEST_FILE);
+  return { totalAssets: assets.length, failures, issues };
 }
 
 export default async function downloadAllAssets(
@@ -433,105 +214,48 @@ export default async function downloadAllAssets(
   throwIfAborted(signal);
   const client = buildClient({ apiToken, environment, baseUrl });
   const site = await client.site.find();
-  const expectedAssets = (
-    await client.uploads.rawList({ page: { limit: 1, offset: 0 } })
-  ).meta.total_count;
-  const assets = await scanAssets(client, expectedAssets, onProgress, signal);
-  if (!assets.length) {
+  const expectedAssets = await uploadCount(client);
+  if (!expectedAssets) {
     onProgress?.(100, 'No assets found to export.');
     return;
   }
 
-  const chunks = createAssetChunks(assets);
+  const workspace = await ExportWorkspace.open();
   const timestamp = new Date().toISOString().replace(/:/g, '-');
-  const chunkFilenames: string[] = [];
-  const failures: AssetExportFailure[] = [];
-  let processedAssets = 0;
-  let successfulAssets = 0;
-  let issues: string[] = [];
-  onProgress?.(
-    ASSET_EXPORT_PROGRESS_START,
-    `Preparing ${chunks.length} zip file(s) from ${assets.length} assets...`,
+  const filename = ASSET_ZIP_FILENAME_TEMPLATE.replace(
+    '{timestamp}',
+    timestamp,
   );
-
+  let result: Awaited<ReturnType<typeof writeAssetZip>>;
   try {
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      throwIfAborted(signal);
-      const chunk = chunks[chunkIndex];
-      const filename = buildAssetChunkZipFilename({
-        part: chunkIndex + 1,
-        totalParts: chunks.length,
-        timestamp,
-      });
-      onProgress?.(
-        calculateAssetExportProgress(processedAssets, assets.length),
-        `ZIP ${chunkIndex + 1}/${chunks.length}: downloading ${chunk.assets.length} assets...`,
-      );
-      // biome-ignore lint/performance/noAwaitInLoops: Hydrate only the current ZIP's localized metadata.
-      const chunkAssets = await loadChunkMetadata(client, chunk.assets, signal);
-      // One active ZIP bounds binary memory and prevents duplicate downloads.
-      const result = await exportChunk(
-        chunkAssets,
-        {
-          index: chunkIndex + 1,
-          totalChunks: chunks.length,
-          filename,
-          estimatedBytes: chunk.estimatedBytes,
-        },
-        (message) => {
-          processedAssets++;
-          onProgress?.(
-            calculateAssetExportProgress(processedAssets, assets.length),
-            message,
-          );
-        },
-        (percent) =>
-          onProgress?.(
-            calculateAssetExportProgress(processedAssets, assets.length),
-            `ZIP ${chunkIndex + 1}/${chunks.length}: generating archive (${Math.round(percent)}%)...`,
-          ),
-        signal,
-      );
-      successfulAssets += result.successfulAssets;
-      failures.push(...result.failures);
-      if (result.delivered) {
-        chunkFilenames.push(filename);
-      }
-      // Yield after each archive keeps cancellation responsive.
-      await yieldToBrowser();
-    }
-    throwIfAborted(signal);
-    issues = await verifyFinalAssetCount(client, expectedAssets, signal);
-  } catch (error) {
-    if (chunkFilenames.length) {
-      await writeIncompleteReport(timestamp, {
-        status: signal?.aborted ? 'cancelled' : 'incomplete',
+    result = await writeAssetZip({
+      client,
+      workspace,
+      filename,
+      expectedAssets,
+      manifestHeader: {
+        manifestVersion: ASSET_EXPORT_VERSION,
+        generatedAt: new Date().toISOString(),
         sourceProjectId: site.id,
         sourceEnvironment: environment,
-        totalAssets: assets.length,
-        successfulAssets,
-        chunkFilenames,
-        failedAssets: failures,
-        unexportedAssets: assets.length - successfulAssets,
-        message: errorMessage(error),
-      });
-    }
+        conventions: {
+          zipEntryName: ASSET_ZIP_ENTRY_PATTERN,
+          zipFilename: ASSET_ZIP_FILENAME_TEMPLATE,
+        },
+      },
+      onProgress,
+      signal,
+    });
+  } catch (error) {
+    await workspace.clear();
     throw error;
   }
+  await workspace.download(filename);
 
+  const { totalAssets, failures, issues } = result;
   if (failures.length || issues.length) {
-    const reportFilename = await writeIncompleteReport(timestamp, {
-      status: 'incomplete',
-      sourceProjectId: site.id,
-      sourceEnvironment: environment,
-      totalAssets: assets.length,
-      successfulAssets,
-      chunkFilenames,
-      failedAssets: failures,
-      issues,
-    });
     throw new Error(
-      `Asset export incomplete: ${successfulAssets}/${assets.length} assets exported; ${failures.length} failed.${issues.length ? ` ${issues.join('; ')}.` : ''} See ${reportFilename} for details.`,
+      `Asset export incomplete: ${totalAssets - failures.length}/${totalAssets} assets exported; ${failures.length} failed.${issues.length ? ` ${issues.join('; ')}.` : ''} The zip's ${ASSET_MANIFEST_FILENAME} lists them.`,
     );
   }
 
@@ -540,15 +264,11 @@ export default async function downloadAllAssets(
     sourceEnvironment: environment,
     packageVersion: ASSET_EXPORT_VERSION,
     generatedAt: new Date().toISOString(),
-    chunkFilenames,
-    totalChunks: chunks.length,
-    totalAssets: assets.length,
-    maxZipBytes: MAX_ZIP_BYTES,
-    maxFilesPerZip: MAX_FILES_PER_ZIP,
-    sizeSafetyFactor: SIZE_SAFETY_FACTOR,
+    filename,
+    totalAssets,
   });
   onProgress?.(
     100,
-    `Completed asset export: ${assets.length} assets in ${chunks.length} ZIP file(s).`,
+    `Completed asset export: ${totalAssets} assets in ${filename}.`,
   );
 }

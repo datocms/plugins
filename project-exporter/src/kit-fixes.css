@@ -1,0 +1,45 @@
+/* Global fixes for datocms-react-ui, imported right after its styles. */
+
+/* Buttons: pair with src/ui/Button.tsx. Icons take the button's own ink. */
+.dl-kit-button.dl-kit-button svg {
+  fill: currentColor;
+  color: currentColor;
+}
+.dl-kit-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+/* A clicked primary stays focused; keep the pale active fill for :active only. */
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface);
+}
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:hover:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface-hover);
+}
+
+/* Section titles at the dashboard's size, under the host's "Plugin settings". */
+.dl-section-parity > span {
+  font-size: var(--font-size-xl);
+}
+
+/* Form text: ink labels, 14px hints and errors, the error dot. */
+.dl-kit-form-parity label[class^="_formLabel_"]:not([class*="--error_"]) {
+  color: var(--color--ink);
+}
+.dl-kit-form-parity [class^="_fieldHint_"],
+.dl-kit-form-parity [class^="_fieldError_"] {
+  font-size: var(--font-size-s);
+}
+.dl-kit-form-parity [class^="_fieldError_"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background-color: var(--color--danger--surface);
+}

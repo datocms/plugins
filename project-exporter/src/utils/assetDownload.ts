@@ -1,4 +1,6 @@
+import { createMD5 } from 'hash-wasm';
 import { throwIfAborted } from './exportRuntime';
+import type { ExportWorkspace } from './exportWorkspace';
 
 export const ASSET_REQUEST_IDLE_TIMEOUT_MS = 60_000;
 export const ASSET_DOWNLOAD_MAX_ATTEMPTS = 4;
@@ -15,6 +17,26 @@ export class AssetDownloadError extends Error {
     super(message);
     this.name = 'AssetDownloadError';
   }
+}
+
+export type AssetDownloadOptions = {
+  signal?: AbortSignal;
+  /** The size the upload's metadata gives, checked when positive. */
+  expectedBytes?: number | null;
+  /** The upload's MD5, checked when present. */
+  md5?: string | null;
+  onRetry?: (attempt: number) => void;
+};
+
+/**
+ * The URL of an asset's original file: default image optimizations and SVG
+ * sanitizing would otherwise change its bytes.
+ */
+export function originalFileUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set('skip-default-optimizations', 'true');
+  parsed.searchParams.set('svg-sanitize', 'false');
+  return parsed.toString();
 }
 
 function retryAfterMs(value: string | null): number | undefined {
@@ -41,77 +63,62 @@ function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function readAssetBody(
+async function writeAssetBody(
   response: Response,
-  maxBytes: number,
+  target: WritableStream<Uint8Array>,
   resetIdleTimeout: () => void,
-  signal?: AbortSignal,
-  expectedBytes?: number,
-): Promise<Blob> {
-  const contentLengthHeader = response.headers.get('Content-Length');
-  const contentLength =
-    contentLengthHeader === null ? Number.NaN : Number(contentLengthHeader);
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    await response.body?.cancel().catch(() => undefined);
-    throw new AssetDownloadError(
-      `Asset exceeds this ZIP's remaining ${maxBytes} byte budget (${contentLength} bytes reported by server)`,
-    );
-  }
-
+  options: AssetDownloadOptions,
+): Promise<void> {
   if (!response.body) {
-    // A blob() fallback could allocate an unbounded response before checking it.
     throw new AssetDownloadError(
-      'This browser cannot stream asset downloads safely; use a browser with Fetch response streaming support',
+      'This browser cannot stream asset downloads; use a browser with Fetch response streaming support',
     );
   }
-
+  const hash = options.md5 ? (await createMD5()).init() : undefined;
   const reader = response.body.getReader();
-  const chunks: BlobPart[] = [];
+  const writer = target.getWriter();
   let receivedBytes = 0;
   try {
     while (true) {
-      throwIfAborted(signal);
+      throwIfAborted(options.signal);
       resetIdleTimeout();
-      // biome-ignore lint/performance/noAwaitInLoops: Read incrementally to enforce the actual byte budget.
+      // biome-ignore lint/performance/noAwaitInLoops: Each chunk goes to disk before the next is read.
       const { done, value } = await reader.read();
       if (done) break;
       receivedBytes += value.byteLength;
-      if (receivedBytes > maxBytes) {
-        throw new AssetDownloadError(
-          `Asset exceeds this ZIP's remaining ${maxBytes} byte budget (${receivedBytes} bytes received)`,
-        );
-      }
-      chunks.push(new Uint8Array(value));
+      hash?.update(value);
+      await writer.write(value);
     }
+    throwIfAborted(options.signal);
+    if (
+      options.expectedBytes &&
+      options.expectedBytes > 0 &&
+      receivedBytes !== options.expectedBytes
+    ) {
+      throw new AssetDownloadError(
+        `Asset size does not match its metadata (${receivedBytes} bytes received; ${options.expectedBytes} expected)`,
+        true,
+      );
+    }
+    if (hash && hash.digest('hex') !== options.md5?.toLowerCase()) {
+      throw new AssetDownloadError(
+        'Asset content does not match its MD5 checksum',
+      );
+    }
+    await writer.close();
   } catch (error) {
     await reader.cancel().catch(() => undefined);
+    await writer.abort(error).catch(() => undefined);
     throw error;
-  } finally {
-    reader.releaseLock();
   }
-
-  throwIfAborted(signal);
-  if (
-    expectedBytes !== undefined &&
-    expectedBytes > 0 &&
-    receivedBytes !== expectedBytes
-  ) {
-    throw new AssetDownloadError(
-      `Asset size does not match its metadata (${receivedBytes} bytes received; ${expectedBytes} expected)`,
-      true,
-    );
-  }
-  return new Blob(chunks, {
-    type: response.headers.get('Content-Type') ?? 'application/octet-stream',
-  });
 }
 
 async function downloadAttempt(
   url: string,
-  maxBytes: number,
-  signal?: AbortSignal,
-  expectedBytes?: number,
-): Promise<Blob> {
+  target: WritableStream<Uint8Array>,
+  options: AssetDownloadOptions,
+): Promise<void> {
+  const { signal } = options;
   throwIfAborted(signal);
   const controller = new AbortController();
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -137,15 +144,9 @@ async function downloadAttempt(
         retryAfterMs(response.headers.get('Retry-After')),
       );
     }
-
-    return await readAssetBody(
-      response,
-      maxBytes,
-      resetIdleTimeout,
-      signal,
-      expectedBytes,
-    );
+    await writeAssetBody(response, target, resetIdleTimeout, options);
   } catch (error) {
+    await target.abort(error).catch(() => undefined);
     throwIfAborted(signal);
     if (timedOut) {
       throw new AssetDownloadError(
@@ -176,31 +177,29 @@ function retryDelay(error: unknown, attempt: number): number {
   );
 }
 
-/** Retry only GET requests; no ZIP is added or downloaded before a full response. */
+/**
+ * Downloads an asset into the workspace file `name`, on disk rather than in
+ * memory, and resolves with the complete, checked file. Transient failures
+ * start the file over, up to `ASSET_DOWNLOAD_MAX_ATTEMPTS` times.
+ */
 export async function downloadAssetFile(
   url: string,
-  maxBytes: number,
-  signal?: AbortSignal,
-  onRetry?: (attempt: number) => void,
-  expectedBytes?: number,
-): Promise<Blob> {
-  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
-    throw new AssetDownloadError(
-      'Asset download byte budget must be non-negative',
-    );
-  }
-
+  workspace: ExportWorkspace,
+  name: string,
+  options: AssetDownloadOptions = {},
+): Promise<File> {
   for (let attempt = 1; attempt <= ASSET_DOWNLOAD_MAX_ATTEMPTS; attempt++) {
     try {
       // biome-ignore lint/performance/noAwaitInLoops: Retry GET attempts sequentially after discarding incomplete bodies.
-      return await downloadAttempt(url, maxBytes, signal, expectedBytes);
+      await downloadAttempt(url, await workspace.writable(name), options);
+      return await workspace.file(name);
     } catch (error) {
-      throwIfAborted(signal);
+      throwIfAborted(options.signal);
       if (!isRetryable(error) || attempt === ASSET_DOWNLOAD_MAX_ATTEMPTS)
         throw error;
-      onRetry?.(attempt + 1);
+      options.onRetry?.(attempt + 1);
       // Respect backoff before starting the next safe GET attempt.
-      await waitForRetry(retryDelay(error, attempt), signal);
+      await waitForRetry(retryDelay(error, attempt), options.signal);
     }
   }
   throw new AssetDownloadError('Asset download exhausted its retry attempts');

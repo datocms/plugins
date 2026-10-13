@@ -32,7 +32,11 @@ type PreparedPart = {
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
-  downloadBlob: vi.fn<(blob: Blob, filename: string) => Promise<void>>(),
+  files: new Map<string, Blob>(),
+  zipped: [] as { name: string; reader: { blob?: Blob; text?: string } }[],
+  downloads: [] as string[],
+  clears: 0,
+  onWrite: undefined as ((name: string) => void) | undefined,
   preparedParts: [] as PreparedPart[],
   envelopes: [] as RecordExportEnvelope[],
   captureEnvelopes: false,
@@ -47,8 +51,47 @@ vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
 
 vi.mock('./exportRuntime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./exportRuntime')>()),
-  downloadBlob: mocks.downloadBlob,
   yieldToBrowser: mocks.yieldToBrowser,
+}));
+
+// A workspace that records what the export writes, zips and downloads.
+vi.mock('./exportWorkspace', () => ({
+  ExportWorkspace: {
+    open: vi.fn(async () => ({
+      writeBlob: async (name: string, blob: Blob) => {
+        mocks.files.set(name, blob);
+        mocks.onWrite?.(name);
+      },
+      file: async (name: string) => mocks.files.get(name),
+      remove: async (name: string) => {
+        mocks.files.delete(name);
+      },
+      zip: async (name: string) => ({
+        add: async (entry: string, reader: { blob?: Blob; text?: string }) => {
+          mocks.zipped.push({ name: entry, reader });
+        },
+        close: async () => {
+          mocks.files.set(name, new Blob(['zip']));
+        },
+      }),
+      download: async (name: string) => {
+        mocks.downloads.push(name);
+      },
+      clear: async () => {
+        mocks.clears++;
+        mocks.files.clear();
+      },
+    })),
+  },
+}));
+
+vi.mock('@zip.js/zip.js', () => ({
+  BlobReader: class {
+    constructor(readonly blob: Blob) {}
+  },
+  TextReader: class {
+    constructor(readonly text: string) {}
+  },
 }));
 
 // Retain only bounded summaries, never every generated record in mock call history.
@@ -159,20 +202,25 @@ function fakeClient(
   return client;
 }
 
-async function downloadedManifest(suffix = '.manifest.json') {
-  const call = mocks.downloadBlob.mock.calls.find(([, filename]) =>
-    filename.endsWith(suffix),
+/** The manifest of a split export, from the one zip it downloads. */
+async function downloadedManifest() {
+  expect(mocks.downloads).toHaveLength(1);
+  expect(mocks.downloads[0]).toMatch(/^allDatocmsRecords\..+\.zip$/);
+  const entry = mocks.zipped.find(({ name }) =>
+    name.endsWith('.manifest.json'),
   );
-  expect(call, `Expected a downloaded ${suffix}`).toBeDefined();
-  if (!call) throw new Error(`Missing ${suffix}`);
-  return JSON.parse(await call[0].text()) as {
-    status: string;
+  if (!entry?.reader.text) throw new Error('Missing manifest');
+  return JSON.parse(entry.reader.text) as {
     totalRecords: number;
     totalParts: number;
-    exportedRecords: number;
-    expectedRecords: number;
     parts: { filename: string; recordCount: number; recordOffset: number }[];
   };
+}
+
+/** An export that failed or was cancelled leaves nothing behind. */
+function expectNothingDownloaded() {
+  expect(mocks.downloads).toEqual([]);
+  expect(mocks.files.size).toBe(0);
 }
 
 beforeEach(() => {
@@ -182,7 +230,11 @@ beforeEach(() => {
   mocks.envelopes = [];
   mocks.captureEnvelopes = false;
   mocks.outputBlob = undefined;
-  mocks.downloadBlob.mockResolvedValue(undefined);
+  mocks.files.clear();
+  mocks.zipped = [];
+  mocks.downloads = [];
+  mocks.clears = 0;
+  mocks.onWrite = undefined;
   mocks.yieldToBrowser.mockResolvedValue(undefined);
 });
 
@@ -208,44 +260,53 @@ describe('downloadAllRecords pagination and bounded parts', () => {
     );
   });
 
-  test.each([0, 1, 30, 31, 60, 61])(
-    'exports all %i records, including exact and fractional pages',
-    async (count) => {
-      const client = fakeClient({ counts: { page: count } });
-      const progress = vi.fn();
+  test.each([
+    0, 1, 30, 31, 60, 61,
+  ])('exports all %i records, including exact and fractional pages', async (count) => {
+    const client = fakeClient({ counts: { page: count } });
+    const progress = vi.fn();
 
-      await downloadAllRecords('token', 'main', undefined, 'CSV', {}, progress);
+    await downloadAllRecords('token', 'main', undefined, 'CSV', {}, progress);
 
-      expect(
-        client.items.list.mock.calls.map(([options]) => options.page.offset),
-      ).toEqual(
-        Array.from(
-          { length: Math.floor(count / NESTED_RECORDS_PER_PAGE) + 1 },
-          (_, index) => index * NESTED_RECORDS_PER_PAGE,
-        ),
-      );
-      for (const [options] of client.items.list.mock.calls) {
-        expect(options).toEqual({
-          nested: true,
-          filter: { type: 'page' },
-          order_by: 'id_ASC',
-          page: { limit: 30, offset: expect.any(Number) },
-        });
-      }
-      expect(client.items.rawList).toHaveBeenCalledTimes(2);
-      for (const [options] of client.items.rawList.mock.calls) {
-        expect(options).toEqual({
-          filter: { type: 'page' },
-          page: { limit: 0 },
-        });
-      }
-      expect(mocks.preparedParts.map((part) => part.count)).toEqual([count]);
-      expect(progress).toHaveBeenLastCalledWith(
-        100,
-        expect.stringContaining(`${count} records`),
-      );
-    },
-  );
+    expect(
+      client.items.list.mock.calls.map(([options]) => options.page.offset),
+    ).toEqual(
+      Array.from(
+        { length: Math.floor(count / NESTED_RECORDS_PER_PAGE) + 1 },
+        (_, index) => index * NESTED_RECORDS_PER_PAGE,
+      ),
+    );
+    for (const [options] of client.items.list.mock.calls) {
+      expect(options).toEqual({
+        nested: true,
+        filter: { type: 'page' },
+        order_by: 'id_ASC',
+        page: { limit: 30, offset: expect.any(Number) },
+      });
+    }
+    expect(client.items.rawList).toHaveBeenCalledTimes(2);
+    for (const [options] of client.items.rawList.mock.calls) {
+      expect(options).toEqual({
+        filter: { type: 'page' },
+        page: { limit: 0 },
+      });
+    }
+    expect(mocks.preparedParts.map((part) => part.count)).toEqual([count]);
+    expect(progress).toHaveBeenLastCalledWith(
+      100,
+      expect.stringContaining(`${count} records`),
+    );
+  });
+
+  test('downloads an export that fits one part as the file itself', async () => {
+    fakeClient({ counts: { page: 61 } });
+
+    await downloadAllRecords('token', 'main', undefined, 'CSV', {});
+
+    expect(mocks.zipped).toEqual([]);
+    expect(mocks.downloads).toHaveLength(1);
+    expect(mocks.downloads[0]).toMatch(/^allDatocmsRecords\.[^p].+\.csv$/);
+  });
 
   test('keeps text queries per model and excludes block models from text searches', async () => {
     const client = fakeClient({
@@ -289,12 +350,12 @@ describe('downloadAllRecords pagination and bounded parts', () => {
     await downloadAllRecords('token', 'main', undefined, 'CSV', {});
 
     expect(mocks.preparedParts.map((part) => part.count)).toEqual([4, 2, 2]);
-    const dataDownloads = mocks.downloadBlob.mock.calls.filter(([, name]) =>
-      name.endsWith('.csv'),
-    );
-    expect(dataDownloads).toHaveLength(2);
+    const parts = mocks.zipped.filter(({ name }) => name.endsWith('.csv'));
+    expect(parts).toHaveLength(2);
     expect(
-      dataDownloads.every(([blob]) => blob.size <= RECORD_PART_OUTPUT_BYTES),
+      parts.every(
+        ({ reader }) => (reader.blob?.size ?? 0) <= RECORD_PART_OUTPUT_BYTES,
+      ),
     ).toBe(true);
     expect(
       (await downloadedManifest()).parts.map((part) => [
@@ -371,16 +432,17 @@ describe('downloadAllRecords integrity and cancellation', () => {
       ids: undefined,
       message: 'access token is required',
     },
-  ])(
-    'rejects $description before creating a client',
-    async ({ token, ids, message }) => {
-      await expect(
-        downloadAllRecords(token, 'main', undefined, 'CSV', { modelIDs: ids }),
-      ).rejects.toThrow(message);
-      expect(mocks.createClient).not.toHaveBeenCalled();
-      expect(mocks.downloadBlob).not.toHaveBeenCalled();
-    },
-  );
+  ])('rejects $description before creating a client', async ({
+    token,
+    ids,
+    message,
+  }) => {
+    await expect(
+      downloadAllRecords(token, 'main', undefined, 'CSV', { modelIDs: ids }),
+    ).rejects.toThrow(message);
+    expect(mocks.createClient).not.toHaveBeenCalled();
+    expectNothingDownloaded();
+  });
 
   test('rejects selected models removed from the schema', async () => {
     const client = fakeClient();
@@ -390,7 +452,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
       }),
     ).rejects.toThrow('no longer exists');
     expect(client.items.list).not.toHaveBeenCalled();
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
   });
 
   test('rejects oversized schema metadata before records and drains bounded field workers', async () => {
@@ -426,7 +488,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
     expect(active).toBe(0);
     expect(client.items.list).not.toHaveBeenCalled();
     expect(mocks.preparedParts).toEqual([]);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
     expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
   });
 
@@ -449,41 +511,38 @@ describe('downloadAllRecords integrity and cancellation', () => {
     expect(client.site.find).toHaveBeenCalledTimes(1);
     expect(client.items.list).not.toHaveBeenCalled();
     expect(mocks.preparedParts).toEqual([]);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
     expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
   });
 
-  test.each(['duplicate', 'missing'] as const)(
-    'detects %s IDs and writes an incomplete manifest for prepared parts',
-    async (kind) => {
-      fakeClient({
-        counts: { page: 1030 },
-        row: (id, index) => ({
-          ...fixture,
-          id: index === 1020 ? (kind === 'duplicate' ? 'page-000000' : '') : id,
-        }),
-      });
-      const progress = vi.fn();
+  test.each([
+    'duplicate',
+    'missing',
+  ] as const)('detects %s IDs and downloads nothing, even after a prepared part', async (kind) => {
+    fakeClient({
+      counts: { page: 1030 },
+      row: (id, index) => ({
+        ...fixture,
+        id: index === 1020 ? (kind === 'duplicate' ? 'page-000000' : '') : id,
+      }),
+    });
+    const progress = vi.fn();
 
-      await expect(
-        downloadAllRecords('token', 'main', undefined, 'CSV', {}, progress),
-      ).rejects.toThrow(
-        kind === 'missing'
-          ? 'The API returned an invalid record response'
-          : 'Duplicate or missing record ID',
-      );
+    await expect(
+      downloadAllRecords('token', 'main', undefined, 'CSV', {}, progress),
+    ).rejects.toThrow(
+      kind === 'missing'
+        ? 'The API returned an invalid record response'
+        : 'Duplicate or missing record ID',
+    );
 
-      expect(mocks.preparedParts.map((part) => part.count)).toEqual([1000]);
-      expect(await downloadedManifest('.incomplete.json')).toMatchObject({
-        status: 'incomplete',
-        exportedRecords: 1000,
-        expectedRecords: 1030,
-      });
-      expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
-    },
-  );
+    expect(mocks.preparedParts.map((part) => part.count)).toEqual([1000]);
+    expectNothingDownloaded();
+    expect(mocks.clears).toBe(1);
+    expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
+  });
 
-  test('detects counts changed during export and never marks partial output complete', async () => {
+  test('detects counts changed during export and downloads nothing', async () => {
     const client = fakeClient({ counts: { page: 1001 } });
     client.items.rawList
       .mockResolvedValueOnce({ meta: { total_count: 1001 } })
@@ -495,10 +554,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
     ).rejects.toThrow('changed during export');
 
     expect(client.items.rawList).toHaveBeenCalledTimes(2);
-    expect(await downloadedManifest('.incomplete.json')).toMatchObject({
-      status: 'incomplete',
-      exportedRecords: 1000,
-    });
+    expectNothingDownloaded();
     expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
   });
 
@@ -513,7 +569,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
     ).rejects.toThrow('changed during export');
 
     expect(client.items.list).toHaveBeenCalledTimes(1);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
   });
 
   test('rejects a record above the input byte limit before preparing any file', async () => {
@@ -527,7 +583,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
     ).rejects.toThrow('8 MiB');
 
     expect(mocks.preparedParts).toEqual([]);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
   });
 
   test('rejects a single record whose serialized output cannot fit the output limit', async () => {
@@ -538,7 +594,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
       downloadAllRecords('token', 'main', undefined, 'CSV', {}),
     ).rejects.toThrow('per-file browser limit');
 
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
   });
 
   test('cancels before downloads and stops all later API pages', async () => {
@@ -564,16 +620,16 @@ describe('downloadAllRecords integrity and cancellation', () => {
 
     expect(client.items.list).toHaveBeenCalledTimes(1);
     expect(client.items.rawList).toHaveBeenCalledTimes(1);
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    expectNothingDownloaded();
     expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
   });
 
-  test('cancels after one part and emits only a cancellation manifest afterwards', async () => {
+  test('cancels after one part and downloads nothing', async () => {
     const controller = new AbortController();
     const client = fakeClient({ counts: { page: 100_000 } });
-    mocks.downloadBlob.mockImplementation(async (_blob, filename) => {
-      if (filename.endsWith('.csv')) controller.abort();
-    });
+    mocks.onWrite = (name) => {
+      if (name.endsWith('.csv')) controller.abort();
+    };
     const progress = vi.fn();
 
     await expect(
@@ -591,16 +647,7 @@ describe('downloadAllRecords integrity and cancellation', () => {
     expect(client.items.list).toHaveBeenCalledTimes(34);
     expect(client.items.rawList).toHaveBeenCalledTimes(1);
     expect(mocks.preparedParts.map((part) => part.count)).toEqual([1000]);
-    expect(
-      mocks.downloadBlob.mock.calls.map(([, filename]) =>
-        filename.split('.').pop(),
-      ),
-    ).toEqual(['csv', 'json']);
-    expect(await downloadedManifest('.incomplete.json')).toMatchObject({
-      status: 'cancelled',
-      exportedRecords: 1000,
-      expectedRecords: 100_000,
-    });
+    expectNothingDownloaded();
     expect(progress.mock.calls.every(([value]) => value < 100)).toBe(true);
   });
 });

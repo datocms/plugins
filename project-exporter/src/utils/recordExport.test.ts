@@ -588,7 +588,7 @@ describe('recordExport envelope', () => {
       scope: 'bulk',
     });
 
-    expect(envelope.manifest.exportVersion).toBe('2.1.0');
+    expect(envelope.manifest.exportVersion).toBe('3.0.0');
     expect(envelope.manifest.sourceProjectId).toBe('project-1');
     expect(envelope.manifest.configurationExport.includedResources).toContain(
       'site',

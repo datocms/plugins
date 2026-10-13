@@ -5,6 +5,7 @@ import {
 import ConfigScreen from './entrypoints/ConfigScreen';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './kit-fixes.css';
 import RecordDownloaderSidebar from './entrypoints/RecordDownloaderSidebar';
 
 connect({

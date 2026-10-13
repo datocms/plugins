@@ -1,6 +1,6 @@
 # Project Exporter
 
-Exports your project's records as JSON, CSV, XML or XLSX, and your assets as ZIP files, straight from the DatoCMS dashboard.
+Exports a DatoCMS environment, straight from the dashboard, as a project dump the DatoCMS CLI can compare with any environment and restore from. It can also export records as JSON, CSV, XML or XLSX and assets as a ZIP file, for reading your content in other tools.
 
 ![Project Exporter cover](docs/cover.png)
 
@@ -8,46 +8,54 @@ Exports your project's records as JSON, CSV, XML or XLSX, and your assets as ZIP
 
 Install the plugin (package name `datocms-plugin-project-exporter`) and allow it to use the current user's API token. Then open **Configuration → Plugins → Project Exporter**.
 
-Pick a format at the top of the screen. It's saved and used for every export, including single records. Click **Download all records** to export everything, or open **Filtered export** to export only some models or the records matching a text search. **Download all assets** packages your media library into ZIP files.
-
-To export one record, open it and click **Download this record** in the **Record Downloader** sidebar panel.
-
-## Project dumps
-
-**Download project dump** saves the whole environment as one ZIP file: the schema, every record with its current and published versions and schedules, and every upload and folder. Turn on **Include asset files** to also store each asset's file, checked against its MD5; without them, the dump keeps asset metadata and URLs only, so it cannot bring back a deleted asset.
-
-The file is the same project dump that `datocms content:export` writes with the [`@datocms/cli-plugin-content-diff`](https://www.npmjs.com/package/@datocms/cli-plugin-content-diff) CLI plugin, so the CLI can compare it with an environment that has the same schema (the same locales, models and fields) and write the changes that bring that environment back to it:
+**Export project dump** writes the current environment to one zip: every record with its current and published versions, every asset and every asset folder, in the format `datocms content:export` writes, so the CLI can compare it with any environment that has the same schema (the same locales, models and fields). Choose **With asset files** to store each asset's file as well; without them, the dump holds asset metadata and URLs only, so it cannot bring back an asset deleted from the project. Use the dump as the source of a content diff:
 
 ```sh
 npx datocms content:diff restore --source-dump=./1791556200_main.dump-records.zip --destination=main
 ```
 
-A dump needs a role that can read every record and asset, and the plugin refuses to start otherwise. The export takes no lock, so keep content unchanged while it runs; reads that disagree, such as a page whose total changed or a record listed twice, stop it. The browser builds the whole ZIP before downloading it, so for very large projects, especially with asset files, run `datocms content:export` instead.
+A dump needs a role that can read every record and asset of the environment. The plugin refuses to write one that would be incomplete.
+
+**Other export formats**, collapsed below the dump, are for reading your content in other tools: the CLI cannot import them. Pick a record format there (it's saved, and the record sidebar uses it too), then click **Download all records** or **Download all assets**, or export only the records of some models or the records matching a text search.
+
+To export one record, open it and click **Download this record** in the **Record Downloader** sidebar panel.
 
 ## Large exports
 
-Big exports are split into numbered files that download one after another, so let your browser download multiple files and keep the plugin open until it's done. A split record export ends with a `.manifest.json` file listing every part. If that file ends in `.incomplete.json` instead, the export was cancelled or failed partway and isn't a complete backup.
+Every export is assembled on disk, in the browser's private storage for the plugin, and downloaded as one file once complete, so its size isn't limited by the browser's memory. Keep the plugin open until the download starts, and leave free disk space for about twice the export: the browser copies the finished file to your downloads, and the plugin's own copy is removed when the next export starts. A cancelled or failed export downloads nothing. Exports need a recent version of Chrome, Edge, Firefox or Safari.
 
-The plugin reads live data, so avoid editing content while an export runs.
-
-Each asset ZIP holds up to 150 MiB and 100 files. Assets that can't be downloaded, including single files too big for the browser to handle, are skipped and listed in a JSON report. For those, use the [official export tools](https://www.datocms.com/docs/import-and-export/export-data).
+The plugin reads live data, so avoid editing content while an export runs. A dump stops with an error when it notices a change, such as a record count that moves or a record listed twice, rather than writing an inconsistent dump.
 
 XLSX cells can't hold more than 32,767 characters. If a record has a longer value, the XLSX export stops with an error rather than truncating it, so use another format.
 
 ## Export format
 
-JSON is the format to use if you plan to import the data somewhere else. Each JSON file contains the `records` as the Content Management API returns them, nested blocks included, plus:
+A project dump is a zip of JSON Lines, the same `content:export` writes:
+
+```
+1791556200_main.dump-records-assets.zip
+├── manifest.json             format, plugin version, project, environment, locales, counts
+├── schema.json               the site with its models and fields, and the workflows, as the CMA returns them
+├── records/000001.jsonl …    one record per line: {"id", "current", "published"}
+├── uploads/000001.jsonl …    one upload per line
+├── upload-collections/…      one folder per line
+└── assets/<id>/<filename>    asset files, only in a dump with asset files
+```
+
+Record versions are the CMA's resources exactly as `GET /items?nested=true` returns them, with scheduled publication and unpublishing in the current version's `meta`. Asset files are the originals, checked against their MD5.
+
+The other formats are not dumps. A JSON file contains the `records` as the Content Management API returns them, nested blocks included, plus:
 
 - `manifest`, with the source project, environment, locales and filters used
 - `schema`, with models, fields, and maps from their IDs to API keys
 - `projectConfiguration`, with site settings, fieldsets, menus, model filters, plugins, workflows, roles, webhooks, build triggers and scheduled publications
 - `referenceIndex`, listing every link, asset, block and Structured Text reference in the records with its JSON path
 
-In a split export, every part repeats the schema and configuration, and reference paths point into that part's `records`. Configuration the plugin couldn't read is listed in `projectConfiguration.warnings`.
-
 CSV, XML and XLSX files contain only the records. In CSV and XLSX each top-level record property gets a column, and localized values, blocks and other nested data are stored as JSON inside the cell.
 
-Each asset ZIP names files `u_<uploadId>__<filename>` and includes a `manifest.json` mapping every file to its original upload ID, filename and metadata. To rebuild a project, import the assets first and map old upload IDs to new ones, then create the records, then resolve links with `referenceIndex`.
+Big record exports are split into parts, and download as one ZIP holding every part and a `.manifest.json` listing them. In a split JSON export, every part repeats the schema and configuration, and reference paths point into that part's `records`. Configuration the plugin couldn't read is listed in `projectConfiguration.warnings`.
+
+The asset ZIP names files `u_<uploadId>__<filename>` and includes a `manifest.json` mapping every file to its original upload ID, filename and metadata. Assets that can't be downloaded are left out and listed in its `failedAssets`. To rebuild a project from these files, import the assets first and map old upload IDs to new ones, then create the records, then resolve links with `referenceIndex`.
 
 ## Development
 

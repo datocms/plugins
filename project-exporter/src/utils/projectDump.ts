@@ -1,36 +1,24 @@
-import {
-  ApiError,
-  buildClient,
-  type Client,
-} from '@datocms/cma-client-browser';
-import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
-import SparkMD5 from 'spark-md5';
-import { originalFileUrl } from './assetExport';
-import {
-  downloadBlob,
-  mapWithConcurrency,
-  throwIfAborted,
-} from './exportRuntime';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
+import { BlobReader, TextReader, type ZipWriter } from '@zip.js/zip.js';
+import { downloadAssetFile, originalFileUrl } from './assetDownload';
+import { mapWithConcurrency, throwIfAborted } from './exportRuntime';
+import { ExportWorkspace } from './exportWorkspace';
 import { PLUGIN_VERSION } from './recordExport';
 
-// A project dump is the zip `datocms content:export` writes and
-// `datocms content:diff --source-dump` reads (@datocms/cli-plugin-content-diff).
-// Its lines hold what the CMA returns, so this reads the same endpoints with
-// the same parameters and refuses the same inconsistencies as the CLI.
-const FORMAT = 'datocms-project-dump';
-const VERSION = 1;
-/** JSON lines entries are split at this size, as the CLI splits them. */
-export const ENTRY_BYTES = 64 * 1024 * 1024;
-const CONCURRENCY = 4;
-const BLOCK_FIELD_TYPES = new Set([
-  'rich_text',
-  'single_block',
-  'structured_text',
-]);
+// The dump is the one `datocms content:export` writes, so that
+// `datocms content:diff --source-dump` reads it. Keep this file in step with
+// the content diff plugin's engine/dump.ts and engine/capture.ts.
+
+export const DUMP_FORMAT = 'datocms-project-dump';
+export const DUMP_VERSION = 1;
+/** Entries of JSON lines are split at this size, as content:export does. */
+export const DUMP_ENTRY_BYTES = 64 * 1024 * 1024;
+const BLOCK_FIELD_TYPES = ['rich_text', 'single_block', 'structured_text'];
+const ASSET_FILE = 'asset.download';
 
 export type DumpManifest = {
-  format: typeof FORMAT;
-  version: typeof VERSION;
+  format: typeof DUMP_FORMAT;
+  version: typeof DUMP_VERSION;
   createdAt: string;
   pluginVersion: string;
   site: { id: string; environment: string; primary: boolean };
@@ -39,234 +27,130 @@ export type DumpManifest = {
   counts: { records: number; uploads: number; uploadCollections: number };
 };
 
+type ExportClient = Client;
 type Progress = (progress: number, message: string) => void;
-type RawSchema = {
-  site: Awaited<ReturnType<Client['site']['rawFind']>>;
-  workflows: Awaited<ReturnType<Client['workflows']['list']>>;
+type JsonObject = Record<string, unknown>;
+type Resource = {
+  id: string;
+  type: string;
+  attributes: JsonObject;
+  relationships?: Record<string, { data: unknown }>;
+  meta?: JsonObject;
 };
+type Page<T> = { data: T[]; total: number };
 type Model = {
   id: string;
   apiKey: string;
   workflowId: string | null;
-  /** Whether its records hold blocks, which only `nested` reads expand. */
   nested: boolean;
 };
-type Page = { data: unknown[]; total: number };
-type NativeRow = {
+type Asset = {
   id: string;
-  meta: Record<string, string | null | undefined>;
+  url: string;
+  filename: string;
+  md5: string;
+  size: number;
 };
-type ScheduleResource = {
-  id: string;
-  type: string;
-  attributes: Record<string, unknown>;
-};
-type RecordLine = {
-  id: string;
-  current: NativeRow;
-  published: unknown | null;
-  scheduledPublication: ScheduleResource | null;
-  scheduledUnpublishing: ScheduleResource | null;
-};
-type Asset = { id: string; url: string; filename: string; md5: string };
-type Rule = Record<string, unknown>;
 
-const encoder = new TextEncoder();
+class ContentChangedError extends Error {
+  constructor(detail: string) {
+    super(
+      `${detail} Keep content unchanged while the dump is written, then export again.`,
+    );
+    this.name = 'ContentChangedError';
+  }
+}
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export class IncompleteAccessError extends Error {
+  constructor(what: string) {
+    super(
+      `Your role cannot read ${what} in this environment, so the dump would be incomplete. Ask an administrator to export it.`,
+    );
+    this.name = 'IncompleteAccessError';
+  }
+}
+
+function object(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function changed(message: string): Error {
-  return new Error(
-    `${message} Avoid editing the project while it exports, then try again.`,
+function relationshipId(resource: Resource, name: string): string | null {
+  const data = resource.relationships?.[name]?.data;
+  return object(data) && typeof data.id === 'string' ? data.id : null;
+}
+
+/** The models with records, and whether reading them needs `nested`. */
+function modelsOf(site: { included?: Resource[] }): Model[] {
+  const included = site.included ?? [];
+  const nested = new Set(
+    included
+      .filter(
+        (entry) =>
+          entry.type === 'field' &&
+          BLOCK_FIELD_TYPES.includes(String(entry.attributes.field_type)),
+      )
+      .map((field) => relationshipId(field, 'item_type')),
   );
-}
-
-function unproven(message: string): Error {
-  return new Error(
-    `${message} A project dump needs a role that can read every record and asset.`,
-  );
-}
-
-/** Where an asset's file sits in a dump. */
-export function assetEntryName(id: string, filename: string): string {
-  return `assets/${id}/${filename.replace(/[/\\]/g, '_')}`;
-}
-
-export function dumpFilename(
-  environment: string,
-  includeAssets: boolean,
-  date = new Date(),
-): string {
-  const seconds = Math.floor(date.getTime() / 1000);
-  return `${seconds}_${environment}.dump-records${includeAssets ? '-assets' : ''}.zip`;
-}
-
-/**
- * JSON lines under `prefix`, split into `prefix/000001.jsonl`, … entries.
- * Writes run one after another, so a new entry never ends one that another
- * write is still filling.
- */
-class JsonLines {
-  count = 0;
-  private entries = 0;
-  private bytes = 0;
-  private entry?: {
-    writer: WritableStreamDefaultWriter<Uint8Array>;
-    added: Promise<unknown>;
-  };
-  private queue: Promise<void> = Promise.resolve();
-
-  constructor(
-    private readonly zip: ZipWriter<Blob>,
-    private readonly prefix: string,
-    private readonly limit: number,
-  ) {}
-
-  write(value: unknown): Promise<void> {
-    return this.enqueue(() => this.writeLine(value));
-  }
-
-  /** Finishes the open entry; call it before adding anything else. */
-  end(): Promise<void> {
-    return this.enqueue(() => this.endEntry());
-  }
-
-  private enqueue(task: () => Promise<void>): Promise<void> {
-    const next = this.queue.then(task);
-    this.queue = next.catch(() => {});
-    return next;
-  }
-
-  private async writeLine(value: unknown): Promise<void> {
-    const line = encoder.encode(`${JSON.stringify(value)}\n`);
-    if (!this.entry || this.bytes + line.byteLength > this.limit) {
-      await this.endEntry();
-      this.entries++;
-      const stream = new TransformStream<Uint8Array, Uint8Array>();
-      const added = this.zip.add(
-        `${this.prefix}/${String(this.entries).padStart(6, '0')}.jsonl`,
-        stream.readable,
-      );
-      added.catch(() => {});
-      this.entry = { writer: stream.writable.getWriter(), added };
-      this.bytes = 0;
-    }
-    this.bytes += line.byteLength;
-    this.count++;
-    // The entry's failure rejects `added`, while the write would wait forever.
-    await Promise.race([this.entry.writer.write(line), this.entry.added]);
-  }
-
-  /** Abandons the open entry, so the zip stops waiting for its data. */
-  async abort(reason: unknown): Promise<void> {
-    const entry = this.entry;
-    this.entry = undefined;
-    await entry?.writer.abort(reason).catch(() => {});
-    await entry?.added.catch(() => {});
-  }
-
-  private async endEntry(): Promise<void> {
-    const entry = this.entry;
-    if (!entry) return;
-    this.entry = undefined;
-    await Promise.race([entry.writer.close(), entry.added]);
-    await entry.added;
-  }
-}
-
-async function readSchema(client: Client): Promise<RawSchema> {
-  const [site, workflows] = await Promise.all([
-    client.site.rawFind({ include: 'item_types,item_types.fields' }),
-    client.workflows.list(),
-  ]);
-  return { site, workflows };
-}
-
-/** The models whose records a dump holds: every model but blocks. */
-function recordModels(schema: RawSchema): Model[] {
-  const included = schema.site.included ?? [];
-  const nested = new Set<string>();
-  for (const entry of included)
-    if (
-      entry.type === 'field' &&
-      BLOCK_FIELD_TYPES.has(entry.attributes.field_type)
+  return included
+    .filter(
+      (entry) => entry.type === 'item_type' && !entry.attributes.modular_block,
     )
-      nested.add(entry.relationships.item_type.data.id);
-  return included.flatMap((entry) =>
-    entry.type === 'item_type' && !entry.attributes.modular_block
-      ? [
-          {
-            id: entry.id,
-            apiKey: entry.attributes.api_key,
-            workflowId: entry.relationships.workflow.data?.id ?? null,
-            nested: nested.has(entry.id),
-          },
-        ]
-      : [],
-  );
+    .map((model) => ({
+      id: model.id,
+      apiKey: String(model.attributes.api_key),
+      workflowId: relationshipId(model, 'workflow'),
+      nested: nested.has(model.id),
+    }));
 }
 
-function rules(value: unknown): Rule[] {
-  if (!Array.isArray(value) || !value.every(isObject))
-    throw unproven('Your effective permission rules are unavailable.');
+function rules(value: unknown, what: string): JsonObject[] {
+  if (!Array.isArray(value) || !value.every(object))
+    throw new IncompleteAccessError(what);
   return value;
 }
 
-/** The current user's effective permissions, or null when nothing limits them. */
-async function effectivePermissions(
-  client: Client,
-): Promise<Record<string, unknown> | null> {
-  const actor: unknown = await client.users.findMe({ include: 'role' });
-  if (!isObject(actor)) throw unproven('The CMA did not return your user.');
+/**
+ * Refuses an export the current user's role would leave incomplete: a model,
+ * a locale, a workflow stage or an asset folder it cannot read would be
+ * missing from the dump, and a diff from that dump would delete it.
+ */
+async function assertFullReadAccess(
+  client: ExportClient,
+  environment: string,
+  models: Model[],
+): Promise<void> {
+  const actor: JsonObject = { ...(await client.users.findMe()) };
   if (
     actor.type === 'account' ||
     actor.type === 'organization' ||
     (actor.type === 'access_token' && actor.hardcoded_type === 'admin')
   )
-    return null;
-  if (!isObject(actor.role) || typeof actor.role.id !== 'string')
-    throw unproven('Your role cannot be inspected.');
-  const role: unknown =
-    isObject(actor.role.meta) && isObject(actor.role.meta.final_permissions)
-      ? actor.role
-      : await client.roles.find(actor.role.id);
-  if (
-    !isObject(role) ||
-    !isObject(role.meta) ||
-    !isObject(role.meta.final_permissions)
-  )
-    throw unproven('Your role does not expose its effective permissions.');
-  if (
-    actor.type === 'access_token' &&
-    role.meta.final_permissions.can_manage_upload_collections !== true
-  )
-    throw unproven('Your token cannot read upload folders.');
-  return role.meta.final_permissions;
-}
-
-/** Refuses a role that could leave records or uploads out of the dump. */
-async function assertFullReadAccess(
-  client: Client,
-  environment: string,
-  models: Model[],
-): Promise<void> {
-  const permissions = await effectivePermissions(client);
-  if (!permissions) return;
-  const applicable = (rule: Rule) =>
+    return;
+  const everything = 'every record and asset';
+  if (!object(actor.role) || typeof actor.role.id !== 'string')
+    throw new IncompleteAccessError(everything);
+  const role: JsonObject = { ...(await client.roles.find(actor.role.id)) };
+  const permissions = object(role.meta) ? role.meta.final_permissions : null;
+  if (!object(permissions)) throw new IncompleteAccessError(everything);
+  const applicable = (rule: JsonObject) =>
     (rule.action === 'read' || rule.action === 'all') &&
     rule.environment === environment;
-  const unrestricted = (rule: Rule) =>
+  const unrestricted = (rule: JsonObject) =>
     rule.on_creator === 'anyone' &&
     !rule.on_stage &&
     (rule.localization_scope === undefined ||
       rule.localization_scope === null ||
       rule.localization_scope === 'all');
-  const positives = rules(permissions.positive_item_type_permissions);
-  const negatives = rules(permissions.negative_item_type_permissions);
+  const positives = rules(
+    permissions.positive_item_type_permissions,
+    everything,
+  );
+  const negatives = rules(
+    permissions.negative_item_type_permissions,
+    everything,
+  );
   for (const model of models) {
-    const matches = (rule: Rule) =>
+    const matches = (rule: JsonObject) =>
       rule.item_type
         ? rule.item_type === model.id
         : rule.workflow
@@ -278,200 +162,173 @@ async function assertFullReadAccess(
       ) ||
       negatives.some((rule) => applicable(rule) && matches(rule))
     )
-      throw unproven(
-        `Your role may not read every record of model ${model.apiKey} in ${environment}.`,
+      throw new IncompleteAccessError(
+        `every record of the ${model.apiKey} model`,
       );
   }
   if (
-    !rules(permissions.positive_upload_permissions).some(
+    !rules(permissions.positive_upload_permissions, everything).some(
       (rule) =>
         applicable(rule) && unrestricted(rule) && !rule.upload_collection,
     ) ||
-    rules(permissions.negative_upload_permissions).some(applicable)
+    rules(permissions.negative_upload_permissions, everything).some(applicable)
   )
-    throw unproven(`Your role may not read every asset in ${environment}.`);
+    throw new IncompleteAccessError('every asset');
 }
 
 /**
- * Reads every page of a collection, `limit` rows at a time, and refuses one
- * whose total or page sizes change while it is read.
+ * Reads a collection page by page, in order. A total or a page length that
+ * disagrees with the first read means the collection changed meanwhile.
  */
-async function pages(
-  read: (offset: number) => Promise<Page>,
+async function readPages<T>(
+  read: (offset: number, limit: number) => Promise<Page<T>>,
   limit: number,
-  consume: (rows: unknown[]) => Promise<void>,
+  consume: (rows: T[]) => Promise<void>,
   signal?: AbortSignal,
 ): Promise<number> {
-  throwIfAborted(signal);
-  const first = await read(0);
-  const accept = async (page: Page, offset: number) => {
+  let offset = 0;
+  let total: number | undefined;
+  while (total === undefined || offset < total) {
     throwIfAborted(signal);
+    // biome-ignore lint/performance/noAwaitInLoops: One page is held in memory at a time.
+    const page = await read(offset, limit);
+    total ??= page.total;
     if (
-      page.total !== first.total ||
-      page.data.length !== Math.min(limit, first.total - offset)
+      page.total !== total ||
+      page.data.length !== Math.min(limit, total - offset)
     )
-      throw changed('A collection changed while it was being read.');
+      throw new ContentChangedError('Content changed while it was being read.');
     await consume(page.data);
-  };
-  await accept(first, 0);
-  const offsets: number[] = [];
-  for (let offset = limit; offset < first.total; offset += limit)
-    offsets.push(offset);
-  await mapWithConcurrency(offsets, CONCURRENCY, async (offset) =>
-    accept(await read(offset), offset),
-  );
-  return first.total;
+    offset += page.data.length;
+  }
+  return total;
 }
 
-/** Records as the CMA returns them, without the SDK's deserialization. */
 async function readItems(
-  client: Client,
-  queryParams: Record<string, unknown>,
-): Promise<Page> {
+  client: ExportClient,
+  queryParams: JsonObject,
+): Promise<Page<Resource>> {
+  // The SDK's deserializer would reshape the records; the dump keeps them as
+  // the CMA returns them.
   const body = await client.request<{
-    data: unknown[];
+    data: Resource[];
     meta: { total_count: number };
   }>({ method: 'GET', url: '/items', queryParams });
   return { data: body.data, total: body.meta.total_count };
 }
 
-const at = (value: unknown) =>
-  typeof value === 'string' ? new Date(value).toISOString() : null;
-
-/** A record's scheduled publication and unpublishing, as the CMA returns them. */
-async function readSchedules(
-  client: Client,
-  record: NativeRow,
-): Promise<[ScheduleResource | null, ScheduleResource | null]> {
-  const publicationAt = record.meta.publication_scheduled_at;
-  const unpublishingAt = record.meta.unpublishing_scheduled_at;
-  if (!publicationAt && !unpublishingAt) return [null, null];
-  let body: {
-    data: { relationships: Record<string, { data: { id: string } | null }> };
-    included?: ScheduleResource[];
-  };
-  try {
-    body = (await client.items.rawCurrentVsPublishedState(
-      record.id,
-    )) as unknown as typeof body;
-  } catch (error) {
-    // The record was listed a moment ago, so it was deleted meanwhile.
-    if (error instanceof ApiError && error.response.status === 404)
-      throw changed(`Record ${record.id} was deleted during the export.`);
-    throw error;
-  }
-  const resource = (key: string) => {
-    const id = body.data.relationships[key]?.data?.id;
-    return (
-      body.included?.find((entry) => entry.id === id && entry.type === key) ??
-      null
-    );
-  };
-  const publication = resource('scheduled_publication');
-  const unpublishing = resource('scheduled_unpublishing');
-  // The listing and this read are two requests: a schedule that changed
-  // between them makes the marker and the details disagree.
-  if (
-    at(publicationAt) !==
-      at(publication?.attributes.publication_scheduled_at) ||
-    at(unpublishingAt) !==
-      at(unpublishing?.attributes.unpublishing_scheduled_at)
-  )
-    throw changed('A record schedule changed during the export.');
-  return [publication, unpublishing];
-}
-
-/**
- * One listed page of current records as complete record lines: their
- * published versions, read by ID, and their schedules.
- */
+/** A page of current records, each with its published version or null. */
 async function recordLines(
-  client: Client,
-  rows: NativeRow[],
+  client: ExportClient,
+  rows: Resource[],
   nested: boolean,
-): Promise<RecordLine[]> {
-  const published = new Map<string, unknown>();
-  const ids = rows.filter((row) => row.meta.published_at).map((row) => row.id);
+) {
+  const published = new Map<string, Resource>();
+  const ids = rows.filter((row) => row.meta?.published_at).map((row) => row.id);
   // A filter of IDs travels in the URL, so long lists are split.
-  const size = nested ? 30 : 100;
+  const size = Math.min(nested ? 30 : 100, rows.length);
   for (let start = 0; start < ids.length; start += size) {
     const chunk = ids.slice(start, start + size);
-    // biome-ignore lint/performance/noAwaitInLoops: One chunk of published versions at a time bounds memory.
-    const page = await readItems(client, {
+    // biome-ignore lint/performance/noAwaitInLoops: Chunks are read one at a time to bound memory.
+    const { data } = await readItems(client, {
       filter: { ids: chunk.join(',') },
       nested,
       version: 'published',
       page: { limit: chunk.length },
     });
-    for (const resource of page.data as NativeRow[])
-      published.set(resource.id, resource);
+    for (const resource of data) published.set(resource.id, resource);
   }
-  const lines = rows.map((row): RecordLine => {
-    const version = published.get(row.id) ?? null;
-    // The current and published versions are two requests.
-    if (Boolean(row.meta.published_at) !== Boolean(version))
-      throw changed(
-        `Publication state changed while reading record ${row.id}.`,
+  return rows.map((row) => {
+    const pub = published.get(row.id) ?? null;
+    if (Boolean(row.meta?.published_at) !== Boolean(pub))
+      throw new ContentChangedError(
+        `Record ${row.id} was published or unpublished while it was being read.`,
       );
-    return {
-      id: row.id,
-      current: row,
-      published: version,
-      scheduledPublication: null,
-      scheduledUnpublishing: null,
-    };
+    return { id: row.id, current: row, published: pub };
   });
-  // Schedule details cost one request per scheduled record. Few records are
-  // scheduled, so they are read together rather than one after another.
-  await mapWithConcurrency(
-    lines.filter(
-      ({ current }) =>
-        current.meta.publication_scheduled_at ||
-        current.meta.unpublishing_scheduled_at,
-    ),
-    CONCURRENCY,
-    async (line) => {
-      [line.scheduledPublication, line.scheduledUnpublishing] =
-        await readSchedules(client, line.current);
-    },
-  );
-  return lines;
 }
 
-async function countRecords(
-  client: Client,
-  models: Model[],
-  signal?: AbortSignal,
-): Promise<number> {
-  const counts = await mapWithConcurrency(
-    models,
-    CONCURRENCY,
-    async (model) => {
-      throwIfAborted(signal);
-      const page = await readItems(client, {
-        filter: { type: model.id },
-        version: 'current',
-        page: { limit: 0 },
-      });
-      return page.total;
-    },
-  );
-  return counts.reduce((sum, count) => sum + count, 0);
+/** JSON lines in numbered zip entries of at most `limit` bytes. */
+export class JsonLines {
+  private writer?: WritableStreamDefaultWriter<Uint8Array>;
+  private added?: Promise<unknown>;
+  private bytes = 0;
+  private entries = 0;
+  private readonly encoder = new TextEncoder();
+  count = 0;
+
+  constructor(
+    private readonly zip: ZipWriter<unknown>,
+    private readonly prefix: string,
+    private readonly limit = DUMP_ENTRY_BYTES,
+  ) {}
+
+  async write(value: unknown): Promise<void> {
+    const line = this.encoder.encode(`${JSON.stringify(value)}\n`);
+    if (!this.writer || this.bytes + line.byteLength > this.limit) {
+      await this.end();
+      this.entries++;
+      const entry = new TransformStream<Uint8Array, Uint8Array>();
+      this.added = this.zip.add(
+        `${this.prefix}/${String(this.entries).padStart(6, '0')}.jsonl`,
+        entry.readable,
+      );
+      const writer = entry.writable.getWriter();
+      // A zip failure fails the pending write; `end` reports it.
+      this.added.catch((error) => writer.abort(error).catch(() => undefined));
+      this.writer = writer;
+      this.bytes = 0;
+    }
+    this.bytes += line.byteLength;
+    this.count++;
+    await this.writer.write(line);
+  }
+
+  async end(): Promise<void> {
+    if (!this.writer) return;
+    await this.writer.close();
+    await this.added;
+    this.writer = undefined;
+  }
 }
 
+type DumpWriter = {
+  client: ExportClient;
+  workspace: ExportWorkspace;
+  zip: ZipWriter<unknown>;
+  signal?: AbortSignal;
+};
+
+/** Reports progress between `from` and `to` percent of the whole export. */
+type PhaseProgress = (fraction: number, message: string) => void;
+
+function phase(from: number, to: number, onProgress?: Progress): PhaseProgress {
+  return (fraction, message) =>
+    onProgress?.(from + (to - from) * Math.min(1, fraction), message);
+}
+
+/** Every record of every model, current and published, as JSON lines. */
 async function writeRecords(
-  client: Client,
+  { client, zip, signal }: DumpWriter,
   models: Model[],
-  records: JsonLines,
-  onRecord: () => void,
-  signal?: AbortSignal,
-): Promise<void> {
+  progress: PhaseProgress,
+): Promise<number> {
+  const counts = await mapWithConcurrency(models, 4, async (model) => {
+    throwIfAborted(signal);
+    return (
+      await readItems(client, {
+        filter: { type: model.id },
+        page: { limit: 0 },
+      })
+    ).total;
+  });
+  const expected = counts.reduce((sum, count) => sum + count, 0);
+  const records = new JsonLines(zip, 'records');
   const seen = new Set<string>();
   for (const model of models) {
-    const limit = model.nested ? 30 : 500;
-    // biome-ignore lint/performance/noAwaitInLoops: Models are read one after another, as the CLI reads them.
-    await pages(
-      (offset) =>
+    // biome-ignore lint/performance/noAwaitInLoops: Models are read one at a time into one zip entry.
+    await readPages(
+      (offset, limit) =>
         readItems(client, {
           filter: { type: model.id },
           nested: model.nested,
@@ -479,228 +336,205 @@ async function writeRecords(
           order_by: 'id_ASC',
           page: { offset, limit },
         }),
-      limit,
+      model.nested ? 30 : 500,
       async (rows) => {
-        for (const line of await recordLines(
-          client,
-          rows as NativeRow[],
-          model.nested,
-        )) {
-          throwIfAborted(signal);
+        for (const line of await recordLines(client, rows, model.nested)) {
           // A record listed twice moved between pages meanwhile.
           if (seen.has(line.id))
-            throw changed(`Record ${line.id} was listed twice.`);
+            throw new ContentChangedError(
+              `Record ${line.id} was listed twice.`,
+            );
           seen.add(line.id);
-          // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, waiting for the zip to take each.
+          // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, with backpressure.
           await records.write(line);
-          onRecord();
         }
+        progress(
+          records.count / (expected || 1),
+          `Exported ${records.count}/${expected} records...`,
+        );
       },
       signal,
     );
   }
+  await records.end();
+  return records.count;
 }
 
-/** Every upload, as the SDK lists them; returns their files. */
-async function writeUploads(
-  client: Client,
-  uploads: JsonLines,
-  signal?: AbortSignal,
-): Promise<Asset[]> {
-  // A single-row raw page read supplies the live total, which uploads.list
-  // does not return: the first page's finishes before that page is listed,
-  // every later page reads one alongside its listing, and one more follows
-  // the last page.
-  const count = async () =>
+/** Every upload and upload folder, as JSON lines. */
+async function writeUploads({ client, zip, signal }: DumpWriter) {
+  const uploadCount = async () =>
     (await client.uploads.rawList({ page: { limit: 1 } })).meta.total_count;
+  const uploads = new JsonLines(zip, 'uploads');
   const assets: Asset[] = [];
-  const seen = new Set<string>();
-  const total = await pages(
-    async (offset) => {
-      const first = offset === 0 ? await count() : undefined;
+  const listed = new Set<string>();
+  const total = await readPages(
+    async (offset, limit) => {
       const [data, live] = await Promise.all([
-        client.uploads.list({
-          order_by: 'id_ASC',
-          page: { offset, limit: 500 },
-        }),
-        first ?? count(),
+        client.uploads.list({ order_by: 'id_ASC', page: { offset, limit } }),
+        uploadCount(),
       ]);
       return { data, total: live };
     },
     500,
     async (rows) => {
-      for (const upload of rows as Asset[]) {
-        throwIfAborted(signal);
-        if (seen.has(upload.id))
-          throw changed(`Upload ${upload.id} was listed twice.`);
-        seen.add(upload.id);
-        // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, waiting for the zip to take each.
+      for (const upload of rows) {
+        if (listed.has(upload.id))
+          throw new ContentChangedError(`Asset ${upload.id} was listed twice.`);
+        listed.add(upload.id);
+        // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, with backpressure.
         await uploads.write(upload);
-        const { id, url, filename, md5 } = upload;
-        assets.push({ id, url, filename, md5 });
+        assets.push({
+          id: upload.id,
+          url: upload.url,
+          filename: upload.filename,
+          md5: upload.md5,
+          size: upload.size,
+        });
       }
     },
     signal,
   );
-  if ((await count()) !== total)
-    throw changed('The media library changed while it was being read.');
-  return assets;
+  if ((await uploadCount()) !== total)
+    throw new ContentChangedError('Assets changed while they were being read.');
+  await uploads.end();
+
+  const collections = new JsonLines(zip, 'upload-collections');
+  for (const collection of await client.uploadCollections.list()) {
+    // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, with backpressure.
+    await collections.write(collection);
+  }
+  await collections.end();
+  return { assets, uploads: uploads.count, collections: collections.count };
 }
 
-/** Adds an asset's file, failing when its bytes do not match its MD5. */
-async function addAssetFile(
-  zip: ZipWriter<Blob>,
-  asset: Asset,
-  signal?: AbortSignal,
+/** Every asset's original file, checked against its MD5. */
+async function writeAssetFiles(
+  { workspace, zip, signal }: DumpWriter,
+  assets: Asset[],
+  progress: PhaseProgress,
 ): Promise<void> {
-  const response = await fetch(originalFileUrl(asset.url), { signal });
-  if (!response.ok || !response.body)
-    throw new Error(
-      `Asset ${asset.id} could not be downloaded (HTTP ${response.status}).`,
+  for (let index = 0; index < assets.length; index++) {
+    throwIfAborted(signal);
+    const asset = assets[index];
+    progress(
+      index / assets.length,
+      `Downloading asset files (${index + 1}/${assets.length})...`,
     );
-  const md5 = new SparkMD5.ArrayBuffer();
-  const verified = response.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        md5.append(chunk.slice().buffer);
-        controller.enqueue(chunk);
-      },
-      flush() {
-        if (md5.end() !== asset.md5.toLowerCase())
-          throw changed(`Asset ${asset.id} changed while it was exported.`);
-      },
-    }),
-  );
-  // Asset files are mostly compressed already, so they are stored as they are.
-  await zip.add(assetEntryName(asset.id, asset.filename), verified, {
-    level: 0,
-  });
+    let file: File;
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: One download at a time keeps a single asset file on disk besides the zip.
+      file = await downloadAssetFile(
+        originalFileUrl(asset.url),
+        workspace,
+        ASSET_FILE,
+        { signal, expectedBytes: asset.size, md5: asset.md5 },
+      );
+    } catch (error) {
+      throwIfAborted(signal);
+      throw new Error(
+        `Asset ${asset.id} could not be downloaded: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await zip.add(
+      `assets/${asset.id}/${asset.filename.replace(/[/\\]/g, '_')}`,
+      new BlobReader(file),
+      { level: 0 },
+    );
+  }
+  await workspace.remove(ASSET_FILE);
 }
 
-/**
- * Writes an environment to a project dump: its schema, every record (current
- * and published versions, with their schedules), upload and folder as JSON
- * lines, and optionally every asset's file.
- */
-export async function writeProjectDump(args: {
-  client: Client;
+async function writeDump(args: {
+  client: ExportClient;
+  workspace: ExportWorkspace;
+  filename: string;
   environment: string;
   primary: boolean;
   includeAssets: boolean;
   onProgress?: Progress;
   signal?: AbortSignal;
-  entryBytes?: number;
-}): Promise<{ blob: Blob; manifest: DumpManifest }> {
-  const { client, environment, includeAssets, signal } = args;
-  const progress = args.onProgress ?? (() => {});
-  const entryBytes = args.entryBytes ?? ENTRY_BYTES;
-  // Records fill the progress bar up to here; asset files, the rest.
-  const recordShare = includeAssets ? 45 : 90;
-  progress(0, 'Reading the schema...');
-  const schema = await readSchema(client);
-  const models = recordModels(schema);
-  await assertFullReadAccess(client, environment, models);
-  progress(0, 'Counting records...');
-  const total = await countRecords(client, models, signal);
-  const zip = new ZipWriter(new BlobWriter('application/zip'), {
-    useWebWorkers: false,
-  });
-  const opened: JsonLines[] = [];
-  const jsonLines = (prefix: string) => {
-    const lines = new JsonLines(zip, prefix, entryBytes);
-    opened.push(lines);
-    return lines;
+}): Promise<DumpManifest> {
+  const { client, workspace, includeAssets, onProgress } = args;
+  const recordsEnd = includeAssets ? 45 : 85;
+  const uploadsEnd = includeAssets ? 50 : 98;
+
+  onProgress?.(0, 'Reading the schema...');
+  const [site, workflows] = await Promise.all([
+    client.site.rawFind({ include: 'item_types,item_types.fields' }),
+    client.workflows.list(),
+  ]);
+  const models = modelsOf(site as unknown as { included?: Resource[] });
+  await assertFullReadAccess(client, args.environment, models);
+
+  const zip = await workspace.zip(args.filename);
+  const writer: DumpWriter = { client, workspace, zip, signal: args.signal };
+  await zip.add(
+    'schema.json',
+    new TextReader(JSON.stringify({ site, workflows })),
+  );
+  const records = await writeRecords(
+    writer,
+    models,
+    phase(0, recordsEnd, onProgress),
+  );
+  onProgress?.(recordsEnd, 'Reading asset metadata...');
+  const { assets, uploads, collections } = await writeUploads(writer);
+  if (includeAssets)
+    await writeAssetFiles(writer, assets, phase(uploadsEnd, 98, onProgress));
+
+  onProgress?.(98, 'Finishing the dump...');
+  const { data } = site as unknown as { data: Resource };
+  const manifest: DumpManifest = {
+    format: DUMP_FORMAT,
+    version: DUMP_VERSION,
+    createdAt: new Date().toISOString(),
+    pluginVersion: PLUGIN_VERSION,
+    site: { id: data.id, environment: args.environment, primary: args.primary },
+    locales: (data.attributes.locales as string[] | undefined) ?? [],
+    includesAssets: includeAssets,
+    counts: { records, uploads, uploadCollections: collections },
   };
-  try {
-    await zip.add('schema.json', new TextReader(JSON.stringify(schema)));
-    const records = jsonLines('records');
-    await writeRecords(
-      client,
-      models,
-      records,
-      () => {
-        if (records.count % 100 === 0 || records.count === total)
-          progress(
-            (recordShare * Math.min(records.count, total)) / Math.max(total, 1),
-            `Exported ${records.count}/${total} records...`,
-          );
-      },
-      signal,
-    );
-    await records.end();
-    progress(recordShare, 'Reading asset metadata...');
-    const uploads = jsonLines('uploads');
-    const assets = await writeUploads(client, uploads, signal);
-    await uploads.end();
-    throwIfAborted(signal);
-    const collections = jsonLines('upload-collections');
-    for (const collection of await client.uploadCollections.list()) {
-      // biome-ignore lint/performance/noAwaitInLoops: Lines are written in order, waiting for the zip to take each.
-      await collections.write(collection);
-    }
-    await collections.end();
-    if (includeAssets)
-      for (let index = 0; index < assets.length; index++) {
-        throwIfAborted(signal);
-        progress(
-          recordShare + ((95 - recordShare) * index) / assets.length,
-          `Downloading asset files: ${index + 1}/${assets.length}...`,
-        );
-        // biome-ignore lint/performance/noAwaitInLoops: A zip is written one entry at a time.
-        await addAssetFile(zip, assets[index], signal);
-      }
-    throwIfAborted(signal);
-    const manifest: DumpManifest = {
-      format: FORMAT,
-      version: VERSION,
-      createdAt: new Date().toISOString(),
-      pluginVersion: `datocms-plugin-project-exporter@${PLUGIN_VERSION}`,
-      site: { id: schema.site.data.id, environment, primary: args.primary },
-      locales: schema.site.data.attributes.locales,
-      includesAssets: includeAssets,
-      counts: {
-        records: records.count,
-        uploads: uploads.count,
-        uploadCollections: collections.count,
-      },
-    };
-    await zip.add(
-      'manifest.json',
-      new TextReader(`${JSON.stringify(manifest, null, 2)}\n`),
-    );
-    progress(95, 'Preparing the dump file...');
-    return { blob: await zip.close(), manifest };
-  } catch (error) {
-    // Like the CLI's discard: zip.js shares its add slots between zips, so an
-    // entry left open would hold one for good and later dumps would wait.
-    await Promise.all(opened.map((lines) => lines.abort(error)));
-    throw error;
-  }
+  await zip.add(
+    'manifest.json',
+    new TextReader(`${JSON.stringify(manifest, null, 2)}\n`),
+  );
+  await zip.close();
+  return manifest;
 }
 
-export default async function downloadProjectDump(
-  apiToken: string,
-  environment: string,
-  baseUrl: string | undefined,
-  options: { primary: boolean; includeAssets: boolean },
-  onProgress?: Progress,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (!apiToken)
-    throw new Error('A user access token is required to export a dump.');
-  const filename = dumpFilename(environment, options.includeAssets);
-  const { blob, manifest } = await writeProjectDump({
-    client: buildClient({ apiToken, environment, baseUrl }),
-    environment,
-    ...options,
-    onProgress,
-    signal,
+/**
+ * Exports an environment as a project dump, assembled on disk and downloaded
+ * once complete: its schema, every record (current and published versions,
+ * with their schedules), upload and folder as JSON lines, and optionally
+ * every asset's file. Nothing is downloaded when it fails or is cancelled.
+ */
+export async function exportProjectDump(args: {
+  apiToken: string;
+  environment: string;
+  primary: boolean;
+  baseUrl?: string;
+  includeAssets: boolean;
+  onProgress?: Progress;
+  signal?: AbortSignal;
+}): Promise<{ filename: string; manifest: DumpManifest }> {
+  const client = buildClient({
+    apiToken: args.apiToken,
+    environment: args.environment,
+    baseUrl: args.baseUrl,
   });
-  throwIfAborted(signal);
-  await downloadBlob(blob, filename);
-  const { records, uploads, uploadCollections } = manifest.counts;
-  onProgress?.(
+  const workspace = await ExportWorkspace.open();
+  const filename = `${Math.floor(Date.now() / 1000)}_${args.environment}.dump-records${args.includeAssets ? '-assets' : ''}.zip`;
+  let manifest: DumpManifest;
+  try {
+    manifest = await writeDump({ ...args, client, workspace, filename });
+  } catch (error) {
+    await workspace.clear();
+    throw error;
+  }
+  await workspace.download(filename);
+  args.onProgress?.(
     100,
-    `Exported ${records} records, ${uploads} uploads and ${uploadCollections} folders to ${filename}.`,
+    `Project dump ${filename} exported: ${manifest.counts.records} records and ${manifest.counts.uploads} assets.`,
   );
+  return { filename, manifest };
 }

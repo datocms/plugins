@@ -1,12 +1,25 @@
 // @vitest-environment node
 
+import { createHash } from 'node:crypto';
+import { MemoryWorkspace } from '../test/memoryWorkspace';
 import {
   ASSET_DOWNLOAD_MAX_ATTEMPTS,
   ASSET_REQUEST_IDLE_TIMEOUT_MS,
+  type AssetDownloadOptions,
   downloadAssetFile,
+  originalFileUrl,
 } from './assetDownload';
 
 const url = 'https://www.datocms-assets.com/synthetic.bin';
+
+let workspace: MemoryWorkspace;
+
+beforeEach(() => {
+  workspace = new MemoryWorkspace();
+});
+
+const download = (options?: AssetDownloadOptions) =>
+  downloadAssetFile(url, workspace.asWorkspace(), 'asset', options);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -22,48 +35,37 @@ test('reads the complete response incrementally without requiring size metadata'
     },
   });
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body)));
-  const file = await downloadAssetFile(url, 4);
+  const file = await download();
   expect(new Uint8Array(await file.arrayBuffer())).toEqual(
     new Uint8Array([1, 2, 3, 4]),
   );
 });
 
-test('refuses oversized Content-Length before reading the body and does not retry', async () => {
-  const cancel = vi.fn();
-  const body = new ReadableStream<Uint8Array>({ cancel });
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(
-      new Response(body, { headers: { 'Content-Length': '100' } }),
-    );
-  vi.stubGlobal('fetch', fetchMock);
-  await expect(downloadAssetFile(url, 10)).rejects.toThrow(
-    '100 bytes reported',
-  );
-  expect(cancel).toHaveBeenCalledOnce();
-  expect(fetchMock).toHaveBeenCalledOnce();
+test('checks the MD5 of what it wrote', async () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  const md5 = createHash('md5').update(bytes).digest('hex');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes)));
+  const file = await download({ md5: md5.toUpperCase() });
+  expect(new Uint8Array(await file.arrayBuffer())).toEqual(bytes);
 });
 
-test('enforces the actual byte limit when Content-Length is missing or inaccurate', async () => {
-  const cancel = vi.fn();
-  let reads = 0;
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      reads++;
-      controller.enqueue(new Uint8Array(4));
-    },
-    cancel,
-  });
+test('refuses content that does not match its MD5, without retrying', async () => {
   const fetchMock = vi
     .fn()
-    .mockResolvedValue(
-      new Response(body, { headers: { 'Content-Length': '1' } }),
-    );
+    .mockResolvedValue(new Response(new Uint8Array([1, 2, 3])));
   vi.stubGlobal('fetch', fetchMock);
-  await expect(downloadAssetFile(url, 10)).rejects.toThrow('12 bytes received');
-  expect(cancel).toHaveBeenCalledOnce();
+  await expect(download({ md5: 'f'.repeat(32) })).rejects.toThrow(
+    'does not match its MD5',
+  );
   expect(fetchMock).toHaveBeenCalledOnce();
-  expect(reads).toBeLessThanOrEqual(4);
+  expect(workspace.files.has('asset')).toBe(false);
+});
+
+test('asks for the original file', () => {
+  const original = new URL(originalFileUrl(`${url}?w=10`));
+  expect(original.searchParams.get('w')).toBe('10');
+  expect(original.searchParams.get('skip-default-optimizations')).toBe('true');
+  expect(original.searchParams.get('svg-sanitize')).toBe('false');
 });
 
 test('retries transient GET errors using Retry-After and emits a single complete result', async () => {
@@ -79,7 +81,7 @@ test('retries transient GET errors using Retry-After and emits a single complete
     .mockResolvedValueOnce(new Response(new Uint8Array([7, 8])));
   vi.stubGlobal('fetch', fetchMock);
   const onRetry = vi.fn();
-  const result = downloadAssetFile(url, 10, undefined, onRetry);
+  const result = download({ onRetry });
   await vi.advanceTimersByTimeAsync(1999);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   await vi.advanceTimersByTimeAsync(1);
@@ -104,7 +106,7 @@ test('a failed body is discarded before a safe GET retry', async () => {
     .mockResolvedValueOnce(new Response(interrupted))
     .mockResolvedValueOnce(new Response(new Uint8Array([3, 4])));
   vi.stubGlobal('fetch', fetchMock);
-  const result = downloadAssetFile(url, 10);
+  const result = download();
   await vi.runAllTimersAsync();
   expect(new Uint8Array(await (await result).arrayBuffer())).toEqual(
     new Uint8Array([3, 4]),
@@ -117,7 +119,7 @@ test('non-transient HTTP errors are not retried', async () => {
     .fn()
     .mockResolvedValue(new Response('missing', { status: 404 }));
   vi.stubGlobal('fetch', fetchMock);
-  await expect(downloadAssetFile(url, 10)).rejects.toThrow('HTTP 404');
+  await expect(download()).rejects.toThrow('HTTP 404');
   expect(fetchMock).toHaveBeenCalledOnce();
 });
 
@@ -128,7 +130,7 @@ test('known source sizes detect incomplete content and retry before declaring su
     .mockResolvedValueOnce(new Response(new Uint8Array([1])))
     .mockResolvedValueOnce(new Response(new Uint8Array([2, 3])));
   vi.stubGlobal('fetch', fetchMock);
-  const result = downloadAssetFile(url, 10, undefined, undefined, 2);
+  const result = download({ expectedBytes: 2 });
   await vi.runAllTimersAsync();
   expect(new Uint8Array(await (await result).arrayBuffer())).toEqual(
     new Uint8Array([2, 3]),
@@ -147,7 +149,7 @@ test('stalled downloads time out and exhaust a bounded retry count', async () =>
       }),
   );
   vi.stubGlobal('fetch', fetchMock);
-  const result = expect(downloadAssetFile(url, 10)).rejects.toThrow('stalled');
+  const result = expect(download()).rejects.toThrow('stalled');
   await vi.runAllTimersAsync();
   await result;
   expect(fetchMock).toHaveBeenCalledTimes(ASSET_DOWNLOAD_MAX_ATTEMPTS);
@@ -170,7 +172,7 @@ test('the timeout covers a stalled body after successful response headers', asyn
   });
   vi.stubGlobal('fetch', fetchMock);
   const result = expect(
-    downloadAssetFile(url, 10, signal.signal),
+    download({ signal: signal.signal }),
   ).rejects.toMatchObject({ name: 'AbortError' });
   await vi.advanceTimersByTimeAsync(ASSET_REQUEST_IDLE_TIMEOUT_MS);
   // Cancel during automatic backoff; neither the user nor tests need to resume.
@@ -191,8 +193,9 @@ test('cancel stops an active fetch and never schedules another attempt', async (
   );
   vi.stubGlobal('fetch', fetchMock);
   const result = expect(
-    downloadAssetFile(url, 10, controller.signal),
+    download({ signal: controller.signal }),
   ).rejects.toMatchObject({ name: 'AbortError' });
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
   controller.abort();
   await result;
   expect(fetchMock).toHaveBeenCalledOnce();

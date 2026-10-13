@@ -1,9 +1,9 @@
 {
   "name": "datocms-plugin-project-exporter",
   "homepage": "https://github.com/datocms/plugins/tree/master/project-exporter#readme",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "author": "DatoCMS <support@datocms.com>",
-  "description": "A plugin that allows you to export records and assets from your project directly from your browser",
+  "description": "Export an environment as a project dump for the DatoCMS CLI, or its records and assets in other formats, straight from your browser",
   "keywords": [
     "datocms",
     "datocms-plugin"
@@ -19,14 +19,13 @@
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",
-    "@zip.js/zip.js": "^2.8.61",
+    "@zip.js/zip.js": "^2.23.0",
     "datocms-plugin-sdk": "^2.3.0",
     "datocms-react-ui": "^2.2.4",
     "exceljs": "^4.4.0",
-    "jszip": "^3.10.1",
+    "hash-wasm": "^4.12.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "spark-md5": "^3.0.2"
+    "react-dom": "^19.2.4"
   },
   "scripts": {
     "dev": "vite",
@@ -52,7 +51,6 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/spark-md5": "^3.0.5",
     "@vitejs/plugin-react": "^5.2.0",
     "jsdom": "^28.1.0",
     "typescript": "^5.9.3",

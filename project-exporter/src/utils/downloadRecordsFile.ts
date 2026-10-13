@@ -591,7 +591,7 @@ async function downloadRecordsFile(
 ): Promise<void> {
   const blob = await prepareRecordDownload(data, format, options);
   throwIfAborted(options.signal);
-  await downloadBlob(
+  downloadBlob(
     blob,
     options.filename ??
       `allDatocmsRecords${new Date().toISOString()}.${format.toLowerCase()}`,

@@ -1,19 +1,14 @@
-import { Button, Spinner } from 'datocms-react-ui';
+import { Spinner } from 'datocms-react-ui';
+import { Button } from '../ui/Button';
 import s from './styles.module.css';
 
 type Props = {
   status: string;
   progress?: number;
-  note?: string;
   onCancel?: () => void;
 };
 
-export default function LoadingOverlay({
-  status,
-  progress,
-  note,
-  onCancel,
-}: Props) {
+export default function LoadingOverlay({ status, progress, onCancel }: Props) {
   return (
     <div className={s.overlay}>
       <div className={s.overlayContent}>
@@ -32,8 +27,14 @@ export default function LoadingOverlay({
             <div className={s.progressText}>{Math.round(progress)}%</div>
           </>
         )}
-        {note && <div className={s.progressText}>{note}</div>}
-        {onCancel && <Button onClick={onCancel}>Cancel export</Button>}
+        {onCancel && (
+          <>
+            <div className={s.progressText}>
+              Keep this page open until the download starts.
+            </div>
+            <Button onClick={onCancel}>Cancel export</Button>
+          </>
+        )}
       </div>
     </div>
   );

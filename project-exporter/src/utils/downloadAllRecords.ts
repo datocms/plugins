@@ -1,4 +1,5 @@
 import { buildClient, type Client } from '@datocms/cma-client-browser';
+import { BlobReader, TextReader } from '@zip.js/zip.js';
 import type { AvailableFormats } from '../entrypoints/ConfigScreen';
 import {
   prepareRecordDownload,
@@ -6,11 +7,11 @@ import {
   XLSX_MAX_COLUMNS,
 } from './downloadRecordsFile';
 import {
-  downloadBlob,
   mapWithConcurrency,
   throwIfAborted,
   yieldToBrowser,
 } from './exportRuntime';
+import { ExportWorkspace } from './exportWorkspace';
 import { readRecordPage } from './readRecords';
 import {
   appendScheduledActions,
@@ -74,6 +75,7 @@ class RecordExportTask {
     baseUrl: string | undefined,
     private readonly format: AvailableFormats,
     private readonly options: Options,
+    private readonly workspace: ExportWorkspace,
     private readonly onProgress?: Progress,
     private readonly signal?: AbortSignal,
   ) {
@@ -311,7 +313,7 @@ class RecordExportTask {
     const index = this.parts.length + 1;
     const filename = `allDatocmsRecords${this.split ? `.part-${String(index).padStart(3, '0')}` : ''}.${this.exportId}.${this.format.toLowerCase()}`;
     throwIfAborted(this.signal);
-    await downloadBlob(blob, filename);
+    await this.workspace.writeBlob(filename, blob);
     this.parts.push({
       filename,
       recordCount: records.length,
@@ -322,17 +324,28 @@ class RecordExportTask {
     await yieldToBrowser();
   }
 
-  private async downloadManifest(
-    status: 'complete' | 'incomplete' | 'cancelled',
-  ): Promise<void> {
+  /**
+   * The file to download: the only part as it is, or every part and a
+   * manifest listing them in one zip.
+   */
+  private async assemble(): Promise<string> {
+    const { workspace } = this;
+    if (this.parts.length === 1) return this.parts[0].filename;
+    const filename = `allDatocmsRecords.${this.exportId}.${this.format.toLowerCase()}.zip`;
+    const zip = await workspace.zip(filename);
+    for (const part of this.parts) {
+      // biome-ignore lint/performance/noAwaitInLoops: The zip takes its entries one at a time.
+      await zip.add(
+        part.filename,
+        new BlobReader(await workspace.file(part.filename)),
+      );
+      throwIfAborted(this.signal);
+    }
     const manifest = {
       exportId: this.exportId,
-      status,
       sourceEnvironment: this.environment,
       format: this.format,
       totalRecords: this.exportedCount,
-      exportedRecords: this.exportedCount,
-      expectedRecords: this.totalCount,
       totalParts: this.parts.length,
       parts: this.parts,
       configurationWarnings:
@@ -340,13 +353,15 @@ class RecordExportTask {
       consistency:
         'Offset pagination; no transactional snapshot. Avoid editing the project during export.',
     };
-    const suffix = status === 'complete' ? 'manifest' : 'incomplete';
-    await downloadBlob(
-      new Blob([JSON.stringify(manifest, null, 2)], {
-        type: 'application/json',
-      }),
-      `allDatocmsRecords.${this.exportId}.${suffix}.json`,
+    await zip.add(
+      `allDatocmsRecords.${this.exportId}.manifest.json`,
+      new TextReader(JSON.stringify(manifest, null, 2)),
     );
+    await zip.close();
+    await Promise.all(
+      this.parts.map((part) => workspace.remove(part.filename)),
+    );
+    return filename;
   }
 
   private async consumeModels(
@@ -365,29 +380,25 @@ class RecordExportTask {
   }
 
   async run(): Promise<void> {
+    const { workspace } = this;
+    let filename: string;
     try {
       const { models, counts } = await this.initialize();
       await this.consumeModels(models, counts);
       await this.emitPart(this.batch, true);
-      if (this.split) await this.downloadManifest('complete');
-      const warnings =
-        this.configuration?.projectConfiguration.warnings.length ?? 0;
-      this.onProgress?.(
-        100,
-        `Completed export: ${this.exportedCount} records in ${this.parts.length} file(s).${warnings ? ` ${warnings} configuration warning(s) in the JSON manifest.` : ''}`,
-      );
+      this.onProgress?.(this.progress(), 'Finishing the export file...');
+      filename = await this.assemble();
     } catch (error) {
-      if (this.parts.length > 0)
-        await this.downloadManifest(
-          this.signal?.aborted ? 'cancelled' : 'incomplete',
-        );
-      if (this.signal?.aborted) throw error;
-      const message =
-        error instanceof Error ? error.message : 'Unexpected export error.';
-      throw new Error(
-        `${message}${this.parts.length ? ` ${this.parts.length} file(s) were prepared before the failure; see the incomplete manifest.` : ''}`,
-      );
+      await workspace.clear();
+      throw error;
     }
+    await workspace.download(filename);
+    const warnings =
+      this.configuration?.projectConfiguration.warnings.length ?? 0;
+    this.onProgress?.(
+      100,
+      `Completed export: ${this.exportedCount} records in ${filename}.${warnings ? ` ${warnings} configuration warning(s) in the JSON manifest.` : ''}`,
+    );
   }
 }
 
@@ -410,6 +421,7 @@ export default async function downloadAllRecords(
     baseUrl,
     format,
     options,
+    await ExportWorkspace.open(),
     onProgress,
     signal,
   ).run();

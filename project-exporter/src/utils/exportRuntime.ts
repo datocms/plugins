@@ -56,22 +56,19 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// Await revocation so a long export never keeps hundreds of object URLs alive.
-// The browser accepts the download independently; this cannot verify disk writes.
-export async function downloadBlob(
-  blob: Blob,
-  filename: string,
-): Promise<void> {
+/** How long a download's object URL stays valid after the browser takes it. */
+export const DOWNLOAD_URL_LIFETIME_MS = 60_000;
+
+// Hands the file to the browser and returns at once, so the export ends when
+// the download starts. The URL is released later, once the browser has taken
+// it; this cannot verify disk writes.
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const element = document.createElement('a');
-  try {
-    element.href = url;
-    element.download = filename;
-    document.body.appendChild(element);
-    element.click();
-    await waitForExport(1000);
-  } finally {
-    element.remove();
-    URL.revokeObjectURL(url);
-  }
+  element.href = url;
+  element.download = filename;
+  document.body.appendChild(element);
+  element.click();
+  element.remove();
+  setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_LIFETIME_MS);
 }
