@@ -16,7 +16,7 @@ export function PreviewLinksSettings({ values }: Props) {
           {({ input, meta: { error } }) => (
             <SwitchField
               id="showVisualTab"
-              label="Show the Visual tab in the main navigation"
+              label="Show the Visual Editing tab in the main navigation"
               error={error}
               {...input}
             />

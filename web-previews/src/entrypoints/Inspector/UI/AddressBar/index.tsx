@@ -1,7 +1,4 @@
-import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import type { Frontend } from '../../../../types';
@@ -32,14 +29,12 @@ function isRelativeUrl(str: string) {
 }
 
 interface AddressBarProps {
-  onRefresh: () => void;
   frontend: Frontend;
   frontends: Frontend[];
   onFrontendChange?: (frontend: Frontend) => void;
 }
 
 function AddressBar({
-  onRefresh,
   frontend,
   frontends,
   onFrontendChange,
@@ -118,27 +113,15 @@ function AddressBar({
       onSubmit={handleSubmit}
       className={classNames(styles.root, hasError && styles.error)}
     >
-      <div className={styles.controls}>
-        <Tooltip>
-          <TooltipTrigger>
-            <button
-              type="button"
-              onClick={onRefresh}
-              className={styles.refreshButton}
-            >
-              <FontAwesomeIcon icon={faArrowsRotate} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Reload page</TooltipContent>
-        </Tooltip>
-        {frontends.length > 1 && onFrontendChange && (
+      {frontends.length > 1 && onFrontendChange && (
+        <div className={styles.controls}>
           <FrontendSelector
             frontends={frontends}
             currentFrontend={frontend}
             onChange={onFrontendChange}
           />
-        )}
-      </div>
+        </div>
+      )}
       <input
         type="text"
         value={inputValue}

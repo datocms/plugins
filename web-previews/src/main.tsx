@@ -35,7 +35,7 @@ connect({
     return visualEditingFrontends.length > 0
       ? [
           {
-            label: 'Visual',
+            label: 'Visual Editing',
             icon: 'eye',
             pointsTo: {
               inspectorId: 'visual',
