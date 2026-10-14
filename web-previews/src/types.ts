@@ -81,6 +81,8 @@ const DEFAULT_VIEWPORTS: readonly Viewport[] = [
   { name: 'Desktop', width: 1280, height: 800, icon: 'desktop-alt' },
 ] as const;
 
+export const DEFAULT_SIDEBAR_WIDTH = 900;
+
 export const MIN_VIEWPORT_DIMENSION = 200;
 export const MAX_VIEWPORT_DIMENSION = 3840;
 
@@ -125,7 +127,7 @@ export function normalizeParameters({
       : {
           defaultWidth: defaultSidebarWidth
             ? Number.parseInt(defaultSidebarWidth, 10)
-            : 900,
+            : DEFAULT_SIDEBAR_WIDTH,
         },
     iframeAllowAttribute,
     defaultViewports: defaultViewports?.map((viewport) => ({
@@ -185,7 +187,7 @@ export function denormalizeParameters({
     defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
     previewLinksSidebarDisabled: !previewLinksSidebar,
     previewLinksSidebarPanelDisabled: !previewLinksSidebarPanel,
-    iframeAllowAttribute,
+      iframeAllowAttribute,
     defaultViewports: defaultViewports.map((viewport) => ({
       name: viewport.name,
       width: viewport.width,
@@ -199,6 +201,8 @@ export type PreviewLink = {
   url: string;
   label: string;
   reloadPreviewOnRecordUpdate: boolean | { delayInMs: number };
+  /** The page updates itself on record changes, so it needs no manual reload */
+  realtimeUpdates?: boolean;
 };
 
 export type Response = {

@@ -8,7 +8,6 @@ import { Trigger } from './Trigger';
 
 type Props = {
   currentPreviewLink: PreviewLinkWithFrontend | undefined;
-  effectivePreviewLink: PreviewLinkWithFrontend | undefined;
   frontends: Frontend[];
   statusByFrontend: Record<string, FrontendStatus | undefined>;
   onChange: (previewLink: PreviewLinkWithFrontend) => void;
@@ -18,7 +17,6 @@ export function PreviewLinkSelector({
   frontends,
   statusByFrontend,
   currentPreviewLink,
-  effectivePreviewLink,
   onChange,
 }: Props) {
   const firstStatus = Object.values(statusByFrontend)[0];
@@ -30,7 +28,11 @@ export function PreviewLinkSelector({
   return (
     <Dropdown
       renderTrigger={(props) => (
-        <Trigger {...props} currentPreviewLink={effectivePreviewLink} />
+        <Trigger
+          {...props}
+          currentPreviewLink={currentPreviewLink}
+          showFrontendName={frontends.length > 1}
+        />
       )}
     >
       <DropdownMenu>

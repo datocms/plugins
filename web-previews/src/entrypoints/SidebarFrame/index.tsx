@@ -1,6 +1,5 @@
 import {
   faArrowsRotate,
-  faCopy,
   faExternalLinkAlt,
   faEye,
 } from '@fortawesome/free-solid-svg-icons';
@@ -12,7 +11,6 @@ import { BrowserWrapper } from '../../components/Browser/BrowserWrapper';
 import styles from '../../components/Browser/BrowserWrapper/styles.module.css';
 import { IframeContainer } from '../../components/Browser/IframeContainer';
 import { Toolbar } from '../../components/Browser/Toolbar';
-import { EditModeToggle } from '../../components/Browser/Toolbar/EditModeToggle';
 import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
 import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
@@ -23,16 +21,15 @@ import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
 import {
   normalizeParameters,
   type Parameters,
+  type PreviewLink,
   type PreviewLinkWithFrontend,
   type Viewport,
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
-import { usePersistedSidebarVisualEditing } from '../../utils/persistedSidebarVisualEditing';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 import { inspectorUrl } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 import {
-  hasDraftPreviewLink,
   reconcilePreviewLinkSelection,
   sidebarVisualEditingInfo,
 } from './previewLinkSelection';
@@ -42,13 +39,37 @@ type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
 };
 
+/** Below this sidebar width the toolbar has no room for the viewport selector */
+const VIEWPORT_SELECTOR_MIN_WIDTH = 600;
+
 type PreviewLinkSelection = {
   previewLinks: PreviewLinkWithFrontend[];
   selectedPreviewLink: PreviewLinkWithFrontend | undefined;
 };
 
+// Pages with real-time updates refresh themselves, so they need no button
+function RefreshButton({
+  previewLink,
+  onClick,
+}: {
+  previewLink: PreviewLink;
+  onClick: () => void;
+}) {
+  if (previewLink.realtimeUpdates === true) {
+    return null;
+  }
+
+  return (
+    <ToolbarButton
+      icon={faArrowsRotate}
+      tooltip="Refresh the preview"
+      onClick={onClick}
+    />
+  );
+}
+
 const SidebarFrame = ({ ctx }: PropTypes) => {
-  const { iframeAllowAttribute } = normalizeParameters(
+  const { iframeAllowAttribute, showVisualTab } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
 
@@ -80,9 +101,6 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   usePersistedSidebarWidth(ctx.site);
 
-  const [editModeEnabled, setEditModeEnabled] =
-    usePersistedSidebarVisualEditing(ctx.site);
-
   const allPreviewLinksWithFrontend = useMemo(() => {
     if (!statusByFrontend) return [];
 
@@ -112,16 +130,13 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
       previewLinks: allPreviewLinksWithFrontend,
       selectedPreviewLink: reconcilePreviewLinkSelection({
         selectedPreviewLink: previewLinkSelection.selectedPreviewLink,
-        previousPreviewLinks: previewLinkSelection.previewLinks,
         previewLinks: allPreviewLinksWithFrontend,
-        frontends,
-        editModeEnabled,
       }),
     };
 
     // Guarded render-time synchronization makes React rerender this component
-    // before committing its children. The iframe therefore never sees the
-    // stale Published selection after a real Draft link appears.
+    // before committing its children. The iframe therefore never sees a
+    // stale selection after the Preview Links response changes.
     setPreviewLinkSelection(synchronizedPreviewLinkSelection);
   }
 
@@ -130,8 +145,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   const handlePreviewLinkChange = useCallback(
     (selectedPreviewLink: PreviewLinkWithFrontend) => {
-      // Remember which response the manual selection came from. If Published
-      // is chosen while Draft already exists, later refreshes must preserve it.
+      // Remember which response the manual selection came from.
       setPreviewLinkSelection({
         previewLinks: allPreviewLinksWithFrontend,
         selectedPreviewLink,
@@ -148,48 +162,16 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     currentPreviewLink,
     currentFrontend,
   );
-  const currentLinkHasDraftAlternative = hasDraftPreviewLink(
-    currentPreviewLink,
-    allPreviewLinksWithFrontend,
-    currentFrontend,
-  );
-  const currentLinkSupportsVisualEditing = Boolean(
-    currentSidebarVisualEditing && !currentLinkHasDraftAlternative,
-  );
-
-  const editModeActive = Boolean(
-    editModeEnabled && currentLinkSupportsVisualEditing,
-  );
-
-  // Keep the API-provided link selected in the menu, but show the URL that the
-  // iframe actually loads while a non-draft preview is made editable.
-  const effectivePreviewLink =
-    currentPreviewLink &&
-    editModeActive &&
-    currentSidebarVisualEditing &&
-    !currentSidebarVisualEditing.alreadyInDraftMode
-      ? {
-          ...currentPreviewLink,
-          label: `Editable preview (from ${currentPreviewLink.label})`,
-          url: currentSidebarVisualEditing.iframeUrl,
-        }
-      : currentPreviewLink;
-
+  // Draft previews may load the Content Link script; connect only to keep its
+  // click-to-edit overlay disabled inside the sidebar.
   const connectContentLink = Boolean(
-    currentSidebarVisualEditing &&
-      (editModeActive || currentSidebarVisualEditing.alreadyInDraftMode),
+    currentSidebarVisualEditing?.alreadyInDraftMode,
   );
 
   const { iframeRef } = useSidebarContentLink(
     ctx,
-    connectContentLink ? editModeActive : undefined,
+    connectContentLink ? false : undefined,
   );
-
-  const editModeTooltip = currentLinkHasDraftAlternative
-    ? 'Switch to the draft version to enter edit mode'
-    : currentLinkSupportsVisualEditing
-      ? 'Click elements in the preview to open their record editor'
-      : "This preview link's frontend doesn't support visual editing";
 
   useEffect(() => {
     const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
@@ -216,37 +198,37 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
       ) : (
         <BrowserWrapper>
           <Toolbar>
-            <ViewportSelector
-              menuAlignment="left"
-              currentViewport={currentViewport}
-              onChange={handleViewportChange}
-            />
-            <ToolbarSlot flex withLeftBorder>
+            <ToolbarSlot flex>
               <PreviewLinkSelector
                 frontends={frontends}
                 statusByFrontend={statusByFrontend}
                 currentPreviewLink={currentPreviewLink}
-                effectivePreviewLink={effectivePreviewLink}
                 onChange={handlePreviewLinkChange}
               />
             </ToolbarSlot>
-            {currentPreviewLink && effectivePreviewLink && (
+            {currentPreviewLink && (
               <>
-                <ToolbarButton
-                  icon={faArrowsRotate}
-                  tooltip="Refresh the preview"
+                <RefreshButton
+                  previewLink={currentPreviewLink}
                   onClick={forceReload}
+                />
+                <ViewportSelector
+                  menuAlignment="right"
+                  minWidth={VIEWPORT_SELECTOR_MIN_WIDTH}
+                  currentViewport={currentViewport}
+                  onChange={handleViewportChange}
                 />
                 <ToolbarSlot withLeftBorder withPadding={8}>
                   <ButtonGroup>
                     {(() => {
                       if (!currentPreviewLink) return null;
 
-                      if (!currentSidebarVisualEditing) return null;
+                      if (!showVisualTab || !currentSidebarVisualEditing)
+                        return null;
 
                       return (
                         <ButtonGroupButton
-                          tooltip="Open in Visual"
+                          tooltip="Edit in Visual Editing"
                           onClick={() => {
                             ctx.navigateTo(
                               inspectorUrl(ctx, {
@@ -261,33 +243,14 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                       );
                     })()}
                     <ButtonGroupButton
-                      tooltip="Copy URL to clipboard"
-                      onClick={() => {
-                        navigator.clipboard.writeText(
-                          effectivePreviewLink.url,
-                        );
-                        ctx.notice('URL saved in clipboard!');
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faCopy} />
-                    </ButtonGroupButton>
-                    <ButtonGroupButton
                       tooltip="Visit URL"
                       onClick={() => {
-                        window.open(effectivePreviewLink.url, '_blank');
+                        window.open(currentPreviewLink.url, '_blank');
                       }}
                     >
                       <FontAwesomeIcon icon={faExternalLinkAlt} />
                     </ButtonGroupButton>
                   </ButtonGroup>
-                </ToolbarSlot>
-                <ToolbarSlot withLeftBorder>
-                  <EditModeToggle
-                    value={editModeActive}
-                    disabled={!currentLinkSupportsVisualEditing}
-                    tooltip={editModeTooltip}
-                    onChange={setEditModeEnabled}
-                  />
                 </ToolbarSlot>
               </>
             )}
@@ -295,7 +258,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
           {frontends.length === 0 && <PreviewSetupGuide />}
 
-          {currentPreviewLink && effectivePreviewLink && (
+          {currentPreviewLink && (
             <>
               {currentViewport === 'custom' && (
                 <ViewportCustomizer
@@ -305,8 +268,8 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
               )}
 
               <IframeContainer
-                key={`${effectivePreviewLink.url}-${reloadCounter}`}
-                src={effectivePreviewLink.url}
+                key={`${currentPreviewLink.url}-${reloadCounter}`}
+                src={currentPreviewLink.url}
                 iframeRef={connectContentLink ? iframeRef : undefined}
                 allow={iframeAllowAttribute}
                 sizing={

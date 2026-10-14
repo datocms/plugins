@@ -152,6 +152,16 @@ The plugin will show all the preview links that are returned. If you want to mak
 }
 ```
 
+If a preview already updates itself when the record changes (e.g. a draft page using [real-time updates](https://www.datocms.com/docs/real-time-updates-api/listening-to-queries)), set `realtimeUpdates` to hide the refresh button in the Website preview tab for that link. Without it, the button is shown:
+
+```json
+{
+  "label": "Draft (en)",
+  "url": "https://mysite.com/api/preview/start?slug=/blog/my-article",
+  "realtimeUpdates": true
+}
+```
+
 ## The Enable Draft Mode route
 
 When Visual Editing is enabled, your frontend must implement a route that enables draft/preview mode and redirects to the requested page. This route is called whenever the Visual Editing iframe needs to load a page in draft mode.
