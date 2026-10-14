@@ -26,6 +26,7 @@ import {
 import { FrontendFieldItem } from './components/FrontendFieldItem';
 import { PreviewLinksSettings } from './components/PreviewLinksSettings';
 import { ViewportFieldItem } from './components/ViewportFieldItem';
+import s from './styles.module.css';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -118,7 +119,7 @@ function validateFrontend(
 
   if (hasNoFeatureEnabled) {
     ruleErrors._error =
-      'Enable at least one feature (Preview Links or Visual Editing) or disable this frontend.';
+      'Enable Preview Links or Visual Editing, or hide this frontend.';
   }
 
   if (rule.previewWebhook && !isValidUrl(rule.previewWebhook)) {
@@ -163,6 +164,59 @@ function validateViewport(rule: RawViewport): ViewportErrors {
   }
 
   return ruleErrors;
+}
+
+const PLUGIN_DOCS_URL =
+  'https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews';
+
+const FRONTEND_DOC_LINKS = [
+  {
+    href: `${PLUGIN_DOCS_URL}#the-preview-links-api-endpoint`,
+    label: 'Preview Links endpoint',
+  },
+  {
+    href: `${PLUGIN_DOCS_URL}#the-enable-draft-mode-route`,
+    label: 'Draft mode URL',
+  },
+  {
+    href: 'https://www.datocms.com/docs/visual-editing',
+    label: 'Visual Editing',
+  },
+  {
+    href: `${PLUGIN_DOCS_URL}#implementation-examples`,
+    label: 'Framework examples',
+  },
+];
+
+const DISPLAY_DOC_LINKS = [
+  { href: `${PLUGIN_DOCS_URL}#sidebar-panel`, label: 'Sidebar panel' },
+  {
+    href: `${PLUGIN_DOCS_URL}#full-preview-sidebar`,
+    label: 'Website preview tab',
+  },
+];
+
+const IFRAME_DOC_LINKS = [
+  {
+    href: `${PLUGIN_DOCS_URL}#content-security-policy`,
+    label: 'Content Security Policy',
+  },
+];
+
+function DocLinks({ links }: { links: { href: string; label: string }[] }) {
+  return (
+    <p className={s.docLinks}>
+      Docs:{' '}
+      {links.map(({ href, label }, index) => (
+        <span key={href}>
+          {index > 0 && ' · '}
+          <a href={href} target="_blank" rel="noreferrer">
+            {label}
+          </a>
+        </span>
+      ))}
+    </p>
+  );
 }
 
 export default function ConfigScreen({ ctx }: PropTypes) {
@@ -211,6 +265,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 Configure your project's frontends and the features each
                 provides.
               </p>
+              <DocLinks links={FRONTEND_DOC_LINKS} />
               <FieldArray<RawFrontend> name="frontends">
                 {({ fields, meta: { error } }) => (
                   <FieldGroup>
@@ -252,6 +307,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 Choose where Web Previews appears in the main navigation and
                 record editor.
               </p>
+              <DocLinks links={DISPLAY_DOC_LINKS} />
               <PreviewLinksSettings values={values} />
             </Section>
             <Section
@@ -305,6 +361,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
               }}
             >
               <p>Configure iframe permissions and security settings.</p>
+              <DocLinks links={IFRAME_DOC_LINKS} />
               <FieldGroup>
                 <Field name="iframeAllowAttribute">
                   {({ input, meta: { error } }) => (

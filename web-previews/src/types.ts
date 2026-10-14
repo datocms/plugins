@@ -37,6 +37,7 @@ export type Parameters = {
   defaultSidebarWidth?: string;
   previewLinksSidebarDisabled?: boolean;
   previewLinksSidebarPanelDisabled?: boolean;
+  previewLinksFormOutlet?: boolean;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
 };
@@ -70,6 +71,7 @@ export type NormalizedParameters = {
   frontends: Frontend[];
   showVisualTab: boolean;
   previewLinksSidebarPanel?: { startOpen: boolean };
+  previewLinksFormOutlet: boolean;
   previewLinksSidebar?: { defaultWidth: number };
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
@@ -93,6 +95,7 @@ export function normalizeParameters({
   defaultSidebarWidth,
   previewLinksSidebarDisabled,
   previewLinksSidebarPanelDisabled,
+  previewLinksFormOutlet,
   iframeAllowAttribute,
   defaultViewports,
 }: Parameters): NormalizedParameters {
@@ -121,6 +124,8 @@ export function normalizeParameters({
       : {
           startOpen: Boolean(startOpen),
         },
+    // Opt-in: installations predating this setting keep their record form unchanged
+    previewLinksFormOutlet: Boolean(previewLinksFormOutlet),
     // If not explicitly disabled (backwards compatible), create the sidebar config
     previewLinksSidebar: previewLinksSidebarDisabled
       ? undefined
@@ -149,6 +154,7 @@ export function denormalizeParameters({
   frontends,
   showVisualTab,
   previewLinksSidebarPanel,
+  previewLinksFormOutlet,
   previewLinksSidebar,
   iframeAllowAttribute,
   defaultViewports,
@@ -187,7 +193,8 @@ export function denormalizeParameters({
     defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
     previewLinksSidebarDisabled: !previewLinksSidebar,
     previewLinksSidebarPanelDisabled: !previewLinksSidebarPanel,
-      iframeAllowAttribute,
+    previewLinksFormOutlet,
+    iframeAllowAttribute,
     defaultViewports: defaultViewports.map((viewport) => ({
       name: viewport.name,
       width: viewport.width,

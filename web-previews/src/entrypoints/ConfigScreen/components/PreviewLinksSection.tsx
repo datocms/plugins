@@ -19,8 +19,7 @@ export function PreviewLinksSection({ name, index, frontend }: Props) {
             <SwitchField
               id={`frontend-${index}-enablePreviewLinks`}
               name={`frontend-${index}-enablePreviewLinks`}
-              label="This frontend offers Preview Links"
-              hint="Show preview links for this frontend in the sidebar. Requires your frontend to offer an endpoint returning them."
+              label="Enable Preview Links for this frontend"
               value={!!input.value}
               onChange={(enabled) => {
                 input.onChange(enabled ? 'https://' : '');
@@ -36,22 +35,9 @@ export function PreviewLinksSection({ name, index, frontend }: Props) {
                 <FieldGroup>
                   <TextField
                     id={`frontend-${index}-previewWebhook`}
-                    label="Preview Links API Endpoint"
+                    label="Preview Links endpoint URL"
                     placeholder="https://yourwebsite.com/api/preview-links"
                     error={error}
-                    hint={
-                      <>
-                        URL of the POST JSON endpoint that returns preview URLs
-                        given a specific record as request payload.{' '}
-                        <a
-                          href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-preview-links-api-endpoint"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Learn more
-                        </a>
-                      </>
-                    }
                     {...input}
                   />
 

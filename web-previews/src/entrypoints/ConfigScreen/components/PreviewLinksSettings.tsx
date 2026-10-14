@@ -11,13 +11,12 @@ export function PreviewLinksSettings({ values }: Props) {
   return (
     <FieldGroup>
       {/* Visual Tab Toggle */}
-      <div className={s.featureSection}>
+      <div>
         <Field name="showVisualTab">
           {({ input, meta: { error } }) => (
             <SwitchField
               id="showVisualTab"
-              label="Show Visual tab"
-              hint="Show the Visual tab in the main navigation when at least one frontend supports Visual Editing"
+              label="Show the Visual tab in the main navigation"
               error={error}
               {...input}
             />
@@ -26,27 +25,14 @@ export function PreviewLinksSettings({ values }: Props) {
       </div>
 
       {/* Sidebar Panel Toggle */}
-      <div className={s.featureSection}>
+      <div>
         <FieldGroup>
           <Field name="previewLinksSidebarPanelDisabled">
             {({ input }) => (
               <SwitchField
                 id="previewLinksSidebarPanelEnabled"
                 name="previewLinksSidebarPanelEnabled"
-                label="Enable Preview Links sidebar panel"
-                hint={
-                  <>
-                    Show a "Related website pages" panel in the record sidebar
-                    with links to preview URLs.{' '}
-                    <a
-                      href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#sidebar-panel"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Learn more
-                    </a>
-                  </>
-                }
+                label="Show Preview Links in a record sidebar panel"
                 value={!input.value}
                 onChange={(enabled) => {
                   input.onChange(!enabled);
@@ -62,8 +48,7 @@ export function PreviewLinksSettings({ values }: Props) {
                   {({ input, meta: { error } }) => (
                     <SwitchField
                       id="startOpen"
-                      label="Start with the panel open by default?"
-                      hint="The panel will be expanded when users open a record"
+                      label="Start with the panel expanded"
                       error={error}
                       {...input}
                     />
@@ -75,28 +60,29 @@ export function PreviewLinksSettings({ values }: Props) {
         </FieldGroup>
       </div>
 
+      {/* Record Form Toggle */}
+      <div>
+        <Field name="previewLinksFormOutlet">
+          {({ input, meta: { error } }) => (
+            <SwitchField
+              id="previewLinksFormOutlet"
+              label="Show Preview Links at the top of the record form"
+              error={error}
+              {...input}
+            />
+          )}
+        </Field>
+      </div>
+
       {/* Full Sidebar Toggle */}
-      <div className={s.featureSection}>
+      <div>
         <FieldGroup>
           <Field name="previewLinksSidebarDisabled">
             {({ input }) => (
               <SwitchField
                 id="previewLinksSidebarEnabled"
                 name="previewLinksSidebarEnabled"
-                label="Show Web Previews tab inside records"
-                hint={
-                  <>
-                    Show the "Website preview" tab in record editors, with an
-                    iframe preview of the selected URL.{' '}
-                    <a
-                      href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#full-preview-sidebar"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Learn more
-                    </a>
-                  </>
-                }
+                label="Show the Website preview tab in the record sidebar"
                 value={!input.value}
                 onChange={(enabled) => {
                   input.onChange(!enabled);
@@ -112,8 +98,7 @@ export function PreviewLinksSettings({ values }: Props) {
                   {({ input, meta: { error } }) => (
                     <TextField
                       id="defaultSidebarWidth"
-                      label="Default sidebar width (px)"
-                      hint="The initial width when the sidebar is opened"
+                      label="Default tab width (px)"
                       type="number"
                       error={error}
                       {...input}

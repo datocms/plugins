@@ -1,0 +1,20 @@
+.section {
+  padding: var(--spacing-m);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+}
+
+.title {
+  color: var(--color--ink);
+  font-weight: bold;
+  font-size: var(--font-size-s);
+  margin-bottom: var(--spacing-s);
+}
+
+.group {
+  margin-bottom: var(--spacing-m);
+}
+
+.group:last-child {
+  margin-bottom: 0;
+}

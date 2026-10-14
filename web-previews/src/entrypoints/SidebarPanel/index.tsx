@@ -1,16 +1,34 @@
 import {
-  faCopy,
+  faEllipsisV,
   faExternalLinkAlt,
   faEye,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
+import type {
+  RenderItemFormOutletCtx,
+  RenderItemFormSidebarPanelCtx,
+} from 'datocms-plugin-sdk';
+import {
+  Canvas,
+  Dropdown,
+  DropdownMenu,
+  DropdownOption,
+  Spinner,
+  useCtx,
+} from 'datocms-react-ui';
+import type { ReactNode } from 'react';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
-import type { Frontend } from '../../types';
+import {
+  type Frontend,
+  normalizeParameters,
+  type Parameters,
+  type PreviewLink,
+} from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import {
+  displayPath,
+  displayUrl,
   extractRedirectFromDraftModePreviewUrl,
   inspectorUrl,
 } from '../../utils/urls';
@@ -40,86 +58,160 @@ const FrontendGroup = ({
 
   return (
     <div className={styles.group}>
-      <div className={styles.groupName}>{frontend.name}</div>
-      <FrontendResult status={status} frontend={frontend} />
+      <FrontendResult status={status} frontend={frontend} showFrontendName />
     </div>
   );
 };
 
-const FrontendResult = ({
+/**
+ * The link the path opens: the draft-mode one when we can tell (by the
+ * frontend's draft mode URL, then by label), otherwise the first.
+ */
+function primaryLinkOf(links: PreviewLink[], draftModeUrl: string | undefined) {
+  return (
+    links.find(
+      ({ url }) =>
+        draftModeUrl &&
+        extractRedirectFromDraftModePreviewUrl(url, draftModeUrl) !== undefined,
+    ) ??
+    links.find(({ label }) => /draft/i.test(label)) ??
+    links[0]
+  );
+}
+
+/**
+ * One line per page: frontend name, then the path linking to the primary
+ * (draft) preview link, with the other links tucked in a menu. Wide containers
+ * (the form) keep it on one line; narrow ones (the sidebar panel) stack it.
+ */
+export const FrontendResult = ({
   status,
   frontend,
+  showFrontendName,
 }: {
   status: FrontendStatus;
   frontend: Frontend;
+  /** Label each row with the frontend (useful with several frontends) */
+  showFrontendName?: boolean;
 }) => {
-  const ctx = useCtx();
+  const ctx = useCtx<RenderItemFormSidebarPanelCtx | RenderItemFormOutletCtx>();
+  const { showVisualTab } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
 
   const draftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
+  const prefix = showFrontendName ? `${frontend.name}: ` : '';
 
   if ('error' in status) {
-    return <div>API endpoint error: check the console for more info!</div>;
+    return (
+      <div>{prefix}API endpoint error: check the console for more info!</div>
+    );
+  }
+
+  const { previewLinks } = status;
+
+  if (previewLinks.length === 0) {
+    return <div>{prefix}No preview links available.</div>;
+  }
+
+  const visualEditingPathFor = (urlString: string) =>
+    showVisualTab && draftModeUrl
+      ? extractRedirectFromDraftModePreviewUrl(urlString, draftModeUrl)
+      : undefined;
+
+  const openInVisual = (path: string) => {
+    ctx.navigateTo(inspectorUrl(ctx, { path, frontend: frontend.name }));
+  };
+
+  const linksByPage = new Map<string, PreviewLink[]>();
+  for (const previewLink of previewLinks) {
+    const page = displayUrl(previewLink.url);
+    linksByPage.set(page, [...(linksByPage.get(page) ?? []), previewLink]);
   }
 
   return (
-    <>
-      {status.previewLinks.length === 0 ? (
-        <div>No preview links available.</div>
-      ) : (
-        status.previewLinks.map(({ url: urlString, label }) => {
-          const url = new URL(urlString);
-          const visualEditingPath = draftModeUrl
-            ? extractRedirectFromDraftModePreviewUrl(urlString, draftModeUrl)
-            : undefined;
+    <div className={styles.pages}>
+      {[...linksByPage].map(([page, links]) => {
+        const visualEditingPath = links
+          .map(({ url }) => visualEditingPathFor(url))
+          .find(Boolean);
+        const primaryLink = primaryLinkOf(links, draftModeUrl);
+        const otherLinks = links.filter((link) => link !== primaryLink);
+        const visualButton = visualEditingPath && (
+          <ButtonGroupButton
+            tooltip="Edit in Visual Editing"
+            className={styles.compactButton}
+            onClick={() => openInVisual(visualEditingPath)}
+          >
+            <FontAwesomeIcon icon={faEye} />
+          </ButtonGroupButton>
+        );
 
-          return (
-            <div key={`${url}`} className={styles.previewLink}>
-              <div className={styles.previewLink__body}>
-                <div className={styles.previewLink__label}>{label}</div>
-                <div className={styles.previewLink__pathname} title={urlString}>
-                  {visualEditingPath ?? url.pathname + url.search}
-                </div>
+        // Draft link, Visual Editing and the menu trigger, joined in one group
+        const actions = (moreButton?: ReactNode) => (
+          <ButtonGroup className={styles.actions}>
+            <a
+              href={primaryLink.url}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.page__path}
+              title={`Open ${primaryLink.label}: ${page}`}
+            >
+              <span className={styles.page__pathText}>
+                {displayPath(primaryLink.url)}
+              </span>
+              <FontAwesomeIcon icon={faExternalLinkAlt} />
+            </a>
+            {visualButton}
+            {moreButton}
+          </ButtonGroup>
+        );
+
+        return (
+          <div key={page} className={styles.page}>
+            {showFrontendName && (
+              <div className={styles.page__frontend} title={frontend.name}>
+                {frontend.name}
               </div>
-              <ButtonGroup>
-                {visualEditingPath && (
-                  <ButtonGroupButton
-                    tooltip="Open in Visual"
-                    onClick={() => {
-                      ctx.navigateTo(
-                        inspectorUrl(ctx, {
-                          path: visualEditingPath,
-                          frontend: frontend.name,
-                        }),
-                      );
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faEye} />
-                  </ButtonGroupButton>
-                )}
-                <ButtonGroupButton
-                  tooltip="Copy URL to clipboard"
-                  onClick={() => {
-                    navigator.clipboard.writeText(urlString);
-                    ctx.notice('URL saved in clipboard!');
-                  }}
+            )}
+            <div className={styles.page__main}>
+              {otherLinks.length > 0 ? (
+                <Dropdown
+                  renderTrigger={({ onClick }) =>
+                    actions(
+                      <ButtonGroupButton
+                        tooltip={null}
+                        aria-label="More preview links"
+                        className={styles.compactButton}
+                        onClick={onClick}
+                      >
+                        <FontAwesomeIcon icon={faEllipsisV} />
+                      </ButtonGroupButton>,
+                    )
+                  }
                 >
-                  <FontAwesomeIcon icon={faCopy} />
-                </ButtonGroupButton>
-                <ButtonGroupButton
-                  as="a"
-                  href={urlString}
-                  target="_blank"
-                  rel="noreferrer"
-                  tooltip="Visit URL"
-                >
-                  <FontAwesomeIcon icon={faExternalLinkAlt} />
-                </ButtonGroupButton>
-              </ButtonGroup>
+                  <DropdownMenu alignment="right">
+                    {otherLinks.map(({ url, label }) => (
+                      <DropdownOption
+                        key={url}
+                        onClick={() => window.open(url, '_blank', 'noreferrer')}
+                      >
+                        <span className={styles.menuLink}>
+                          Open {label} version
+                          <FontAwesomeIcon icon={faExternalLinkAlt} />
+                        </span>
+                      </DropdownOption>
+                    ))}
+                  </DropdownMenu>
+                </Dropdown>
+              ) : (
+                actions()
+              )}
             </div>
-          );
-        })
-      )}
-    </>
+          </div>
+        );
+      })}
+    </div>
   );
 };
 
