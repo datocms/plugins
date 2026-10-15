@@ -53,9 +53,10 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "buffer": "^6.0.3",
-    "esbuild": "^0.27.4",
+    "esbuild": "^0.28.1",
     "events": "^3.3.0",
     "globals": "^17.4.0",
+    "tokenizer2": "file:vendor/tokenizer2",
     "typescript": "^5.9.3",
     "url": "^0.11.4",
     "vite": "^7.3.1",
@@ -67,10 +68,17 @@
       "react-intersection-observer": "^9.16.0",
       "react": "$react",
       "react-dom": "$react-dom"
+    },
+    "yoastseo": {
+      "@wordpress/i18n": "^6.0.0"
     }
   },
   "engines": {
     "node": "^20.0.0 || >=22.0.0"
   },
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
+  }
 }
