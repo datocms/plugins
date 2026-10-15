@@ -17,7 +17,11 @@
   container-type: inline-size;
 }
 
-.root:hover {
+.root:disabled {
+  cursor: default;
+}
+
+.root:not(:disabled):hover {
   background-color: var(--color--surface-muted);
 }
 

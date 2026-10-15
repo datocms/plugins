@@ -10,6 +10,8 @@ type Props = {
   currentPreviewLink: PreviewLinkWithFrontend | undefined;
   /** Prefix the label with the frontend name (useful with several frontends) */
   showFrontendName: boolean;
+  /** Nothing else to pick: no caret, not clickable */
+  disabled?: boolean;
 };
 
 export function Trigger({
@@ -17,9 +19,15 @@ export function Trigger({
   onClick,
   currentPreviewLink,
   showFrontendName,
+  disabled,
 }: Props) {
   return (
-    <button type="button" onClick={onClick} className={styles.root}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={styles.root}
+    >
       {currentPreviewLink ? (
         <span className={styles.previewLink} title={currentPreviewLink.url}>
           {showFrontendName && (
@@ -39,10 +47,12 @@ export function Trigger({
       ) : (
         <span className={styles.previewLink}>Please select a preview...</span>
       )}
-      <FontAwesomeIcon
-        icon={open ? faCaretUp : faCaretDown}
-        className={styles.icon}
-      />
+      {!disabled && (
+        <FontAwesomeIcon
+          icon={open ? faCaretUp : faCaretDown}
+          className={styles.icon}
+        />
+      )}
     </button>
   );
 }
