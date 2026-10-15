@@ -1,29 +1,58 @@
 import { faCaretDown, faCaretUp } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import type { PreviewLink } from '../../../../types';
+import type { PreviewLinkWithFrontend } from '../../../../types';
+import { displayPath } from '../../../../utils/urls';
 import styles from './styles.module.css';
 
 type Props = {
   open: boolean;
   onClick: () => void;
-  currentPreviewLink: PreviewLink | undefined;
+  currentPreviewLink: PreviewLinkWithFrontend | undefined;
+  /** Prefix the label with the frontend name (useful with several frontends) */
+  showFrontendName: boolean;
+  /** Nothing else to pick: no caret, not clickable */
+  disabled?: boolean;
 };
 
-export function Trigger({ open, onClick, currentPreviewLink }: Props) {
+export function Trigger({
+  open,
+  onClick,
+  currentPreviewLink,
+  showFrontendName,
+  disabled,
+}: Props) {
   return (
-    <button type="button" onClick={onClick} className={styles.root}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={styles.root}
+    >
       {currentPreviewLink ? (
-        <span className={styles.previewLink}>
+        <span className={styles.previewLink} title={currentPreviewLink.url}>
+          {showFrontendName && (
+            <span className={styles.frontend}>
+              {currentPreviewLink.frontendName} ·{' '}
+            </span>
+          )}
           <span className={styles.title}>{currentPreviewLink.label}</span>
-          <span> — {currentPreviewLink.url}</span>
+          <span>
+            {' — '}
+            <span className={styles.host}>
+              {new URL(currentPreviewLink.url).host}
+            </span>
+            {displayPath(currentPreviewLink.url)}
+          </span>
         </span>
       ) : (
         <span className={styles.previewLink}>Please select a preview...</span>
       )}
-      <FontAwesomeIcon
-        icon={open ? faCaretUp : faCaretDown}
-        className={styles.icon}
-      />
+      {!disabled && (
+        <FontAwesomeIcon
+          icon={open ? faCaretUp : faCaretDown}
+          className={styles.icon}
+        />
+      )}
     </button>
   );
 }

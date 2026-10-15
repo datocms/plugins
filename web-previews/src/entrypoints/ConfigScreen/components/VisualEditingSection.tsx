@@ -18,8 +18,7 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
             <SwitchField
               id={`frontend-${index}-enableVisualEditing`}
               name={`frontend-${index}-enableVisualEditing`}
-              label="This frontend supports Visual Editing"
-              hint="Enable full-screen, side-by-side editing with click-to-edit overlays. Requires your frontend to implement draft mode, and integrate with DatoCMS Content Link SDKs."
+              label="Enable Visual Editing for this frontend"
               value={!!input.value}
               onChange={(enabled) => {
                 input.onChange(enabled ? 'https://' : '');
@@ -35,23 +34,9 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
                 <FieldGroup>
                   <TextField
                     id={`frontend-${index}-visualEditing-enableDraftModeUrl`}
-                    label="Enable Draft Mode route"
+                    label="Draft mode URL"
                     placeholder="https://yourwebsite.com/api/draft"
                     error={error}
-                    hint={
-                      <>
-                        The route that enables draft/preview mode. Receives a{' '}
-                        <code>redirect</code> query parameter with the path to
-                        load.{' '}
-                        <a
-                          href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-enable-draft-mode-route"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Learn more
-                        </a>
-                      </>
-                    }
                     {...input}
                   />
 
@@ -59,9 +44,8 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
                     {({ input, meta: { error } }) => (
                       <TextField
                         id={`frontend-${index}-visualEditing-initialPath`}
-                        label="Initial Path (Optional)"
+                        label="Start page (optional)"
                         placeholder="/"
-                        hint="The default frontend path to load when opening Visual Editing. Defaults to '/'."
                         error={error}
                         {...input}
                       />

@@ -1,42 +1,39 @@
-import {
-  HotKey,
-  SwitchInput,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from 'datocms-react-ui';
-import type { ReactNode } from 'react';
+import { SwitchInput } from 'datocms-react-ui';
 import styles from './styles.module.css';
 
 interface EditModeToggleProps {
   value: boolean;
+  /** Flipped by holding Alt in the preview; reverts on release */
+  temporary: boolean;
   disabled: boolean;
   onChange: (value: boolean) => void;
-  tooltip?: ReactNode;
 }
 
+/** Same layout as the on-site Visual Editing toggle, in the CMS colors */
 export function EditModeToggle({
   value,
+  temporary,
   disabled,
   onChange,
-  tooltip,
 }: EditModeToggleProps) {
   return (
-    <Tooltip>
-      <TooltipTrigger>
-        <label className={styles.label} htmlFor="clickToEditEnabled">
-          <SwitchInput
-            name="clickToEditEnabled"
-            value={value}
-            disabled={disabled}
-            onChange={onChange}
-          />
-          <span className={styles.text}>Edit mode</span>
-        </label>
-      </TooltipTrigger>
-      <TooltipContent>
-        {tooltip ?? <HotKey label="Enable edit overlay" hotkey="alt" />}
-      </TooltipContent>
-    </Tooltip>
+    <label className={styles.root} htmlFor="clickToEditEnabled">
+      <span className={styles.text}>
+        <span className={styles.label}>
+          Visual editing {value ? 'on' : 'off'}
+        </span>
+        <span className={styles.hint}>
+          {temporary
+            ? `Release ⌥ Alt to ${value ? 'hide' : 'show'}`
+            : `Hold ⌥ Alt to ${value ? 'hide' : 'peek'}`}
+        </span>
+      </span>
+      <SwitchInput
+        name="clickToEditEnabled"
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </label>
   );
 }

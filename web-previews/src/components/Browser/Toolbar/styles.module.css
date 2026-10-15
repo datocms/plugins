@@ -7,3 +7,8 @@
   position: relative;
   z-index: 1;
 }
+
+/* Matches the DatoCMS inspector panel header ("Records in this page"): 59px + 1px border */
+.tall {
+  min-height: 59px;
+}

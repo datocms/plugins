@@ -43,6 +43,8 @@ interface ContextValue {
         type: 'connected';
         state: CleanContentLinkState;
         methods: AsyncMethodReturns<ContentLinkMethods>;
+        /** Click-to-edit differs from the editor's choice: Alt is held in the preview */
+        clickToEditTemporary: boolean;
       }
     | { type: 'error'; reason: 'no-ping' | 'failed-connection' };
 
@@ -50,6 +52,8 @@ interface ContextValue {
   iframeState: IframeState;
   setIframeState: (state: IframeState) => void;
   reloadIframe: () => void;
+  /** Record the editor's choice, so Alt flips can be told apart from it */
+  setPreferredClickToEdit: (enabled: boolean) => void;
 }
 
 export const VisualEditingContext = createContext<ContextValue | undefined>(
@@ -121,8 +125,19 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   }));
   const lastVisitedPathRef = useRef(iframeState.path);
 
+  // The click-to-edit state the editor chose. Content Link reports Alt flips
+  // as plain state changes, so a mismatch with this means Alt is held.
+  // Undefined until the page reports its initial state.
+  const [preferredClickToEdit, setPreferredClickToEdit] = useState<
+    boolean | undefined
+  >(undefined);
+
   const { iframeRef, connection } = useContentLinkConnection({
     onInit: () => {
+      setPreferredClickToEdit(
+        connection.type === 'connected' ? true : undefined,
+      );
+
       if (connection.type === 'connected') {
         connection.methods.setClickToEditEnabled({
           enabled: true,
@@ -139,6 +154,9 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     },
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);
+      setPreferredClickToEdit(
+        (preferred) => preferred ?? rest.clickToEditEnabled,
+      );
 
       const currentEnvItems = itemIdsPerEnvironment[currentEnvironmentId] ?? [];
       const safePath = normalizePathForVisualEditing({
@@ -322,6 +340,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     iframeState,
     setIframeState,
     reloadIframe,
+    setPreferredClickToEdit,
 
     contentLink:
       connection.type === 'failed'
@@ -334,6 +353,9 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
                 type: 'connected',
                 state: contentLinkState,
                 methods: connection.methods,
+                clickToEditTemporary:
+                  preferredClickToEdit !== undefined &&
+                  contentLinkState.clickToEditEnabled !== preferredClickToEdit,
               },
   };
 

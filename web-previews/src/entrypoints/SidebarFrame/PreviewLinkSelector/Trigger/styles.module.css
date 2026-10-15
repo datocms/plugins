@@ -14,9 +14,14 @@
   transition: background-color 0.2s ease;
   gap: 10px;
   flex: 1;
+  container-type: inline-size;
 }
 
-.root:hover {
+.root:disabled {
+  cursor: default;
+}
+
+.root:not(:disabled):hover {
   background-color: var(--color--surface-muted);
 }
 
@@ -38,4 +43,15 @@
 .title {
   color: var(--color--ink);
   font-weight: bold;
+}
+
+.frontend {
+  color: var(--color--ink);
+}
+
+/* Narrow sidebar: drop the host, keep the path */
+@container (max-width: 400px) {
+  .host {
+    display: none;
+  }
 }

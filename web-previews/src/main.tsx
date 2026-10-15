@@ -7,6 +7,7 @@ import 'datocms-react-ui/styles.css';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
+import FormPreviewLinks from './entrypoints/FormPreviewLinks';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
 import WrongEnvironmentPanel from './entrypoints/WrongEnvironmentPanel';
@@ -34,7 +35,7 @@ connect({
     return visualEditingFrontends.length > 0
       ? [
           {
-            label: 'Visual',
+            label: 'Visual Editing',
             icon: 'eye',
             pointsTo: {
               inspectorId: 'visual',
@@ -60,9 +61,9 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Related website pages',
+        label: 'Preview links',
         startOpen: previewLinksSidebarPanel.startOpen,
-        placement: ['before', 'links'],
+        placement: ['after', 'info'],
       },
     ];
   },
@@ -90,6 +91,27 @@ connect({
   },
   renderItemFormSidebar(_sidebarId, ctx) {
     render(<SidebarFrame ctx={ctx} />);
+  },
+  itemFormOutlets(itemType, ctx) {
+    if (itemType.attributes.modular_block) {
+      return [];
+    }
+
+    const { frontends, previewLinksFormOutlet } = normalizeParameters(
+      ctx.plugin.attributes.parameters as Parameters,
+    );
+
+    if (
+      !previewLinksFormOutlet ||
+      !frontends.some((f) => !f.disabled && f.previewLinks)
+    ) {
+      return [];
+    }
+
+    return [{ id: 'webPreviewsLinks', initialHeight: 0 }];
+  },
+  renderItemFormOutlet(_itemFormOutletId, ctx) {
+    render(<FormPreviewLinks ctx={ctx} />);
   },
   renderInspector(_inspectorId, ctx) {
     render(<Inspector ctx={ctx} />);

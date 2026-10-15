@@ -8,7 +8,6 @@ import { Trigger } from './Trigger';
 
 type Props = {
   currentPreviewLink: PreviewLinkWithFrontend | undefined;
-  effectivePreviewLink: PreviewLinkWithFrontend | undefined;
   frontends: Frontend[];
   statusByFrontend: Record<string, FrontendStatus | undefined>;
   onChange: (previewLink: PreviewLinkWithFrontend) => void;
@@ -18,7 +17,6 @@ export function PreviewLinkSelector({
   frontends,
   statusByFrontend,
   currentPreviewLink,
-  effectivePreviewLink,
   onChange,
 }: Props) {
   const firstStatus = Object.values(statusByFrontend)[0];
@@ -27,10 +25,36 @@ export function PreviewLinkSelector({
     return <div className={styles.emptyState}>Website preview</div>;
   }
 
+  // A single link (e.g. a model without draft/published): nothing to choose
+  const statuses = Object.values(statusByFrontend);
+  const linkCount = statuses.reduce(
+    (count, status) =>
+      count +
+      (status && 'previewLinks' in status ? status.previewLinks.length : 0),
+    0,
+  );
+  const hasErrors = statuses.some((status) => status && 'error' in status);
+
+  if (currentPreviewLink && linkCount === 1 && !hasErrors) {
+    return (
+      <Trigger
+        open={false}
+        onClick={() => {}}
+        currentPreviewLink={currentPreviewLink}
+        showFrontendName={frontends.length > 1}
+        disabled
+      />
+    );
+  }
+
   return (
     <Dropdown
       renderTrigger={(props) => (
-        <Trigger {...props} currentPreviewLink={effectivePreviewLink} />
+        <Trigger
+          {...props}
+          currentPreviewLink={currentPreviewLink}
+          showFrontendName={frontends.length > 1}
+        />
       )}
     >
       <DropdownMenu>

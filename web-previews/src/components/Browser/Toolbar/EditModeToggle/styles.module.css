@@ -1,14 +1,27 @@
-.label {
+.root {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 0 20px;
   cursor: pointer;
   user-select: none;
 }
 
 .text {
-  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.2;
+}
+
+.label {
   color: var(--color--ink);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+.hint {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }

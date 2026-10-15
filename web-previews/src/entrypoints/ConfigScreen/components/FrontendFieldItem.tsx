@@ -58,8 +58,7 @@ export function FrontendFieldItem({
             {({ input, meta: { error } }) => (
               <SwitchField
                 id={`frontend-${index}-disabled`}
-                label="Temporarily disable this frontend"
-                hint="Disabled frontends remain configured but won't be visible to editors."
+                label="Hide this frontend from editors"
                 error={error}
                 {...input}
               />
