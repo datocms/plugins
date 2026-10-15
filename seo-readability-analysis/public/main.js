@@ -5,11 +5,20 @@
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __esm = (fn, res) => function __init() {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  var __esm = (fn, res, err) => function __init() {
+    if (err) throw err[0];
+    try {
+      return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+    } catch (e) {
+      throw err = [e], e;
+    }
   };
   var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
   };
   var __export = (target, all) => {
     for (var name in all)
@@ -78,285 +87,61 @@
     }
   });
 
-  // node_modules/memize/dist/index.cjs
-  var require_dist = __commonJS({
-    "node_modules/memize/dist/index.cjs"(exports, module) {
+  // node_modules/@tannin/sprintf/build/index.cjs
+  var require_build2 = __commonJS({
+    "node_modules/@tannin/sprintf/build/index.cjs"(exports, module) {
       "use strict";
-      function memize(fn, options) {
-        var size = 0;
-        var head;
-        var tail;
-        options = options || {};
-        function memoized() {
-          var node = head, len = arguments.length, args, i;
-          searchCache: while (node) {
-            if (node.args.length !== arguments.length) {
-              node = node.next;
-              continue;
-            }
-            for (i = 0; i < len; i++) {
-              if (node.args[i] !== arguments[i]) {
-                node = node.next;
-                continue searchCache;
-              }
-            }
-            if (node !== head) {
-              if (node === tail) {
-                tail = node.prev;
-              }
-              node.prev.next = node.next;
-              if (node.next) {
-                node.next.prev = node.prev;
-              }
-              node.next = head;
-              node.prev = null;
-              head.prev = node;
-              head = node;
-            }
-            return node.val;
-          }
-          args = new Array(len);
-          for (i = 0; i < len; i++) {
-            args[i] = arguments[i];
-          }
-          node = {
-            args,
-            // Generate the result from original function
-            val: fn.apply(null, args)
-          };
-          if (head) {
-            head.prev = node;
-            node.next = head;
-          } else {
-            tail = node;
-          }
-          if (size === /** @type {MemizeOptions} */
-          options.maxSize) {
-            tail = /** @type {MemizeCacheNode} */
-            tail.prev;
-            tail.next = null;
-          } else {
-            size++;
-          }
-          head = node;
-          return node.val;
+      var PATTERN = /%(((\d+)\$)|(\(([$_a-zA-Z][$_a-zA-Z0-9]*)\)))?[ +0#-]*\d*(\.(\d+|\*))?(ll|[lhqL])?([cduxXefgsp%])/g;
+      function sprintf(string, ...args) {
+        var i = 0;
+        if (Array.isArray(args[0])) {
+          args = /** @type {import('../types').SprintfArgs<T>[]} */
+          /** @type {unknown} */
+          args[0];
         }
-        memoized.clear = function() {
-          head = null;
-          tail = null;
-          size = 0;
-        };
-        return memoized;
+        return string.replace(PATTERN, function() {
+          var index, name, precision, type, value;
+          index = arguments[3];
+          name = arguments[5];
+          precision = arguments[7];
+          type = arguments[9];
+          if (type === "%") {
+            return "%";
+          }
+          if (precision === "*") {
+            precision = args[i];
+            i++;
+          }
+          if (name === void 0) {
+            if (index === void 0) {
+              index = i + 1;
+            }
+            i++;
+            value = args[index - 1];
+          } else if (args[0] && typeof args[0] === "object" && args[0].hasOwnProperty(name)) {
+            value = args[0][name];
+          }
+          if (type === "f") {
+            value = parseFloat(value) || 0;
+          } else if (type === "d") {
+            value = parseInt(value) || 0;
+          }
+          if (precision !== void 0) {
+            if (type === "f") {
+              value = value.toFixed(precision);
+            } else if (type === "s") {
+              value = value.substr(0, precision);
+            }
+          }
+          return value !== void 0 && value !== null ? value : "";
+        });
       }
-      module.exports = memize;
-    }
-  });
-
-  // node_modules/sprintf-js/src/sprintf.js
-  var require_sprintf = __commonJS({
-    "node_modules/sprintf-js/src/sprintf.js"(exports) {
-      !(function() {
-        "use strict";
-        var re = {
-          not_string: /[^s]/,
-          not_bool: /[^t]/,
-          not_type: /[^T]/,
-          not_primitive: /[^v]/,
-          number: /[diefg]/,
-          numeric_arg: /[bcdiefguxX]/,
-          json: /[j]/,
-          not_json: /[^j]/,
-          text: /^[^\x25]+/,
-          modulo: /^\x25{2}/,
-          placeholder: /^\x25(?:([1-9]\d*)\$|\(([^)]+)\))?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-gijostTuvxX])/,
-          key: /^([a-z_][a-z_\d]*)/i,
-          key_access: /^\.([a-z_][a-z_\d]*)/i,
-          index_access: /^\[(\d+)\]/,
-          sign: /^[+-]/
-        };
-        function sprintf(key) {
-          return sprintf_format(sprintf_parse(key), arguments);
-        }
-        function vsprintf(fmt, argv) {
-          return sprintf.apply(null, [fmt].concat(argv || []));
-        }
-        function sprintf_format(parse_tree, argv) {
-          var cursor = 1, tree_length = parse_tree.length, arg, output = "", i, k, ph, pad, pad_character, pad_length, is_positive, sign;
-          for (i = 0; i < tree_length; i++) {
-            if (typeof parse_tree[i] === "string") {
-              output += parse_tree[i];
-            } else if (typeof parse_tree[i] === "object") {
-              ph = parse_tree[i];
-              if (ph.keys) {
-                arg = argv[cursor];
-                for (k = 0; k < ph.keys.length; k++) {
-                  if (arg == void 0) {
-                    throw new Error(sprintf('[sprintf] Cannot access property "%s" of undefined value "%s"', ph.keys[k], ph.keys[k - 1]));
-                  }
-                  arg = arg[ph.keys[k]];
-                }
-              } else if (ph.param_no) {
-                arg = argv[ph.param_no];
-              } else {
-                arg = argv[cursor++];
-              }
-              if (re.not_type.test(ph.type) && re.not_primitive.test(ph.type) && arg instanceof Function) {
-                arg = arg();
-              }
-              if (re.numeric_arg.test(ph.type) && (typeof arg !== "number" && isNaN(arg))) {
-                throw new TypeError(sprintf("[sprintf] expecting number but found %T", arg));
-              }
-              if (re.number.test(ph.type)) {
-                is_positive = arg >= 0;
-              }
-              switch (ph.type) {
-                case "b":
-                  arg = parseInt(arg, 10).toString(2);
-                  break;
-                case "c":
-                  arg = String.fromCharCode(parseInt(arg, 10));
-                  break;
-                case "d":
-                case "i":
-                  arg = parseInt(arg, 10);
-                  break;
-                case "j":
-                  arg = JSON.stringify(arg, null, ph.width ? parseInt(ph.width) : 0);
-                  break;
-                case "e":
-                  arg = ph.precision ? parseFloat(arg).toExponential(ph.precision) : parseFloat(arg).toExponential();
-                  break;
-                case "f":
-                  arg = ph.precision ? parseFloat(arg).toFixed(ph.precision) : parseFloat(arg);
-                  break;
-                case "g":
-                  arg = ph.precision ? String(Number(arg.toPrecision(ph.precision))) : parseFloat(arg);
-                  break;
-                case "o":
-                  arg = (parseInt(arg, 10) >>> 0).toString(8);
-                  break;
-                case "s":
-                  arg = String(arg);
-                  arg = ph.precision ? arg.substring(0, ph.precision) : arg;
-                  break;
-                case "t":
-                  arg = String(!!arg);
-                  arg = ph.precision ? arg.substring(0, ph.precision) : arg;
-                  break;
-                case "T":
-                  arg = Object.prototype.toString.call(arg).slice(8, -1).toLowerCase();
-                  arg = ph.precision ? arg.substring(0, ph.precision) : arg;
-                  break;
-                case "u":
-                  arg = parseInt(arg, 10) >>> 0;
-                  break;
-                case "v":
-                  arg = arg.valueOf();
-                  arg = ph.precision ? arg.substring(0, ph.precision) : arg;
-                  break;
-                case "x":
-                  arg = (parseInt(arg, 10) >>> 0).toString(16);
-                  break;
-                case "X":
-                  arg = (parseInt(arg, 10) >>> 0).toString(16).toUpperCase();
-                  break;
-              }
-              if (re.json.test(ph.type)) {
-                output += arg;
-              } else {
-                if (re.number.test(ph.type) && (!is_positive || ph.sign)) {
-                  sign = is_positive ? "+" : "-";
-                  arg = arg.toString().replace(re.sign, "");
-                } else {
-                  sign = "";
-                }
-                pad_character = ph.pad_char ? ph.pad_char === "0" ? "0" : ph.pad_char.charAt(1) : " ";
-                pad_length = ph.width - (sign + arg).length;
-                pad = ph.width ? pad_length > 0 ? pad_character.repeat(pad_length) : "" : "";
-                output += ph.align ? sign + arg + pad : pad_character === "0" ? sign + pad + arg : pad + sign + arg;
-              }
-            }
-          }
-          return output;
-        }
-        var sprintf_cache = /* @__PURE__ */ Object.create(null);
-        function sprintf_parse(fmt) {
-          if (sprintf_cache[fmt]) {
-            return sprintf_cache[fmt];
-          }
-          var _fmt = fmt, match, parse_tree = [], arg_names = 0;
-          while (_fmt) {
-            if ((match = re.text.exec(_fmt)) !== null) {
-              parse_tree.push(match[0]);
-            } else if ((match = re.modulo.exec(_fmt)) !== null) {
-              parse_tree.push("%");
-            } else if ((match = re.placeholder.exec(_fmt)) !== null) {
-              if (match[2]) {
-                arg_names |= 1;
-                var field_list = [], replacement_field = match[2], field_match = [];
-                if ((field_match = re.key.exec(replacement_field)) !== null) {
-                  field_list.push(field_match[1]);
-                  while ((replacement_field = replacement_field.substring(field_match[0].length)) !== "") {
-                    if ((field_match = re.key_access.exec(replacement_field)) !== null) {
-                      field_list.push(field_match[1]);
-                    } else if ((field_match = re.index_access.exec(replacement_field)) !== null) {
-                      field_list.push(field_match[1]);
-                    } else {
-                      throw new SyntaxError("[sprintf] failed to parse named argument key");
-                    }
-                  }
-                } else {
-                  throw new SyntaxError("[sprintf] failed to parse named argument key");
-                }
-                match[2] = field_list;
-              } else {
-                arg_names |= 2;
-              }
-              if (arg_names === 3) {
-                throw new Error("[sprintf] mixing positional and named placeholders is not (yet) supported");
-              }
-              parse_tree.push(
-                {
-                  placeholder: match[0],
-                  param_no: match[1],
-                  keys: match[2],
-                  sign: match[3],
-                  pad_char: match[4],
-                  align: match[5],
-                  width: match[6],
-                  precision: match[7],
-                  type: match[8]
-                }
-              );
-            } else {
-              throw new SyntaxError("[sprintf] unexpected placeholder");
-            }
-            _fmt = _fmt.substring(match[0].length);
-          }
-          return sprintf_cache[fmt] = parse_tree;
-        }
-        if (typeof exports !== "undefined") {
-          exports["sprintf"] = sprintf;
-          exports["vsprintf"] = vsprintf;
-        }
-        if (typeof window !== "undefined") {
-          window["sprintf"] = sprintf;
-          window["vsprintf"] = vsprintf;
-          if (typeof define === "function" && define["amd"]) {
-            define(function() {
-              return {
-                "sprintf": sprintf,
-                "vsprintf": vsprintf
-              };
-            });
-          }
-        }
-      })();
+      module.exports = sprintf;
     }
   });
 
   // node_modules/@wordpress/i18n/build/sprintf.js
-  var require_sprintf2 = __commonJS({
+  var require_sprintf = __commonJS({
     "node_modules/@wordpress/i18n/build/sprintf.js"(exports) {
       "use strict";
       var _interopRequireDefault = require_interopRequireDefault();
@@ -364,24 +149,15 @@
         value: true
       });
       exports.sprintf = sprintf;
-      var _memize = _interopRequireDefault(require_dist());
-      var _sprintfJs = _interopRequireDefault(require_sprintf());
-      var logErrorOnce = (0, _memize.default)(console.error);
+      var _sprintf2 = _interopRequireDefault(require_build2());
       function sprintf(format, ...args) {
-        try {
-          return _sprintfJs.default.sprintf(format, ...args);
-        } catch (error) {
-          if (error instanceof Error) {
-            logErrorOnce("sprintf error: \n\n" + error.toString());
-          }
-          return format;
-        }
+        return (0, _sprintf2.default)(format, ...args);
       }
     }
   });
 
   // node_modules/@tannin/postfix/build/index.js
-  var require_build2 = __commonJS({
+  var require_build3 = __commonJS({
     "node_modules/@tannin/postfix/build/index.js"(exports, module) {
       "use strict";
       var PRECEDENCE;
@@ -449,7 +225,7 @@
   });
 
   // node_modules/@tannin/evaluate/build/index.js
-  var require_build3 = __commonJS({
+  var require_build4 = __commonJS({
     "node_modules/@tannin/evaluate/build/index.js"(exports, module) {
       "use strict";
       var OPERATORS = {
@@ -532,14 +308,14 @@
   });
 
   // node_modules/@tannin/compile/build/index.js
-  var require_build4 = __commonJS({
+  var require_build5 = __commonJS({
     "node_modules/@tannin/compile/build/index.js"(exports, module) {
       "use strict";
       function _interopDefault(ex) {
         return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
       }
-      var postfix = _interopDefault(require_build2());
-      var evaluate = _interopDefault(require_build3());
+      var postfix = _interopDefault(require_build3());
+      var evaluate = _interopDefault(require_build4());
       function compile(expression) {
         var terms = postfix(expression);
         return function(variables) {
@@ -551,13 +327,13 @@
   });
 
   // node_modules/@tannin/plural-forms/build/index.js
-  var require_build5 = __commonJS({
+  var require_build6 = __commonJS({
     "node_modules/@tannin/plural-forms/build/index.js"(exports, module) {
       "use strict";
       function _interopDefault(ex) {
         return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
       }
-      var compile = _interopDefault(require_build4());
+      var compile = _interopDefault(require_build5());
       function pluralForms(expression) {
         var evaluate = compile(expression);
         return function(n) {
@@ -569,13 +345,13 @@
   });
 
   // node_modules/tannin/build/index.js
-  var require_build6 = __commonJS({
+  var require_build7 = __commonJS({
     "node_modules/tannin/build/index.js"(exports, module) {
       "use strict";
       function _interopDefault(ex) {
         return ex && typeof ex === "object" && "default" in ex ? ex["default"] : ex;
       }
-      var pluralForms = _interopDefault(require_build5());
+      var pluralForms = _interopDefault(require_build6());
       var DEFAULT_OPTIONS = {
         contextDelimiter: "",
         onMissingKey: null
@@ -653,7 +429,7 @@
         value: true
       });
       exports.createI18n = void 0;
-      var _tannin = _interopRequireDefault(require_build6());
+      var _tannin = _interopRequireDefault(require_build7());
       var DEFAULT_LOCALE_DATA = {
         "": {
           /** @param {number} n */
@@ -719,13 +495,16 @@
         const __ = (text, domain) => {
           let translation = dcnpgettext(domain, void 0, text);
           if (!hooks) {
-            return translation;
+            return (
+              /** @type {import('./types').TranslatableText<typeof text>} */
+              translation
+            );
           }
           translation = /** @type {string} */
           /** @type {*} */
           hooks.applyFilters("i18n.gettext", translation, text, domain);
           return (
-            /** @type {string} */
+            /** @type {import('./types').TranslatableText<typeof text>} */
             /** @type {*} */
             hooks.applyFilters("i18n.gettext_" + getFilterDomain(domain), translation, text, domain)
           );
@@ -733,13 +512,16 @@
         const _x = (text, context, domain) => {
           let translation = dcnpgettext(domain, context, text);
           if (!hooks) {
-            return translation;
+            return (
+              /** @type {import('./types').TranslatableText<typeof text>} */
+              translation
+            );
           }
           translation = /** @type {string} */
           /** @type {*} */
           hooks.applyFilters("i18n.gettext_with_context", translation, text, context, domain);
           return (
-            /** @type {string} */
+            /** @type {import('./types').TranslatableText<typeof text>} */
             /** @type {*} */
             hooks.applyFilters("i18n.gettext_with_context_" + getFilterDomain(domain), translation, text, context, domain)
           );
@@ -747,13 +529,16 @@
         const _n = (single, plural, number, domain) => {
           let translation = dcnpgettext(domain, void 0, single, plural, number);
           if (!hooks) {
-            return translation;
+            return (
+              /** @type {import('./types').TranslatableText<typeof single | typeof plural>} */
+              translation
+            );
           }
           translation = /** @type {string} */
           /** @type {*} */
           hooks.applyFilters("i18n.ngettext", translation, single, plural, number, domain);
           return (
-            /** @type {string} */
+            /** @type {import('./types').TranslatableText<typeof single | typeof plural>} */
             /** @type {*} */
             hooks.applyFilters("i18n.ngettext_" + getFilterDomain(domain), translation, single, plural, number, domain)
           );
@@ -761,13 +546,16 @@
         const _nx = (single, plural, number, context, domain) => {
           let translation = dcnpgettext(domain, context, single, plural, number);
           if (!hooks) {
-            return translation;
+            return (
+              /** @type {import('./types').TranslatableText<typeof single | typeof plural>} */
+              translation
+            );
           }
           translation = /** @type {string} */
           /** @type {*} */
           hooks.applyFilters("i18n.ngettext_with_context", translation, single, plural, number, context, domain);
           return (
-            /** @type {string} */
+            /** @type {import('./types').TranslatableText<typeof single | typeof plural>} */
             /** @type {*} */
             hooks.applyFilters("i18n.ngettext_with_context_" + getFilterDomain(domain), translation, single, plural, number, context, domain)
           );
@@ -1443,7 +1231,7 @@
   });
 
   // node_modules/@wordpress/hooks/build/index.cjs
-  var require_build7 = __commonJS({
+  var require_build8 = __commonJS({
     "node_modules/@wordpress/hooks/build/index.cjs"(exports, module) {
       "use strict";
       var __create2 = Object.create;
@@ -1535,7 +1323,7 @@
       });
       exports.subscribe = exports.setLocaleData = exports.resetLocaleData = exports.isRTL = exports.hasTranslation = exports.getLocaleData = exports.default = exports._x = exports._nx = exports._n = exports.__ = void 0;
       var _createI18n = require_create_i18n();
-      var _hooks = require_build7();
+      var _hooks = require_build8();
       var i18n = (0, _createI18n.createI18n)(void 0, void 0, _hooks.defaultHooks);
       var _default = exports.default = i18n;
       var getLocaleData = exports.getLocaleData = i18n.getLocaleData.bind(i18n);
@@ -1552,7 +1340,7 @@
   });
 
   // node_modules/@wordpress/i18n/build/index.js
-  var require_build8 = __commonJS({
+  var require_build9 = __commonJS({
     "node_modules/@wordpress/i18n/build/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", {
@@ -1644,7 +1432,7 @@
           return _defaultI18n.subscribe;
         }
       });
-      var _sprintf = require_sprintf2();
+      var _sprintf = require_sprintf();
       var _createI18n = require_create_i18n();
       Object.keys(_createI18n).forEach(function(key) {
         if (key === "default" || key === "__esModule") return;
@@ -16615,7 +16403,7 @@
   });
 
   // node_modules/yoastseo/build/parse/build/build.js
-  var require_build9 = __commonJS({
+  var require_build10 = __commonJS({
     "node_modules/yoastseo/build/parse/build/build.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", {
@@ -16654,7 +16442,7 @@
   });
 
   // node_modules/yoastseo/build/parse/build/index.js
-  var require_build10 = __commonJS({
+  var require_build11 = __commonJS({
     "node_modules/yoastseo/build/parse/build/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", {
@@ -16666,7 +16454,7 @@
           return _build.default;
         }
       });
-      var _build = _interopRequireDefault(require_build9());
+      var _build = _interopRequireDefault(require_build10());
       function _interopRequireDefault(e) {
         return e && e.__esModule ? e : { default: e };
       }
@@ -20728,9 +20516,9 @@
     }
   });
 
-  // node_modules/tokenizer2/core.js
+  // vendor/tokenizer2/core.js
   var require_core = __commonJS({
-    "node_modules/tokenizer2/core.js"(exports, module) {
+    "vendor/tokenizer2/core.js"(exports, module) {
       var findMatchingRule = function(rules, text) {
         var i;
         for (i = 0; i < rules.length; i++)
@@ -30111,9 +29899,8 @@
             }
           },
           "delete": function(key) {
-            var root = $o && $o.next;
             var deletedNode = listDelete($o, key);
-            if (deletedNode && root && root === deletedNode) {
+            if (deletedNode && $o && !$o.next) {
               $o = void 0;
             }
             return !!deletedNode;
@@ -31105,7 +30892,8 @@
         var channel = {
           assert: function(key) {
             if (!channel.has(key)) {
-              throw new $TypeError("Side channel does not contain " + inspect(key));
+              var keyDesc = key && Object(key) === key ? "the given object key" : inspect(key);
+              throw new $TypeError("Side channel does not contain " + keyDesc);
             }
           },
           "delete": function(key) {
@@ -31161,6 +30949,7 @@
       "use strict";
       var formats = require_formats();
       var getSideChannel = require_side_channel();
+      var defineProperty = require_es_define_property();
       var has = Object.prototype.hasOwnProperty;
       var isArray = Array.isArray;
       var overflowChannel = getSideChannel();
@@ -31176,6 +30965,17 @@
       };
       var setMaxIndex = function setMaxIndex2(obj, maxIndex) {
         overflowChannel.set(obj, maxIndex);
+      };
+      var conflictChannel = getSideChannel();
+      var markConflict = function markConflict2(obj, maxIndex) {
+        conflictChannel.set(obj, maxIndex);
+        return obj;
+      };
+      var isConflict = function isConflict2(obj) {
+        return conflictChannel.has(obj);
+      };
+      var getConflictIndex = function getConflictIndex2(obj) {
+        return conflictChannel.get(obj);
       };
       var hexTable = (function() {
         var array = [];
@@ -31208,6 +31008,39 @@
         }
         return obj;
       };
+      var setProperty = function setProperty2(obj, key, value) {
+        if (key === "__proto__" && defineProperty) {
+          defineProperty(obj, key, {
+            configurable: true,
+            enumerable: true,
+            value,
+            writable: true
+          });
+        } else {
+          obj[key] = value;
+        }
+      };
+      var maxNumericIndex = function maxNumericIndex2(obj, min) {
+        var max = min;
+        var keys = Object.keys(obj);
+        for (var i = 0; i < keys.length; ++i) {
+          var num = parseInt(keys[i], 10);
+          if (String(num) === keys[i] && num > max) {
+            max = num;
+          }
+        }
+        return max;
+      };
+      var limitedPair = function limitedPair2(first, second, options) {
+        var pair = [first, second];
+        if (options && typeof options.arrayLimit === "number" && pair.length > options.arrayLimit) {
+          if (options.throwOnLimitExceeded) {
+            throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+          }
+          return markOverflow(arrayToObject(pair, options), 1);
+        }
+        return pair;
+      };
       var merge = function merge2(target, source, options) {
         if (!source) {
           return target;
@@ -31215,7 +31048,10 @@
         if (typeof source !== "object" && typeof source !== "function") {
           if (isArray(target)) {
             var nextIndex = target.length;
-            if (options && typeof options.arrayLimit === "number" && nextIndex > options.arrayLimit) {
+            if (options && typeof options.arrayLimit === "number" && nextIndex >= options.arrayLimit) {
+              if (options.throwOnLimitExceeded) {
+                throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+              }
               return markOverflow(arrayToObject(target.concat(source), options), nextIndex);
             }
             target[nextIndex] = source;
@@ -31224,13 +31060,21 @@
               var newIndex = getMaxIndex(target) + 1;
               target[newIndex] = source;
               setMaxIndex(target, newIndex);
+            } else if (options && options.strictMerge && isConflict(target)) {
+              var nextConflict = getConflictIndex(target) + 1;
+              if (options.throwOnLimitExceeded && typeof options.arrayLimit === "number" && nextConflict >= options.arrayLimit) {
+                throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+              }
+              target[nextConflict] = source;
+              markConflict(target, nextConflict);
             } else if (options && options.strictMerge) {
-              return [target, source];
+              var conflict = limitedPair(target, source, options);
+              return isArray(conflict) ? markConflict(conflict, 1) : conflict;
             } else if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
               target[source] = true;
             }
           } else {
-            return [target, source];
+            return limitedPair(target, source, options);
           }
           return target;
         }
@@ -31246,6 +31090,9 @@
           }
           var combined = [target].concat(source);
           if (options && typeof options.arrayLimit === "number" && combined.length > options.arrayLimit) {
+            if (options.throwOnLimitExceeded) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
             return markOverflow(arrayToObject(combined, options), combined.length - 1);
           }
           return combined;
@@ -31253,6 +31100,9 @@
         var mergeTarget = target;
         if (isArray(target) && !isArray(source)) {
           mergeTarget = arrayToObject(target, options);
+          if (isConflict(target)) {
+            markConflict(mergeTarget, target.length - 1);
+          }
         }
         if (isArray(target) && isArray(source)) {
           source.forEach(function(item, i) {
@@ -31267,17 +31117,23 @@
               target[i] = item;
             }
           });
+          if (options && typeof options.arrayLimit === "number" && target.length > options.arrayLimit) {
+            if (options.throwOnLimitExceeded) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
+            return markOverflow(arrayToObject(target, options), target.length - 1);
+          }
           return target;
         }
         return Object.keys(source).reduce(function(acc, key) {
           var value = source[key];
           if (has.call(acc, key)) {
-            acc[key] = merge2(acc[key], value, options);
+            setProperty(acc, key, merge2(acc[key], value, options));
           } else {
-            acc[key] = value;
+            setProperty(acc, key, value);
           }
           if (isOverflow(source) && !isOverflow(acc)) {
-            markOverflow(acc, getMaxIndex(source));
+            markOverflow(acc, maxNumericIndex(acc, getMaxIndex(source)));
           }
           if (isOverflow(acc)) {
             var keyNum = parseInt(key, 10);
@@ -31285,16 +31141,25 @@
               setMaxIndex(acc, keyNum);
             }
           }
+          if (isConflict(acc)) {
+            var conflictKey = parseInt(key, 10);
+            if (String(conflictKey) === key && conflictKey > getConflictIndex(acc)) {
+              markConflict(acc, conflictKey);
+            }
+          }
           return acc;
         }, mergeTarget);
       };
       var assign = function assignSingleSource(target, source) {
         return Object.keys(source).reduce(function(acc, key) {
-          acc[key] = source[key];
+          setProperty(acc, key, source[key]);
           return acc;
         }, target);
       };
       var decode = function(str, defaultDecoder, charset) {
+        if (typeof str === "string" && str.indexOf("%") === -1) {
+          return str.indexOf("+") === -1 ? str : str.replace(/\+/g, " ");
+        }
         var strWithoutPlus = str.replace(/\+/g, " ");
         if (charset === "iso-8859-1") {
           return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
@@ -31305,6 +31170,52 @@
           return strWithoutPlus;
         }
       };
+      var hasToPrimitive = typeof Symbol === "function" && typeof Symbol.toPrimitive === "symbol";
+      var arrayJoin = Array.prototype.join;
+      var arrayToString = Array.prototype.toString;
+      var objectToString = Object.prototype.toString;
+      var toCoercible = function toCoercible2(value, joining) {
+        if (!value || typeof value !== "object" && typeof value !== "function") {
+          return value;
+        }
+        if (hasToPrimitive && value[Symbol.toPrimitive] != null) {
+          return value;
+        }
+        if (isArray(value) && value.toString === arrayToString && value.join === arrayJoin) {
+          var ancestors = joining || getSideChannel();
+          if (ancestors.has(value)) {
+            return "";
+          }
+          ancestors.set(value, true);
+          var copy;
+          for (var i = 0; i < value.length; i += 1) {
+            var item = value[i];
+            var coerced = toCoercible2(item, ancestors);
+            if (!copy && coerced !== item) {
+              copy = [];
+              for (var j = 0; j < i; j += 1) {
+                copy[j] = value[j];
+              }
+            }
+            if (copy) {
+              copy[i] = coerced;
+            }
+          }
+          ancestors["delete"](value);
+          return copy || value;
+        }
+        if (typeof value.toString === "function") {
+          return value;
+        }
+        var valueOf = value.valueOf;
+        if (typeof valueOf === "function") {
+          var primitive = valueOf.call(value);
+          if (!primitive || typeof primitive !== "object" && typeof primitive !== "function") {
+            return String(primitive);
+          }
+        }
+        return objectToString.call(value);
+      };
       var limit = 1024;
       var encode = function encode2(str, defaultEncoder, charset, kind, format) {
         if (str.length === 0) {
@@ -31314,16 +31225,23 @@
         if (typeof str === "symbol") {
           string = Symbol.prototype.toString.call(str);
         } else if (typeof str !== "string") {
-          string = String(str);
+          string = String(toCoercible(str));
         }
         if (charset === "iso-8859-1") {
           return escape(string).replace(/%u[0-9a-f]{4}/gi, function($0) {
             return "%26%23" + parseInt($0.slice(2), 16) + "%3B";
-          });
+          }).replace(/\+/g, "%2B");
         }
         var out = "";
         for (var j = 0; j < string.length; j += limit) {
           var segment = string.length >= limit ? string.slice(j, j + limit) : string;
+          if (j + limit < string.length) {
+            var last = segment.charCodeAt(segment.length - 1);
+            if (last >= 55296 && last <= 56319) {
+              segment = segment.slice(0, -1);
+              j -= 1;
+            }
+          }
           var arr = [];
           for (var i = 0; i < segment.length; ++i) {
             var c = segment.charCodeAt(i);
@@ -31353,7 +31271,7 @@
       };
       var compact = function compact2(value) {
         var queue = [{ obj: { o: value }, prop: "o" }];
-        var refs = [];
+        var refs = getSideChannel();
         for (var i = 0; i < queue.length; ++i) {
           var item = queue[i];
           var obj = item.obj[item.prop];
@@ -31361,9 +31279,9 @@
           for (var j = 0; j < keys.length; ++j) {
             var key = keys[j];
             var val = obj[key];
-            if (typeof val === "object" && val !== null && refs.indexOf(val) === -1) {
+            if (typeof val === "object" && val !== null && !refs.has(val)) {
               queue[queue.length] = { obj, prop: key };
-              refs[refs.length] = val;
+              refs.set(val, true);
             }
           }
         }
@@ -31377,17 +31295,27 @@
         if (!obj || typeof obj !== "object") {
           return false;
         }
-        return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
+        return !!(obj.constructor && typeof obj.constructor.isBuffer === "function" && obj.constructor.isBuffer(obj));
       };
-      var combine = function combine2(a, b, arrayLimit, plainObjects) {
+      var combine = function combine2(a, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
         if (isOverflow(a)) {
-          var newIndex = getMaxIndex(a) + 1;
-          a[newIndex] = b;
+          if (throwOnLimitExceeded) {
+            throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+          }
+          var bValues = isArray(b) ? b : [b];
+          var newIndex = getMaxIndex(a);
+          for (var i = 0; i < bValues.length; ++i) {
+            newIndex += 1;
+            a[newIndex] = bValues[i];
+          }
           setMaxIndex(a, newIndex);
           return a;
         }
         var result = [].concat(a, b);
         if (result.length > arrayLimit) {
+          if (throwOnLimitExceeded) {
+            throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+          }
           return markOverflow(arrayToObject(result, { plainObjects }), result.length - 1);
         }
         return result;
@@ -31414,7 +31342,8 @@
         isRegExp,
         markOverflow,
         maybeMap,
-        merge
+        merge,
+        toCoercible
       };
     }
   });
@@ -31455,6 +31384,7 @@
         charsetSentinel: false,
         commaRoundTrip: false,
         delimiter: "&",
+        depth: Infinity,
         encode: true,
         encodeDotInKeys: false,
         encoder: utils.encode,
@@ -31474,8 +31404,11 @@
         return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "symbol" || typeof v === "bigint";
       };
       var sentinel = {};
-      var stringify = function stringify2(object, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel) {
+      var stringify = function stringify2(object, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel, depth, currentDepth) {
         var obj = object;
+        if (currentDepth > depth) {
+          throw new RangeError("Input depth exceeded depth option of " + depth);
+        }
         var tmpSc = sideChannel;
         var step = 0;
         var findFlag = false;
@@ -31493,9 +31426,8 @@
             step = 0;
           }
         }
-        if (typeof filter === "function") {
-          obj = filter(prefix, obj);
-        } else if (obj instanceof Date) {
+        obj = typeof filter === "function" ? filter(prefix, obj) : obj;
+        if (obj instanceof Date) {
           obj = serializeDate(obj);
         } else if (generateArrayPrefix === "comma" && isArray(obj)) {
           obj = utils.maybeMap(obj, function(value2) {
@@ -31507,7 +31439,7 @@
         }
         if (obj === null) {
           if (strictNullHandling) {
-            return encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix;
+            return formatter(encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix);
           }
           obj = "";
         }
@@ -31525,18 +31457,20 @@
         var objKeys;
         if (generateArrayPrefix === "comma" && isArray(obj)) {
           if (encodeValuesOnly && encoder) {
-            obj = utils.maybeMap(obj, encoder);
+            obj = utils.maybeMap(obj, function(v) {
+              return v == null ? v : encoder(v, defaults.encoder, charset, "value", format);
+            });
           }
-          objKeys = [{ value: obj.length > 0 ? obj.join(",") || null : void 0 }];
+          objKeys = [{ value: obj.length > 0 ? utils.toCoercible(obj).join(",") || null : void 0 }];
         } else if (isArray(filter)) {
           objKeys = filter;
         } else {
           var keys = Object.keys(obj);
           objKeys = sort ? keys.sort(sort) : keys;
         }
-        var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
+        var encodedPrefix = String(prefix);
         var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
-        if (allowEmptyArrays && isArray(obj) && obj.length === 0) {
+        if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
           return adjustedPrefix + "[]";
         }
         for (var j = 0; j < objKeys.length; ++j) {
@@ -31568,7 +31502,9 @@
             formatter,
             encodeValuesOnly,
             charset,
-            valueSideChannel
+            valueSideChannel,
+            depth,
+            currentDepth + 1
           ));
         }
         return values;
@@ -31603,7 +31539,7 @@
           filter = opts.filter;
         }
         var arrayFormat;
-        if (opts.arrayFormat in arrayPrefixGenerators) {
+        if (has.call(arrayPrefixGenerators, opts.arrayFormat)) {
           arrayFormat = opts.arrayFormat;
         } else if ("indices" in opts) {
           arrayFormat = opts.indices ? "indices" : "repeat";
@@ -31623,6 +31559,7 @@
           charsetSentinel: typeof opts.charsetSentinel === "boolean" ? opts.charsetSentinel : defaults.charsetSentinel,
           commaRoundTrip: !!opts.commaRoundTrip,
           delimiter: typeof opts.delimiter === "undefined" ? defaults.delimiter : opts.delimiter,
+          depth: typeof opts.depth === "number" ? opts.depth : defaults.depth,
           encode: typeof opts.encode === "boolean" ? opts.encode : defaults.encode,
           encodeDotInKeys: typeof opts.encodeDotInKeys === "boolean" ? opts.encodeDotInKeys : defaults.encodeDotInKeys,
           encoder: typeof opts.encoder === "function" ? opts.encoder : defaults.encoder,
@@ -31663,13 +31600,17 @@
         var sideChannel = getSideChannel();
         for (var i = 0; i < objKeys.length; ++i) {
           var key = objKeys[i];
+          if (typeof key === "undefined" || key === null) {
+            continue;
+          }
           var value = obj[key];
           if (options.skipNulls && value === null) {
             continue;
           }
+          var encodedKey = options.encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
           pushToArray(keys, stringify(
             value,
-            key,
+            encodedKey,
             generateArrayPrefix,
             commaRoundTrip,
             options.allowEmptyArrays,
@@ -31685,16 +31626,18 @@
             options.formatter,
             options.encodeValuesOnly,
             options.charset,
-            sideChannel
+            sideChannel,
+            options.depth,
+            0
           ));
         }
         var joined = keys.join(options.delimiter);
         var prefix = options.addQueryPrefix === true ? "?" : "";
         if (options.charsetSentinel) {
           if (options.charset === "iso-8859-1") {
-            prefix += "utf8=%26%2310003%3B&";
+            prefix += "utf8=%26%2310003%3B" + options.delimiter;
           } else {
-            prefix += "utf8=%E2%9C%93&";
+            prefix += "utf8=%E2%9C%93" + options.delimiter;
           }
         }
         return joined.length > 0 ? prefix + joined : "";
@@ -31706,9 +31649,53 @@
   var require_parse = __commonJS({
     "node_modules/qs/lib/parse.js"(exports, module) {
       "use strict";
+      var getSideChannel = require_side_channel();
       var utils = require_utils();
       var has = Object.prototype.hasOwnProperty;
       var isArray = Array.isArray;
+      var getPrototypeOf = Object.getPrototypeOf;
+      var isPlainContainer = function isPlainContainer2(value) {
+        if (!value || typeof value !== "object") {
+          return false;
+        }
+        if (isArray(value)) {
+          return true;
+        }
+        var proto = getPrototypeOf(value);
+        return proto === Object.prototype || proto === null;
+      };
+      var emptyCopyOf = function emptyCopyOf2(value) {
+        if (isArray(value)) {
+          var arr = [];
+          arr.length = value.length;
+          return arr;
+        }
+        return getPrototypeOf(value) === null ? { __proto__: null } : {};
+      };
+      var copyInput = function copyInput2(input) {
+        var copies = getSideChannel();
+        var result = {};
+        var queue = [{ source: input, target: result }];
+        for (var i = 0; i < queue.length; ++i) {
+          var source = queue[i].source;
+          var target = queue[i].target;
+          var keys = Object.keys(source);
+          for (var j = 0; j < keys.length; ++j) {
+            var value = source[keys[j]];
+            if (isPlainContainer(value)) {
+              if (!copies.has(value)) {
+                var copy = emptyCopyOf(value);
+                copies.set(value, copy);
+                queue[queue.length] = { source: value, target: copy };
+              }
+              target[keys[j]] = copies.get(value);
+            } else {
+              target[keys[j]] = value;
+            }
+          }
+        }
+        return result;
+      };
       var defaults = {
         allowDots: false,
         allowEmptyArrays: false,
@@ -31740,6 +31727,17 @@
       };
       var parseArrayValue = function(val, options, currentArrayLength) {
         if (val && typeof val === "string" && options.comma && val.indexOf(",") > -1) {
+          if (options.throwOnLimitExceeded) {
+            var commaCount = 0;
+            var commaIndex = val.indexOf(",");
+            while (commaIndex > -1) {
+              commaCount += 1;
+              if (commaCount >= options.arrayLimit) {
+                throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+              }
+              commaIndex = val.indexOf(",", commaIndex + 1);
+            }
+          }
           return val.split(",");
         }
         if (options.throwOnLimitExceeded && currentArrayLength >= options.arrayLimit) {
@@ -31756,9 +31754,9 @@
         var limit = options.parameterLimit === Infinity ? void 0 : options.parameterLimit;
         var parts = cleanStr.split(
           options.delimiter,
-          options.throwOnLimitExceeded ? limit + 1 : limit
+          options.throwOnLimitExceeded && typeof limit !== "undefined" ? limit + 1 : limit
         );
-        if (options.throwOnLimitExceeded && parts.length > limit) {
+        if (options.throwOnLimitExceeded && typeof limit !== "undefined" && parts.length > limit) {
           throw new RangeError("Parameter limit exceeded. Only " + limit + " parameter" + (limit === 1 ? "" : "s") + " allowed.");
         }
         var skipIndex = -1;
@@ -31784,6 +31782,7 @@
           var part = parts[i];
           var bracketEqualsPos = part.indexOf("]=");
           var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
+          var isEmptyBracketKey = pos > 1 && part.slice(pos - 2, pos) === "[]";
           var key;
           var val;
           if (pos === -1) {
@@ -31807,23 +31806,21 @@
           if (val && options.interpretNumericEntities && charset === "iso-8859-1") {
             val = interpretNumericEntities(String(val));
           }
-          if (part.indexOf("[]=") > -1) {
+          if (isEmptyBracketKey) {
             val = isArray(val) ? [val] : val;
           }
           if (options.comma && isArray(val) && val.length > options.arrayLimit) {
-            if (options.throwOnLimitExceeded) {
-              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-            }
-            val = utils.combine([], val, options.arrayLimit, options.plainObjects);
+            val = utils.combine([], val, options.arrayLimit, options.plainObjects, options.throwOnLimitExceeded);
           }
           if (key !== null) {
             var existing = has.call(obj, key);
-            if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
+            if (existing && (options.duplicates === "combine" || isEmptyBracketKey)) {
               obj[key] = utils.combine(
                 obj[key],
                 val,
                 options.arrayLimit,
-                options.plainObjects
+                options.plainObjects,
+                options.throwOnLimitExceeded
               );
             } else if (!existing || options.duplicates === "last") {
               obj[key] = val;
@@ -31850,7 +31847,8 @@
                 [],
                 leaf,
                 options.arrayLimit,
-                options.plainObjects
+                options.plainObjects,
+                options.throwOnLimitExceeded
               );
             }
           } else {
@@ -31877,8 +31875,35 @@
         }
         return leaf;
       };
-      var splitKeyIntoSegments = function splitKeyIntoSegments2(givenKey, options) {
-        var key = options.allowDots ? givenKey.replace(/\.([^.[]+)/g, "[$1]") : givenKey;
+      var topLevelDotsToBrackets = function topLevelDotsToBrackets2(key) {
+        var result = "";
+        var depth = 0;
+        for (var i = 0; i < key.length; i += 1) {
+          var cu = key.charCodeAt(i);
+          if (cu === 91) {
+            depth += 1;
+            result += "[";
+          } else if (cu === 93) {
+            if (depth > 0) {
+              depth -= 1;
+            }
+            result += "]";
+          } else if (cu === 46 && depth === 0 && i + 1 < key.length && key.charCodeAt(i + 1) !== 46 && key.charCodeAt(i + 1) !== 91) {
+            var start = i + 1;
+            var j = start;
+            while (j < key.length && key.charCodeAt(j) !== 46 && key.charCodeAt(j) !== 91) {
+              j += 1;
+            }
+            result += "[" + key.slice(start, j) + "]";
+            i = j - 1;
+          } else {
+            result += key.charAt(i);
+          }
+        }
+        return result;
+      };
+      var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
+        var key = options.allowDots ? topLevelDotsToBrackets(originalKey) : originalKey;
         if (options.depth <= 0) {
           if (!options.plainObjects && has.call(Object.prototype, key)) {
             if (!options.allowPrototypes) {
@@ -31887,37 +31912,56 @@
           }
           return [key];
         }
-        var brackets = /(\[[^[\]]*])/;
-        var child = /(\[[^[\]]*])/g;
-        var segment = brackets.exec(key);
-        var parent = segment ? key.slice(0, segment.index) : key;
-        var keys = [];
+        var segments = [];
+        var first = key.indexOf("[");
+        var parent = first >= 0 ? key.slice(0, first) : key;
         if (parent) {
           if (!options.plainObjects && has.call(Object.prototype, parent)) {
             if (!options.allowPrototypes) {
               return;
             }
           }
-          keys[keys.length] = parent;
+          segments[segments.length] = parent;
         }
-        var i = 0;
-        while ((segment = child.exec(key)) !== null && i < options.depth) {
-          i += 1;
-          var segmentContent = segment[1].slice(1, -1);
-          if (!options.plainObjects && has.call(Object.prototype, segmentContent)) {
-            if (!options.allowPrototypes) {
-              return;
+        var n = key.length;
+        var open = first;
+        var collected = 0;
+        while (open >= 0 && collected < options.depth) {
+          var level = 1;
+          var i = open + 1;
+          var close = -1;
+          while (i < n && close < 0) {
+            var cu = key.charCodeAt(i);
+            if (cu === 91) {
+              level += 1;
+            } else if (cu === 93) {
+              level -= 1;
+              if (level === 0) {
+                close = i;
+              }
             }
+            i += 1;
           }
-          keys[keys.length] = segment[1];
+          if (close < 0) {
+            segments[segments.length] = "[" + key.slice(open) + "]";
+            return segments;
+          }
+          var seg = key.slice(open, close + 1);
+          var content = seg.slice(1, -1);
+          if (!options.plainObjects && has.call(Object.prototype, content) && !options.allowPrototypes) {
+            return;
+          }
+          segments[segments.length] = seg;
+          collected += 1;
+          open = key.indexOf("[", close + 1);
         }
-        if (segment) {
+        if (open >= 0) {
           if (options.strictDepth === true) {
             throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
           }
-          keys[keys.length] = "[" + key.slice(segment.index) + "]";
+          segments[segments.length] = "[" + key.slice(open) + "]";
         }
-        return keys;
+        return segments;
       };
       var parseKeys = function parseQueryStringKeys(givenKey, val, options, valuesParsed) {
         if (!givenKey) {
@@ -31985,7 +32029,7 @@
         if (str === "" || str === null || typeof str === "undefined") {
           return options.plainObjects ? { __proto__: null } : {};
         }
-        var tempObj = typeof str === "string" ? parseValues(str, options) : str;
+        var tempObj = typeof str === "string" ? parseValues(str, options) : copyInput(str);
         var obj = options.plainObjects ? { __proto__: null } : {};
         var keys = Object.keys(tempObj);
         for (var i = 0; i < keys.length; ++i) {
@@ -39343,10 +39387,10 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _AssessmentResult = _interopRequireDefault(require_AssessmentResult());
-      var _build = require_build10();
+      var _build = require_build11();
       var _LanguageProcessor = _interopRequireDefault(require_LanguageProcessor());
       var _missingArgument = _interopRequireDefault(require_missingArgument());
       var _removeDuplicateMarks = _interopRequireDefault(require_removeDuplicateMarks());
@@ -40059,7 +40103,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _languageProcessing = require_languageProcessing();
       var _helpers = require_helpers2();
       var Assessment = class {
@@ -40123,7 +40167,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _helpers = require_helpers3();
       var _inRange = require_inRange();
@@ -40307,7 +40351,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _formatNumber = _interopRequireDefault(require_formatNumber());
@@ -40534,7 +40578,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _addMark = _interopRequireDefault(require_addMark());
       var _Mark = _interopRequireDefault(require_Mark());
@@ -40856,7 +40900,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _formatNumber = _interopRequireDefault(require_formatNumber());
       var _inRange = require_inRange();
@@ -41065,7 +41109,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _formatNumber = _interopRequireDefault(require_formatNumber());
       var _inRange = require_inRange();
@@ -41205,7 +41249,7 @@
       });
       exports.default = void 0;
       var _lodash = require_lodash();
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _helpers = require_helpers3();
       var _AssessmentResult = _interopRequireDefault(require_AssessmentResult());
       var _Mark = _interopRequireDefault(require_Mark());
@@ -41348,7 +41392,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _shortlinker = require_shortlinker();
       var _AssessmentResult = _interopRequireDefault(require_AssessmentResult());
       var _assessment = _interopRequireDefault(require_assessment());
@@ -41910,7 +41954,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -42032,7 +42076,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -42469,7 +42513,7 @@
         value: true
       });
       exports.default = exports.KeywordDensityAssessment = exports.KeyphraseDensityAssessment = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _recommendedKeywordCount = _interopRequireDefault(require_recommendedKeywordCount());
       var _assessment = _interopRequireDefault(require_assessment());
@@ -42854,7 +42898,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -42993,7 +43037,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -43091,7 +43135,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _shortlinker = require_shortlinker();
@@ -43179,7 +43223,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _inRange = require_inRange();
@@ -43457,7 +43501,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -43577,7 +43621,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _getLanguage = _interopRequireDefault(require_getLanguage());
       var _assessment = _interopRequireDefault(require_assessment());
@@ -43792,7 +43836,7 @@
         value: true
       });
       exports.default = exports.UrlKeywordAssessment = exports.SlugKeywordAssessment = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -43973,7 +44017,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -44141,7 +44185,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _getSubheadings = require_getSubheadings();
       var _assessment = _interopRequireDefault(require_assessment());
@@ -44399,7 +44443,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _inRange = require_inRange();
       var _assessment = _interopRequireDefault(require_assessment());
@@ -44547,7 +44591,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -44813,7 +44857,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -44938,7 +44982,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _inRange = require_inRange();
@@ -45087,7 +45131,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _assessment = _interopRequireDefault(require_assessment());
       var _helpers = require_helpers3();
@@ -46275,7 +46319,7 @@
       var _scores = require_scores();
       var _notInclusiveWhenStandalone = _interopRequireDefault(require_notInclusiveWhenStandalone());
       var _disabilityRulesData = require_disabilityRulesData();
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _createRuleDescriptions = require_createRuleDescriptions();
       function _interopRequireDefault(e) {
         return e && e.__esModule ? e : { default: e };
@@ -47865,7 +47909,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _AssessmentResult = _interopRequireDefault(require_AssessmentResult());
       var _Mark = _interopRequireDefault(require_Mark());
@@ -48137,10 +48181,10 @@
       });
       exports.default = void 0;
       var _featureFlag = require_build();
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _loglevel = require_loglevel();
-      var _build = require_build10();
+      var _build = require_build11();
       var _shortlinker = require_shortlinker();
       var _invalidType = _interopRequireDefault(require_invalidType());
       var _includesAny = _interopRequireDefault(require_includesAny());
@@ -51003,7 +51047,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _missingArgument = _interopRequireDefault(require_missingArgument());
       var _helpers = require_helpers3();
@@ -51244,7 +51288,7 @@
         value: true
       });
       exports.default = _default;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       function _default() {
         const contentOptimizationLabel = (0, _i18n.__)("Content optimization:", "wordpress-seo");
         return {
@@ -53404,7 +53448,7 @@
         value: true
       });
       exports.default = void 0;
-      var _i18n = require_build8();
+      var _i18n = require_build9();
       var _lodash = require_lodash();
       var _AssessorPresenter = _interopRequireDefault(require_AssessorPresenter());
       var _helpers = require_helpers3();
@@ -54243,7 +54287,7 @@
   });
 
   // node_modules/yoastseo/build/index.js
-  var require_build11 = __commonJS({
+  var require_build12 = __commonJS({
     "node_modules/yoastseo/build/index.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", {
@@ -54614,7 +54658,7 @@
       });
       exports.default = getParticiples;
       var _lodash = require_lodash();
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _passiveVoiceIrregulars = _interopRequireDefault(require_passiveVoiceIrregulars());
       function _interopRequireDefault(e) {
         return e && e.__esModule ? e : { default: e };
@@ -54649,7 +54693,7 @@
       var _functionWords = require_functionWords();
       var _passiveVoiceNonVerbEndingEd = _interopRequireDefault(require_passiveVoiceNonVerbEndingEd());
       var _getParticiples = _interopRequireDefault(require_getParticiples());
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       function _interopRequireDefault(e) {
         return e && e.__esModule ? e : { default: e };
       }
@@ -54713,7 +54757,7 @@
         value: true
       });
       exports.default = getEnglishClauses;
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _Clause = _interopRequireDefault(require_Clause2());
       var _passiveVoiceAuxiliaries = _interopRequireDefault(require_passiveVoiceAuxiliaries());
       var _stopWords = _interopRequireDefault(require_stopWords());
@@ -54759,7 +54803,7 @@
         value: true
       });
       exports.default = _default;
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _countSyllables = require_countSyllables();
       var _syllables = _interopRequireDefault(require_syllables());
       function _interopRequireDefault(e) {
@@ -54838,7 +54882,7 @@
       });
       exports.normalizePrefixed = exports.getInfinitive = exports.endsWithIng = exports.checkIrregulars = void 0;
       var _lodash = require_lodash();
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var {
         buildFormRule,
         createRulesFromArrays
@@ -55011,7 +55055,7 @@
       exports.determineStem = determineStem;
       exports.findShortestAndAlphabeticallyFirst = findShortestAndAlphabeticallyFirst;
       var _lodash = require_lodash();
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _getAdjectiveStem = _interopRequireDefault(require_getAdjectiveStem());
       var _getVerbStem = require_getVerbStem();
       function _interopRequireDefault(e) {
@@ -55103,7 +55147,7 @@
       });
       exports.default = getStemmer;
       var _lodash = require_lodash();
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _determineStem = _interopRequireDefault(require_determineStem());
       function _interopRequireDefault(e) {
         return e && e.__esModule ? e : { default: e };
@@ -55129,7 +55173,7 @@
         value: true
       });
       exports.default = calculateScore;
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var {
         formatNumber
       } = _yoastseo.helpers;
@@ -55148,7 +55192,7 @@
         value: true
       });
       exports.default = void 0;
-      var _yoastseo = require_build11();
+      var _yoastseo = require_build12();
       var _firstWordExceptions = _interopRequireDefault(require_firstWordExceptions());
       var _functionWords = require_functionWords();
       var _stopWords = _interopRequireDefault(require_stopWords());
@@ -55194,7 +55238,7 @@
   });
 
   // workerSrc/index.js
-  var import_yoastseo = __toESM(require_build11(), 1);
+  var import_yoastseo = __toESM(require_build12(), 1);
   var import_Researcher = __toESM(require_Researcher(), 1);
   var resolveConstructor = (value) => {
     let current = value;

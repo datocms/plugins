@@ -134,7 +134,7 @@ export default function Graphviz({ ctx }: Props) {
 
     async function renderSvg() {
       const renderedSvg = await withViz(async (viz) => {
-        return await viz.renderString(dot as string);
+        return viz.renderString(dot as string, { format: 'svg' });
       });
 
       setSvg(renderedSvg);

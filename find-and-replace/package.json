@@ -61,5 +61,9 @@
       "react-dom": "$react-dom"
     },
     "esbuild": "^0.28.1"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
   }
 }
