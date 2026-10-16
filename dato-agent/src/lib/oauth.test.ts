@@ -6,6 +6,9 @@ import {
   exchangeAuthorizationCode,
   type FetchFunction,
   MCP_BASE_URL,
+  navigateOAuthPopup,
+  OAUTH_BASE_URL,
+  OAUTH_ORIGIN,
   OAUTH_POPUP_MESSAGE_TYPE,
   type OAuthPopupMessage,
   openOAuthPopup,
@@ -67,13 +70,13 @@ describe('registerClient', () => {
 
     expect(client).toEqual({
       clientId: 'mcp_public_client',
-      registrationVersion: 2,
+      registrationVersion: 3,
       clientIdIssuedAt: 123,
       redirectUri: 'https://plugin.example/callback',
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${MCP_BASE_URL}/register`);
+    expect(url).toBe(`${OAUTH_BASE_URL}/register`);
     expect(JSON.parse(String(init?.body))).toMatchObject({
       redirect_uris: ['https://plugin.example/callback'],
       grant_types: ['authorization_code'],
@@ -113,8 +116,8 @@ describe('authorization request and token exchange', () => {
     );
     const url = new URL(request.authorizationUrl);
 
-    expect(url.origin).toBe(MCP_BASE_URL);
-    expect(url.pathname).toBe('/authorize');
+    expect(url.origin).toBe(OAUTH_ORIGIN);
+    expect(url.pathname).toBe('/oauth/authorize');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(request.state).toHaveLength(43);
     expect(request.expiresAt).toBe(1_000 + PENDING_AUTHORIZATION_TTL_MS);
@@ -199,7 +202,7 @@ describe('authorization request and token exchange', () => {
     });
     const [url, init] = fetchMock.mock.calls[0];
     const body = new URLSearchParams(String(init?.body));
-    expect(url).toBe(`${MCP_BASE_URL}/token`);
+    expect(url).toBe(`${OAUTH_BASE_URL}/token`);
     expect(Object.fromEntries(body)).toMatchObject({
       grant_type: 'authorization_code',
       code: 'one_time_code',
@@ -263,6 +266,22 @@ describe('OAuth popup callback', () => {
       state: 'state',
     });
     expect(parseOAuthCallback('https://plugin.example/callback')).toBeNull();
+  });
+
+  it('navigates the popup only to the DatoCMS authorization endpoint', () => {
+    const assign = vi.fn();
+    const popup = { location: { assign } } as unknown as Window;
+    const authorizationUrl = `${OAUTH_ORIGIN}/oauth/authorize?client_id=x`;
+
+    navigateOAuthPopup(popup, authorizationUrl);
+    expect(assign).toHaveBeenCalledWith(authorizationUrl);
+
+    expect(() =>
+      navigateOAuthPopup(popup, `${MCP_BASE_URL}/authorize?client_id=x`),
+    ).toThrow('Invalid OAuth authorization URL');
+    expect(() =>
+      navigateOAuthPopup(popup, `${OAUTH_ORIGIN}/authorize?client_id=x`),
+    ).toThrow('Invalid OAuth authorization URL');
   });
 
   it('posts callback data only to the callback origin', () => {
@@ -375,7 +394,7 @@ describe('revokeToken', () => {
     );
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${MCP_BASE_URL}/revoke`);
+    expect(url).toBe(`${OAUTH_BASE_URL}/revoke`);
     expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toEqual(
       {
         token: 'dato_access_token',
