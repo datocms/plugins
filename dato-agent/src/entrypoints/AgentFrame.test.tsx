@@ -6708,10 +6708,14 @@ describe('AgentFrame', () => {
 
     expect(writeText).toHaveBeenCalledOnce();
     const diagnostics = JSON.parse(String(writeText.mock.calls[0]?.[0]));
-    expect(diagnostics.configuration.openAiApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.configuration.activeApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.oauthCredentials.token.accessToken).toBe(
+    expect(diagnostics.configuration.openAiApiKey).toBe('[Redacted]');
+    expect(diagnostics.configuration.activeApiKey).toBe('[Redacted]');
+    expect(diagnostics.oauthCredentials.token.accessToken).toBe('[Redacted]');
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
       'diagnostic-oauth-secret',
+    );
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
+      'sk-diagnostic-secret',
     );
     expect(diagnostics.turn.message).toBe(
       'Find the private record with all of its content',
