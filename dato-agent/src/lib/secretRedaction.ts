@@ -6,17 +6,25 @@ const PROVIDER_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
 const SECRET_KEY = String.raw`["']?(?:api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)["']?\s*[:=]\s*`;
 // Skips values an earlier pass already redacted, so the output stays
 // `Authorization: Bearer [redacted]`, not `[redacted] [redacted]`.
-const ALREADY_REDACTED = String.raw`(?!["']?(?:[A-Za-z][\w-]*\s+)?\[redacted\])`;
+// The leading `\s*` stops backtracking into the separator from bypassing it.
+const ALREADY_REDACTED = String.raw`(?!\s*["']?(?:[A-Za-z][\w-]*\s+)?\[redacted\])`;
 // `Authorization: <scheme> <credential>`: keep a known scheme, drop the
 // credential. Unknown first words fall through to the key/value pass below.
 const AUTHORIZATION_SCHEME_PATTERN = new RegExp(
   String.raw`(\bauthorization["']?\s*[:=]\s*["']?)${ALREADY_REDACTED}((?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)\s+)[^"',\s}\]&]+`,
   'gi',
 );
-// Quoted values run to the closing quote (escapes included); bare values stop
-// at a delimiter, and `&` ends one so URL query siblings survive.
+// Any other unquoted Authorization value: the scheme is unknown, so the
+// credential can follow a space. Redact through the end of the line.
+const AUTHORIZATION_LINE_PATTERN = new RegExp(
+  String.raw`(\bauthorization["']?\s*[:=]\s*)${ALREADY_REDACTED}[^\s"'][^\r\n]*`,
+  'gi',
+);
+// Quoted values run to the closing quote (escapes included), or to the end of
+// the line when truncation cut the closing quote off. Bare values stop at a
+// delimiter, and `&` ends one so URL query siblings survive.
 const SECRET_KEY_VALUE_PATTERN = new RegExp(
-  String.raw`(${SECRET_KEY})${ALREADY_REDACTED}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^"',\s}\]&]+)`,
+  String.raw`(${SECRET_KEY})${ALREADY_REDACTED}(?:"(?:[^"\\\r\n]|\\.)*"?|'(?:[^'\\\r\n]|\\.)*'?|[^"',\s}\]&]+)`,
   'gi',
 );
 
@@ -29,9 +37,12 @@ const SECRET_KEY_VALUE_PATTERN = new RegExp(
  */
 const redactKeyValue = (match: string, prefix: string): string => {
   const quote = match.charAt(prefix.length);
-  return quote === '"' || quote === "'"
-    ? `${prefix}${quote}${REDACTED_MARKER}${quote}`
-    : `${prefix}${REDACTED_MARKER}`;
+  if (quote !== '"' && quote !== "'") {
+    return `${prefix}${REDACTED_MARKER}`;
+  }
+  const isTerminated =
+    match.length > prefix.length + 1 && match.endsWith(quote);
+  return `${prefix}${quote}${REDACTED_MARKER}${isTerminated ? quote : ''}`;
 };
 
 /**
@@ -58,4 +69,5 @@ export const redactCredentialTokens = (value: string): string =>
 export const redactSecrets = (value: string): string =>
   redactCredentialTokens(value)
     .replace(AUTHORIZATION_SCHEME_PATTERN, `$1$2${REDACTED_MARKER}`)
+    .replace(AUTHORIZATION_LINE_PATTERN, `$1${REDACTED_MARKER}`)
     .replace(SECRET_KEY_VALUE_PATTERN, redactKeyValue);

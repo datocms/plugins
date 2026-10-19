@@ -58,4 +58,20 @@ describe('secretRedaction', () => {
       'maxTokens: 64000, tokenType: Bearer',
     );
   });
+
+  it('redacts a quoted value whose closing quote was truncated', () => {
+    expect(redactSecrets('{"password":"abc')).toBe('{"password":"[redacted]');
+    expect(redactSecrets('{"token":"abc def\nnext line')).toBe(
+      '{"token":"[redacted]\nnext line',
+    );
+  });
+
+  it('redacts an unknown Authorization scheme through the end of the line', () => {
+    expect(redactSecrets('Authorization: Key abc123\nAccept: */*')).toBe(
+      'Authorization: [redacted]\nAccept: */*',
+    );
+    expect(redactSecrets('Authorization: Basic abc123 trailing')).toBe(
+      'Authorization: Basic [redacted] trailing',
+    );
+  });
 });
