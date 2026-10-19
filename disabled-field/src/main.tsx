@@ -3,8 +3,15 @@ import {
   type FieldAppearanceChange,
   type OnBootCtx,
   type RenderFieldExtensionCtx,
+  type RenderManualFieldExtensionConfigScreenCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import FieldConfigScreen from './entrypoints/FieldConfigScreen';
+import {
+  normalizeDisabledLocales,
+  shouldDisableField,
+} from './utils/fieldParams';
+import { render } from './utils/render';
 
 const FIELD_EXTENSION_ID = 'disableField';
 
@@ -64,12 +71,29 @@ connect({
         name: 'Disabled Field',
         type: 'addon',
         fieldTypes: 'all',
+        configurable: true,
         initialHeight: 0,
       },
     ];
   },
+  renderManualFieldExtensionConfigScreen(
+    _fieldExtensionId: string,
+    ctx: RenderManualFieldExtensionConfigScreenCtx,
+  ) {
+    render(<FieldConfigScreen ctx={ctx} />);
+  },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
-    if (fieldExtensionId === FIELD_EXTENSION_ID) {
+    if (fieldExtensionId !== FIELD_EXTENSION_ID) {
+      return;
+    }
+
+    if (
+      shouldDisableField(
+        normalizeDisabledLocales(ctx.parameters),
+        ctx.locale,
+        ctx.field.attributes.localized,
+      )
+    ) {
       ctx.disableField(ctx.fieldPath, true);
     }
   },
