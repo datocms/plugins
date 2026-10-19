@@ -17,6 +17,7 @@ export function PreviewLinksSettings({ values }: Props) {
             <SwitchField
               id="showVisualTab"
               label="Show the Visual Editing tab in the main navigation"
+              hint="Click-to-edit lives in this tab. When it is off, the record sidebar shows no Edit in Visual Editing buttons."
               error={error}
               {...input}
             />

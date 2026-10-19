@@ -108,11 +108,17 @@ Alt works when the keyboard focus is in one of these places:
 
 Alt does nothing when the focus is in the DatoCMS record panel next to the preview. The plugin cannot receive key events from DatoCMS's own UI. Click the preview or the toolbar, then hold Alt.
 
-The Full Preview Sidebar keeps click-to-edit off, so Alt has no effect there.
+The Full Preview Sidebar keeps click-to-edit off. Alt has no lasting effect there, and clicks on the preview open no record.
 
 ## Upgrade notes
 
-The Full Preview Sidebar no longer has an **Edit mode** switch. Click-to-edit inside the sidebar preview is gone. To click on page elements and edit them, use the **Edit in Visual Editing** button in the sidebar toolbar. It opens the same page in the Visual Editing tab.
+The Full Preview Sidebar no longer has an **Edit mode** switch. Click-to-edit now lives only in the Visual Editing tab. The sidebar toolbar and the Preview Links panel show an **Edit in Visual Editing** button that opens the same page there.
+
+These buttons need the Visual Editing tab. If you turned off **Show the Visual Editing tab in the main navigation**, your editors lose click-to-edit after the upgrade. To keep it:
+
+1. Open the plugin settings.
+2. Turn on **Show the Visual Editing tab in the main navigation**.
+3. Make sure each frontend has an **Enable Draft Mode route**.
 
 ## Content Security Policy
 

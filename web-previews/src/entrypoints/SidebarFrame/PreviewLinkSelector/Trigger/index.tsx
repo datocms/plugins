@@ -1,7 +1,7 @@
 import { faCaretDown, faCaretUp } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { PreviewLinkWithFrontend } from '../../../../types';
-import { displayPath } from '../../../../utils/urls';
+import { displayHost, displayPath } from '../../../../utils/urls';
 import styles from './styles.module.css';
 
 type Props = {
@@ -39,7 +39,7 @@ export function Trigger({
           <span>
             {' — '}
             <span className={styles.host}>
-              {new URL(currentPreviewLink.url).host}
+              {displayHost(currentPreviewLink.url)}
             </span>
             {displayPath(currentPreviewLink.url)}
           </span>

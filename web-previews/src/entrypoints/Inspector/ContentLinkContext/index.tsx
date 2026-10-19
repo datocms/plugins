@@ -20,6 +20,7 @@ import {
 import useContentLinkConnection from '../../../utils/contentLink/useContentLinkConnection';
 import { normalizePathForVisualEditing } from '../../../utils/normalizePathForVisualEditing';
 import { inspectorUrl } from '../../../utils/urls';
+import { type AltFlipEvent, nextAltFlip } from './altFlip';
 
 type IframeState = { path: string; key: string };
 
@@ -84,9 +85,6 @@ const PING_TIMEOUT_MS = 25_000;
  * Mirrors the preview's own "hold Alt" toggle for key presses in this frame.
  * Key events only reach the frame that has focus, so the Content Link script
  * misses Alt while the editor works in the toolbar.
- *
- * Alt flips click-to-edit away from `preferred` until release. Another key
- * pressed meanwhile (Alt used as a modifier) or a frame blur cancels the flip.
  */
 function useForwardAltToPreview(
   methods: AsyncMethodReturns<ContentLinkMethods> | undefined,
@@ -99,50 +97,38 @@ function useForwardAltToPreview(
 
     let isFlipped = false;
 
-    const setEnabled = (enabled: boolean) => {
+    const handle = (event: AltFlipEvent) => {
+      const step = nextAltFlip(isFlipped, event, preferred);
+      isFlipped = step.isFlipped;
+
+      if (step.setClickToEditEnabled === undefined) {
+        return;
+      }
+
       // The page can go away mid-press; a failed toggle needs no recovery
       methods
         .setClickToEditEnabled(
-          enabled
+          step.setClickToEditEnabled
             ? { enabled: true, flash: { scrollToNearestTarget: false } }
             : { enabled: false },
         )
         .catch(() => {});
     };
 
-    const revert = () => {
-      if (isFlipped) {
-        isFlipped = false;
-        setEnabled(preferred);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Alt') {
-        revert();
-        return;
-      }
-
-      if (!event.repeat && !isFlipped) {
-        isFlipped = true;
-        setEnabled(!preferred);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Alt') {
-        revert();
-      }
-    };
+    const handleKeyDown = ({ key, repeat }: KeyboardEvent) =>
+      handle({ type: 'keydown', key, repeat });
+    const handleKeyUp = ({ key }: KeyboardEvent) =>
+      handle({ type: 'keyup', key });
+    const handleBlur = () => handle({ type: 'blur' });
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', revert);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', revert);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [methods, preferred]);
 }

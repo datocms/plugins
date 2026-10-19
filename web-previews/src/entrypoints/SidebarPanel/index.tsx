@@ -23,15 +23,14 @@ import {
   type Frontend,
   normalizeParameters,
   type Parameters,
-  type PreviewLink,
 } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import {
   displayPath,
-  displayUrl,
   extractRedirectFromDraftModePreviewUrl,
   inspectorUrl,
 } from '../../utils/urls';
+import { groupLinksByPage, primaryLinkOf } from './previewLinkGroups';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -62,22 +61,6 @@ const FrontendGroup = ({
     </div>
   );
 };
-
-/**
- * The link the path opens: the draft-mode one when we can tell (by the
- * frontend's draft mode URL, then by label), otherwise the first.
- */
-function primaryLinkOf(links: PreviewLink[], draftModeUrl: string | undefined) {
-  return (
-    links.find(
-      ({ url }) =>
-        draftModeUrl &&
-        extractRedirectFromDraftModePreviewUrl(url, draftModeUrl) !== undefined,
-    ) ??
-    links.find(({ label }) => /draft/i.test(label)) ??
-    links[0]
-  );
-}
 
 /**
  * One line per page: frontend name, then the path linking to the primary
@@ -123,11 +106,7 @@ export const FrontendResult = ({
     ctx.navigateTo(inspectorUrl(ctx, { path, frontend: frontend.name }));
   };
 
-  const linksByPage = new Map<string, PreviewLink[]>();
-  for (const previewLink of previewLinks) {
-    const page = displayUrl(previewLink.url);
-    linksByPage.set(page, [...(linksByPage.get(page) ?? []), previewLink]);
-  }
+  const linksByPage = groupLinksByPage(previewLinks);
 
   return (
     <div className={styles.pages}>
