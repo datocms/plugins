@@ -157,7 +157,7 @@ describe('client registration lifecycle', () => {
         credentials.token,
       ),
     );
-    expect(store.load()?.credentials.client.registrationVersion).toBe(2);
+    expect(store.load()?.credentials.client.registrationVersion).toBe(3);
   });
 
   it('invalidates only the matching token and preserves its registration', () => {
