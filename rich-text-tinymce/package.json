@@ -23,7 +23,6 @@
     "@types/qs": "^6.15.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/tinymce": "^5.5.0",
     "datocms-plugin-sdk": "^2.4.1",
     "datocms-react-ui": "^2.2.4",
     "lodash": "^4.17.23",
@@ -62,5 +61,9 @@
       "react": "$react",
       "react-dom": "$react-dom"
     }
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
   }
 }

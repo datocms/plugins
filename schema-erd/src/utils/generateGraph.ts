@@ -1,7 +1,6 @@
+import { instance, type Viz } from '@viz-js/viz';
 import type { Field, ItemType } from 'datocms-plugin-sdk';
 import { Digraph, Edge, Node, Subgraph, toDot } from 'ts-graphviz';
-import Viz from 'viz.js';
-import { Module, render } from 'viz.js/full.render.js';
 
 const fieldTypeValidators: Partial<Record<string, string[]>> = {
   link: ['item_item_type'],
@@ -299,14 +298,18 @@ export function generateGraph({
   return toDot(graph);
 }
 
-let viz = new Viz({ Module, render });
+let viz: Promise<Viz> | undefined;
 
 export async function withViz<T>(cb: (viz: Viz) => Promise<T>): Promise<T> {
   try {
-    return await cb(viz);
+    if (!viz) {
+      viz = instance();
+    }
+
+    return await cb(await viz);
   } catch (e) {
     // Syntax errors can sometimes cause the Graphviz DOT parsing code to enter an error state it can't recover from
-    viz = new Viz({ Module, render });
+    viz = undefined;
     console.error(e);
     throw e;
   }

@@ -6,7 +6,6 @@ import {
   faTrash,
   faTrashAlt,
 } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
 import {
   Button,
@@ -29,6 +28,7 @@ import { useDeepCompareMemo } from 'use-deep-compare';
 import type { Actions, Row, Value } from '../../types';
 import EditableCell from '../EditableCell';
 import EditableHeader from '../EditableHeader';
+import { FontAwesomeIcon } from '../FontAwesomeIcon';
 import s from './styles.module.css';
 
 type Props = {
