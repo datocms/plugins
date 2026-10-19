@@ -3,7 +3,6 @@ import type {
   Message,
   MessageCreateParamsStreaming,
   MessageStreamEvent,
-  StopReason,
   ToolResultBlockParam,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages/messages';
@@ -1485,17 +1484,17 @@ describe('AnthropicAgentRuntime', () => {
     {
       effort: 'low',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
     },
     {
       effort: 'medium',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
     },
     {
       effort: 'high',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
     },
     {
       effort: 'xhigh',
@@ -3710,35 +3709,98 @@ describe('AnthropicAgentRuntime', () => {
     expect(mcp.close).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    ['max_tokens', 'output limit'],
-    ['model_context_window_exceeded', 'context window'],
-  ] satisfies Array<[StopReason, string]>)(
-    'maps %s to a retryable incomplete turn',
-    async (stopReason, messagePart) => {
-      const anthropic = new QueueAnthropicClient([
-        message('msg-incomplete', [textBlock('Partial answer.')], stopReason),
-      ]);
-      const mcp = mcpClientWith();
-      const runtime = runtimeWith(anthropic, mcp.client);
+  it('maps model_context_window_exceeded to a retryable incomplete turn', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-incomplete',
+        [textBlock('Partial answer.')],
+        'model_context_window_exceeded',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
 
-      const { result } = await drain(
-        runtime.streamTurn({ message: 'Describe this project.' }),
-      );
+    const { result } = await drain(
+      runtime.streamTurn({ message: 'Describe this project.' }),
+    );
 
-      expect(result).toMatchObject({
-        status: 'incomplete',
-        responseId: 'msg-incomplete',
-        text: 'Partial answer.',
-        error: {
-          code: 'incomplete',
-          retryable: true,
-          message: expect.stringContaining(messagePart),
-        },
-      });
-      expect(mcp.close).toHaveBeenCalledOnce();
-    },
-  );
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      responseId: 'msg-incomplete',
+      text: 'Partial answer.',
+      error: {
+        code: 'incomplete',
+        retryable: true,
+        message: expect.stringContaining('context window'),
+      },
+    });
+    expect(anthropic.requests).toHaveLength(1);
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
+
+  it('discards a response cut off at the output limit and retries once in smaller steps', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-truncated',
+        [
+          textBlock('Creating all sections now.'),
+          toolUse('toolu-truncated', 'upsert_and_execute_script', {}),
+        ],
+        'max_tokens',
+      ),
+      message('msg-recovered', [textBlock('Done in smaller steps.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Build the landing page.' }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-recovered',
+      text: 'Creating all sections now.\n\nDone in smaller steps.',
+    });
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(events.some((event) => event.type === 'approval_required')).toBe(
+      false,
+    );
+    expect(anthropic.requests).toHaveLength(2);
+    const retryMessages = anthropic.requests[1]?.messages ?? [];
+    expect(retryMessages.some((entry) => entry.role === 'assistant')).toBe(
+      false,
+    );
+    expect(JSON.stringify(retryMessages.at(-1))).toContain(
+      'reached the output limit',
+    );
+  });
+
+  it('stops with a retryable incomplete turn when the retry also reaches the output limit', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-truncated-1', [textBlock('First.')], 'max_tokens'),
+      message('msg-truncated-2', [textBlock('Second.')], 'max_tokens'),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { result } = await drain(
+      runtime.streamTurn({ message: 'Build the landing page.' }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      responseId: 'msg-truncated-2',
+      text: 'First.\n\nSecond.',
+      error: {
+        code: 'incomplete',
+        retryable: true,
+        message: expect.stringContaining('output limit'),
+      },
+    });
+    expect(anthropic.requests).toHaveLength(2);
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
 
   it('surfaces an Anthropic refusal explanation as a non-retryable provider error', async () => {
     const refusedMessage: Message = {
