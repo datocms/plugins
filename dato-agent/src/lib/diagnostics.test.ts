@@ -46,12 +46,12 @@ describe('serializeDiagnostics', () => {
     expect(serializeDiagnostics(first)).toBe(`{
   "arguments": {
     "a": false,
-    "apiKey": "[Redacted]",
+    "apiKey": "[redacted]",
     "z": true
   },
   "prompt": "Change record 178178740",
   "schemaVersion": 1,
-  "token": "[Redacted]"
+  "token": "[redacted]"
 }`);
   });
 
@@ -85,25 +85,87 @@ describe('serializeDiagnostics', () => {
     expect(serialized).not.toContain('pkce-verifier-value');
     expect(JSON.parse(serialized)).toMatchObject({
       configuration: {
-        anthropicApiKey: '[Redacted]',
+        anthropicApiKey: '[redacted]',
         openaiApiKey: '',
-        activeApiKey: '[Redacted]',
+        activeApiKey: '[redacted]',
         anthropicModelMaxOutputTokens: 128_000,
         oauthCredentials: {
           client: { clientId: 'client-123' },
           token: {
-            accessToken: '[Redacted]',
-            refreshToken: '[Redacted]',
+            accessToken: '[redacted]',
+            refreshToken: '[redacted]',
             expiresAt: 1_800_000_000,
           },
-          pending: { codeVerifier: '[Redacted]', state: 'abc' },
+          pending: { codeVerifier: '[redacted]', state: 'abc' },
         },
       },
       error: {
         message:
-          'Request failed: Authorization: Bearer [Redacted] with key [Redacted]',
+          'Request failed: Authorization: Bearer [redacted] with key [redacted]',
       },
     });
+  });
+
+  it('redacts secrets in real Error message, stack, and cause', () => {
+    const cause = new Error(
+      'Upstream rejected Authorization: Bearer cause-bearer-secret',
+    );
+    const error = new Error(
+      'Request to https://example.test/hook?access_token=url-token-secret&page=1 failed with key sk-proj-abcdefghijklmnopqrstuvwxyz',
+      { cause },
+    );
+
+    const serialized = serializeDiagnostics({ error });
+    const parsed = JSON.parse(serialized);
+
+    for (const secret of [
+      'cause-bearer-secret',
+      'url-token-secret',
+      'abcdefghijklmnopqrstuvwxyz',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(parsed.error.message).toBe(
+      'Request to https://example.test/hook?access_token=[redacted]&page=1 failed with key [redacted]',
+    );
+    expect(parsed.error.stack).toContain('access_token=[redacted]');
+    expect(parsed.error.cause.message).toBe(
+      'Upstream rejected Authorization: Bearer [redacted]',
+    );
+  });
+
+  it('redacts sensitive Map entries by key', () => {
+    const parsed = JSON.parse(
+      serializeDiagnostics({
+        headers: new Map<unknown, unknown>([
+          ['Authorization', 'opaque-header-secret'],
+          ['x-api-key', 'opaque-api-secret'],
+          ['accept', 'application/json'],
+          [42, 'numeric-key-value'],
+        ]),
+      }),
+    );
+
+    expect(parsed.headers.entries).toEqual([
+      ['Authorization', '[redacted]'],
+      ['x-api-key', '[redacted]'],
+      ['accept', 'application/json'],
+      [42, 'numeric-key-value'],
+    ]);
+  });
+
+  it('redacts key=value secrets embedded in URLs and strings', () => {
+    const parsed = JSON.parse(
+      serializeDiagnostics({
+        url: 'https://example.test/cb?code=abc&access_token=query-secret&api_key=other-secret',
+        note: 'password: hunter2-secret',
+      }),
+    );
+
+    expect(parsed.url).toBe(
+      'https://example.test/cb?code=abc&access_token=[redacted]&api_key=[redacted]',
+    );
+    expect(parsed.note).toBe('password: [redacted]');
   });
 
   it('handles errors, BigInt, Map, Set, circular references, and unsupported values', () => {

@@ -25,6 +25,7 @@ import {
   createAgentRuntime,
   DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+  DISCARDED_RESPONSE_NOTICE,
   MAX_AGENT_HISTORY_CHARACTERS,
   MAX_AGENT_REQUEST_CHARACTERS,
   MAX_AGENT_TOOL_CALLS_PER_TURN,
@@ -3760,11 +3761,20 @@ describe('AnthropicAgentRuntime', () => {
     expect(result).toMatchObject({
       status: 'completed',
       responseId: 'msg-recovered',
-      text: 'Creating all sections now.\n\nDone in smaller steps.',
+      text: `Creating all sections now.\n\n${DISCARDED_RESPONSE_NOTICE}\n\nDone in smaller steps.`,
     });
     expect(mcp.callTool).not.toHaveBeenCalled();
     expect(events.some((event) => event.type === 'approval_required')).toBe(
       false,
+    );
+    const streamedText = events
+      .flatMap((event) => (event.type === 'text_delta' ? [event.delta] : []))
+      .join('');
+    expect(streamedText.indexOf(DISCARDED_RESPONSE_NOTICE)).toBeGreaterThan(
+      streamedText.indexOf('Creating all sections now.'),
+    );
+    expect(streamedText.indexOf(DISCARDED_RESPONSE_NOTICE)).toBeLessThan(
+      streamedText.indexOf('Done in smaller steps.'),
     );
     expect(anthropic.requests).toHaveLength(2);
     const retryMessages = anthropic.requests[1]?.messages ?? [];
@@ -3791,7 +3801,7 @@ describe('AnthropicAgentRuntime', () => {
     expect(result).toMatchObject({
       status: 'incomplete',
       responseId: 'msg-truncated-2',
-      text: 'First.\n\nSecond.',
+      text: `First.\n\n${DISCARDED_RESPONSE_NOTICE}\n\nSecond.`,
       error: {
         code: 'incomplete',
         retryable: true,

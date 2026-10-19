@@ -1,3 +1,5 @@
+import { REDACTED_MARKER, redactSecrets } from './secretRedaction';
+
 export const DIAGNOSTICS_SCHEMA_VERSION = 1;
 
 type JsonSafeValue =
@@ -50,8 +52,6 @@ function describeSymbol(value: symbol): string {
   }
 }
 
-const REDACTED = '[Redacted]';
-
 const SENSITIVE_EXACT_KEYS = new Set([
   'authorization',
   'bearer',
@@ -69,11 +69,6 @@ const SENSITIVE_KEY_SUFFIXES = [
   'secret',
 ];
 
-const SENSITIVE_VALUE_PATTERNS: ReadonlyArray<[RegExp, string]> = [
-  [/\bsk-[A-Za-z0-9_-]{16,}/g, REDACTED],
-  [/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
-];
-
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
   return (
@@ -82,12 +77,16 @@ function isSensitiveKey(key: string): boolean {
   );
 }
 
-function redactSensitiveSubstrings(value: string): string {
-  return SENSITIVE_VALUE_PATTERNS.reduce(
-    (current, [pattern, replacement]) => current.replace(pattern, replacement),
-    value,
-  );
-}
+/**
+ * Whether a keyed value (object property or `Map` entry) holds a credential
+ * that must be replaced wholesale. Empty strings stay visible so diagnostics
+ * still show that a credential is unset.
+ */
+const isSecretEntry = (key: unknown, value: unknown): boolean =>
+  typeof key === 'string' &&
+  typeof value === 'string' &&
+  value !== '' &&
+  isSensitiveKey(key);
 
 function propertyPath(parentPath: string, key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key)
@@ -103,10 +102,8 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
     propertyValue: unknown,
     path: string,
   ): JsonSafeValue =>
-    typeof propertyValue === 'string' &&
-    propertyValue !== '' &&
-    isSensitiveKey(key)
-      ? REDACTED
+    isSecretEntry(key, propertyValue)
+      ? REDACTED_MARKER
       : normalize(propertyValue, propertyPath(path, key));
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Diagnostics must safely normalize every JavaScript value shape in one recursive traversal.
@@ -118,7 +115,7 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
 
       switch (typeof current) {
         case 'string':
-          return redactSensitiveSubstrings(current);
+          return redactSecrets(current);
         case 'boolean':
           return current;
         case 'number':
@@ -163,12 +160,12 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
       if (current instanceof Error) {
         const normalizedError: Record<string, JsonSafeValue> = {
           $type: 'Error',
-          name: current.name,
-          message: current.message,
+          name: redactSecrets(current.name),
+          message: redactSecrets(current.message),
         };
 
         if (current.stack !== undefined) {
-          normalizedError.stack = current.stack;
+          normalizedError.stack = redactSecrets(current.stack);
         }
 
         if ('cause' in current) {
@@ -211,7 +208,9 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
           $type: 'Map',
           entries: Array.from(current.entries(), ([key, entryValue], index) => [
             normalize(key, `${path}.entries[${index}][0]`),
-            normalize(entryValue, `${path}.entries[${index}][1]`),
+            isSecretEntry(key, entryValue)
+              ? REDACTED_MARKER
+              : normalize(entryValue, `${path}.entries[${index}][1]`),
           ]),
         };
       }

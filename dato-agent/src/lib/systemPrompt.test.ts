@@ -278,6 +278,21 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('READ ONLY MODE');
   });
 
+  it('asks for large writes to be split into several smaller scripts', () => {
+    const prompt = buildSystemPrompt({
+      siteId: 'site-123',
+      environment: 'main',
+      isEnvironmentPrimary: true,
+    });
+
+    expect(prompt).toContain(
+      'split it into several smaller scripts (a few records each) so no single script risks the output limit',
+    );
+    expect(prompt).not.toContain(
+      'so a correct request normally needs one approval',
+    );
+  });
+
   it('keeps record-sidebar results in chat and opens them through the host modal', () => {
     const prompt = buildSystemPrompt({
       siteId: 'site-123',

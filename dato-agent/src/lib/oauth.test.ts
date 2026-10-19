@@ -452,3 +452,59 @@ describe('OAuth error recovery contracts', () => {
     expect(popup.close).not.toHaveBeenCalled();
   });
 });
+
+describe('OAuth endpoint hosts', () => {
+  it('pins every OAuth endpoint to oauth.datocms.com and keeps mcp.datocms.com as the resource', async () => {
+    expect(OAUTH_BASE_URL).toBe('https://oauth.datocms.com/oauth');
+    expect(MCP_BASE_URL).toBe('https://mcp.datocms.com');
+
+    const fetchMock = vi
+      .fn<FetchFunction>()
+      .mockImplementation(async () =>
+        Response.json({ client_id: 'c', access_token: 't' }),
+      );
+    await registerClient('https://plugin.example/callback', {
+      fetch: fetchMock,
+    });
+    const request = await createAuthorizationRequest({
+      scope,
+      clientId: 'c',
+      redirectUri: 'https://plugin.example/callback',
+    });
+    await exchangeAuthorizationCode(
+      { scope, code: 'code', state: request.state },
+      { fetch: fetchMock },
+    );
+    await revokeToken(
+      { accessToken: 't', clientId: 'c' },
+      { fetch: fetchMock },
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://oauth.datocms.com/oauth/register',
+      'https://oauth.datocms.com/oauth/token',
+      'https://oauth.datocms.com/oauth/revoke',
+    ]);
+    expect(request.authorizationUrl).toMatch(
+      /^https:\/\/oauth\.datocms\.com\/oauth\/authorize\?/,
+    );
+    expect(new URL(request.authorizationUrl).searchParams.get('resource')).toBe(
+      'https://mcp.datocms.com',
+    );
+  });
+
+  it('leaves no legacy mcp.datocms.com OAuth routes in plugin source', () => {
+    const sources = import.meta.glob<string>(
+      ['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}'],
+      { query: '?raw', import: 'default', eager: true },
+    );
+    const legacyRoute =
+      /(?:mcp\.datocms\.com|MCP_BASE_URL\})\/+(?:oauth\/)?(?:register|authorize|token|revoke)\b/;
+
+    expect(Object.keys(sources).length).toBeGreaterThan(10);
+    const offenders = Object.entries(sources)
+      .filter(([, source]) => legacyRoute.test(source))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+});
