@@ -31,4 +31,31 @@ describe('secretRedaction', () => {
       'Authorization: Bearer [redacted]',
     );
   });
+
+  it('redacts the credential after a non-Bearer Authorization scheme', () => {
+    expect(redactSecrets('Authorization: Basic dXNlcjpwYXNzd29yZA==')).toBe(
+      'Authorization: Basic [redacted]',
+    );
+    expect(redactSecrets('{"authorization":"Digest abc123secret"}')).toBe(
+      '{"authorization":"Digest [redacted]"}',
+    );
+    expect(redactSecrets('Authorization: opaque-secret-value')).toBe(
+      'Authorization: [redacted]',
+    );
+  });
+
+  it('redacts quoted values up to the closing quote', () => {
+    expect(redactSecrets('{"password":"two words here","user":"ann"}')).toBe(
+      '{"password":"[redacted]","user":"ann"}',
+    );
+    expect(redactSecrets("secret: 'with \\' escaped quote' done")).toBe(
+      "secret: '[redacted]' done",
+    );
+  });
+
+  it('keeps non-secret keys that only resemble secret ones', () => {
+    expect(redactSecrets('maxTokens: 64000, tokenType: Bearer')).toBe(
+      'maxTokens: 64000, tokenType: Bearer',
+    );
+  });
 });

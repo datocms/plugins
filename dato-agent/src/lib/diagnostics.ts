@@ -52,27 +52,46 @@ function describeSymbol(value: symbol): string {
   }
 }
 
-const SENSITIVE_EXACT_KEYS = new Set([
+// Matched against keys lowercased with every non-letter removed, so
+// `x-auth-token`, `api_key` and `apiKey` all normalize the same way.
+const SENSITIVE_KEY_SUFFIXES = [
+  'apikey',
+  'authkey',
   'authorization',
   'bearer',
   'codeverifier',
   'cookie',
-  'idtoken',
-  'token',
-]);
-
-const SENSITIVE_KEY_SUFFIXES = [
-  'accesstoken',
-  'apikey',
+  'credential',
+  'credentials',
+  'encryptionkey',
+  'passphrase',
   'password',
-  'refreshtoken',
+  'privatekey',
   'secret',
+  'secretkey',
+  'sessionkey',
+  'signingkey',
+  'token',
 ];
 
+// DatoCMS calls schema identifiers "API keys"; these name models and fields.
+const DATOCMS_IDENTIFIER_KEYS = new Set([
+  'blockapikey',
+  'fieldapikey',
+  'itemtypeapikey',
+  'modelapikey',
+]);
+
+/**
+ * Whether a property name denotes a credential.
+ *
+ * @param key - Object property name or string `Map` key.
+ * @returns `true` for secret-like names such as `apiToken` or `x-api-key`.
+ */
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
   return (
-    SENSITIVE_EXACT_KEYS.has(normalized) ||
+    !DATOCMS_IDENTIFIER_KEYS.has(normalized) &&
     SENSITIVE_KEY_SUFFIXES.some((suffix) => normalized.endsWith(suffix))
   );
 }

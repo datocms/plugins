@@ -73,6 +73,7 @@ import {
   createOAuthCredentials,
   invalidateOAuthToken,
   isOAuthClientRegistrationReusable,
+  OAUTH_CLIENT_REGISTRATION_VERSION,
   type OAuthCredentials,
 } from '../lib/credentials';
 import {
@@ -431,6 +432,37 @@ function activityPhase(
       return automaticallyContinuing ? 'running' : 'waiting';
     case 'completed':
       return 'completed';
+  }
+}
+
+/**
+ * Revokes the stored OAuth token before sign-out.
+ *
+ * @param credentials - The credentials being cleared.
+ * @returns An error message to show, or `undefined` when nothing needs showing.
+ */
+async function revokeOAuthCredentials(
+  credentials: OAuthCredentials,
+): Promise<string | undefined> {
+  if (!credentials.token) {
+    return undefined;
+  }
+  try {
+    await revokeToken({
+      accessToken: credentials.token.accessToken,
+      clientId: credentials.client.clientId,
+    });
+    return undefined;
+  } catch (error) {
+    // Pre-v3 clients were registered at the retired mcp.datocms.com
+    // endpoints, so oauth.datocms.com is expected to reject their revocation.
+    if (
+      credentials.client.registrationVersion !==
+      OAUTH_CLIENT_REGISTRATION_VERSION
+    ) {
+      return undefined;
+    }
+    return error instanceof Error ? error.message : 'Token revocation failed.';
   }
 }
 
@@ -5566,16 +5598,9 @@ export default function AgentFrame(props: AgentFrameProps) {
     setOauthConnecting(true);
     setOauthError(undefined);
     try {
-      if (credentials?.token) {
-        await revokeToken({
-          accessToken: credentials.token.accessToken,
-          clientId: credentials.client.clientId,
-        });
+      if (credentials) {
+        setOauthError(await revokeOAuthCredentials(credentials));
       }
-    } catch (error) {
-      setOauthError(
-        error instanceof Error ? error.message : 'Token revocation failed.',
-      );
     } finally {
       try {
         oauthStore.clear();
