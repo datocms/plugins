@@ -21,6 +21,7 @@ import useContentLinkConnection from '../../../utils/contentLink/useContentLinkC
 import { normalizePathForVisualEditing } from '../../../utils/normalizePathForVisualEditing';
 import { inspectorUrl } from '../../../utils/urls';
 import { type AltFlipEvent, nextAltFlip } from './altFlip';
+import { createClickToEditSync } from './clickToEditSync';
 
 type IframeState = { path: string; key: string };
 
@@ -194,8 +195,31 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   const preferredClickToEditRef = useRef(preferredClickToEdit);
   preferredClickToEditRef.current = preferredClickToEdit;
 
+  // Penpal's call sender: one object per iframe, updated in place on child
+  // reconnects, so this ref stays valid across page loads
+  const contentLinkMethodsRef = useRef<
+    AsyncMethodReturns<ContentLinkMethods> | undefined
+  >(undefined);
+
+  const [clickToEditSync] = useState(() =>
+    createClickToEditSync({
+      getPreferred: () => preferredClickToEditRef.current,
+      apply: (enabled) => {
+        contentLinkMethodsRef.current
+          ?.setClickToEditEnabled(
+            enabled
+              ? { enabled: true, flash: { scrollToNearestTarget: false } }
+              : { enabled: false },
+          )
+          .catch(() => {});
+      },
+      defer: (callback) => setTimeout(callback, 0),
+    }),
+  );
+
   const { iframeRef, connection } = useContentLinkConnection({
     onInit: () => {
+      clickToEditSync.onInit();
       return {
         editUrlRegExp: {
           source: editUrlRegExp.source,
@@ -205,6 +229,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     },
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);
+      clickToEditSync.onStateChange(rest.clickToEditEnabled);
 
       const currentEnvItems = itemIdsPerEnvironment[currentEnvironmentId] ?? [];
       const safePath = normalizePathForVisualEditing({
@@ -256,9 +281,11 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     },
   });
 
-  // Every (re)loaded page starts from its own default: apply the editor's
-  // choice once per connection. onInit can't, as it runs before `connection`
-  // reports the new page.
+  contentLinkMethodsRef.current =
+    connection.type === 'connected' ? connection.methods : undefined;
+
+  // The first page's onInit can run before `connection` reports it, leaving
+  // the sync nothing to send through: apply once per connection as well.
   useEffect(() => {
     if (connection.type !== 'connected') {
       return;
