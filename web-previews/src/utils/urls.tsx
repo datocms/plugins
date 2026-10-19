@@ -27,7 +27,7 @@ export function extractRedirectPath(urlString: string): string | undefined {
   return redirect?.startsWith('/') ? redirect : undefined;
 }
 
-/** A short, secret-free label for a preview link URL. */
+/** A short label for a preview link URL, without its `token` parameter. */
 export function displayPath(urlString: string): string {
   const redirectPath = extractRedirectPath(urlString);
   if (redirectPath) {

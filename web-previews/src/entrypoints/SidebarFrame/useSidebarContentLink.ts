@@ -59,9 +59,9 @@ export function useSidebarContentLink(
     },
   });
 
-  // Keep the click-to-edit overlay in sync with the toggle. The connection
-  // stays alive when the selected preview is already in draft mode; published
-  // previews are reloaded through the draft-mode route before connecting.
+  // Keep the click-to-edit overlay in sync with the requested state. The
+  // sidebar connects only to previews already in draft mode; published
+  // previews load as-is and never connect.
   useEffect(() => {
     if (connection.type !== 'connected' || clickToEditEnabled === undefined) {
       return;

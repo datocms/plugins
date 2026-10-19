@@ -22,22 +22,25 @@ import {
 import { ToolbarButton } from '../Toolbar/ToolbarButton';
 import styles from './styles.module.css';
 
+/**
+ * Below this frame width the toolbar has no room for the selector. The frame
+ * width is the space actually available to the preview, not a setting.
+ */
+const MIN_FRAME_WIDTH = 600;
+
 interface ViewportSelectorProps {
   menuAlignment: 'left' | 'right';
-  /** Hide the selector, falling back to "Fit", when the window is narrower */
-  minWidth?: number;
   currentViewport: Viewport | 'responsive' | 'custom';
   onChange: (viewport: Viewport | 'responsive' | 'custom') => void;
 }
 
 export function ViewportSelector({
   menuAlignment,
-  minWidth = 0,
   currentViewport,
   onChange,
 }: ViewportSelectorProps) {
   const { width } = useWindowSize();
-  const hidden = width < minWidth;
+  const hidden = width < MIN_FRAME_WIDTH;
 
   useEffect(() => {
     if (hidden && currentViewport !== 'responsive') {

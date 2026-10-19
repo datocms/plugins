@@ -197,7 +197,7 @@ export const FrontendResult = ({
                         onClick={() => window.open(url, '_blank', 'noreferrer')}
                       >
                         <span className={styles.menuLink}>
-                          Open {label} version
+                          Open {label}
                           <FontAwesomeIcon icon={faExternalLinkAlt} />
                         </span>
                       </DropdownOption>

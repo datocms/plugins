@@ -39,9 +39,6 @@ type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
 };
 
-/** Below this sidebar width the toolbar has no room for the viewport selector */
-const VIEWPORT_SELECTOR_MIN_WIDTH = 600;
-
 type PreviewLinkSelection = {
   previewLinks: PreviewLinkWithFrontend[];
   selectedPreviewLink: PreviewLinkWithFrontend | undefined;
@@ -214,7 +211,6 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                 />
                 <ViewportSelector
                   menuAlignment="right"
-                  minWidth={VIEWPORT_SELECTOR_MIN_WIDTH}
                   currentViewport={currentViewport}
                   onChange={handleViewportChange}
                 />

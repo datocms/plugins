@@ -2,10 +2,11 @@
 
 The plugin adds several touchpoints to the DatoCMS UI:
 
-- **A "Visual" tab in the main navigation**: a full-screen, side-by-side editing view where the website preview sits next to the editing panel. Editors click on any element in the preview, and the corresponding record and field open right there. The tab includes:
+- **A "Visual Editing" tab in the main navigation**: a full-screen, side-by-side editing view where the website preview sits next to the editing panel. Editors click on any element in the preview, and the corresponding record and field open right there. The tab includes:
   - An address bar for navigating the preview
   - Viewport controls for testing responsive layouts
   - A frontend selector for switching between environments (e.g. production vs. staging)
+  - A "Visual editing on/off" switch. Hold ⌥ Alt to flip it temporarily (see [Holding Alt in Visual Editing](#holding-alt-in-visual-editing))
 
 - **Preview links in the record sidebar**: when editors open any record, they see quick links to view that content on the actual website. The plugin determines which URL corresponds to each record by calling an API endpoint on your frontend.
 
@@ -77,6 +78,13 @@ Shows a full sidebar with an iframe preview of the selected URL. This provides a
 **Optional settings:**
 - **Default sidebar width (px)** — The initial width when the sidebar is opened
 
+#### Preview links in the record form
+**Toggle:** Show Preview Links at the top of the record form
+
+Shows a "Preview links" box at the top of every record form (blocks excluded). It lists the same links as the Sidebar Panel. The box stays hidden while links load, when the endpoint fails, and when it returns no links.
+
+Each surface fetches the links on its own. With the record form box, the Sidebar Panel and the Full Preview Sidebar all enabled, the plugin calls your endpoint three times per record open.
+
 **Note:** Both the Sidebar Panel and Full Preview Sidebar can be enabled together. The Full Preview Sidebar shows the same URLs returned by your API endpoint, but renders them in an iframe for in-app preview.
 
 ### 3. Custom viewports
@@ -88,6 +96,23 @@ Configure viewport size presets for testing different screen sizes in iframe pre
 Configure iframe permissions and security settings:
 
 - **Iframe `allow` attribute** — Defines what features will be available to the `<iframe>` pointing to the frontend (e.g., access to microphone, camera). [Learn more](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow)
+
+## Holding Alt in Visual Editing
+
+In the Visual Editing tab, hold ⌥ Alt to flip click-to-edit temporarily. Release it to go back to the switch's state.
+
+Alt works when the keyboard focus is in one of these places:
+
+- the website preview
+- the Visual Editing toolbar (address bar, buttons, switch)
+
+Alt does nothing when the focus is in the DatoCMS record panel next to the preview. The plugin cannot receive key events from DatoCMS's own UI. Click the preview or the toolbar, then hold Alt.
+
+The Full Preview Sidebar keeps click-to-edit off, so Alt has no effect there.
+
+## Upgrade notes
+
+The Full Preview Sidebar no longer has an **Edit mode** switch. Click-to-edit inside the sidebar preview is gone. To click on page elements and edit them, use the **Edit in Visual Editing** button in the sidebar toolbar. It opens the same page in the Visual Editing tab.
 
 ## Content Security Policy
 

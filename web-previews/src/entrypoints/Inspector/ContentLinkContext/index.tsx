@@ -80,6 +80,73 @@ const editUrlRegExp =
 
 const PING_TIMEOUT_MS = 25_000;
 
+/**
+ * Mirrors the preview's own "hold Alt" toggle for key presses in this frame.
+ * Key events only reach the frame that has focus, so the Content Link script
+ * misses Alt while the editor works in the toolbar.
+ *
+ * Alt flips click-to-edit away from `preferred` until release. Another key
+ * pressed meanwhile (Alt used as a modifier) or a frame blur cancels the flip.
+ */
+function useForwardAltToPreview(
+  methods: AsyncMethodReturns<ContentLinkMethods> | undefined,
+  preferred: boolean | undefined,
+) {
+  useEffect(() => {
+    if (!methods || preferred === undefined) {
+      return;
+    }
+
+    let isFlipped = false;
+
+    const setEnabled = (enabled: boolean) => {
+      // The page can go away mid-press; a failed toggle needs no recovery
+      methods
+        .setClickToEditEnabled(
+          enabled
+            ? { enabled: true, flash: { scrollToNearestTarget: false } }
+            : { enabled: false },
+        )
+        .catch(() => {});
+    };
+
+    const revert = () => {
+      if (isFlipped) {
+        isFlipped = false;
+        setEnabled(preferred);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Alt') {
+        revert();
+        return;
+      }
+
+      if (!event.repeat && !isFlipped) {
+        isFlipped = true;
+        setEnabled(!preferred);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Alt') {
+        revert();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', revert);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', revert);
+    };
+  }, [methods, preferred]);
+}
+
 export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
@@ -207,6 +274,11 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       setIsPingActive(true);
     },
   });
+
+  useForwardAltToPreview(
+    connection.type === 'connected' ? connection.methods : undefined,
+    preferredClickToEdit,
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {

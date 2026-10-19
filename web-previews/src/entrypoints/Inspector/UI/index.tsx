@@ -14,7 +14,6 @@ import type { ViewportSize } from '../../../components/Browser/ViewportCustomize
 import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
 import {
-  DEFAULT_SIDEBAR_WIDTH,
   type Frontend,
   getVisualEditingFrontends,
   normalizeParameters,
@@ -33,7 +32,7 @@ const UI: React.FC = () => {
   const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-  const { iframeAllowAttribute, previewLinksSidebar } = params;
+  const { iframeAllowAttribute } = params;
   const visualEditingFrontends = getVisualEditingFrontends(params);
 
   const [selectedFrontend, setSelectedFrontend] = useState<Frontend>(() => {
@@ -192,7 +191,6 @@ const UI: React.FC = () => {
         />
         <ViewportSelector
           menuAlignment="right"
-          minWidth={previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH}
           currentViewport={currentViewport}
           onChange={handleViewportChange}
         />

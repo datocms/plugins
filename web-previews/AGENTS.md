@@ -23,7 +23,7 @@ src/components/             → Shared UI components (Browser, ButtonGroup)
 src/utils/                  → Shared utilities (rendering, persisted width)
 ```
 
-### The Five Entry Points
+### The Entry Points
 
 DatoCMS plugins use a hook-based system. This plugin implements:
 
@@ -31,7 +31,8 @@ DatoCMS plugins use a hook-based system. This plugin implements:
 2. **`renderItemFormSidebarPanel`** → `SidebarPanel/` - Shows clickable preview link list
 3. **`renderItemFormSidebar`** → `SidebarFrame/` - Main preview iframe with toolbar
 4. **`renderInspector`** → `Inspector/` - Visual editing mode (draft mode integration)
-5. **`mainNavigationTabs`** → Conditionally adds "Visual" tab when visual editing is enabled
+5. **`mainNavigationTabs`** → Conditionally adds "Visual Editing" tab when visual editing is enabled
+6. **`renderItemFormOutlet`** → `FormPreviewLinks/` - Opt-in "Preview links" box at the top of the record form (`previewLinksFormOutlet`)
 
 Each entry point receives a DatoCMS context object (`ctx`) with access to the current record, site, plugin parameters, etc.
 
@@ -50,7 +51,7 @@ SidebarFrame displays URLs in iframe with viewport selector
 ### Visual Editing Flow
 
 When `visualEditing.enableDraftModeUrl` is configured:
-1. Plugin adds "Visual" main navigation tab
+1. Plugin adds "Visual Editing" main navigation tab
 2. Inspector entrypoint renders full-screen iframe
 3. Contains address bar + draft mode toggle
 4. Uses ContentLinkContext for bidirectional communication with frontend
@@ -134,7 +135,7 @@ The context object is read-only. To update records, use DatoCMS SDK methods on `
 
 When enabled:
 
-- Adds "Visual" tab to main navigation
+- Adds "Visual Editing" tab to main navigation
 - Full-screen inspector at `/p/{pluginId}/inspectors/visual`
 - Expects frontend to implement draft mode toggle endpoint
 - Uses `ContentLinkContext` for edit mode coordination
