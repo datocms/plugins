@@ -42,6 +42,31 @@ describe('resolveFieldLocale', () => {
     ).toBe('it');
   });
 
+  it.each([['it.0.caption'], ['content.0.it.1.caption']])(
+    'ignores locale-like segments that are not locales (%s)',
+    (fieldPath) => {
+      expect(
+        resolveFieldLocale({
+          locale: 'en',
+          isLocalized: false,
+          fieldPath,
+          siteLocales,
+        }),
+      ).toBeUndefined();
+    },
+  );
+
+  it('reads a locale nested deeper in the path', () => {
+    expect(
+      resolveFieldLocale({
+        locale: 'en',
+        isLocalized: false,
+        fieldPath: 'content.0.gallery.it.1.caption',
+        siteLocales,
+      }),
+    ).toBe('it');
+  });
+
   it('returns undefined when no locale applies', () => {
     expect(
       resolveFieldLocale({

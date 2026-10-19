@@ -28,7 +28,8 @@ type FieldInstance = {
 /**
  * Finds the locale a field instance belongs to. Block fields always report
  * `localized: false`, but inherit a locale from a localized parent field,
- * which shows up as a path segment (e.g. `content.it.0.title`).
+ * which shows up as the segment right after that field's api_key
+ * (e.g. `content.it.0.title`).
  */
 export const resolveFieldLocale = ({
   locale,
@@ -38,7 +39,15 @@ export const resolveFieldLocale = ({
 }: FieldInstance): string | undefined =>
   isLocalized
     ? locale
-    : fieldPath.split('.').find((segment) => siteLocales.includes(segment));
+    : fieldPath
+        .split('.')
+        // A locale segment always follows a field api_key, never a block index.
+        .find(
+          (segment, index, segments) =>
+            index > 0 &&
+            !/^\d+$/.test(segments[index - 1]) &&
+            siteLocales.includes(segment),
+        );
 
 /**
  * Decides whether to disable a field instance. An empty list means
