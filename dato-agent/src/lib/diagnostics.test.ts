@@ -154,6 +154,38 @@ describe('serializeDiagnostics', () => {
     ]);
   });
 
+  it('redacts secret-like keys in any casing or separator style', () => {
+    const parsed = JSON.parse(
+      serializeDiagnostics({
+        apiToken: 'v-api-token',
+        authToken: 'v-auth-token',
+        sessionToken: 'v-session-token',
+        privateKey: 'v-private-key',
+        api_key: 'v-api-key',
+        CLIENT_SECRET: 'v-client-secret',
+        'set-cookie': 'v-cookie',
+        headers: new Map([['x-auth-token', 'v-x-auth-token']]),
+      }),
+    );
+
+    expect(JSON.stringify(parsed)).not.toMatch(/"v-/);
+    expect(parsed.headers.entries).toEqual([['x-auth-token', '[redacted]']]);
+  });
+
+  it('keeps harmless keys that only resemble secret ones', () => {
+    const harmless = {
+      itemTypeKey: 'article',
+      modelApiKey: 'blog_post',
+      fieldApiKey: 'title',
+      anthropicModelMaxOutputTokens: 64_000,
+      tokenType: 'Bearer',
+      cacheKey: 'v1:record:1',
+      textDeltaCount: 2,
+    };
+
+    expect(JSON.parse(serializeDiagnostics(harmless))).toEqual(harmless);
+  });
+
   it('redacts key=value secrets embedded in URLs and strings', () => {
     const parsed = JSON.parse(
       serializeDiagnostics({
