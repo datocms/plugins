@@ -23,7 +23,10 @@ import {
 } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactTextareaAutosize from 'react-textarea-autosize';
-import { defaultPrompt } from '../../prompts/DefaultPrompt';
+import {
+  defaultPrompt,
+  upgradeLegacyDefaultPrompt,
+} from '../../prompts/DefaultPrompt';
 import { listRelevantAnthropicModels } from '../../utils/translation/AnthropicModels';
 import {
   DEEPL_DEFAULT_IGNORE_TAGS,
@@ -531,7 +534,10 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     sortedSelectedFields !== sortedConfiguredFields ||
     translateWholeRecord !== (pluginParams.translateWholeRecord ?? true) ||
     translateBulkRecords !== (pluginParams.translateBulkRecords ?? true) ||
-    prompt !== (pluginParams.prompt ?? defaultPrompt) ||
+    prompt !==
+      (pluginParams.prompt
+        ? upgradeLegacyDefaultPrompt(pluginParams.prompt)
+        : defaultPrompt) ||
     llmGlossary !== (pluginParams.llmGlossary ?? '') ||
     enableDebugging !== (pluginParams.enableDebugging ?? false);
   const isExclusionsDirty =

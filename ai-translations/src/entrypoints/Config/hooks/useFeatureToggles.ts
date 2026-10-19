@@ -6,6 +6,7 @@
 
 import { useCallback, useState } from 'react';
 import type { ctxParamsType } from '../ConfigScreen';
+import { upgradeLegacyDefaultPrompt } from '../../../prompts/DefaultPrompt';
 import { translateFieldTypes } from '../configConstants';
 
 export interface FeatureToggleState {
@@ -53,7 +54,11 @@ export function useFeatureToggles(
       : true,
   );
 
-  const [prompt, setPrompt] = useState(pluginParams.prompt ?? defaultPrompt);
+  const [prompt, setPrompt] = useState(
+    pluginParams.prompt
+      ? upgradeLegacyDefaultPrompt(pluginParams.prompt)
+      : defaultPrompt,
+  );
 
   const [llmGlossary, setLlmGlossary] = useState(
     pluginParams.llmGlossary ?? '',

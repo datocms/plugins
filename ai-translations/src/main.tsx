@@ -56,7 +56,10 @@ import {
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
-import { defaultPrompt } from './prompts/DefaultPrompt';
+import {
+  defaultPrompt,
+  upgradeLegacyDefaultPrompt,
+} from './prompts/DefaultPrompt';
 import {
   buildLocaleSettingsPath,
   buildPluginSettingsPath,
@@ -316,6 +319,11 @@ connect({
       defaults.translateWholeRecord = true;
     }
     if (!pluginParams.prompt) {
+      defaults.prompt = defaultPrompt;
+    } else if (
+      upgradeLegacyDefaultPrompt(pluginParams.prompt) !== pluginParams.prompt
+    ) {
+      // Uncustomised installs get the new default with its {glossary} slot.
       defaults.prompt = defaultPrompt;
     }
     if (!pluginParams.modelsToBeExcludedFromThisPlugin) {

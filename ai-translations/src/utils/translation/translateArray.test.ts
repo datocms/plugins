@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { legacyDefaultPrompts } from '../../prompts/DefaultPrompt';
 import { tokenize, translateArray } from './translateArray';
 import { ProviderError, type TranslationProvider } from './types';
 
@@ -570,6 +571,108 @@ Content: (see the JSON array below) / (see the JSON array below).`);
           expect(prompt).toContain('- "checkout" → "Kasse"');
           expect(prompt).not.toContain('{glossary}');
           // Placeholder sits before the ICU section of the default prompt.
+          expect(prompt.indexOf('GLOSSARY')).toBeLessThan(
+            prompt.indexOf('ICU MESSAGE FORMAT HANDLING'),
+          );
+        });
+
+        it('matches HTML segments on their visible text', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue(
+            '["<p>F&amp;E</p>"]',
+          );
+
+          await translateArray(
+            mockProvider,
+            {
+              ...mockPluginParams,
+              prompt: '{glossary}',
+              llmGlossary: 'en,de,R&D,F&E\nen,de,p,Absatz',
+            },
+            ['<p>R&amp;D</p>'],
+            'en',
+            'de',
+            { isHTML: true },
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          expect(prompt).toContain('- "R&D" → "F&E"');
+          expect(prompt).not.toContain('Absatz');
+        });
+
+        it('truncates the glossary block and logs a warning', async () => {
+          const consoleSpy = vi
+            .spyOn(console, 'log')
+            .mockImplementation(() => {});
+          const terms = Array.from({ length: 200 }, (_, index) => `term${index}`);
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["x"]');
+
+          await translateArray(
+            mockProvider,
+            {
+              ...mockPluginParams,
+              enableDebugging: true,
+              prompt: '{glossary}',
+              llmGlossary: terms
+                .map((term) => `en,de,${term},${term}-de`)
+                .join('\n'),
+            },
+            [terms.join(' ')],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          const block = prompt.slice(0, prompt.indexOf('\n\nTRANSLATION'));
+          expect(new TextEncoder().encode(block).length).toBeLessThanOrEqual(
+            4_000,
+          );
+          expect(prompt).toContain('"term0" → "term0-de"');
+          expect(prompt).not.toContain('"term199"');
+          expect(
+            consoleSpy.mock.calls.some((call) =>
+              String(call[0]).includes('Glossary block truncated'),
+            ),
+          ).toBe(true);
+        });
+
+        it('reserves glossary room in the chunk byte budget', async () => {
+          // Two ~11 KB segments fit one 24 KB chunk, but not with 4 KB reserved.
+          const segments = ['a'.repeat(11_000), 'b'.repeat(11_000)];
+          vi.mocked(mockProvider.completeText)
+            .mockResolvedValueOnce(JSON.stringify([segments[0]]))
+            .mockResolvedValueOnce(JSON.stringify([segments[1]]));
+
+          await translateArray(
+            mockProvider,
+            {
+              ...mockPluginParams,
+              prompt: '{glossary}',
+              llmGlossary: 'en,de,zzz,yyy',
+            },
+            segments,
+            'en',
+            'de',
+          );
+
+          expect(mockProvider.completeText).toHaveBeenCalledTimes(2);
+        });
+
+        it('upgrades a stored legacy default prompt', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["Zur Kasse"]');
+
+          await translateArray(
+            mockProvider,
+            {
+              ...mockPluginParams,
+              prompt: legacyDefaultPrompts[0],
+              llmGlossary,
+            },
+            ['Go to checkout'],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
           expect(prompt.indexOf('GLOSSARY')).toBeLessThan(
             prompt.indexOf('ICU MESSAGE FORMAT HANDLING'),
           );
