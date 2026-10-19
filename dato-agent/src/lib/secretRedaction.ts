@@ -3,46 +3,195 @@ export const REDACTED_MARKER = '[redacted]';
 
 const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
 const PROVIDER_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
-const SECRET_KEY = String.raw`["']?(?:api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)["']?\s*[:=]\s*`;
-// Skips values an earlier pass already redacted, so the output stays
-// `Authorization: Bearer [redacted]`, not `[redacted] [redacted]`.
-// The leading `\s*` stops backtracking into the separator from bypassing it.
-const ALREADY_REDACTED = String.raw`(?!\s*["']?(?:[A-Za-z][\w-]*\s+)?\[redacted\])`;
-// `Authorization: <scheme> <credential>`: keep a known scheme, drop the
-// credential. Unknown first words fall through to the key/value pass below.
-const AUTHORIZATION_SCHEME_PATTERN = new RegExp(
-  String.raw`(\bauthorization["']?\s*[:=]\s*["']?)${ALREADY_REDACTED}((?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)\s+)[^"',\s}\]&]+`,
-  'gi',
-);
-// Any other unquoted Authorization value: the scheme is unknown, so the
-// credential can follow a space. Redact through the end of the line.
-const AUTHORIZATION_LINE_PATTERN = new RegExp(
-  String.raw`(\bauthorization["']?\s*[:=]\s*)${ALREADY_REDACTED}[^\s"'][^\r\n]*`,
-  'gi',
-);
-// Quoted values run to the closing quote (escapes included), or to the end of
-// the line when truncation cut the closing quote off. Bare values stop at a
-// delimiter, and `&` ends one so URL query siblings survive.
-const SECRET_KEY_VALUE_PATTERN = new RegExp(
-  String.raw`(${SECRET_KEY})${ALREADY_REDACTED}(?:"(?:[^"\\\r\n]|\\.)*"?|'(?:[^'\\\r\n]|\\.)*'?|[^"',\s}\]&]+)`,
-  'gi',
-);
+// The key may sit inside quotes, including JSON-escaped quotes (`\"api_key\"`)
+// from double-encoded payloads. The separator never crosses a line.
+const SECRET_KEY_PATTERN =
+  /(?:\\?["'])?(api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)(?:\\?["'])?[ \t]*[:=][ \t]*/gi;
+const AUTHORIZATION_SCHEME_PATTERN =
+  /^(?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)[ \t]+/i;
+// `&` ends a bare value so URL query siblings survive.
+const BARE_VALUE_PATTERN = /^[^"',\s}\]&]+/;
+
+/** Where a secret value starts and ends, and what replaces it. */
+interface ValueSpan {
+  end: number;
+  replacement: string;
+}
 
 /**
- * Replaces one `key: value` match, preserving the value's quote style.
+ * Finds the closing quote of a quoted value, honouring backslash escapes and
+ * allowing newlines (PEM keys in YAML/JS strings span lines).
  *
- * @param match - The full match.
- * @param prefix - The key and separator.
- * @returns The prefix followed by the redacted value.
+ * @returns The index of the closing quote, or -1 when the input has none.
  */
-const redactKeyValue = (match: string, prefix: string): string => {
-  const quote = match.charAt(prefix.length);
-  if (quote !== '"' && quote !== "'") {
-    return `${prefix}${REDACTED_MARKER}`;
+const findClosingQuote = (
+  text: string,
+  from: number,
+  quote: string,
+): number => {
+  for (let index = from; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\\') {
+      index += 1;
+    } else if (character === quote) {
+      return index;
+    }
   }
-  const isTerminated =
-    match.length > prefix.length + 1 && match.endsWith(quote);
-  return `${prefix}${quote}${REDACTED_MARKER}${isTerminated ? quote : ''}`;
+  return -1;
+};
+
+/** Returns the index of the next line break at or after `from`, or the input length. */
+type LineEndFinder = (from: number) => number;
+
+/**
+ * Builds a line-end lookup that caches the last break found, so scanning many
+ * values on one long line stays linear-time.
+ *
+ * @param text - Whole input.
+ */
+const createLineEndFinder = (text: string): LineEndFinder => {
+  let cachedFrom = -1;
+  let cachedEnd = -1;
+  return (from) => {
+    if (from < cachedFrom || from > cachedEnd) {
+      const pattern = /[\r\n]/g;
+      pattern.lastIndex = from;
+      cachedEnd = pattern.exec(text)?.index ?? text.length;
+    }
+    cachedFrom = from;
+    return cachedEnd;
+  };
+};
+
+/**
+ * Redacts the inside of a quoted or line-delimited value. Authorization
+ * values keep a known scheme name, e.g. `Digest [redacted]`.
+ */
+const redactContent = (content: string, isAuthorization: boolean): string => {
+  const scheme = isAuthorization
+    ? AUTHORIZATION_SCHEME_PATTERN.exec(content)?.[0]
+    : undefined;
+  return `${scheme ?? ''}${REDACTED_MARKER}`;
+};
+
+/** The opening quote of a value: `"`, `'`, or a JSON-escaped `\"` / `\'`. */
+const openingDelimiter = (text: string, start: number): string | undefined => {
+  const head = text.slice(start, start + 2);
+  if (head === '\\"' || head === "\\'") {
+    return head;
+  }
+  return head.startsWith('"') || head.startsWith("'") ? head[0] : undefined;
+};
+
+/**
+ * Spans a quoted value through its closing delimiter, or through the end of
+ * the line when truncation cut the closer off.
+ *
+ * @param missingCloser - Per-call memo of delimiters with no closer left, so
+ *   repeated unterminated quotes stay linear-time.
+ */
+const quotedValueSpan = (
+  text: string,
+  start: number,
+  delimiter: string,
+  isAuthorization: boolean,
+  missingCloser: Map<string, number>,
+  lineEnd: LineEndFinder,
+): ValueSpan => {
+  const contentStart = start + delimiter.length;
+  const knownMissing = missingCloser.get(delimiter);
+  let closer = -1;
+  if (knownMissing === undefined || contentStart < knownMissing) {
+    closer =
+      delimiter.length === 2
+        ? text.indexOf(delimiter, contentStart)
+        : findClosingQuote(text, contentStart, delimiter);
+    if (closer === -1) {
+      missingCloser.set(delimiter, contentStart);
+    }
+  }
+
+  const isTerminated = closer !== -1;
+  const contentEnd = isTerminated ? closer : lineEnd(contentStart);
+  const content = redactContent(
+    text.slice(contentStart, contentEnd),
+    isAuthorization,
+  );
+  return {
+    end: isTerminated ? closer + delimiter.length : contentEnd,
+    replacement: `${delimiter}${content}${isTerminated ? delimiter : ''}`,
+  };
+};
+
+/**
+ * Spans an unquoted value. Authorization keeps a known scheme and redacts
+ * the credential; an unknown scheme redacts the rest of the line, since the
+ * credential can follow a space.
+ *
+ * @returns `undefined` when the value is empty or already redacted.
+ */
+const bareValueSpan = (
+  text: string,
+  start: number,
+  isAuthorization: boolean,
+  lineEnd: LineEndFinder,
+): ValueSpan | undefined => {
+  const tail = text.slice(start, lineEnd(start));
+  const scheme = isAuthorization
+    ? (AUTHORIZATION_SCHEME_PATTERN.exec(tail)?.[0] ?? '')
+    : '';
+  const credential = tail.slice(scheme.length);
+  if (!credential || credential.startsWith(REDACTED_MARKER)) {
+    return undefined;
+  }
+
+  const length =
+    isAuthorization && !scheme
+      ? credential.length
+      : BARE_VALUE_PATTERN.exec(credential)?.[0].length;
+  return length
+    ? {
+        end: start + scheme.length + length,
+        replacement: `${scheme}${REDACTED_MARKER}`,
+      }
+    : undefined;
+};
+
+/**
+ * Redacts `key: value` / `key=value` secrets in one left-to-right pass.
+ *
+ * @param text - Input already stripped of credential tokens.
+ * @returns The input with each secret value replaced.
+ */
+const redactKeyValueSecrets = (text: string): string => {
+  const pattern = new RegExp(SECRET_KEY_PATTERN);
+  const missingCloser = new Map<string, number>();
+  const lineEnd = createLineEndFinder(text);
+  let output = '';
+  let copiedUntil = 0;
+
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const valueStart = match.index + match[0].length;
+    const isAuthorization = match[1].toLowerCase() === 'authorization';
+    const delimiter = openingDelimiter(text, valueStart);
+    const span = delimiter
+      ? quotedValueSpan(
+          text,
+          valueStart,
+          delimiter,
+          isAuthorization,
+          missingCloser,
+          lineEnd,
+        )
+      : bareValueSpan(text, valueStart, isAuthorization, lineEnd);
+    if (span) {
+      output += text.slice(copiedUntil, valueStart) + span.replacement;
+      copiedUntil = span.end;
+      pattern.lastIndex = span.end;
+    }
+  }
+
+  return output + text.slice(copiedUntil);
 };
 
 /**
@@ -67,7 +216,4 @@ export const redactCredentialTokens = (value: string): string =>
  * @returns The text with every recognized secret replaced by {@link REDACTED_MARKER}.
  */
 export const redactSecrets = (value: string): string =>
-  redactCredentialTokens(value)
-    .replace(AUTHORIZATION_SCHEME_PATTERN, `$1$2${REDACTED_MARKER}`)
-    .replace(AUTHORIZATION_LINE_PATTERN, `$1${REDACTED_MARKER}`)
-    .replace(SECRET_KEY_VALUE_PATTERN, redactKeyValue);
+  redactKeyValueSecrets(redactCredentialTokens(value));
