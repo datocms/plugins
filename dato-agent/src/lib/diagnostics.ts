@@ -50,6 +50,45 @@ function describeSymbol(value: symbol): string {
   }
 }
 
+const REDACTED = '[Redacted]';
+
+const SENSITIVE_EXACT_KEYS = new Set([
+  'authorization',
+  'bearer',
+  'codeverifier',
+  'cookie',
+  'idtoken',
+  'token',
+]);
+
+const SENSITIVE_KEY_SUFFIXES = [
+  'accesstoken',
+  'apikey',
+  'password',
+  'refreshtoken',
+  'secret',
+];
+
+const SENSITIVE_VALUE_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  [/\bsk-[A-Za-z0-9_-]{16,}/g, REDACTED],
+  [/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
+];
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
+  return (
+    SENSITIVE_EXACT_KEYS.has(normalized) ||
+    SENSITIVE_KEY_SUFFIXES.some((suffix) => normalized.endsWith(suffix))
+  );
+}
+
+function redactSensitiveSubstrings(value: string): string {
+  return SENSITIVE_VALUE_PATTERNS.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    value,
+  );
+}
+
 function propertyPath(parentPath: string, key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key)
     ? `${parentPath}.${key}`
@@ -58,6 +97,17 @@ function propertyPath(parentPath: string, key: string): string {
 
 function normalizeDiagnostics(value: unknown): JsonSafeValue {
   const seen = new WeakMap<object, string>();
+
+  const normalizeProperty = (
+    key: string,
+    propertyValue: unknown,
+    path: string,
+  ): JsonSafeValue =>
+    typeof propertyValue === 'string' &&
+    propertyValue !== '' &&
+    isSensitiveKey(key)
+      ? REDACTED
+      : normalize(propertyValue, propertyPath(path, key));
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Diagnostics must safely normalize every JavaScript value shape in one recursive traversal.
   const normalize = (current: unknown, path: string): JsonSafeValue => {
@@ -68,6 +118,7 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
 
       switch (typeof current) {
         case 'string':
+          return redactSensitiveSubstrings(current);
         case 'boolean':
           return current;
         case 'number':
@@ -142,9 +193,10 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
           }
 
           try {
-            normalizedError[key] = normalize(
+            normalizedError[key] = normalizeProperty(
+              key,
               (current as unknown as Record<string, unknown>)[key],
-              propertyPath(path, key),
+              path,
             );
           } catch (error) {
             normalizedError[key] = `[Unserializable: ${errorMessage(error)}]`;
@@ -182,9 +234,10 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
       const normalizedObject: Record<string, JsonSafeValue> = {};
       for (const key of Object.keys(current).sort(compareStrings)) {
         try {
-          normalizedObject[key] = normalize(
+          normalizedObject[key] = normalizeProperty(
+            key,
             (current as Record<string, unknown>)[key],
-            propertyPath(path, key),
+            path,
           );
         } catch (error) {
           normalizedObject[key] = `[Unserializable: ${errorMessage(error)}]`;
