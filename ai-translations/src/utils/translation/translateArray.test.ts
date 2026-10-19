@@ -491,6 +491,116 @@ Content: (see the JSON array below) / (see the JSON array below).`);
       });
 
 
+      describe('prompt glossary', () => {
+        const llmGlossary = [
+          'en,de,checkout,Kasse',
+          'en,de,cart,Warenkorb',
+          'en,fr,checkout,paiement',
+        ].join('\n');
+
+        it('injects only matching terms into the {glossary} placeholder', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["Zur Kasse"]');
+
+          await translateArray(
+            mockProvider,
+            {
+              ...mockPluginParams,
+              prompt: 'Terms:\n{glossary}\nTranslate {fieldValue}.',
+              llmGlossary,
+            },
+            ['Go to checkout'],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          expect(prompt).toContain('- "checkout" → "Kasse"');
+          expect(prompt).not.toContain('Warenkorb');
+          expect(prompt).not.toContain('paiement');
+          expect(prompt).not.toContain('{glossary}');
+          expect(prompt.indexOf('GLOSSARY')).toBeLessThan(
+            prompt.indexOf('Translate (see the JSON array below).'),
+          );
+        });
+
+        it('appends the glossary when the prompt lacks the placeholder', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["Zur Kasse"]');
+
+          await translateArray(
+            mockProvider,
+            { ...mockPluginParams, prompt: 'Be formal.', llmGlossary },
+            ['Go to checkout'],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          expect(prompt.startsWith('Be formal.\n\nGLOSSARY')).toBe(true);
+          expect(prompt).toContain('- "checkout" → "Kasse"');
+        });
+
+        it('sends no glossary block when no term matches', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+
+          await translateArray(
+            mockProvider,
+            { ...mockPluginParams, prompt: 'A{glossary}B', llmGlossary },
+            ['Hello'],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          expect(prompt.startsWith('AB')).toBe(true);
+          expect(prompt).not.toContain('GLOSSARY');
+        });
+
+        it('keeps the {glossary} placeholder in the default prompt', async () => {
+          vi.mocked(mockProvider.completeText).mockResolvedValue('["Zur Kasse"]');
+
+          await translateArray(
+            mockProvider,
+            { ...mockPluginParams, llmGlossary },
+            ['Go to checkout'],
+            'en',
+            'de',
+          );
+
+          const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+          expect(prompt).toContain('- "checkout" → "Kasse"');
+          expect(prompt).not.toContain('{glossary}');
+          // Placeholder sits before the ICU section of the default prompt.
+          expect(prompt.indexOf('GLOSSARY')).toBeLessThan(
+            prompt.indexOf('ICU MESSAGE FORMAT HANDLING'),
+          );
+        });
+
+        it('selects terms per chunk', async () => {
+          const segments = [
+            ...Array.from({ length: 25 }, () => 'Go to checkout'),
+            'View cart',
+          ];
+          vi.mocked(mockProvider.completeText)
+            .mockResolvedValueOnce(JSON.stringify(segments.slice(0, 25)))
+            .mockResolvedValueOnce(JSON.stringify(['Warenkorb ansehen']));
+
+          await translateArray(
+            mockProvider,
+            { ...mockPluginParams, prompt: '{glossary}', llmGlossary },
+            segments,
+            'en',
+            'de',
+          );
+
+          const calls = vi.mocked(mockProvider.completeText).mock.calls;
+          expect(calls[0][0]).toContain('Kasse');
+          expect(calls[0][0]).not.toContain('Warenkorb');
+          expect(calls[1][0]).toContain('Warenkorb');
+          expect(calls[1][0]).not.toContain('Kasse');
+        });
+      });
+
+
       it('rejects oversized opaque HTML before earlier segments become billable', async () => {
         await expect(
           translateArray(
@@ -804,6 +914,24 @@ Content: (see the JSON array below) / (see the JSON array below).`);
           completeText: vi.fn(),
           translateArray: vi.fn(),
         } as typeof mockDeepLProvider;
+      });
+
+      it('ignores the prompt glossary for DeepL', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Zur Kasse']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, llmGlossary: 'en,de,checkout,Kasse' },
+          ['Go to checkout'],
+          'en',
+          'de',
+        );
+
+        expect(mockDeepLProvider.completeText).not.toHaveBeenCalled();
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          ['Go to checkout'],
+          expect.objectContaining({ glossaryId: undefined }),
+        );
       });
 
       it('should use native translateArray for DeepL provider', async () => {

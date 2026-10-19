@@ -19,6 +19,8 @@ Use this context to:
 
 {recordContext}
 
+{glossary}
+
 ICU MESSAGE FORMAT HANDLING:
 - You may encounter ICU Message Format strings (e.g., "{gender, select, male {He said} female {She said}}")
 - You MUST preserve the structure, keywords, and variable keys exactly
@@ -51,4 +53,7 @@ OUTPUT INSTRUCTIONS:
  *                  - Maintaining consistency across related fields
  *                  - Understanding specialized terminology in context
  *                  - More accurately capturing the intended meaning
+ * {glossary} - Glossary terms (from the plugin's Glossary setting) whose source
+ *              term appears in the content; empty when none match. Prompts
+ *              without this placeholder get the block appended at the end.
  */

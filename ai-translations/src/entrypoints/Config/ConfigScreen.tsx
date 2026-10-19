@@ -81,6 +81,7 @@ export type ctxParamsType = {
   translateWholeRecord: boolean; // Whether to allow entire record translation
   translateBulkRecords: boolean; // Whether to allow bulk records translation in tabular view
   prompt: string; // The prompt template used by the translation logic
+  llmGlossary?: string; // CSV term pairs injected into chat-vendor prompts
   modelsToBeExcludedFromThisPlugin: string[]; // List of model API keys to exclude from translation
   rolesToBeExcludedFromThisPlugin: string[]; // List of role IDs to exclude from translation
   apiKeysToBeExcludedFromThisPlugin: string[]; // List of API keys to exclude from translation
@@ -345,6 +346,7 @@ export function isNativeTranslationVendor(vendor: VendorType): boolean {
  * @param translateWholeRecord - Whether whole-record translation is enabled.
  * @param translateBulkRecords - Whether bulk-records translation is enabled.
  * @param prompt - Current translation prompt.
+ * @param llmGlossary - Current prompt glossary text.
  * @param modelsToBeExcluded - Currently excluded model API keys.
  * @param rolesToBeExcluded - Currently excluded role IDs.
  * @param apiKeysToBeExcluded - Currently excluded field API keys.
@@ -355,6 +357,7 @@ function isDefaultConfiguration(
   translateWholeRecord: boolean,
   translateBulkRecords: boolean,
   prompt: string,
+  llmGlossary: string,
   modelsToBeExcluded: string[],
   rolesToBeExcluded: string[],
   apiKeysToBeExcluded: string[],
@@ -365,6 +368,7 @@ function isDefaultConfiguration(
     translateWholeRecord === true &&
     translateBulkRecords === true &&
     prompt === defaultPrompt &&
+    llmGlossary === '' &&
     modelsToBeExcluded.length === 0 &&
     rolesToBeExcluded.length === 0 &&
     apiKeysToBeExcluded.length === 0
@@ -439,6 +443,7 @@ type CheckFormDirtyArgs = {
   translateWholeRecord: boolean;
   translateBulkRecords: boolean;
   prompt: string;
+  llmGlossary: string;
   enableDebugging: boolean;
   modelsToBeExcluded: string[];
   rolesToBeExcluded: string[];
@@ -480,6 +485,7 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     translateWholeRecord,
     translateBulkRecords,
     prompt,
+    llmGlossary,
     enableDebugging,
     modelsToBeExcluded,
     rolesToBeExcluded,
@@ -526,6 +532,7 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     translateWholeRecord !== (pluginParams.translateWholeRecord ?? true) ||
     translateBulkRecords !== (pluginParams.translateBulkRecords ?? true) ||
     prompt !== (pluginParams.prompt ?? defaultPrompt) ||
+    llmGlossary !== (pluginParams.llmGlossary ?? '') ||
     enableDebugging !== (pluginParams.enableDebugging ?? false);
   const isExclusionsDirty =
     [...modelsToBeExcluded].sort().join(',') !==
@@ -662,6 +669,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     translateWholeRecord,
     translateBulkRecords,
     prompt,
+    llmGlossary,
     enableDebugging,
   } = featureToggles;
   const {
@@ -669,6 +677,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setTranslateWholeRecord,
     setTranslateBulkRecords,
     setPrompt,
+    setLlmGlossary,
     setEnableDebugging,
   } = featureActions;
 
@@ -863,6 +872,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         translateWholeRecord,
         translateBulkRecords,
         prompt,
+        llmGlossary,
         enableDebugging,
         modelsToBeExcluded,
         rolesToBeExcluded,
@@ -882,6 +892,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       translateWholeRecord,
       translateBulkRecords,
       prompt,
+      llmGlossary,
       deeplUseFree,
       deeplFormality,
       deeplPreserveFormatting,
@@ -944,6 +955,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     translateWholeRecord,
     translateBulkRecords,
     prompt,
+    llmGlossary,
     modelsToBeExcluded,
     rolesToBeExcluded,
     apiKeysToBeExcluded,
@@ -1049,10 +1061,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 <div className={s.tooltipContainer}>
                   ⓘ
                   <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-                    Use &#123;fieldValue&#125;, &#123;fromLocale&#125;, and
-                    &#123;toLocale&#125; in your prompt to reference the content
-                    and source/target languages. Changing the prompt can break the
-                    plugin, so proceed with caution.
+                    Use &#123;fieldValue&#125;, &#123;fromLocale&#125;,
+                    &#123;toLocale&#125;, &#123;recordContext&#125; and
+                    &#123;glossary&#125; in your prompt to reference the content,
+                    source/target languages, record context and matching glossary
+                    terms. Changing the prompt can break the plugin, so proceed
+                    with caution.
                   </div>
                 </div>
               </label>
@@ -1065,6 +1079,30 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 id="translation-prompt"
                 aria-labelledby="translation-prompt"
               />
+            </div>
+        )}
+
+        {!isNativeTranslationVendor(vendor) && (
+            <div className={s.promptContainer}>
+              <label className={s.label} htmlFor="llm-glossary">
+                Glossary
+              </label>
+              <ReactTextareaAutosize
+                className={s.textarea}
+                minRows={3}
+                placeholder={'en,de,checkout,Kasse\nen,*,DatoCMS,DatoCMS'}
+                value={llmGlossary}
+                onChange={(e) => setLlmGlossary(e.target.value)}
+                id="llm-glossary"
+                spellCheck={false}
+              />
+              <div className={s.hint}>
+                One term per line: <code>fromLocale,toLocale,source term,target term</code>.
+                Use <code>*</code> for any locale and quotes around terms that contain commas.
+                Each request includes only the terms found in the text to translate, through
+                the <code>&#123;glossary&#125;</code> placeholder (or at the end of the prompt
+                when the placeholder is missing).
+              </div>
             </div>
         )}
 
@@ -1194,6 +1232,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 setTranslateWholeRecord(true);
                 setTranslateBulkRecords(true);
                 setPrompt(defaultPrompt);
+                setLlmGlossary('');
                 setModelsToBeExcluded([]);
                 setRolesToBeExcluded([]);
                 setApiKeysToBeExcluded([]);
@@ -1237,6 +1276,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                       translateWholeRecord,
                       translateBulkRecords,
                       prompt,
+                      llmGlossary,
                       modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
                       rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
                       apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,

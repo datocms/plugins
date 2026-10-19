@@ -13,6 +13,7 @@ export interface FeatureToggleState {
   translateWholeRecord: boolean;
   translateBulkRecords: boolean;
   prompt: string;
+  llmGlossary: string;
   enableDebugging: boolean;
 }
 
@@ -21,6 +22,7 @@ export interface FeatureToggleActions {
   setTranslateWholeRecord: (value: boolean) => void;
   setTranslateBulkRecords: (value: boolean) => void;
   setPrompt: (prompt: string) => void;
+  setLlmGlossary: (glossary: string) => void;
   setEnableDebugging: (value: boolean) => void;
   resetToDefaults: () => void;
 }
@@ -53,6 +55,10 @@ export function useFeatureToggles(
 
   const [prompt, setPrompt] = useState(pluginParams.prompt ?? defaultPrompt);
 
+  const [llmGlossary, setLlmGlossary] = useState(
+    pluginParams.llmGlossary ?? '',
+  );
+
   const [enableDebugging, setEnableDebugging] = useState<boolean>(
     typeof pluginParams.enableDebugging === 'boolean'
       ? pluginParams.enableDebugging
@@ -64,6 +70,7 @@ export function useFeatureToggles(
     translateWholeRecord,
     translateBulkRecords,
     prompt,
+    llmGlossary,
     enableDebugging,
   };
 
@@ -81,12 +88,14 @@ export function useFeatureToggles(
       [],
     ),
     setPrompt: useCallback((p: string) => setPrompt(p), []),
+    setLlmGlossary: useCallback((g: string) => setLlmGlossary(g), []),
     setEnableDebugging: useCallback((v: boolean) => setEnableDebugging(v), []),
     resetToDefaults: useCallback(() => {
       setTranslationFields(Object.keys(translateFieldTypes));
       setTranslateWholeRecord(true);
       setTranslateBulkRecords(true);
       setPrompt(defaultPrompt);
+      setLlmGlossary('');
     }, [defaultPrompt]),
   };
 
@@ -104,6 +113,7 @@ export function getFeatureToggleParams(
     translateWholeRecord: state.translateWholeRecord,
     translateBulkRecords: state.translateBulkRecords,
     prompt: state.prompt,
+    llmGlossary: state.llmGlossary,
     enableDebugging: state.enableDebugging,
   };
 }
