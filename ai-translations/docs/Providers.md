@@ -62,7 +62,7 @@ en,*,DatoCMS,DatoCMS
 - In HTML fields, the plugin matches the visible text: it ignores tags and reads entities such as `&amp;` as `&`.
 - Each request holds at most about 4 KB of glossary terms. Terms beyond that are left out, and debug logging shows a warning.
 
-Each request includes only the terms found in its text, so a large glossary doesn't inflate every prompt. The terms replace `{glossary}` in the prompt. If your prompt has no `{glossary}`, the plugin adds the terms at the end of it. If you never changed the prompt, the plugin upgrades it to the new default with `{glossary}` included.
+Each request includes only the terms found in its text, so a large glossary doesn't inflate every prompt. The terms replace `{glossary}` in the prompt. If your prompt has no `{glossary}`, the plugin adds the terms at the end of it. If you never changed the prompt, the plugin uses the new default, which includes `{glossary}`.
 
 ## Yandex Translate
 
