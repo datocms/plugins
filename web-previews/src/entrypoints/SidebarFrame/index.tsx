@@ -15,7 +15,10 @@ import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
 import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
 import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
-import { ViewportSelector } from '../../components/Browser/ViewportSelector';
+import {
+  useEffectiveViewport,
+  ViewportSelector,
+} from '../../components/Browser/ViewportSelector';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
 import {
@@ -83,16 +86,10 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     height: 600,
   });
 
-  const [currentViewport, setCurrentViewport] = useState<
+  const [chosenViewport, setChosenViewport] = useState<
     Viewport | 'responsive' | 'custom'
   >('responsive');
-
-  const handleViewportChange = useCallback(
-    (viewport: Viewport | 'responsive' | 'custom') => {
-      setCurrentViewport(viewport);
-    },
-    [],
-  );
+  const currentViewport = useEffectiveViewport(chosenViewport);
 
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
 
@@ -212,7 +209,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                 <ViewportSelector
                   menuAlignment="right"
                   currentViewport={currentViewport}
-                  onChange={handleViewportChange}
+                  onChange={setChosenViewport}
                 />
                 <ToolbarSlot withLeftBorder withPadding={8}>
                   <ButtonGroup>
