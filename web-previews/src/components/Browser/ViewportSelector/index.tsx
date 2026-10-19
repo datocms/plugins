@@ -12,7 +12,6 @@ import {
   DropdownOption,
   useCtx,
 } from 'datocms-react-ui';
-import { useEffect } from 'react';
 import { useWindowSize } from 'usehooks-ts';
 import {
   normalizeParameters,
@@ -28,6 +27,22 @@ import styles from './styles.module.css';
  */
 const MIN_FRAME_WIDTH = 600;
 
+/** Whether the frame is too narrow for the viewport selector */
+function useIsViewportSelectorHidden() {
+  const { width } = useWindowSize();
+  return width < MIN_FRAME_WIDTH;
+}
+
+/**
+ * The viewport to render: "Fit" while the selector is hidden, else the
+ * chosen one. Callers keep the choice, so it returns when the frame widens.
+ */
+export function useEffectiveViewport(
+  chosenViewport: Viewport | 'responsive' | 'custom',
+) {
+  return useIsViewportSelectorHidden() ? 'responsive' : chosenViewport;
+}
+
 interface ViewportSelectorProps {
   menuAlignment: 'left' | 'right';
   currentViewport: Viewport | 'responsive' | 'custom';
@@ -39,15 +54,7 @@ export function ViewportSelector({
   currentViewport,
   onChange,
 }: ViewportSelectorProps) {
-  const { width } = useWindowSize();
-  const hidden = width < MIN_FRAME_WIDTH;
-
-  useEffect(() => {
-    if (hidden && currentViewport !== 'responsive') {
-      onChange('responsive');
-    }
-  }, [hidden, currentViewport, onChange]);
-
+  const hidden = useIsViewportSelectorHidden();
   const ctx = useCtx<RenderItemFormSidebarCtx>();
 
   const { defaultViewports } = normalizeParameters(

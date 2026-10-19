@@ -12,7 +12,10 @@ import { ToolbarButton } from '../../../components/Browser/Toolbar/ToolbarButton
 import { ToolbarSlot } from '../../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
-import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
+import {
+  useEffectiveViewport,
+  ViewportSelector,
+} from '../../../components/Browser/ViewportSelector';
 import {
   type Frontend,
   getVisualEditingFrontends,
@@ -83,16 +86,10 @@ const UI: React.FC = () => {
     height: 600,
   });
 
-  const [currentViewport, setCurrentViewport] = useState<
+  const [chosenViewport, setChosenViewport] = useState<
     Viewport | 'responsive' | 'custom'
   >('responsive');
-
-  const handleViewportChange = useCallback(
-    (viewport: Viewport | 'responsive' | 'custom') => {
-      setCurrentViewport(viewport);
-    },
-    [],
-  );
+  const currentViewport = useEffectiveViewport(chosenViewport);
 
   const handleRefresh = useCallback(() => {
     reloadIframe();
@@ -192,7 +189,7 @@ const UI: React.FC = () => {
         <ViewportSelector
           menuAlignment="right"
           currentViewport={currentViewport}
-          onChange={handleViewportChange}
+          onChange={setChosenViewport}
         />
         <ToolbarSlot withLeftBorder>
           <EditModeToggle
