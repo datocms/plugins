@@ -4869,6 +4869,10 @@ interface AnthropicLoopState {
 const OUTPUT_LIMIT_RECOVERY_INSTRUCTION =
   'Your previous response reached the output limit and was discarded before any of its tool calls ran, so nothing from it changed the project. Continue the same task in smaller steps: keep reasoning brief, and split large writes into several smaller scripts (for example two or three records per script), each reviewed separately.';
 
+/** Editor-visible label appended after a reply discarded at the output limit. */
+export const DISCARDED_RESPONSE_NOTICE =
+  '_The reply above hit the output limit and was discarded. Nothing in it ran and no project content changed. Retrying in smaller steps…_';
+
 function appendAnthropicUserText(messages: MessageParam[], text: string): void {
   const last = messages.at(-1);
   if (last?.role !== 'user') {
@@ -6139,11 +6143,14 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         ) {
           state.outputLimitRecoveryUsed = true;
           if (summary.text) {
-            state.accumulatedText += `${summary.text}\n\n`;
+            // The discarded text already streamed to the editor; label it so
+            // it does not read as a claim about work that ran.
+            const notice = `\n\n${DISCARDED_RESPONSE_NOTICE}\n\n`;
+            state.accumulatedText += `${summary.text}${notice}`;
             yield {
               type: 'text_delta',
               responseId: summary.message.id,
-              delta: '\n\n',
+              delta: notice,
             };
           }
           appendAnthropicUserText(
