@@ -74,4 +74,40 @@ describe('secretRedaction', () => {
       'Authorization: Basic [redacted] trailing',
     );
   });
+
+  it('redacts quoted values across newlines up to the closing quote', () => {
+    expect(
+      redactSecrets(
+        'password: "-----BEGIN KEY-----\nMIIabc\n-----END KEY-----" next',
+      ),
+    ).toBe('password: "[redacted]" next');
+  });
+
+  it('redacts every word before an already redacted token', () => {
+    expect(redactSecrets('password: hunter2 sk-abcdefghijklmnopqrst')).toBe(
+      'password: [redacted] [redacted]',
+    );
+  });
+
+  it('never treats a value on the next line as the secret', () => {
+    expect(redactSecrets('token:\nnext: 1')).toBe('token:\nnext: 1');
+  });
+
+  it('redacts values in double-encoded JSON', () => {
+    expect(redactSecrets('{\\"api_key\\":\\"abc\\",\\"x\\":1}')).toBe(
+      '{\\"api_key\\":\\"[redacted]\\",\\"x\\":1}',
+    );
+  });
+
+  it.each([
+    ['whitespace after a key', `token:${' '.repeat(100_000)}`],
+    ['whitespace after authorization', `authorization:${' '.repeat(100_000)}`],
+    ['many bare values on one line', 'token: a '.repeat(30_000)],
+    ['many unterminated quotes', 'password:"x '.repeat(30_000)],
+    ['many unknown auth values', 'authorization: [redacted] '.repeat(10_000)],
+  ])('stays linear-time on %s', (_label, input) => {
+    const startedAt = performance.now();
+    redactSecrets(input);
+    expect(performance.now() - startedAt).toBeLessThan(50);
+  });
 });
