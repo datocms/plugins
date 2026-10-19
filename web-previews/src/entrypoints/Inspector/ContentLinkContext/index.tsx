@@ -88,18 +88,27 @@ const PING_TIMEOUT_MS = 25_000;
  */
 function useForwardAltToPreview(
   methods: AsyncMethodReturns<ContentLinkMethods> | undefined,
-  preferred: boolean | undefined,
+  clickToEditEnabled: boolean | undefined,
 ) {
+  // A ref, so state reports mid-hold don't resubscribe and drop the hold
+  const currentRef = useRef(clickToEditEnabled);
+  currentRef.current = clickToEditEnabled;
+
   useEffect(() => {
-    if (!methods || preferred === undefined) {
+    if (!methods) {
       return;
     }
 
-    let isFlipped = false;
+    let flippedFrom: boolean | undefined;
 
     const handle = (event: AltFlipEvent) => {
-      const step = nextAltFlip(isFlipped, event, preferred);
-      isFlipped = step.isFlipped;
+      const current = currentRef.current;
+      if (current === undefined) {
+        return;
+      }
+
+      const step = nextAltFlip(flippedFrom, event, current);
+      flippedFrom = step.flippedFrom;
 
       if (step.setClickToEditEnabled === undefined) {
         return;
@@ -130,7 +139,7 @@ function useForwardAltToPreview(
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [methods, preferred]);
+  }, [methods]);
 }
 
 export function ContentLinkContextProvider({ children, frontend }: Props) {
@@ -178,26 +187,15 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   }));
   const lastVisitedPathRef = useRef(iframeState.path);
 
-  // The click-to-edit state the editor chose. Content Link reports Alt flips
-  // as plain state changes, so a mismatch with this means Alt is held.
-  // Undefined until the page reports its initial state.
-  const [preferredClickToEdit, setPreferredClickToEdit] = useState<
-    boolean | undefined
-  >(undefined);
+  // The click-to-edit state the editor chose: on by default, kept across
+  // reloads. Content Link reports Alt flips as plain state changes, so a
+  // mismatch with this means Alt is held.
+  const [preferredClickToEdit, setPreferredClickToEdit] = useState(true);
+  const preferredClickToEditRef = useRef(preferredClickToEdit);
+  preferredClickToEditRef.current = preferredClickToEdit;
 
   const { iframeRef, connection } = useContentLinkConnection({
     onInit: () => {
-      setPreferredClickToEdit(
-        connection.type === 'connected' ? true : undefined,
-      );
-
-      if (connection.type === 'connected') {
-        connection.methods.setClickToEditEnabled({
-          enabled: true,
-          flash: { scrollToNearestTarget: false },
-        });
-      }
-
       return {
         editUrlRegExp: {
           source: editUrlRegExp.source,
@@ -207,9 +205,6 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     },
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);
-      setPreferredClickToEdit(
-        (preferred) => preferred ?? rest.clickToEditEnabled,
-      );
 
       const currentEnvItems = itemIdsPerEnvironment[currentEnvironmentId] ?? [];
       const safePath = normalizePathForVisualEditing({
@@ -261,9 +256,26 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     },
   });
 
+  // Every (re)loaded page starts from its own default: apply the editor's
+  // choice once per connection. onInit can't, as it runs before `connection`
+  // reports the new page.
+  useEffect(() => {
+    if (connection.type !== 'connected') {
+      return;
+    }
+
+    connection.methods
+      .setClickToEditEnabled(
+        preferredClickToEditRef.current
+          ? { enabled: true, flash: { scrollToNearestTarget: false } }
+          : { enabled: false },
+      )
+      .catch(() => {});
+  }, [connection]);
+
   useForwardAltToPreview(
     connection.type === 'connected' ? connection.methods : undefined,
-    preferredClickToEdit,
+    contentLinkState?.clickToEditEnabled,
   );
 
   useEffect(() => {
@@ -412,7 +424,6 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
                 state: contentLinkState,
                 methods: connection.methods,
                 clickToEditTemporary:
-                  preferredClickToEdit !== undefined &&
                   contentLinkState.clickToEditEnabled !== preferredClickToEdit,
               },
   };
