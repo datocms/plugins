@@ -14,7 +14,9 @@ You can apply this plugin to every type of field.
 If you leave the locale list empty, the add-on disables the field in all locales.
 Fields that use the add-on from older versions keep this behaviour.
 
-The add-on ignores the locale list on non-localized fields and always disables them.
+Fields inside blocks follow the locale of their localized parent field
+(Modular Content, Structured Text or single block). The add-on ignores the
+locale list on fields with no locale context and always disables them.
 
 ## Limitations
 
