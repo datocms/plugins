@@ -3,17 +3,18 @@ export const REDACTED_MARKER = '[redacted]';
 
 const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
 const PROVIDER_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
-// The key may sit inside quotes, including JSON-escaped quotes (`\"api_key\"`)
-// from double-encoded payloads. The separator allows any whitespace except a
-// line break (NBSP and ideographic spaces included).
+// Only the key and separator are matched; quotes around the key (at any JSON
+// encoding depth) need no leading match. The separator allows any whitespace
+// except a line break (NBSP and ideographic spaces included).
 const SECRET_KEY_PATTERN =
-  /(?:\\?["'])?(api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)(?:\\?["'])?[^\S\r\n]*[:=][^\S\r\n]*/gi;
+  /(api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)(?:\\*["'])?[^\S\r\n]*[:=][^\S\r\n]*/gi;
 const AUTHORIZATION_SCHEME_PATTERN =
   /^(?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)[^\S\r\n]+/i;
 // `&` ends a bare value so URL query siblings survive.
 const BARE_VALUE_PATTERN = /^[^"',\s}\]&]+/;
-
-const BRACKET_MEMO_KEY = '{[';
+// A quote preceded by any backslash run: `"`, `\"`, `\\\"`, … (one per JSON
+// encoding level).
+const OPENING_DELIMITER_PATTERN = /\\*["']/y;
 
 /** Where a secret value starts and ends, and what replaces it. */
 interface ValueSpan {
@@ -21,70 +22,59 @@ interface ValueSpan {
   replacement: string;
 }
 
+/** Per-input state shared by every value lookup in one redaction pass. */
+interface ScanContext {
+  text: string;
+  /** Index of the next line break at or after `from`, or the input length. */
+  lineEnd: (from: number) => number;
+  /** Index after the bracket that balances the one at `open`, if any. */
+  bracketEnd: (open: number) => number | undefined;
+  /** Delimiter → earliest content start known to have no closer after it. */
+  missingCloser: Map<string, number>;
+}
+
 /**
- * Finds the closing JSON-escaped quote (`\"`) of a double-encoded value.
- * Decoding once turns each raw `\\` pair into one backslash, so a candidate
- * closes the value only when the raw backslash run before it has a length
- * divisible by four. A run of two (`\\\"`) is an escaped quote inside it.
+ * Finds the closing delimiter of a quoted value at any JSON encoding depth.
+ * A delimiter of `r` backslashes plus a quote closes the value only when the
+ * whole backslash run before that quote has length `T` with
+ * `T % (2 * (r + 1)) === r`. Depth 0 (`"`) needs an even run, depth 1 (`\"`)
+ * a run of 1, 5, 9…, depth 2 (`\\\"`) a run of 3, 11…; other runs are escaped
+ * quotes inside the value. Newlines are allowed (PEM keys span lines).
  *
- * @returns The index of the closing delimiter, or -1 when the input has none.
+ * @returns The index where the closing delimiter starts, or -1 when none.
  */
-const findClosingEscapedQuote = (
+const findClosingDelimiter = (
   text: string,
   from: number,
   delimiter: string,
 ): number => {
+  const quote = delimiter.charAt(delimiter.length - 1);
+  const runLength = delimiter.length - 1;
+  const modulus = 2 * (runLength + 1);
   for (
-    let index = text.indexOf(delimiter, from);
+    let index = text.indexOf(quote, from);
     index !== -1;
-    index = text.indexOf(delimiter, index + 1)
+    index = text.indexOf(quote, index + 1)
   ) {
-    let precedingBackslashes = 0;
+    let backslashes = 0;
     while (
-      index - precedingBackslashes - 1 >= from &&
-      text[index - precedingBackslashes - 1] === '\\'
+      index - backslashes > from &&
+      text[index - backslashes - 1] === '\\'
     ) {
-      precedingBackslashes += 1;
+      backslashes += 1;
     }
-    if (precedingBackslashes % 4 === 0) {
-      return index;
-    }
-  }
-  return -1;
-};
-
-/**
- * Finds the closing quote of a quoted value, honouring backslash escapes and
- * allowing newlines (PEM keys in YAML/JS strings span lines).
- *
- * @returns The index of the closing quote, or -1 when the input has none.
- */
-const findClosingQuote = (
-  text: string,
-  from: number,
-  quote: string,
-): number => {
-  for (let index = from; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '\\') {
-      index += 1;
-    } else if (character === quote) {
-      return index;
+    if (backslashes % modulus === runLength) {
+      return index - runLength;
     }
   }
   return -1;
 };
-
-/** Returns the index of the next line break at or after `from`, or the input length. */
-type LineEndFinder = (from: number) => number;
 
 /**
  * Builds a line-end lookup that caches the last break found, so scanning many
  * values on one long line stays linear-time.
- *
- * @param text - Whole input.
  */
-const createLineEndFinder = (text: string): LineEndFinder => {
+const createLineEndFinder = (text: string): ScanContext['lineEnd'] => {
   let cachedFrom = -1;
   let cachedEnd = -1;
   return (from) => {
@@ -99,6 +89,67 @@ const createLineEndFinder = (text: string): LineEndFinder => {
 };
 
 /**
+ * Updates the quote state for one character: opens on a quote, closes on the
+ * matching quote, and resets at a line break.
+ */
+const nextQuoteState = (
+  quote: string | undefined,
+  character: string,
+): string | undefined => {
+  if (character === '\n' || character === '\r') {
+    return undefined;
+  }
+  if (!quote) {
+    return character;
+  }
+  return character === quote ? undefined : quote;
+};
+
+/**
+ * Matches every bracket in one stack pass. Brackets inside quoted strings are
+ * ignored; quote state resets at each line break, so a stray apostrophe or an
+ * unterminated quote only affects its own line.
+ *
+ * @returns A map from each balanced opening bracket to the index after its
+ *   closing bracket.
+ */
+const matchBrackets = (text: string): Map<number, number> => {
+  const ends = new Map<number, number>();
+  const openings: number[] = [];
+  let quote: string | undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\\') {
+      index += 1;
+    } else if (quote || character === '"' || character === "'") {
+      quote = nextQuoteState(quote, character);
+    } else if (character === '{' || character === '[') {
+      openings.push(index);
+    } else if (character === '}' || character === ']') {
+      const open = openings.pop();
+      if (open !== undefined) {
+        ends.set(open, index + 1);
+      }
+    }
+  }
+  return ends;
+};
+
+/** Creates the per-input scan state; the bracket table is built on demand. */
+const createScanContext = (text: string): ScanContext => {
+  let brackets: Map<number, number> | undefined;
+  return {
+    text,
+    lineEnd: createLineEndFinder(text),
+    bracketEnd: (open) => {
+      brackets ??= matchBrackets(text);
+      return brackets.get(open);
+    },
+    missingCloser: new Map(),
+  };
+};
+
+/**
  * Redacts the inside of a quoted or line-delimited value. Authorization
  * values keep a known scheme name, e.g. `Digest [redacted]`.
  */
@@ -109,45 +160,36 @@ const redactContent = (content: string, isAuthorization: boolean): string => {
   return `${scheme ?? ''}${REDACTED_MARKER}`;
 };
 
-/** The opening quote of a value: `"`, `'`, or a JSON-escaped `\"` / `\'`. */
+/** The opening delimiter of a value: a quote after any backslash run. */
 const openingDelimiter = (text: string, start: number): string | undefined => {
-  const head = text.slice(start, start + 2);
-  if (head === '\\"' || head === "\\'") {
-    return head;
-  }
-  return head.startsWith('"') || head.startsWith("'") ? head[0] : undefined;
+  OPENING_DELIMITER_PATTERN.lastIndex = start;
+  return OPENING_DELIMITER_PATTERN.exec(text)?.[0];
 };
 
 /**
  * Spans a quoted value through its closing delimiter, or through the end of
  * the line when truncation cut the closer off.
- *
- * @param missingCloser - Per-call memo of delimiters with no closer left, so
- *   repeated unterminated quotes stay linear-time.
  */
 const quotedValueSpan = (
-  text: string,
+  context: ScanContext,
   start: number,
   delimiter: string,
   isAuthorization: boolean,
-  missingCloser: Map<string, number>,
-  lineEnd: LineEndFinder,
 ): ValueSpan => {
+  const { text, missingCloser } = context;
   const contentStart = start + delimiter.length;
   const knownMissing = missingCloser.get(delimiter);
   let closer = -1;
+  // An unterminated delimiter stays unterminated for every later start.
   if (knownMissing === undefined || contentStart < knownMissing) {
-    closer =
-      delimiter.length === 2
-        ? findClosingEscapedQuote(text, contentStart, delimiter)
-        : findClosingQuote(text, contentStart, delimiter);
+    closer = findClosingDelimiter(text, contentStart, delimiter);
     if (closer === -1) {
       missingCloser.set(delimiter, contentStart);
     }
   }
 
   const isTerminated = closer !== -1;
-  const contentEnd = isTerminated ? closer : lineEnd(contentStart);
+  const contentEnd = isTerminated ? closer : context.lineEnd(contentStart);
   const content = redactContent(
     text.slice(contentStart, contentEnd),
     isAuthorization,
@@ -158,64 +200,14 @@ const quotedValueSpan = (
   };
 };
 
-const BRACKET_DEPTH: Readonly<Record<string, number>> = {
-  '{': 1,
-  '[': 1,
-  '}': -1,
-  ']': -1,
-};
-
 /**
- * Finds the end of the bracket group opening at `start`, skipping quoted
- * strings and escaped characters.
- *
- * @returns The index after the balancing bracket, or -1 when unbalanced.
+ * Spans a `{…}` / `[…]` value through its balancing bracket. Unbalanced
+ * input falls back to the end of the line.
  */
-const findBalancedBracketEnd = (text: string, start: number): number => {
-  let depth = 0;
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '"' || character === "'") {
-      index = findClosingQuote(text, index + 1, character);
-      if (index === -1) {
-        return -1;
-      }
-    } else if (character === '\\') {
-      index += 1;
-    } else {
-      depth += BRACKET_DEPTH[character] ?? 0;
-      if (depth === 0) {
-        return index + 1;
-      }
-    }
-  }
-  return -1;
-};
-
-/**
- * Spans a `{…}` / `[…]` value through its balanced closing bracket, skipping
- * brackets inside quoted strings. Unbalanced input falls back to the end of
- * the line.
- *
- * @param missingCloser - Shared memo; once a scan from some index finds no
- *   balance, later starts skip straight to the fallback (keeps linear time).
- */
-const bracketValueSpan = (
-  text: string,
-  start: number,
-  missingCloser: Map<string, number>,
-  lineEnd: LineEndFinder,
-): ValueSpan => {
-  const knownMissing = missingCloser.get(BRACKET_MEMO_KEY);
-  if (knownMissing === undefined || start < knownMissing) {
-    const end = findBalancedBracketEnd(text, start);
-    if (end !== -1) {
-      return { end, replacement: REDACTED_MARKER };
-    }
-    missingCloser.set(BRACKET_MEMO_KEY, start);
-  }
-  return { end: lineEnd(start), replacement: REDACTED_MARKER };
-};
+const bracketValueSpan = (context: ScanContext, start: number): ValueSpan => ({
+  end: context.bracketEnd(start) ?? context.lineEnd(start),
+  replacement: REDACTED_MARKER,
+});
 
 /**
  * Spans an unquoted value. Authorization keeps a known scheme and redacts
@@ -225,12 +217,11 @@ const bracketValueSpan = (
  * @returns `undefined` when the value is empty or already redacted.
  */
 const bareValueSpan = (
-  text: string,
+  context: ScanContext,
   start: number,
   isAuthorization: boolean,
-  lineEnd: LineEndFinder,
 ): ValueSpan | undefined => {
-  const tail = text.slice(start, lineEnd(start));
+  const tail = context.text.slice(start, context.lineEnd(start));
   const scheme = isAuthorization
     ? (AUTHORIZATION_SCHEME_PATTERN.exec(tail)?.[0] ?? '')
     : '';
@@ -251,6 +242,24 @@ const bareValueSpan = (
     : undefined;
 };
 
+/** Picks the span strategy for the value starting at `start`. */
+const valueSpan = (
+  context: ScanContext,
+  start: number,
+  isAuthorization: boolean,
+): ValueSpan | undefined => {
+  const delimiter = openingDelimiter(context.text, start);
+  if (delimiter) {
+    return quotedValueSpan(context, start, delimiter, isAuthorization);
+  }
+  const isBracketed =
+    /[{[]/.test(context.text.charAt(start)) &&
+    !context.text.startsWith(REDACTED_MARKER, start);
+  return isBracketed
+    ? bracketValueSpan(context, start)
+    : bareValueSpan(context, start, isAuthorization);
+};
+
 /**
  * Redacts `key: value` / `key=value` secrets in one left-to-right pass.
  *
@@ -259,30 +268,17 @@ const bareValueSpan = (
  */
 const redactKeyValueSecrets = (text: string): string => {
   const pattern = new RegExp(SECRET_KEY_PATTERN);
-  const missingCloser = new Map<string, number>();
-  const lineEnd = createLineEndFinder(text);
+  const context = createScanContext(text);
   let output = '';
   let copiedUntil = 0;
 
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const valueStart = match.index + match[0].length;
-    const isAuthorization = match[1].toLowerCase() === 'authorization';
-    const delimiter = openingDelimiter(text, valueStart);
-    const isBracketed =
-      /[{[]/.test(text.charAt(valueStart)) &&
-      !text.startsWith(REDACTED_MARKER, valueStart);
-    const span = delimiter
-      ? quotedValueSpan(
-          text,
-          valueStart,
-          delimiter,
-          isAuthorization,
-          missingCloser,
-          lineEnd,
-        )
-      : isBracketed
-        ? bracketValueSpan(text, valueStart, missingCloser, lineEnd)
-        : bareValueSpan(text, valueStart, isAuthorization, lineEnd);
+    const span = valueSpan(
+      context,
+      valueStart,
+      match[1].toLowerCase() === 'authorization',
+    );
     if (span) {
       output += text.slice(copiedUntil, valueStart) + span.replacement;
       copiedUntil = span.end;
