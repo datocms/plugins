@@ -36,7 +36,7 @@ const FieldConfigScreen = ({ ctx }: PropTypes) => {
           id="disabledLocales"
           name="disabledLocales"
           label="Disable only in these locales"
-          hint="Leave empty to disable the field in all locales. Non-localized fields are always disabled."
+          hint="Leave empty to disable the field in all locales. Fields outside any localized context (neither localized nor inside a localized block field) are always disabled."
           value={options.filter((option) =>
             disabledLocales.includes(option.value),
           )}

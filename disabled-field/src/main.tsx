@@ -88,11 +88,12 @@ connect({
     }
 
     if (
-      shouldDisableField(
-        normalizeDisabledLocales(ctx.parameters),
-        ctx.locale,
-        ctx.field.attributes.localized,
-      )
+      shouldDisableField(normalizeDisabledLocales(ctx.parameters), {
+        locale: ctx.locale,
+        isLocalized: ctx.field.attributes.localized,
+        fieldPath: ctx.fieldPath,
+        siteLocales: ctx.site.attributes.locales,
+      })
     ) {
       ctx.disableField(ctx.fieldPath, true);
     }
