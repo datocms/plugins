@@ -1,7 +1,9 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type {
   RenderInspectorCtx,
   RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
+import { projectAdminUrl, recordEditorPath } from './projectUrl';
 
 export type RecordTarget = {
   itemId: string;
@@ -26,12 +28,93 @@ export type OpenAssetResult = {
   title?: string;
 };
 
+export type FullEditorResult = {
+  opened: boolean;
+  url: string;
+};
+
+type FullEditorCtx = {
+  site: { attributes: { internal_domain: string | null | undefined } };
+  environment: string;
+  isEnvironmentPrimary: boolean;
+  currentUserAccessToken: string | null | undefined;
+  cmaBaseUrl: string;
+};
+
 export type AgentNavigator = {
   readonly supportsRecordList: boolean;
   openRecord(target: RecordTarget): Promise<void>;
   showRecords(target: RecordListTarget): Promise<void>;
   openAsset(target: AssetTarget): Promise<OpenAssetResult>;
+  openRecordInFullEditor(target: RecordTarget): Promise<FullEditorResult>;
 };
+
+async function resolveRecordItemTypeId(
+  ctx: FullEditorCtx,
+  itemId: string,
+): Promise<string> {
+  if (!ctx.currentUserAccessToken) {
+    throw new Error(
+      'Sign in to DatoCMS before opening a record in the full editor.',
+    );
+  }
+
+  const item = await buildClient({
+    apiToken: ctx.currentUserAccessToken,
+    environment: ctx.environment,
+    baseUrl: ctx.cmaBaseUrl,
+  }).items.find(itemId);
+  const itemTypeId = item.item_type.id;
+  if (!itemTypeId) {
+    throw new Error('The record model could not be determined.');
+  }
+
+  return itemTypeId;
+}
+
+async function openRecordEditorTab(
+  ctx: FullEditorCtx,
+  target: RecordTarget,
+): Promise<FullEditorResult> {
+  const itemId = target.itemId.trim();
+  if (!itemId) {
+    throw new Error('A record ID is required to open the full editor.');
+  }
+
+  // Open the tab during the click, before any record lookup, so the browser
+  // still treats it as a user action.
+  const popup = window.open('about:blank', '_blank');
+  if (popup) {
+    popup.opener = null;
+  }
+
+  try {
+    const itemTypeId =
+      target.itemTypeId?.trim() || (await resolveRecordItemTypeId(ctx, itemId));
+    const url = projectAdminUrl(
+      {
+        internalDomain: ctx.site.attributes.internal_domain,
+        environment: ctx.environment,
+        isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+      },
+      recordEditorPath(itemTypeId, itemId),
+    );
+    if (!url) {
+      throw new Error(
+        'This project has no admin domain, so the full editor cannot be opened.',
+      );
+    }
+    if (!popup) {
+      return { opened: false, url };
+    }
+
+    popup.location.replace(url);
+    return { opened: true, url };
+  } catch (error) {
+    popup?.close();
+    throw error;
+  }
+}
 
 export function createInspectorNavigator(
   ctx: RenderInspectorCtx,
@@ -70,6 +153,9 @@ export function createInspectorNavigator(
           result && 'deleted' in result && result.deleted === true,
         ),
       };
+    },
+    openRecordInFullEditor(target) {
+      return openRecordEditorTab(ctx, target);
     },
   };
 }
@@ -130,6 +216,9 @@ export function createSidebarNavigator(
           result && 'deleted' in result && result.deleted === true,
         ),
       };
+    },
+    openRecordInFullEditor(target) {
+      return openRecordEditorTab(ctx, target);
     },
   };
 }

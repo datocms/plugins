@@ -1,5 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { buildClient } from '@datocms/cma-client-browser';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInspectorNavigator, createSidebarNavigator } from './navigation';
+
+const findItem = vi.hoisted(() => vi.fn());
+
+vi.mock('@datocms/cma-client-browser', () => ({
+  buildClient: vi.fn(() => ({
+    items: { find: findItem },
+  })),
+}));
 
 describe('createInspectorNavigator', () => {
   it('uses the native record list and editor', async () => {
@@ -441,5 +450,119 @@ describe('createSidebarNavigator', () => {
     expect(ctx.navigateTo).not.toHaveBeenCalled();
     expect(ctx.editItem).toHaveBeenNthCalledWith(1, 'target');
     expect(ctx.editItem).toHaveBeenNthCalledWith(2, 'another');
+  });
+});
+
+describe('openRecordInFullEditor', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    findItem.mockReset();
+  });
+
+  function editorContext() {
+    return {
+      cmaBaseUrl: 'https://site-api.datocms.com',
+      currentUserAccessToken: 'token',
+      environment: 'staging',
+      isEnvironmentPrimary: false,
+      site: { attributes: { internal_domain: 'example.admin.datocms.com' } },
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn(),
+      setInspectorMode: vi.fn(),
+    };
+  }
+
+  it('opens the standard editor for a known model without a record lookup', async () => {
+    const popup = {
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+    const ctx = editorContext();
+
+    await expect(
+      createInspectorNavigator(ctx as never).openRecordInFullEditor({
+        itemId: 'item-1',
+        itemTypeId: 'post',
+      }),
+    ).resolves.toEqual({
+      opened: true,
+      url: 'https://example.admin.datocms.com/environments/staging/editor/item_types/post/items/item-1/edit',
+    });
+
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popup.opener).toBeNull();
+    expect(popup.location.replace).toHaveBeenCalledWith(
+      'https://example.admin.datocms.com/environments/staging/editor/item_types/post/items/item-1/edit',
+    );
+    expect(buildClient).not.toHaveBeenCalled();
+  });
+
+  it('looks up the model when the record link does not include it', async () => {
+    const popup = {
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+    findItem.mockResolvedValue({
+      item_type: { id: 'page', type: 'item_type' },
+    });
+    const ctx = {
+      ...editorContext(),
+      isEnvironmentPrimary: true,
+    };
+
+    await expect(
+      createSidebarNavigator(ctx as never).openRecordInFullEditor({
+        itemId: 'item-2',
+      }),
+    ).resolves.toEqual({
+      opened: true,
+      url: 'https://example.admin.datocms.com/editor/item_types/page/items/item-2/edit',
+    });
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: 'token',
+      environment: 'staging',
+      baseUrl: 'https://site-api.datocms.com',
+    });
+    expect(findItem).toHaveBeenCalledWith('item-2');
+  });
+
+  it('returns the URL when the browser blocks the new tab', async () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+
+    await expect(
+      createInspectorNavigator(editorContext() as never).openRecordInFullEditor(
+        {
+          itemId: 'item-1',
+          itemTypeId: 'post',
+        },
+      ),
+    ).resolves.toEqual({
+      opened: false,
+      url: 'https://example.admin.datocms.com/environments/staging/editor/item_types/post/items/item-1/edit',
+    });
+  });
+
+  it('closes the placeholder tab when the record cannot be resolved', async () => {
+    const popup = {
+      opener: null,
+      location: { replace: vi.fn() },
+      close: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+    findItem.mockRejectedValue(new Error('Not found'));
+
+    await expect(
+      createInspectorNavigator(editorContext() as never).openRecordInFullEditor(
+        {
+          itemId: 'missing',
+        },
+      ),
+    ).rejects.toThrow('Not found');
+    expect(popup.close).toHaveBeenCalledOnce();
+    expect(popup.location.replace).not.toHaveBeenCalled();
   });
 });
