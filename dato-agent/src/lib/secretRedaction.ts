@@ -4,19 +4,54 @@ export const REDACTED_MARKER = '[redacted]';
 const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
 const PROVIDER_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
 // The key may sit inside quotes, including JSON-escaped quotes (`\"api_key\"`)
-// from double-encoded payloads. The separator never crosses a line.
+// from double-encoded payloads. The separator allows any whitespace except a
+// line break (NBSP and ideographic spaces included).
 const SECRET_KEY_PATTERN =
-  /(?:\\?["'])?(api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)(?:\\?["'])?[ \t]*[:=][ \t]*/gi;
+  /(?:\\?["'])?(api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)(?:\\?["'])?[^\S\r\n]*[:=][^\S\r\n]*/gi;
 const AUTHORIZATION_SCHEME_PATTERN =
-  /^(?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)[ \t]+/i;
+  /^(?:Basic|Bearer|Digest|DPoP|Negotiate|NTLM|Token|ApiKey|AWS4-HMAC-SHA256)[^\S\r\n]+/i;
 // `&` ends a bare value so URL query siblings survive.
 const BARE_VALUE_PATTERN = /^[^"',\s}\]&]+/;
+
+const BRACKET_MEMO_KEY = '{[';
 
 /** Where a secret value starts and ends, and what replaces it. */
 interface ValueSpan {
   end: number;
   replacement: string;
 }
+
+/**
+ * Finds the closing JSON-escaped quote (`\"`) of a double-encoded value.
+ * Decoding once turns each raw `\\` pair into one backslash, so a candidate
+ * closes the value only when the raw backslash run before it has a length
+ * divisible by four. A run of two (`\\\"`) is an escaped quote inside it.
+ *
+ * @returns The index of the closing delimiter, or -1 when the input has none.
+ */
+const findClosingEscapedQuote = (
+  text: string,
+  from: number,
+  delimiter: string,
+): number => {
+  for (
+    let index = text.indexOf(delimiter, from);
+    index !== -1;
+    index = text.indexOf(delimiter, index + 1)
+  ) {
+    let precedingBackslashes = 0;
+    while (
+      index - precedingBackslashes - 1 >= from &&
+      text[index - precedingBackslashes - 1] === '\\'
+    ) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 4 === 0) {
+      return index;
+    }
+  }
+  return -1;
+};
 
 /**
  * Finds the closing quote of a quoted value, honouring backslash escapes and
@@ -104,7 +139,7 @@ const quotedValueSpan = (
   if (knownMissing === undefined || contentStart < knownMissing) {
     closer =
       delimiter.length === 2
-        ? text.indexOf(delimiter, contentStart)
+        ? findClosingEscapedQuote(text, contentStart, delimiter)
         : findClosingQuote(text, contentStart, delimiter);
     if (closer === -1) {
       missingCloser.set(delimiter, contentStart);
@@ -121,6 +156,65 @@ const quotedValueSpan = (
     end: isTerminated ? closer + delimiter.length : contentEnd,
     replacement: `${delimiter}${content}${isTerminated ? delimiter : ''}`,
   };
+};
+
+const BRACKET_DEPTH: Readonly<Record<string, number>> = {
+  '{': 1,
+  '[': 1,
+  '}': -1,
+  ']': -1,
+};
+
+/**
+ * Finds the end of the bracket group opening at `start`, skipping quoted
+ * strings and escaped characters.
+ *
+ * @returns The index after the balancing bracket, or -1 when unbalanced.
+ */
+const findBalancedBracketEnd = (text: string, start: number): number => {
+  let depth = 0;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"' || character === "'") {
+      index = findClosingQuote(text, index + 1, character);
+      if (index === -1) {
+        return -1;
+      }
+    } else if (character === '\\') {
+      index += 1;
+    } else {
+      depth += BRACKET_DEPTH[character] ?? 0;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+  return -1;
+};
+
+/**
+ * Spans a `{…}` / `[…]` value through its balanced closing bracket, skipping
+ * brackets inside quoted strings. Unbalanced input falls back to the end of
+ * the line.
+ *
+ * @param missingCloser - Shared memo; once a scan from some index finds no
+ *   balance, later starts skip straight to the fallback (keeps linear time).
+ */
+const bracketValueSpan = (
+  text: string,
+  start: number,
+  missingCloser: Map<string, number>,
+  lineEnd: LineEndFinder,
+): ValueSpan => {
+  const knownMissing = missingCloser.get(BRACKET_MEMO_KEY);
+  if (knownMissing === undefined || start < knownMissing) {
+    const end = findBalancedBracketEnd(text, start);
+    if (end !== -1) {
+      return { end, replacement: REDACTED_MARKER };
+    }
+    missingCloser.set(BRACKET_MEMO_KEY, start);
+  }
+  return { end: lineEnd(start), replacement: REDACTED_MARKER };
 };
 
 /**
@@ -174,6 +268,9 @@ const redactKeyValueSecrets = (text: string): string => {
     const valueStart = match.index + match[0].length;
     const isAuthorization = match[1].toLowerCase() === 'authorization';
     const delimiter = openingDelimiter(text, valueStart);
+    const isBracketed =
+      /[{[]/.test(text.charAt(valueStart)) &&
+      !text.startsWith(REDACTED_MARKER, valueStart);
     const span = delimiter
       ? quotedValueSpan(
           text,
@@ -183,7 +280,9 @@ const redactKeyValueSecrets = (text: string): string => {
           missingCloser,
           lineEnd,
         )
-      : bareValueSpan(text, valueStart, isAuthorization, lineEnd);
+      : isBracketed
+        ? bracketValueSpan(text, valueStart, missingCloser, lineEnd)
+        : bareValueSpan(text, valueStart, isAuthorization, lineEnd);
     if (span) {
       output += text.slice(copiedUntil, valueStart) + span.replacement;
       copiedUntil = span.end;
