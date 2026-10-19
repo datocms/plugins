@@ -212,14 +212,29 @@ export type PreviewLink = {
   realtimeUpdates?: boolean;
 };
 
+/** The endpoint payload, before each link is validated on its own */
 export type Response = {
-  previewLinks: PreviewLink[];
+  previewLinks: unknown[];
 };
 
+/** A link with a string label and an absolute http(s) URL */
 export function isValidPreviewLink(data: unknown): data is PreviewLink {
-  return Boolean(
-    typeof data === 'object' && data && 'label' in data && 'url' in data,
-  );
+  if (
+    typeof data !== 'object' ||
+    !data ||
+    !('label' in data) ||
+    typeof data.label !== 'string' ||
+    !('url' in data) ||
+    typeof data.url !== 'string'
+  ) {
+    return false;
+  }
+
+  try {
+    return ['http:', 'https:'].includes(new URL(data.url).protocol);
+  } catch {
+    return false;
+  }
 }
 
 export function isValidResponse(data: unknown): data is Response {
@@ -241,7 +256,7 @@ export function isValidResponse(data: unknown): data is Response {
     return false;
   }
 
-  return previewLinks.every(isValidPreviewLink);
+  return true;
 }
 
 export function getVisualEditingFrontends(

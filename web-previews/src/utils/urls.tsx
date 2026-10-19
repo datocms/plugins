@@ -4,14 +4,28 @@ import type { BaseCtx } from 'datocms-react-ui';
  * If the preview URL points to the draft-mode route and contains a `redirect`
  * query param, returns the redirect path. Otherwise returns undefined.
  */
+/** `new URL()` that yields undefined instead of throwing on malformed input */
+export function parseUrl(urlString: string): URL | undefined {
+  try {
+    return new URL(urlString);
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractRedirectFromDraftModePreviewUrl(
   urlString: string,
   draftModeUrl: string,
 ): string | undefined {
-  const url = new URL(urlString);
-  const draftMode = new URL(draftModeUrl);
+  const url = parseUrl(urlString);
+  const draftMode = parseUrl(draftModeUrl);
 
-  if (url.origin === draftMode.origin && url.pathname === draftMode.pathname) {
+  if (
+    url &&
+    draftMode &&
+    url.origin === draftMode.origin &&
+    url.pathname === draftMode.pathname
+  ) {
     return url.searchParams.get('redirect') ?? undefined;
   }
 
@@ -23,18 +37,25 @@ export function extractRedirectFromDraftModePreviewUrl(
  * param, as the official starters' draft-mode enable/disable routes do.
  */
 export function extractRedirectPath(urlString: string): string | undefined {
-  const redirect = new URL(urlString).searchParams.get('redirect');
+  const redirect = parseUrl(urlString)?.searchParams.get('redirect');
   return redirect?.startsWith('/') ? redirect : undefined;
 }
 
-/** A short label for a preview link URL, without its `token` parameter. */
+/**
+ * A short label for a preview link URL, without its `token` parameter.
+ * Malformed URLs come back unchanged.
+ */
 export function displayPath(urlString: string): string {
   const redirectPath = extractRedirectPath(urlString);
   if (redirectPath) {
     return redirectPath;
   }
 
-  const url = new URL(urlString);
+  const url = parseUrl(urlString);
+  if (!url) {
+    return urlString;
+  }
+
   url.searchParams.delete('token');
   // Display only: undo the encoding URLSearchParams applies on serialization
   return url.pathname + decodeURIComponent(url.search);
@@ -42,7 +63,12 @@ export function displayPath(urlString: string): string {
 
 /** Like `displayPath()`, prefixed with the host the browser ends up on. */
 export function displayUrl(urlString: string): string {
-  return new URL(urlString).host + displayPath(urlString);
+  return displayHost(urlString) + displayPath(urlString);
+}
+
+/** The URL's host, or an empty string for malformed URLs. */
+export function displayHost(urlString: string): string {
+  return parseUrl(urlString)?.host ?? '';
 }
 
 export function inspectorUrl(

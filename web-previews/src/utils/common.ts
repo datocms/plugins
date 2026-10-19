@@ -11,11 +11,11 @@ import {
 } from 'use-deep-compare';
 import {
   type Frontend,
+  isValidPreviewLink,
   isValidResponse,
   normalizeParameters,
   type Parameters,
   type PreviewLink,
-  type Response,
 } from '../types';
 export type FrontendStatus =
   | { previewLinks: PreviewLink[] }
@@ -57,7 +57,7 @@ export async function makeRequest(
       );
     }
 
-    const response: Response = await request.json();
+    const response: unknown = await request.json();
 
     if (!isValidResponse(response)) {
       throw new Error(
@@ -65,7 +65,16 @@ export async function makeRequest(
       );
     }
 
-    return [frontend.name, { previewLinks: response.previewLinks }];
+    // One malformed link must not hide the others
+    const previewLinks = response.previewLinks.filter(isValidPreviewLink);
+    if (previewLinks.length < response.previewLinks.length) {
+      console.warn(
+        `[Web Previews] API endpoint for frontend "${frontend.name}" returned links without a label or an absolute URL. They were skipped:`,
+        response.previewLinks.filter((link) => !isValidPreviewLink(link)),
+      );
+    }
+
+    return [frontend.name, { previewLinks }];
   } catch (error) {
     return [frontend.name, { error }];
   }
