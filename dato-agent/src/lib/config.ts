@@ -1,3 +1,9 @@
+import {
+  normalizePreviewFrontends,
+  normalizeWebsiteBaseUrl,
+  type PreviewFrontend,
+} from './previewLinks';
+
 export const DEFAULT_MODEL = 'gpt-5.6-terra';
 
 export const AGENT_PROVIDERS = ['openai', 'anthropic'] as const;
@@ -50,6 +56,16 @@ export type AgentConfig = {
   readOnly: boolean;
   enableRecordSidebar: boolean;
   /**
+   * Frontends copied from the Web Previews plugin. Editors who cannot read
+   * that plugin's settings still use this saved copy.
+   */
+  previewFrontends: PreviewFrontend[];
+  /**
+   * Used only when no preview endpoint returns a URL. Combined with a record
+   * slug to produce a full website link.
+   */
+  websiteBaseUrl: string;
+  /**
    * Collaborator roles allowed to use Dato Agent. Project owners are always
    * allowed separately. `null` means this setting has not been configured yet.
    */
@@ -70,6 +86,8 @@ export const DEFAULT_CONFIG: AgentConfig = {
   additionalInstructions: '',
   readOnly: false,
   enableRecordSidebar: true,
+  previewFrontends: [],
+  websiteBaseUrl: '',
   allowedRoleIds: null,
 };
 
@@ -151,6 +169,8 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     typeof source.enableRecordSidebar === 'boolean'
       ? source.enableRecordSidebar
       : DEFAULT_CONFIG.enableRecordSidebar;
+  const previewFrontends = normalizePreviewFrontends(source.previewFrontends);
+  const websiteBaseUrl = normalizeWebsiteBaseUrl(source.websiteBaseUrl);
   const allowedRoleIds = normalizeRoleIds(source.allowedRoleIds);
 
   return {
@@ -167,6 +187,8 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     additionalInstructions,
     readOnly,
     enableRecordSidebar,
+    previewFrontends,
+    websiteBaseUrl,
     allowedRoleIds,
   };
 }

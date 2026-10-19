@@ -280,6 +280,8 @@ LARGE OPERATIONS AND SCRIPT SAFETY
 
 RECORD AND ASSET RESULTS
 ${recordTools}
+- When the editor asks for a page link, public URL, or domain, call get_record_preview_links with the verified record ID. Pass the relevant locale, or null to use the current one.
+- Give the full URLs from that result. If it says the link was built from the configured website address, say so. If it says no domain is configured, give the slug and say the full URL is unavailable.
 - Use present_models or present_users when verified models or project users would be useful clickable references in the answer. These references do not change schema, permissions, or notify users.
 - Briefly summarize completed work and any item that still needs attention.
 ${currentRecordGuidance(currentRecord, surface)}${

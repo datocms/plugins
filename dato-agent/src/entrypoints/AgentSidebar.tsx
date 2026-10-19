@@ -28,6 +28,7 @@ import { createAgentMentionHost } from '../lib/mentionHost';
 import { createSidebarNavigator } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import { usePersistedSidebarWidth } from '../lib/persistedWidth';
+import { getRecordPreviewLinks } from '../lib/previewLinks';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
@@ -487,6 +488,7 @@ function AuthorizedAgentSidebar({ ctx }: Props) {
   const mentionHost = createAgentMentionHost(ctx, {
     currentModelId: ctx.itemType.id,
   });
+  const config = normalizeConfig(ctx.plugin.attributes.parameters);
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
@@ -508,7 +510,7 @@ function AuthorizedAgentSidebar({ ctx }: Props) {
         onMigrationAttempted={onMigrationAttempted}
         navigator={createSidebarNavigator(ctx)}
         mentionHost={mentionHost}
-        config={normalizeConfig(ctx.plugin.attributes.parameters)}
+        config={config}
         loadHostContext={loadHostContext}
         prepareCurrentFieldReferences={prepareCurrentFieldReferences}
         readCurrentRecordLiveFormState={readCurrentRecordLiveFormState}
@@ -516,6 +518,22 @@ function AuthorizedAgentSidebar({ ctx }: Props) {
         getModelSchema={async ({ identifier, cursor }) => ({
           schema: (await schemaResolver(identifier, cursor)).text,
         })}
+        getRecordPreviewLinks={(request, signal) =>
+          getRecordPreviewLinks(
+            {
+              siteId: ctx.site.id,
+              environment: ctx.environment,
+              locale: ctx.locale,
+              cmaBaseUrl: ctx.cmaBaseUrl,
+              accessToken: ctx.currentUserAccessToken,
+              currentUser: ctx.currentUser,
+              savedFrontends: config.previewFrontends,
+              websiteBaseUrl: config.websiteBaseUrl,
+            },
+            request,
+            signal,
+          )
+        }
         onReviewApprovalDetails={(approval) =>
           openApprovalDetailsModal(ctx, approval)
         }
