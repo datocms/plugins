@@ -42,6 +42,12 @@
   font-weight: var(--font-weight-bold);
 }
 
+.summaryValueInvalid {
+  color: var(--color--ink-danger);
+  font-family: var(--monospaced-font-family);
+  font-weight: var(--font-weight-bold);
+}
+
 .summaryLabel {
   color: var(--color--ink-subtle);
 }
