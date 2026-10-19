@@ -73,6 +73,7 @@ import {
   createOAuthCredentials,
   invalidateOAuthToken,
   isOAuthClientRegistrationReusable,
+  OAUTH_CLIENT_REGISTRATION_VERSION,
   type OAuthCredentials,
 } from '../lib/credentials';
 import {
@@ -5573,9 +5574,16 @@ export default function AgentFrame(props: AgentFrameProps) {
         });
       }
     } catch (error) {
-      setOauthError(
-        error instanceof Error ? error.message : 'Token revocation failed.',
-      );
+      // Pre-v3 clients were registered at the retired mcp.datocms.com
+      // endpoints, so oauth.datocms.com is expected to reject their revocation.
+      if (
+        credentials?.client.registrationVersion ===
+        OAUTH_CLIENT_REGISTRATION_VERSION
+      ) {
+        setOauthError(
+          error instanceof Error ? error.message : 'Token revocation failed.',
+        );
+      }
     } finally {
       try {
         oauthStore.clear();

@@ -6587,6 +6587,64 @@ describe('AgentFrame', () => {
     });
   });
 
+  it.each([
+    { registrationVersion: undefined, isErrorShown: false },
+    { registrationVersion: 3 as const, isErrorShown: true },
+  ])(
+    'signs out when revocation fails (registrationVersion $registrationVersion)',
+    async ({ registrationVersion, isErrorShown }) => {
+      const frameProps = props({
+        currentUserId: `revoke-${registrationVersion ?? 'legacy'}-${testUser}`,
+      });
+      const store = createCredentialStore({
+        siteId: frameProps.siteId,
+        currentUserId: frameProps.currentUserId,
+      });
+      store.save(
+        createOAuthCredentials(
+          {
+            clientId: 'revoke-client',
+            clientIdIssuedAt: 1_700_000_000,
+            redirectUri: 'https://example.test/oauth/callback',
+            ...(registrationVersion ? { registrationVersion } : {}),
+          },
+          {
+            accessToken: 'revoke-token',
+            tokenType: 'Bearer',
+            obtainedAt: 1_700_000_000,
+          },
+        ),
+        { remember: true },
+      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response('{}', { status: 401 }));
+
+      render(<AgentFrame {...frameProps} />);
+      await waitFor(() =>
+        expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected'),
+      );
+      await act(async () => {
+        await mocks.surfaceProps?.onDisconnectDatoCms?.();
+      });
+
+      await waitFor(() =>
+        expect(mocks.surfaceProps?.connection.datoCmsStatus).not.toBe(
+          'connected',
+        ),
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://oauth.datocms.com/oauth/revoke',
+        expect.anything(),
+      );
+      expect(store.load()).toBeNull();
+      expect(Boolean(mocks.surfaceProps?.connection.datoCmsError)).toBe(
+        isErrorShown,
+      );
+      fetchSpy.mockRestore();
+    },
+  );
+
   it('copies full failure diagnostics including raw credentials, prompt, context, and tool arguments', async () => {
     const frameProps = props({
       currentUserId: `diagnostics-user-${testUser}`,
