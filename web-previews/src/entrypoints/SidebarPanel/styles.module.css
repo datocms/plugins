@@ -1,52 +1,136 @@
-.previewLink {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: var(--spacing-m);
-  margin-bottom: var(--spacing-m);
-  align-items: center;
-}
-
-.previewLink__body {
+.pages {
   display: flex;
   flex-direction: column;
+  gap: var(--spacing-s);
+  container-type: inline-size;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
-  min-width: 0;
 }
 
-.previewLink__label {
+.page__frontend {
+  max-width: 100%;
   color: var(--color--ink);
-  padding: 0;
-  margin: 0;
-  font-weight: 500;
-}
-
-.previewLink__pathname {
-  color: var(--color--ink-subtle);
-  font-size: 12px;
-  padding: 0;
-  margin: 0;
+  font-weight: bold;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1;
 }
 
-.icon {
-  margin-left: 5px;
+/* Sidebar: the group fills the line, the path taking the spare room */
+.page__main {
+  display: flex;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.page__main > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.actions {
+  min-width: 0;
+}
+
+/* Two classes to beat the ButtonGroup defaults */
+.page__main .page__path {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+  aspect-ratio: auto;
+  height: 28px;
+  padding: 0 var(--spacing-m);
+  color: var(--color--ink-link);
+}
+
+.page__main .page__path:hover {
+  color: var(--color--ink-link);
+}
+
+.page__path:hover .page__pathText {
+  text-decoration: underline;
+}
+
+.page__path svg {
+  flex-shrink: 0;
+  font-size: 0.8em;
+}
+
+.page__pathText {
+  text-decoration: underline;
+}
+
+.page__path svg {
+  flex-shrink: 0;
+  font-size: 0.8em;
+}
+
+.page__pathText {
+  text-decoration: underline;
+}
+
+.page__path svg {
+  flex-shrink: 0;
+  font-size: 0.8em;
+}
+
+.page__pathText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page__main .compactButton {
+  flex-shrink: 0;
+  width: 28px;
+  aspect-ratio: 1;
+  font-size: var(--font-size-xs);
+}
+
+.menuLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menuLink svg {
+  font-size: 0.8em;
+  color: var(--color--ink-subtle);
+}
+
+/* Form width: frontend and path on one line, kept together */
+@container (min-width: 560px) {
+  .page {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--spacing-l);
+  }
+
+  .page__frontend {
+    flex: 0 0 120px;
+  }
+
+  /* Form: the group hugs its content instead of filling the line */
+  .page__main {
+    align-self: auto;
+  }
+
+  .page__main > * {
+    flex: 0 1 auto;
+  }
 }
 
 .group {
-  margin-bottom: var(--spacing-l);
+  margin-bottom: var(--spacing-m);
 }
 
 .group:last-child {
   margin-bottom: 0;
-}
-
-.groupName {
-  text-transform: uppercase;
-  color: var(--color--ink-subtle);
-  font-weight: bold;
-  font-size: var(--font-size-s);
-  margin-bottom: var(--spacing-s);
 }

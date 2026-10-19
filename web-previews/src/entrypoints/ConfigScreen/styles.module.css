@@ -17,6 +17,7 @@
 
 .headerGrid {
   display: flex;
+  align-items: center;
   gap: var(--spacing-m);
 }
 
@@ -59,4 +60,22 @@
   padding-left: var(--spacing-xl);
   margin-left: var(--spacing-m);
   border-left: 4px solid var(--color--border);
+}
+
+.docLinks {
+  margin-top: calc(-1 * var(--spacing-s));
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

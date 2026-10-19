@@ -9,12 +9,19 @@ import styles from './styles.module.css';
 
 interface ButtonGroupProps {
   children: ReactNode;
+  className?: string;
 }
 
-export function ButtonGroup({ children }: ButtonGroupProps) {
+export function ButtonGroup({ children, className }: ButtonGroupProps) {
   return (
     <TooltipDelayGroup delay={200}>
-      <div className={styles.buttonGroup}>{children}</div>
+      <div
+        className={
+          className ? `${styles.buttonGroup} ${className}` : styles.buttonGroup
+        }
+      >
+        {children}
+      </div>
     </TooltipDelayGroup>
   );
 }

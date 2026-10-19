@@ -63,10 +63,7 @@ export function useSidebarContentLink(
   // stays alive when the selected preview is already in draft mode; published
   // previews are reloaded through the draft-mode route before connecting.
   useEffect(() => {
-    if (
-      connection.type !== 'connected' ||
-      clickToEditEnabled === undefined
-    ) {
+    if (connection.type !== 'connected' || clickToEditEnabled === undefined) {
       return;
     }
 

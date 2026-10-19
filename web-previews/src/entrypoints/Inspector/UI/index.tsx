@@ -1,3 +1,4 @@
+import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
 import { createId } from '@paralleldrive/cuid2';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
@@ -7,11 +8,13 @@ import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
 import { IframeContainer } from '../../../components/Browser/IframeContainer';
 import { Toolbar } from '../../../components/Browser/Toolbar';
 import { EditModeToggle } from '../../../components/Browser/Toolbar/EditModeToggle';
+import { ToolbarButton } from '../../../components/Browser/Toolbar/ToolbarButton';
 import { ToolbarSlot } from '../../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
 import {
+  DEFAULT_SIDEBAR_WIDTH,
   type Frontend,
   getVisualEditingFrontends,
   normalizeParameters,
@@ -30,7 +33,7 @@ const UI: React.FC = () => {
   const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-  const { iframeAllowAttribute } = params;
+  const { iframeAllowAttribute, previewLinksSidebar } = params;
   const visualEditingFrontends = getVisualEditingFrontends(params);
 
   const [selectedFrontend, setSelectedFrontend] = useState<Frontend>(() => {
@@ -53,8 +56,14 @@ const UI: React.FC = () => {
   const currentVisualEditing = selectedFrontend.visualEditing;
   const fallbackPath = currentVisualEditing.initialPath || '/';
 
-  const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
-    useContentLink();
+  const {
+    iframeRef,
+    iframeState,
+    setIframeState,
+    reloadIframe,
+    contentLink,
+    setPreferredClickToEdit,
+  } = useContentLink();
 
   const iframeSrc = useMemo(() => {
     const url = new URL(currentVisualEditing.enableDraftModeUrl);
@@ -95,6 +104,7 @@ const UI: React.FC = () => {
       return;
     }
 
+    setPreferredClickToEdit(!contentLink.state.clickToEditEnabled);
     contentLink.methods.setClickToEditEnabled(
       contentLink.state.clickToEditEnabled
         ? {
@@ -144,17 +154,9 @@ const UI: React.FC = () => {
 
   return (
     <BrowserWrapper>
-      <Toolbar>
-        <ToolbarSlot>
-          <ViewportSelector
-            menuAlignment="left"
-            currentViewport={currentViewport}
-            onChange={handleViewportChange}
-          />
-        </ToolbarSlot>
-        <ToolbarSlot flex withLeftBorder withPadding={9}>
+      <Toolbar tall>
+        <ToolbarSlot flex>
           <AddressBar
-            onRefresh={handleRefresh}
             frontend={selectedFrontend}
             frontends={visualEditingFrontends}
             onFrontendChange={(frontend) => {
@@ -183,12 +185,27 @@ const UI: React.FC = () => {
             }}
           />
         </ToolbarSlot>
+        <ToolbarButton
+          icon={faArrowsRotate}
+          tooltip="Refresh the preview"
+          onClick={handleRefresh}
+        />
+        <ViewportSelector
+          menuAlignment="right"
+          minWidth={previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH}
+          currentViewport={currentViewport}
+          onChange={handleViewportChange}
+        />
         <ToolbarSlot withLeftBorder>
           <EditModeToggle
             value={
               contentLink.type !== 'connected'
                 ? false
                 : contentLink.state.clickToEditEnabled
+            }
+            temporary={
+              contentLink.type === 'connected' &&
+              contentLink.clickToEditTemporary
             }
             disabled={contentLink.type !== 'connected'}
             onChange={handleToggleClickToEdit}

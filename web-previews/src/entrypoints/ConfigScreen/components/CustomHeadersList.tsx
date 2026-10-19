@@ -13,53 +13,49 @@ type Props = {
 export function CustomHeadersList({ name, frontendIndex }: Props) {
   return (
     <div>
-      <FormLabel htmlFor="">Custom Headers</FormLabel>
+      <FormLabel htmlFor="">Custom headers sent to the endpoint</FormLabel>
       <FieldArray name={`${name}.customHeaders`}>
         {({ fields }) => (
           <FieldGroup>
             {fields.map((header, headerIndex) => (
-              <div key={header} className={s.deletableItem}>
-                <div className={s.headerGrid}>
-                  <div>
-                    <Field name={`${header}.name`}>
-                      {({ input, meta: { error } }) => (
-                        <TextField
-                          id={`frontend-${frontendIndex}-headers-${headerIndex}-name`}
-                          label="Header"
-                          placeholder="Header"
-                          required
-                          error={error}
-                          {...input}
-                        />
-                      )}
-                    </Field>
-                  </div>
-                  <div>
-                    <Field name={`${header}.value`}>
-                      {({ input, meta: { error } }) => (
-                        <TextField
-                          id={`frontend-${frontendIndex}-headers-${headerIndex}-value`}
-                          label="Value"
-                          placeholder="Value"
-                          required
-                          error={error}
-                          {...input}
-                        />
-                      )}
-                    </Field>
-                  </div>
+              <div key={header} className={s.headerGrid}>
+                <div>
+                  <Field name={`${header}.name`}>
+                    {({ input, meta: { error } }) => (
+                      <TextField
+                        id={`frontend-${frontendIndex}-headers-${headerIndex}-name`}
+                        label="Header"
+                        placeholder="Header"
+                        required
+                        error={error}
+                        {...input}
+                      />
+                    )}
+                  </Field>
                 </div>
-                <div className={s.deletableItemAction}>
-                  <Button
-                    type="button"
-                    buttonType="negative"
-                    buttonSize="s"
-                    leftIcon={<FontAwesomeIcon icon={faTrash} />}
-                    onClick={() => fields.remove(headerIndex)}
-                  >
-                    Remove header
-                  </Button>
+                <div>
+                  <Field name={`${header}.value`}>
+                    {({ input, meta: { error } }) => (
+                      <TextField
+                        id={`frontend-${frontendIndex}-headers-${headerIndex}-value`}
+                        label="Value"
+                        placeholder="Value"
+                        required
+                        error={error}
+                        {...input}
+                      />
+                    )}
+                  </Field>
                 </div>
+                <Button
+                  type="button"
+                  buttonType="negative"
+                  buttonSize="xxs"
+                  onClick={() => fields.remove(headerIndex)}
+                >
+                  <FontAwesomeIcon icon={faTrash} />
+                  <span className={s.visuallyHidden}>Remove header</span>
+                </Button>
               </div>
             ))}
             <Button

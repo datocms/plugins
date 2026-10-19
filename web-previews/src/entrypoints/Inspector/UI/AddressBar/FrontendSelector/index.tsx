@@ -1,3 +1,5 @@
+import { faCaretDown } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { Dropdown, DropdownMenu, DropdownOption } from 'datocms-react-ui';
 import type { Frontend } from '../../../../../types';
 import styles from './styles.module.css';
@@ -18,6 +20,8 @@ export function FrontendSelector({
       renderTrigger={({ onClick }) => (
         <button type="button" onClick={onClick} className={styles.trigger}>
           <span className={styles.label}>{currentFrontend.name}</span>
+          <FontAwesomeIcon icon={faCaretDown} className={styles.icon} />
+          <span className={styles.separator}>·</span>
         </button>
       )}
     >

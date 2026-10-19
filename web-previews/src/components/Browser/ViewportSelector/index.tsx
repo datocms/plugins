@@ -12,6 +12,8 @@ import {
   DropdownOption,
   useCtx,
 } from 'datocms-react-ui';
+import { useEffect } from 'react';
+import { useWindowSize } from 'usehooks-ts';
 import {
   normalizeParameters,
   type Parameters,
@@ -22,20 +24,36 @@ import styles from './styles.module.css';
 
 interface ViewportSelectorProps {
   menuAlignment: 'left' | 'right';
+  /** Hide the selector, falling back to "Fit", when the window is narrower */
+  minWidth?: number;
   currentViewport: Viewport | 'responsive' | 'custom';
   onChange: (viewport: Viewport | 'responsive' | 'custom') => void;
 }
 
 export function ViewportSelector({
   menuAlignment,
+  minWidth = 0,
   currentViewport,
   onChange,
 }: ViewportSelectorProps) {
+  const { width } = useWindowSize();
+  const hidden = width < minWidth;
+
+  useEffect(() => {
+    if (hidden && currentViewport !== 'responsive') {
+      onChange('responsive');
+    }
+  }, [hidden, currentViewport, onChange]);
+
   const ctx = useCtx<RenderItemFormSidebarCtx>();
 
   const { defaultViewports } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
+
+  if (hidden) {
+    return null;
+  }
 
   return (
     <div className={styles.root}>

@@ -1,33 +1,24 @@
+/* Borderless, like the Website preview link selector; a ring only while typing */
 .root {
   flex: 1;
   display: flex;
   align-items: stretch;
-  border: 1px solid var(--color--border);
-  transition: border 0.2s var(--material-ease);
-  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .root:hover {
-  border-color: var(--color--border-hover);
+  background-color: var(--color--surface-muted);
 }
 
 .root:focus-within {
   outline: 0;
-  border-color: var(--color--focus--border);
-  box-shadow: 0 0 0 3px var(--color--focus--outline);
+  background-color: transparent;
+  box-shadow: inset 0 0 0 2px var(--color--focus--border);
 }
 
-.root.error {
-  border-color: var(--color--danger-soft--border);
-}
-
-.root.error:hover {
-  border-color: var(--color--danger-soft--border);
-}
-
+.root.error,
 .root.error:focus-within {
-  border-color: var(--color--danger-soft--border);
-  box-shadow: 0 0 0 3px var(--color--danger-soft--outline);
+  box-shadow: inset 0 0 0 2px var(--color--danger-soft--border);
 }
 
 .controls {
@@ -35,37 +26,23 @@
   align-items: stretch;
 }
 
-.refreshButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  margin: 0;
-  padding: 0 12px;
-  background: var(--color--surface-muted);
-  color: var(--color--ink-subtle);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  font-size: inherit;
-}
-
-.refreshButton:hover {
-  background: var(--color--surface-hover);
-  color: var(--color--ink);
-}
-
 .input {
   display: block;
   box-sizing: border-box;
   flex: 1;
-  padding: 10px;
+  min-width: 0;
+  padding: 12px 15px;
   border: 0;
   appearance: none;
   border-radius: 0;
-  background-image: none;
-  font-size: var(--font-size-m);
+  background: transparent;
+  color: var(--color--ink);
+  font: inherit;
   resize: none;
-  font-family: inherit;
+}
+
+.controls + .input {
+  padding-left: 6px;
 }
 
 .input::placeholder {
