@@ -18,7 +18,7 @@ Open **Glossary Settings** to enforce your own terminology. The plugin lists the
 - **Default glossary** is used when no language pair below matches the translation.
 - **+ Add language pair** adds a row with **From**, **To** and **Glossary**. **From** and **To** can be a project locale or **All (\*)**.
 
-For each translation, the plugin picks the first match among: the exact language pair, any language into the target, the source into any language, and finally the default glossary. A glossary whose languages don't match the translation is skipped, and if DeepL still rejects it, the text is translated again without it. Glossaries are read through DeepL's v2 glossary API and only apply to DeepL.
+For each translation, the plugin picks the first match among: the exact language pair, any language into the target, the source into any language, and finally the default glossary. A glossary whose languages don't match the translation is skipped, and if DeepL still rejects it, the text is translated again without it. Glossaries are read through DeepL's v2 glossary API and only apply to DeepL. For language models, see [Prompt glossary](#prompt-glossary).
 
 ## OpenAI, Google Gemini and Anthropic Claude
 
@@ -40,8 +40,26 @@ Language models follow the **Translation prompt** in **General translation setti
 | `{fromLocale}` | The source language. |
 | `{toLocale}` | The target language. |
 | `{recordContext}` | Short text fields of the record in the source locale (under 300 characters, with an API key containing `title`, `name`, `content` or `description`), so the model knows what the record is about. |
+| `{glossary}` | The **Glossary** terms found in the text to translate. Empty when no term matches. |
 
 The default prompt keeps names and brands unchanged, keeps the original formatting, and preserves [ICU message format](https://unicode-org.github.io/icu/userguide/format_parse/messages/) strings: in `{count, plural, one {# message} other {# messages}}`, only the words inside the brackets are translated. Changing the prompt can break translations, so test it on a single field first. **Restore to defaults** brings back the default prompt and general settings, and switches the vendor back to OpenAI. Click **Save** to apply it.
+
+### Prompt glossary
+
+The **Glossary** box under the prompt enforces your terminology with language models. Write one term pair per line:
+
+```csv
+fromLocale,toLocale,source term,target term
+en,de,checkout,Kasse
+en,*,DatoCMS,DatoCMS
+*,it,"Hello, world","Ciao, mondo"
+```
+
+- `*` matches any locale. When two lines share a source term, the exact locale pair wins over `*`.
+- Wrap a term in double quotes when it contains a comma. Lines that start with `#` are comments.
+- Matching ignores case. In languages that use spaces, the term must be a whole word: `cat` doesn't match `category`.
+
+Each request includes only the terms found in its text, so a large glossary doesn't inflate every prompt. The terms replace `{glossary}` in the prompt. If your prompt has no `{glossary}`, the plugin adds the terms at the end of it.
 
 ## Yandex Translate
 

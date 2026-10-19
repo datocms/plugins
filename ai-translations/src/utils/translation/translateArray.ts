@@ -12,6 +12,11 @@ import { checkCancellation, isAbortError } from './Cancellation';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { mapDatoToDeepL } from './DeepLMap';
 import {
+  formatGlossaryBlock,
+  parseLlmGlossary,
+  selectGlossaryTerms,
+} from './LlmGlossary';
+import {
   DEEPL_DEFAULT_IGNORE_TAGS,
   DEEPL_DEFAULT_NON_SPLITTING_TAGS,
   DEEPL_DEFAULT_SPLITTING_TAGS,
@@ -461,6 +466,8 @@ async function translateWithNativeBatchProvider(
  * @param fromLocale - Source locale code.
  * @param toLocale - Target locale code.
  * @param recordContext - Additional context to substitute into {recordContext}.
+ * @param glossaryBlock - Matched glossary terms for {glossary}; appended after
+ *   the user's prompt when it lacks the placeholder.
  * @returns The full instruction to prepend to the JSON array payload.
  */
 function buildChatInstruction(
@@ -468,6 +475,7 @@ function buildChatInstruction(
   fromLocale: string,
   toLocale: string,
   recordContext: string,
+  glossaryBlock: string,
 ): string {
   const template = pluginParams.prompt || defaultPrompt;
   const replacements: Record<string, string> = {
@@ -476,12 +484,17 @@ function buildChatInstruction(
     '{recordContext}': recordContext || 'No additional context available.',
     // content is sent as a JSON array below, not a single {fieldValue}
     '{fieldValue}': '(see the JSON array below)',
+    '{glossary}': glossaryBlock,
   };
   // Substitute only the template itself; inserted content must stay literal.
-  const userInstructions = template.replace(
-    /\{(?:fromLocale|toLocale|recordContext|fieldValue)\}/g,
+  const substituted = template.replace(
+    /\{(?:fromLocale|toLocale|recordContext|fieldValue|glossary)\}/g,
     (placeholder) => replacements[placeholder],
   );
+  const userInstructions =
+    glossaryBlock && !template.includes('{glossary}')
+      ? `${substituted}\n\n${glossaryBlock}`
+      : substituted;
 
   return `${userInstructions}
 
@@ -515,7 +528,7 @@ async function translateWithChatProvider(
   recordContext: string,
   opts: Options,
 ): Promise<string[]> {
-  const instruction = buildChatInstruction(pluginParams, fromLocale, toLocale, recordContext);
+  const glossary = parseLlmGlossary(pluginParams.llmGlossary);
 
   const encoder = new TextEncoder();
   const segmentBytes = protectedSegments.map(
@@ -544,6 +557,19 @@ async function translateWithChatProvider(
       end += 1;
     }
     const chunkSegments = protectedSegments.slice(start, end);
+    // Only the terms present in this chunk are sent, keeping prompts small.
+    const glossaryBlock = formatGlossaryBlock(
+      selectGlossaryTerms(glossary, fromLocale, toLocale, chunkSegments),
+      fromLocale,
+      toLocale,
+    );
+    const instruction = buildChatInstruction(
+      pluginParams,
+      fromLocale,
+      toLocale,
+      recordContext,
+      glossaryBlock,
+    );
     const prompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
     logger.logPrompt('Prompt request', prompt);
     logger.logRequest('Provider text request input', {
