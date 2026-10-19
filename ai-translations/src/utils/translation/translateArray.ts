@@ -5,16 +5,20 @@
  * chat models (OpenAI, Gemini, Anthropic).
  */
 
-import { defaultPrompt } from '../../prompts/DefaultPrompt';
+import {
+  defaultPrompt,
+  upgradeLegacyDefaultPrompt,
+} from '../../prompts/DefaultPrompt';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger, type Logger } from '../logging/Logger';
 import { checkCancellation, isAbortError } from './Cancellation';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { mapDatoToDeepL } from './DeepLMap';
 import {
+  createGlossaryMatcher,
+  entriesForLocalePair,
   formatGlossaryBlock,
   parseLlmGlossary,
-  selectGlossaryTerms,
 } from './LlmGlossary';
 import {
   DEEPL_DEFAULT_IGNORE_TAGS,
@@ -41,6 +45,11 @@ import {
  */
 const CHAT_VENDOR_CHUNK_SIZE = 25;
 const CHAT_VENDOR_CHUNK_BYTES = 24_000;
+/**
+ * Maximum size of the glossary block in one chat request (~1k tokens). The
+ * block shares the chunk byte budget with the segments.
+ */
+const GLOSSARY_MAX_BYTES = 4_000;
 
 type Options = CancellationOptions & {
   isHTML?: boolean;
@@ -477,7 +486,9 @@ function buildChatInstruction(
   recordContext: string,
   glossaryBlock: string,
 ): string {
-  const template = pluginParams.prompt || defaultPrompt;
+  const template = pluginParams.prompt
+    ? upgradeLegacyDefaultPrompt(pluginParams.prompt)
+    : defaultPrompt;
   const replacements: Record<string, string> = {
     '{fromLocale}': fromLocale,
     '{toLocale}': toLocale,
@@ -507,6 +518,32 @@ Return ONLY a valid JSON array of strings, the exact same length as the input ar
 }
 
 /**
+ * Finds where the chunk starting at `start` ends: at most
+ * CHAT_VENDOR_CHUNK_SIZE segments whose JSON array fits `budget` bytes. The
+ * first segment is always included, since the preflight already bounds it.
+ *
+ * @param segmentBytes - JSON-encoded byte size of each segment.
+ * @param start - Index of the chunk's first segment.
+ * @param budget - Byte budget for the chunk's JSON array.
+ * @returns The exclusive end index and the chunk's JSON array size.
+ */
+function findChunkEnd(
+  segmentBytes: number[],
+  start: number,
+  budget: number,
+): { end: number; bytes: number } {
+  let end = start;
+  let bytes = 2;
+  while (end < segmentBytes.length && end - start < CHAT_VENDOR_CHUNK_SIZE) {
+    const nextBytes = segmentBytes[end] + (end > start ? 1 : 0);
+    if (end > start && bytes + nextBytes > budget) break;
+    bytes += nextBytes;
+    end += 1;
+  }
+  return { end, bytes };
+}
+
+/**
  * Translates an array of protected segments using a chat vendor (OpenAI, Gemini, Anthropic)
  * by sending a JSON-array prompt. Large arrays are chunked for reliability.
  *
@@ -528,7 +565,18 @@ async function translateWithChatProvider(
   recordContext: string,
   opts: Options,
 ): Promise<string[]> {
-  const glossary = parseLlmGlossary(pluginParams.llmGlossary);
+  const glossaryEntries = parseLlmGlossary(pluginParams.llmGlossary);
+  const matchGlossary = createGlossaryMatcher(
+    glossaryEntries,
+    fromLocale,
+    toLocale,
+  );
+  // Reserve room for the glossary only when this locale pair has terms, so
+  // chunking is unchanged for everyone else.
+  const glossaryReserve =
+    entriesForLocalePair(glossaryEntries, fromLocale, toLocale).length > 0
+      ? GLOSSARY_MAX_BYTES
+      : 0;
 
   const encoder = new TextEncoder();
   const segmentBytes = protectedSegments.map(
@@ -545,30 +593,34 @@ async function translateWithChatProvider(
   let start = 0;
   while (start < protectedSegments.length) {
     checkCancellation(opts);
-    let end = start;
-    let bytes = 2;
-    while (
-      end < protectedSegments.length &&
-      end - start < CHAT_VENDOR_CHUNK_SIZE
-    ) {
-      const nextBytes = segmentBytes[end] + (end > start ? 1 : 0);
-      if (bytes + nextBytes > CHAT_VENDOR_CHUNK_BYTES) break;
-      bytes += nextBytes;
-      end += 1;
-    }
+    const { end, bytes } = findChunkEnd(
+      segmentBytes,
+      start,
+      CHAT_VENDOR_CHUNK_BYTES - glossaryReserve,
+    );
     const chunkSegments = protectedSegments.slice(start, end);
     // Only the terms present in this chunk are sent, keeping prompts small.
     const glossaryBlock = formatGlossaryBlock(
-      selectGlossaryTerms(glossary, fromLocale, toLocale, chunkSegments),
+      matchGlossary(chunkSegments, isHtml),
       fromLocale,
       toLocale,
+      Math.min(GLOSSARY_MAX_BYTES, CHAT_VENDOR_CHUNK_BYTES - bytes),
     );
+    if (glossaryBlock.omittedCount > 0) {
+      logger.warning('Glossary block truncated to fit the request size', {
+        provider: provider.vendor,
+        fromLocale,
+        toLocale,
+        chunkStart: start,
+        omittedTerms: glossaryBlock.omittedCount,
+      });
+    }
     const instruction = buildChatInstruction(
       pluginParams,
       fromLocale,
       toLocale,
       recordContext,
-      glossaryBlock,
+      glossaryBlock.text,
     );
     const prompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
     logger.logPrompt('Prompt request', prompt);

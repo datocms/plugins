@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatGlossaryBlock,
+  htmlToMatchableText,
   parseLlmGlossary,
   selectGlossaryTerms,
 } from './LlmGlossary';
@@ -94,18 +95,87 @@ describe('selectGlossaryTerms', () => {
   });
 });
 
+describe('selectGlossaryTerms with combining marks', () => {
+  const entries = parseLlmGlossary(
+    ['hi,en,कम,less', 'ar,en,كتب,books', 'vi,en,ca,sing'].join('\n'),
+  );
+
+  it('treats marks as part of the word', () => {
+    // ी (U+0940) is a vowel sign, so कमी is a different word.
+    expect(selectGlossaryTerms(entries, 'hi', 'en', ['यह कमी है'])).toEqual([]);
+    expect(
+      selectGlossaryTerms(entries, 'hi', 'en', ['यह कम है']).map(
+        (entry) => entry.target,
+      ),
+    ).toEqual(['less']);
+    // Arabic harakat after the term continue the word.
+    expect(selectGlossaryTerms(entries, 'ar', 'en', ['كتبُ'])).toEqual([]);
+    // Decomposed Vietnamese: "cá" is c + a + U+0301.
+    expect(
+      selectGlossaryTerms(entries, 'vi', 'en', ['con ca\u0301 nhỏ']),
+    ).toEqual([]);
+  });
+});
+
+describe('selectGlossaryTerms with HTML', () => {
+  const entries = parseLlmGlossary(
+    ['en,de,R&D,F&E', 'en,de,Acme Corp,Acme GmbH', 'en,de,strong,stark'].join(
+      '\n',
+    ),
+  );
+  const sources = (texts: string[], isHtml: boolean) =>
+    selectGlossaryTerms(entries, 'en', 'de', texts, isHtml).map(
+      (entry) => entry.source,
+    );
+
+  it('decodes entities and ignores tags when isHtml is set', () => {
+    expect(
+      sources(['<p><strong>R&amp;D</strong> at Acme&nbsp;Corp</p>'], true),
+    ).toEqual(['R&D', 'Acme Corp']);
+    expect(sources(['<p>a &#x73;trong team</p>'], true)).toEqual(['strong']);
+  });
+
+  it('matches raw text when isHtml is not set', () => {
+    expect(sources(['R&amp;D'], false)).toEqual([]);
+  });
+});
+
+describe('htmlToMatchableText', () => {
+  it('keeps unknown entities and drops tags', () => {
+    expect(htmlToMatchableText('<b>a</b>&bogus;&#169;&#xA0;b')).toBe(
+      ' a &bogus;© b',
+    );
+  });
+});
+
 describe('formatGlossaryBlock', () => {
-  it('returns an empty string without terms', () => {
-    expect(formatGlossaryBlock([], 'en', 'de')).toBe('');
+  const terms = parseLlmGlossary(
+    ['en,de,cart,Warenkorb', 'en,de,checkout,Kasse'].join('\n'),
+  );
+
+  it('returns an empty block without terms', () => {
+    expect(formatGlossaryBlock([], 'en', 'de')).toEqual({
+      text: '',
+      omittedCount: 0,
+    });
   });
 
   it('lists terms as quoted pairs', () => {
-    const block = formatGlossaryBlock(
-      [{ fromLocale: 'en', toLocale: 'de', source: 'cart', target: 'Warenkorb' }],
-      'en',
-      'de',
-    );
-    expect(block).toContain('GLOSSARY (required terminology, en → de)');
-    expect(block).toContain('- "cart" → "Warenkorb"');
+    const block = formatGlossaryBlock(terms, 'en', 'de');
+    expect(block.omittedCount).toBe(0);
+    expect(block.text).toContain('GLOSSARY (required terminology, en → de)');
+    expect(block.text).toContain('- "cart" → "Warenkorb"');
+  });
+
+  it('drops terms that exceed the byte limit', () => {
+    const full = formatGlossaryBlock(terms, 'en', 'de').text;
+    const truncated = formatGlossaryBlock(terms, 'en', 'de', full.length - 1);
+    expect(truncated.omittedCount).toBe(1);
+    expect(truncated.text).toContain('Warenkorb');
+    expect(truncated.text).not.toContain('Kasse');
+    expect(formatGlossaryBlock(terms, 'en', 'de', 10)).toEqual({
+      text: '',
+      omittedCount: 2,
+    });
   });
 });

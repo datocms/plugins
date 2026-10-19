@@ -55,11 +55,14 @@ en,*,DatoCMS,DatoCMS
 *,it,"Hello, world","Ciao, mondo"
 ```
 
+- Write locales exactly as your project's locale codes, such as `en-US`, not `en`. A line with another code never matches. Case doesn't matter.
 - `*` matches any locale. When two lines share a source term, the exact locale pair wins over `*`.
 - Wrap a term in double quotes when it contains a comma. Lines that start with `#` are comments.
 - Matching ignores case. In languages that use spaces, the term must be a whole word: `cat` doesn't match `category`.
+- In HTML fields, the plugin matches the visible text: it ignores tags and reads entities such as `&amp;` as `&`.
+- Each request holds at most about 4 KB of glossary terms. Terms beyond that are left out, and debug logging shows a warning.
 
-Each request includes only the terms found in its text, so a large glossary doesn't inflate every prompt. The terms replace `{glossary}` in the prompt. If your prompt has no `{glossary}`, the plugin adds the terms at the end of it.
+Each request includes only the terms found in its text, so a large glossary doesn't inflate every prompt. The terms replace `{glossary}` in the prompt. If your prompt has no `{glossary}`, the plugin adds the terms at the end of it. If you never changed the prompt, the plugin upgrades it to the new default with `{glossary}` included.
 
 ## Yandex Translate
 
