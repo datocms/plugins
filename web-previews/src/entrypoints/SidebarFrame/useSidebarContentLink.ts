@@ -1,9 +1,6 @@
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import type { AsyncMethodReturns } from 'penpal';
 import { useEffect } from 'react';
-import {
-  type EditUrlInfo,
-  SYMBOL_FOR_PRIMARY_ENVIRONMENT,
-} from '../../utils/contentLink/types';
+import type { ContentLinkMethods } from '../../utils/contentLink/types';
 import useContentLinkConnection from '../../utils/contentLink/useContentLinkConnection';
 
 // Same pattern the Inspector sends to @datocms/content-link on init: it tells
@@ -11,34 +8,27 @@ import useContentLinkConnection from '../../utils/contentLink/useContentLinkConn
 const editUrlRegExp =
   /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^/]+))?\/editor\/item_types\/(?<item_type_id>[^/]+)\/items\/(?<item_id>[^/]+)\/edit#fieldPath=(?<field_path>.+)$/;
 
-function itemEditorUrl(ctx: RenderItemFormSidebarCtx, info: EditUrlInfo) {
-  // Mirror inspectorUrl()'s environment-prefix convention (utils/urls.tsx), and
-  // match the record-editor route that DatoCMS edit URLs use (ends in /edit).
-  const prefix = ctx.isEnvironmentPrimary
-    ? ''
-    : `/environments/${ctx.environment}`;
+/** Turns click-to-edit off, ignoring a page that went away meanwhile. */
+function disableClickToEdit(methods: AsyncMethodReturns<ContentLinkMethods>) {
+  methods.setClickToEditEnabled({ enabled: false }).catch((error: unknown) => {
+    const connectionWasDestroyed =
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'ERR_CONNECTION_DESTROYED';
 
-  const url = `${prefix}/editor/item_types/${info.itemTypeId}/items/${info.itemId}/edit`;
-
-  // The #fieldPath hash makes the Studio scroll to and highlight the specific
-  // field — essential when the clicked element belongs to the record already
-  // open in the form.
-  return info.fieldPath ? `${url}#fieldPath=${info.fieldPath}` : url;
+    if (!connectionWasDestroyed) {
+      console.error('[Web Previews] Could not disable edit mode:', error);
+    }
+  });
 }
 
 /**
- * Wires a sidebar preview iframe to @datocms/content-link. Unlike the Inspector
- * (which opens records inside an inspector panel), a click here navigates the
- * whole Studio to the record's editor page.
+ * Wires a draft sidebar preview to @datocms/content-link only to keep its
+ * click-to-edit off: click-to-edit belongs to the Visual Editing tab. The page
+ * can still turn it on (holding Alt), so every state change re-disables it,
+ * and clicks that slip through open nothing.
  */
-export function useSidebarContentLink(
-  ctx: RenderItemFormSidebarCtx,
-  clickToEditEnabled: boolean | undefined,
-) {
-  const currentEnvironmentId = ctx.isEnvironmentPrimary
-    ? SYMBOL_FOR_PRIMARY_ENVIRONMENT
-    : ctx.environment;
-
+export function useSidebarContentLink() {
   const { iframeRef, connection } = useContentLinkConnection({
     onInit: () => ({
       editUrlRegExp: {
@@ -46,52 +36,20 @@ export function useSidebarContentLink(
         flags: editUrlRegExp.flags,
       },
     }),
-    // The sidebar has no "records in this page" panel to sync.
-    onStateChange: () => {},
-    onPing: () => {},
-    openItem: async (info) => {
-      // Ignore clicks on records that belong to a different environment.
-      if (info.environment !== currentEnvironmentId) {
-        return;
+    onStateChange: ({ clickToEditEnabled }) => {
+      if (clickToEditEnabled && connection.type === 'connected') {
+        disableClickToEdit(connection.methods);
       }
-
-      await ctx.navigateTo(itemEditorUrl(ctx, info));
     },
+    onPing: () => {},
+    openItem: () => {},
   });
 
-  // Keep the click-to-edit overlay in sync with the requested state. The
-  // sidebar connects only to previews already in draft mode; published
-  // previews load as-is and never connect.
   useEffect(() => {
-    if (connection.type !== 'connected' || clickToEditEnabled === undefined) {
-      return;
+    if (connection.type === 'connected') {
+      disableClickToEdit(connection.methods);
     }
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await connection.methods.setClickToEditEnabled(
-          clickToEditEnabled
-            ? { enabled: true, flash: { scrollToNearestTarget: false } }
-            : { enabled: false },
-        );
-      } catch (error) {
-        const connectionWasDestroyed =
-          error instanceof Error &&
-          'code' in error &&
-          error.code === 'ERR_CONNECTION_DESTROYED';
-
-        if (!cancelled && !connectionWasDestroyed) {
-          console.error('[Web Previews] Could not update edit mode:', error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [connection, clickToEditEnabled]);
+  }, [connection]);
 
   return { iframeRef };
 }

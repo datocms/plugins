@@ -162,10 +162,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     currentSidebarVisualEditing?.alreadyInDraftMode,
   );
 
-  const { iframeRef } = useSidebarContentLink(
-    ctx,
-    connectContentLink ? false : undefined,
-  );
+  const { iframeRef } = useSidebarContentLink();
 
   useEffect(() => {
     const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
