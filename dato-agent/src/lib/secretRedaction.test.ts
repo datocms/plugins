@@ -99,7 +99,48 @@ describe('secretRedaction', () => {
     );
   });
 
+  it('skips escaped quotes inside a double-encoded value', () => {
+    const doubleEncoded = JSON.stringify(
+      JSON.stringify({ password: 'ab"cd-SECRET', next: 1 }),
+    );
+    const redacted = redactSecrets(doubleEncoded);
+
+    expect(redacted).not.toContain('SECRET');
+    expect(redacted).toContain('next');
+  });
+
   it.each([
+    ['NBSP', '\u00a0'],
+    ['ideographic space', '\u3000'],
+  ])('accepts %s around the separator', (_label, space) => {
+    expect(redactSecrets(`password:${space}hunter2`)).toBe(
+      `password:${space}[redacted]`,
+    );
+  });
+
+  it('redacts a whole bracketed value', () => {
+    expect(
+      redactSecrets(
+        '{"password": {"value":"hunter2","note":"a } in a string"}, "user":"ann"}',
+      ),
+    ).toBe('{"password": [redacted], "user":"ann"}');
+    expect(redactSecrets('secret=[1, [2, "x]"]] tail')).toBe(
+      'secret=[redacted] tail',
+    );
+  });
+
+  it('redacts an unbalanced bracketed value to the end of the line', () => {
+    expect(redactSecrets('token: {"value":"abc"\nnext: 1')).toBe(
+      'token: [redacted]\nnext: 1',
+    );
+  });
+
+  it.each([
+    ['many unbalanced brackets', 'token: { '.repeat(30_000)],
+    [
+      'many escaped-quote candidates',
+      `\\"token\\":\\"${'\\\\\\"'.repeat(30_000)}`,
+    ],
     ['whitespace after a key', `token:${' '.repeat(100_000)}`],
     ['whitespace after authorization', `authorization:${' '.repeat(100_000)}`],
     ['many bare values on one line', 'token: a '.repeat(30_000)],
