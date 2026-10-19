@@ -1,10 +1,9 @@
 import type { BaseCtx } from 'datocms-react-ui';
 
 /**
- * If the preview URL points to the draft-mode route and contains a `redirect`
- * query param, returns the redirect path. Otherwise returns undefined.
+ * Parses an absolute URL without throwing.
+ * @returns The parsed URL, or undefined for relative or malformed input.
  */
-/** `new URL()` that yields undefined instead of throwing on malformed input */
 export function parseUrl(urlString: string): URL | undefined {
   try {
     return new URL(urlString);
@@ -13,6 +12,10 @@ export function parseUrl(urlString: string): URL | undefined {
   }
 }
 
+/**
+ * If the preview URL points to the draft-mode route and contains a `redirect`
+ * query param, returns the redirect path. Otherwise returns undefined.
+ */
 export function extractRedirectFromDraftModePreviewUrl(
   urlString: string,
   draftModeUrl: string,
