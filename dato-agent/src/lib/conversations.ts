@@ -1,3 +1,5 @@
+import { redactSecrets } from './secretRedaction';
+
 export const CONVERSATION_STORAGE_VERSION = 1;
 export const DEFAULT_MAX_CONVERSATIONS = 6;
 export const DEFAULT_MAX_MESSAGES = 80;
@@ -198,11 +200,6 @@ export class ConversationStorageError extends Error {
   override readonly name = 'ConversationStorageError';
 }
 
-const SECRET_KEY_VALUE_PATTERN =
-  /(["']?(?:api[_-]?key|access[_-]?token|authorization|client[_-]?secret|password|secret|token)["']?\s*[:=]\s*["']?)([^"',\s}\]]+)/gi;
-const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
-const PROVIDER_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
-
 function normalizeRequiredKeyPart(value: string, label: string): string {
   const normalized = value.trim();
 
@@ -264,10 +261,7 @@ export function conversationScopeIndexStorageKey(
  * from the persisted schema.
  */
 export function redactConversationSecrets(value: string): string {
-  return value
-    .replace(BEARER_PATTERN, '$1[redacted]')
-    .replace(PROVIDER_KEY_PATTERN, '[redacted]')
-    .replace(SECRET_KEY_VALUE_PATTERN, '$1[redacted]');
+  return redactSecrets(value);
 }
 
 /**

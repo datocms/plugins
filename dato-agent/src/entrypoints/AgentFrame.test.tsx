@@ -6708,9 +6708,9 @@ describe('AgentFrame', () => {
 
     expect(writeText).toHaveBeenCalledOnce();
     const diagnostics = JSON.parse(String(writeText.mock.calls[0]?.[0]));
-    expect(diagnostics.configuration.openAiApiKey).toBe('[Redacted]');
-    expect(diagnostics.configuration.activeApiKey).toBe('[Redacted]');
-    expect(diagnostics.oauthCredentials.token.accessToken).toBe('[Redacted]');
+    expect(diagnostics.configuration.openAiApiKey).toBe('[redacted]');
+    expect(diagnostics.configuration.activeApiKey).toBe('[redacted]');
+    expect(diagnostics.oauthCredentials.token.accessToken).toBe('[redacted]');
     expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
       'diagnostic-oauth-secret',
     );
@@ -6782,6 +6782,50 @@ describe('AgentFrame', () => {
     });
     expect(mocks.surfaceProps?.onCopyFailureDiagnostics).toBeTypeOf('function');
     expect(mocks.surfaceProps?.onRetryFailedTurn).toBeTypeOf('function');
+  });
+
+  it('redacts credentials from a thrown Error in copied diagnostics', async () => {
+    const thrown = new Error(
+      'GET https://api.example.test/v1?api_key=leaked-query-key&page=2 failed: Authorization: Bearer leaked-bearer-token, key sk-ant-api03-leakedproviderkey',
+    );
+    mocks.runtime = {
+      runTurn: vi.fn().mockRejectedValue(thrown),
+    } as unknown as AgentRuntime;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<AgentFrame {...props()} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Describe the project');
+    });
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+
+    const failedEntry = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'message' && entry.role === 'assistant' && entry.failure,
+    );
+    if (failedEntry?.kind !== 'message' || !failedEntry.failure) {
+      throw new Error('Expected terminal failure diagnostics.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onCopyFailureDiagnostics?.(
+        failedEntry.failure?.id ?? '',
+      );
+    });
+
+    const copied = String(writeText.mock.calls[0]?.[0]);
+    expect(copied).toContain('api_key=[redacted]&page=2');
+    expect(copied).toContain('Bearer [redacted]');
+    for (const secret of [
+      'leaked-query-key',
+      'leaked-bearer-token',
+      'leakedproviderkey',
+    ]) {
+      expect(copied).not.toContain(secret);
+    }
   });
 
   it('deduplicates repeated activity snapshots and bounds total diagnostic tool output', async () => {

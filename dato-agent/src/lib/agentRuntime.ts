@@ -70,6 +70,7 @@ import {
 } from './mcpPolicy';
 import type { LocalFileAttachmentDescriptor } from './mentions';
 import { providerModelSupportsFastMode } from './providerModels';
+import { REDACTED_MARKER, redactCredentialTokens } from './secretRedaction';
 import { type AgentSystemContext, buildSystemPrompt } from './systemPrompt';
 
 export const DEFAULT_AGENT_MODEL = 'gpt-5.6-terra' as const;
@@ -2447,12 +2448,6 @@ function stringifyCallbackResult(
 const SENSITIVE_SCHEMA_KEY =
   /^(?:authorization|access[_-]?token|client[_-]?secret|password|secret|token)$/i;
 
-function redactSensitiveString(value: string): string {
-  return value
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
-    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted]');
-}
-
 function stringifyModelSchemaResult(result: unknown): string {
   let serialized: string;
 
@@ -2461,10 +2456,12 @@ function stringifyModelSchemaResult(result: unknown): string {
       { ok: true, schema: result },
       (key, value: unknown) => {
         if (key && SENSITIVE_SCHEMA_KEY.test(key)) {
-          return '[redacted]';
+          return REDACTED_MARKER;
         }
 
-        return typeof value === 'string' ? redactSensitiveString(value) : value;
+        return typeof value === 'string'
+          ? redactCredentialTokens(value)
+          : value;
       },
     );
   } catch {
@@ -2481,7 +2478,7 @@ function stringifyModelSchemaResult(result: unknown): string {
 }
 
 function redactAndTruncateErrorMessage(message: string): string {
-  return redactSensitiveString(message).slice(0, 1_000);
+  return redactCredentialTokens(message).slice(0, 1_000);
 }
 
 function safeErrorMessage(error: unknown): string {

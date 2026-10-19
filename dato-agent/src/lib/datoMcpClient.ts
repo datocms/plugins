@@ -15,6 +15,7 @@ import {
   mcpAuthenticationChallenges,
 } from './mcpAuthentication';
 import { DATOCMS_MCP_URL, datoCmsMcpAllowedTools } from './mcpPolicy';
+import { redactCredentialTokens } from './secretRedaction';
 
 export const MAX_DATOCMS_MCP_TOOL_PAGES = 20;
 export const MAX_DATOCMS_MCP_RESULT_CHARACTERS = 60_000;
@@ -110,9 +111,6 @@ export interface CreateDatoMcpClientOptions {
   transport?: Transport;
 }
 
-const SENSITIVE_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
-const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
-
 class DatoMcpAbortError extends Error {
   override name = 'AbortError';
 }
@@ -127,14 +125,8 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-function redactSensitiveText(value: string): string {
-  return value
-    .replace(BEARER_PATTERN, '$1[redacted]')
-    .replace(SENSITIVE_KEY_PATTERN, '[redacted]');
-}
-
 function boundedText(value: string, maxCharacters: number): string {
-  const redacted = redactSensitiveText(value);
+  const redacted = redactCredentialTokens(value);
   if (redacted.length <= maxCharacters) {
     return redacted;
   }
@@ -148,7 +140,7 @@ function safeJson(value: unknown): string | undefined {
   try {
     return JSON.stringify(value, (_key, nested: unknown) => {
       if (typeof nested === 'string') {
-        return redactSensitiveText(nested);
+        return redactCredentialTokens(nested);
       }
 
       if (!nested || typeof nested !== 'object') {
