@@ -135,7 +135,29 @@ describe('secretRedaction', () => {
     );
   });
 
+  it('still balances later bracketed values after an unbalanced one', () => {
+    const redacted = redactSecrets(
+      'password: { broken\n"secret": {\n  "value": "SECRET2"\n}\nnext: 1',
+    );
+
+    expect(redacted).not.toContain('SECRET2');
+    expect(redacted).toContain('next: 1');
+  });
+
+  it.each([1, 2, 3])('redacts JSON encoded %i extra time(s)', (depth) => {
+    let encoded = JSON.stringify({ password: 'ab"cd-SECRET\\', next: 1 });
+    for (let level = 0; level < depth; level += 1) {
+      encoded = JSON.stringify(encoded);
+    }
+    const redacted = redactSecrets(encoded);
+
+    expect(redacted).not.toContain('SECRET');
+    expect(redacted).toContain('next');
+  });
+
   it.each([
+    ['long backslash runs', `password: ${'\\'.repeat(100_000)}`],
+    ['many backslash-quote keys', 'token\\\\:"x '.repeat(20_000)],
     ['many unbalanced brackets', 'token: { '.repeat(30_000)],
     [
       'many escaped-quote candidates',
