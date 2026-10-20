@@ -21,6 +21,10 @@ const baseConfig = {
   anthropicApiKey: 'sk-ant-test',
   anthropicModel: 'claude-sonnet-4-6',
   anthropicReasoningEffort: 'high',
+  vercelApiKey: 'vck_test_key_value',
+  vercelModel: 'anthropic/claude-sonnet-5.5',
+  vercelReasoningEffort: 'high',
+  vercelModelReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
 } satisfies Pick<
   AgentConfig,
   | 'provider'
@@ -29,6 +33,10 @@ const baseConfig = {
   | 'anthropicApiKey'
   | 'anthropicModel'
   | 'anthropicReasoningEffort'
+  | 'vercelApiKey'
+  | 'vercelModel'
+  | 'vercelReasoningEffort'
+  | 'vercelModelReasoningEfforts'
 >;
 
 function openAiResponse(overrides: Partial<Response> = {}): Response {

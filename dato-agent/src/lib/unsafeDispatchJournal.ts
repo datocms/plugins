@@ -41,7 +41,7 @@ export interface UnsafeDispatchJournal {
     userEntryId: string;
     assistantEntryId: string;
     userMessage: string;
-    provider: 'openai' | 'anthropic';
+    provider: 'openai' | 'anthropic' | 'vercel';
     model: string;
     startedAt: string;
   };
@@ -307,7 +307,9 @@ function normalizeJournal(value: unknown): UnsafeDispatchJournal {
   const conversation = candidate.conversation as Record<string, unknown>;
   const turn = candidate.turn as Record<string, unknown>;
   const provider =
-    turn.provider === 'openai' || turn.provider === 'anthropic'
+    turn.provider === 'openai' ||
+    turn.provider === 'anthropic' ||
+    turn.provider === 'vercel'
       ? turn.provider
       : undefined;
   if (!provider) {

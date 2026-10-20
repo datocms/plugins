@@ -396,4 +396,136 @@ describe('provider model discovery', () => {
       'api.anthropic.com',
     );
   });
+
+  it('validates an AI Gateway key and keeps recommended tool-capable models first', async () => {
+    const fetchModels = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/v1/credits')) {
+        return jsonResponse({ balance: '12.50', total_used: '1.00' });
+      }
+      return jsonResponse({
+        data: [
+          {
+            id: 'openai/gpt-5-nano',
+            name: 'GPT-5 nano',
+            owned_by: 'openai',
+            type: 'language',
+            tags: ['tool-use', 'reasoning'],
+            max_tokens: 32000,
+            reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
+          },
+          {
+            id: 'anthropic/claude-sonnet-5.5-fast',
+            name: 'Claude Sonnet 5.5 Fast',
+            owned_by: 'anthropic',
+            type: 'language',
+            tags: ['tool-use', 'fast'],
+            max_tokens: 128000,
+          },
+          {
+            id: 'anthropic/claude-sonnet-5.5',
+            name: 'Claude Sonnet 5.5',
+            owned_by: 'anthropic',
+            type: 'language',
+            tags: ['tool-use', 'reasoning', 'file-input'],
+            max_tokens: 128000,
+            reasoning_options: [
+              {
+                type: 'effort',
+                values: ['low', 'medium', 'high', 'xhigh', 'max', 'minimal'],
+              },
+            ],
+          },
+          {
+            id: 'openai/gpt-5.4-batch',
+            name: 'GPT-5.4 batch',
+            owned_by: 'openai',
+            type: 'language',
+            tags: ['tool-use'],
+          },
+          {
+            id: 'google/gemini-embedding',
+            name: 'Embedding',
+            owned_by: 'google',
+            type: 'embedding',
+            tags: ['tool-use'],
+          },
+        ],
+      });
+    });
+
+    await expect(
+      listProviderModels('vercel', ' vck_secretvalue ', undefined, fetchModels),
+    ).resolves.toEqual([
+      {
+        id: 'anthropic/claude-sonnet-5.5',
+        label: 'Claude Sonnet 5.5 (Anthropic)',
+        maxOutputTokens: 128000,
+        reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        recommended: true,
+        supportsFastMode: true,
+      },
+      {
+        id: 'openai/gpt-5-nano',
+        label: 'GPT-5 nano (OpenAI)',
+        maxOutputTokens: 32000,
+        reasoningEfforts: ['low', 'high'],
+        recommended: false,
+        supportsFastMode: false,
+      },
+    ]);
+    expect(
+      providerModelSupportsFastMode('vercel', 'anthropic/claude-sonnet-5.5', [
+        {
+          id: 'anthropic/claude-sonnet-5.5',
+          supportsFastMode: true,
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      preferredProviderModel('vercel', [
+        {
+          id: 'openai/gpt-5-nano',
+          label: 'GPT-5 nano',
+          reasoningEfforts: ['low'],
+          recommended: false,
+        },
+        {
+          id: 'anthropic/claude-sonnet-5.5',
+          label: 'Claude Sonnet 5.5',
+          reasoningEfforts: ['high'],
+          recommended: true,
+        },
+      ])?.id,
+    ).toBe('anthropic/claude-sonnet-5.5');
+  });
+
+  it('rejects an AI Gateway key with no credits and redacts the key', async () => {
+    const fetchModels = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse(
+          { error: { message: 'Invalid key vck_secretvalue' } },
+          401,
+        ),
+      );
+
+    await expect(
+      listProviderModels('vercel', 'vck_secretvalue', undefined, fetchModels),
+    ).rejects.toThrow('[redacted]');
+    await expect(
+      listProviderModels('vercel', 'vck_secretvalue', undefined, fetchModels),
+    ).rejects.not.toThrow('vck_secretvalue');
+  });
+
+  it('stops model discovery when the AI Gateway balance is empty', async () => {
+    const fetchModels = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ balance: '0.00', total_used: '4.00' }));
+
+    await expect(
+      listProviderModels('vercel', 'vck_project', undefined, fetchModels),
+    ).rejects.toThrow('no credits left');
+    expect(fetchModels).toHaveBeenCalledOnce();
+  });
 });
