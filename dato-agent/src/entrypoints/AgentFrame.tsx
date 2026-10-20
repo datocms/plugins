@@ -3627,6 +3627,18 @@ export default function AgentFrame(props: AgentFrameProps) {
           await appendRecordResults('Record found', [target]);
           return queuePendingNavigation({ type: 'openRecord', target });
         },
+        openRecordInFullEditor: async ({ itemId, itemTypeId }) => {
+          const target = { itemId, itemTypeId };
+          const result = await props.navigator.openRecordInFullEditor(target);
+          await appendRecordResults('Record found', [target]);
+          return {
+            opened: result.opened,
+            url: result.url,
+            message: result.opened
+              ? 'The full record editor was opened in a new browser tab, including the standard sidebar.'
+              : `The browser blocked the new tab. Share this URL so the editor can open it: ${result.url}`,
+          };
+        },
         showRecords: async ({ title, records }) => {
           await appendRecordResults(title, records);
           if (!props.navigator.supportsRecordList) {
@@ -6139,6 +6151,13 @@ export default function AgentFrame(props: AgentFrameProps) {
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}
       onOpenRecord={openRecord}
+      onOpenRecordInFullEditor={async (record) => {
+        await props.navigator.openRecordInFullEditor({
+          itemId: record.itemId,
+          itemTypeId: record.itemTypeId,
+          label: record.title,
+        });
+      }}
       currentRecordId={
         surface === 'project' ? currentInspectorRecordId : undefined
       }

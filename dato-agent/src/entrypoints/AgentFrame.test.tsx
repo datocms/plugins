@@ -130,6 +130,10 @@ function props(overrides: Partial<AgentFrameProps> = {}): AgentFrameProps {
     scope: { type: 'project' },
     navigator: {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -761,6 +765,10 @@ describe('AgentFrame', () => {
       surface: 'project',
       navigator: {
         supportsRecordList: true,
+        openRecordInFullEditor: vi.fn().mockResolvedValue({
+          opened: true,
+          url: 'https://example.admin.datocms.com/editor',
+        }),
         openRecord,
         showRecords: vi.fn().mockResolvedValue(undefined),
         openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -3662,6 +3670,10 @@ describe('AgentFrame', () => {
     const onConfirmEnableAutoApprove = vi.fn().mockResolvedValue(true);
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -3720,6 +3732,10 @@ describe('AgentFrame', () => {
     const onConfirmEnableAutoApprove = vi.fn().mockResolvedValue(true);
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn(() => recordModal),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -3783,6 +3799,10 @@ describe('AgentFrame', () => {
     const onReviewApprovalDetails = vi.fn().mockResolvedValue(null);
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -4600,6 +4620,10 @@ describe('AgentFrame', () => {
   it('keeps a completed answer when native navigation rejects', async () => {
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi
         .fn()
         .mockRejectedValue(new Error('Navigation unavailable')),
@@ -4703,6 +4727,10 @@ describe('AgentFrame', () => {
     } satisfies AgentMentionHost;
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5293,6 +5321,10 @@ describe('AgentFrame', () => {
     async (provider) => {
       const navigator = {
         supportsRecordList: true,
+        openRecordInFullEditor: vi.fn().mockResolvedValue({
+          opened: true,
+          url: 'https://example.admin.datocms.com/editor',
+        }),
         openRecord: vi.fn().mockResolvedValue(undefined),
         showRecords: vi.fn().mockResolvedValue(undefined),
         openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5365,6 +5397,10 @@ describe('AgentFrame', () => {
   it('turns show_records into clickable results when the surface has no native list', async () => {
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5422,6 +5458,10 @@ describe('AgentFrame', () => {
   it('presents clickable record results without changing the CMS view', async () => {
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5534,6 +5574,10 @@ describe('AgentFrame', () => {
     async (provider) => {
       const navigator = {
         supportsRecordList: false,
+        openRecordInFullEditor: vi.fn().mockResolvedValue({
+          opened: true,
+          url: 'https://example.admin.datocms.com/editor',
+        }),
         openRecord: vi.fn().mockResolvedValue(undefined),
         showRecords: vi.fn().mockResolvedValue(undefined),
         openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5597,6 +5641,10 @@ describe('AgentFrame', () => {
   it('shows record receipt navigation errors without rejecting the click', async () => {
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockRejectedValue(new Error('Access denied.')),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -5659,6 +5707,10 @@ describe('AgentFrame', () => {
   it('presents, opens, and restores verified field and asset receipts', async () => {
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: true }),
@@ -5842,6 +5894,10 @@ describe('AgentFrame', () => {
     });
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn(() => assetModal),
@@ -5916,6 +5972,10 @@ describe('AgentFrame', () => {
     });
     const navigator = {
       supportsRecordList: false,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn(() => opening),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -7488,6 +7548,10 @@ describe('AgentFrame', () => {
     });
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn(() => recordDialog),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -7580,6 +7644,10 @@ describe('AgentFrame', () => {
     });
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn(() => recordDialog),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
@@ -7663,6 +7731,10 @@ describe('AgentFrame', () => {
     });
     const navigator = {
       supportsRecordList: true,
+      openRecordInFullEditor: vi.fn().mockResolvedValue({
+        opened: true,
+        url: 'https://example.admin.datocms.com/editor',
+      }),
       openRecord: vi.fn().mockResolvedValue(undefined),
       showRecords: vi.fn().mockResolvedValue(undefined),
       openAsset: vi.fn().mockResolvedValue({ deleted: false }),
