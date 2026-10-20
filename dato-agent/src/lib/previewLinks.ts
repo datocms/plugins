@@ -246,7 +246,8 @@ const MAX_LINK_LENGTH = 8_192;
 /**
  * Keeps only the page address (origin and path) of a link. Userinfo, query
  * and fragment never reach the model, whatever their names: any of them can
- * carry a preview token.
+ * carry a preview token. Tokens embedded in the path (`/preview/<token>/…`)
+ * are kept by design: the path is the page address.
  */
 function pageAddressLink(link: PreviewLink): PreviewLink {
   const url = new URL(link.url);
@@ -501,19 +502,49 @@ function inferredLink(
 }
 
 const HIDDEN_PARAMETERS_GUIDANCE =
-  'Each URL is a page address with its query, fragment and credentials removed. A link with hasHiddenParameters (often a draft preview that needs a token) does not work as shown: tell the editor to open it from the Web Previews sidebar of the record instead of quoting it. Never reveal, guess or ask for preview tokens.';
+  'Each URL is a page address with its query, fragment and credentials removed. A link with hasHiddenParameters (often a draft preview that needs a token) may not work as shown: for the exact link, tell the editor to use the Web Previews sidebar of the full record editor. In the Agent inspector that sidebar is not visible, so first offer open_record_in_full_editor when that tool is available. Never reveal, guess or ask for preview tokens.';
 
-/** Adds guidance that matches the mix of plain and hidden-parameter links. */
-function previewLinksMessage(links: readonly PreviewLink[]): string {
+/**
+ * Adds guidance that matches the mix of plain and hidden-parameter links.
+ *
+ * @param hasSlugFallback - A website-address link was appended because every
+ *   endpoint link had hidden parameters.
+ */
+function previewLinksMessage(
+  links: readonly PreviewLink[],
+  hasSlugFallback: boolean,
+): string {
   const base =
     'These are the website page addresses returned by the configured preview endpoints.';
   const hiddenCount = links.filter((link) => link.hasHiddenParameters).length;
   if (hiddenCount === 0) {
     return base;
   }
-  return hiddenCount === links.length
-    ? `${base} ${HIDDEN_PARAMETERS_GUIDANCE} No published URL is available: say so.`
-    : `${base} ${HIDDEN_PARAMETERS_GUIDANCE} Give the editor the links without hasHiddenParameters.`;
+  if (hiddenCount < links.length) {
+    return `${base} ${HIDDEN_PARAMETERS_GUIDANCE} Prefer the links without hasHiddenParameters.`;
+  }
+  return `${base} ${HIDDEN_PARAMETERS_GUIDANCE} Every endpoint link had parameters removed: give the editor the page address without its parameters, and say it may not be exact or may need parameters (for example, a draft preview).${
+    hasSlugFallback
+      ? ' The "Website address" link was built from the configured website address and the record slug: offer it as the likely published URL.'
+      : ''
+  }`;
+}
+
+/**
+ * Adds a website-address link when every endpoint link had hidden
+ * parameters, so the editor still gets a published candidate.
+ */
+function withSlugFallback(
+  links: readonly PreviewLink[],
+  websiteBaseUrl: string,
+  item: Record<string, unknown> | null,
+  locale: string,
+): PreviewLink[] {
+  const isAllHidden = links.every((link) => link.hasHiddenParameters);
+  const fallback = isAllHidden
+    ? inferredLink(websiteBaseUrl, recordSlug(item, locale).slug)
+    : null;
+  return fallback ? [...links, fallback] : [...links];
 }
 
 /** Explains why no website URL is available, for each failure state. */
@@ -621,14 +652,23 @@ export async function getRecordPreviewLinks(
     : { links: [], errors: [] };
 
   if (fetched.links.length > 0) {
+    const links = withSlugFallback(
+      fetched.links,
+      host.websiteBaseUrl,
+      item,
+      locale,
+    );
     return {
       action: 'get_record_preview_links',
       itemId,
       locale,
       source: 'web_previews',
-      links: fetched.links,
+      links,
       errors: fetched.errors,
-      message: previewLinksMessage(fetched.links),
+      message: previewLinksMessage(
+        fetched.links,
+        links.length > fetched.links.length,
+      ),
     };
   }
 

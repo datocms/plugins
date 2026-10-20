@@ -510,7 +510,7 @@ describe('getRecordPreviewLinks', () => {
     expect(result.message).toContain('no slug in locale "it"');
   });
 
-  it('says no published URL exists when every link has hidden parameters', async () => {
+  it('adds the website-address link when every endpoint link has hidden parameters', async () => {
     const fetchImpl = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
         previewLinks: [
@@ -527,9 +527,52 @@ describe('getRecordPreviewLinks', () => {
       { itemId: 'item-1' },
     );
 
-    expect(result.message).toContain('No published URL is available');
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Production',
+        label: 'Draft',
+        url: 'https://example.com/api/draft',
+        hasHiddenParameters: true,
+      },
+      {
+        frontendName: 'Website address',
+        label: 'Website',
+        url: 'https://example.com/thanksgiving',
+      },
+    ]);
+    expect(result.message).toContain('may not be exact or may need parameters');
+    expect(result.message).toContain('likely published URL');
     expect(result.message).toContain('Web Previews sidebar');
+    expect(result.message).toContain('open_record_in_full_editor');
+    expect(result.message).not.toContain('No published URL is available');
     expect(JSON.stringify(result)).not.toContain('SEKRET');
+    fetchImpl.mockRestore();
+  });
+
+  it('keeps hidden-parameter links alone when no website address is set', async () => {
+    const fetchImpl = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        previewLinks: [
+          { label: 'Published', url: 'https://example.com/page?lang=it' },
+        ],
+      }),
+    );
+
+    const result = await getRecordPreviewLinks(
+      { ...host, websiteBaseUrl: '', savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Production',
+        label: 'Published',
+        url: 'https://example.com/page',
+        hasHiddenParameters: true,
+      },
+    ]);
+    expect(result.message).toContain('page address without its parameters');
+    expect(result.message).not.toContain('likely published URL');
     fetchImpl.mockRestore();
   });
 
