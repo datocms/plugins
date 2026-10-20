@@ -1,5 +1,4 @@
 import { buildClient } from '@datocms/cma-client-browser';
-import { isSecretParameterName } from './secretRedaction';
 
 export const WEB_PREVIEWS_PACKAGE_NAME = 'datocms-plugin-web-previews';
 export const PREVIEW_LINK_TIMEOUT_MS = 8_000;
@@ -20,11 +19,11 @@ export type PreviewLink = {
   label: string;
   url: string;
   /**
-   * The endpoint's URL carried a secret query parameter (for example a
-   * draft-mode `token`). The parameter was removed, so the link needs
-   * authentication and does not work as shown.
+   * The endpoint's URL had credentials, a query or a fragment. Those parts
+   * can hold preview tokens, so `url` keeps only the origin and path, and
+   * the link (often a draft preview) does not work as shown.
    */
-  isDraftLink?: boolean;
+  hasHiddenParameters?: boolean;
 };
 
 export type PreviewFrontendError = {
@@ -115,8 +114,10 @@ export function normalizeWebsiteBaseUrl(value: unknown): string {
   if (!url) {
     return '';
   }
-  const { hash, password, search, username } = new URL(url);
-  return hash || search || username || password ? '' : url.replace(/\/$/, '');
+  // Rebuilt from origin and path, so even a bare `?` or `#` is rejected.
+  const parsed = new URL(url);
+  const pageAddress = `${parsed.origin}${parsed.pathname}`;
+  return parsed.href === pageAddress ? pageAddress.replace(/\/$/, '') : '';
 }
 
 function normalizePreviewHeaders(value: unknown): PreviewHeader[] {
@@ -239,105 +240,21 @@ function errorMessage(error: unknown, fallback: string): string {
     : fallback;
 }
 
-const NESTED_URL_BASE = 'https://nested.invalid';
-const MAX_NESTED_URL_DEPTH = 3;
+// Longer links are skipped so a huge response cannot block the iframe.
+const MAX_LINK_LENGTH = 8_192;
 
 /**
- * Removes secret parameters from a query string or a `#key=value` fragment.
- * Values that hold a nested URL (such as an encoded `redirect`) are cleaned
- * recursively.
- *
- * @returns Whether anything was removed.
+ * Keeps only the page address (origin and path) of a link. Userinfo, query
+ * and fragment never reach the model, whatever their names: any of them can
+ * carry a preview token. Tokens embedded in the path (`/preview/<token>/…`)
+ * are kept by design: the path is the page address.
  */
-function stripSecretParameters(
-  parameters: URLSearchParams,
-  depth: number,
-): boolean {
-  let hasRemoved = false;
-  for (const name of [...new Set(parameters.keys())]) {
-    if (isSecretParameterName(name)) {
-      parameters.delete(name);
-      hasRemoved = true;
-      continue;
-    }
-    const values = parameters.getAll(name);
-    const cleaned = values.map((value) => withoutNestedSecrets(value, depth));
-    if (cleaned.some((value, index) => value !== values[index])) {
-      parameters.delete(name);
-      for (const value of cleaned) {
-        parameters.append(name, value);
-      }
-      hasRemoved = true;
-    }
-  }
-  return hasRemoved;
-}
-
-/**
- * Cleans a parameter value that looks like a URL or a query string. Relative
- * values stay relative.
- *
- * @returns The value without secrets; unchanged when it held none.
- */
-function withoutNestedSecrets(value: string, depth: number): string {
-  if (depth >= MAX_NESTED_URL_DEPTH || !/[?&#][^=&#]+=/.test(value)) {
-    return value;
-  }
-
-  let url: URL;
-  try {
-    url = new URL(value, NESTED_URL_BASE);
-  } catch {
-    return value;
-  }
-  if (!stripSecretsFromUrl(url, depth + 1)) {
-    return value;
-  }
-  return url.origin === NESTED_URL_BASE
-    ? `${url.pathname}${url.search}${url.hash}`
-    : url.toString();
-}
-
-/**
- * Removes credentials from a URL in place: userinfo, secret query and
- * fragment parameters, and secrets inside nested URLs.
- *
- * @returns Whether anything was removed.
- */
-function stripSecretsFromUrl(url: URL, depth: number): boolean {
-  let hasRemoved = false;
-  if (url.username || url.password) {
-    url.username = '';
-    url.password = '';
-    hasRemoved = true;
-  }
-
-  const query = new URLSearchParams(url.search);
-  if (stripSecretParameters(query, depth)) {
-    url.search = query.toString();
-    hasRemoved = true;
-  }
-
-  // OAuth-style fragments such as `#access_token=…` carry secrets too.
-  if (url.hash.includes('=')) {
-    const fragment = new URLSearchParams(url.hash.slice(1));
-    if (stripSecretParameters(fragment, depth)) {
-      url.hash = fragment.toString();
-      hasRemoved = true;
-    }
-  }
-  return hasRemoved;
-}
-
-/**
- * Removes credentials from a link so they never reach the model, and flags
- * the link as a draft link that needs authentication.
- */
-function withoutSecretParameters(link: PreviewLink): PreviewLink {
+function pageAddressLink(link: PreviewLink): PreviewLink {
   const url = new URL(link.url);
-  return stripSecretsFromUrl(url, 0)
-    ? { ...link, url: url.toString(), isDraftLink: true }
-    : link;
+  const pageAddress = `${url.origin}${url.pathname}`;
+  return url.href === pageAddress
+    ? link
+    : { ...link, url: pageAddress, hasHiddenParameters: true };
 }
 
 /**
@@ -357,9 +274,10 @@ function previewResponseLinks(payload: unknown): PreviewLink[] | null {
       continue;
     }
     const label = trimmedString(entry.label);
-    const url = httpUrl(trimmedString(entry.url));
+    const rawUrl = trimmedString(entry.url);
+    const url = rawUrl.length <= MAX_LINK_LENGTH ? httpUrl(rawUrl) : null;
     if (label && url) {
-      links.push(withoutSecretParameters({ frontendName: '', label, url }));
+      links.push(pageAddressLink({ frontendName: '', label, url }));
     }
   }
 
@@ -583,20 +501,50 @@ function inferredLink(
   };
 }
 
-const DRAFT_LINK_GUIDANCE =
-  'Links with isDraftLink open a draft preview. Their secret parameter was removed, so they will not work as shown. Give the editor the published link instead, and never reveal, guess or ask for preview tokens.';
-const DRAFT_ONLY_GUIDANCE =
-  'Every returned link is a draft preview link. Their secret parameters were removed, so they will not work as shown. Say that no published URL is available, and never reveal, guess or ask for preview tokens.';
+const HIDDEN_PARAMETERS_GUIDANCE =
+  'Each URL is a page address with its query, fragment and credentials removed. A link with hasHiddenParameters (often a draft preview that needs a token) may not work as shown: for the exact link, tell the editor to use the Web Previews sidebar of the full record editor. In the Agent inspector that sidebar is not visible, so first offer open_record_in_full_editor when that tool is available. Never reveal, guess or ask for preview tokens.';
 
-/** Adds draft-link guidance that matches the mix of returned links. */
-function previewLinksMessage(links: readonly PreviewLink[]): string {
+/**
+ * Adds guidance that matches the mix of plain and hidden-parameter links.
+ *
+ * @param hasSlugFallback - A website-address link was appended because every
+ *   endpoint link had hidden parameters.
+ */
+function previewLinksMessage(
+  links: readonly PreviewLink[],
+  hasSlugFallback: boolean,
+): string {
   const base =
-    'These are the full website URLs returned by the configured preview endpoints.';
-  const draftCount = links.filter((link) => link.isDraftLink).length;
-  if (draftCount === 0) {
+    'These are the website page addresses returned by the configured preview endpoints.';
+  const hiddenCount = links.filter((link) => link.hasHiddenParameters).length;
+  if (hiddenCount === 0) {
     return base;
   }
-  return `${base} ${draftCount === links.length ? DRAFT_ONLY_GUIDANCE : DRAFT_LINK_GUIDANCE}`;
+  if (hiddenCount < links.length) {
+    return `${base} ${HIDDEN_PARAMETERS_GUIDANCE} Prefer the links without hasHiddenParameters.`;
+  }
+  return `${base} ${HIDDEN_PARAMETERS_GUIDANCE} Every endpoint link had parameters removed: give the editor the page address without its parameters, and say it may not be exact or may need parameters (for example, a draft preview).${
+    hasSlugFallback
+      ? ' The "Website address" link was built from the configured website address and the record slug: offer it as the likely published URL.'
+      : ''
+  }`;
+}
+
+/**
+ * Adds a website-address link when every endpoint link had hidden
+ * parameters, so the editor still gets a published candidate.
+ */
+function withSlugFallback(
+  links: readonly PreviewLink[],
+  websiteBaseUrl: string,
+  item: Record<string, unknown> | null,
+  locale: string,
+): PreviewLink[] {
+  const isAllHidden = links.every((link) => link.hasHiddenParameters);
+  const fallback = isAllHidden
+    ? inferredLink(websiteBaseUrl, recordSlug(item, locale).slug)
+    : null;
+  return fallback ? [...links, fallback] : [...links];
 }
 
 /** Explains why no website URL is available, for each failure state. */
@@ -704,14 +652,23 @@ export async function getRecordPreviewLinks(
     : { links: [], errors: [] };
 
   if (fetched.links.length > 0) {
+    const links = withSlugFallback(
+      fetched.links,
+      host.websiteBaseUrl,
+      item,
+      locale,
+    );
     return {
       action: 'get_record_preview_links',
       itemId,
       locale,
       source: 'web_previews',
-      links: fetched.links,
+      links,
       errors: fetched.errors,
-      message: previewLinksMessage(fetched.links),
+      message: previewLinksMessage(
+        fetched.links,
+        links.length > fetched.links.length,
+      ),
     };
   }
 

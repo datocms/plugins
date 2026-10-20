@@ -84,6 +84,8 @@ describe('normalizeWebsiteBaseUrl', () => {
   });
 
   it('rejects a query, a fragment or credentials, since the slug is appended', () => {
+    expect(normalizeWebsiteBaseUrl('https://example.com/?')).toBe('');
+    expect(normalizeWebsiteBaseUrl('https://example.com#')).toBe('');
     expect(normalizeWebsiteBaseUrl('www.example.com/blog?ref=x')).toBe('');
     expect(normalizeWebsiteBaseUrl('https://example.com/#top')).toBe('');
     expect(normalizeWebsiteBaseUrl('https://user:pass@example.com')).toBe('');
@@ -294,15 +296,11 @@ describe('fetchPreviewLinks', () => {
     expect(result.errors[0]?.message).toContain('invalid payload');
   });
 
-  it('removes secret query parameters and flags the draft link', async () => {
+  it('keeps a plain page address unchanged', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
         previewLinks: [
-          {
-            label: 'Draft version',
-            url: 'https://example.com/api/draft-mode/enable?url=%2Fblog%2Fpost&token=draft-secret',
-          },
-          { label: 'Published version', url: 'https://example.com/blog/post' },
+          { label: 'Published', url: 'https://example.com/blog/post' },
         ],
       }),
     );
@@ -313,94 +311,44 @@ describe('fetchPreviewLinks', () => {
       fetchImpl: fetchImpl as typeof fetch,
     });
 
-    expect(JSON.stringify(result)).not.toContain('draft-secret');
     expect(result.links).toEqual([
       {
         frontendName: 'Staging',
-        label: 'Draft version',
-        url: 'https://example.com/api/draft-mode/enable?url=%2Fblog%2Fpost',
-        isDraftLink: true,
-      },
-      {
-        frontendName: 'Staging',
-        label: 'Published version',
+        label: 'Published',
         url: 'https://example.com/blog/post',
       },
     ]);
   });
 
-  it.each([
-    [
-      'an encoded parameter name',
-      'https://site.com/api/draft?url=%2Fblog&%74oken=SEKRET',
-      'https://site.com/api/draft?url=%2Fblog',
-    ],
-    [
-      'a nested encoded redirect',
-      'https://site.com/api/draft?redirect=https%3A%2F%2Fsite.com%2Fx%3Ftoken%3DSEKRET',
-      'https://site.com/api/draft?redirect=https%3A%2F%2Fsite.com%2Fx',
-    ],
-    [
-      'a nested relative redirect',
-      'https://site.com/api/draft?url=%2Fx%3Fsecret%3DSEKRET%26page%3D2',
-      'https://site.com/api/draft?url=%2Fx%3Fpage%3D2',
-    ],
-    [
-      'a fragment access token',
-      'https://site.com/blog/x#access_token=SEKRET',
-      'https://site.com/blog/x',
-    ],
-    [
-      'a Vercel protection bypass',
-      'https://site.com/blog/x?x-vercel-protection-bypass=SEKRET&x-vercel-set-bypass-cookie=true',
-      'https://site.com/blog/x',
-    ],
-    [
-      'a Vercel share link',
-      'https://site.com/blog/x?_vercel_share=SEKRET',
-      'https://site.com/blog/x',
-    ],
-    [
-      'URL userinfo',
-      'https://user:SEKRET@staging.site.com/blog/x',
-      'https://staging.site.com/blog/x',
-    ],
-    [
-      'a camelCase secret name',
-      'https://site.com/api/preview?url=/a&previewSecret=SEKRET&a=b',
-      'https://site.com/api/preview?url=%2Fa&a=b',
-    ],
-  ])('removes credentials hidden in %s', async (_case, url, expected) => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({ previewLinks: [{ label: 'Draft', url }] }),
-    );
-
-    const result = await fetchPreviewLinks({
-      frontends: [staging],
-      payload: {},
-      fetchImpl: fetchImpl as typeof fetch,
-    });
-
-    expect(JSON.stringify(result)).not.toContain('SEKRET');
-    expect(result.links).toEqual([
-      {
-        frontendName: 'Staging',
-        label: 'Draft',
-        url: expected,
-        isDraftLink: true,
-      },
-    ]);
-  });
-
-  it('keeps published links with non-secret parameters unchanged', async () => {
+  it('never passes userinfo, query or fragment to the model', async () => {
+    const encode = encodeURIComponent;
+    const nested = (depth: number): string => {
+      let url = `https://s.com/x?token=SEKRET-deep-${depth}`;
+      for (let level = 0; level < depth; level += 1) {
+        url = `https://s.com/r?next=${encode(url)}`;
+      }
+      return url;
+    };
     const urls = [
-      'https://site.com/search?sortKey=date&cacheKey=a&pageKey=2',
-      'https://site.com/login?provider=oauth&design=x',
-      'https://site.com/blog/x#section-2',
+      'https://site.com/api/draft?url=%2Fblog&token=SEKRET1',
+      'https://site.com/api/draft?url=%2Fblog&%74oken=SEKRET2',
+      `https://s.com/a?redirect=${encode('https://s.com/x?token=SEKRET3')}`,
+      `https://s.com/a?redirect=${encode(encode('https://s.com/x?token=SEKRET4'))}`,
+      nested(5),
+      'https://site.com/blog/x#access_token=SEKRET5',
+      'https://s.com/#/route?token=SEKRET6',
+      'https://site.com/x?x-vercel-protection-bypass=SEKRET7',
+      'https://site.com/x?_vercel_share=SEKRET8',
+      'https://user:SEKRET9@staging.site.com/blog/x',
+      'https://s.com/a?token_1=SEKRET10&token2=SEKRET11&accesstoken=SEKRET12',
+      'https://s.com/a?previewKey=SEKRET13&myAPIKey=SEKRET14&sessionid=SEKRET15',
+      'https://s.com/a?%E0%A4%A=1&token=SEKRET16',
+      'https://s.com/blog?sortKey=date&from_vercel=1',
+      'https://s.com/blog?',
     ];
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
-        previewLinks: urls.map((url) => ({ label: 'Published', url })),
+        previewLinks: urls.map((url, index) => ({ label: `L${index}`, url })),
       }),
     );
 
@@ -410,9 +358,37 @@ describe('fetchPreviewLinks', () => {
       fetchImpl: fetchImpl as typeof fetch,
     });
 
-    expect(result.links).toEqual(
-      urls.map((url) => ({ frontendName: 'Staging', label: 'Published', url })),
+    expect(JSON.stringify(result)).not.toMatch(/SEKRET|[?#@]/);
+    expect(result.links).toHaveLength(urls.length);
+    for (const link of result.links) {
+      expect(link.hasHiddenParameters).toBe(true);
+    }
+    expect(result.links.map((link) => link.url)).toContain(
+      'https://staging.site.com/blog/x',
     );
+    expect(result.links.map((link) => link.url)).toContain(
+      'https://s.com/blog',
+    );
+  });
+
+  it('skips links longer than 8 KB', async () => {
+    const huge = `https://s.com/a?${'p=1&'.repeat(5_000)}token=SEKRET`;
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        previewLinks: [
+          { label: 'Huge', url: huge },
+          { label: 'Published', url: 'https://s.com/page' },
+        ],
+      }),
+    );
+
+    const result = await fetchPreviewLinks({
+      frontends: [staging],
+      payload: {},
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(result.links.map((link) => link.label)).toEqual(['Published']);
   });
 
   it('targets the loopback address space only for localhost endpoints', async () => {
@@ -534,7 +510,7 @@ describe('getRecordPreviewLinks', () => {
     expect(result.message).toContain('no slug in locale "it"');
   });
 
-  it('says no published URL exists when every link is a draft link', async () => {
+  it('adds the website-address link when every endpoint link has hidden parameters', async () => {
     const fetchImpl = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
         previewLinks: [
@@ -551,8 +527,52 @@ describe('getRecordPreviewLinks', () => {
       { itemId: 'item-1' },
     );
 
-    expect(result.message).toContain('no published URL is available');
-    expect(result.message).not.toContain('Give the editor the published link');
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Production',
+        label: 'Draft',
+        url: 'https://example.com/api/draft',
+        hasHiddenParameters: true,
+      },
+      {
+        frontendName: 'Website address',
+        label: 'Website',
+        url: 'https://example.com/thanksgiving',
+      },
+    ]);
+    expect(result.message).toContain('may not be exact or may need parameters');
+    expect(result.message).toContain('likely published URL');
+    expect(result.message).toContain('Web Previews sidebar');
+    expect(result.message).toContain('open_record_in_full_editor');
+    expect(result.message).not.toContain('No published URL is available');
+    expect(JSON.stringify(result)).not.toContain('SEKRET');
+    fetchImpl.mockRestore();
+  });
+
+  it('keeps hidden-parameter links alone when no website address is set', async () => {
+    const fetchImpl = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        previewLinks: [
+          { label: 'Published', url: 'https://example.com/page?lang=it' },
+        ],
+      }),
+    );
+
+    const result = await getRecordPreviewLinks(
+      { ...host, websiteBaseUrl: '', savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Production',
+        label: 'Published',
+        url: 'https://example.com/page',
+        hasHiddenParameters: true,
+      },
+    ]);
+    expect(result.message).toContain('page address without its parameters');
+    expect(result.message).not.toContain('likely published URL');
     fetchImpl.mockRestore();
   });
 

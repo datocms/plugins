@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isSecretParameterName,
-  redactCredentialTokens,
-  redactSecrets,
-} from './secretRedaction';
+import { redactCredentialTokens, redactSecrets } from './secretRedaction';
 
 describe('secretRedaction', () => {
   it('redacts Bearer tokens and sk- keys with one marker', () => {
@@ -176,41 +172,5 @@ describe('secretRedaction', () => {
     const startedAt = performance.now();
     redactSecrets(input);
     expect(performance.now() - startedAt).toBeLessThan(50);
-  });
-});
-
-describe('isSecretParameterName', () => {
-  it.each([
-    'token',
-    'access_token',
-    'preview_token',
-    'previewSecret',
-    'secret',
-    'key',
-    'apikey',
-    'apiKey',
-    'api_key',
-    'x-api-key',
-    'x-auth',
-    'sig',
-    'x-vercel-protection-bypass',
-    '_vercel_share',
-  ])('treats %s as secret', (name) => {
-    expect(isSecretParameterName(name)).toBe(true);
-  });
-
-  it.each([
-    'url',
-    'slug',
-    'locale',
-    'redirect',
-    'sortKey',
-    'cacheKey',
-    'pageKey',
-    'oauth',
-    'design',
-    'previewSig',
-  ])('keeps %s visible', (name) => {
-    expect(isSecretParameterName(name)).toBe(false);
   });
 });
