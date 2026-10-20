@@ -28,6 +28,30 @@ afterEach(() => {
 });
 
 describe('serializeDiagnostics', () => {
+  it('redacts Web Previews custom header values in the configuration', () => {
+    const serialized = serializeDiagnostics({
+      configuration: {
+        previewFrontends: [
+          {
+            name: 'Production',
+            apiEndpointUrl: 'https://example.com/api/preview-links',
+            customHeaders: [
+              { name: 'X-Preview-Key', value: 'header-secret-1' },
+              { name: 'Cookie-Ish', value: 'header-secret-2' },
+              { name: 'X-Empty', value: '' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(serialized).not.toContain('header-secret-1');
+    expect(serialized).not.toContain('header-secret-2');
+    expect(serialized).toContain('"name": "X-Preview-Key"');
+    expect(serialized).toContain('"value": "[redacted]"');
+    expect(serialized).toContain('"value": ""');
+  });
+
   it('produces deterministic pretty JSON with credentials redacted', () => {
     const first = {
       token: 'dato_oauth_secret',

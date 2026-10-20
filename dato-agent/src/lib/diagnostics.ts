@@ -107,6 +107,17 @@ const isSecretEntry = (key: unknown, value: unknown): boolean =>
   value !== '' &&
   isSensitiveKey(key);
 
+/**
+ * Whether an object is a `{ name, value }` header pair, such as a Web Previews
+ * custom header. The secret sits under `value`, so key-based redaction misses it.
+ */
+const isHeaderPair = (value: object): boolean =>
+  !Array.isArray(value) &&
+  'name' in value &&
+  'value' in value &&
+  typeof value.name === 'string' &&
+  typeof value.value === 'string';
+
 function propertyPath(parentPath: string, key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key)
     ? `${parentPath}.${key}`
@@ -250,13 +261,15 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
       }
 
       const normalizedObject: Record<string, JsonSafeValue> = {};
+      const isHeader = isHeaderPair(current);
       for (const key of Object.keys(current).sort(compareStrings)) {
         try {
-          normalizedObject[key] = normalizeProperty(
-            key,
-            (current as Record<string, unknown>)[key],
-            path,
-          );
+          const propertyValue = (current as Record<string, unknown>)[key];
+          if (isHeader && key === 'value' && propertyValue !== '') {
+            normalizedObject[key] = REDACTED_MARKER;
+            continue;
+          }
+          normalizedObject[key] = normalizeProperty(key, propertyValue, path);
         } catch (error) {
           normalizedObject[key] = `[Unserializable: ${errorMessage(error)}]`;
         }
