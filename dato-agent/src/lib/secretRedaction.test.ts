@@ -180,14 +180,37 @@ describe('secretRedaction', () => {
 });
 
 describe('isSecretParameterName', () => {
-  it.each(['token', 'preview_token', 'secret', 'apiKey', 'x-auth', 'sig'])(
-    'treats %s as secret',
-    (name) => {
-      expect(isSecretParameterName(name)).toBe(true);
-    },
-  );
+  it.each([
+    'token',
+    'access_token',
+    'preview_token',
+    'previewSecret',
+    'secret',
+    'key',
+    'apikey',
+    'apiKey',
+    'api_key',
+    'x-api-key',
+    'x-auth',
+    'sig',
+    'x-vercel-protection-bypass',
+    '_vercel_share',
+  ])('treats %s as secret', (name) => {
+    expect(isSecretParameterName(name)).toBe(true);
+  });
 
-  it.each(['url', 'slug', 'locale', 'redirect'])('keeps %s visible', (name) => {
+  it.each([
+    'url',
+    'slug',
+    'locale',
+    'redirect',
+    'sortKey',
+    'cacheKey',
+    'pageKey',
+    'oauth',
+    'design',
+    'previewSig',
+  ])('keeps %s visible', (name) => {
     expect(isSecretParameterName(name)).toBe(false);
   });
 });

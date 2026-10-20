@@ -313,17 +313,58 @@ export const redactCredentialTokens = (value: string): string =>
 export const redactSecrets = (value: string): string =>
   redactKeyValueSecrets(redactCredentialTokens(value));
 
-// Matched against names lowercased with every non-letter removed, so
-// `preview_token`, `apiKey` and `x-secret` all normalize the same way.
-const SECRET_PARAMETER_NAME_PATTERN =
-  /(token|secret|password|passwd|key|signature|sig|auth|authorization|credentials?|jwt)$/;
+// Last words of a parameter name that always denote a credential.
+const SECRET_NAME_LAST_WORDS = new Set([
+  'auth',
+  'authorization',
+  'bypass',
+  'credential',
+  'credentials',
+  'jwt',
+  'passwd',
+  'password',
+  'secret',
+  'signature',
+  'token',
+]);
+// Whole names that are credentials only on their own: `sig`, but not `…sig`.
+const SECRET_NAMES = new Set(['apikey', 'key', 'sig']);
+// Qualifiers that make a trailing `key` a credential: `api_key`, not `sortKey`.
+const SECRET_KEY_QUALIFIERS = new Set(['access', 'api', 'private', 'secret']);
+
+/**
+ * Splits a parameter name into lowercase words at camelCase humps and at
+ * non-alphanumeric delimiters: `previewSecret` → `preview`, `secret`.
+ */
+const parameterNameWords = (name: string): string[] =>
+  name
+    .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .split(/[^a-z\d]+/)
+    .filter(Boolean);
 
 /**
  * Whether a URL query parameter name denotes a credential, such as the
- * `token` of a draft-mode URL.
+ * `token` of a draft-mode URL or a Vercel protection-bypass value. Names
+ * are compared word by word, so `sortKey`, `oauth` and `design` stay visible.
  *
  * @param name - Query parameter name.
  * @returns `true` for secret-like names such as `token` or `preview_secret`.
  */
-export const isSecretParameterName = (name: string): boolean =>
-  SECRET_PARAMETER_NAME_PATTERN.test(name.toLowerCase().replace(/[^a-z]/g, ''));
+export const isSecretParameterName = (name: string): boolean => {
+  const words = parameterNameWords(name);
+  const lastWord = words.at(-1);
+  if (!lastWord) {
+    return false;
+  }
+  if (words.includes('vercel')) {
+    return true;
+  }
+  if (words.length === 1 && SECRET_NAMES.has(lastWord)) {
+    return true;
+  }
+  if (lastWord === 'key') {
+    return SECRET_KEY_QUALIFIERS.has(words.at(-2) ?? '');
+  }
+  return SECRET_NAME_LAST_WORDS.has(lastWord);
+};
