@@ -566,6 +566,16 @@ export type GetModelSchemaCallback = (
   signal?: AbortSignal,
 ) => unknown | Promise<unknown>;
 
+export interface GetRecordPreviewLinksInput {
+  itemId: string;
+  locale?: string;
+}
+
+export type GetRecordPreviewLinksCallback = (
+  input: GetRecordPreviewLinksInput,
+  signal?: AbortSignal,
+) => unknown | Promise<unknown>;
+
 export interface AgentResponsesClient {
   create(
     params: ResponseCreateParamsStreaming,
@@ -637,6 +647,11 @@ export interface AgentRuntimeConfig {
    * advertised to the model.
    */
   getModelSchema?: GetModelSchemaCallback;
+  /**
+   * Optional host-bound website URL lookup. When absent, the local tool is
+   * not advertised to the model.
+   */
+  getRecordPreviewLinks?: GetRecordPreviewLinksCallback;
   /**
    * Optional host-owned DatoCMS asset creator. It is intentionally separate
    * from the Remote MCP and is advertised only when the active host user can
@@ -1300,6 +1315,30 @@ export const GET_MODEL_SCHEMA_TOOL = {
       },
     },
     required: ['identifier', 'cursor'],
+  },
+} as const satisfies FunctionTool;
+
+export const GET_RECORD_PREVIEW_LINKS_TOOL = {
+  type: 'function',
+  name: 'get_record_preview_links',
+  description:
+    'Look up the full website URL for one verified DatoCMS record. Use this whenever the editor asks for a page link, public URL, or domain. It calls the Web Previews endpoints configured for this project and otherwise builds a URL from the configured website address and the record slug. This never changes content. Return the full URLs from the result. If the result says no domain is configured, give the slug and say the full URL is unavailable.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      item_id: {
+        type: 'string',
+        description: 'A DatoCMS record ID from the authorized environment.',
+      },
+      locale: {
+        type: ['string', 'null'],
+        description:
+          'The locale to request, or null to use the editor’s current locale.',
+      },
+    },
+    required: ['item_id', 'locale'],
   },
 } as const satisfies FunctionTool;
 
@@ -2118,6 +2157,27 @@ function normalizeNullableBoundedString(
   return value === null
     ? undefined
     : normalizeBoundedNonEmptyString(value, label, maxCharacters);
+}
+
+function parseRecordPreviewLinksInput(
+  rawArguments: string,
+): GetRecordPreviewLinksInput {
+  const parsed = parseObjectArguments(rawArguments);
+  assertExactObjectKeys(
+    parsed,
+    ['item_id', 'locale'],
+    'get_record_preview_links arguments',
+  );
+  const itemId = normalizeNonEmptyString(parsed.item_id, 'item_id');
+  const locale =
+    parsed.locale === null
+      ? undefined
+      : normalizeBoundedNonEmptyString(parsed.locale, 'locale', 35);
+
+  return {
+    itemId,
+    ...(locale ? { locale } : {}),
+  };
 }
 
 function parseOpenRecordInput(rawArguments: string): OpenRecordInput {
@@ -3098,6 +3158,7 @@ interface ExecuteLocalToolCallsOptions {
   calls: readonly LocalToolCall[];
   navigation: AgentNavigationCallbacks;
   getModelSchema?: GetModelSchemaCallback;
+  getRecordPreviewLinks?: GetRecordPreviewLinksCallback;
   createDatoAsset?: CreateDatoAssetCallback;
   readOnly?: boolean;
   loadedModelSchemaIdentifiers: Set<string>;
@@ -3143,6 +3204,7 @@ async function* executeLocalToolCalls({
   calls,
   navigation,
   getModelSchema,
+  getRecordPreviewLinks,
   createDatoAsset,
   readOnly = false,
   loadedModelSchemaIdentifiers,
@@ -3348,6 +3410,27 @@ async function* executeLocalToolCalls({
         const result = await getModelSchema(parsed, signal);
         throwIfAborted(signal);
         output = stringifyModelSchemaResult(result);
+      } else if (call.name === GET_RECORD_PREVIEW_LINKS_TOOL.name) {
+        if (!getRecordPreviewLinks) {
+          throw new Error(
+            'Website links are not available on the current DatoCMS surface.',
+          );
+        }
+        const parsed = parseRecordPreviewLinksInput(call.arguments);
+        activityArguments = parsed;
+        const result = await getRecordPreviewLinks(parsed, signal);
+        throwIfAborted(signal);
+        const callbackResult =
+          result && typeof result === 'object' && !Array.isArray(result)
+            ? (result as Record<string, unknown>)
+            : typeof result === 'string'
+              ? result
+              : undefined;
+        output = stringifyCallbackResult(callbackResult, {
+          action: GET_RECORD_PREVIEW_LINKS_TOOL.name,
+          itemId: parsed.itemId,
+          ...(parsed.locale ? { locale: parsed.locale } : {}),
+        });
       } else {
         throw new Error(`Unsupported local tool: ${call.name}.`);
       }
@@ -3413,6 +3496,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
   private readonly additionalInstructions?: string;
   private readonly hostContext?: string;
   private readonly getModelSchema?: GetModelSchemaCallback;
+  private readonly getRecordPreviewLinks?: GetRecordPreviewLinksCallback;
   private readonly createDatoAsset?: CreateDatoAssetCallback;
   private readonly pendingApprovalBundles = new Map<
     string,
@@ -3437,6 +3521,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
       config.additionalInstructions?.trim().slice(0, 10_000) || undefined;
     this.hostContext = normalizeHostContext(config.hostContext);
     this.getModelSchema = config.getModelSchema;
+    this.getRecordPreviewLinks = config.getRecordPreviewLinks;
     this.createDatoAsset = config.createDatoAsset;
     this.client =
       config.client ??
@@ -3880,6 +3965,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
         this.readOnly,
       ),
       ...(this.getModelSchema ? [GET_MODEL_SCHEMA_TOOL] : []),
+      ...(this.getRecordPreviewLinks ? [GET_RECORD_PREVIEW_LINKS_TOOL] : []),
     ];
   }
 
@@ -4872,6 +4958,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
       })),
       navigation: this.navigation,
       getModelSchema: this.getModelSchema,
+      getRecordPreviewLinks: this.getRecordPreviewLinks,
       createDatoAsset: this.createDatoAsset,
       readOnly: this.readOnly,
       loadedModelSchemaIdentifiers,
@@ -5164,7 +5251,10 @@ function anthropicMcpTool(tool: DatoMcpToolDescriptor): AnthropicTool {
 }
 
 function anthropicLocalTool(
-  tool: LocalFunctionTool | typeof GET_MODEL_SCHEMA_TOOL,
+  tool:
+    | LocalFunctionTool
+    | typeof GET_MODEL_SCHEMA_TOOL
+    | typeof GET_RECORD_PREVIEW_LINKS_TOOL,
 ): AnthropicTool {
   return {
     name: tool.name,
@@ -5459,6 +5549,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   private readonly additionalInstructions?: string;
   private readonly hostContext?: string;
   private readonly getModelSchema?: GetModelSchemaCallback;
+  private readonly getRecordPreviewLinks?: GetRecordPreviewLinksCallback;
   private readonly createDatoAsset?: CreateDatoAssetCallback;
   private readonly pendingApprovalBundles = new Map<
     string,
@@ -5489,6 +5580,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       config.additionalInstructions?.trim().slice(0, 10_000) || undefined;
     this.hostContext = normalizeHostContext(config.hostContext);
     this.getModelSchema = config.getModelSchema;
+    this.getRecordPreviewLinks = config.getRecordPreviewLinks;
     this.createDatoAsset = config.createDatoAsset;
     const normalizedApiKey = config.apiKey?.trim();
     const defaultClients =
@@ -6145,6 +6237,9 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       ...(this.getModelSchema
         ? [anthropicLocalTool(GET_MODEL_SCHEMA_TOOL)]
         : []),
+      ...(this.getRecordPreviewLinks
+        ? [anthropicLocalTool(GET_RECORD_PREVIEW_LINKS_TOOL)]
+        : []),
     ];
   }
 
@@ -6322,6 +6417,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
             })),
             navigation: this.navigation,
             getModelSchema: this.getModelSchema,
+            getRecordPreviewLinks: this.getRecordPreviewLinks,
             createDatoAsset: this.createDatoAsset,
             readOnly: this.readOnly,
             loadedModelSchemaIdentifiers: state.loadedModelSchemaIdentifiers,

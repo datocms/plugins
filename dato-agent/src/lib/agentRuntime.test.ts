@@ -1131,6 +1131,43 @@ describe('AgentRuntime', () => {
     );
   });
 
+  it('looks up a record website URL through the host callback', async () => {
+    const previewCall = {
+      type: 'function_call',
+      id: 'function-preview',
+      call_id: 'call-preview',
+      name: 'get_record_preview_links',
+      arguments: JSON.stringify({
+        item_id: 'item-1',
+        locale: null,
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-preview', [previewCall])),
+      eventsFor(response('resp-preview-done'), ['Here is the link.']),
+    ]);
+    const getRecordPreviewLinks = vi.fn().mockResolvedValue({
+      source: 'web_previews',
+      links: [
+        {
+          label: 'Published',
+          url: 'https://example.com/thanksgiving',
+        },
+      ],
+    });
+    const runtime = runtimeWith(client, { getRecordPreviewLinks });
+
+    await drain(runtime.streamTurn({ message: 'What is the page URL?' }));
+
+    expect(getRecordPreviewLinks.mock.calls[0]?.[0]).toEqual({
+      itemId: 'item-1',
+    });
+    expect(JSON.stringify(client.requests[1]?.input)).toContain(
+      'https://example.com/thanksgiving',
+    );
+  });
+
   it('injects host context once and keeps continuations on the stored response chain', async () => {
     const openCall = {
       type: 'function_call',

@@ -26,6 +26,7 @@ import {
   createAgentRuntime,
   type FieldReferenceInput,
   type GetModelSchemaCallback,
+  type GetRecordPreviewLinksCallback,
   MAX_AGENT_ATTACHMENT_TOTAL_BYTES,
   MAX_AGENT_ATTACHMENTS_PER_MESSAGE,
   MAX_AGENT_ATTACHMENTS_PER_REQUEST,
@@ -171,6 +172,7 @@ export type AgentFrameProps = {
     | undefined
     | Promise<AgentHostContextSnapshot | undefined>;
   getModelSchema?: GetModelSchemaCallback;
+  getRecordPreviewLinks?: GetRecordPreviewLinksCallback;
   /**
    * Sidebar-only verifier for field receipts. It must resolve against the
    * latest current-model schema before a receipt is shown.
@@ -3610,6 +3612,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       additionalInstructions: props.config.additionalInstructions,
       hostContext,
       getModelSchema: props.getModelSchema,
+      getRecordPreviewLinks: props.getRecordPreviewLinks,
       ...(!readOnlyRef.current && createDatoAsset ? { createDatoAsset } : {}),
       context: runtimeSystemContext(),
       navigation: {
