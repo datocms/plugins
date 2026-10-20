@@ -98,10 +98,21 @@ describe('loadWebPreviewFrontends', () => {
       plugins: {
         list: vi.fn().mockResolvedValue([
           {
+            name: 'Something else',
             package_name: 'something-else',
             parameters: {},
           },
           {
+            name: 'Web Previews (fork)',
+            package_name: null,
+            parameters: {
+              frontends: [
+                { name: 'Fork', previewWebhook: 'https://fork.example.com' },
+              ],
+            },
+          },
+          {
+            name: 'Web Previews',
             package_name: WEB_PREVIEWS_PACKAGE_NAME,
             parameters: {
               frontends: [
@@ -130,6 +141,49 @@ describe('loadWebPreviewFrontends', () => {
         customHeaders: [{ name: 'X-Token', value: 'secret' }],
       },
     ]);
+  });
+
+  it('falls back to a privately installed Web Previews copy', async () => {
+    const list = vi.fn().mockResolvedValue([
+      { name: 'SEO Analysis', package_name: null, parameters: {} },
+      {
+        name: 'Web Previews',
+        package_name: null,
+        parameters: {
+          frontends: [
+            { name: 'Private', previewWebhook: 'https://example.com/private' },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      loadWebPreviewFrontends({ plugins: { list } }),
+    ).resolves.toEqual([
+      {
+        name: 'Private',
+        apiEndpointUrl: 'https://example.com/private',
+        customHeaders: [],
+      },
+    ]);
+  });
+
+  it('recognizes a renamed private copy by its frontends', async () => {
+    const list = vi.fn().mockResolvedValue([
+      {
+        name: 'Our previews',
+        package_name: null,
+        parameters: {
+          frontends: [
+            { name: 'Renamed', previewWebhook: 'https://example.com/renamed' },
+          ],
+        },
+      },
+    ]);
+
+    const frontends = await loadWebPreviewFrontends({ plugins: { list } });
+
+    expect(frontends.map((frontend) => frontend.name)).toEqual(['Renamed']);
   });
 
   it('returns an empty list when Web Previews is not installed', async () => {

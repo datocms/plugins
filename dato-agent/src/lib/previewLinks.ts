@@ -38,6 +38,7 @@ export type FetchedPreviewLinks = {
 };
 
 type PluginInstall = {
+  name: string;
   package_name: string | null;
   parameters: { [key: string]: unknown };
 };
@@ -190,13 +191,36 @@ function frontendsFromParameters(parameters: unknown): PreviewFrontend[] {
   );
 }
 
+/**
+ * Whether a plugin installed by URL (no package name) is a Web Previews copy:
+ * it has that name, or its parameters hold frontends with preview webhooks.
+ */
+function isPrivateWebPreviewsInstall(plugin: PluginInstall): boolean {
+  if (plugin.package_name) {
+    return false;
+  }
+  if (plugin.name.trim().toLowerCase() === 'web previews') {
+    return true;
+  }
+  const { frontends } = plugin.parameters;
+  return (
+    Array.isArray(frontends) &&
+    frontends.some(
+      (frontend) =>
+        isRecord(frontend) && typeof frontend.previewWebhook === 'string',
+    )
+  );
+}
+
 export async function loadWebPreviewFrontends(
   client: PreviewPluginClient,
 ): Promise<PreviewFrontend[]> {
   const plugins = await client.plugins.list();
-  const install = plugins.find(
-    (plugin) => plugin.package_name === WEB_PREVIEWS_PACKAGE_NAME,
-  );
+  // The marketplace package wins over a privately installed copy.
+  const install =
+    plugins.find(
+      (plugin) => plugin.package_name === WEB_PREVIEWS_PACKAGE_NAME,
+    ) ?? plugins.find(isPrivateWebPreviewsInstall);
   if (!install) {
     return [];
   }
