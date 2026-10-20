@@ -1326,7 +1326,7 @@ export const GET_RECORD_PREVIEW_LINKS_TOOL = {
   type: 'function',
   name: 'get_record_preview_links',
   description:
-    'Look up the full website URL for one verified DatoCMS record. Use this whenever the editor asks for a page link, public URL, or domain. It calls the Web Previews endpoints configured for this project and otherwise builds a URL from the configured website address and the record slug. This never changes content. Return the full URLs from the result. Prefer published links; a link with isDraftLink had its secret removed and does not work as shown. Never reveal or guess preview tokens. If the result says no URL is available, follow its message.',
+    'Look up the full website URL for one verified DatoCMS record. Use this whenever the editor asks for a page link, public URL, or domain. It calls the Web Previews endpoints configured for this project and otherwise builds a URL from the configured website address and the record slug. This never changes content. The URLs are page addresses with query, fragment and credentials removed. Return them as given. A link with hasHiddenParameters (such as a draft preview needing a token) does not work as shown: tell the editor to open it from the Web Previews sidebar instead of quoting it. Never reveal or guess preview tokens. If the result says no URL is available, follow its message.',
   strict: true,
   parameters: {
     type: 'object',
