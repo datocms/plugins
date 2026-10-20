@@ -1,5 +1,6 @@
 const FALLBACK_BROWSER_WIDTH = 1440;
-const MINIMUM_PANE_WIDTH = 560;
+// The CMS does not render the record pane narrower than this.
+const MINIMUM_RECORD_PANE_WIDTH = 550;
 const RECORD_PANE_SHARE = 0.45;
 
 export function inspectorRecordPaneWidth(
@@ -12,14 +13,10 @@ export function inspectorRecordPaneWidth(
       ? browserOuterWidth
       : FALLBACK_BROWSER_WIDTH;
 
-  // A window too small for two usable panes is split evenly. Otherwise the
-  // record pane starts at about 45% and neither pane drops below the floor.
-  if (browserWidth < MINIMUM_PANE_WIDTH * 2) {
-    return Math.round(browserWidth / 2);
-  }
-
-  return Math.min(
-    Math.max(Math.round(browserWidth * RECORD_PANE_SHARE), MINIMUM_PANE_WIDTH),
-    browserWidth - MINIMUM_PANE_WIDTH,
+  // The record pane takes about 45%, which leaves the chat at least 55%.
+  // On narrow windows the CMS minimum wins and the chat gets the remainder.
+  return Math.max(
+    Math.round(browserWidth * RECORD_PANE_SHARE),
+    MINIMUM_RECORD_PANE_WIDTH,
   );
 }

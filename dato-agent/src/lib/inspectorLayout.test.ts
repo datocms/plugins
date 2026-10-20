@@ -13,12 +13,13 @@ describe('inspectorRecordPaneWidth', () => {
     },
   );
 
-  it('keeps the chat usable when 45% would leave the record too narrow', () => {
-    expect(inspectorRecordPaneWidth(1200)).toBe(560);
+  it('keeps the CMS minimum record width when 45% would be narrower', () => {
+    expect(inspectorRecordPaneWidth(1200)).toBe(550);
   });
 
-  it('splits a narrow browser evenly', () => {
-    expect(inspectorRecordPaneWidth(800)).toBe(400);
+  it('keeps the record pane at its minimum on a narrow browser', () => {
+    expect(inspectorRecordPaneWidth(800)).toBe(550);
+    expect(inspectorRecordPaneWidth(1110)).toBe(550);
   });
 
   it('uses a desktop fallback when browser sizing is unavailable', () => {
