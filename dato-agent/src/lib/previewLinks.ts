@@ -1,4 +1,5 @@
 import { buildClient } from '@datocms/cma-client-browser';
+import { isSecretParameterName } from './secretRedaction';
 
 export const WEB_PREVIEWS_PACKAGE_NAME = 'datocms-plugin-web-previews';
 export const PREVIEW_LINK_TIMEOUT_MS = 8_000;
@@ -18,6 +19,12 @@ export type PreviewLink = {
   frontendName: string;
   label: string;
   url: string;
+  /**
+   * The endpoint's URL carried a secret query parameter (for example a
+   * draft-mode `token`). The parameter was removed, so the link needs
+   * authentication and does not work as shown.
+   */
+  isDraftLink?: boolean;
 };
 
 export type PreviewFrontendError = {
@@ -88,13 +95,21 @@ function httpUrl(value: string): string | null {
   }
 }
 
+/**
+ * Normalizes the configured website address. A bare host such as
+ * `www.example.com` gets `https://`; other schemes are rejected.
+ *
+ * @returns The address without a trailing slash, or `''` when invalid.
+ */
 export function normalizeWebsiteBaseUrl(value: unknown): string {
   const candidate = trimmedString(value);
   if (!candidate) {
     return '';
   }
 
-  const url = httpUrl(candidate);
+  // `localhost:3000` has a colon but no scheme: a scheme never precedes a digit.
+  const hasScheme = /^[a-z][a-z\d+.-]*:(?!\d)/i.test(candidate);
+  const url = httpUrl(hasScheme ? candidate : `https://${candidate}`);
   return url ? url.replace(/\/$/, '') : '';
 }
 
@@ -195,6 +210,31 @@ function errorMessage(error: unknown, fallback: string): string {
     : fallback;
 }
 
+/**
+ * Removes secret query parameters from a link so tokens never reach the
+ * model, and flags the link as a draft link that needs authentication.
+ */
+function withoutSecretParameters(link: PreviewLink): PreviewLink {
+  const url = new URL(link.url);
+  const secretNames = [...new Set(url.searchParams.keys())].filter(
+    isSecretParameterName,
+  );
+  if (secretNames.length === 0) {
+    return link;
+  }
+
+  for (const name of secretNames) {
+    url.searchParams.delete(name);
+  }
+  return { ...link, url: url.toString(), isDraftLink: true };
+}
+
+/**
+ * Reads the links of a Web Previews response. Like Web Previews, a link
+ * without a label or an HTTP URL is skipped instead of failing the frontend.
+ *
+ * @returns The valid links, or `null` when the payload has no link list.
+ */
 function previewResponseLinks(payload: unknown): PreviewLink[] | null {
   if (!isRecord(payload) || !Array.isArray(payload.previewLinks)) {
     return null;
@@ -203,14 +243,13 @@ function previewResponseLinks(payload: unknown): PreviewLink[] | null {
   const links: PreviewLink[] = [];
   for (const entry of payload.previewLinks) {
     if (!isRecord(entry)) {
-      return null;
+      continue;
     }
     const label = trimmedString(entry.label);
     const url = httpUrl(trimmedString(entry.url));
-    if (!label || !url) {
-      return null;
+    if (label && url) {
+      links.push(withoutSecretParameters({ frontendName: '', label, url }));
     }
-    links.push({ frontendName: '', label, url });
   }
 
   return links;
@@ -240,12 +279,18 @@ async function requestFrontendLinks(
       headers.set(header.name, header.value);
     }
 
-    const response = await fetchImpl(frontend.apiEndpointUrl, {
+    const { hostname } = new URL(frontend.apiEndpointUrl);
+    const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1';
+    // Chromium's Local Network Access needs this for localhost endpoints, as
+    // in Web Previews. Other browsers ignore the unknown option.
+    const init: RequestInit & { targetAddressSpace?: 'loopback' } = {
       method: 'POST',
       headers,
       body: payload,
       signal: controller.signal,
-    });
+      ...(isLoopback ? { targetAddressSpace: 'loopback' } : {}),
+    };
+    const response = await fetchImpl(frontend.apiEndpointUrl, init);
     if (response.status !== 200) {
       throw new Error(
         `The preview endpoint for "${frontend.name}" returned status ${response.status}.`,
@@ -331,45 +376,54 @@ function relationshipId(record: Record<string, unknown>): string {
   return id;
 }
 
-function localizedText(value: unknown, locale: string): string | null {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim().replace(/^\/+/, '');
-  }
-  if (!isRecord(value)) {
-    return null;
-  }
+type SlugLookup = {
+  slug: string | null;
+  /** The slug is localized and exists only in other locales. */
+  isMissingInLocale: boolean;
+};
 
-  const preferred = value[locale];
-  if (typeof preferred === 'string' && preferred.trim()) {
-    return preferred.trim().replace(/^\/+/, '');
-  }
+const NO_SLUG: SlugLookup = { slug: null, isMissingInLocale: false };
 
-  for (const entry of Object.values(value)) {
-    if (typeof entry === 'string' && entry.trim()) {
-      return entry.trim().replace(/^\/+/, '');
-    }
-  }
-
-  return null;
+function slugText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().replace(/^\/+/, '')
+    : null;
 }
 
+/**
+ * Reads the record slug in the requested locale only: another locale's slug
+ * would produce a URL for the wrong language.
+ */
 function recordSlug(
-  item: Record<string, unknown>,
+  item: Record<string, unknown> | null,
   locale: string,
-): string | null {
-  const attributes = isRecord(item.attributes) ? item.attributes : undefined;
+): SlugLookup {
+  const attributes =
+    item && isRecord(item.attributes) ? item.attributes : undefined;
   if (!attributes) {
-    return null;
+    return NO_SLUG;
   }
 
   for (const key of SLUG_FIELD_KEYS) {
-    const slug = localizedText(attributes[key], locale);
+    const value = attributes[key];
+    if (!isRecord(value)) {
+      const slug = slugText(value);
+      if (slug) {
+        return { slug, isMissingInLocale: false };
+      }
+      continue;
+    }
+
+    const slug = slugText(value[locale]);
     if (slug) {
-      return slug;
+      return { slug, isMissingInLocale: false };
+    }
+    if (Object.values(value).some((entry) => slugText(entry))) {
+      return { slug: null, isMissingInLocale: true };
     }
   }
 
-  return null;
+  return NO_SLUG;
 }
 
 function serializableUser(user: unknown): unknown {
@@ -418,6 +472,70 @@ function inferredLink(
   };
 }
 
+const DRAFT_LINK_GUIDANCE =
+  'Links with isDraftLink open a draft preview. Their secret parameter was removed, so they will not work as shown. Give the editor the published link instead, and never reveal, guess or ask for preview tokens.';
+
+/** Explains why no website URL is available, for each failure state. */
+function unavailableMessage({
+  hasAccessToken,
+  hasFrontends,
+  hasFrontendErrors,
+  hasWebsiteBaseUrl,
+  locale,
+  slugLookup,
+}: {
+  hasAccessToken: boolean;
+  hasFrontends: boolean;
+  hasFrontendErrors: boolean;
+  hasWebsiteBaseUrl: boolean;
+  locale: string;
+  slugLookup: SlugLookup;
+}): string {
+  const unavailable = 'Say the full URL is unavailable.';
+  if (!hasAccessToken && (hasFrontends || hasWebsiteBaseUrl)) {
+    return `The current user's DatoCMS access token is unavailable, so the record could not be read and no preview endpoint was called. ${unavailable}`;
+  }
+  if (slugLookup.isMissingInLocale) {
+    return `The record has no slug in locale "${locale}". Do not use another locale's slug. ${unavailable}`;
+  }
+  if (hasFrontendErrors) {
+    return `The configured preview endpoints failed (see errors)${
+      hasWebsiteBaseUrl
+        ? ' and the record has no slug'
+        : ' and no website address is configured'
+    }. ${unavailable}`;
+  }
+  if (hasWebsiteBaseUrl) {
+    return `The record has no slug, so the configured website address cannot be completed. ${unavailable}`;
+  }
+  return 'No website domain is configured. Give the editor the record slug and say the full URL is unavailable.';
+}
+
+/**
+ * Reads the record, plus its model when preview endpoints need it. Skips the
+ * reads when neither endpoints nor a website address can use them.
+ */
+async function loadRecord(
+  client: object | null,
+  itemId: string,
+  hasFrontends: boolean,
+  hasWebsiteBaseUrl: boolean,
+): Promise<{
+  item: Record<string, unknown> | null;
+  itemType: Record<string, unknown> | null;
+}> {
+  if (!client || !(hasFrontends || hasWebsiteBaseUrl)) {
+    return { item: null, itemType: null };
+  }
+
+  const recordClient = client as RawRecordClient;
+  const item = rawData(await recordClient.items.rawFind(itemId));
+  const itemType = hasFrontends
+    ? rawData(await recordClient.itemTypes.rawFind(relationshipId(item)))
+    : null;
+  return { item, itemType };
+}
+
 export async function getRecordPreviewLinks(
   host: PreviewLinksHost,
   request: RecordPreviewLinksRequest,
@@ -438,36 +556,30 @@ export async function getRecordPreviewLinks(
     : null;
   const frontends = await resolveFrontends(client, host.savedFrontends);
 
-  let item: Record<string, unknown> | null = null;
-  let itemType: Record<string, unknown> | null = null;
-  if (client && frontends.length > 0) {
-    const recordClient = client as unknown as RawRecordClient;
-    item = rawData(await recordClient.items.rawFind(itemId));
-    itemType = rawData(
-      await recordClient.itemTypes.rawFind(relationshipId(item)),
-    );
-  } else if (client && host.websiteBaseUrl) {
-    item = rawData(
-      await (client as unknown as RawRecordClient).items.rawFind(itemId),
-    );
-  }
+  const { item, itemType } = await loadRecord(
+    client,
+    itemId,
+    frontends.length > 0,
+    Boolean(host.websiteBaseUrl),
+  );
 
-  const fetched =
-    item && itemType && frontends.length > 0
-      ? await fetchPreviewLinks({
-          frontends,
-          signal,
-          payload: {
-            item,
-            itemType,
-            currentUser: serializableUser(host.currentUser),
-            siteId: host.siteId,
-            environmentId: host.environment,
-            locale,
-          },
-        })
-      : { links: [], errors: [] };
+  const hasFetchedFrontends = Boolean(item && itemType && frontends.length > 0);
+  const fetched = hasFetchedFrontends
+    ? await fetchPreviewLinks({
+        frontends,
+        signal,
+        payload: {
+          item,
+          itemType,
+          currentUser: serializableUser(host.currentUser),
+          siteId: host.siteId,
+          environmentId: host.environment,
+          locale,
+        },
+      })
+    : { links: [], errors: [] };
 
+  const hasDraftLinks = fetched.links.some((link) => link.isDraftLink);
   if (fetched.links.length > 0) {
     return {
       action: 'get_record_preview_links',
@@ -476,15 +588,30 @@ export async function getRecordPreviewLinks(
       source: 'web_previews',
       links: fetched.links,
       errors: fetched.errors,
-      message:
-        'These are the full website URLs returned by the configured preview endpoints.',
+      message: `These are the full website URLs returned by the configured preview endpoints.${
+        hasDraftLinks ? ` ${DRAFT_LINK_GUIDANCE}` : ''
+      }`,
     };
   }
 
-  const fallback = inferredLink(
-    host.websiteBaseUrl,
-    item ? recordSlug(item, locale) : null,
-  );
+  // A frontend that answered without links is authoritative: the record has
+  // no page there, so a slug-based guess would be wrong.
+  const hasEmptyEndpointAnswer =
+    hasFetchedFrontends && fetched.errors.length < frontends.length;
+  if (hasEmptyEndpointAnswer) {
+    return {
+      action: 'get_record_preview_links',
+      itemId,
+      locale,
+      source: 'web_previews',
+      links: [],
+      errors: fetched.errors,
+      message: `The configured preview endpoints returned no link for this record in locale "${locale}". Say the record has no website page there; do not guess a URL.`,
+    };
+  }
+
+  const slugLookup = recordSlug(item, locale);
+  const fallback = inferredLink(host.websiteBaseUrl, slugLookup.slug);
   if (fallback) {
     return {
       action: 'get_record_preview_links',
@@ -493,8 +620,11 @@ export async function getRecordPreviewLinks(
       source: 'website_base_url',
       links: [fallback],
       errors: fetched.errors,
-      message:
-        'No preview endpoint returned a URL. This link was built from the configured website address and the record slug.',
+      message: `${
+        fetched.errors.length > 0
+          ? 'The preview endpoints failed.'
+          : 'No preview endpoint returned a URL.'
+      } This link was built from the configured website address and the record slug, so it may miss locale prefixes or parent paths.`,
     };
   }
 
@@ -505,8 +635,14 @@ export async function getRecordPreviewLinks(
     source: 'unavailable',
     links: [],
     errors: fetched.errors,
-    slug: item ? recordSlug(item, locale) : null,
-    message:
-      'No website domain is configured. Give the editor the record slug and say the full URL is unavailable.',
+    slug: slugLookup.slug,
+    message: unavailableMessage({
+      hasAccessToken: Boolean(client),
+      hasFrontends: frontends.length > 0,
+      hasFrontendErrors: fetched.errors.length > 0,
+      hasWebsiteBaseUrl: Boolean(host.websiteBaseUrl),
+      locale,
+      slugLookup,
+    }),
   };
 }

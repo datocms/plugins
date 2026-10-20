@@ -1154,6 +1154,10 @@ describe('AgentRuntime', () => {
           label: 'Published',
           url: 'https://example.com/thanksgiving',
         },
+        {
+          label: 'Draft',
+          url: 'https://example.com/api/draft?url=%2Fthanksgiving&secret=leaky-value',
+        },
       ],
     });
     const runtime = runtimeWith(client, { getRecordPreviewLinks });
@@ -1165,6 +1169,9 @@ describe('AgentRuntime', () => {
     });
     expect(JSON.stringify(client.requests[1]?.input)).toContain(
       'https://example.com/thanksgiving',
+    );
+    expect(JSON.stringify(client.requests[1]?.input)).not.toContain(
+      'leaky-value',
     );
   });
 
