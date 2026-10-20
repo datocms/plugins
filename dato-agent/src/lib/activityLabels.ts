@@ -818,7 +818,7 @@ function localCompletedLabel(
     case 'open_record':
       return 'Record ready';
     case 'open_record_in_full_editor':
-      return 'Full editor ready';
+      return 'Full editor link ready';
     case 'get_record_preview_links':
       return 'Website URL ready';
     case 'show_records': {

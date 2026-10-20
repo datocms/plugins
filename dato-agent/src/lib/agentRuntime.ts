@@ -1217,7 +1217,7 @@ export const LOCAL_NAVIGATION_TOOLS = [
         item_type_id: {
           type: ['string', 'null'],
           description:
-            'The record model ID when known, or null. Include it so the full editor can open without another lookup.',
+            'The record model ID when known, or null. The host verifies the model itself.',
         },
       },
       required: ['item_id', 'item_type_id'],

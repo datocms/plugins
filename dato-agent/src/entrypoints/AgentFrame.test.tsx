@@ -3788,6 +3788,142 @@ describe('AgentFrame', () => {
     expect(mocks.surfaceProps?.hostActionPending).toBe(false);
   });
 
+  it('reports opened and blocked full-editor tabs to the model', async () => {
+    const url =
+      'https://example.admin.datocms.com/editor/item_types/page/items/item-1/edit';
+    const navigator = {
+      supportsRecordList: true,
+      openRecordInFullEditor: vi
+        .fn()
+        .mockResolvedValueOnce({ opened: true, url, itemTypeId: 'page' })
+        .mockResolvedValueOnce({ opened: false, url, itemTypeId: 'page' }),
+      openRecord: vi.fn().mockResolvedValue(undefined),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const toolResults: unknown[] = [];
+    const result = completedResult();
+    mocks.runtime = {
+      runTurn: vi.fn(async () => {
+        const openFullEditor = () =>
+          mocks.runtimeConfig?.navigation.openRecordInFullEditor?.({
+            itemId: 'item-1',
+            itemTypeId: 'model-guess',
+          });
+        toolResults.push(await openFullEditor());
+        toolResults.push(await openFullEditor());
+        return result;
+      }),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ navigator })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Open the full editor');
+    });
+    await waitFor(() => {
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+
+    // The model-supplied model ID is never trusted.
+    expect(navigator.openRecordInFullEditor).toHaveBeenCalledWith({
+      itemId: 'item-1',
+    });
+    expect(toolResults).toEqual([
+      {
+        opened: true,
+        url,
+        message:
+          'The full record editor was opened in a new browser tab, including the standard sidebar.',
+      },
+      {
+        opened: false,
+        url,
+        message: `The browser blocked the new tab. Share this URL so the editor can open it: ${url}`,
+      },
+    ]);
+  });
+
+  it('does not offer the full-editor tool in the record sidebar', async () => {
+    const result = completedResult();
+    mocks.runtime = {
+      runTurn: vi.fn(async () => result),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ surface: 'record' })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Hello');
+    });
+    await waitFor(() => {
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+
+    expect(mocks.runtimeConfig?.navigation.openRecordInFullEditor).toBe(
+      undefined,
+    );
+  });
+
+  it('shows a notice with the URL when the record chip tab is blocked or fails', async () => {
+    const url =
+      'https://example.admin.datocms.com/editor/item_types/page/items/record-1/edit';
+    const navigator = {
+      supportsRecordList: true,
+      openRecordInFullEditor: vi
+        .fn()
+        .mockResolvedValueOnce({ opened: false, url, itemTypeId: 'page' })
+        .mockRejectedValueOnce(new Error('Record not found')),
+      openRecord: vi.fn().mockResolvedValue(undefined),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const result = completedResult();
+    mocks.runtime = {
+      runTurn: vi.fn(async () => {
+        await mocks.runtimeConfig?.navigation.presentRecords({
+          title: 'Record',
+          records: [{ itemId: 'record-1', label: 'Record' }],
+        });
+        return result;
+      }),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ navigator })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Show a record');
+    });
+    await waitFor(() => {
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+    const recordEntry = () => {
+      const entry = mocks.surfaceProps?.entries.find(
+        (candidate) => candidate.kind === 'records',
+      );
+      if (entry?.kind !== 'records') {
+        throw new Error('Expected a record entry.');
+      }
+      return entry;
+    };
+
+    await act(async () => {
+      await mocks.surfaceProps?.onOpenRecordInFullEditor?.(
+        recordEntry().records[0],
+        recordEntry().id,
+      );
+    });
+    expect(recordEntry().error).toBe(
+      `Your browser blocked the new tab. Open the full editor at ${url}`,
+    );
+
+    await act(async () => {
+      await mocks.surfaceProps?.onOpenRecordInFullEditor?.(
+        recordEntry().records[0],
+        recordEntry().id,
+      );
+    });
+    expect(recordEntry().error).toBe(
+      'Could not open the full editor. Record not found',
+    );
+  });
+
   it('blocks receipt and approval-detail launchers throughout auto-approve confirmation', async () => {
     let finishConfirmation: ((confirmed: boolean) => void) | undefined;
     const onConfirmEnableAutoApprove = vi.fn(
