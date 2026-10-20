@@ -312,3 +312,18 @@ export const redactCredentialTokens = (value: string): string =>
  */
 export const redactSecrets = (value: string): string =>
   redactKeyValueSecrets(redactCredentialTokens(value));
+
+// Matched against names lowercased with every non-letter removed, so
+// `preview_token`, `apiKey` and `x-secret` all normalize the same way.
+const SECRET_PARAMETER_NAME_PATTERN =
+  /(token|secret|password|passwd|key|signature|sig|auth|authorization|credentials?|jwt)$/;
+
+/**
+ * Whether a URL query parameter name denotes a credential, such as the
+ * `token` of a draft-mode URL.
+ *
+ * @param name - Query parameter name.
+ * @returns `true` for secret-like names such as `token` or `preview_secret`.
+ */
+export const isSecretParameterName = (name: string): boolean =>
+  SECRET_PARAMETER_NAME_PATTERN.test(name.toLowerCase().replace(/[^a-z]/g, ''));

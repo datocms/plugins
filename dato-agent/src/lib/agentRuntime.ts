@@ -70,7 +70,11 @@ import {
 } from './mcpPolicy';
 import type { LocalFileAttachmentDescriptor } from './mentions';
 import { providerModelSupportsFastMode } from './providerModels';
-import { REDACTED_MARKER, redactCredentialTokens } from './secretRedaction';
+import {
+  REDACTED_MARKER,
+  redactCredentialTokens,
+  redactSecrets,
+} from './secretRedaction';
 import { type AgentSystemContext, buildSystemPrompt } from './systemPrompt';
 
 export const DEFAULT_AGENT_MODEL = 'gpt-5.6-terra' as const;
@@ -1213,7 +1217,7 @@ export const LOCAL_NAVIGATION_TOOLS = [
         item_type_id: {
           type: ['string', 'null'],
           description:
-            'The record model ID when known, or null. Include it so the full editor can open without another lookup.',
+            'The record model ID when known, or null. The host verifies the model itself.',
         },
       },
       required: ['item_id', 'item_type_id'],
@@ -1322,7 +1326,7 @@ export const GET_RECORD_PREVIEW_LINKS_TOOL = {
   type: 'function',
   name: 'get_record_preview_links',
   description:
-    'Look up the full website URL for one verified DatoCMS record. Use this whenever the editor asks for a page link, public URL, or domain. It calls the Web Previews endpoints configured for this project and otherwise builds a URL from the configured website address and the record slug. This never changes content. Return the full URLs from the result. If the result says no domain is configured, give the slug and say the full URL is unavailable.',
+    'Look up the full website URL for one verified DatoCMS record. Use this whenever the editor asks for a page link, public URL, or domain. It calls the Web Previews endpoints configured for this project and otherwise builds a URL from the configured website address and the record slug. This never changes content. Return the full URLs from the result. Prefer published links; a link with isDraftLink had its secret removed and does not work as shown. Never reveal or guess preview tokens. If the result says no URL is available, follow its message.',
   strict: true,
   parameters: {
     type: 'object',
@@ -1335,7 +1339,7 @@ export const GET_RECORD_PREVIEW_LINKS_TOOL = {
       locale: {
         type: ['string', 'null'],
         description:
-          'The locale to request, or null to use the editor’s current locale.',
+          'The locale to request, or null to use the current content locale.',
       },
     },
     required: ['item_id', 'locale'],
@@ -3426,11 +3430,15 @@ async function* executeLocalToolCalls({
             : typeof result === 'string'
               ? result
               : undefined;
-        output = stringifyCallbackResult(callbackResult, {
-          action: GET_RECORD_PREVIEW_LINKS_TOOL.name,
-          itemId: parsed.itemId,
-          ...(parsed.locale ? { locale: parsed.locale } : {}),
-        });
+        // Endpoint URLs and errors come from third-party sites; strip any
+        // credential that survived the per-link query cleanup.
+        output = redactSecrets(
+          stringifyCallbackResult(callbackResult, {
+            action: GET_RECORD_PREVIEW_LINKS_TOOL.name,
+            itemId: parsed.itemId,
+            ...(parsed.locale ? { locale: parsed.locale } : {}),
+          }),
+        );
       } else {
         throw new Error(`Unsupported local tool: ${call.name}.`);
       }

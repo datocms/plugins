@@ -474,8 +474,9 @@ describe('buildSystemPrompt', () => {
       'use present_records so the editor can choose one',
     );
     expect(prompt).toContain(
-      'use present_fields rather than open_record to reference its fields',
+      "opens in the host's modal editor without field focus. This sidebar contains a new unsaved record, so use present_fields rather than open_record to reference its fields.",
     );
+    expect(prompt).not.toContain('open_record_in_full_editor');
     expect(prompt).toContain(
       'new record that does not have a saved record ID yet',
     );

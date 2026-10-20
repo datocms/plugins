@@ -31,6 +31,7 @@ export type OpenAssetResult = {
 export type FullEditorResult = {
   opened: boolean;
   url: string;
+  itemTypeId: string;
 };
 
 type FullEditorCtx = {
@@ -46,6 +47,10 @@ export type AgentNavigator = {
   openRecord(target: RecordTarget): Promise<void>;
   showRecords(target: RecordListTarget): Promise<void>;
   openAsset(target: AssetTarget): Promise<OpenAssetResult>;
+  /**
+   * Opens the standard record editor in a new tab. Pass `itemTypeId` only when
+   * the host verified it; otherwise the record is looked up.
+   */
   openRecordInFullEditor(target: RecordTarget): Promise<FullEditorResult>;
 };
 
@@ -105,11 +110,11 @@ async function openRecordEditorTab(
       );
     }
     if (!popup) {
-      return { opened: false, url };
+      return { opened: false, url, itemTypeId };
     }
 
     popup.location.replace(url);
-    return { opened: true, url };
+    return { opened: true, url, itemTypeId };
   } catch (error) {
     popup?.close();
     throw error;

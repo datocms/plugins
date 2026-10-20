@@ -110,6 +110,7 @@ import {
 } from '../lib/mentions';
 import type {
   AgentNavigator,
+  FullEditorResult,
   OpenAssetResult,
   RecordListTarget,
   RecordTarget,
@@ -746,6 +747,34 @@ function startFieldReceiptOpening(
       ? { ...entry, error: undefined, openingKey }
       : entry,
   );
+}
+
+/** Records a visible notice on a record receipt, or clears it. */
+function setRecordReceiptNotice(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+  notice: string | undefined,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'records' && entry.id === entryId
+      ? { ...entry, error: notice }
+      : entry,
+  );
+}
+
+/** Tells the model whether the tab opened, or which URL to share instead. */
+function fullEditorToolResult(result: FullEditorResult): {
+  opened: boolean;
+  url: string;
+  message: string;
+} {
+  return {
+    opened: result.opened,
+    url: result.url,
+    message: result.opened
+      ? 'The full record editor was opened in a new browser tab, including the standard sidebar.'
+      : `The browser blocked the new tab. Share this URL so the editor can open it: ${result.url}`,
+  };
 }
 
 function settleFieldReceiptOpening(
@@ -3630,18 +3659,27 @@ export default function AgentFrame(props: AgentFrameProps) {
           await appendRecordResults('Record found', [target]);
           return queuePendingNavigation({ type: 'openRecord', target });
         },
-        openRecordInFullEditor: async ({ itemId, itemTypeId }) => {
-          const target = { itemId, itemTypeId };
-          const result = await props.navigator.openRecordInFullEditor(target);
-          await appendRecordResults('Record found', [target]);
-          return {
-            opened: result.opened,
-            url: result.url,
-            message: result.opened
-              ? 'The full record editor was opened in a new browser tab, including the standard sidebar.'
-              : `The browser blocked the new tab. Share this URL so the editor can open it: ${result.url}`,
-          };
-        },
+        // The record sidebar already is the full editor, so only the
+        // inspector offers this tool.
+        ...(surface === 'project'
+          ? {
+              openRecordInFullEditor: async ({
+                itemId,
+              }: {
+                itemId: string;
+              }) => {
+                // The model-supplied item_type_id is unverified: let the
+                // navigator look the model up.
+                const result = await props.navigator.openRecordInFullEditor({
+                  itemId,
+                });
+                await appendRecordResults('Record found', [
+                  { itemId, itemTypeId: result.itemTypeId },
+                ]);
+                return fullEditorToolResult(result);
+              },
+            }
+          : {}),
         showRecords: async ({ title, records }) => {
           await appendRecordResults(title, records);
           if (!props.navigator.supportsRecordList) {
@@ -5731,6 +5769,33 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   };
 
+  const openRecordInFullEditor = async (
+    record: AgentRecordResultViewModel,
+    entryId?: string,
+  ) => {
+    let notice: string | undefined;
+    try {
+      const result = await props.navigator.openRecordInFullEditor({
+        itemId: record.itemId,
+        itemTypeId: record.itemTypeId,
+        label: record.title,
+      });
+      if (!result.opened) {
+        notice = `Your browser blocked the new tab. Open the full editor at ${result.url}`;
+      }
+    } catch (error) {
+      const detail = errorMessage(error).trim();
+      notice = detail
+        ? `Could not open the full editor. ${detail}`
+        : 'Could not open the full editor.';
+    }
+    if (entryId !== undefined && mountedRef.current) {
+      updateEntries((current) =>
+        setRecordReceiptNotice(current, entryId, notice),
+      );
+    }
+  };
+
   const openFieldDirectly = async (field: AgentFieldResultViewModel) => {
     if (!props.openCurrentField || !beginHostAction()) return;
     try {
@@ -6154,13 +6219,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}
       onOpenRecord={openRecord}
-      onOpenRecordInFullEditor={async (record) => {
-        await props.navigator.openRecordInFullEditor({
-          itemId: record.itemId,
-          itemTypeId: record.itemTypeId,
-          label: record.title,
-        });
-      }}
+      onOpenRecordInFullEditor={openRecordInFullEditor}
       currentRecordId={
         surface === 'project' ? currentInspectorRecordId : undefined
       }

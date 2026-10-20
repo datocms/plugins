@@ -291,7 +291,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
             {
               siteId: ctx.site.id,
               environment: ctx.environment,
-              locale: ctx.ui.locale,
+              locale: ctx.site.attributes.locales[0] ?? '',
               cmaBaseUrl: ctx.cmaBaseUrl,
               accessToken: ctx.currentUserAccessToken,
               currentUser: ctx.currentUser,

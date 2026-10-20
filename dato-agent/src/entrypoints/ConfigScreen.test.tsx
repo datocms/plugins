@@ -782,6 +782,62 @@ describe('ConfigScreen', () => {
     );
   });
 
+  it('removes the saved Web Previews endpoints', async () => {
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: {
+        ...PARAMETERS,
+        previewFrontends: [
+          {
+            name: 'Production',
+            apiEndpointUrl: 'https://example.com/api/preview-links',
+            customHeaders: [],
+          },
+        ],
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(
+      screen.getByText(/Saved preview endpoints: Production/),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove saved endpoints' }),
+    );
+    expect(screen.queryByText(/Saved preview endpoints/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ previewFrontends: [] }),
+    );
+  });
+
+  it('adds https:// to a website address and rejects an invalid one', async () => {
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.change(screen.getByLabelText('Website address'), {
+      target: { value: 'not a url' },
+    });
+    expect(
+      screen.getByText('Enter a web address, such as https://www.example.com.'),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+    expect(updatePluginParameters).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Website address'), {
+      target: { value: 'www.example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ websiteBaseUrl: 'https://www.example.com' }),
+    );
+  });
+
   it('validates only the selected provider inline', () => {
     const { alert, ctx, updatePluginParameters } = createCtx({
       parameters: {},

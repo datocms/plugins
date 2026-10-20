@@ -78,7 +78,17 @@ describe('normalizeWebsiteBaseUrl', () => {
       'https://example.com/blog',
     );
     expect(normalizeWebsiteBaseUrl('ftp://example.com')).toBe('');
+    expect(normalizeWebsiteBaseUrl('javascript:alert(1)')).toBe('');
     expect(normalizeWebsiteBaseUrl('not a url')).toBe('');
+  });
+
+  it('adds https:// to an address without a scheme', () => {
+    expect(normalizeWebsiteBaseUrl('www.example.com')).toBe(
+      'https://www.example.com',
+    );
+    expect(normalizeWebsiteBaseUrl('localhost:3000/')).toBe(
+      'https://localhost:3000',
+    );
   });
 });
 
@@ -88,10 +98,21 @@ describe('loadWebPreviewFrontends', () => {
       plugins: {
         list: vi.fn().mockResolvedValue([
           {
+            name: 'Something else',
             package_name: 'something-else',
             parameters: {},
           },
           {
+            name: 'Web Previews (fork)',
+            package_name: null,
+            parameters: {
+              frontends: [
+                { name: 'Fork', previewWebhook: 'https://fork.example.com' },
+              ],
+            },
+          },
+          {
+            name: 'Web Previews',
             package_name: WEB_PREVIEWS_PACKAGE_NAME,
             parameters: {
               frontends: [
@@ -120,6 +141,49 @@ describe('loadWebPreviewFrontends', () => {
         customHeaders: [{ name: 'X-Token', value: 'secret' }],
       },
     ]);
+  });
+
+  it('falls back to a privately installed Web Previews copy', async () => {
+    const list = vi.fn().mockResolvedValue([
+      { name: 'SEO Analysis', package_name: null, parameters: {} },
+      {
+        name: 'Web Previews',
+        package_name: null,
+        parameters: {
+          frontends: [
+            { name: 'Private', previewWebhook: 'https://example.com/private' },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      loadWebPreviewFrontends({ plugins: { list } }),
+    ).resolves.toEqual([
+      {
+        name: 'Private',
+        apiEndpointUrl: 'https://example.com/private',
+        customHeaders: [],
+      },
+    ]);
+  });
+
+  it('recognizes a renamed private copy by its frontends', async () => {
+    const list = vi.fn().mockResolvedValue([
+      {
+        name: 'Our previews',
+        package_name: null,
+        parameters: {
+          frontends: [
+            { name: 'Renamed', previewWebhook: 'https://example.com/renamed' },
+          ],
+        },
+      },
+    ]);
+
+    const frontends = await loadWebPreviewFrontends({ plugins: { list } });
+
+    expect(frontends.map((frontend) => frontend.name)).toEqual(['Renamed']);
   });
 
   it('returns an empty list when Web Previews is not installed', async () => {
@@ -179,12 +243,38 @@ describe('fetchPreviewLinks', () => {
     expect(request.headers.get('Authorization')).toBe('Bearer secret');
   });
 
-  it('rejects a payload that is not a list of labeled HTTP URLs', async () => {
+  it('skips malformed links and keeps the valid ones', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
-        previewLinks: [{ label: 'Bad', url: 'javascript:alert(1)' }],
+        previewLinks: [
+          { label: 'Bad', url: 'javascript:alert(1)' },
+          { label: '', url: 'https://example.com/no-label' },
+          'not a link',
+          { label: 'Published', url: 'https://example.com/page' },
+        ],
       }),
     );
+
+    await expect(
+      fetchPreviewLinks({
+        frontends: [staging],
+        payload: {},
+        fetchImpl: fetchImpl as typeof fetch,
+      }),
+    ).resolves.toEqual({
+      links: [
+        {
+          frontendName: 'Staging',
+          label: 'Published',
+          url: 'https://example.com/page',
+        },
+      ],
+      errors: [],
+    });
+  });
+
+  it('rejects a payload without a link list', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ links: [] }));
 
     const result = await fetchPreviewLinks({
       frontends: [staging],
@@ -194,6 +284,64 @@ describe('fetchPreviewLinks', () => {
 
     expect(result.links).toEqual([]);
     expect(result.errors[0]?.message).toContain('invalid payload');
+  });
+
+  it('removes secret query parameters and flags the draft link', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        previewLinks: [
+          {
+            label: 'Draft version',
+            url: 'https://example.com/api/draft-mode/enable?url=%2Fblog%2Fpost&token=draft-secret',
+          },
+          { label: 'Published version', url: 'https://example.com/blog/post' },
+        ],
+      }),
+    );
+
+    const result = await fetchPreviewLinks({
+      frontends: [staging],
+      payload: {},
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(JSON.stringify(result)).not.toContain('draft-secret');
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Staging',
+        label: 'Draft version',
+        url: 'https://example.com/api/draft-mode/enable?url=%2Fblog%2Fpost',
+        isDraftLink: true,
+      },
+      {
+        frontendName: 'Staging',
+        label: 'Published version',
+        url: 'https://example.com/blog/post',
+      },
+    ]);
+  });
+
+  it('targets the loopback address space only for localhost endpoints', async () => {
+    const fetchImpl = vi.fn(
+      async (_url: string | URL | Request, _init?: RequestInit) =>
+        jsonResponse({ previewLinks: [] }),
+    );
+
+    await fetchPreviewLinks({
+      frontends: [
+        { ...staging, apiEndpointUrl: 'http://localhost:3000/api/preview' },
+        staging,
+      ],
+      payload: {},
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
+      targetAddressSpace: 'loopback',
+    });
+    expect(fetchImpl.mock.calls[1]?.[1]).not.toHaveProperty(
+      'targetAddressSpace',
+    );
   });
 
   it('reports a timeout without failing the other frontends', async () => {
@@ -276,6 +424,61 @@ describe('getRecordPreviewLinks', () => {
       links: [{ label: 'Website', url: 'https://example.com/thanksgiving' }],
     });
     expect(cmaMocks.rawFindItemType).not.toHaveBeenCalled();
+  });
+
+  it('does not use another locale slug for the fallback URL', async () => {
+    const result = await getRecordPreviewLinks(host, {
+      itemId: 'item-1',
+      locale: 'it',
+    });
+
+    expect(result).toMatchObject({
+      source: 'unavailable',
+      links: [],
+      slug: null,
+    });
+    expect(result.message).toContain('no slug in locale "it"');
+  });
+
+  it('skips the slug fallback when an endpoint answers with no links', async () => {
+    const fetchImpl = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ previewLinks: [] }));
+
+    const result = await getRecordPreviewLinks(
+      { ...host, savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result).toMatchObject({ source: 'web_previews', links: [] });
+    expect(result.message).toContain('returned no link');
+    fetchImpl.mockRestore();
+  });
+
+  it('explains failed endpoints instead of a missing domain', async () => {
+    const fetchImpl = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({}, 500));
+
+    const result = await getRecordPreviewLinks(
+      { ...host, websiteBaseUrl: '', savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result).toMatchObject({ source: 'unavailable' });
+    expect(result.message).toContain('preview endpoints failed');
+    expect(result.message).not.toContain('No website domain');
+    fetchImpl.mockRestore();
+  });
+
+  it('explains that endpoints were skipped without an access token', async () => {
+    const result = await getRecordPreviewLinks(
+      { ...host, accessToken: null, savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result).toMatchObject({ source: 'unavailable' });
+    expect(result.message).toContain('access token is unavailable');
   });
 
   it('uses the saved frontend copy when the live plugin list fails', async () => {

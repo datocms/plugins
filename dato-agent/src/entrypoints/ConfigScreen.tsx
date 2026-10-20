@@ -39,6 +39,7 @@ import {
 import { ACCOUNT_ROLE_ID } from '../lib/permissions';
 import {
   loadWebPreviewFrontends,
+  normalizeWebsiteBaseUrl,
   type PreviewFrontend,
 } from '../lib/previewLinks';
 import {
@@ -801,6 +802,15 @@ function ProviderConfigurationFields({
   );
 }
 
+/**
+ * Validates the website address field. A bare host is accepted because saving
+ * adds `https://`.
+ */
+const websiteAddressError = (value: string): string | undefined =>
+  value.trim() && !normalizeWebsiteBaseUrl(value)
+    ? 'Enter a web address, such as https://www.example.com.'
+    : undefined;
+
 function WebsiteLinksSection({
   accessToken,
   baseUrl,
@@ -811,6 +821,7 @@ function WebsiteLinksSection({
   previewFrontends,
   saving,
   websiteBaseUrl,
+  websiteBaseUrlError,
 }: {
   accessToken: string | null | undefined;
   baseUrl: string;
@@ -821,6 +832,7 @@ function WebsiteLinksSection({
   previewFrontends: readonly PreviewFrontend[];
   saving: boolean;
   websiteBaseUrl: string;
+  websiteBaseUrlError?: string;
 }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string>();
@@ -878,6 +890,7 @@ function WebsiteLinksSection({
           value={websiteBaseUrl}
           placeholder="https://www.example.com"
           hint="Used only when Web Previews does not return a link. The agent adds the record slug to this address."
+          error={websiteBaseUrlError}
           onChange={onWebsiteBaseUrlChange}
           textInputProps={{
             disabled: !canEdit || saving,
@@ -894,10 +907,26 @@ function WebsiteLinksSection({
           {importing ? 'Importing…' : 'Import from Web Previews'}
         </Button>
         {previewFrontends.length > 0 && (
-          <p>
-            Saved preview endpoints:{' '}
-            {previewFrontends.map((frontend) => frontend.name).join(', ')}.
-          </p>
+          <>
+            <p>
+              Saved preview endpoints:{' '}
+              {previewFrontends.map((frontend) => frontend.name).join(', ')}.
+            </p>
+            <Button
+              type="button"
+              buttonType="negative"
+              disabled={!canEdit || saving || importing}
+              onClick={() => {
+                onPreviewFrontendsChange([]);
+                setError(undefined);
+                setMessage(
+                  'Removed the saved endpoints. Save settings to apply.',
+                );
+              }}
+            >
+              Remove saved endpoints
+            </Button>
+          </>
         )}
         {message && <p>{message}</p>}
         {error && <p role="alert">{error}</p>}
@@ -1053,6 +1082,8 @@ export default function ConfigScreen({ ctx }: Props) {
   const retryRoleDiscovery = () =>
     setRoleRetryAttempt((attempt) => attempt + 1);
 
+  const websiteBaseUrlError = websiteAddressError(config.websiteBaseUrl);
+
   const update = <Key extends keyof AgentConfig>(
     key: Key,
     value: AgentConfig[Key],
@@ -1084,7 +1115,7 @@ export default function ConfigScreen({ ctx }: Props) {
     const validationError = providerConfigurationChanged
       ? configurationValidationError(configForSave, modelDiscovery)
       : undefined;
-    if (validationError) {
+    if (validationError || websiteBaseUrlError) {
       return;
     }
 
@@ -1175,6 +1206,7 @@ export default function ConfigScreen({ ctx }: Props) {
             previewFrontends={config.previewFrontends}
             saving={saving}
             websiteBaseUrl={config.websiteBaseUrl}
+            websiteBaseUrlError={websiteBaseUrlError}
           />
 
           <Section title="Permissions">

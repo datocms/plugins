@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { redactCredentialTokens, redactSecrets } from './secretRedaction';
+import {
+  isSecretParameterName,
+  redactCredentialTokens,
+  redactSecrets,
+} from './secretRedaction';
 
 describe('secretRedaction', () => {
   it('redacts Bearer tokens and sk- keys with one marker', () => {
@@ -172,5 +176,18 @@ describe('secretRedaction', () => {
     const startedAt = performance.now();
     redactSecrets(input);
     expect(performance.now() - startedAt).toBeLessThan(50);
+  });
+});
+
+describe('isSecretParameterName', () => {
+  it.each(['token', 'preview_token', 'secret', 'apiKey', 'x-auth', 'sig'])(
+    'treats %s as secret',
+    (name) => {
+      expect(isSecretParameterName(name)).toBe(true);
+    },
+  );
+
+  it.each(['url', 'slug', 'locale', 'redirect'])('keeps %s visible', (name) => {
+    expect(isSecretParameterName(name)).toBe(false);
   });
 });

@@ -489,6 +489,7 @@ describe('openRecordInFullEditor', () => {
     ).resolves.toEqual({
       opened: true,
       url: 'https://example.admin.datocms.com/environments/staging/editor/item_types/post/items/item-1/edit',
+      itemTypeId: 'post',
     });
 
     expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
@@ -521,6 +522,7 @@ describe('openRecordInFullEditor', () => {
     ).resolves.toEqual({
       opened: true,
       url: 'https://example.admin.datocms.com/editor/item_types/page/items/item-2/edit',
+      itemTypeId: 'page',
     });
     expect(buildClient).toHaveBeenCalledWith({
       apiToken: 'token',
@@ -543,6 +545,7 @@ describe('openRecordInFullEditor', () => {
     ).resolves.toEqual({
       opened: false,
       url: 'https://example.admin.datocms.com/environments/staging/editor/item_types/post/items/item-1/edit',
+      itemTypeId: 'post',
     });
   });
 
