@@ -98,7 +98,8 @@ function httpUrl(value: string): string | null {
 
 /**
  * Normalizes the configured website address. A bare host such as
- * `www.example.com` gets `https://`; other schemes are rejected.
+ * `www.example.com` gets `https://`; other schemes are rejected, and so are
+ * credentials, a query or a fragment, since the record slug is appended.
  *
  * @returns The address without a trailing slash, or `''` when invalid.
  */
@@ -111,7 +112,11 @@ export function normalizeWebsiteBaseUrl(value: unknown): string {
   // `localhost:3000` has a colon but no scheme: a scheme never precedes a digit.
   const hasScheme = /^[a-z][a-z\d+.-]*:(?!\d)/i.test(candidate);
   const url = httpUrl(hasScheme ? candidate : `https://${candidate}`);
-  return url ? url.replace(/\/$/, '') : '';
+  if (!url) {
+    return '';
+  }
+  const { hash, password, search, username } = new URL(url);
+  return hash || search || username || password ? '' : url.replace(/\/$/, '');
 }
 
 function normalizePreviewHeaders(value: unknown): PreviewHeader[] {
@@ -234,23 +239,105 @@ function errorMessage(error: unknown, fallback: string): string {
     : fallback;
 }
 
+const NESTED_URL_BASE = 'https://nested.invalid';
+const MAX_NESTED_URL_DEPTH = 3;
+
 /**
- * Removes secret query parameters from a link so tokens never reach the
- * model, and flags the link as a draft link that needs authentication.
+ * Removes secret parameters from a query string or a `#key=value` fragment.
+ * Values that hold a nested URL (such as an encoded `redirect`) are cleaned
+ * recursively.
+ *
+ * @returns Whether anything was removed.
+ */
+function stripSecretParameters(
+  parameters: URLSearchParams,
+  depth: number,
+): boolean {
+  let hasRemoved = false;
+  for (const name of [...new Set(parameters.keys())]) {
+    if (isSecretParameterName(name)) {
+      parameters.delete(name);
+      hasRemoved = true;
+      continue;
+    }
+    const values = parameters.getAll(name);
+    const cleaned = values.map((value) => withoutNestedSecrets(value, depth));
+    if (cleaned.some((value, index) => value !== values[index])) {
+      parameters.delete(name);
+      for (const value of cleaned) {
+        parameters.append(name, value);
+      }
+      hasRemoved = true;
+    }
+  }
+  return hasRemoved;
+}
+
+/**
+ * Cleans a parameter value that looks like a URL or a query string. Relative
+ * values stay relative.
+ *
+ * @returns The value without secrets; unchanged when it held none.
+ */
+function withoutNestedSecrets(value: string, depth: number): string {
+  if (depth >= MAX_NESTED_URL_DEPTH || !/[?&#][^=&#]+=/.test(value)) {
+    return value;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value, NESTED_URL_BASE);
+  } catch {
+    return value;
+  }
+  if (!stripSecretsFromUrl(url, depth + 1)) {
+    return value;
+  }
+  return url.origin === NESTED_URL_BASE
+    ? `${url.pathname}${url.search}${url.hash}`
+    : url.toString();
+}
+
+/**
+ * Removes credentials from a URL in place: userinfo, secret query and
+ * fragment parameters, and secrets inside nested URLs.
+ *
+ * @returns Whether anything was removed.
+ */
+function stripSecretsFromUrl(url: URL, depth: number): boolean {
+  let hasRemoved = false;
+  if (url.username || url.password) {
+    url.username = '';
+    url.password = '';
+    hasRemoved = true;
+  }
+
+  const query = new URLSearchParams(url.search);
+  if (stripSecretParameters(query, depth)) {
+    url.search = query.toString();
+    hasRemoved = true;
+  }
+
+  // OAuth-style fragments such as `#access_token=…` carry secrets too.
+  if (url.hash.includes('=')) {
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    if (stripSecretParameters(fragment, depth)) {
+      url.hash = fragment.toString();
+      hasRemoved = true;
+    }
+  }
+  return hasRemoved;
+}
+
+/**
+ * Removes credentials from a link so they never reach the model, and flags
+ * the link as a draft link that needs authentication.
  */
 function withoutSecretParameters(link: PreviewLink): PreviewLink {
   const url = new URL(link.url);
-  const secretNames = [...new Set(url.searchParams.keys())].filter(
-    isSecretParameterName,
-  );
-  if (secretNames.length === 0) {
-    return link;
-  }
-
-  for (const name of secretNames) {
-    url.searchParams.delete(name);
-  }
-  return { ...link, url: url.toString(), isDraftLink: true };
+  return stripSecretsFromUrl(url, 0)
+    ? { ...link, url: url.toString(), isDraftLink: true }
+    : link;
 }
 
 /**
@@ -498,6 +585,19 @@ function inferredLink(
 
 const DRAFT_LINK_GUIDANCE =
   'Links with isDraftLink open a draft preview. Their secret parameter was removed, so they will not work as shown. Give the editor the published link instead, and never reveal, guess or ask for preview tokens.';
+const DRAFT_ONLY_GUIDANCE =
+  'Every returned link is a draft preview link. Their secret parameters were removed, so they will not work as shown. Say that no published URL is available, and never reveal, guess or ask for preview tokens.';
+
+/** Adds draft-link guidance that matches the mix of returned links. */
+function previewLinksMessage(links: readonly PreviewLink[]): string {
+  const base =
+    'These are the full website URLs returned by the configured preview endpoints.';
+  const draftCount = links.filter((link) => link.isDraftLink).length;
+  if (draftCount === 0) {
+    return base;
+  }
+  return `${base} ${draftCount === links.length ? DRAFT_ONLY_GUIDANCE : DRAFT_LINK_GUIDANCE}`;
+}
 
 /** Explains why no website URL is available, for each failure state. */
 function unavailableMessage({
@@ -603,7 +703,6 @@ export async function getRecordPreviewLinks(
       })
     : { links: [], errors: [] };
 
-  const hasDraftLinks = fetched.links.some((link) => link.isDraftLink);
   if (fetched.links.length > 0) {
     return {
       action: 'get_record_preview_links',
@@ -612,9 +711,7 @@ export async function getRecordPreviewLinks(
       source: 'web_previews',
       links: fetched.links,
       errors: fetched.errors,
-      message: `These are the full website URLs returned by the configured preview endpoints.${
-        hasDraftLinks ? ` ${DRAFT_LINK_GUIDANCE}` : ''
-      }`,
+      message: previewLinksMessage(fetched.links),
     };
   }
 

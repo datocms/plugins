@@ -58,8 +58,9 @@ if (!handledOAuthCallback) {
           pointsTo: {
             inspectorId: 'dato-agent',
             // The inspector always shows a right-hand pane and only reads this
-            // width once. Start with a balanced split so the chat is usable
-            // before a record is opened; the editor can drag the divider.
+            // width once. Start the record pane at about 45%, never below the
+            // CMS minimum, so the chat is usable before a record is opened;
+            // the editor can drag the divider.
             preferredWidth: inspectorRecordPaneWidth(window.outerWidth),
             initialInspectorPanel: {
               panelId: 'dato-agent-empty',

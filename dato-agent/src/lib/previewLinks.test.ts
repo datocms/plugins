@@ -80,6 +80,14 @@ describe('normalizeWebsiteBaseUrl', () => {
     expect(normalizeWebsiteBaseUrl('ftp://example.com')).toBe('');
     expect(normalizeWebsiteBaseUrl('javascript:alert(1)')).toBe('');
     expect(normalizeWebsiteBaseUrl('not a url')).toBe('');
+    expect(normalizeWebsiteBaseUrl('mailto:a@b.c')).toBe('');
+  });
+
+  it('rejects a query, a fragment or credentials, since the slug is appended', () => {
+    expect(normalizeWebsiteBaseUrl('www.example.com/blog?ref=x')).toBe('');
+    expect(normalizeWebsiteBaseUrl('https://example.com/#top')).toBe('');
+    expect(normalizeWebsiteBaseUrl('https://user:pass@example.com')).toBe('');
+    expect(normalizeWebsiteBaseUrl('user:pass@example.com')).toBe('');
   });
 
   it('adds https:// to an address without a scheme', () => {
@@ -321,6 +329,92 @@ describe('fetchPreviewLinks', () => {
     ]);
   });
 
+  it.each([
+    [
+      'an encoded parameter name',
+      'https://site.com/api/draft?url=%2Fblog&%74oken=SEKRET',
+      'https://site.com/api/draft?url=%2Fblog',
+    ],
+    [
+      'a nested encoded redirect',
+      'https://site.com/api/draft?redirect=https%3A%2F%2Fsite.com%2Fx%3Ftoken%3DSEKRET',
+      'https://site.com/api/draft?redirect=https%3A%2F%2Fsite.com%2Fx',
+    ],
+    [
+      'a nested relative redirect',
+      'https://site.com/api/draft?url=%2Fx%3Fsecret%3DSEKRET%26page%3D2',
+      'https://site.com/api/draft?url=%2Fx%3Fpage%3D2',
+    ],
+    [
+      'a fragment access token',
+      'https://site.com/blog/x#access_token=SEKRET',
+      'https://site.com/blog/x',
+    ],
+    [
+      'a Vercel protection bypass',
+      'https://site.com/blog/x?x-vercel-protection-bypass=SEKRET&x-vercel-set-bypass-cookie=true',
+      'https://site.com/blog/x',
+    ],
+    [
+      'a Vercel share link',
+      'https://site.com/blog/x?_vercel_share=SEKRET',
+      'https://site.com/blog/x',
+    ],
+    [
+      'URL userinfo',
+      'https://user:SEKRET@staging.site.com/blog/x',
+      'https://staging.site.com/blog/x',
+    ],
+    [
+      'a camelCase secret name',
+      'https://site.com/api/preview?url=/a&previewSecret=SEKRET&a=b',
+      'https://site.com/api/preview?url=%2Fa&a=b',
+    ],
+  ])('removes credentials hidden in %s', async (_case, url, expected) => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ previewLinks: [{ label: 'Draft', url }] }),
+    );
+
+    const result = await fetchPreviewLinks({
+      frontends: [staging],
+      payload: {},
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(JSON.stringify(result)).not.toContain('SEKRET');
+    expect(result.links).toEqual([
+      {
+        frontendName: 'Staging',
+        label: 'Draft',
+        url: expected,
+        isDraftLink: true,
+      },
+    ]);
+  });
+
+  it('keeps published links with non-secret parameters unchanged', async () => {
+    const urls = [
+      'https://site.com/search?sortKey=date&cacheKey=a&pageKey=2',
+      'https://site.com/login?provider=oauth&design=x',
+      'https://site.com/blog/x#section-2',
+    ];
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        previewLinks: urls.map((url) => ({ label: 'Published', url })),
+      }),
+    );
+
+    const result = await fetchPreviewLinks({
+      frontends: [staging],
+      payload: {},
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(result.links).toEqual(
+      urls.map((url) => ({ frontendName: 'Staging', label: 'Published', url })),
+    );
+  });
+
   it('targets the loopback address space only for localhost endpoints', async () => {
     const fetchImpl = vi.fn(
       async (_url: string | URL | Request, _init?: RequestInit) =>
@@ -438,6 +532,28 @@ describe('getRecordPreviewLinks', () => {
       slug: null,
     });
     expect(result.message).toContain('no slug in locale "it"');
+  });
+
+  it('says no published URL exists when every link is a draft link', async () => {
+    const fetchImpl = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        previewLinks: [
+          {
+            label: 'Draft',
+            url: 'https://example.com/api/draft?url=%2Fx&token=SEKRET',
+          },
+        ],
+      }),
+    );
+
+    const result = await getRecordPreviewLinks(
+      { ...host, savedFrontends: [production] },
+      { itemId: 'item-1' },
+    );
+
+    expect(result.message).toContain('no published URL is available');
+    expect(result.message).not.toContain('Give the editor the published link');
+    fetchImpl.mockRestore();
   });
 
   it('skips the slug fallback when an endpoint answers with no links', async () => {
