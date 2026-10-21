@@ -1,0 +1,9 @@
+{
+  "name": "node-domexception",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local stand-in for the deprecated node-domexception package that exports the platform's native DOMException.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js"
+}

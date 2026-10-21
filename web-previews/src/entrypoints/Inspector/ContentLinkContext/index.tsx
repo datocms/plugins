@@ -1,4 +1,4 @@
-import cuid from 'cuid';
+import { createId } from '@paralleldrive/cuid2';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type { AsyncMethodReturns } from 'penpal';
@@ -117,7 +117,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       draftModeUrl: currentVisualEditing.enableDraftModeUrl,
       fallbackPath,
     }),
-    key: cuid(),
+    key: createId(),
   }));
   const lastVisitedPathRef = useRef(iframeState.path);
 
@@ -313,7 +313,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   const reloadIframe = useCallback(() => {
     lastPingTimeRef.current = Date.now();
     setIsPingActive(true);
-    setIframeState({ path: lastVisitedPathRef.current, key: cuid() });
+    setIframeState({ path: lastVisitedPathRef.current, key: createId() });
   }, []);
 
   const value: ContextValue = {
