@@ -108,7 +108,7 @@ export type LambdaLessCaptureResult = {
 
 export type CaptureContext = Pick<
   OnBeforeItemsDestroyCtx,
-  'plugin' | 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl' | 'notice'
+  'plugin' | 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl' | 'alert'
 >;
 
 async function archiveRecord(
@@ -303,10 +303,15 @@ class CaptureOperation {
     } catch (error) {
       this.handleFailure(error);
     }
+    // The alert promise settles when the toast closes; awaiting it holds the hook open.
     if (!this.result.allowDeletion) {
-      await this.ctx.notice(
-        'Record Bin could not verify a complete archive. Deletion was cancelled; the original records have been kept.',
-      );
+      void this.ctx
+        .alert(
+          'Record Bin could not verify a complete archive. Deletion was cancelled; the original records have been kept.',
+        )
+        .catch((error) =>
+          this.debugLogger.warn('Could not display archive alert', error),
+        );
     }
     return this.result;
   }

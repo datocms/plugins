@@ -26,7 +26,7 @@ const hook = () => {
 const context = (runtimeMode = 'lambdaless') => ({
   plugin: { attributes: { parameters: { runtimeMode } } },
   openModal: vi.fn().mockResolvedValue(true),
-  notice: vi.fn().mockResolvedValue(undefined),
+  alert: vi.fn().mockResolvedValue(undefined),
 });
 beforeEach(() => {
   vi.mocked(captureDeletedItemsWithoutLambda).mockReset();
@@ -60,11 +60,13 @@ describe('delete hook decisions', () => {
     }));
     expect(await hook()(items, ctx)).toBe(false);
     expect(ctx.openModal).not.toHaveBeenCalled();
-    expect(ctx.notice).toHaveBeenCalledWith(
+    expect(ctx.alert).toHaveBeenCalledWith(
       expect.stringContaining('above 200'),
     );
     expect(captureDeletedItemsWithoutLambda).toHaveBeenCalledTimes(1);
-    ctx.notice.mockRejectedValue(new Error('notice failed'));
+    ctx.alert.mockRejectedValue(new Error('alert failed'));
+    expect(await hook()(items, ctx)).toBe(false);
+    ctx.alert.mockReturnValue(new Promise(() => {}));
     expect(await hook()(items, ctx)).toBe(false);
   });
   it('preserves the separately deployed Lambda runtime contract', async () => {

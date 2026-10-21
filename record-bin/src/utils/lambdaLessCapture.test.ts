@@ -37,7 +37,7 @@ const context = (token: string | undefined = 'token') => ({
   environment: 'main',
   cmaBaseUrl: 'https://example.invalid',
   plugin: { attributes: { parameters: {} } },
-  notice: vi.fn().mockResolvedValue(undefined),
+  alert: vi.fn().mockResolvedValue(undefined),
 });
 type Request = {
   method: string;
@@ -192,6 +192,13 @@ describe('pre-deletion capture', () => {
       allowDeletion: true,
     });
     expect(mock.writes()).toBe(0);
+  });
+  it('returns a blocked result without waiting for the alert to close', async () => {
+    setup({ read: () => undefined });
+    const ctx = context();
+    ctx.alert.mockReturnValue(new Promise(() => {}));
+    expect((await run(['one'], ctx)).allowDeletion).toBe(false);
+    expect(ctx.alert).toHaveBeenCalledTimes(1);
   });
   it('blocks deletion without an access token', async () => {
     const ctx = context();
