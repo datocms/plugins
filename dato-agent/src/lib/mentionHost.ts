@@ -24,6 +24,7 @@ import { openFileDetailsModal } from './fileDetailsModal';
 import { hasSessionLocalFileBytes } from './localFiles';
 import type { AssetMention, LocalFileMention, RecordMention } from './mentions';
 import { fallbackAssetMention, fallbackRecordMention } from './mentions';
+import { projectAdminUrl } from './projectUrl';
 
 type MentionCtx = RenderInspectorCtx | RenderItemFormSidebarCtx;
 
@@ -376,13 +377,15 @@ function modelFields(fields: readonly Field[], locales: readonly string[]) {
     );
 }
 
-function environmentPrefix(ctx: MentionCtx) {
-  return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
-}
-
 function projectUrl(ctx: MentionCtx, path: string) {
-  const domain = ctx.site.attributes.internal_domain;
-  return domain ? `https://${domain}${environmentPrefix(ctx)}${path}` : null;
+  return projectAdminUrl(
+    {
+      internalDomain: ctx.site.attributes.internal_domain,
+      environment: ctx.environment,
+      isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+    },
+    path,
+  );
 }
 
 function createMentionClient(ctx: MentionCtx): Client | null {
