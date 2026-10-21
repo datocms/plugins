@@ -105,6 +105,37 @@ describe('normalizeConfig', () => {
     expect(normalizeConfig({ allowedRoleIds: [] }).allowedRoleIds).toEqual([]);
   });
 
+  it('keeps valid preview frontends and a website address', () => {
+    expect(
+      normalizeConfig({
+        websiteBaseUrl: ' https://example.com/ ',
+        previewFrontends: [
+          {
+            name: 'Production',
+            apiEndpointUrl: 'https://example.com/api/preview-links',
+            customHeaders: [{ name: 'X-Token', value: 'secret' }],
+          },
+          { name: 'Bad', apiEndpointUrl: 'notaurl' },
+        ],
+      }),
+    ).toMatchObject({
+      websiteBaseUrl: 'https://example.com',
+      previewFrontends: [
+        {
+          name: 'Production',
+          apiEndpointUrl: 'https://example.com/api/preview-links',
+          customHeaders: [{ name: 'X-Token', value: 'secret' }],
+        },
+      ],
+    });
+    expect(
+      normalizeConfig({ websiteBaseUrl: 'javascript:alert(1)' }),
+    ).toMatchObject({
+      websiteBaseUrl: '',
+      previewFrontends: [],
+    });
+  });
+
   it('uses the documented provider effort sets', () => {
     expect(REASONING_EFFORTS).toEqual([
       'none',
