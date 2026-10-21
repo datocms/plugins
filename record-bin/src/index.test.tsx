@@ -66,6 +66,8 @@ describe('delete hook decisions', () => {
     expect(captureDeletedItemsWithoutLambda).toHaveBeenCalledTimes(1);
     ctx.notice.mockRejectedValue(new Error('notice failed'));
     expect(await hook()(items, ctx)).toBe(false);
+    ctx.notice.mockReturnValue(new Promise(() => {}));
+    expect(await hook()(items, ctx)).toBe(false);
   });
   it('preserves the separately deployed Lambda runtime contract', async () => {
     expect(await hook()([{ id: 'one' }], context('lambda'))).toBe(true);

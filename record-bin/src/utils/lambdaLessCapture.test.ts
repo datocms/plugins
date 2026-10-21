@@ -193,6 +193,13 @@ describe('pre-deletion capture', () => {
     });
     expect(mock.writes()).toBe(0);
   });
+  it('returns a blocked result without waiting for the notice to close', async () => {
+    setup({ read: () => undefined });
+    const ctx = context();
+    ctx.notice.mockReturnValue(new Promise(() => {}));
+    expect((await run(['one'], ctx)).allowDeletion).toBe(false);
+    expect(ctx.notice).toHaveBeenCalledTimes(1);
+  });
   it('blocks deletion without an access token', async () => {
     const ctx = context();
     ctx.currentUserAccessToken = undefined;
