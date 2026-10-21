@@ -425,7 +425,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           webhookRemovalError,
         );
         if (notifyOnFailure) {
-          await ctx.notice(
+          ctx.alert(
             "Runtime was saved as Lambda-less, but one or more managed '🗑 Record Bin' webhooks could not be removed automatically. Remove them manually if needed.",
           );
         }
@@ -799,7 +799,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setShowConnectionDetails(false);
       }
 
-      await ctx.alert('Could not disconnect the current lambda function.');
+      ctx.alert('Could not disconnect the current lambda function.');
     },
     [applyWebhookSyncErrorState, canManageWebhooks, ctx, debugLogger],
   );
@@ -942,7 +942,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       });
     } catch (saveError) {
       debugLogger.warn('Failed to save plugin settings', saveError);
-      await ctx.alert('Could not save plugin settings.');
+      ctx.alert('Could not save plugin settings.');
     } finally {
       setLoading(false);
     }

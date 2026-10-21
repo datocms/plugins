@@ -34,7 +34,7 @@ function buildRecordEditPath(
 const parseLambdaRecordBody = async (
   rawRecordBody: unknown,
   debugLogger: DebugLogger,
-  alertFn: (message: string) => Promise<unknown>,
+  alertFn: (message: string) => void,
 ): Promise<{ success: false } | { success: true; parsedBody: unknown }> => {
   try {
     const parsedBody =
@@ -44,7 +44,7 @@ const parseLambdaRecordBody = async (
     return { success: true, parsedBody };
   } catch (error) {
     debugLogger.warn('Could not parse record_body JSON before restore', error);
-    await alertFn('The record body is not valid JSON.');
+    alertFn('The record body is not valid JSON.');
     return { success: false };
   }
 };
@@ -65,7 +65,7 @@ const executeRestoreViaLambda = async ({
   parsedRecordBody: Record<string, unknown>;
   trashRecordId: string;
   debugLogger: DebugLogger;
-  alertFn: (message: string) => Promise<unknown>;
+  alertFn: (message: string) => void;
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
   environment: string;
@@ -95,7 +95,7 @@ const executeRestoreViaLambda = async ({
       'Restoration request failed before receiving response',
       restorationError,
     );
-    await alertFn(
+    alertFn(
       'The restore API did not confirm the result. Check whether the record was restored before trying again.',
     );
     return false;
@@ -126,7 +126,7 @@ const executeRestoreViaLambda = async ({
       status: restoreResponse.status,
       restorationError,
     });
-    await alertFn('The record could not be restored!');
+    alertFn('The record could not be restored!');
     return false;
   }
 
@@ -146,7 +146,7 @@ const executeRestoreViaLambda = async ({
   return true;
 };
 
-const executeRestoreWithoutLambda = async ({
+export const executeRestoreWithoutLambda = async ({
   trashRecordId,
   parsedRecordBody,
   currentUserAccessToken,
@@ -165,7 +165,7 @@ const executeRestoreWithoutLambda = async ({
   cmaBaseUrl?: string;
   environment: string;
   debugLogger: DebugLogger;
-  alertFn: (message: string) => Promise<unknown>;
+  alertFn: (message: string) => void;
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
   isEnvironmentPrimary: boolean;
@@ -191,7 +191,7 @@ const executeRestoreWithoutLambda = async ({
         'Lambda-less restoration request failed',
         error.restorationError,
       );
-      await alertFn('The record could not be restored!');
+      alertFn('The record could not be restored!');
       return;
     }
     throw error;
@@ -210,7 +210,7 @@ const executeRestoreWithoutLambda = async ({
       'Restored record archive cleanup failed',
       parsedResponse.cleanupError,
     );
-    await alertFn(
+    alertFn(
       'The record was restored, but its archive could not be removed.',
     );
   }
@@ -281,7 +281,7 @@ const runLambdaModeRestore = async ({
   pluginParameters: Record<string, unknown>;
   trashRecordId: string | undefined;
   debugLogger: DebugLogger;
-  alertFn: (message: string) => Promise<unknown>;
+  alertFn: (message: string) => void;
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
   environment: string;
@@ -292,7 +292,7 @@ const runLambdaModeRestore = async ({
 
   if (!deploymentURL) {
     debugLogger.warn('Missing deployment URL while restoring record');
-    await alertFn('The plugin deployment URL is missing.');
+    alertFn('The plugin deployment URL is missing.');
     return;
   }
 
@@ -302,13 +302,13 @@ const runLambdaModeRestore = async ({
     Array.isArray(parsedRecordBody);
   if (isInvalidBody) {
     debugLogger.warn('record_body must be a JSON object for lambda restore');
-    await alertFn('The record body is not a valid restore payload.');
+    alertFn('The record body is not a valid restore payload.');
     return;
   }
 
   if (!trashRecordId) {
     debugLogger.warn('Missing trash record id in lambda restore');
-    await alertFn('Could not determine the trash record to remove.');
+    alertFn('Could not determine the trash record to remove.');
     return;
   }
 
@@ -356,6 +356,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
     const rawRecordBody = ctx.formValues.record_body;
 
+    // Alerts stay open until the user closes them; awaiting one would stall the restore flow.
     const alertFn = ctx.alert.bind(ctx);
     const noticeFn = ctx.notice.bind(ctx);
     const navigateTo = ctx.navigateTo.bind(ctx);
@@ -399,7 +400,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
 
       if (!ctx.item?.id) {
         debugLogger.warn('Missing trash record id in lambda-less restore');
-        await alertFn('Could not determine the trash record to remove.');
+        alertFn('Could not determine the trash record to remove.');
         return;
       }
 
@@ -419,7 +420,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     } catch (err) {
       setError(buildRestoreErrorPayload(err));
       debugLogger.error('Restoration flow failed', err);
-      await alertFn('The record could not be restored!');
+      alertFn('The record could not be restored!');
     } finally {
       restorationInProgress.current = false;
       setLoading(false);
