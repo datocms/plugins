@@ -186,6 +186,8 @@ class CaptureOperation {
       queryParams: {
         filter: { ids: batch.join(',') },
         nested,
+        // Projects without the improved items listing default to `published`, omitting drafts.
+        version: 'current',
         page: { limit: batch.length, offset: 0 },
       },
     });
