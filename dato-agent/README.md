@@ -12,11 +12,13 @@ For now, use it only on a sandbox or test project, never on production or on a p
 
 ## Setup
 
-1. A project administrator picks OpenAI or Anthropic in the plugin settings, adds the provider API key and chooses a model.
+1. A project administrator picks OpenAI, Anthropic, or Vercel AI Gateway in the plugin settings, adds the provider API key and chooses a model.
 2. Each user connects their own DatoCMS account. When asked which projects to authorize, select only the project where the plugin is installed.
 3. Open **Agent (Beta)** or the record sidebar and describe what you need.
 
 The provider API key is shared by the whole project. Each user's DatoCMS connection and recent chats are stored in their browser.
+
+Vercel AI Gateway uses an API key from **Vercel → AI Gateway → API keys**. Requests are billed to that team's AI Gateway credits, or to bring-your-own provider keys configured on the gateway. The model list starts with a short recommended set (Claude Sonnet 5.5 by default, plus Opus, Haiku, GPT, Gemini, and Grok options). **Show all tool-capable models** reveals the rest of the catalog. Models that are not Claude are translated through the gateway's Anthropic Messages API, so tool calls work the same way, but zero data retention depends on the model: only models marked ZDR on every route keep that guarantee. Fast mode selects the model's `-fast` variant when the catalog publishes one.
 
 ## Permissions
 

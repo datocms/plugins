@@ -9,6 +9,7 @@ import type {
   ResponseCreateParamsNonStreaming,
 } from 'openai/resources/responses/responses';
 import type { AgentConfig } from './config';
+import { createVercelGatewayFetch } from './vercelGateway';
 
 export const MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS = 100_000;
 export const MAX_CHANGE_SUMMARY_CHARACTERS = 1_200;
@@ -29,6 +30,10 @@ export type ChangeSummaryConfig = Pick<
   | 'anthropicApiKey'
   | 'anthropicModel'
   | 'anthropicReasoningEffort'
+  | 'vercelApiKey'
+  | 'vercelModel'
+  | 'vercelReasoningEffort'
+  | 'vercelModelReasoningEfforts'
 >;
 
 type ChangeSummaryRequestOptions = {
@@ -112,11 +117,22 @@ function defaultOpenAiClient(apiKey: string): ChangeSummaryOpenAiClient {
   };
 }
 
-function defaultAnthropicClient(apiKey: string): ChangeSummaryAnthropicClient {
-  const client = new Anthropic({
-    apiKey,
-    dangerouslyAllowBrowser: true,
-  });
+function defaultAnthropicClient(
+  apiKey: string,
+  gateway = false,
+): ChangeSummaryAnthropicClient {
+  const client = gateway
+    ? new Anthropic({
+        apiKey: null,
+        authToken: apiKey,
+        baseURL: 'https://ai-gateway.vercel.sh',
+        dangerouslyAllowBrowser: true,
+        fetch: createVercelGatewayFetch(),
+      })
+    : new Anthropic({
+        apiKey,
+        dangerouslyAllowBrowser: true,
+      });
 
   return {
     async create(params, options) {
@@ -239,14 +255,8 @@ function validateOptions(options: GenerateChangeSummaryOptions): {
   apiKey: string;
   model: string;
 } {
-  const apiKey =
-    options.config.provider === 'openai'
-      ? options.config.openAiApiKey.trim()
-      : options.config.anthropicApiKey.trim();
-  const model =
-    options.config.provider === 'openai'
-      ? options.config.model.trim()
-      : options.config.anthropicModel.trim();
+  const apiKey = summaryApiKey(options.config);
+  const model = summaryModel(options.config);
   if (!apiKey || !model) {
     throw new ChangeSummaryError('invalid_configuration');
   }
@@ -285,23 +295,81 @@ async function generateOpenAiSummary(
   return openAiSummary(response);
 }
 
+function summaryApiKey(config: ChangeSummaryConfig): string {
+  switch (config.provider) {
+    case 'openai':
+      return config.openAiApiKey.trim();
+    case 'anthropic':
+      return config.anthropicApiKey.trim();
+    case 'vercel':
+      return config.vercelApiKey.trim();
+    default: {
+      const unreachable: never = config.provider;
+      return unreachable;
+    }
+  }
+}
+
+function summaryModel(config: ChangeSummaryConfig): string {
+  switch (config.provider) {
+    case 'openai':
+      return config.model.trim();
+    case 'anthropic':
+      return config.anthropicModel.trim();
+    case 'vercel':
+      return config.vercelModel.trim();
+    default: {
+      const unreachable: never = config.provider;
+      return unreachable;
+    }
+  }
+}
+
+function summaryReasoningOptions(
+  config: ChangeSummaryConfig,
+  model: string,
+): Pick<MessageCreateParamsNonStreaming, 'thinking' | 'output_config'> {
+  if (config.provider === 'vercel') {
+    const effort = config.vercelReasoningEffort;
+    const supported = config.vercelModelReasoningEfforts.includes(effort);
+    if (!supported || effort === 'none') {
+      return {};
+    }
+    return {
+      ...(model.startsWith('anthropic/')
+        ? {
+            thinking: {
+              type: 'adaptive' as const,
+              display: 'omitted' as const,
+            },
+          }
+        : {}),
+      output_config: { effort },
+    };
+  }
+
+  return {
+    thinking: { type: 'adaptive', display: 'omitted' },
+    output_config: { effort: config.anthropicReasoningEffort },
+  };
+}
+
 async function generateAnthropicSummary(
   options: GenerateChangeSummaryOptions,
   apiKey: string,
   model: string,
   signal: AbortSignal,
+  gateway = false,
 ): Promise<string> {
-  const client = options.clients?.anthropic ?? defaultAnthropicClient(apiKey);
+  const client =
+    options.clients?.anthropic ?? defaultAnthropicClient(apiKey, gateway);
   const message = await client.create(
     {
       model,
       system: CHANGE_SUMMARY_INSTRUCTIONS,
       messages: [{ role: 'user', content: options.script }],
       max_tokens: MAX_CHANGE_SUMMARY_OUTPUT_TOKENS,
-      thinking: { type: 'adaptive', display: 'omitted' },
-      // Anthropic model capabilities do not guarantee support for `low`.
-      // Configuration only saves an effort supported by the selected model.
-      output_config: { effort: options.config.anthropicReasoningEffort },
+      ...summaryReasoningOptions(options.config, model),
       stream: false,
     },
     { signal },
@@ -316,13 +384,26 @@ export async function generateChangeSummary(
   const scoped = createRequestSignal(options.signal);
 
   try {
-    return await callWithSignal(
-      (signal) =>
-        options.config.provider === 'openai'
-          ? generateOpenAiSummary(options, apiKey, model, signal)
-          : generateAnthropicSummary(options, apiKey, model, signal),
-      scoped,
-    );
+    return await callWithSignal((signal) => {
+      switch (options.config.provider) {
+        case 'openai':
+          return generateOpenAiSummary(options, apiKey, model, signal);
+        case 'anthropic':
+          return generateAnthropicSummary(
+            options,
+            apiKey,
+            model,
+            signal,
+            false,
+          );
+        case 'vercel':
+          return generateAnthropicSummary(options, apiKey, model, signal, true);
+        default: {
+          const unreachable: never = options.config.provider;
+          return unreachable;
+        }
+      }
+    }, scoped);
   } catch (error) {
     if (error instanceof ChangeSummaryError) {
       throw error;

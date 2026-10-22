@@ -4532,4 +4532,163 @@ describe('Anthropic MCP authentication and access', () => {
     await runtime.submitApprovals(args);
     expect(sdk.callTool).toHaveBeenCalledOnce();
   });
+
+  it('sends gateway models through Messages without Anthropic-only betas', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-gateway', [textBlock('Done.')]),
+    ]);
+    const files = new QueueAnthropicFileClient(['should-not-upload']);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      provider: 'vercel',
+      anthropicFileClient: files,
+      fastMode: true,
+      model: 'openai/gpt-6.1-sol',
+      modelReasoningEfforts: ['low', 'medium', 'high'],
+      reasoningEffort: 'high',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this.',
+        attachments: [
+          attachment({
+            id: 'notes',
+            filename: 'notes.txt',
+            mimeType: 'text/plain',
+            content: 'Hello notes',
+          }),
+          attachment({
+            id: 'picture',
+            filename: 'diagram.png',
+            mimeType: 'image/png',
+            content: 'png-bytes',
+          }),
+          attachment({
+            id: 'brief',
+            filename: 'brief.pdf',
+            mimeType: 'application/pdf',
+            content: '%PDF-brief',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(files.uploads).toEqual([]);
+    const request = anthropic
+      .requests[0] as AgentAnthropicMessageCreateParamsStreaming;
+    expect(request.model).toBe('openai/gpt-6.1-sol-fast');
+    expect(request.betas).toBeUndefined();
+    expect(request.speed).toBeUndefined();
+    expect(request.thinking).toBeUndefined();
+    expect(request.output_config).toEqual({ effort: 'high' });
+    expect(lastMessageContent(request)).toEqual([
+      { type: 'text', text: 'Attached file notes.txt:\nHello notes' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: btoa('png-bytes'),
+        },
+      },
+      {
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: btoa('%PDF-brief'),
+        },
+        title: 'brief.pdf',
+      },
+      { type: 'text', text: 'Read this.' },
+    ]);
+  });
+
+  it('keeps adaptive thinking for Claude models on the gateway and names credit failures', async () => {
+    const anthropic = new QueueAnthropicClient([
+      providerError(402, 'insufficient funds', 'insufficient_funds'),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      provider: 'vercel',
+      model: 'anthropic/claude-sonnet-5.5',
+      reasoningEffort: 'high',
+    });
+
+    const { result } = await drain(runtime.streamTurn({ message: 'Inspect.' }));
+
+    const request = anthropic
+      .requests[0] as AgentAnthropicMessageCreateParamsStreaming;
+    expect(request.model).toBe('anthropic/claude-sonnet-5.5');
+    expect(request.thinking).toEqual({ type: 'adaptive', display: 'omitted' });
+    expect(request.output_config).toEqual({ effort: 'high' });
+    expect(request.betas).toBeUndefined();
+    expect(result.error).toMatchObject({
+      message: expect.stringContaining('no credits left'),
+      retryable: false,
+    });
+  });
+
+  it('keeps a large gateway attachment inside the request character budget', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-large', [textBlock('Done.')]),
+    ]);
+    const runtime = runtimeWith(anthropic, mcpClientWith().client, {
+      provider: 'vercel',
+      model: 'openai/gpt-6.1-sol',
+    });
+    const imageBytes = 'x'.repeat(601_000);
+    const note = 'n'.repeat(150_000);
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this.',
+        attachments: [
+          attachment({
+            id: 'picture',
+            filename: 'diagram.png',
+            mimeType: 'image/png',
+            content: imageBytes,
+          }),
+          attachment({
+            id: 'notes',
+            filename: 'notes.txt',
+            mimeType: 'text/plain',
+            content: note,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    const content = lastMessageContent(
+      anthropic.requests[0] as AgentAnthropicMessageCreateParamsStreaming,
+    );
+    const image = content.find(
+      (block): block is { source: { data: string } } =>
+        typeof block === 'object' &&
+        block !== null &&
+        'source' in block &&
+        typeof block.source === 'object' &&
+        block.source !== null &&
+        'data' in block.source &&
+        typeof block.source.data === 'string',
+    );
+    const attachedText = content.find(
+      (block): block is { text: string } =>
+        typeof block === 'object' &&
+        block !== null &&
+        'text' in block &&
+        typeof block.text === 'string' &&
+        block.text.startsWith('Attached file notes.txt:'),
+    );
+    expect(image?.source.data.length).toBeGreaterThan(600_000);
+    expect(attachedText?.text).toContain(
+      'The file is larger than the inline text limit.',
+    );
+    expect(attachedText?.text.length).toBeLessThan(110_000);
+    expect(attachedText?.text).not.toContain(note);
+  });
 });
