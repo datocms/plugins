@@ -1,5 +1,5 @@
 export const OAUTH_CREDENTIALS_VERSION = 1 as const;
-export const OAUTH_CLIENT_REGISTRATION_VERSION = 2 as const;
+export const OAUTH_CLIENT_REGISTRATION_VERSION = 3 as const;
 
 const CREDENTIALS_KEY_PREFIX = 'dato-agent.oauth.credentials.v1';
 
