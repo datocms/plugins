@@ -31,7 +31,7 @@ When enabled, the plugin calls your API endpoint to retrieve preview URLs for th
 
 **Required configuration:**
 - **API endpoint URL** — The endpoint that returns preview links (e.g., `https://yourwebsite.com/api/preview-links`)
-- **Custom Headers (Optional)** — Additional headers to send with the API request
+- **Custom Headers (Optional)** — Additional headers to send with the API request. Use them to authenticate the request, for example `Authorization: Bearer <your-secret-token>`
 
 #### Feature 2: Visual Editing
 
@@ -195,6 +195,8 @@ The browser will then load `/blog/my-article` with draft mode enabled, showing u
 
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
 
+> **Set up a starter kit before 2026-08-31?** Older versions of our starter kits read the secret token from the Preview Links API endpoint URL (`?token=...`). Current versions read it from the `Authorization` header instead, so an old configuration now gets a `401`. To fix it, remove the `token` parameter from the API endpoint URL, and add a Custom Header named `Authorization` with the value `Bearer <your-secret-token>`. The old URL exposed the token in logs and in the plugin settings, so also rotate the token. The Enable Draft Mode route keeps the `token` query parameter: editors open that URL in the browser, where they can't set headers.
+
 ### Next.js
 
 We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/nextjs-starter-kit):
@@ -202,7 +204,7 @@ We suggest you look at the code of our [official Starter Kit](https://github.com
 * Route handler for the Preview Links API endpoint: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
 * Enable Draft Mode route (and optional disable route) for Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
+The starter kit's Preview Links endpoint reads a secret token from the `Authorization: Bearer <token>` request header. In the plugin settings, add a Custom Header named `Authorization` with the value `Bearer <your-secret-token>`. The token is a string of your choice that just has to match [your frontend's environment variable](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L30-L35). Do not put the token in the API endpoint URL: the starter kit ignores query parameters on this endpoint and returns `401`. While not encryption, this token is an easy way to limit access to your preview content.
 
 ### Nuxt
 
@@ -211,7 +213,7 @@ We suggest you look at the code of our [official Starter Kit](https://github.com
 * Route handler for the Preview Links API endpoint: [server/api/preview-links/index.ts](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts)
 * Enable Draft Mode route (and optional disable route): [`server/api/draft-mode/enable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/enable.ts) and [`server/api/draft-mode/disable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/disable.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts#L42-L44). While not encryption, this token is an easy way to limit access to your preview content.
+The starter kit's Preview Links endpoint reads a secret token from the `Authorization: Bearer <token>` request header. In the plugin settings, add a Custom Header named `Authorization` with the value `Bearer <your-secret-token>`. The token is a string of your choice that just has to match [your frontend's environment variable](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts#L40-L44). Do not put the token in the API endpoint URL: the starter kit ignores query parameters on this endpoint and returns `401`. While not encryption, this token is an easy way to limit access to your preview content.
 
 ### SvelteKit
 
@@ -220,7 +222,7 @@ We suggest you look at the code of our [official Starter Kit](https://github.com
 * Route handler for the Preview Links API endpoint: [`src/routes/api/preview-links/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts)
 * Enable Draft Mode route (and optional disable route): [`routes/api/draft-mode/enable/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/enable/%2Bserver.ts) and [`routes/api/draft-mode/disable/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/disable/%2Bserver.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts#L34-L36). While not encryption, this token is an easy way to limit access to your preview content.
+The starter kit's Preview Links endpoint reads a secret token from the `Authorization: Bearer <token>` request header. In the plugin settings, add a Custom Header named `Authorization` with the value `Bearer <your-secret-token>`. The token is a string of your choice that just has to match [your frontend's environment variable](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts#L31-L35). Do not put the token in the API endpoint URL: the starter kit ignores query parameters on this endpoint and returns `401`. While not encryption, this token is an easy way to limit access to your preview content.
 
 ### Astro
 
@@ -229,7 +231,7 @@ We suggest you look at the code of our [official Starter Kit](https://github.com
 * Route handler for the Preview Links API endpoint: [`src/pages/api/preview-links/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts)
 * Enable Draft Mode route (and optional disable route): [`src/pages/api/draft-mode/enable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/enable/index.ts) and [`src/pages/api/draft-mode/disable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/disable/index.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L33-L35). While not encryption, this token is an easy way to limit access to your preview content.
+The starter kit's Preview Links endpoint reads a secret token from the `Authorization: Bearer <token>` request header. In the plugin settings, add a Custom Header named `Authorization` with the value `Bearer <your-secret-token>`. The token is a string of your choice that just has to match [your frontend's environment variable](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L30-L34). Do not put the token in the API endpoint URL: the starter kit ignores query parameters on this endpoint and returns `401`. While not encryption, this token is an easy way to limit access to your preview content.
 
 
 
