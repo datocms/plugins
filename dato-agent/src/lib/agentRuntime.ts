@@ -4866,6 +4866,26 @@ interface AnthropicLoopState {
   viewedProtectedRepairScript: boolean;
   failedRepairCallIdentities: Set<string>;
   repairPolicy?: AgentRepairPolicy;
+  outputLimitRecoveryUsed?: boolean;
+}
+
+const OUTPUT_LIMIT_RECOVERY_INSTRUCTION =
+  'Your previous response reached the output limit and was discarded before any of its tool calls ran, so nothing from it changed the project. Continue the same task in smaller steps: keep reasoning brief, and split large writes into several smaller scripts (for example two or three records per script), each reviewed separately.';
+
+function appendAnthropicUserText(messages: MessageParam[], text: string): void {
+  const last = messages.at(-1);
+  if (last?.role !== 'user') {
+    messages.push({ role: 'user', content: text });
+    return;
+  }
+  const content =
+    typeof last.content === 'string'
+      ? [{ type: 'text' as const, text: last.content }]
+      : last.content;
+  messages[messages.length - 1] = {
+    ...last,
+    content: [...content, { type: 'text', text }],
+  };
 }
 
 function anthropicToolResultCharacters(
@@ -5062,14 +5082,14 @@ function resolveAnthropicEffort(
   return 'high';
 }
 
+/**
+ * Adaptive thinking shares max_tokens with the visible reply and tool input,
+ * so even low-effort turns need room for a full write script. Anthropic bills
+ * only generated tokens; the cap is a ceiling, not a reservation.
+ */
 function resolveAnthropicMaxOutputTokens(
-  effort: AnthropicReasoningEffort,
   discoveredMaximum: number | undefined,
 ): number {
-  const target =
-    effort === 'xhigh' || effort === 'max'
-      ? DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS
-      : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
   const boundedMaximum =
     typeof discoveredMaximum === 'number' &&
     Number.isSafeInteger(discoveredMaximum) &&
@@ -5077,7 +5097,7 @@ function resolveAnthropicMaxOutputTokens(
       ? discoveredMaximum
       : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
 
-  return Math.min(target, boundedMaximum);
+  return Math.min(DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS, boundedMaximum);
 }
 
 function anthropicInputSchema(
@@ -5419,7 +5439,6 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       config.mcpAccessLevel ?? 'unrestricted',
     );
     this.maxOutputTokens = resolveAnthropicMaxOutputTokens(
-      this.reasoningEffort,
       config.modelMaxOutputTokens,
     );
     this.additionalInstructions =
@@ -6116,6 +6135,28 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         // has been stopped.
         throwIfAborted(signal);
         state.lastResponseId = summary.message.id;
+
+        if (
+          summary.message.stop_reason === 'max_tokens' &&
+          !state.outputLimitRecoveryUsed
+        ) {
+          state.outputLimitRecoveryUsed = true;
+          if (summary.text) {
+            state.accumulatedText += `${summary.text}\n\n`;
+            yield {
+              type: 'text_delta',
+              responseId: summary.message.id,
+              delta: '\n\n',
+            };
+          }
+          appendAnthropicUserText(
+            state.messages,
+            OUTPUT_LIMIT_RECOVERY_INSTRUCTION,
+          );
+          state.nextContinuation += 1;
+          continue;
+        }
+
         state.accumulatedText += summary.text;
         state.messages.push(anthropicAssistantMessage(summary.message));
 
