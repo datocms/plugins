@@ -485,7 +485,7 @@
 
 .transcriptInner {
   box-sizing: border-box;
-  width: 100%;
+  width: min(100%, 760px);
   min-height: 100%;
   margin: 0 auto;
   padding: 14px 14px 18px;
@@ -1125,7 +1125,7 @@
 
 .composerInner {
   box-sizing: border-box;
-  width: 100%;
+  width: min(100%, 760px);
   margin: 0 auto;
   padding: 10px 14px 12px;
 }

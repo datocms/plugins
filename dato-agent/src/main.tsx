@@ -57,9 +57,9 @@ if (!handledOAuthCallback) {
           placement: ['before', 'content'],
           pointsTo: {
             inspectorId: 'dato-agent',
-            // Inspector tabs render the CMS record in the right-hand secondary
-            // pane, so this value deliberately reserves most of the viewport
-            // for the record and leaves the agent as a compact companion.
+            // The inspector always shows a right-hand pane and only reads this
+            // width once. Start with a balanced split so the chat is usable
+            // before a record is opened; the editor can drag the divider.
             preferredWidth: inspectorRecordPaneWidth(window.outerWidth),
             initialInspectorPanel: {
               panelId: 'dato-agent-empty',
