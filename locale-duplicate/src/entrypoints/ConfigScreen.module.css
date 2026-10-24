@@ -1,0 +1,14 @@
+/* Placement only: the kit components draw themselves. */
+
+/*
+ * The page in its self-sizing frame. The kit's 60vh minimum is meant for a
+ * full-height area: with the auto-resizer, it would keep growing the frame.
+ */
+.page {
+  min-height: 0;
+}
+
+/* A block of the form that isn't a field: the space between two fields. */
+.block:not(:last-child) {
+  margin-bottom: var(--form-field-gap);
+}

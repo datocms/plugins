@@ -1,0 +1,5 @@
+/* The positioned box with a height that the pane of each phase fills */
+.layout {
+  position: absolute;
+  inset: 0;
+}

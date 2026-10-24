@@ -1,19 +1,9 @@
-import type {
-  RenderConfigScreenCtx,
-  RenderFieldExtensionCtx,
-  RenderManualFieldExtensionConfigScreenCtx,
-  RenderPageCtx,
-} from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
 import React from 'react';
-import styles from './ErrorBoundary.module.css';
+import { CircleExclamationIcon } from '../icons';
 
 interface ErrorBoundaryProps {
-  ctx:
-    | RenderConfigScreenCtx
-    | RenderFieldExtensionCtx
-    | RenderManualFieldExtensionConfigScreenCtx
-    | RenderPageCtx;
   children: React.ReactNode;
   fallback?: (error: Error, reset: () => void) => React.ReactNode;
 }
@@ -23,6 +13,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+/**
+ * Catches the render errors of a frame. It renders inside the frame's
+ * Canvas, so its fallback uses the kit like the rest of the frame.
+ */
 export class ErrorBoundary extends React.Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -45,27 +39,24 @@ export class ErrorBoundary extends React.Component<
   };
 
   render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        const currentError = this.state.error ?? new Error('Unknown error');
-        return this.props.fallback(currentError, this.handleReset);
-      }
+    if (!this.state.hasError) return this.props.children;
 
-      return (
-        <Canvas ctx={this.props.ctx}>
-          <div className={styles.errorContainer}>
-            <h2 className={styles.errorTitle}>Something went wrong</h2>
-            <p className={styles.errorMessage}>
-              {this.state.error?.message || 'An unexpected error occurred'}
-            </p>
-            <Button buttonType="primary" onClick={this.handleReset}>
-              Try again
-            </Button>
-          </div>
-        </Canvas>
-      );
+    const error = this.state.error ?? new Error('Unknown error');
+
+    if (this.props.fallback) {
+      return this.props.fallback(error, this.handleReset);
     }
 
-    return this.props.children;
+    return (
+      <BlankSlate
+        placement="inline"
+        error
+        icon={<CircleExclamationIcon />}
+        title="Something went wrong"
+        code={error.message || undefined}
+        description="Try again. If it keeps failing, reload the page."
+        actions={<Button label="Try again" onClick={this.handleReset} />}
+      />
+    );
   }
 }

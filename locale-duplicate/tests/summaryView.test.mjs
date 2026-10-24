@@ -1,54 +1,19 @@
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { initialDuplicationStats } from '../src/services/duplicationTypes.ts';
+import { resetReactUi, uiProps } from './reactUiStub.mjs';
 
-// Exercise our actual components with lightweight host UI/CSS stand-ins.
-const reactUrl = new URL('../node_modules/react/index.js', import.meta.url)
-  .href;
-const uiSource = `
-  import { createElement } from ${JSON.stringify(reactUrl)};
-  export function Button({ children, disabled, onClick }) {
-    return createElement('button', { disabled, onClick }, children);
-  }
-  export function Section({ children, title }) {
-    return createElement('section', null, createElement('h2', null, title), children);
-  }
-  export function Spinner() { return createElement('span', null, 'Loading'); }
-`;
-const uiUrl = `data:text/javascript,${encodeURIComponent(uiSource)}`;
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === 'datocms-react-ui')
-      return { url: uiUrl, shortCircuit: true };
-    return nextResolve(specifier, context);
-  },
-  load(url, context, nextLoad) {
-    if (url.endsWith('.module.css')) {
-      return {
-        format: 'module',
-        shortCircuit: true,
-        source:
-          'export default new Proxy({}, { get: (_target, key) => String(key) });',
-      };
-    }
-    return nextLoad(url, context);
-  },
-});
-
-const {
-  completedWithoutErrors,
-  OverallSummary,
-  RecordStatistics,
-  SummaryView,
-} = await import('../src/components/SummaryView/SummaryView.tsx');
-const { progressUpdateKey } = await import(
-  '../src/components/ProgressView/ProgressView.tsx'
+// Exercise the actual component with the shared react-ui stand-ins.
+const { completedWithoutErrors, SummaryView } = await import(
+  '../src/components/SummaryView/SummaryView.tsx'
 );
+const { progressUpdateKey } = await import('../src/utils/progressLog.ts');
+const { formatters } = await import('../src/utils/format.ts');
 
 function renderSummary(overrides = {}) {
+  resetReactUi();
   return renderToStaticMarkup(
     createElement(SummaryView, {
       duplicationStats: initialDuplicationStats(),
@@ -56,40 +21,44 @@ function renderSummary(overrides = {}) {
       errorUpdates: [],
       errorCount: 0,
       operationCount: 0,
+      format: formatters('en'),
       onReturn() {},
       ...overrides,
     }),
   );
 }
 
-test('a healthy zero-record/no-op run is successful and has no 100% failed statistic', () => {
+const outcome = () => uiProps('Callout')[0];
+const groupTitles = () => uiProps('Page.Group').map((group) => group.title);
+const results = () =>
+  Object.fromEntries(
+    uiProps('InfoList.Row').map((row) => [row.title, row.children]),
+  );
+
+test('a healthy empty run is complete and never shows 100% failed', () => {
   const stats = initialDuplicationStats();
   assert.equal(completedWithoutErrors(stats, 0), true);
-  assert.match(renderSummary(), /Duplication Completed Successfully/);
-  const records = renderToStaticMarkup(
-    createElement(RecordStatistics, { duplicationStats: stats }),
-  );
-  assert.doesNotMatch(records, /100%/);
-  assert.match(records, /✗ Failed<\/td><td>0<\/td><td>0%/);
+  const markup = renderSummary();
+  assert.equal(outcome().tone, 'success');
+  assert.equal(outcome().title, 'Duplication complete');
+  assert.equal(results().Failed, '0 (0%)');
+  assert.doesNotMatch(markup, /100%/);
 });
 
-test('an exception before the first stats snapshot is never shown as successful', () => {
+test('an error before the first stats snapshot is never a success', () => {
   const earlyError = {
     message: 'Synthetic initialization failure',
     type: 'error',
     timestamp: 1,
   };
-  const sampled = renderSummary({ errorUpdates: [earlyError] });
-  assert.match(sampled, /Duplication Completed with Errors/);
-  assert.match(sampled, /Errors Encountered/);
-  assert.doesNotMatch(sampled, /Completed Successfully/);
-  assert.doesNotMatch(
-    renderSummary({ errorCount: 1 }),
-    /Completed Successfully/,
-  );
+  renderSummary({ errorUpdates: [earlyError] });
+  assert.equal(outcome().title, 'Duplication finished with errors');
+  assert.ok(groupTitles().includes('Errors'));
+  renderSummary({ errorCount: 1 });
+  assert.notEqual(outcome().tone, 'success');
 });
 
-test('failed, pending, incomplete, and cancelled runs cannot show green success', () => {
+test('failed, pending, incomplete and cancelled runs are never a success', () => {
   for (const field of [
     'failedRecords',
     'failedPublications',
@@ -99,44 +68,36 @@ test('failed, pending, incomplete, and cancelled runs cannot show green success'
   ]) {
     const stats = { ...initialDuplicationStats(), [field]: 1 };
     assert.equal(completedWithoutErrors(stats, 0), false, field);
-    assert.doesNotMatch(
-      renderSummary({ duplicationStats: stats }),
-      /Completed Successfully/,
-    );
+    renderSummary({ duplicationStats: stats });
+    assert.notEqual(outcome().tone, 'success', field);
   }
   const cancelled = { ...initialDuplicationStats(), cancelled: true };
   assert.equal(completedWithoutErrors(cancelled, 0), false);
-  assert.match(
-    renderSummary({ duplicationStats: cancelled }),
-    /Duplication Aborted/,
-  );
+  renderSummary({ duplicationStats: cancelled });
+  assert.equal(outcome().title, 'Duplication stopped');
 });
 
-test('summary retains confirmed publication counts and pending outcomes', () => {
-  const stats = {
-    ...initialDuplicationStats(),
-    totalRecords: 20,
-    totalToProcess: 30,
-    publishedRecords: 10,
-    failedPublications: 2,
-    pendingPublications: 5,
-    cancelled: true,
-  };
-  const markup = renderToStaticMarkup(
-    createElement(OverallSummary, {
-      duplicationStats: stats,
-      errorCount: 0,
-    }),
-  );
-  assert.match(
-    markup,
-    /10 records published; 2 publication failures; 5 pending/,
-  );
-  assert.match(markup, /10 selected records were not processed/);
-  assert.match(markup, /Duplication Aborted/);
+test('the results show the publication and not processed counts', () => {
+  renderSummary({
+    duplicationStats: {
+      ...initialDuplicationStats(),
+      totalRecords: 20,
+      totalToProcess: 30,
+      publishedRecords: 10,
+      failedPublications: 2,
+      pendingPublications: 5,
+      cancelled: true,
+    },
+  });
+  const rows = results();
+  assert.equal(rows.Published, '10');
+  assert.equal(rows['Publication failures'], '2');
+  assert.equal(rows['Pending publication'], '5');
+  assert.equal(rows['Not processed'], '10');
+  assert.equal(outcome().title, 'Duplication stopped');
 });
 
-test('distinct log events with identical timestamps/messages have stable unique keys', () => {
+test('distinct log events with identical timestamps and messages have stable unique keys', () => {
   const first = { message: 'Repeated status', type: 'info', timestamp: 1 };
   const second = { ...first };
   assert.notEqual(progressUpdateKey(first), progressUpdateKey(second));

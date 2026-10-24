@@ -1,6 +1,7 @@
 /** Copy a configured field between locales in the record editor. */
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import { useCallback, useRef, useState } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { valuesEqual } from '../services/localeUpdates';
@@ -74,6 +75,7 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
   const isAtMainLocale = mainLocale === ctx.locale;
 
   const copyToLocales = useCallback(
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: every context guard stays next to the write it protects.
     async (targetLocales: string[]) => {
       if (
         !isMultiLocale ||
@@ -190,21 +192,27 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
   if (!isMultiLocale) return null;
 
   return (
-    <ErrorBoundary ctx={ctx}>
-      <Canvas ctx={ctx}>
+    <Canvas ctx={ctx}>
+      <ErrorBoundary>
         <Button
+          label={
+            isAtMainLocale ? 'Copy to all locales' : `Copy from ${mainLocale}`
+          }
           onClick={() =>
             copyToLocales(
               isAtMainLocale ? availableLocales.slice(1) : [ctx.locale],
             )
           }
-          disabled={isCopying || ctx.disabled || ctx.isSubmitting}
-          buttonType="muted"
-          buttonSize="s"
-        >
-          {isAtMainLocale ? 'Copy to all locales' : `Copy from ${mainLocale}`}
-        </Button>
-      </Canvas>
-    </ErrorBoundary>
+          busy={isCopying}
+          disabled={
+            ctx.disabled
+              ? { reason: "You can't edit this field." }
+              : ctx.isSubmitting
+                ? { reason: 'Wait until the record is saved.' }
+                : undefined
+          }
+        />
+      </ErrorBoundary>
+    </Canvas>
   );
 }

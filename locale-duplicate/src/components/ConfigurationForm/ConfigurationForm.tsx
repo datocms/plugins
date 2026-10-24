@@ -1,19 +1,49 @@
-import {
-  Button,
-  FieldGroup,
-  Form,
-  Section,
-  SelectField,
-  SwitchField,
-} from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import Pane from 'datocms-react-ui/Pane';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import { useMemo, useState } from 'react';
 import type { ModelOption } from '../../types';
+import type { Formatters } from '../../utils/format';
 import {
   getLargeSelectionHint,
   getVisibleOptions,
   LARGE_SELECTION_THRESHOLD,
 } from '../../utils/selection';
-import styles from './ConfigurationForm.module.css';
+import { pageTitle } from '../pageTitle';
+
+export type ModelsState = 'loading' | 'loaded' | 'failed';
+
+/** Why Duplicate can't run yet, or undefined when it can */
+export function duplicateDisabledReason({
+  sourceLocale,
+  targetLocale,
+  siteLocales,
+  selectedCount,
+  modelsState,
+}: {
+  sourceLocale: string;
+  targetLocale: string;
+  siteLocales: string[];
+  selectedCount: number;
+  modelsState: ModelsState;
+}): string | undefined {
+  if (siteLocales.length < 2) return 'The project has only one locale.';
+  if (
+    sourceLocale === targetLocale ||
+    !siteLocales.includes(sourceLocale) ||
+    !siteLocales.includes(targetLocale)
+  ) {
+    return 'Pick two different locales.';
+  }
+  if (modelsState === 'loading') return 'Wait for the models to load.';
+  if (modelsState === 'failed') return "The models couldn't load.";
+  if (selectedCount === 0) return 'Pick at least one model.';
+}
 
 interface ConfigurationFormProps {
   sourceLocale: string;
@@ -21,8 +51,11 @@ interface ConfigurationFormProps {
   currentSiteLocales: string[];
   selectedModels: ModelOption[];
   allModels: ModelOption[];
+  modelsState: ModelsState;
+  modelsError: string;
   useDraftRecords: boolean;
   publishAfterDuplication: boolean;
+  format: Formatters;
   getLocaleLabel: (locale: string) => string;
   onSourceLocaleChange: (locale: string) => void;
   onTargetLocaleChange: (locale: string) => void;
@@ -38,8 +71,11 @@ export function ConfigurationForm({
   currentSiteLocales,
   selectedModels,
   allModels,
+  modelsState,
+  modelsError,
   useDraftRecords,
   publishAfterDuplication,
+  format,
   getLocaleLabel,
   onSourceLocaleChange,
   onTargetLocaleChange,
@@ -51,19 +87,22 @@ export function ConfigurationForm({
   const [modelSearch, setModelSearch] = useState('');
   const compactSelection = selectedModels.length > 50;
   const selectedModelIds = useMemo(
-    () => new Set(selectedModels.map((model) => model.value)),
+    () => selectedModels.map((model) => model.value),
     [selectedModels],
+  );
+  const modelsById = useMemo(
+    () => new Map(allModels.map((model) => [model.value, model])),
+    [allModels],
   );
   const visibleModels = useMemo(
     () =>
       getVisibleOptions(
         allModels,
         modelSearch,
-        compactSelection ? undefined : selectedModelIds,
+        compactSelection ? undefined : new Set(selectedModelIds),
       ),
     [allModels, modelSearch, selectedModelIds, compactSelection],
   );
-  // Memoize locale options for source locale
   const sourceLocaleOptions = useMemo(
     () =>
       currentSiteLocales.map((locale) => ({
@@ -72,192 +111,153 @@ export function ConfigurationForm({
       })),
     [currentSiteLocales, getLocaleLabel],
   );
-
-  // Memoize locale options for target locale (excluding source)
   const targetLocaleOptions = useMemo(
     () => sourceLocaleOptions.filter((option) => option.value !== sourceLocale),
     [sourceLocaleOptions, sourceLocale],
   );
-
-  // Memoize source locale value
-  const sourceLocaleValue = useMemo(
-    () => [
-      {
-        label: getLocaleLabel(sourceLocale),
-        value: sourceLocale,
-      },
-    ],
-    [sourceLocale, getLocaleLabel],
-  );
-
-  // Memoize target locale value
-  const targetLocaleValue = useMemo(
-    () => [
-      {
-        label: getLocaleLabel(targetLocale),
-        value: targetLocale,
-      },
-    ],
-    [targetLocale, getLocaleLabel],
-  );
+  const disabledReason = duplicateDisabledReason({
+    sourceLocale,
+    targetLocale,
+    siteLocales: currentSiteLocales,
+    selectedCount: selectedModels.length,
+    modelsState,
+  });
 
   return (
-    <div className={styles.formWrapper}>
-      <Form className={styles.formContainer}>
-        <Section title="Mass Locale Duplication">
-          {/* Explanation and warnings */}
-          <div className={styles.explanationBox}>
-            <p className={styles.explanationText}>
-              This feature allows you to duplicate all content from one locale
-              to another across multiple models in bulk. It's useful for setting
-              up new locales or creating baseline translations.
-            </p>
-            <div className={styles.warningBox}>
-              <p className={styles.warningHeader}>
-                <span className={styles.warningIcon}>⚠️</span>
-                Warning
-              </p>
-              <ul className={styles.warningList}>
-                <li>
-                  This operation will{' '}
-                  <strong>overwrite all existing content</strong> in the target
-                  locale
-                </li>
-                <li>The process cannot be undone automatically</li>
-                <li>Make sure to backup important content before proceeding</li>
-              </ul>
-            </div>
-          </div>
-
-          <FieldGroup>
-            {/* Locale selection interface - side by side layout */}
-            <div className={styles.localeSelection}>
-              <div className={styles.localeField}>
-                <SelectField
-                  name="fromLocale"
-                  id="fromLocale"
-                  label="Source Locale"
-                  hint="Select the locale you want to copy content from"
-                  value={sourceLocaleValue}
-                  selectInputProps={{
-                    isMulti: false,
-                    options: sourceLocaleOptions,
-                  }}
-                  onChange={(newValue) => {
-                    const newSourceLocale = newValue?.value || sourceLocale;
-                    onSourceLocaleChange(newSourceLocale);
-                  }}
-                />
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <Pane
+        header={
+          <Pane.Header>
+            {pageTitle}
+            <Pane.Header.Button>
+              <Toolbar.Button
+                tone="alert"
+                submit
+                label="Duplicate"
+                disabled={
+                  disabledReason ? { reason: disabledReason } : undefined
+                }
+              />
+            </Pane.Header.Button>
+          </Pane.Header>
+        }
+      >
+        <Page variant="large">
+          <Page.Content>
+            <Callout tone="warning" title="The target locale gets overwritten">
+              Duplication replaces the content of the target locale in every
+              selected record, and it can't be undone. Back up important content
+              first.
+            </Callout>
+            <Page.Group title="Locales">
+              <div className="form__field form__row">
+                <div className="form__row__cell">
+                  <FieldWrapper
+                    label="Source locale"
+                    hint="The locale to copy the content from."
+                  >
+                    <SelectInput
+                      value={sourceLocale}
+                      options={sourceLocaleOptions}
+                      clearable={false}
+                      onChange={(value) =>
+                        onSourceLocaleChange(value || sourceLocale)
+                      }
+                    />
+                  </FieldWrapper>
+                </div>
+                <div className="form__row__cell">
+                  <FieldWrapper
+                    label="Target locale"
+                    hint="The locale whose content is replaced."
+                  >
+                    <SelectInput
+                      value={targetLocale}
+                      options={targetLocaleOptions}
+                      clearable={false}
+                      // The target can equal the new source, which the
+                      // options leave out
+                      acceptValueNotIncludedInOptions={(value) => ({
+                        value,
+                        label: getLocaleLabel(value),
+                      })}
+                      onChange={(value) =>
+                        onTargetLocaleChange(value || targetLocale)
+                      }
+                    />
+                  </FieldWrapper>
+                </div>
               </div>
-
-              <div className={styles.localeField}>
-                <SelectField
-                  name="toLocales"
-                  id="toLocales"
-                  label="Target Locale"
-                  hint="Select the locale you want to copy content to"
-                  value={targetLocaleValue}
-                  selectInputProps={{
-                    isMulti: false,
-                    options: targetLocaleOptions,
-                  }}
-                  onChange={(newValue) => {
-                    const newTargetLocale = newValue?.value || targetLocale;
-                    onTargetLocaleChange(newTargetLocale);
-                  }}
-                />
-              </div>
-            </div>
-          </FieldGroup>
-
-          <FieldGroup>
-            <div className={styles.modelSelectionContainer}>
-              <h3 className={styles.modelSelectionHeader}>
-                Select Models to Duplicate
-              </h3>
-              <p className={styles.modelSelectionDescription}>
-                Choose which models should have their content duplicated from{' '}
-                {getLocaleLabel(sourceLocale)} to {getLocaleLabel(targetLocale)}
-              </p>
-
-              <SelectField
-                name="models"
-                id="models"
-                label=""
-                hint={getLargeSelectionHint(allModels.length, 'models')}
-                placeholder={
-                  compactSelection
-                    ? `${selectedModels.length} models selected...`
+            </Page.Group>
+            <Page.Group title="Models">
+              <FieldWrapper
+                label="Models"
+                labelExtras={{ hidden: true }}
+                hint={
+                  getLargeSelectionHint(allModels.length, 'models') ??
+                  `The records of these models get the ${getLocaleLabel(sourceLocale)} content in ${getLocaleLabel(targetLocale)}.`
+                }
+                error={
+                  modelsState === 'failed'
+                    ? `Couldn't load the models: ${modelsError}`
                     : undefined
                 }
-                value={selectedModels}
-                selectInputProps={{
-                  isMulti: true,
-                  options: visibleModels,
-                  placeholder: compactSelection
-                    ? `${selectedModels.length} models selected...`
-                    : 'Select models...',
-                  ...(compactSelection
+              >
+                <SelectInput
+                  multiple
+                  clearable
+                  loading={modelsState === 'loading'}
+                  value={selectedModelIds}
+                  options={visibleModels}
+                  // The visible options are capped and leave out the selected
+                  // models: the selection keeps the ones they don't hold
+                  acceptValueNotIncludedInOptions={(id) => modelsById.get(id)}
+                  onChange={(_ids, options) => onModelsChange(options)}
+                  search={
+                    allModels.length > LARGE_SELECTION_THRESHOLD
+                      ? { onQueryChange: setModelSearch }
+                      : undefined
+                  }
+                  {...(compactSelection
                     ? {
                         controlShouldRenderValue: false,
                         hideSelectedOptions: false,
+                        placeholder: `${format.models(selectedModels.length)} selected`,
                       }
-                    : {}),
-                  onInputChange: setModelSearch,
-                  ...(allModels.length > LARGE_SELECTION_THRESHOLD
-                    ? { filterOption: null }
-                    : {}),
-                }}
-                onChange={(newValue) => {
-                  onModelsChange(Array.isArray(newValue) ? newValue : []);
-                }}
-              />
-            </div>
-          </FieldGroup>
-
-          <FieldGroup>
-            <div className={styles.switchFieldsContainer}>
-              <div className={styles.switchFieldWrapper}>
-                <SwitchField
-                  name="useDraftRecords"
-                  id="useDraftRecords"
-                  label="Use records in draft state"
-                  hint="Include draft records when duplicating content. If disabled, only published records will be duplicated."
-                  value={useDraftRecords}
-                  onChange={onUseDraftRecordsChange}
+                    : {})}
                 />
-              </div>
-
-              <div className={styles.switchFieldWrapper}>
-                <SwitchField
-                  name="publishAfterDuplication"
-                  id="publishAfterDuplication"
-                  label="Publish updated records automatically after duplication"
-                  hint="Automatically publish all successfully duplicated records. If disabled, duplicated content will remain in draft state."
-                  value={publishAfterDuplication}
-                  onChange={onPublishAfterDuplicationChange}
-                />
-              </div>
-            </div>
-          </FieldGroup>
-
-          {/* Submit button */}
-          <Button
-            fullWidth
-            buttonType="primary"
-            buttonSize="l"
-            disabled={
-              selectedModels.length === 0 ||
-              sourceLocale === targetLocale ||
-              !currentSiteLocales.includes(sourceLocale) ||
-              !currentSiteLocales.includes(targetLocale)
-            }
-            onClick={onSubmit}
-          >
-            Duplicate locale content
-          </Button>
-        </Section>
-      </Form>
-    </div>
+              </FieldWrapper>
+            </Page.Group>
+            <Page.Group title="Records">
+              <SwitchList>
+                <FieldWrapper hint="When off, only published records are duplicated, from their published content.">
+                  <SwitchInput
+                    label="Include draft records"
+                    value={useDraftRecords}
+                    onChange={(value) =>
+                      onUseDraftRecordsChange(Boolean(value))
+                    }
+                  />
+                </FieldWrapper>
+                <FieldWrapper hint="Publishes each record that is duplicated successfully. When off, the changes stay in draft.">
+                  <SwitchInput
+                    label="Publish records after duplication"
+                    value={publishAfterDuplication}
+                    onChange={(value) =>
+                      onPublishAfterDuplicationChange(Boolean(value))
+                    }
+                  />
+                </FieldWrapper>
+              </SwitchList>
+            </Page.Group>
+          </Page.Content>
+        </Page>
+      </Pane>
+    </form>
   );
 }

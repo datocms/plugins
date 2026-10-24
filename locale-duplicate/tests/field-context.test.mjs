@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
+import './reactUiStub.mjs';
 
 // Render the actual component with persistent refs, and control its async gaps.
-// Host UI is inert; JSX creation and the rest of the React runtime remain real.
+// Host UI comes from the shared react-ui stand-ins (reactUiStub.mjs); JSX
+// creation and the rest of the React runtime remain real.
 let activeHooks;
 globalThis.localeCopyTestHooks = {
   useRef(initial) {
@@ -22,9 +24,7 @@ globalThis.localeCopyTestHooks = {
 const hookSource = `
   export const { useRef, useCallback, useState } = globalThis.localeCopyTestHooks;
 `;
-const uiSource = 'export function Button() {} export function Canvas() {}';
 const hooksUrl = `data:text/javascript,${encodeURIComponent(hookSource)}`;
-const uiUrl = `data:text/javascript,${encodeURIComponent(uiSource)}`;
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (
@@ -32,8 +32,6 @@ registerHooks({
       context.parentURL.endsWith('/entrypoints/FieldExtension.tsx')
     )
       return { url: hooksUrl, shortCircuit: true };
-    if (specifier === 'datocms-react-ui')
-      return { url: uiUrl, shortCircuit: true };
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
@@ -241,7 +239,10 @@ test('new modular blocks keep fan-out when form snapshots update after each writ
       internalLocales: ['en', 'pt', 'fr'],
       body: {
         en: [
-          { itemTypeId: 'block-model', title: { en: 'Source', pt: '', fr: '' } },
+          {
+            itemTypeId: 'block-model',
+            title: { en: 'Source', pt: '', fr: '' },
+          },
         ],
       },
     },
@@ -335,4 +336,44 @@ test('new records keep their fan-out when their form snapshot updates after each
   ]);
   assert.deepEqual(host.alerts, []);
   assert.deepEqual(host.notices, ['Value copied to all locales']);
+});
+
+test('the button names its action and explains why it is disabled', () => {
+  const host = harness();
+  const main = host.render(host.context());
+  assert.equal(main.label, 'Copy to all locales');
+  assert.equal(main.busy, false);
+  assert.equal(main.disabled, undefined);
+  assert.equal(
+    host.render(host.context({ locale: 'pt', fieldPath: 'title.pt' })).label,
+    'Copy from en',
+  );
+  assert.deepEqual(host.render(host.context({ disabled: true })).disabled, {
+    reason: "You can't edit this field.",
+  });
+  assert.deepEqual(host.render(host.context({ isSubmitting: true })).disabled, {
+    reason: 'Wait until the record is saved.',
+  });
+  assert.equal(
+    host.render(
+      host.context({
+        formValues: { internalLocales: ['en'], title: { en: 'Only' } },
+      }),
+    ),
+    undefined,
+  );
+});
+
+test('a render error shows the error blank slate with a way to try again', async () => {
+  const { ErrorBoundary } = await import('../src/components/ErrorBoundary.tsx');
+  const boundary = new ErrorBoundary({ children: 'content' });
+  assert.equal(boundary.render(), 'content');
+  boundary.state = ErrorBoundary.getDerivedStateFromError(new Error('Boom'));
+  const { props } = boundary.render();
+  assert.equal(props.title, 'Something went wrong');
+  assert.equal(props.code, 'Boom');
+  assert.equal(props.error, true);
+  assert.equal(props.placement, 'inline');
+  assert.equal(props.actions.props.label, 'Try again');
+  assert.equal(props.actions.props.onClick, boundary.handleReset);
 });

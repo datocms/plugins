@@ -1,28 +1,52 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ConfigurationForm } from '../components/ConfigurationForm/ConfigurationForm';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
+import Main from 'datocms-react-ui/Main';
+import Pane from 'datocms-react-ui/Pane';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  ConfigurationForm,
+  type ModelsState,
+} from '../components/ConfigurationForm/ConfigurationForm';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import {
   type ProgressUpdate,
   ProgressView,
 } from '../components/ProgressView/ProgressView';
+import { pageTitle } from '../components/pageTitle';
 import { SummaryView } from '../components/SummaryView/SummaryView';
 import { useDuplicationStats } from '../hooks/useDuplicationStats';
+import { CircleExclamationIcon } from '../icons';
 import type { DuplicationStats } from '../services/duplicationTypes';
 import { LocaleDuplicationService } from '../services/LocaleDuplicationService';
 import { getErrorMessage, type ModelOption } from '../types';
+import { formatters } from '../utils/format';
 import { getLocaleLabel } from '../utils/localeHelpers';
 import { ProgressLog } from '../utils/progressLog';
+import s from './SettingsAreaSidebar.module.css';
 
-function completionNotice(stats: DuplicationStats): string {
-  if (stats.cancelled) return 'Duplication process was aborted';
+function completionNotice(ctx: RenderPageCtx, stats: DuplicationStats) {
+  if (stats.cancelled) {
+    return ctx.customToast({
+      type: 'warning',
+      message: 'Duplication stopped.',
+      dismissAfterTimeout: true,
+    });
+  }
   const failed =
     stats.failedRecords + stats.failedPublications + stats.modelFailures;
   return failed > 0
-    ? 'Locale duplication completed with errors. See the summary for confirmed results.'
-    : 'Locale content duplicated successfully';
+    ? ctx.alert(
+        'Duplication finished with errors. See the summary for the details.',
+      )
+    : ctx.notice('Locale content duplicated.');
 }
 
 export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
@@ -50,10 +74,11 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
   const progressRef = useRef(0);
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>([]);
+  const [modelsState, setModelsState] = useState<ModelsState>('loading');
+  const [modelsError, setModelsError] = useState('');
   const [useDraftRecords, setUseDraftRecords] = useState(true);
   const [publishAfterDuplication, setPublishAfterDuplication] = useState(false);
-  const noticeRef = useRef(ctx.notice);
-  noticeRef.current = ctx.notice;
+  const format = formatters(ctx.ui.locale);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -67,12 +92,7 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
   const { currentUserAccessToken, environment, cmaBaseUrl } = ctx;
   useEffect(() => {
     let active = true;
-    if (!currentUserAccessToken) {
-      noticeRef.current(
-        'CMA access is unavailable. Enable the currentUserAccessToken permission.',
-      );
-      return;
-    }
+    if (!currentUserAccessToken) return;
     buildClient({
       apiToken: currentUserAccessToken,
       environment,
@@ -86,10 +106,13 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
           .map((model) => ({ label: model.name, value: model.id }));
         setAvailableModels(options);
         setSelectedModels(options);
+        setModelsState('loaded');
       })
       .catch((error) => {
-        if (active)
-          noticeRef.current(`Error fetching models: ${getErrorMessage(error)}`);
+        if (!active) return;
+        console.error('Error fetching models:', error);
+        setModelsError(getErrorMessage(error));
+        setModelsState('failed');
       });
     return () => {
       active = false;
@@ -119,13 +142,10 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
   const handleAbortProcess = useCallback(() => {
     ctx
       .openConfirm({
-        title: 'Abort Process',
-        content:
-          'Are you sure you want to abort the duplication process? This will stop the operation but changes already made will remain.',
-        choices: [
-          { label: 'Yes, abort process', value: 'abort', intent: 'negative' },
-        ],
-        cancel: { label: 'No, continue', value: false },
+        title: 'Stop the duplication?',
+        content: 'Records that are already updated keep the new content.',
+        choices: [{ label: 'Stop', value: 'abort', intent: 'negative' }],
+        cancel: { label: 'Keep going', value: false },
       })
       .then((result) => {
         if (result !== 'abort' || !runningRef.current || !mountedRef.current)
@@ -133,8 +153,7 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
         setIsAborting(true);
         abortProcessRef.current = true;
         handleProgress({
-          message:
-            'Aborting process... Please wait while current operations finish.',
+          message: 'Stopping. The operations in progress finish first.',
           type: 'info',
           timestamp: Date.now(),
         });
@@ -172,18 +191,12 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
       );
       pendingStatsRef.current = result.stats;
       if (mountedRef.current) {
-        ctx.notice(completionNotice(result.stats));
+        completionNotice(ctx, result.stats);
       }
     } catch (error) {
-      handleProgress({
-        message: `Error duplicating locale content: ${getErrorMessage(error)}`,
-        type: 'error',
-        timestamp: Date.now(),
-      });
-      if (mountedRef.current)
-        ctx.notice(
-          `Error duplicating locale content: ${getErrorMessage(error)}`,
-        );
+      const message = `Couldn't duplicate the locale content: ${getErrorMessage(error)}`;
+      handleProgress({ message, type: 'error', timestamp: Date.now() });
+      if (mountedRef.current) ctx.alert(message);
     } finally {
       flushProgress();
       runningRef.current = false;
@@ -212,24 +225,24 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
       !currentSiteLocales.includes(sourceLocale) ||
       !currentSiteLocales.includes(targetLocale)
     ) {
-      ctx.notice(
-        'Choose two different available locales and at least one model',
-      );
+      ctx.alert('Pick two different locales and at least one model.');
       return;
     }
+    const source = getLocaleLabel(sourceLocale);
+    const target = getLocaleLabel(targetLocale);
     const first = await ctx.openConfirm({
-      title: 'Duplicate locale content',
-      content: 'Are you sure you want to duplicate the locale content?',
+      title: 'Duplicate locale content?',
+      content: `Copies the ${source} content to ${target} in the records of ${format.models(selectedModels.length)}.`,
       choices: [{ label: 'Duplicate', value: 'duplicate', intent: 'positive' }],
       cancel: { label: 'Cancel', value: false },
     });
     if (first !== 'duplicate') return;
     const overwrite = await ctx.openConfirm({
-      title: 'Confirm locale overwrite',
-      content: `This will overwrite the content of the target locale (${getLocaleLabel(targetLocale)}) with the content of the source locale (${getLocaleLabel(sourceLocale)}).`,
+      title: `Overwrite ${target}?`,
+      content: `The current ${target} content is replaced with the ${source} content. This can't be undone.`,
       choices: [
         {
-          label: `Overwrite everything in the ${getLocaleLabel(targetLocale)} locale`,
+          label: `Overwrite ${target}`,
           value: 'overwrite',
           intent: 'negative',
         },
@@ -243,6 +256,7 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
     targetLocale,
     currentSiteLocales,
     selectedModels.length,
+    format,
     runDuplication,
   ]);
 
@@ -253,51 +267,74 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
     resetStats();
   }, [resetStats]);
 
+  let phase: ReactNode;
+  if (!currentUserAccessToken) {
+    phase = (
+      <Pane header={<Pane.Header>{pageTitle}</Pane.Header>}>
+        <BlankSlate
+          placement="area"
+          error
+          icon={<CircleExclamationIcon />}
+          title="No access to your API token"
+          description="Mass duplication needs the plugin's access to your API token. Check the plugin's permissions."
+        />
+      </Pane>
+    );
+  } else if (isProcessing) {
+    phase = (
+      <ProgressView
+        progressUpdates={progressUpdates}
+        progressPercentage={progressPercentage}
+        operationCount={logRef.current.total}
+        isAborting={isAborting}
+        sourceLocale={sourceLocale}
+        targetLocale={targetLocale}
+        format={format}
+        getLocaleLabel={getLocaleLabel}
+        onAbort={handleAbortProcess}
+      />
+    );
+  } else if (showSummary) {
+    phase = (
+      <SummaryView
+        duplicationStats={duplicationStats}
+        progressUpdates={progressUpdates}
+        errorUpdates={logRef.current.errors}
+        errorCount={logRef.current.totalErrors}
+        operationCount={logRef.current.total}
+        format={format}
+        onReturn={handleReset}
+      />
+    );
+  } else {
+    phase = (
+      <ConfigurationForm
+        sourceLocale={sourceLocale}
+        targetLocale={targetLocale}
+        currentSiteLocales={currentSiteLocales}
+        selectedModels={selectedModels}
+        allModels={availableModels}
+        modelsState={modelsState}
+        modelsError={modelsError}
+        useDraftRecords={useDraftRecords}
+        publishAfterDuplication={publishAfterDuplication}
+        format={format}
+        getLocaleLabel={getLocaleLabel}
+        onSourceLocaleChange={setSourceLocale}
+        onTargetLocaleChange={setTargetLocale}
+        onModelsChange={setSelectedModels}
+        onUseDraftRecordsChange={setUseDraftRecords}
+        onPublishAfterDuplicationChange={setPublishAfterDuplication}
+        onSubmit={handleSubmit}
+      />
+    );
+  }
+
   return (
-    <ErrorBoundary ctx={ctx}>
-      <Canvas ctx={ctx}>
-        {!isProcessing && !showSummary && (
-          <ConfigurationForm
-            sourceLocale={sourceLocale}
-            targetLocale={targetLocale}
-            currentSiteLocales={currentSiteLocales}
-            selectedModels={selectedModels}
-            allModels={availableModels}
-            useDraftRecords={useDraftRecords}
-            publishAfterDuplication={publishAfterDuplication}
-            getLocaleLabel={getLocaleLabel}
-            onSourceLocaleChange={setSourceLocale}
-            onTargetLocaleChange={setTargetLocale}
-            onModelsChange={setSelectedModels}
-            onUseDraftRecordsChange={setUseDraftRecords}
-            onPublishAfterDuplicationChange={setPublishAfterDuplication}
-            onSubmit={handleSubmit}
-          />
-        )}
-        {isProcessing && (
-          <ProgressView
-            ctx={ctx}
-            progressUpdates={progressUpdates}
-            progressPercentage={progressPercentage}
-            operationCount={logRef.current.total}
-            isAborting={isAborting}
-            sourceLocale={sourceLocale}
-            targetLocale={targetLocale}
-            getLocaleLabel={getLocaleLabel}
-            onAbort={handleAbortProcess}
-          />
-        )}
-        {showSummary && (
-          <SummaryView
-            duplicationStats={duplicationStats}
-            progressUpdates={progressUpdates}
-            errorUpdates={logRef.current.errors}
-            errorCount={logRef.current.totalErrors}
-            operationCount={logRef.current.total}
-            onReturn={handleReset}
-          />
-        )}
-      </Canvas>
-    </ErrorBoundary>
+    <Canvas ctx={ctx} noAutoResizer>
+      <ErrorBoundary>
+        <Main className={s.layout}>{phase}</Main>
+      </ErrorBoundary>
+    </Canvas>
   );
 }

@@ -38,7 +38,7 @@ connect({
         label: 'Locale Duplicate',
         items: [
           {
-            label: 'Mass Locale Duplication',
+            label: 'Mass locale duplication',
             icon: 'copy',
             pointsTo: {
               pageId: 'massLocaleDuplication',

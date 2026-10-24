@@ -1,33 +1,29 @@
-import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Section, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Callout from 'datocms-react-ui/Callout';
+import { Page } from 'datocms-react-ui/Page';
+import Pane from 'datocms-react-ui/Pane';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import Spinner from 'datocms-react-ui/Spinner';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import type { DuplicationProgress } from '../../services/duplicationTypes';
-import styles from './ProgressView.module.css';
+import type { Formatters } from '../../utils/format';
+import { LogTable } from '../LogTable';
+import { pageTitle } from '../pageTitle';
+import s from './ProgressView.module.css';
 
 /**
  * Structure describing a single progress update event.
  */
 export type ProgressUpdate = DuplicationProgress;
 
-const updateKeys = new WeakMap<ProgressUpdate, number>();
-let nextUpdateKey = 0;
-
-export function progressUpdateKey(update: ProgressUpdate): number {
-  let key = updateKeys.get(update);
-  if (key === undefined) {
-    key = ++nextUpdateKey;
-    updateKeys.set(update, key);
-  }
-  return key;
-}
-
 interface ProgressViewProps {
-  ctx: RenderPageCtx;
   progressUpdates: ProgressUpdate[];
   progressPercentage: number;
   operationCount: number;
   isAborting: boolean;
   sourceLocale: string;
   targetLocale: string;
+  format: Formatters;
   getLocaleLabel: (locale: string) => string;
   onAbort: () => void;
 }
@@ -39,6 +35,7 @@ export function ProgressView({
   isAborting,
   sourceLocale,
   targetLocale,
+  format,
   getLocaleLabel,
   onAbort,
 }: ProgressViewProps) {
@@ -47,92 +44,64 @@ export function ProgressView({
   const completion = Number.isFinite(progressPercentage)
     ? Math.max(0, Math.min(100, progressPercentage))
     : 0;
+  const task = `Duplicating ${getLocaleLabel(sourceLocale)} to ${getLocaleLabel(targetLocale)}`;
 
   return (
-    <div className={styles.progressWrapper}>
-      <div className={styles.progressContainer}>
-        <h2 className={styles.progressHeading}>
-          Duplicating content from {getLocaleLabel(sourceLocale)} to{' '}
-          {getLocaleLabel(targetLocale)}
-        </h2>
-
-        <Section title="Progress Status">
-          {/* Custom progress bar to show overall completion status */}
-          <div className={styles.progressStatusBox}>
-            {/* Progress percentage and spinner */}
-            <div className={styles.progressHeader}>
-              <div className={styles.progressPercentage}>
-                {completion}% Complete
-              </div>
-              <Spinner size={24} />
-            </div>
-
-            {/* Progress bar */}
-            <div className={styles.progressBarContainer}>
-              <div
-                className={styles.progressBar}
-                style={{ width: `${completion}%` }}
-              />
-            </div>
-
-            {/* Current operation description */}
-            <div className={styles.currentOperation}>
-              {latestUpdate?.message}
-            </div>
-          </div>
-
-          {progressUpdates.length === 0 ? (
-            <div className={styles.loadingContainer}>
-              <Spinner size={48} />
-              <div className={styles.loadingText}>
-                Initializing duplication process...
-              </div>
-            </div>
-          ) : (
-            <div>
-              <h3 className={styles.consoleHeader}>
-                <span>Operation Console</span>
-                <span className={styles.consoleCount}>
-                  {operationCount} operations
-                </span>
-              </h3>
-              {operationCount > visibleUpdates.length && (
-                <p>Showing the latest {visibleUpdates.length} operations.</p>
-              )}
-
-              {/* Progress updates log */}
-              <div className={styles.progressLog}>
-                {visibleUpdates.map((update) => (
-                  <div
-                    key={progressUpdateKey(update)}
-                    className={`${styles.progressItem} ${styles[update.type]}`}
-                  >
-                    <span className={styles.progressIcon}>
-                      {update.type === 'success' && '✓'}
-                      {update.type === 'error' && '✗'}
-                      {update.type === 'info' && '•'}
-                    </span>
-                    <span className={styles.progressMessage}>
-                      {update.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Abort button */}
-          <div className={styles.abortButtonContainer}>
-            <Button
-              buttonType="negative"
+    <Pane
+      header={
+        <Pane.Header>
+          {pageTitle}
+          <Pane.Header.Button>
+            <Toolbar.Button
+              tone="soft"
+              label="Stop"
+              busy={isAborting}
               onClick={onAbort}
-              disabled={isAborting}
+            />
+          </Pane.Header.Button>
+        </Pane.Header>
+      }
+    >
+      <Page variant="large">
+        <Page.Content>
+          <Callout title="Keep this page open">
+            Leaving the page stops the duplication after the operations in
+            progress.
+          </Callout>
+          {latestUpdate ? (
+            <Page.Group title="Progress">
+              <div className={s.status} role="status" aria-live="polite">
+                <Spinner inline label={false} />
+                {isAborting
+                  ? 'Stopping after the operations in progress'
+                  : task}
+                <span className={s.percent}>{format.percent(completion)}</span>
+              </div>
+              <ProgressBar value={completion / 100} ariaLabel={task} />
+              <p className={s.message}>{latestUpdate.message}</p>
+            </Page.Group>
+          ) : (
+            <BlankSlate
+              placement="section"
+              loading
+              title="Starting the duplication"
+            />
+          )}
+          {latestUpdate && (
+            <Page.Group
+              title="Log"
+              flush
+              footer={
+                operationCount > visibleUpdates.length
+                  ? `Showing the latest ${format.count(visibleUpdates.length)} of ${format.operations(operationCount)}`
+                  : format.operations(operationCount)
+              }
             >
-              {isAborting ? 'Aborting...' : 'Abort Operation'}
-            </Button>
-          </div>
-        </Section>
-      </div>
-    </div>
+              <LogTable entries={visibleUpdates} />
+            </Page.Group>
+          )}
+        </Page.Content>
+      </Page>
+    </Pane>
   );
 }

@@ -1,5 +1,18 @@
 import type { DuplicationProgress } from '../services/duplicationTypes';
 
+const updateKeys = new WeakMap<DuplicationProgress, number>();
+let nextUpdateKey = 0;
+
+/** A stable React key per log entry, also for identical messages and times. */
+export function progressUpdateKey(update: DuplicationProgress): number {
+  let key = updateKeys.get(update);
+  if (key === undefined) {
+    key = ++nextUpdateKey;
+    updateKeys.set(update, key);
+  }
+  return key;
+}
+
 /** Fixed storage bounds logging work and UI memory during long runs. */
 export class ProgressLog {
   private readonly ring: DuplicationProgress[] = [];

@@ -1,309 +1,226 @@
-import { Button, Section } from 'datocms-react-ui';
-import { useCallback, useMemo, useState } from 'react';
-import type { DuplicationStats } from '../../services/duplicationTypes';
+import Callout from 'datocms-react-ui/Callout';
+import InfoList from 'datocms-react-ui/InfoList';
+import { Page } from 'datocms-react-ui/Page';
+import Pane from 'datocms-react-ui/Pane';
 import {
-  type ProgressUpdate,
-  progressUpdateKey,
-} from '../ProgressView/ProgressView';
-import styles from './SummaryView.module.css';
+  Table,
+  type TableColumn,
+  useInMemoryTableLayout,
+} from 'datocms-react-ui/Table';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useMemo, useState } from 'react';
+import type {
+  DuplicationStats,
+  ModelStats,
+} from '../../services/duplicationTypes';
+import type { Formatters } from '../../utils/format';
+import { LogTable } from '../LogTable';
+import type { ProgressUpdate } from '../ProgressView/ProgressView';
+import { pageTitle } from '../pageTitle';
 
-/**
- * Represents statistics for the duplication process
- */
+const MODELS_PER_PAGE = 100;
+
+type ModelRow = [modelId: string, stats: ModelStats];
+
+const MODEL_COLUMNS: TableColumn<ModelRow>[] = [
+  { name: 'model', label: 'Model', renderCell: ([, stats]) => stats.name },
+  {
+    name: 'success',
+    label: 'Successful',
+    renderCell: ([, stats]) => stats.success,
+  },
+  { name: 'error', label: 'Failed', renderCell: ([, stats]) => stats.error },
+  { name: 'total', label: 'Total', renderCell: ([, stats]) => stats.total },
+];
+
+const MODEL_LAYOUT = {
+  columns: [
+    { name: 'model', width: 3 },
+    { name: 'success', width: 1 },
+    { name: 'error', width: 1 },
+    { name: 'total', width: 1 },
+  ],
+};
+
 interface SummaryViewProps {
   duplicationStats: DuplicationStats;
   progressUpdates: ProgressUpdate[];
   errorUpdates: ProgressUpdate[];
   errorCount: number;
   operationCount: number;
+  format: Formatters;
   onReturn: () => void;
 }
 
-interface ExpandedSections {
-  models: boolean;
-  fields: boolean;
-  errors: boolean;
-  logs: boolean;
-}
-
 export function SummaryView({
-  duplicationStats,
+  duplicationStats: stats,
   progressUpdates,
   errorUpdates,
   errorCount,
   operationCount,
+  format,
   onReturn,
 }: SummaryViewProps) {
-  const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
-    models: false,
-    fields: false,
-    errors: false,
-    logs: false,
-  });
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [errorsOpen, setErrorsOpen] = useState(true);
+  const [logOpen, setLogOpen] = useState(false);
+  const [modelPage, setModelPage] = useState(0);
+  const [modelLayout, setModelLayout] = useInMemoryTableLayout(MODEL_LAYOUT);
+  const modelEntries = useMemo(
+    () => Object.entries(stats.modelStats),
+    [stats.modelStats],
+  );
   const summaryErrorCount = Math.max(errorCount, errorUpdates.length);
   const visibleErrors = errorUpdates.slice(0, 100);
   const visibleOperations = progressUpdates.slice(-500);
-
-  const toggleSection = useCallback((section: keyof ExpandedSections) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  }, []);
+  const publications =
+    stats.publishedRecords +
+    stats.failedPublications +
+    stats.pendingPublications;
+  const notProcessed = stats.totalToProcess - stats.totalRecords;
 
   return (
-    <div className={styles.summaryContainer}>
-      <div className={styles.summaryContent}>
-        <h2 className={styles.summaryTitle}>
-          Duplication Summary
-          <span className={styles.summaryTitleUnderline} />
-        </h2>
-
-        {/* Duplication Statistics Section */}
-        <Section title="Duplication Statistics">
-          <div className={styles.statsContainer}>
-            {/* Records Processed */}
-            <button
-              type="button"
-              onClick={() => toggleSection('models')}
-              aria-expanded={expandedSections.models}
-              className={`${styles.expandableButton} ${expandedSections.models ? styles.expanded : ''}`}
-            >
-              <div className={styles.buttonLeft}>
-                <span className={styles.buttonIcon}>📝</span>
-                <span className={styles.buttonLabel}>Records Processed</span>
-              </div>
-              <div className={styles.buttonRight}>
-                <span className={styles.buttonValue}>
-                  {duplicationStats.totalRecords}
-                </span>
-                <span
-                  className={`${styles.expandIcon} ${expandedSections.models ? styles.expanded : ''}`}
-                >
-                  ▾
-                </span>
-              </div>
-            </button>
-
-            {expandedSections.models && (
-              <RecordStatistics duplicationStats={duplicationStats} />
-            )}
-
-            {/* Errors */}
-            {summaryErrorCount > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => toggleSection('errors')}
-                  aria-expanded={expandedSections.errors}
-                  className={`${styles.expandableButton} ${styles.errorButton} ${expandedSections.errors ? styles.expanded : ''}`}
-                >
-                  <div className={styles.buttonLeft}>
-                    <span className={styles.buttonIcon}>⚠️</span>
-                    <span className={`${styles.buttonLabel} ${styles.error}`}>
-                      Errors Encountered
-                    </span>
-                  </div>
-                  <div className={styles.buttonRight}>
-                    <span className={`${styles.buttonValue} ${styles.error}`}>
-                      {summaryErrorCount}
-                    </span>
-                    <span
-                      className={`${styles.expandIcon} ${expandedSections.errors ? styles.expanded : ''}`}
-                    >
-                      ▾
-                    </span>
-                  </div>
-                </button>
-
-                {expandedSections.errors && (
-                  <div className={styles.expandedContent}>
-                    {summaryErrorCount > visibleErrors.length && (
-                      <p>Showing the first {visibleErrors.length} errors.</p>
-                    )}
-                    <div className={styles.errorLog}>
-                      {visibleErrors.map((error) => (
-                        <div
-                          key={progressUpdateKey(error)}
-                          className={styles.errorItem}
-                        >
-                          <span className={styles.errorIcon}>✗</span>
-                          <span>{error.message}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Full Operation Log */}
-            <button
-              type="button"
-              onClick={() => toggleSection('logs')}
-              aria-expanded={expandedSections.logs}
-              className={`${styles.expandableButton} ${expandedSections.logs ? styles.expanded : ''}`}
-            >
-              <div className={styles.buttonLeft}>
-                <span className={styles.buttonIcon}>📋</span>
-                <span className={styles.buttonLabel}>Full Operation Log</span>
-              </div>
-              <div className={styles.buttonRight}>
-                <span className={`${styles.buttonValue} ${styles.muted}`}>
-                  {operationCount} entries
-                </span>
-                <span
-                  className={`${styles.expandIcon} ${expandedSections.logs ? styles.expanded : ''}`}
-                >
-                  ▾
-                </span>
-              </div>
-            </button>
-
-            {expandedSections.logs && (
-              <div className={styles.expandedContent}>
-                {operationCount > visibleOperations.length && (
-                  <p>
-                    Showing the latest {visibleOperations.length} operations.
-                  </p>
-                )}
-                <div className={styles.fullLog}>
-                  {visibleOperations.map((update) => (
-                    <div
-                      key={progressUpdateKey(update)}
-                      className={`${styles.logItem} ${styles[update.type]}`}
-                    >
-                      <span className={styles.logIcon}>
-                        {update.type === 'success' && '✓'}
-                        {update.type === 'error' && '✗'}
-                        {update.type === 'info' && '•'}
-                      </span>
-                      <span className={styles.logMessage}>
-                        {update.message}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <OverallSummary
-            duplicationStats={duplicationStats}
+    <Pane
+      header={
+        <Pane.Header>
+          {pageTitle}
+          <Pane.Header.Button>
+            <Toolbar.Button
+              tone="primary"
+              label="New duplication"
+              onClick={onReturn}
+            />
+          </Pane.Header.Button>
+        </Pane.Header>
+      }
+    >
+      <Page variant="large">
+        <Page.Content>
+          <OutcomeCallout
+            stats={stats}
             errorCount={summaryErrorCount}
+            format={format}
           />
-        </Section>
-
-        {/* Return button */}
-        <div className={styles.returnButtonContainer}>
-          <Button
-            fullWidth
-            buttonType="primary"
-            buttonSize="l"
-            onClick={onReturn}
-          >
-            Return to Duplication Screen
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function RecordStatistics({
-  duplicationStats,
-}: {
-  duplicationStats: DuplicationStats;
-}) {
-  const [modelPage, setModelPage] = useState(0);
-  const modelStatsEntries = useMemo(
-    () => Object.entries(duplicationStats.modelStats),
-    [duplicationStats.modelStats],
-  );
-  const successPercentage = recordPercentage(
-    duplicationStats.successfulRecords,
-    duplicationStats.totalRecords,
-  );
-  const failedPercentage = recordPercentage(
-    duplicationStats.failedRecords,
-    duplicationStats.totalRecords,
-  );
-  return (
-    <div className={styles.expandedContent}>
-      <h4 className={styles.subheading}>Record Statistics</h4>
-
-      <table className={styles.statsTable}>
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Count</th>
-            <th>Percentage</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr className={styles.successRow}>
-            <td>✓ Successful</td>
-            <td>{duplicationStats.successfulRecords}</td>
-            <td>{successPercentage}%</td>
-          </tr>
-          <tr className={styles.errorRow}>
-            <td>✗ Failed</td>
-            <td>{duplicationStats.failedRecords}</td>
-            <td>{failedPercentage}%</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h4 className={`${styles.subheading} ${styles.spaced}`}>
-        Models Processed
-      </h4>
-      <table className={styles.statsTable}>
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th>Success</th>
-            <th>Failed</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {modelStatsEntries
-            .slice(modelPage * 100, (modelPage + 1) * 100)
-            .map(([modelId, stats]) => (
-              <tr key={modelId}>
-                <td>{stats.name}</td>
-                <td className={styles.successText}>{stats.success}</td>
-                <td className={stats.error > 0 ? styles.errorText : ''}>
-                  {stats.error}
-                </td>
-                <td>{stats.total}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-      {modelStatsEntries.length > 100 && (
-        <div>
-          <Button
-            disabled={modelPage === 0}
-            onClick={() => setModelPage((page) => page - 1)}
-          >
-            Previous models
-          </Button>
-          <span>
-            {' '}
-            Page {modelPage + 1} of {Math.ceil(
-              modelStatsEntries.length / 100,
-            )}{' '}
-          </span>
-          <Button
-            disabled={(modelPage + 1) * 100 >= modelStatsEntries.length}
-            onClick={() => setModelPage((page) => page + 1)}
-          >
-            Next models
-          </Button>
-        </div>
-      )}
-    </div>
+          <Page.Group title="Results">
+            <InfoList>
+              <InfoList.Row title="Records processed">
+                {format.count(stats.totalRecords)}
+              </InfoList.Row>
+              <InfoList.Row title="Successful">
+                {`${format.count(stats.successfulRecords)} (${format.percent(recordPercentage(stats.successfulRecords, stats.totalRecords))})`}
+              </InfoList.Row>
+              <InfoList.Row title="Failed">
+                {`${format.count(stats.failedRecords)} (${format.percent(recordPercentage(stats.failedRecords, stats.totalRecords))})`}
+              </InfoList.Row>
+              {stats.skippedRecords > 0 && (
+                <InfoList.Row title="No changes needed">
+                  {format.count(stats.skippedRecords)}
+                </InfoList.Row>
+              )}
+              {notProcessed > 0 && (
+                <InfoList.Row title="Not processed">
+                  {format.count(notProcessed)}
+                </InfoList.Row>
+              )}
+              <InfoList.Row title="Models">
+                {format.count(stats.totalModels)}
+              </InfoList.Row>
+              {stats.modelFailures > 0 && (
+                <InfoList.Row title="Model or operation failures">
+                  {format.count(stats.modelFailures)}
+                </InfoList.Row>
+              )}
+              {publications > 0 && (
+                <>
+                  <InfoList.Row title="Published">
+                    {format.count(stats.publishedRecords)}
+                  </InfoList.Row>
+                  <InfoList.Row title="Publication failures">
+                    {format.count(stats.failedPublications)}
+                  </InfoList.Row>
+                  <InfoList.Row title="Pending publication">
+                    {format.count(stats.pendingPublications)}
+                  </InfoList.Row>
+                </>
+              )}
+              <InfoList.Row title="Duration">
+                {format.duration(stats.endTime - stats.startTime)}
+              </InfoList.Row>
+            </InfoList>
+          </Page.Group>
+          {modelEntries.length > 0 && (
+            <Page.Group
+              title="Models"
+              flush
+              collapse={{
+                open: modelsOpen,
+                onToggle: () => setModelsOpen(!modelsOpen),
+              }}
+              footer={
+                modelEntries.length > MODELS_PER_PAGE ? (
+                  <Toolbar.Pagination
+                    ariaLabel="Models"
+                    perPage={MODELS_PER_PAGE}
+                    currentPage={modelPage}
+                    totalEntries={modelEntries.length}
+                    onChange={setModelPage}
+                  />
+                ) : undefined
+              }
+            >
+              <Table
+                columns={MODEL_COLUMNS}
+                layout={modelLayout}
+                onLayoutChange={setModelLayout}
+              >
+                <Table.Header />
+                <Table.Body>
+                  {modelEntries
+                    .slice(
+                      modelPage * MODELS_PER_PAGE,
+                      (modelPage + 1) * MODELS_PER_PAGE,
+                    )
+                    .map((entry) => (
+                      <Table.Row key={entry[0]} row={entry} />
+                    ))}
+                </Table.Body>
+              </Table>
+            </Page.Group>
+          )}
+          {summaryErrorCount > 0 && (
+            <Page.Group
+              title="Errors"
+              flush
+              collapse={{
+                open: errorsOpen,
+                onToggle: () => setErrorsOpen(!errorsOpen),
+              }}
+              footer={
+                summaryErrorCount > visibleErrors.length
+                  ? `Showing the first ${format.count(visibleErrors.length)} of ${format.errors(summaryErrorCount)}`
+                  : format.errors(summaryErrorCount)
+              }
+            >
+              <LogTable entries={visibleErrors} />
+            </Page.Group>
+          )}
+          {operationCount > 0 && (
+            <Page.Group
+              title="Log"
+              flush
+              collapse={{ open: logOpen, onToggle: () => setLogOpen(!logOpen) }}
+              footer={
+                operationCount > visibleOperations.length
+                  ? `Showing the latest ${format.count(visibleOperations.length)} of ${format.operations(operationCount)}`
+                  : format.operations(operationCount)
+              }
+            >
+              <LogTable entries={visibleOperations} />
+            </Page.Group>
+          )}
+        </Page.Content>
+      </Page>
+    </Pane>
   );
 }
 
@@ -328,72 +245,33 @@ export function completedWithoutErrors(
   );
 }
 
-function summaryTitle(
-  stats: DuplicationStats,
-  completedSuccessfully: boolean,
-): string {
-  if (stats.cancelled) return 'Duplication Aborted';
-  return completedSuccessfully
-    ? '✓ Duplication Completed Successfully!'
-    : '⚠️ Duplication Completed with Errors';
-}
-
-export function OverallSummary({
-  duplicationStats,
+function OutcomeCallout({
+  stats,
   errorCount,
+  format,
 }: {
-  duplicationStats: DuplicationStats;
+  stats: DuplicationStats;
   errorCount: number;
+  format: Formatters;
 }) {
-  const completedSuccessfully = completedWithoutErrors(
-    duplicationStats,
-    errorCount,
-  );
-  const duration = Math.max(
-    0,
-    duplicationStats.endTime - duplicationStats.startTime,
-  );
-  const durationMinutes = Math.floor(duration / 60000);
-  const durationSeconds = Math.floor((duration % 60000) / 1000);
+  if (stats.cancelled) {
+    return (
+      <Callout tone="warning" title="Duplication stopped">
+        Records updated before you stopped keep the new content. The others
+        weren't changed.
+      </Callout>
+    );
+  }
+  if (completedWithoutErrors(stats, errorCount)) {
+    return (
+      <Callout tone="success" title="Duplication complete">
+        {`Processed ${format.records(stats.totalRecords)} across ${format.models(stats.totalModels)} in ${format.duration(stats.endTime - stats.startTime)}.`}
+      </Callout>
+    );
+  }
   return (
-    <div
-      className={`${styles.overallSummary} ${completedSuccessfully ? styles.success : styles.error}`}
-    >
-      <h3
-        className={`${styles.overallTitle} ${completedSuccessfully ? styles.success : styles.error}`}
-      >
-        {summaryTitle(duplicationStats, completedSuccessfully)}
-      </h3>
-      <p className={styles.overallDescription}>
-        Processed {duplicationStats.totalRecords} records across{' '}
-        {duplicationStats.totalModels} models in {durationMinutes}m{' '}
-        {durationSeconds}s
-      </p>
-      {duplicationStats.skippedRecords > 0 && (
-        <p>{duplicationStats.skippedRecords} records needed no changes.</p>
-      )}
-      {duplicationStats.totalRecords < duplicationStats.totalToProcess && (
-        <p>
-          {duplicationStats.totalToProcess - duplicationStats.totalRecords}{' '}
-          selected records were not processed.
-        </p>
-      )}
-      {duplicationStats.modelFailures > 0 && (
-        <p>
-          {duplicationStats.modelFailures} model or operation failures prevented
-          a complete run.
-        </p>
-      )}
-      {duplicationStats.publishedRecords +
-        duplicationStats.failedPublications +
-        duplicationStats.pendingPublications >
-        0 && (
-        <p>
-          {duplicationStats.publishedRecords} records published;{' '}
-          {duplicationStats.failedPublications} publication failures;{' '}
-          {duplicationStats.pendingPublications} pending.
-        </p>
-      )}
-    </div>
+    <Callout tone="danger" title="Duplication finished with errors">
+      Some records or models weren't duplicated. Check the errors below.
+    </Callout>
   );
 }

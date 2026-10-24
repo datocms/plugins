@@ -1,186 +1,20 @@
-/* Container styles */
-.progressWrapper {
-  display: flex;
-  justify-content: center;
-  padding: var(--spacing-l);
-  margin-top: var(--spacing-xxl);
-}
+/* Placement only: the kit components draw themselves. */
 
-.progressContainer {
-  max-width: 800px;
-  width: 100%;
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-.progressHeading {
-  font-size: var(--font-size-xl);
-  font-weight: bold;
-  margin-bottom: var(--spacing-l);
-  color: var(--color--ink-link);
-  text-align: center;
-  position: relative;
-  padding-bottom: var(--spacing-s);
-}
-
-.progressHeading::after {
-  content: "";
-  display: block;
-  width: 60px;
-  height: 2px;
-  background-color: var(--color--primary--surface);
-  margin: 12px auto 0;
-  border-radius: 2px;
-}
-
-/* Progress status box */
-.progressStatusBox {
-  margin-bottom: var(--spacing-l);
-  padding: var(--spacing-m);
-  background-color: var(--color--surface-muted);
-  border-radius: 4px;
-  box-shadow: var(--shadow--raised);
-}
-
-.progressHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-s);
-}
-
-.progressPercentage {
-  font-size: var(--font-size-l);
-  font-weight: bold;
-  color: var(--color--ink-link);
-}
-
-/* Progress bar */
-.progressBarContainer {
-  width: 100%;
-  height: 10px;
-  background-color: var(--color--progress--track);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progressBar {
-  height: 100%;
-  background: var(--color--progress--fill);
-  border-radius: 4px;
-  transition: width 0.3s ease-in-out;
-  box-shadow: var(--shadow--raised);
-}
-
-.currentOperation {
-  margin-top: var(--spacing-s);
-  font-size: var(--font-size-s);
-  color: var(--color--ink);
-}
-
-/* Loading state */
-.loadingContainer {
-  text-align: center;
-  padding: var(--spacing-l);
-  background-color: var(--color--surface-muted);
-  border-radius: 4px;
-  box-shadow: var(--shadow--raised);
-}
-
-.loadingText {
-  margin-top: var(--spacing-m);
-  font-size: var(--font-size-m);
-  font-weight: bold;
-}
-
-/* Console header */
-.consoleHeader {
-  margin: 0 0 var(--spacing-m) 0;
-  font-size: var(--font-size-m);
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.consoleCount {
-  font-size: var(--font-size-xs);
-  font-weight: normal;
-  opacity: 0.7;
-}
-
-/* Abort button */
-.abortButtonContainer {
-  margin-top: var(--spacing-l);
-  text-align: center;
-}
-
-.progressLog {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid var(--color--border);
-  border-radius: 4px;
-  padding: var(--spacing-m);
-  background-color: var(--color--surface-muted);
-  font-family: var(--monospaced-font-family);
-  font-size: var(--font-size-xs);
-}
-
-.progressItem {
+/* The state of the run, with the share at the end of the line */
+.status {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  padding: var(--spacing-s) 0;
-  border-bottom: 1px solid var(--color--border);
-  animation: slideIn 0.2s ease-out;
+  margin-bottom: var(--spacing-s);
 }
 
-.progressItem:last-child {
-  border-bottom: none;
+.percent {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 
-.progressIcon {
-  width: 20px;
-  text-align: center;
-  font-weight: bold;
-}
-
-.progressItem.success .progressIcon {
-  color: var(--color--success-soft--ink);
-}
-
-.progressItem.error .progressIcon {
-  color: var(--color--danger-soft--ink);
-}
-
-.progressItem.info .progressIcon {
-  color: var(--color--ink-primary);
-}
-
-.progressMessage {
-  flex: 1;
-  color: var(--color--ink);
-}
-
-.progressItem.error .progressMessage {
-  color: var(--color--danger-soft--ink);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(-10px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+/* The latest entry of the log, under the bar */
+.message {
+  margin: var(--spacing-s) 0 0;
+  color: var(--color--ink-subtle);
 }
