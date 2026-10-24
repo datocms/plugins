@@ -1,0 +1,53 @@
+/* The detail of an open URL. The kit's panel, its sections and its rows
+   give the layout; these classes only place the plugin's own lines. */
+
+/* A short note under the value of an info row. */
+.note {
+  margin-top: var(--spacing-s);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The records, and the action under them. Their own text sits about in
+   line with the text of the rows: the inset of a row list (--row-inset, see
+   RowList) plus the space of a row's content. */
+.records,
+.more {
+  --record-text-inset: calc(var(--row-inset) + var(--spacing-m));
+}
+
+/* One record, its row and its places. The space after it parts it from the
+   next record more than the places are parted from their row, so they read
+   as part of the record above and not of the one below. */
+.record {
+  padding-bottom: var(--spacing-m);
+}
+
+/* The places of a record, right under the box of its row. */
+.places {
+  padding: 0 var(--record-text-inset);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+  overflow-wrap: anywhere;
+}
+
+.places li + li,
+.places > p {
+  margin-top: calc(var(--spacing-s) / 2);
+}
+
+/* The spelling a place links to, when it differs from the URL. */
+.variant {
+  display: block;
+}
+
+/* The pen at the end of a record's row: it opens the record. */
+.pen {
+  flex: none;
+  color: var(--color--ink-subtle);
+}
+
+/* The action under the records: its text in line with the rows' text. */
+.more {
+  padding: 0 var(--record-text-inset) var(--spacing-m);
+}

@@ -1,0 +1,99 @@
+/* The record panel: blocks one under the other. The kit's callouts keep
+   their own space below them; the other blocks get this space above. */
+.panel > * + * {
+  margin-top: var(--spacing-m);
+}
+
+/* Holds the panel's action, so the line box around the button adds no
+   height. The action pulls its box out by 0.8em (its own font size, which
+   is this one), so its text lines up with the content; with its 4px focus
+   ring, that goes past the frame's side padding, which RecordPanel passes
+   in, and the frame's edge would cut the ring. So the box comes back just
+   enough to keep the ring in the frame (Button, "Do not clip the button"). */
+.action {
+  display: flex;
+  padding-inline-start: max(
+    0px,
+    calc(0.8em + 4px - var(--frame-inset-left, 0px))
+  );
+}
+
+/* A callout whose controls sit right under it. */
+.calloutAboveControls {
+  margin-bottom: 0;
+}
+
+/* The controls of the list above them: the "Show" actions, then the pages. */
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.panel > .controls,
+.result > .controls {
+  margin-top: var(--spacing-s);
+}
+
+/* The pages take the whole width. */
+.pages {
+  align-self: stretch;
+}
+
+/* The facts under the summary. */
+.meta {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The URLs, each one a block between two hairlines. */
+.results {
+  padding: 0;
+  border-top: 1px solid var(--color--border);
+}
+
+.result {
+  padding-block: var(--spacing-m);
+  border-bottom: 1px solid var(--color--border);
+}
+
+.result > * + * {
+  margin-top: var(--spacing-s);
+}
+
+/* The HTTP status after the status word. */
+.subtle {
+  color: var(--color--ink-subtle);
+}
+
+/* Why a result reads as it does, and the fragment note. */
+.note {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The places of a URL: rows that go to their field. A row keeps its text at
+   the inset of its own list (--row-inset plus the padding of its content),
+   while the content of the panel already sits at the frame's body padding.
+   So the box goes out of the column, and the text of the rows comes in line
+   with the URL and the status above it (RowList, "The inset row"), but never
+   by more than the body padding, which RecordPanel passes in: the box of a
+   row stays in the frame. */
+.places {
+  --places-text-inset: calc(var(--row-inset) + var(--spacing-m));
+
+  margin-right: calc(
+    -1 *
+    min(var(--places-text-inset), var(--frame-inset-right, 0px))
+  );
+  margin-left: calc(
+    -1 *
+    min(var(--places-text-inset), var(--frame-inset-left, 0px))
+  );
+}
+
+/* The chevron of a row that goes to its field. */
+.chevron {
+  flex: none;
+  color: var(--color--ink-subtle);
+}

@@ -37,13 +37,6 @@ export function isDefaultFilters(filters: Filters): boolean {
 export type SortKey = 'url' | 'status' | 'usedIn';
 export type Sort = { key: SortKey; direction: 'asc' | 'desc' } | null;
 
-/** Header clicks cycle none → ascending → descending → none. */
-export function nextSort(sort: Sort, key: SortKey): Sort {
-  if (!sort || sort.key !== key) return { key, direction: 'asc' };
-  if (sort.direction === 'asc') return { key, direction: 'desc' };
-  return null;
-}
-
 /** Severity order: menus, the status sort and the record panel list follow it. */
 export const STATUS_RANK: Readonly<Record<CheckStatus, number>> = {
   broken: 0,
@@ -554,21 +547,4 @@ export function pageSlice<T>(
 ): T[] {
   const current = Math.min(Math.max(1, page), pageCount(items.length, perPage));
   return items.slice((current - 1) * perPage, current * perPage);
-}
-
-/** The page numbers to show, centered on the current page when possible. */
-export function paginationWindow(
-  page: number,
-  count: number,
-  size: number,
-): number[] {
-  if (count < 1 || size < 1) return [];
-  const start = Math.min(
-    Math.max(page - Math.floor(size / 2), 1),
-    Math.max(1, count - size + 1),
-  );
-  const end = Math.min(count, start + size - 1);
-  const pages: number[] = [];
-  for (let n = start; n <= end; n += 1) pages.push(n);
-  return pages;
 }

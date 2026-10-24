@@ -1,0 +1,10 @@
+/* The intro and the submit keep the gap of the fields between them. */
+.intro {
+  margin-bottom: var(--form-field-gap);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--form-field-gap);
+}

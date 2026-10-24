@@ -1,0 +1,33 @@
+/* A URL from the content: link ink, and it may break anywhere a part is
+   longer than the line (BreakableUrl gives the preferred breaks). */
+.link {
+  color: var(--color--ink-link);
+  overflow-wrap: anywhere;
+}
+
+/* A URL in a sentence: the color of the text around it, with the underline
+   that every link of the kit's styles has. */
+.inText {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+/* The icon stays on the line of the URL's last part: a word joiner glues it
+   there. Generated content isn't copied with a selection, so a copied URL
+   gets no invisible character after it. */
+.tail {
+  white-space: nowrap;
+}
+
+.tail::before {
+  content: "\2060";
+}
+
+/* The new-tab mark is three quarters of the text, as the kit draws it next
+   to its own new-tab links. */
+.icon {
+  inline-size: 0.75em;
+  block-size: 0.75em;
+  margin-inline-start: var(--spacing-s);
+  vertical-align: baseline;
+}

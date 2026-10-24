@@ -5,11 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deferred, panelContext, rawRecord } from '../test/fixtures';
 import RecordPanel from './RecordPanel';
 
-vi.mock(
-  'datocms-react-ui',
-  async () => (await import('../test/fixtures')).reactUi,
-);
-
 type FormItem = Awaited<
   ReturnType<RenderItemFormSidebarPanelCtx['formValuesToItem']>
 >;
@@ -36,6 +31,11 @@ function resultFor(url: string): HTMLElement {
   return result;
 }
 
+/** The row of a place, named by where it goes: the field, then its locale. */
+function placeRow(result: HTMLElement, name: RegExp): HTMLElement {
+  return within(result).getByRole('button', { name });
+}
+
 /** The panel's one live region, mounted empty and filled when a check settles. */
 async function announced(text: string) {
   await waitFor(() =>
@@ -43,21 +43,25 @@ async function announced(text: string) {
   );
 }
 
-const WARNINGS_INTRO =
-  "Some content couldn't be read, so its links weren't checked:";
+const SPINNER = '.Spinner';
+const SAVING = "You can't check links while the record is being saved.";
+const UNREAD_TITLE = "Some content couldn't be read";
 
 describe('record link-check panel', () => {
   it('checks unsaved content in every locale without a token, save or field write', async () => {
     const user = userEvent.setup();
     const ctx = panelContext({ currentUserAccessToken: undefined });
     render(<RecordPanel ctx={ctx} />);
-    // Only the button: no intro, and no locale switch since every locale is checked.
-    expect(screen.queryByText(/Checks the links/)).not.toBeInTheDocument();
+    // Only the action: no intro, and no locale switch since every locale is checked.
+    expect(screen.getAllByRole('button')).toHaveLength(1);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     await announced('2 URLs need attention');
     expect(ctx.formValuesToItem).toHaveBeenCalledWith(ctx.formValues, false);
+    expect(
+      screen.getByText('2 URLs need attention', { ignore: '[role="status"]' }),
+    ).toBeInTheDocument();
     const broken = resultFor('https://broken.example/page');
     expect(within(broken).getByText('Broken')).toBeInTheDocument();
     expect(within(broken).getByText(/HTTP 404/)).toBeInTheDocument();
@@ -72,11 +76,19 @@ describe('record link-check panel', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     const italian = resultFor('https://italian.example/page');
     expect(within(italian).getByText('Italian')).toBeInTheDocument();
-    expect(screen.queryByText(/Checks the links/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
     expect(ctx.saveCurrentItem).not.toHaveBeenCalled();
     expect(ctx.setFieldValue).not.toHaveBeenCalled();
     expect(ctx.editItem).not.toHaveBeenCalled();
+  });
+
+  it("lets the place rows go out into the frame's side padding, never past it", () => {
+    render(<RecordPanel ctx={panelContext({ bodyPadding: [0, 12, 10, 8] })} />);
+    const panel = screen
+      .getByRole('button', { name: 'Check links' })
+      .closest<HTMLElement>('[style*="--frame-inset-left"]');
+    expect(panel?.style.getPropertyValue('--frame-inset-left')).toBe('8px');
+    expect(panel?.style.getPropertyValue('--frame-inset-right')).toBe('12px');
   });
 
   it('goes to the localized containing field from the whole place row', async () => {
@@ -87,11 +99,13 @@ describe('record link-check panel', () => {
     await announced('2 URLs need attention');
     const italian = resultFor('https://italian.example/page');
     await user.click(
-      within(italian).getByRole('button', {
-        name: 'Go to field: Website, Italian',
-      }),
+      placeRow(italian, /^Website\s*Italian\s*,\s*go to field$/),
     );
     expect(ctx.scrollToField).toHaveBeenCalledWith('url.it', 'it');
+    // The row works from the keyboard too.
+    placeRow(italian, /^Website.*,\s*go to field$/).focus();
+    await user.keyboard('{Enter}');
+    expect(ctx.scrollToField).toHaveBeenCalledTimes(2);
     expect(ctx.saveCurrentItem).not.toHaveBeenCalled();
   });
 
@@ -128,9 +142,10 @@ describe('record link-check panel', () => {
     } as RenderItemFormSidebarPanelCtx;
     view.rerender(<RecordPanel ctx={removed} />);
     await user.click(
-      within(resultFor('https://italian.example/page')).getByRole('button', {
-        name: /^Go to field/,
-      }),
+      placeRow(
+        resultFor('https://italian.example/page'),
+        /^Website.*,\s*go to field$/,
+      ),
     );
     expect(ctx.scrollToField).toHaveBeenCalledWith('url.it', undefined);
     expect(ctx.setFieldValue).not.toHaveBeenCalled();
@@ -145,13 +160,15 @@ describe('record link-check panel', () => {
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     const loading =
       'The record is still loading. Wait for it to load and check again.';
-    // The live region repeats it.
-    expect(
-      await screen.findByText(loading, { selector: 'p' }),
-    ).toBeInTheDocument();
-    // Nothing was read, so there's no "some content" intro.
-    expect(screen.queryByText(WARNINGS_INTRO)).not.toBeInTheDocument();
+    const reason = await screen.findByText(loading, { selector: 'p' });
+    // Nothing was read, so the reason is the whole message, under its title,
+    // and the live region says the reason alone.
+    expect(reason.closest('[role="alert"]')).toHaveTextContent(
+      `Couldn't read the record${loading}`,
+    );
+    expect(screen.queryByText(UNREAD_TITLE)).not.toBeInTheDocument();
     await announced(loading);
+    expect(screen.getByRole('status').textContent).toBe(loading);
     expect(screen.queryByText(/^No links in/)).not.toBeInTheDocument();
     expect(screen.queryByText(/needs attention/)).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -177,6 +194,7 @@ describe('record link-check panel', () => {
         'The record changed after this check. Check again to refresh the results.',
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText('Results out of date')).toBeInTheDocument();
     expect(screen.getByText('https://broken.example/page')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
     expect(ctx.formValuesToItem).toHaveBeenCalledTimes(1);
@@ -207,25 +225,30 @@ describe('record link-check panel', () => {
     );
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { rerender } = render(<RecordPanel ctx={ctx} />);
-    expect(screen.getByRole('button', { name: 'Check links' })).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot check links while the record is being saved',
-      ),
-    ).toBeInTheDocument();
+    const check = screen.getByRole('button', { name: 'Check links' });
+    expect(check).toHaveAttribute('aria-disabled', 'true');
+    // The reason shows on hover (and keyboard focus), and the click does nothing.
+    await user.hover(check);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(SAVING);
+    await user.click(check);
+    expect(ctx.formValuesToItem).not.toHaveBeenCalled();
+    await user.unhover(check);
     rerender(<RecordPanel ctx={{ ...ctx, isSubmitting: false }} />);
     expect(
-      screen.queryByText(
-        'You cannot check links while the record is being saved',
-      ),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Check links' }),
+    ).not.toHaveAttribute('aria-disabled');
+    expect(screen.queryByText(SAVING)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     const failed = "The record couldn't be read. Check again to retry.";
     expect(
-      await screen.findByText(failed, { selector: 'p' }),
+      (await screen.findByText(failed, { selector: 'p' })).closest(
+        '[role="alert"]',
+      ),
     ).toBeInTheDocument();
+    // Nothing was read: the live region says the reason alone.
     await announced(failed);
-    expect(screen.queryByText(WARNINGS_INTRO)).not.toBeInTheDocument();
+    expect(screen.getByRole('status').textContent).toBe(failed);
+    expect(screen.queryByText(UNREAD_TITLE)).not.toBeInTheDocument();
     expect(
       screen.queryByText('Cannot serialize block'),
     ).not.toBeInTheDocument();
@@ -264,23 +287,34 @@ describe('record link-check panel', () => {
     fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    expect(await screen.findByText('Reading the record…')).toBeInTheDocument();
-    expect(screen.getByTestId('spinner')).toHaveAttribute('data-size', '25');
+    const reading = await screen.findByText('Reading the record…');
+    expect(reading.querySelector(SPINNER)).toBeInTheDocument();
+    // The action keeps the focus while its label changes.
+    const cancel = screen.getByRole('button', { name: 'Cancel check' });
+    expect(cancel).toHaveFocus();
     item.resolve(formItem({ en: 'https://broken.example/page' }));
     expect(
       await screen.findByText('Checking URLs (2 left)…'),
     ).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: 'Cancel check' }));
+    await user.click(cancel);
+    expect(await screen.findByText('Check canceled')).toBeInTheDocument();
     expect(
-      await screen.findByText(/^Check canceled\. URLs that weren't checked/),
+      screen.getByText("URLs that weren't checked show as “Not checked”."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Check canceled').closest('[role="alert"]'),
+    ).toBeInTheDocument();
+    // The live region says the check was canceled, then the summary.
     await announced('Check canceled. 2 URLs need attention');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /^Check canceled\. 2 URLs need attention$/,
+    );
     expect(
       within(resultFor('https://broken.example/page')).getByText('Not checked'),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+    expect(document.querySelector(SPINNER)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
   });
 
@@ -293,12 +327,13 @@ describe('record link-check panel', () => {
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     await announced('2 URLs need attention');
     await user.click(
-      screen.getByRole('button', {
-        name: 'Go to field: Website, English',
-      }),
+      placeRow(
+        resultFor('https://broken.example/page'),
+        /^Website.*,\s*go to field$/,
+      ),
     );
     await waitFor(() =>
-      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the field!"),
+      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the field."),
     );
     expect(logged).toHaveBeenCalled();
   });
@@ -312,7 +347,9 @@ describe('record link-check panel', () => {
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     expect(
-      await screen.findByText('No links in this record', { selector: 'p' }),
+      await screen.findByText('No links in this record', {
+        ignore: '[role="status"]',
+      }),
     ).toBeInTheDocument();
     await announced('No links in this record');
     expect(fetchMock).not.toHaveBeenCalled();
@@ -326,7 +363,7 @@ describe('record link-check panel', () => {
     const ctx = panelContext({
       site: {
         id: 'site-1',
-        attributes: { locales: ['en'] },
+        attributes: { locales: ['en'], internal_domain: null },
       } as unknown as RenderItemFormSidebarPanelCtx['site'],
     });
     vi.mocked(ctx.formValuesToItem).mockResolvedValue(
@@ -336,15 +373,18 @@ describe('record link-check panel', () => {
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     await announced('Nothing needs attention. 1 URL found');
     expect(
+      screen.getByText('Nothing needs attention', {
+        ignore: '[role="status"]',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 URL found')).toBeInTheDocument();
+    expect(
       screen.queryByText('https://ok.example/page#top'),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show 1 URL' }));
     const result = resultFor('https://ok.example/page#top');
     expect(within(result).getByText('Reachable')).toBeInTheDocument();
-    expect(within(result).getByText('Website')).toBeInTheDocument();
-    expect(
-      within(result).getByRole('button', { name: 'Go to field: Website' }),
-    ).toBeInTheDocument();
+    expect(placeRow(result, /^Website\s*,\s*go to field$/)).toBeInTheDocument();
     expect(
       within(result).getByText('The #fragment is not checked'),
     ).toBeInTheDocument();

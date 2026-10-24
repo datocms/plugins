@@ -1,34 +1,96 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { renderInCanvas } from '../test/canvas';
+import { panelContext } from '../test/fixtures';
 import type { ScanReport } from '../types';
 import { PanelNotes } from './PanelNotes';
 
-describe('PanelNotes large warning lists', () => {
+function partialReport(recordsScanned: number, warnings: string[]): ScanReport {
+  return {
+    state: 'partial',
+    startedAt: '2026-10-02T00:00:00Z',
+    recordsScanned,
+    discovering: false,
+    scope: 'Current form',
+    groups: [],
+    warnings,
+  };
+}
+
+describe('PanelNotes', () => {
   it.each([
     0, 1,
-  ])('bounds warning rendering after %i records were read', (recordsScanned) => {
-    const report: ScanReport = {
-      state: 'partial',
-      startedAt: '2026-10-02T00:00:00Z',
-      recordsScanned,
-      discovering: false,
-      scope: 'Current form',
-      groups: [],
-      warnings: Array.from({ length: 501 }, (_, i) => `Issue ${i}`),
-    };
-    render(<PanelNotes report={report} running={false} uiLocale="en" />);
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse 501 issues' }));
-    expect(screen.getAllByRole('listitem')).toHaveLength(50);
-    const pages = screen.getByRole('navigation', { name: 'Content issues' });
-    for (let page = 1; page < 11; page += 1)
-      fireEvent.click(within(pages).getByRole('button', { name: 'Next »' }));
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(screen.getByText('Issue 500')).toBeInTheDocument();
+  ])('bounds warning rendering after %i records were read', async (recordsScanned) => {
+    const user = userEvent.setup();
+    const warnings = Array.from({ length: 501 }, (_, i) => `Issue ${i}`);
+    renderInCanvas(
+      <PanelNotes
+        report={partialReport(recordsScanned, warnings)}
+        running={false}
+        uiLocale="en"
+      />,
+      { ctx: panelContext() },
+    );
+    const callout = screen.getByRole('alert');
     expect(
-      within(pages).getByRole('button', { name: 'Next »' }),
+      within(callout).getByText("Some content couldn't be read"),
+    ).toBeInTheDocument();
+    expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
+    // The controls sit under the callout, never in it.
+    const browse = screen.getByRole('button', { name: 'Browse 501 issues' });
+    expect(callout).not.toContainElement(browse);
+    await user.click(browse);
+    expect(within(callout).getAllByRole('listitem')).toHaveLength(50);
+    const pages = screen.getByRole('navigation', {
+      name: 'Content issues pagination',
+    });
+    for (let page = 1; page < 11; page += 1)
+      fireEvent.click(within(pages).getByRole('button', { name: 'Next page' }));
+    expect(within(callout).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(callout).getByText('Issue 500')).toBeInTheDocument();
+    expect(
+      within(pages).getByRole('button', { name: 'Next page' }),
     ).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Show fewer issues' }));
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    await user.click(screen.getByRole('button', { name: 'Show fewer issues' }));
+    expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('shows every issue of a short list without pages', async () => {
+    const user = userEvent.setup();
+    renderInCanvas(
+      <PanelNotes
+        report={partialReport(1, ['A', 'B', 'C', 'D', 'E'])}
+        running={false}
+        uiLocale="en"
+      />,
+      { ctx: panelContext() },
+    );
+    await user.click(screen.getByRole('button', { name: 'Show all 5 issues' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('says what a canceled check leaves out, and nothing while running', () => {
+    const report: ScanReport = {
+      ...partialReport(1, []),
+      state: 'cancelled',
+      stale: true,
+    };
+    const { rerender } = renderInCanvas(
+      <PanelNotes report={report} running={false} uiLocale="en" />,
+      { ctx: panelContext() },
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Check canceledURLs that weren't checked show as “Not checked”.",
+    );
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Results out of dateThe record changed after this check. Check again to refresh the results.',
+    );
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    rerender(<PanelNotes report={report} running uiLocale="en" />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 });

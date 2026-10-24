@@ -1,11 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { LinkOccurrence } from '../types';
 import {
   countLabel,
   FACT_SEPARATOR,
-  formatDateTime,
   formatWarning,
-  inSentence,
   joinFacts,
   joinNames,
   localeName,
@@ -28,10 +26,6 @@ function occurrence(overrides: Partial<LinkOccurrence> = {}): LinkOccurrence {
     ...overrides,
   };
 }
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe('locationParts', () => {
   it('puts a top-level field alone, with no surrounding path', () => {
@@ -125,26 +119,6 @@ describe('countLabel', () => {
     expect(countLabel(1204, '1 record', '{n} records', 'it')).toBe(
       '1204 records',
     );
-  });
-});
-
-describe('dates', () => {
-  it('formats today and other days, and lowercases "Today" inside a sentence', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 8, 26, 16, 0));
-    const today = formatDateTime(
-      new Date(2026, 8, 26, 14, 32).toISOString(),
-      'en-GB',
-    );
-    expect(today).toBe('Today, 14:32');
-    expect(inSentence(today)).toBe('today, 14:32');
-    const earlier = formatDateTime(
-      new Date(2026, 8, 20, 9, 5).toISOString(),
-      'en-US',
-    );
-    // ICU puts a narrow no-break space before the day period.
-    expect(earlier.replace(/\s/g, ' ')).toBe('09/20/2026, 09:05 AM');
-    expect(inSentence(earlier)).toBe(earlier);
   });
 });
 

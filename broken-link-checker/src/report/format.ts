@@ -9,24 +9,6 @@ export function joinFacts(
   return facts.filter(Boolean).join(FACT_SEPARATOR);
 }
 
-/** "Today, 02:32 PM" or "09/26/2026, 02:32 PM", in the user's locale and the browser timezone. */
-export function formatDateTime(iso: string, locale: string, hour12?: boolean) {
-  const date = new Date(iso);
-  const time = date.toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12,
-  });
-  if (date.toDateString() === new Date().toDateString())
-    return `Today, ${time}`;
-  return `${date.toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' })}, ${time}`;
-}
-
-/** For a date that follows other words: "Finished today, 14:32". */
-export function inSentence(text: string): string {
-  return text.startsWith('Today') ? `today${text.slice('Today'.length)}` : text;
-}
-
 type LanguageNames = { of(code: string): string | undefined };
 type LanguageNamesConstructor = new (
   locales: string[],
@@ -102,7 +84,7 @@ export function locationParts(
 }
 
 /**
- * A location in the order PlaceLabel shows it, for accessible names:
+ * A location as one line of text, the field first:
  * "Link, English, in Body > Hero 1".
  */
 export function placeName(

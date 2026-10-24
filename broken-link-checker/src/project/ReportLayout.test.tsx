@@ -1,15 +1,26 @@
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mediaState, resetMediaState } from '../test/fixtures';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import Canvas, { type NavigationAdapter } from 'datocms-react-ui/Canvas';
+import { useInMemoryTableLayout } from 'datocms-react-ui/Table';
+import { useMemo, useState } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { pageContext } from '../test/fixtures';
 import type { CheckStatus, LinkGroup, ScanReport } from '../types';
-import { ReportLayout, type ReportLayoutProps } from './ReportLayout';
-
-vi.mock(
-  'datocms-react-ui',
-  async () => (await import('../test/fixtures')).reactUi,
-);
+import { REPORT_TEXTS } from './PageToolbar';
+import {
+  ReportLayout,
+  type ReportLayoutProps,
+  ROW_BASE_URL,
+} from './ReportLayout';
+import { DEFAULT_TABLE_LAYOUT } from './ReportTable';
 
 type GroupOptions = {
   modelId?: string;
@@ -36,6 +47,7 @@ function group(
     prepared: {
       key: url,
       url,
+      hostname: `${slug}.example`,
       status: status === 'skipped' || status === 'invalid' ? status : 'queued',
       message: 'Prepared',
     },
@@ -81,24 +93,50 @@ function report(
   };
 }
 
-/** Owns the collapse state, as the page does. */
-function Harness(props: ReportLayoutProps) {
-  const [collapsed, setCollapsed] = useState(props.collapsed);
+type HarnessProps = Omit<
+  ReportLayoutProps,
+  'tableLayout' | 'onTableLayoutChange' | 'linkPanel' | 'recordsPanel'
+> & { ctx: RenderPageCtx };
+
+/** The page around the report: the in-memory route of the open row, the columns and the sections. */
+function Harness({ ctx, ...props }: HarnessProps) {
+  const [location, setLocation] = useState({
+    pathname: ROW_BASE_URL,
+    search: '',
+  });
+  const navigation = useMemo<NavigationAdapter>(
+    () => ({
+      location,
+      navigate: (to) => {
+        const [pathname, query] = to.split('?');
+        setLocation({ pathname, search: query ? `?${query}` : '' });
+      },
+    }),
+    [location],
+  );
+  const [layout, setLayout] = useInMemoryTableLayout(DEFAULT_TABLE_LAYOUT);
+  const [linkOpen, setLinkOpen] = useState(true);
+  const [recordsOpen, setRecordsOpen] = useState(true);
   return (
-    <ReportLayout
-      {...props}
-      collapsed={collapsed}
-      onCollapsedChange={(next) => {
-        props.onCollapsedChange(next);
-        setCollapsed(next);
-      }}
-    />
+    <Canvas
+      ctx={ctx}
+      noAutoResizer
+      navigation={navigation}
+      texts={REPORT_TEXTS}
+    >
+      <ReportLayout
+        {...props}
+        tableLayout={layout}
+        onTableLayoutChange={setLayout}
+        linkPanel={{ open: linkOpen, onToggle: setLinkOpen }}
+        recordsPanel={{ open: recordsOpen, onToggle: setRecordsOpen }}
+      />
+    </Canvas>
   );
 }
 
 function renderLayout(overrides: Partial<ReportLayoutProps> = {}) {
   const callbacks = {
-    onCollapsedChange: vi.fn(),
     onScan: vi.fn(),
     onChooseScope: vi.fn(),
     onCancel: vi.fn(),
@@ -106,14 +144,14 @@ function renderLayout(overrides: Partial<ReportLayoutProps> = {}) {
     onRecheck: vi.fn(),
     onOpenRecord: vi.fn(),
   };
-  const props: ReportLayoutProps = {
+  const props: HarnessProps = {
+    ctx: pageContext(),
     report: report([]),
     scanning: false,
     rechecking: false,
     changedRecordIds: new Set<string>(),
     multiLocale: true,
     uiLocale: 'en',
-    collapsed: true,
     ...callbacks,
     ...overrides,
   };
@@ -128,191 +166,501 @@ function renderLayout(overrides: Partial<ReportLayoutProps> = {}) {
 
 const urlOf = (value: LinkGroup) => value.prepared.url;
 
-function table() {
-  return within(screen.getByRole('table', { name: 'Link check results' }));
+/** The table of the URLs (the kit's table has no role of its own). */
+function tableElement(): HTMLElement {
+  const element = document.querySelector<HTMLElement>('.Table');
+  if (!element) throw new Error('No table');
+  return element;
 }
 
-function rowOf(url: string): HTMLTableRowElement {
-  const row = table().getByText(url).closest('tr');
+function table() {
+  return within(tableElement());
+}
+
+function rowOf(url: string): HTMLElement {
+  const row = table().getByText(url).closest<HTMLElement>('.Table__row');
   if (!row) throw new Error(`No row for ${url}`);
   return row;
 }
 
-function sidebar() {
-  return within(screen.getByRole('complementary', { name: 'Link details' }));
+function detail() {
+  return within(screen.getByRole('complementary', { name: 'URL' }));
 }
 
-async function pick(
-  user: ReturnType<typeof userEvent.setup>,
-  trigger: RegExp,
-  option: string | RegExp,
-) {
+/** Text outside the live region, which repeats the summary's headline. */
+const VISIBLE = { ignore: '[role="status"], script, style' };
+
+/** The page title: "Link checker", then the active view after a "·". */
+function title(qualifier?: string) {
+  return screen.getByRole('heading', {
+    level: 1,
+    name: qualifier
+      ? new RegExp(`^Link checker\\s*· ${qualifier}$`)
+      : 'Link checker',
+  });
+}
+
+/** The title bar of the list, whose "⋮" holds the export. */
+function titleBar() {
+  const bar = screen
+    .getByRole('heading', { level: 1 })
+    .closest<HTMLElement>('.Toolbar');
+  if (!bar) throw new Error('No title bar');
+  return within(bar);
+}
+
+async function openExport(user: UserEvent) {
+  await user.click(titleBar().getByRole('button', { name: 'Actions' }));
+  return screen.findByRole('menuitem', { name: 'Export as CSV' });
+}
+
+/** The kit's hot keys read the key code, which user-event leaves out. */
+function pressEscape() {
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: 'Escape',
+    code: 'Escape',
+    keyCode: 27,
+    which: 27,
+  });
+}
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+const NARROW_FRAME = '(max-width: 1100px)';
+const baseMatchMedia = window.matchMedia;
+
+/** Menus close without their animation, so a closed menu is gone at once. */
+function matchMedia(queries: readonly string[]) {
+  vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    ...baseMatchMedia(query),
+    matches: queries.includes(query),
+  }));
+}
+
+/**
+ * A media query whose answer a test changes, as when the frame is resized.
+ * The kit reads `matches` on each render and listens with `addListener`.
+ */
+function changingMedia(query: string, initial: boolean) {
+  type Listener = (change: { media: string }) => void;
+  let matches = initial;
+  const listeners = new Set<Listener>();
+  const list = {
+    ...baseMatchMedia(query),
+    get matches() {
+      return matches;
+    },
+    addListener: (listener: Listener) => {
+      listeners.add(listener);
+    },
+    removeListener: (listener: Listener) => {
+      listeners.delete(listener);
+    },
+  } as unknown as MediaQueryList;
+  vi.spyOn(window, 'matchMedia').mockImplementation((asked) =>
+    asked === query
+      ? list
+      : { ...baseMatchMedia(asked), matches: asked === REDUCED_MOTION },
+  );
+  return (next: boolean) => {
+    matches = next;
+    for (const listener of listeners) listener(list);
+  };
+}
+
+/** The ResizeObservers made while the tests run, with what each one watches. */
+const resizeObservers = new Set<{
+  callback: ResizeObserverCallback;
+  watched: Set<Element>;
+}>();
+
+// Every test of this file uses it: it does nothing until a test resizes a box.
+globalThis.ResizeObserver = class {
+  readonly entry = {
+    callback: (() => undefined) as ResizeObserverCallback,
+    watched: new Set<Element>(),
+  };
+  constructor(callback: ResizeObserverCallback) {
+    this.entry.callback = callback;
+    resizeObservers.add(this.entry);
+  }
+  observe(target: Element) {
+    this.entry.watched.add(target);
+  }
+  unobserve(target: Element) {
+    this.entry.watched.delete(target);
+  }
+  disconnect() {
+    this.entry.watched.clear();
+  }
+  takeRecords() {
+    return [];
+  }
+} as unknown as typeof ResizeObserver;
+
+/** Gives a box a new width, as a resize of the frame would. */
+function resize(target: Element, width: number) {
+  const size = { inlineSize: width, blockSize: 600 };
+  act(() => {
+    for (const { callback, watched } of resizeObservers)
+      if (watched.has(target))
+        callback(
+          [{ target, borderBoxSize: [size] } as unknown as ResizeObserverEntry],
+          {} as ResizeObserver,
+        );
+  });
+}
+
+/** The box of the list side of the split, which the report measures. */
+function listBox(): HTMLElement {
+  const box = tableElement().closest('.Pane')?.parentElement;
+  if (!box) throw new Error('No list box');
+  return box;
+}
+
+/** `F`, which opens the filter while the pointer or the focus is in the list. */
+function pressFilterKey() {
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: 'f',
+    code: 'KeyF',
+    keyCode: 70,
+    which: 70,
+  });
+}
+
+async function pickPreset(user: UserEvent, preset: RegExp) {
+  await user.click(screen.getByRole('button', { name: /^Link checker/ }));
+  await user.click(await screen.findByRole('menuitem', { name: preset }));
+}
+
+async function pick(user: UserEvent, trigger: string, option: string) {
   await user.click(screen.getByRole('button', { name: trigger }));
-  await user.click(screen.getByRole('menuitem', { name: option }));
+  await user.click(await screen.findByRole('menuitem', { name: option }));
 }
 
-beforeEach(() => resetMediaState());
+/** The text filter of the filter row, whose search landmark is named after the list. */
+function filterField() {
+  return within(screen.getByRole('search', { name: 'URLs' })).getByRole(
+    'textbox',
+  );
+}
+
+async function openFilter(user: UserEvent) {
+  await user.click(screen.getByRole('button', { name: 'Filter URLs' }));
+  return filterField();
+}
+
+async function tooltipOf(user: UserEvent, element: HTMLElement) {
+  await user.hover(element);
+  return (await screen.findByRole('tooltip')).textContent;
+}
+
+beforeEach(() => matchMedia([REDUCED_MOTION]));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('ReportLayout', () => {
   it('shows the URLs that need attention by default', () => {
     const groups = [group('broken'), group('reachable'), group('skipped')];
     renderLayout({ report: report(groups) });
-    expect(screen.getByText(urlOf(groups[0]))).toBeInTheDocument();
+    expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[1]))).not.toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[2]))).not.toBeInTheDocument();
     expect(screen.getByText('1 URL')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Status: Needs attention' }),
-    ).toBeInTheDocument();
+    expect(title('Needs attention')).toBeInTheDocument();
   });
 
-  it('combines the status, model, locale and URL filters', async () => {
+  it('switches the status view from the title, with the count of each view', async () => {
+    const user = userEvent.setup();
+    const groups = [group('broken'), group('reachable'), group('skipped')];
+    renderLayout({ report: report(groups) });
+
+    await user.click(screen.getByRole('button', { name: /^Link checker/ }));
+    const names = (await screen.findAllByRole('menuitem')).map(
+      (option) => option.textContent,
+    );
+    // "All URLs", then "Needs attention" (the default) and each status that
+    // has URLs, by severity, each with its count. The count of every URL is
+    // the count after the title once "All URLs" is picked.
+    expect(names).toEqual([
+      'All URLs',
+      'Needs attention1',
+      'Broken1',
+      'Reachable1',
+      'Skipped1',
+    ]);
+    // The page's help sits at the bottom of the menu.
+    expect(
+      screen.getByText(/Results stay only while this page is open/),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /^Reachable/ }));
+    expect(table().getByText(urlOf(groups[1]))).toBeInTheDocument();
+    expect(screen.queryByText(urlOf(groups[0]))).not.toBeInTheDocument();
+    expect(title('Reachable')).toBeInTheDocument();
+
+    await pickPreset(user, /^All URLs/);
+    expect(title()).toBeVisible();
+    expect(screen.getByText('3 URLs')).toBeInTheDocument();
+  });
+
+  it('lists a view only while it keeps URLs or is picked', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderLayout({
+      report: report([group('reachable'), group('skipped')]),
+    });
+    const options = async () => {
+      await user.click(screen.getByRole('button', { name: /^Link checker/ }));
+      const names = (await screen.findAllByRole('menuitem')).map(
+        (option) => option.textContent,
+      );
+      pressEscape();
+      return names;
+    };
+    // The default view keeps no URL, but it's the one picked.
+    expect(await options()).toEqual([
+      'All URLs',
+      'Needs attention0',
+      'Reachable1',
+      'Skipped1',
+    ]);
+    await pickPreset(user, /^Skipped/);
+    expect(title('Skipped')).toBeInTheDocument();
+    // Once another view is picked, "Needs attention" keeps no URL, so it
+    // goes; the picked status keeps its place once it has no URL left.
+    rerender({ report: report([group('reachable')]) });
+    expect(await options()).toEqual(['All URLs', 'Reachable1', 'Skipped0']);
+    await pickPreset(user, /^Reachable/);
+    expect(await options()).toEqual(['All URLs', 'Reachable1']);
+    // It comes back as soon as a URL needs attention.
+    rerender({ report: report([group('reachable'), group('broken')]) });
+    expect(await options()).toEqual([
+      'All URLs',
+      'Needs attention1',
+      'Broken1',
+      'Reachable1',
+    ]);
+    await pickPreset(user, /^Needs attention/);
+    expect(title('Needs attention')).toBeInTheDocument();
+  });
+
+  it('combines the model, locale and URL filters', async () => {
     const user = userEvent.setup();
     const groups = [
       group('broken'),
       group('broken', { modelId: 'news', locale: 'it' }),
       group('reachable'),
-      group('skipped'),
     ];
-    const [page, news, reachable] = groups.map(urlOf);
+    const [page, news] = groups.map(urlOf);
     renderLayout({ report: report(groups) });
 
-    const modelPicker = () =>
-      screen
-        .getByRole('button', { name: /^Model:/ })
-        .closest('.blc-filter-model');
-    expect(modelPicker()).not.toHaveClass('blc-filter--set');
-    await pick(user, /^Model:/, 'News');
+    const search = await openFilter(user);
+    // The text, the model and the locale filter one list: one search landmark.
+    const landmark = screen.getByRole('search', { name: 'URLs' });
+    expect(landmark).toContainElement(search);
+    expect(landmark).toContainElement(
+      screen.getByRole('button', { name: 'All models' }),
+    );
+    expect(landmark).toContainElement(
+      screen.getByRole('button', { name: 'All locales' }),
+    );
+    expect(landmark).toContainElement(
+      screen.getByRole('button', { name: 'Close the filter' }),
+    );
+    expect(screen.getAllByRole('search')).toHaveLength(1);
+    await pick(user, 'All models', 'News');
     expect(screen.queryByText(page)).not.toBeInTheDocument();
-    expect(screen.getByText(news)).toBeInTheDocument();
-    // A narrow pane hides the picker only while it shows every model.
-    expect(modelPicker()).toHaveClass('blc-filter--set');
+    expect(table().getByText(news)).toBeInTheDocument();
 
-    await pick(user, /^Locale:/, 'English');
-    expect(screen.getByText('No results found')).toBeInTheDocument();
-
-    await pick(user, /^Locale:/, 'Italian');
-    const search = screen.getByLabelText('Search URLs');
+    // The model, the locale and the text must match the same place.
+    await pick(user, 'All locales', 'English');
+    expect(screen.getByText('No results', VISIBLE)).toBeInTheDocument();
+    await pick(user, 'English', 'Italian');
     await user.type(search, 'not-present');
-    expect(await screen.findByText('No results found')).toBeInTheDocument();
+    expect(await screen.findByText('No results', VISIBLE)).toBeInTheDocument();
 
     await user.clear(search);
     await user.type(search, 'BROKEN-NEWS');
     expect(await screen.findByText(news)).toBeInTheDocument();
+    expect(screen.getByText('1 URL')).toBeInTheDocument();
 
-    await user.clear(search);
-    await pick(user, /^Model:/, 'All models');
-    expect(modelPicker()).not.toHaveClass('blc-filter--set');
-    await pick(user, /^Locale:/, 'All locales');
-    await pick(user, /^Status:/, /^Reachable/);
-    expect(screen.getByText(reachable)).toBeInTheDocument();
-    expect(screen.queryByText(page)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Status: Reachable' }),
-    ).toBeInTheDocument();
+    // The picker shows the current value, and the menu checks it.
+    await user.click(screen.getByRole('button', { name: 'News' }));
+    expect(screen.getByRole('menuitem', { name: 'News' })).toBeInTheDocument();
   });
 
-  it('hides the model and locale pickers when the report has one of each', () => {
-    renderLayout({ report: report([group('broken'), group('unverified')]) });
-    expect(
-      screen.getByRole('button', { name: /^Status:/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /^Model:/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /^Locale:/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('clears every filter at once', async () => {
+  it('hides the model and locale pickers when the report has one of each', async () => {
     const user = userEvent.setup();
-    const groups = [group('broken'), group('reachable')];
-    renderLayout({ report: report(groups) });
+    renderLayout({ report: report([group('broken'), group('unverified')]) });
+    await openFilter(user);
     expect(
-      screen.queryByRole('button', { name: 'Clear filters' }),
+      screen.queryByRole('button', { name: 'All models' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'All locales' }),
+    ).not.toBeInTheDocument();
+  });
 
-    await pick(user, /^Status:/, /^All URLs/);
-    await user.type(screen.getByLabelText('Search URLs'), 'reachable');
+  it('opens the filter with F, and finds a locale by its code', async () => {
+    const user = userEvent.setup();
+    const locales = ['en', 'it', 'de', 'fr', 'pt-BR'];
+    renderLayout({
+      report: report(
+        locales.map((locale) =>
+          group('broken', { locale, slug: `broken-${locale}` }),
+        ),
+      ),
+    });
+    await user.hover(tableElement());
+    pressFilterKey();
+    expect(
+      await screen.findByRole('search', { name: 'URLs' }),
+    ).toContainElement(filterField());
+
+    // The menu's search reads each option's innerText, which jsdom lacks.
+    Object.defineProperty(HTMLElement.prototype, 'innerText', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.textContent ?? '';
+      },
+    });
+    try {
+      await user.click(screen.getByRole('button', { name: 'All locales' }));
+      await user.type(await screen.findByPlaceholderText('Search...'), 'pt-br');
+      expect(
+        screen.getByRole('menuitem', { name: 'Brazilian Portuguese' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'German' }),
+      ).not.toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'innerText');
+    }
+  });
+
+  it('moves the focus back to the open filter with F', async () => {
+    const user = userEvent.setup();
+    const broken = group('broken');
+    renderLayout({
+      report: report([broken, group('broken', { slug: 'other' })]),
+    });
+    const search = await openFilter(user);
+    await user.type(search, 'example');
+    const row = rowOf(urlOf(broken));
+    row.focus();
+    expect(row).toHaveFocus();
+
+    pressFilterKey();
+    await waitFor(() => expect(search).toHaveFocus());
+    expect(search).toHaveValue('example');
+  });
+
+  it('clears the text, model and locale filters when the filter closes, and keeps the view', async () => {
+    const user = userEvent.setup();
+    const groups = [
+      group('broken'),
+      group('reachable'),
+      group('reachable', { modelId: 'news', locale: 'it' }),
+    ];
+    renderLayout({ report: report(groups) });
+    await pickPreset(user, /^All URLs/);
+    const search = await openFilter(user);
+    await pick(user, 'All models', 'Page');
+    await user.type(search, 'reachable');
     expect(await screen.findByText('1 URL')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByLabelText('Search URLs')).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Close the filter' }));
     expect(
-      screen.getByRole('button', { name: 'Status: Needs attention' }),
-    ).toBeInTheDocument();
-    expect(await screen.findByText(urlOf(groups[0]))).toBeInTheDocument();
-    expect(screen.queryByText(urlOf(groups[1]))).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Clear filters' }),
+      screen.queryByRole('search', { name: 'URLs' }),
     ).not.toBeInTheDocument();
+    expect(await screen.findByText('3 URLs')).toBeInTheDocument();
+    expect(title()).toBeVisible();
+
+    // Opening the filter again starts empty.
+    expect(await openFilter(user)).toHaveValue('');
+    expect(
+      screen.getByRole('button', { name: 'All models' }),
+    ).toBeInTheDocument();
+
+    // Escape in the text field closes the row too, and clears it.
+    await user.type(filterField(), 'reachable');
+    expect(await screen.findByText('2 URLs')).toBeInTheDocument();
+    pressEscape();
+    expect(
+      screen.queryByRole('search', { name: 'URLs' }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText('3 URLs')).toBeInTheDocument();
   });
 
-  it('exports while filtered, and explains why export is disabled without URLs', async () => {
+  it('exports while filtered, and explains why an empty or busy report cannot export', async () => {
     const user = userEvent.setup();
     const { onExport, unmount } = renderLayout({
       report: report([group('broken'), group('reachable')]),
     });
-    await user.type(screen.getByLabelText('Search URLs'), 'no-match');
-    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+    await user.type(await openFilter(user), 'no-match');
+    await user.click(await openExport(user));
     expect(onExport).toHaveBeenCalledTimes(1);
     unmount();
 
-    renderLayout({ report: report([]) });
-    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled();
-    expect(
-      screen.getByText('You cannot export the report as it has no URLs'),
-    ).toBeInTheDocument();
+    // A settled report with no URL: the option says why it can't run.
+    const empty = renderLayout({ report: report([]) });
+    const emptyOption = await openExport(user);
+    expect(await tooltipOf(user, emptyOption)).toBe(
+      'The report has no URLs to export.',
+    );
+    await user.click(emptyOption);
+    expect(empty.onExport).not.toHaveBeenCalled();
+    empty.unmount();
+
+    // While a scan runs, URLs can still come: the option says why it can't run yet.
+    const waiting = renderLayout({
+      report: report([], { state: 'running' }),
+      scanning: true,
+    });
+    const waitingOption = await openExport(user);
+    expect(await tooltipOf(user, waitingOption)).toBe(
+      'The report has no URLs to export yet.',
+    );
+    await user.click(waitingOption);
+    expect(waiting.onExport).not.toHaveBeenCalled();
+    waiting.unmount();
+
+    renderLayout({ report: report([group('broken')]), exporting: true });
+    expect(await tooltipOf(user, await openExport(user))).toBe(
+      'The CSV is being prepared.',
+    );
   });
 
-  it('selects a row, opens the sidebar and opens a record from it', async () => {
+  it('opens a row in the detail, and a record from it', async () => {
     const user = userEvent.setup();
     const broken = group('broken');
-    const { onOpenRecord, onCollapsedChange } = renderLayout({
-      report: report([broken]),
-    });
+    const { onOpenRecord } = renderLayout({ report: report([broken]) });
     expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
+      screen.queryByRole('complementary', { name: 'URL' }),
     ).not.toBeInTheDocument();
 
     await user.click(table().getByText(urlOf(broken)));
     expect(rowOf(urlOf(broken))).toHaveAttribute('aria-current', 'true');
-    expect(onCollapsedChange).toHaveBeenCalledWith(false);
-
-    const link = within(sidebar().getByRole('region', { name: 'Link' }));
-    expect(link.getByText('Broken')).toBeInTheDocument();
-    expect(link.getByText('404')).toBeInTheDocument();
-    // The status word and the HTTP status row already say it.
-    expect(link.queryByText('Result: broken')).not.toBeInTheDocument();
+    expect(detail().getByText('broken-page.example')).toBeInTheDocument();
+    expect(detail().getByText('Broken')).toBeInTheDocument();
+    expect(detail().getByText('404')).toBeInTheDocument();
+    // The status word and the HTTP status already say it.
+    expect(detail().queryByText('Result: broken')).not.toBeInTheDocument();
     expect(
-      link.getByRole('link', {
+      detail().getByRole('link', {
         name: `${urlOf(broken)} (opens in a new tab)`,
       }),
     ).toHaveAttribute('target', '_blank');
+
+    // Each place: the field and its locale, then the fields and blocks around it.
     expect(
-      sidebar().getByRole('region', { name: 'Used in 1 record' }),
+      detail().getByText('Body, English, in Sections > Hero'),
     ).toBeInTheDocument();
-
-    // Each place: the field and its locale, the fields and blocks around it underneath.
-    const record = sidebar().getByRole('button', {
-      name: 'Open record Page record',
-    });
-    const row = record.closest<HTMLElement>('.blc-record-row');
-    if (!row) throw new Error('The record button has no row');
-    expect(within(row).getByText('Body')).toHaveClass('blc-place-label__field');
-    expect(within(row).getByText('English')).toHaveClass(
-      'blc-place-label__locale',
+    await user.click(
+      detail().getByRole('button', {
+        name: /^Page\s*Page record\s*,\s*open record$/,
+      }),
     );
-    expect(within(row).getByText('Sections > Hero')).toHaveClass(
-      'blc-place-label__path',
-    );
-    // The name stays short; the places are its description.
-    expect(record).toHaveAccessibleDescription(
-      'Page. Body, English, in Sections > Hero',
-    );
-
-    await user.click(record);
     expect(onOpenRecord).toHaveBeenCalledWith('record-page');
   });
 
@@ -321,45 +669,134 @@ describe('ReportLayout', () => {
     const broken = group('broken');
     renderLayout({ report: report([broken]), multiLocale: false });
     await user.click(table().getByText(urlOf(broken)));
-    const record = sidebar().getByRole('button', {
-      name: 'Open record Page record',
-    });
-    expect(within(record).queryByText('English')).not.toBeInTheDocument();
-    expect(record).toHaveAccessibleDescription(
-      'Page. Body, in Sections > Hero',
-    );
+    expect(detail().getByText('Body, in Sections > Hero')).toBeInTheDocument();
+    expect(detail().queryByText(/English/)).not.toBeInTheDocument();
   });
 
-  it('opens the scope dialog from the toolbar and gives it focus back after a recheck', async () => {
+  it('keeps the filter and the report while the detail opens and closes', async () => {
+    const user = userEvent.setup();
+    const groups = [group('broken', { slug: 'first' }), group('broken')];
+    renderLayout({ report: report(groups) });
+    const search = await openFilter(user);
+    await user.type(search, 'first');
+    const results = tableElement();
+
+    await user.click(table().getByText(urlOf(groups[0])));
+    expect(screen.getByRole('complementary', { name: 'URL' })).toBeVisible();
+    pressEscape();
+    expect(
+      screen.queryByRole('complementary', { name: 'URL' }),
+    ).not.toBeInTheDocument();
+    expect(tableElement()).toBe(results);
+    expect(search).toHaveValue('first');
+    expect(screen.queryByText(urlOf(groups[1]))).not.toBeInTheDocument();
+  });
+
+  it('opens and closes the detail over the list in a narrow frame, without remounting the report', async () => {
+    const user = userEvent.setup();
+    matchMedia([REDUCED_MOTION, NARROW_FRAME]);
+    const broken = group('broken');
+    renderLayout({ report: report([broken]) });
+    const results = tableElement();
+    const row = rowOf(urlOf(broken));
+
+    await user.click(table().getByText(urlOf(broken)));
+    expect(screen.getByRole('complementary', { name: 'URL' })).toBeVisible();
+    expect(tableElement()).toBe(results);
+
+    // The panel over the list has a way back to it.
+    await user.click(detail().getByRole('button', { name: 'Hide details' }));
+    expect(
+      screen.queryByRole('complementary', { name: 'URL' }),
+    ).not.toBeInTheDocument();
+    expect(tableElement()).toBe(results);
+    expect(rowOf(urlOf(broken))).toBe(row);
+  });
+
+  it('keeps measuring the list when the frame crosses the width of the panel over the list', () => {
+    const narrowFrame = changingMedia(NARROW_FRAME, true);
+    const groups = Array.from({ length: 60 }, (_, index) =>
+      group('broken', { slug: `broken-${index + 1}` }),
+    );
+    renderLayout({ report: report(groups) });
+    const perPage = () => screen.queryByLabelText('Items per page');
+    expect(perPage()).toBeInTheDocument();
+    // A narrow list shows fewer page numbers and no "Show" select.
+    resize(listBox(), 400);
+    expect(perPage()).not.toBeInTheDocument();
+
+    // The frame widens: the split puts the list in a box of another kind,
+    // and the new box is the one measured.
+    const before = listBox();
+    act(() => narrowFrame(false));
+    expect(listBox()).not.toBe(before);
+    resize(listBox(), 900);
+    expect(perPage()).toBeInTheDocument();
+    resize(listBox(), 400);
+    expect(perPage()).not.toBeInTheDocument();
+  });
+
+  it('keeps the content issues as shown when the scan settles', async () => {
+    const user = userEvent.setup();
+    const warnings = Array.from(
+      { length: 8 },
+      (_, index) => `News › Body (en) › Link ${index}: Not found`,
+    );
+    const groups = [group('broken')];
+    const { rerender } = renderLayout({
+      report: report(groups, {
+        state: 'running',
+        warnings,
+        finishedAt: undefined,
+      }),
+      scanning: true,
+    });
+    await user.click(screen.getByRole('button', { name: 'Show all 8 issues' }));
+    expect(
+      within(screen.getByRole('alert')).getAllByRole('listitem'),
+    ).toHaveLength(8);
+
+    // The running scan's callout gives way to the summary, which keeps the list open.
+    rerender({
+      report: report(groups, { state: 'partial', warnings }),
+      settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
+      scanning: false,
+    });
+    const summary = within(screen.getByRole('alert'));
+    expect(summary.getByText('Scan incomplete')).toBeInTheDocument();
+    expect(summary.getAllByRole('listitem')).toHaveLength(8);
+    expect(
+      screen.getByRole('button', { name: 'Show fewer issues' }),
+    ).toBeInTheDocument();
+  });
+
+  it('starts a scan or opens the scope choice from the title bar, and keeps the focus through a recheck', async () => {
     const user = userEvent.setup();
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const broken = group('broken');
-    const { onChooseScope, rerender } = renderLayout({
+    const { onScan, onChooseScope, rerender } = renderLayout({
       report: report([broken]),
     });
-    const choose = screen.getByRole('button', { name: 'Choose what to scan…' });
-    await user.click(choose);
+    await user.click(screen.getByRole('button', { name: 'Scan links' }));
+    expect(onScan).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'More scan options' }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Choose what to scan…' }),
+    );
     expect(onChooseScope).toHaveBeenCalledTimes(1);
 
-    // During a recheck its tooltip anchor takes focus to explain why it's disabled.
-    rerender({ report: report([broken]), rechecking: true });
-    const reason = screen.getByText(
-      'You cannot choose what to scan while a URL is being rechecked',
-    );
-    const anchor = screen
-      .getByRole('button', { name: 'Choose what to scan…' })
-      .closest<HTMLElement>('[tabindex="0"]');
-    anchor?.focus();
-    expect(anchor).toHaveFocus();
-    expect(reason).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Scan links' }).focus();
+    // A recheck disables the action with its reason: the focus stays on it.
+    rerender({ rechecking: true });
+    const blocked = screen.getByRole('button', { name: 'Scan links' });
+    expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    expect(blocked).toHaveFocus();
 
-    rerender({ report: report([broken]), rechecking: false });
-    expect(
-      screen.getByRole('button', { name: 'Choose what to scan…' }),
-    ).toHaveFocus();
+    rerender({ rechecking: false });
+    expect(screen.getByRole('button', { name: 'Scan links' })).toHaveFocus();
   });
 
-  it('rechecks the selected URL unless a scan is running or the URL is skipped', async () => {
+  it('rechecks the open URL unless a scan is running or the URL is skipped', async () => {
     const user = userEvent.setup();
     const broken = group('broken');
     const skipped = group('skipped');
@@ -368,22 +805,21 @@ describe('ReportLayout', () => {
     });
 
     await user.click(table().getByText(urlOf(broken)));
-    await user.click(screen.getByRole('button', { name: 'Recheck URL' }));
+    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
     expect(onRecheck).toHaveBeenCalledWith(broken);
 
     rerender({ scanning: true });
-    expect(screen.getByRole('button', { name: 'Recheck URL' })).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot recheck a URL while links are being checked',
-      ),
-    ).toBeInTheDocument();
+    const recheck = detail().getByRole('button', { name: 'Recheck URL' });
+    expect(recheck).toHaveAttribute('aria-disabled', 'true');
+    expect(await tooltipOf(user, recheck)).toBe(
+      "You can't recheck a URL while links are being checked.",
+    );
 
     rerender({ scanning: false });
-    await pick(user, /^Status:/, /^All URLs/);
+    await pickPreset(user, /^All URLs/);
     await user.click(table().getByText(urlOf(skipped)));
     expect(
-      screen.queryByRole('button', { name: 'Recheck URL' }),
+      detail().queryByRole('button', { name: 'Recheck URL' }),
     ).not.toBeInTheDocument();
   });
 
@@ -393,81 +829,78 @@ describe('ReportLayout', () => {
     renderLayout({ report: report([broken]) });
     await user.click(table().getByText(urlOf(broken)));
     expect(
-      sidebar().getByText(/Some records link to a #fragment of this page/),
+      detail().getByText(/Some records link to a #fragment of this page/),
     ).toBeInTheDocument();
-    // A place that links to a variant of the URL shows it as a link of its own.
-    const variant = sidebar().getByRole('link', {
+    // A place that links to a variant of the URL shows it.
+    const variant = detail().getByRole('link', {
       name: `${urlOf(broken)}#pricing (opens in a new tab)`,
     });
     expect(variant).toHaveAttribute('href', `${urlOf(broken)}#pricing`);
-    expect(variant).toHaveAttribute('target', '_blank');
-    expect(variant.closest('.blc-record-row__variant')).toHaveTextContent(
-      `Links to ${urlOf(broken)}#pricing`,
-    );
   });
 
   it('keeps stale URLs in the default view and tags them', async () => {
     const user = userEvent.setup();
     const stale = group('reachable', { stale: true });
-    const { onScan } = renderLayout({
+    renderLayout({
       report: report([stale], { stale: true }),
       changedRecordIds: new Set(['record-page']),
     });
     expect(table().getByText(urlOf(stale))).toBeInTheDocument();
     expect(table().getByText('Content changed')).toBeInTheDocument();
+    // The stale note follows the summary as a callout of its own.
+    const [summary, staleNote] = screen.getAllByRole('note');
+    expect(within(summary).getByText('Scan complete')).toBeInTheDocument();
     expect(
-      screen.getByText(/Records changed after this scan/),
+      within(staleNote).getByText(/^Records changed after this scan/),
     ).toBeInTheDocument();
+    // The title bar's "Scan links" scans again: the notices have no button.
+    for (const note of [summary, staleNote])
+      expect(within(note).queryByRole('button')).not.toBeInTheDocument();
 
     await user.click(table().getByText(urlOf(stale)));
     expect(
-      sidebar().getByText(/A record using this URL changed after the scan/),
+      detail().getByText(/A record using this URL changed after the scan/),
     ).toBeInTheDocument();
-    expect(sidebar().getByText('Content changed')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Scan again' }));
-    expect(onScan).toHaveBeenCalledTimes(1);
+    expect(detail().getByText('Content changed')).toBeInTheDocument();
   });
 
-  it('reads incomplete and canceled scans from the settled state', async () => {
-    const user = userEvent.setup();
+  it('reads incomplete and canceled scans from the settled state', () => {
     const groups = [group('broken'), group('cancelled')];
-    const { onScan, unmount } = renderLayout({
+    const { unmount } = renderLayout({
       report: report(groups, {
         state: 'partial',
         warnings: ['News: Record access denied'],
       }),
       settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
     });
+    const partial = within(screen.getByRole('alert'));
+    expect(partial.getByText('Scan incomplete')).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Scan incomplete' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
+      partial.getByText(
         "Some content couldn't be read, so the links in it aren't in this report:",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('News: Record access denied')).toBeInTheDocument();
+    expect(partial.getByText('News: Record access denied')).toBeInTheDocument();
     expect(table().getAllByText('Not checked').length).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole('heading', { name: 'Scan complete' }),
-    ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Scan again' }));
-    expect(onScan).toHaveBeenCalledTimes(1);
+    // The live region says the headline of the settled state.
+    expect(screen.getByRole('status')).toHaveTextContent('Scan incomplete');
     unmount();
 
     renderLayout({
       report: report(groups, { state: 'cancelled' }),
       settled: { state: 'cancelled', finishedAt: '2026-09-23T12:01:00Z' },
     });
+    const canceled = within(screen.getByRole('alert'));
+    expect(canceled.getByText('Scan canceled')).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Scan canceled' }),
+      canceled.getByText(/URLs that weren't checked show as “Not checked”\.$/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/You canceled this scan/)).toBeInTheDocument();
-    expect(screen.getByText(/Stopped/)).toBeInTheDocument();
+    // The facts are a line of the summary callout.
+    expect(canceled.getByText(/• Stopped /)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Scan canceled');
   });
 
-  it('shows the progress bar above the results and "Cancel scan" once a URL needs attention', async () => {
+  it('shows the progress above the results and "Cancel scan" once a URL needs attention', async () => {
     const user = userEvent.setup();
     const broken = group('broken');
     const { onCancel } = renderLayout({
@@ -480,34 +913,24 @@ describe('ReportLayout', () => {
     });
     // Two pages of records read, one URL checked and one to go: 3 of 4.
     expect(
-      screen.getByRole('heading', { name: 'Scanning links (75%)…' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('progressbar', { name: 'Scan progress' }),
+      screen.getByRole('progressbar', { name: 'Scanning links' }),
     ).toHaveAttribute('aria-valuenow', '75');
-    // The facts start with what the scan covers.
     expect(
       screen.getByText(
-        'All models • All locales • 60 records read • 1 of 2 URLs processed',
+        'Scanning links (75%)… • All models • All locales • 60 records read • 1 of 2 URLs processed',
       ),
     ).toBeInTheDocument();
-    // The bar is the only loading indicator: no spinner anywhere.
-    expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
-    expect(
-      document.querySelector('.blc-scan-progress--centered'),
-    ).not.toBeInTheDocument();
     expect(table().getByText(urlOf(broken))).toBeInTheDocument();
-    expect(screen.getByLabelText('Search URLs')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Choose what to scan…' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot choose what to scan while a scan is running',
-      ),
+      screen.getByRole('button', { name: 'Filter URLs' }),
     ).toBeInTheDocument();
+    // While the scan runs its live region stays empty.
+    expect(screen.getByRole('status')).toHaveTextContent('');
     expect(
       screen.queryByRole('button', { name: 'Scan links' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'More scan options' }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel scan' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -526,35 +949,25 @@ describe('ReportLayout', () => {
       recordTotal: 120,
       scanning: true,
     });
+    expect(screen.getByText('Scanning links (50%)…')).toBeInTheDocument();
+    expect(screen.getByText('60 of 120 records read')).toBeInTheDocument();
+    // Nothing to filter or list yet.
     expect(
-      screen.getByRole('heading', { name: 'Scanning links (50%)…' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('All models • All locales • 60 of 120 records read'),
-    ).toBeInTheDocument();
-    const centered = () =>
-      document.querySelector('.blc-scan-progress--centered');
-    expect(centered()).toBeInTheDocument();
-    // Nothing to filter, list or keep yet.
-    expect(screen.queryByLabelText('Search URLs')).not.toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Results are kept only/)).not.toBeInTheDocument();
-    expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Filter URLs' }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('.Table')).not.toBeInTheDocument();
 
     // URLs that don't need attention keep it centered. They add work, which
     // would lower the share: the bar holds.
     const pending = [group('queued'), group('checking')];
     rerender({ report: running(pending) });
-    expect(centered()).toBeInTheDocument();
     expect(
-      screen.getByRole('progressbar', { name: 'Scan progress' }),
+      screen.getByRole('progressbar', { name: 'Scanning links' }),
     ).toHaveAttribute('aria-valuenow', '50');
     expect(
-      screen.getByText(
-        'All models • All locales • 60 of 120 records read • 0 of 2 URLs processed',
-      ),
+      screen.getByText('60 of 120 records read • 0 of 2 URLs processed'),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText('Search URLs')).not.toBeInTheDocument();
+    expect(document.querySelector('.Table')).not.toBeInTheDocument();
     expect(
       screen.queryByText('Nothing needs attention yet'),
     ).not.toBeInTheDocument();
@@ -562,9 +975,13 @@ describe('ReportLayout', () => {
     // The first URL that needs attention moves the progress above the results.
     const broken = group('broken');
     rerender({ report: running([...pending, broken]) });
-    expect(centered()).not.toBeInTheDocument();
     expect(table().getByText(urlOf(broken))).toBeInTheDocument();
-    expect(screen.getByLabelText('Search URLs')).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Scanning links \(\d+%\)… • All models • All locales/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Filter URLs' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps running when concurrent additions outgrow the earlier record count', () => {
@@ -579,20 +996,16 @@ describe('ReportLayout', () => {
       scanning: true,
     });
     expect(
-      screen.getByText(
-        'All models • All locales • 200,001 of 200,001 records read',
-      ),
+      screen.getByText('200,001 of 200,001 records read'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('progressbar', { name: 'Scan progress' }),
+      screen.getByRole('progressbar', { name: 'Scanning links' }),
     ).toHaveAttribute('aria-valuenow', '99');
     expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeEnabled();
-    expect(
-      screen.queryByRole('heading', { name: 'Scan complete' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Scan complete')).not.toBeInTheDocument();
   });
 
-  it('shows the summary at the top once a scan ends with nothing needing attention', () => {
+  it('shows the facts at the top once a scan ends with nothing needing attention', () => {
     const { rerender } = renderLayout({
       report: report([group('queued')], {
         state: 'running',
@@ -600,20 +1013,19 @@ describe('ReportLayout', () => {
       }),
       scanning: true,
     });
-    expect(
-      document.querySelector('.blc-scan-progress--centered'),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/^Scanning links/)).toBeInTheDocument();
     rerender({ report: report([group('reachable')]), scanning: false });
-    expect(
-      document.querySelector('.blc-scan-progress--centered'),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Scan complete' }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Scanning links/)).not.toBeInTheDocument();
+    // A complete scan is a neutral callout with its facts, not an alert.
+    const summary = within(screen.getByRole('note'));
+    expect(summary.getByText('Scan complete')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(summary.getByText(/• Finished /)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Scan complete');
     expect(screen.getByText('Nothing needs attention')).toBeInTheDocument();
   });
 
-  it('sweeps the bar while the record count is unknown', () => {
+  it('shows no share while the record count is unknown', () => {
     renderLayout({
       report: report([], {
         state: 'running',
@@ -623,15 +1035,10 @@ describe('ReportLayout', () => {
       }),
       scanning: true,
     });
-    expect(
-      screen.getByRole('heading', { name: 'Scanning links…' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('progressbar', { name: 'Scan progress' }),
-    ).not.toHaveAttribute('aria-valuenow');
-    expect(
-      screen.getByText('All models • All locales • 14 records read'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Scanning links…')).toBeInTheDocument();
+    expect(screen.getByText('All models • All locales')).toBeInTheDocument();
+    expect(screen.getByText('14 records read')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('does not announce 100% before a running scan has finished', () => {
@@ -666,9 +1073,8 @@ describe('ReportLayout', () => {
       scanning: false,
     });
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Scan complete' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Scan complete');
+    expect(screen.getByText(/• Finished /)).toBeInTheDocument();
   });
 
   it('paginates long reports', async () => {
@@ -677,23 +1083,37 @@ describe('ReportLayout', () => {
       group('broken', { slug: `broken-${index + 1}` }),
     );
     renderLayout({ report: report(groups) });
-    expect(screen.getByText(urlOf(groups[0]))).toBeInTheDocument();
+    const pages = () =>
+      within(screen.getByRole('navigation', { name: 'URLs pagination' }));
+    expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[50]))).not.toBeInTheDocument();
+    // The list was scrolled down: the Pane's content is its scroll box.
+    const scrollBox = tableElement().closest<HTMLElement>('.Pane__content');
+    if (!scrollBox) throw new Error('No scroll box');
+    let scrollTop = 400;
+    Object.defineProperty(scrollBox, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
 
-    await user.click(screen.getByRole('button', { name: 'Next »' }));
-    expect(screen.getByText(urlOf(groups[50]))).toBeInTheDocument();
+    await user.click(pages().getByRole('button', { name: 'Next page' }));
+    expect(table().getByText(urlOf(groups[50]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[0]))).not.toBeInTheDocument();
-    expect(screen.getByText('2')).toHaveAttribute('aria-current', 'page');
+    // A new page starts at the top of the list.
+    expect(scrollTop).toBe(0);
 
-    await user.selectOptions(screen.getByLabelText('URLs per page'), '100');
+    await user.selectOptions(screen.getByLabelText('Items per page'), '100');
     expect(
-      screen.queryByRole('button', { name: 'Next »' }),
+      screen.queryByRole('navigation', { name: 'URLs pagination' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(urlOf(groups[0]))).toBeInTheDocument();
-    expect(screen.getByText(urlOf(groups[59]))).toBeInTheDocument();
+    expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
+    expect(table().getByText(urlOf(groups[59]))).toBeInTheDocument();
   });
 
-  it('moves the selection with the keyboard', async () => {
+  it('moves the open row with the keyboard', async () => {
     const user = userEvent.setup();
     const first = group('broken', { slug: 'first' });
     const second = group('broken', { slug: 'second' });
@@ -702,32 +1122,37 @@ describe('ReportLayout', () => {
     rowOf(urlOf(first)).focus();
     await user.keyboard('{Enter}');
     expect(rowOf(urlOf(first))).toHaveAttribute('aria-current', 'true');
+    expect(detail().getByText('first.example')).toBeInTheDocument();
 
     await user.keyboard('{ArrowDown}');
     expect(rowOf(urlOf(second))).toHaveAttribute('aria-current', 'true');
     expect(rowOf(urlOf(second))).toHaveFocus();
     expect(rowOf(urlOf(first))).not.toHaveAttribute('aria-current');
+    expect(detail().getByText('second.example')).toBeInTheDocument();
 
-    await user.keyboard('{Escape}');
+    pressEscape();
     expect(rowOf(urlOf(second))).not.toHaveAttribute('aria-current');
+    expect(
+      screen.queryByRole('complementary', { name: 'URL' }),
+    ).not.toBeInTheDocument();
+
+    // "]" opens the last open row again.
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: ']',
+      code: 'BracketRight',
+    });
+    expect(rowOf(urlOf(second))).toHaveAttribute('aria-current', 'true');
+    expect(detail().getByText('second.example')).toBeInTheDocument();
   });
 
   it('shows an empty report as "No links found"', () => {
     renderLayout({ report: report([]) });
     expect(screen.getByText('No links found')).toBeInTheDocument();
-    // Nothing to create: the way forward is the docs.
-    expect(
-      screen.getByRole('link', {
-        name: 'Read more about how links are checked.',
-      }),
-    ).toHaveAttribute('target', '_blank');
-    // Nothing to export: the footnote doesn't point to "Export CSV".
-    expect(
-      screen.getByText('Results are kept only while this page is open.'),
-    ).toBeInTheDocument();
     expect(screen.getByText(/No URLs found/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Search URLs')).not.toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Filter URLs' }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('.Table')).not.toBeInTheDocument();
   });
 
   it('blocks new scans during a recheck and keeps the settled summary', async () => {
@@ -743,147 +1168,26 @@ describe('ReportLayout', () => {
       recheckKey: checking.key,
       settled: { state: 'complete', finishedAt: '2026-09-23T12:01:00Z' },
     });
-    expect(screen.getByRole('button', { name: 'Scan links' })).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot start a scan while a URL is being rechecked',
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Choose what to scan…' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot choose what to scan while a URL is being rechecked',
-      ),
-    ).toBeInTheDocument();
+    const scan = screen.getByRole('button', { name: 'Scan links' });
+    expect(scan).toHaveAttribute('aria-disabled', 'true');
+    expect(await tooltipOf(user, scan)).toBe(
+      "You can't start a scan while a URL is being rechecked.",
+    );
+    const scope = screen.getByRole('button', { name: 'More scan options' });
+    expect(scope).toHaveAttribute('aria-disabled', 'true');
+    expect(await tooltipOf(user, scope)).toBe(
+      "You can't choose what to scan while a URL is being rechecked.",
+    );
     expect(
       screen.queryByRole('button', { name: 'Cancel scan' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Scan complete' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Scan complete');
+    expect(screen.getByText(/Finished 23\/09\/2026, 12:01/)).toBeVisible();
 
     await user.click(table().getByText(urlOf(broken)));
-    expect(screen.getByRole('button', { name: 'Recheck URL' })).toBeDisabled();
     expect(
-      screen.getByText(
-        'You cannot recheck a URL while links are being checked',
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('opens the overlay beside the split and closes it on Escape, the scrim or the toggle', async () => {
-    const user = userEvent.setup();
-    mediaState.queries['(max-width: 999px)'] = true;
-    const broken = group('broken');
-    const { onCollapsedChange } = renderLayout({ report: report([broken]) });
-    const results = screen.getByRole('table', { name: 'Link check results' });
-    const row = rowOf(urlOf(broken));
-
-    await user.click(table().getByText(urlOf(broken)));
-    const aside = screen.getByRole('complementary', { name: 'Link details' });
-    expect(aside.closest('.blc-overlay')).not.toBeNull();
-    expect(aside).toHaveFocus();
-    expect(screen.getByRole('table', { name: 'Link check results' })).toBe(
-      results,
-    );
-
-    await user.keyboard('{Escape}');
-    expect(onCollapsedChange).toHaveBeenLastCalledWith(true);
-    expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
-    ).not.toBeInTheDocument();
-    expect(rowOf(urlOf(broken))).toBe(row);
-    expect(row).toHaveFocus();
-    // Escape closed the overlay only: the selection stays.
-    expect(row).toHaveAttribute('aria-current', 'true');
-
-    await user.click(screen.getByRole('button', { name: 'Show sidebar' }));
-    expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
-    const overlay = screen
-      .getByRole('complementary', { name: 'Link details' })
-      .closest('.blc-overlay');
-    if (!(overlay instanceof HTMLElement)) throw new Error('No overlay');
-    await user.click(overlay);
-    expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
-    ).not.toBeInTheDocument();
-
-    await user.click(table().getByText(urlOf(broken)));
-    await user.click(sidebar().getByText('Broken'));
-    expect(
-      screen.getByRole('complementary', { name: 'Link details' }),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Hide sidebar' }));
-    expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Link check results' })).toBe(
-      results,
-    );
-  });
-
-  it('keeps the report out of reach under the overlay, and closes it only on presses that start on the scrim', async () => {
-    const user = userEvent.setup();
-    mediaState.queries['(max-width: 999px)'] = true;
-    const broken = group('broken');
-    renderLayout({ report: report([broken]) });
-    const pane = screen
-      .getByRole('table', { name: 'Link check results' })
-      .closest('.blc-main-pane');
-    expect(pane).not.toHaveAttribute('inert');
-
-    await user.click(table().getByText(urlOf(broken)));
-    expect(pane).toHaveAttribute('inert');
-    const overlay = document.querySelector('.blc-overlay');
-    const url = document.querySelector('.blc-overlay .blc-link-url');
-    if (!(overlay instanceof HTMLElement) || !(url instanceof HTMLElement))
-      throw new Error('No overlay');
-    // Selecting the URL's text by dragging past the panel's edge.
-    await user.pointer([
-      { keys: '[MouseLeft>]', target: url },
-      { target: overlay },
-      { keys: '[/MouseLeft]', target: overlay },
-    ]);
-    expect(
-      screen.getByRole('complementary', { name: 'Link details' }),
-    ).toBeInTheDocument();
-
-    await user.keyboard('{Escape}');
-    expect(pane).not.toHaveAttribute('inert');
-    expect(rowOf(urlOf(broken))).toHaveFocus();
-  });
-
-  it('leaves the overlay closed when the frame narrows with the sidebar open', async () => {
-    const user = userEvent.setup();
-    const broken = group('broken');
-    const { rerender } = renderLayout({
-      report: report([broken]),
-      collapsed: false,
-    });
-    const search = screen.getByLabelText('Search URLs');
-    await user.type(search, 'bro');
-
-    mediaState.queries['(max-width: 999px)'] = true;
-    rerender({});
-    expect(document.querySelector('.blc-overlay')).toBeNull();
-    expect(search).toHaveFocus();
-
-    // A row still opens it.
-    await user.click(table().getByText(urlOf(broken)));
-    expect(
-      screen.getByRole('complementary', { name: 'Link details' }),
-    ).toHaveFocus();
-  });
-
-  it('starts a scan in a narrow frame with the overlay closed, even when the sidebar was open', () => {
-    mediaState.queries['(max-width: 999px)'] = true;
-    renderLayout({ report: report([group('broken')]), collapsed: false });
-    expect(document.querySelector('.blc-overlay')).toBeNull();
-    expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
-    ).not.toBeInTheDocument();
+      detail().getByRole('button', { name: 'Recheck URL' }),
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('explains only the statuses whose word needs it', async () => {
@@ -891,7 +1195,7 @@ describe('ReportLayout', () => {
     const unverified = group('unverified');
     renderLayout({ report: report([unverified]) });
     await user.click(table().getByText(urlOf(unverified)));
-    expect(sidebar().getByText('Result: unverified')).toBeInTheDocument();
+    expect(detail().getByText('Result: unverified')).toBeInTheDocument();
   });
 
   it('keeps a rechecked URL in the view with its previous result', () => {
@@ -910,13 +1214,11 @@ describe('ReportLayout', () => {
       recheckResult: broken.result,
       settled: { state: 'complete', finishedAt: '2026-09-23T12:01:00Z' },
     });
-    expect(within(rowOf(urlOf(broken))).getAllByText('Checking').length).toBe(
-      2,
-    );
+    expect(within(rowOf(urlOf(broken))).getByText('Checking')).toBeVisible();
     expect(screen.getByText('1 URL')).toBeInTheDocument();
     expect(screen.getByText(/1 needs attention/)).toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'Nothing needs attention' }),
+      screen.queryByText('Nothing needs attention'),
     ).not.toBeInTheDocument();
   });
 
@@ -928,23 +1230,33 @@ describe('ReportLayout', () => {
       }),
     );
     renderLayout({ report: report(groups) });
-    const header = () => screen.getByRole('columnheader', { name: /^Status/ });
+    const firstRow = () =>
+      tableElement().querySelector('.Table__row--openable')?.textContent;
+    const next = () =>
+      within(
+        screen.getByRole('navigation', { name: 'URLs pagination' }),
+      ).getByRole('button', { name: 'Next page' });
+    const statusHeader = () => table().getByRole('link', { name: /^Status/ });
 
-    await user.click(screen.getByRole('button', { name: 'Next »' }));
-    expect(screen.getByText('2')).toHaveAttribute('aria-current', 'page');
-    expect(header()).toHaveAttribute('aria-sort', 'none');
+    // Discovery order.
+    expect(firstRow()).toContain('url-01');
+    await user.click(next());
+    expect(firstRow()).toContain('url-51');
 
-    await user.click(screen.getByRole('button', { name: 'Status' }));
-    expect(header()).toHaveAttribute('aria-sort', 'ascending');
-    expect(screen.getByText('1')).toHaveAttribute('aria-current', 'page');
+    // Ascending severity: broken first, from page 1.
+    await user.click(statusHeader());
+    expect(firstRow()).toContain('url-02');
+    expect(firstRow()).toContain('Broken');
 
-    await user.click(screen.getByRole('button', { name: 'Next »' }));
-    await user.click(screen.getByRole('button', { name: 'Status' }));
-    expect(header()).toHaveAttribute('aria-sort', 'descending');
-    expect(screen.getByText('1')).toHaveAttribute('aria-current', 'page');
+    await user.click(next());
+    await user.click(statusHeader());
+    expect(firstRow()).toContain('url-01');
+    expect(firstRow()).toContain('Unverified');
 
-    await user.click(screen.getByRole('button', { name: 'Status' }));
-    expect(header()).toHaveAttribute('aria-sort', 'none');
+    await user.click(statusHeader());
+    expect(firstRow()).toContain('url-01');
+    await user.click(next());
+    expect(firstRow()).toContain('url-51');
   });
 
   it('stays on the page it fell back to when the list grows again', async () => {
@@ -953,22 +1265,26 @@ describe('ReportLayout', () => {
       group('broken', { slug: `broken-${index + 1}` }),
     );
     const { rerender } = renderLayout({ report: report(groups) });
-    await user.click(screen.getByRole('button', { name: 'Next »' }));
-    expect(screen.getByText(urlOf(groups[50]))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(table().getByText(urlOf(groups[50]))).toBeInTheDocument();
 
     rerender({ report: report(groups.slice(0, 10)) });
-    expect(screen.getByText(urlOf(groups[0]))).toBeInTheDocument();
+    expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     rerender({ report: report(groups) });
-    expect(screen.getByText(urlOf(groups[0]))).toBeInTheDocument();
-    expect(screen.getByText('1')).toHaveAttribute('aria-current', 'page');
+    expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
+    expect(screen.queryByText(urlOf(groups[50]))).not.toBeInTheDocument();
   });
 
-  it('leaves a canceled scan without URLs to the coverage callout', () => {
+  it('leaves a canceled scan without URLs to its summary', () => {
     renderLayout({
       report: report([], { state: 'cancelled' }),
       settled: { state: 'cancelled', finishedAt: '2026-09-23T12:01:00Z' },
     });
-    expect(screen.getByText(/You canceled this scan/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('alert')).getByText(
+        /URLs that weren't checked show as “Not checked”\.$/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText('No links found')).not.toBeInTheDocument();
   });
 
@@ -981,9 +1297,7 @@ describe('ReportLayout', () => {
       scanning: true,
     });
     expect(
-      screen.getByText(
-        'All models • All locales • 3 records read • 1 of 3 URLs processed',
-      ),
+      screen.getByText(/3 records read • 1 of 3 URLs processed$/),
     ).toBeInTheDocument();
   });
 
@@ -998,5 +1312,26 @@ describe('ReportLayout', () => {
       settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
     });
     expect(screen.getByText('Body (English) > Hero')).toBeInTheDocument();
+  });
+
+  it('says once that the link checking service refused the plugin', () => {
+    const refused = group('unverified');
+    refused.result = { ...refused.result, reason: 'proxy-refused' };
+    renderLayout({
+      report: report([refused, group('unverified', { slug: 'b' })]),
+    });
+    expect(screen.getAllByText(/No link could be checked/)).toHaveLength(1);
+  });
+
+  it('switches to all URLs from a clean view', async () => {
+    const user = userEvent.setup();
+    const reachable = group('reachable');
+    renderLayout({ report: report([reachable]) });
+    expect(screen.getByText('Nothing needs attention')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show all URLs' }));
+    expect(table().getByText(urlOf(reachable))).toBeInTheDocument();
+    expect(title()).toBeVisible();
+    await user.click(table().getByText(urlOf(reachable)));
+    expect(detail().getByText('Reachable')).toBeInTheDocument();
   });
 });

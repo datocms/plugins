@@ -1,0 +1,46 @@
+/* The report fills the page frame: Main is its positioned box, and the
+   list-and-detail split fills it. */
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
+/* The list side of the split, measured for its pagination. The Pane fills
+   it, as it fills any positioned parent. */
+.list {
+  position: absolute;
+  inset: 0;
+}
+
+/* The list area spaces its blocks: a callout in it keeps no margin. */
+.callout {
+  margin: 0;
+}
+
+/* The scan action at the right end of the title bar. The slot lets the
+   focus find what replaced the control that held it. It is the bar's last
+   part, so it has a box: the bar gives its last part the side inset. */
+.action {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+/* A URL wraps at its separators; a part longer than the cell breaks anywhere. */
+.url {
+  overflow-wrap: anywhere;
+}
+
+/* "Content changed" after the URL, on its last line. */
+.tag {
+  margin-inline-start: var(--spacing-s);
+  white-space: nowrap;
+}
+
+/* The filter row: the text filter takes the free width, the divider and the
+   pickers keep theirs. */
+.filters {
+  gap: var(--spacing-m);
+  align-items: center;
+  min-width: 0;
+}

@@ -6,389 +6,7 @@ import type {
   RenderModalCtx,
   RenderPageCtx,
 } from 'datocms-plugin-sdk';
-import {
-  type ChangeEvent,
-  type CSSProperties,
-  createContext,
-  createElement,
-  type FormEvent,
-  Fragment,
-  type MouseEvent,
-  type MouseEventHandler,
-  type ReactElement,
-  type ReactNode,
-  useContext,
-  useState,
-} from 'react';
 import { vi } from 'vitest';
-
-type Option = { label: string; value: string };
-type SelectProps = {
-  id: string;
-  label: string;
-  value: Option | readonly Option[] | null;
-  onChange: (value: Option | Option[] | null) => void;
-  error?: ReactNode;
-  selectInputProps: {
-    options: Option[];
-    isMulti?: boolean;
-    isDisabled?: boolean;
-    inputId?: string;
-    'aria-label'?: string;
-  };
-};
-
-type ButtonProps = {
-  children?: ReactNode;
-  type?: 'button' | 'submit' | 'reset';
-  className?: string;
-  disabled?: boolean;
-  onClick?: MouseEventHandler;
-  leftIcon?: ReactNode;
-  rightIcon?: ReactNode;
-  style?: CSSProperties;
-};
-
-type LayoutProps = {
-  children?: ReactNode;
-  className?: string;
-  style?: CSSProperties;
-};
-
-/** Media queries the mocked `useMediaQuery` reports as matching. Reset it in `beforeEach`. */
-export const mediaState = { queries: {} as Record<string, boolean> };
-
-export function resetMediaState() {
-  mediaState.queries = {};
-}
-
-const DropdownClose = createContext<() => void>(() => undefined);
-
-function Dropdown({
-  renderTrigger,
-  children,
-}: {
-  renderTrigger: (ctx: { open: boolean; onClick: () => void }) => ReactElement;
-  children?: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return createElement(
-    DropdownClose.Provider,
-    { value: () => setOpen(false) },
-    createElement(
-      'div',
-      null,
-      renderTrigger({ open, onClick: () => setOpen((value) => !value) }),
-      open ? children : null,
-    ),
-  );
-}
-
-function DropdownOption({
-  children,
-  onClick,
-  active,
-  disabled,
-  closeMenuOnClick,
-}: {
-  children?: ReactNode;
-  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
-  active?: boolean;
-  disabled?: boolean;
-  closeMenuOnClick?: boolean;
-}) {
-  const close = useContext(DropdownClose);
-  return createElement(
-    'button',
-    {
-      type: 'button',
-      role: 'menuitem',
-      'aria-current': active ? 'true' : undefined,
-      disabled,
-      onClick: (event: MouseEvent<HTMLButtonElement>) => {
-        onClick?.(event);
-        if (closeMenuOnClick ?? true) close();
-      },
-    },
-    children,
-  );
-}
-
-/** Keep UI tests on controlled public field contracts, without react-select portals. */
-export const reactUi = {
-  Canvas: ({ children }: { children: ReactNode }) =>
-    createElement('div', null, children),
-  Button: ({
-    children,
-    type,
-    className,
-    disabled,
-    onClick,
-    leftIcon,
-    rightIcon,
-    style,
-  }: ButtonProps) =>
-    createElement(
-      'button',
-      { type: type ?? 'button', disabled, className, style, onClick },
-      leftIcon,
-      children,
-      rightIcon,
-    ),
-  ButtonLink: ({
-    children,
-    className,
-    onClick,
-    leftIcon,
-    rightIcon,
-    style,
-    href,
-    target,
-  }: Omit<ButtonProps, 'type' | 'disabled'> & {
-    href: string;
-    target?: string;
-  }) =>
-    createElement(
-      'a',
-      { href, target: target ?? '_blank', className, style, onClick },
-      leftIcon,
-      children,
-      rightIcon,
-    ),
-  Toolbar: ({ children, className, style }: LayoutProps) =>
-    createElement('div', { className, style }, children),
-  ToolbarStack: ({ children, className, style }: LayoutProps) =>
-    createElement('div', { className, style }, children),
-  ToolbarTitle: ({ children, className, style }: LayoutProps) =>
-    createElement('div', { className, style }, children),
-  Spinner: ({ size }: { size?: number }) =>
-    createElement('span', { 'data-testid': 'spinner', 'data-size': size }),
-  Dropdown,
-  DropdownMenu: ({ children }: { children?: ReactNode }) =>
-    createElement('div', { role: 'menu' }, children),
-  DropdownOption,
-  DropdownSeparator: () => createElement('hr'),
-  Tooltip: ({ children }: { children?: ReactNode }) =>
-    createElement(Fragment, null, children),
-  TooltipTrigger: ({ children }: { children?: ReactNode }) =>
-    createElement(Fragment, null, children),
-  // Stays in the DOM, hidden, so a reason can be asserted without duplicating visible text.
-  TooltipContent: ({ children }: { children?: ReactNode }) =>
-    createElement('span', { role: 'tooltip', hidden: true }, children),
-  VerticalSplit: ({
-    children,
-    isSecondaryCollapsed,
-    onSecondaryToggle,
-    mode,
-  }: {
-    children: [ReactNode, ReactNode];
-    isSecondaryCollapsed?: boolean;
-    onSecondaryToggle?: (value: boolean) => void;
-    mode?: 'overlay' | 'split';
-  }) =>
-    createElement(
-      'div',
-      { 'data-mode': mode },
-      children[0],
-      isSecondaryCollapsed
-        ? createElement('button', {
-            type: 'button',
-            'aria-label': 'Show sidebar',
-            onClick: () => onSecondaryToggle?.(false),
-          })
-        : children[1],
-    ),
-  SidebarPanel: ({
-    title,
-    children,
-  }: {
-    title?: ReactNode;
-    children?: ReactNode;
-  }) =>
-    createElement(
-      'section',
-      { 'aria-label': typeof title === 'string' ? title : undefined },
-      createElement('h3', null, title),
-      children,
-    ),
-  SwitchField: ({
-    id,
-    name,
-    label,
-    hint,
-    value,
-    onChange,
-    switchInputProps,
-  }: {
-    id: string;
-    name?: string;
-    label: ReactNode;
-    hint?: ReactNode;
-    value: boolean;
-    onChange?: (value: boolean) => void;
-    switchInputProps?: { disabled?: boolean };
-  }) =>
-    createElement(
-      Fragment,
-      null,
-      createElement(
-        'label',
-        { htmlFor: id },
-        label,
-        createElement('input', {
-          id,
-          name,
-          type: 'checkbox',
-          role: 'switch',
-          checked: value,
-          disabled: switchInputProps?.disabled,
-          onChange: (event: ChangeEvent<HTMLInputElement>) =>
-            onChange?.(event.currentTarget.checked),
-        }),
-      ),
-      hint ? createElement('span', null, hint) : null,
-    ),
-  Form: ({
-    onSubmit,
-    children,
-    className,
-  }: {
-    onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
-    children?: ReactNode;
-    className?: string;
-  }) =>
-    createElement(
-      'form',
-      {
-        className,
-        onSubmit: (event: FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          onSubmit?.(event);
-        },
-      },
-      children,
-    ),
-  TextInput: ({
-    id,
-    name,
-    type,
-    value,
-    onChange,
-    labelText,
-    placeholder,
-    disabled,
-  }: {
-    id?: string;
-    name?: string;
-    type?: string;
-    value?: string;
-    onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void;
-    labelText?: string;
-    placeholder?: string;
-    disabled?: boolean;
-  }) =>
-    createElement('input', {
-      id,
-      name,
-      type,
-      value,
-      placeholder,
-      disabled,
-      'aria-label': labelText,
-      onChange: (event: ChangeEvent<HTMLInputElement>) =>
-        onChange?.(event.currentTarget.value, event),
-    }),
-  CaretDownIcon: () => null,
-  CaretUpIcon: () => null,
-  ChevronsRightIcon: () => null,
-  useMediaQuery: (query: string) => ({
-    matches: mediaState.queries[query] ?? false,
-    media: query,
-  }),
-  // Like the kit, the label points at react-select's container `id`, which can't be
-  // labelled: the control takes `inputId` and is named only by its `aria-label`.
-  // The error follows it like FieldError.
-  SelectField: ({
-    id,
-    label,
-    value,
-    onChange,
-    error,
-    selectInputProps,
-  }: SelectProps) => {
-    const options = selectInputProps.options;
-    const multi = selectInputProps.isMulti;
-    const selected = Array.isArray(value)
-      ? value.map((option: Option) => option.value)
-      : ((value as Option | null)?.value ?? '');
-    const field = createElement(
-      Fragment,
-      null,
-      createElement('label', { htmlFor: id }, label),
-      createElement(
-        'div',
-        { id },
-        createElement(
-          'select',
-          {
-            id: selectInputProps.inputId,
-            'aria-label': selectInputProps['aria-label'],
-            multiple: multi,
-            disabled: selectInputProps.isDisabled,
-            value: selected,
-            onChange: (event: ChangeEvent<HTMLSelectElement>) => {
-              const values = Array.from(
-                event.currentTarget.selectedOptions,
-              ).map((option) => option.value);
-              onChange(
-                multi
-                  ? options.filter((option) => values.includes(option.value))
-                  : (options.find(
-                      (option) => option.value === event.currentTarget.value,
-                    ) ?? null),
-              );
-            },
-          },
-          options.map((option) =>
-            createElement(
-              'option',
-              { key: option.value, value: option.value },
-              option.label,
-            ),
-          ),
-        ),
-      ),
-    );
-    return createElement(
-      Fragment,
-      null,
-      field,
-      error ? createElement('span', null, error) : null,
-    );
-  },
-  TextField: ({
-    id,
-    label,
-    value,
-    onChange,
-  }: {
-    id: string;
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-  }) =>
-    createElement(
-      'label',
-      { htmlFor: id },
-      label,
-      createElement('input', {
-        id,
-        value,
-        onChange: (event: ChangeEvent<HTMLInputElement>) =>
-          onChange(event.currentTarget.value),
-      }),
-    ),
-};
 
 export function sdkModel(id = 'page', name = 'Page'): ItemType {
   return {
@@ -432,11 +50,18 @@ export function rawRecord(
   };
 }
 
-export function pageContext(
-  overrides: Partial<RenderPageCtx> = {},
-): RenderPageCtx {
+/**
+ * What every hook's ctx has: the project, the user, the plugin, and what the
+ * kit's `Canvas` reads from the host (tokens, color scheme, padding, the
+ * user's locale and date settings, the internal domain, the toasts, the
+ * confirm and the router).
+ */
+function hostContext() {
   return {
-    site: { id: 'site-1', attributes: { locales: ['en', 'it'] } },
+    site: {
+      id: 'site-1',
+      attributes: { locales: ['en', 'it'], internal_domain: null },
+    },
     environment: 'main',
     isEnvironmentPrimary: true,
     currentUser: { id: 'user-1' },
@@ -452,7 +77,16 @@ export function pageContext(
     },
     currentUserAccessToken: 'test-user-token',
     cmaBaseUrl: 'https://cma.example',
-    ui: { locale: 'en' },
+    ui: {
+      locale: 'en',
+      dateFormat: 'dd/MM/yyyy',
+      timezone: 'UTC',
+      twentyFourHour: true,
+    },
+    cssDesignTokens: {},
+    colorScheme: 'light',
+    bodyPadding: [0, 0, 0, 0],
+    theme: {},
     plugin: {
       id: 'plugin-1',
       type: 'plugin',
@@ -466,10 +100,36 @@ export function pageContext(
       .fn()
       .mockResolvedValue([sdkField('title'), sdkField('url', true)]),
     editItem: vi.fn().mockResolvedValue(null),
-    navigateTo: vi.fn(),
+    navigateTo: vi.fn().mockResolvedValue(undefined),
     openModal: vi.fn().mockResolvedValue(undefined),
-    alert: vi.fn(),
-    notice: vi.fn(),
+    openConfirm: vi.fn().mockResolvedValue(null),
+    alert: vi.fn().mockResolvedValue(undefined),
+    notice: vi.fn().mockResolvedValue(undefined),
+    customToast: vi.fn().mockResolvedValue(null),
+  };
+}
+
+/** The frames that size themselves (panel, modal, config screen). */
+function sizingMethods() {
+  return {
+    startAutoResizer: vi.fn(),
+    stopAutoResizer: vi.fn(),
+    updateHeight: vi.fn(),
+  };
+}
+
+export function pageContext(
+  overrides: Partial<RenderPageCtx> = {},
+): RenderPageCtx {
+  return {
+    ...hostContext(),
+    mode: 'renderPage',
+    pageId: 'link-checker',
+    location: {
+      pathname: '/editor/p/plugin-1/pages/link-checker',
+      search: '',
+      hash: '',
+    },
     ...overrides,
   } as unknown as RenderPageCtx;
 }
@@ -478,7 +138,10 @@ export function panelContext(
   overrides: Partial<RenderItemFormSidebarPanelCtx> = {},
 ): RenderItemFormSidebarPanelCtx {
   return {
-    ...pageContext(),
+    ...hostContext(),
+    ...sizingMethods(),
+    mode: 'renderItemFormSidebarPanel',
+    sidebarPaneId: 'broken-links',
     itemType: sdkModel(),
     item: null,
     locale: 'en',
@@ -506,7 +169,9 @@ export function modalContext(
   overrides: Partial<Record<keyof RenderModalCtx, unknown>> = {},
 ): RenderModalCtx {
   return {
-    ...pageContext(),
+    ...hostContext(),
+    ...sizingMethods(),
+    mode: 'renderModal',
     modalId: 'scan-scope',
     parameters,
     resolve: vi.fn().mockResolvedValue(undefined),
@@ -518,7 +183,9 @@ export function configContext(
   overrides: Partial<Record<keyof RenderConfigScreenCtx, unknown>> = {},
 ): RenderConfigScreenCtx {
   return {
-    ...pageContext(),
+    ...hostContext(),
+    ...sizingMethods(),
+    mode: 'renderConfigScreen',
     ...overrides,
   } as unknown as RenderConfigScreenCtx;
 }

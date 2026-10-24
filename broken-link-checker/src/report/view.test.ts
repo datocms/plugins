@@ -16,10 +16,8 @@ import {
   hasFragment,
   isDefaultFilters,
   needsAttention,
-  nextSort,
   pageCount,
   pageSlice,
-  paginationWindow,
   recordsOf,
   reportDimensions,
   scanFraction,
@@ -202,15 +200,6 @@ describe('filterGroups', () => {
 });
 
 describe('sorting', () => {
-  it('cycles none, ascending, descending, none', () => {
-    const asc = nextSort(null, 'status');
-    expect(asc).toEqual({ key: 'status', direction: 'asc' });
-    const desc = nextSort(asc, 'status');
-    expect(desc).toEqual({ key: 'status', direction: 'desc' });
-    expect(nextSort(desc, 'status')).toBeNull();
-    expect(nextSort(desc, 'url')).toEqual({ key: 'url', direction: 'asc' });
-  });
-
   it('sorts statuses by severity and keeps discovery order without a sort', () => {
     const groups = [
       group('reachable'),
@@ -489,22 +478,6 @@ describe('pagination', () => {
     const items = Array.from({ length: 60 }, (_, index) => index + 1);
     expect(pageSlice(items, 2, 50)).toEqual(items.slice(50));
     expect(pageSlice(items, 5, 50)).toEqual(items.slice(50));
-  });
-
-  it('centers the page window and clamps it at both edges', () => {
-    expect(paginationWindow(1, 20, 10)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    ]);
-    expect(paginationWindow(10, 20, 10)).toEqual([
-      5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    ]);
-    expect(paginationWindow(20, 20, 10)).toEqual([
-      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-    ]);
-    expect(paginationWindow(2, 3, 10)).toEqual([1, 2, 3]);
-    expect(paginationWindow(1, 1, 3)).toEqual([1]);
-    expect(paginationWindow(5, 9, 3)).toEqual([4, 5, 6]);
-    expect(paginationWindow(9, 9, 3)).toEqual([7, 8, 9]);
   });
 });
 

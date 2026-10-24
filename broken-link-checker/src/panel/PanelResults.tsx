@@ -1,24 +1,16 @@
-import {
-  faCircleCheck,
-  faCircleQuestion,
-  faCircleStop,
-  type IconDefinition,
-} from '@fortawesome/free-regular-svg-icons';
-import {
-  faChevronRight,
-  faCircleExclamation,
-} from '@fortawesome/free-solid-svg-icons';
+import Button from 'datocms-react-ui/Button';
+import FeedbackDot from 'datocms-react-ui/FeedbackDot';
+import RowList from 'datocms-react-ui/RowList';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import { useState } from 'react';
-import {
-  countLabel,
-  FACT_SEPARATOR,
-  joinFacts,
-  placeName,
-} from '../report/format';
+import { ChevronRightIcon } from '../icons';
+import { countLabel, FACT_SEPARATOR, joinFacts } from '../report/format';
 import {
   ATTENTION,
   countStatuses,
   hasFragment,
+  pageSlice,
   resultExplanation,
   type Sort,
   type StatusCounts,
@@ -26,10 +18,9 @@ import {
 } from '../report/view';
 import type { LinkGroup, LinkOccurrence, ScanReport } from '../types';
 import { ExternalLink } from '../ui/ExternalLink';
-import { Icon } from '../ui/Icon';
-import { LinkButton } from '../ui/LinkButton';
-import { LogStatus } from '../ui/LogStatus';
+import { LogStatus, type StatusTone } from '../ui/LogStatus';
 import { PlaceLabel } from '../ui/PlaceLabel';
+import styles from './Panel.module.css';
 
 const URLS_PER_STEP = 10;
 const PLACES_SHOWN = 5;
@@ -37,26 +28,16 @@ const LARGE_PLACE_COUNT = 200;
 const PLACES_PER_PAGE = 50;
 const BY_SEVERITY: Sort = { key: 'status', direction: 'asc' };
 
-type Tone = 'success' | 'danger' | 'warning' | 'subtle';
-
-function Mark({ tone, icon }: { tone: Tone; icon: IconDefinition }) {
-  return (
-    <span className={`blc-mark blc-mark--${tone}`}>
-      <Icon icon={icon} />
-    </span>
-  );
-}
-
 function attentionCount(counts: StatusCounts): number {
   return counts.broken + counts.invalid + counts.unverified + counts.cancelled;
 }
 
-function attentionMark(counts: StatusCounts) {
-  if (counts.broken + counts.invalid > 0)
-    return <Mark tone="danger" icon={faCircleExclamation} />;
-  if (counts.unverified > 0)
-    return <Mark tone="warning" icon={faCircleQuestion} />;
-  return <Mark tone="subtle" icon={faCircleStop} />;
+/** The dot of the headline: the worst result that needs attention. */
+function summaryTone(counts: StatusCounts): StatusTone {
+  if (attentionCount(counts) === 0) return 'success';
+  if (counts.broken + counts.invalid > 0) return 'danger';
+  if (counts.unverified > 0) return 'warning';
+  return 'neutral';
 }
 
 function attentionText(attention: number, total: number, uiLocale: string) {
@@ -67,11 +48,12 @@ function attentionText(attention: number, total: number, uiLocale: string) {
       '{n} URLs need attention',
       uiLocale,
     );
-  const of = total.toLocaleString(uiLocale);
+  // Fewer than all of them: the total is at least 2.
+  const of = countLabel(total, '1 URL', '{n} URLs', uiLocale);
   return countLabel(
     attention,
-    `1 of ${of} URLs needs attention`,
-    `{n} of ${of} URLs need attention`,
+    `1 of ${of} needs attention`,
+    `{n} of ${of} need attention`,
     uiLocale,
   );
 }
@@ -115,31 +97,25 @@ export function PanelSummary(props: SummaryProps) {
   const total = report.groups.length;
   if (total === 0) {
     const empty = emptyText(props);
-    return empty ? <p className="dl-panel-empty">{empty}</p> : null;
+    return empty ? <SidebarPanel.Blank message={empty} /> : null;
   }
   const counts = countStatuses(report.groups);
   const attention = attentionCount(counts);
   const blocked = blockedText(counts.blocked, uiLocale);
-  if (attention === 0)
-    return (
-      <p className="blc-panel-summary">
-        <Mark tone="success" icon={faCircleCheck} />
-        <span>
-          Nothing needs attention
-          <span className="blc-panel-summary__meta">
-            {joinFacts([foundText(total, uiLocale), blocked])}
-          </span>
-        </span>
-      </p>
-    );
+  const meta =
+    attention === 0
+      ? joinFacts([foundText(total, uiLocale), blocked])
+      : blocked;
   return (
-    <p className="blc-panel-summary">
-      {attentionMark(counts)}
-      <span>
-        {attentionText(attention, total, uiLocale)}
-        {blocked && <span className="blc-panel-summary__meta">{blocked}</span>}
-      </span>
-    </p>
+    <div>
+      <p>
+        <FeedbackDot tone={summaryTone(counts)} />{' '}
+        {attention === 0
+          ? 'Nothing needs attention'
+          : attentionText(attention, total, uiLocale)}
+      </p>
+      {meta && <p className={styles.meta}>{meta}</p>}
+    </div>
   );
 }
 
@@ -150,32 +126,11 @@ type PanelResultProps = {
   onGoToField: (occurrence: LinkOccurrence) => void;
 };
 
-/** The whole row goes to the field; its name reads the location in the order it's shown. */
-function PanelPlace({
-  occurrence,
-  showLocale,
-  uiLocale,
-  onGoToField,
-}: Omit<PanelResultProps, 'group'> & { occurrence: LinkOccurrence }) {
-  return (
-    <li>
-      <button
-        type="button"
-        className="blc-place"
-        aria-label={`Go to field: ${placeName(occurrence, uiLocale, showLocale)}`}
-        onClick={() => onGoToField(occurrence)}
-      >
-        <PlaceLabel
-          occurrence={occurrence}
-          uiLocale={uiLocale}
-          showLocale={showLocale}
-        />
-        <Icon icon={faChevronRight} className="blc-place__icon" />
-      </button>
-    </li>
-  );
-}
-
+/**
+ * One URL: the link, its result, and the places that hold it. Each place is
+ * a row that goes to its field. 5 places at first; above 200, the rest go
+ * in pages of 50.
+ */
 function PanelResult({
   group,
   showLocale,
@@ -183,92 +138,87 @@ function PanelResult({
   onGoToField,
 }: PanelResultProps) {
   const [allPlaces, setAllPlaces] = useState(false);
-  const [placePage, setPlacePage] = useState(1);
+  const [placePage, setPlacePage] = useState(0);
   const { result, occurrences } = group;
-  const paginated = allPlaces && occurrences.length > LARGE_PLACE_COUNT;
-  const pages = Math.ceil(occurrences.length / PLACES_PER_PAGE);
-  const currentPage = Math.min(placePage, pages);
+  const large = occurrences.length > LARGE_PLACE_COUNT;
+  const paginated = allPlaces && large;
   const places = paginated
-    ? occurrences.slice(
-        (currentPage - 1) * PLACES_PER_PAGE,
-        currentPage * PLACES_PER_PAGE,
-      )
+    ? pageSlice(occurrences, placePage + 1, PLACES_PER_PAGE)
     : allPlaces
       ? occurrences
       : occurrences.slice(0, PLACES_SHOWN);
   const morePlaces = occurrences.length - places.length;
+  const explanation = resultExplanation(result);
   return (
-    <li className="blc-panel-result">
-      <div className="blc-panel-result__url">
+    <li className={styles.result}>
+      <div>
         <ExternalLink url={occurrences[0]?.url ?? group.prepared.url} />
       </div>
-      <div className="blc-panel-result__status">
+      <div>
         <LogStatus status={result.status} />
         {result.httpStatus !== undefined && (
-          <span className="blc-panel-result__http">
+          <span className={styles.subtle}>
             {`${FACT_SEPARATOR}HTTP ${result.httpStatus}`}
           </span>
         )}
       </div>
-      {resultExplanation(result) && (
-        <div className="blc-note blc-panel-result__reason">
-          {resultExplanation(result)}
-        </div>
-      )}
+      {explanation && <div className={styles.note}>{explanation}</div>}
       {hasFragment(group) && (
-        <div className="blc-note blc-panel-result__note">
-          The #fragment is not checked
-        </div>
+        <div className={styles.note}>The #fragment is not checked</div>
       )}
-      <ul className="blc-panel-where">
-        {places.map((occurrence) => (
-          <PanelPlace
-            key={occurrence.id}
-            occurrence={occurrence}
-            showLocale={showLocale}
-            uiLocale={uiLocale}
-            onGoToField={onGoToField}
-          />
-        ))}
-      </ul>
+      <div className={styles.places}>
+        <RowList>
+          {places.map((occurrence) => (
+            <RowList.Item
+              key={occurrence.id}
+              onClick={() => onGoToField(occurrence)}
+            >
+              <PlaceLabel
+                occurrence={occurrence}
+                uiLocale={uiLocale}
+                showLocale={showLocale}
+                trailing={<ChevronRightIcon className={styles.chevron} />}
+              />
+              {/* The row takes its name from its content, which comes first: then where it goes. */}
+              <span className="visually-hidden">, go to field</span>
+            </RowList.Item>
+          ))}
+        </RowList>
+      </div>
       {paginated && (
-        <nav className="dl-pagination" aria-label="Link places">
-          <button
-            type="button"
-            className="dl-pagination__nav"
-            disabled={currentPage <= 1}
-            onClick={() => setPlacePage(currentPage - 1)}
-          >
-            « Previous
-          </button>
-          <span>
-            {currentPage.toLocaleString(uiLocale)} of{' '}
-            {pages.toLocaleString(uiLocale)}
-          </span>
-          <button
-            type="button"
-            className="dl-pagination__nav"
-            disabled={currentPage >= pages}
-            onClick={() => setPlacePage(currentPage + 1)}
-          >
-            Next »
-          </button>
-        </nav>
+        <Toolbar>
+          <Toolbar.Pagination
+            // Each URL's pages are a landmark of their own: its URL tells them apart.
+            ariaLabel={`Places of ${group.prepared.url}`}
+            compact
+            currentPage={placePage}
+            perPage={PLACES_PER_PAGE}
+            totalEntries={occurrences.length}
+            onChange={setPlacePage}
+          />
+        </Toolbar>
       )}
       {!paginated && morePlaces > 0 && (
-        <div className="blc-panel-where__more">
-          <LinkButton onClick={() => setAllPlaces(true)}>
-            {countLabel(
-              occurrences.length > LARGE_PLACE_COUNT
-                ? occurrences.length
-                : morePlaces,
-              'Show 1 more place',
-              occurrences.length > LARGE_PLACE_COUNT
-                ? 'Browse {n} places'
-                : 'Show {n} more places',
-              uiLocale,
-            )}
-          </LinkButton>
+        <div className={styles.controls}>
+          <Button
+            tone="ghost"
+            label={
+              large
+                ? countLabel(
+                    occurrences.length,
+                    'Browse 1 place',
+                    'Browse {n} places',
+                    uiLocale,
+                  )
+                : countLabel(
+                    morePlaces,
+                    'Show 1 more place',
+                    'Show {n} more places',
+                    uiLocale,
+                  )
+            }
+            onClick={() => setAllPlaces(true)}
+          />
         </div>
       )}
     </li>
@@ -309,7 +259,7 @@ export function PanelResults({
   return (
     <>
       {items.length > 0 && (
-        <ul className="blc-panel-results">
+        <ul className={styles.results}>
           {items.slice(0, limit).map((group) => (
             <PanelResult
               key={group.key}
@@ -321,32 +271,36 @@ export function PanelResults({
           ))}
         </ul>
       )}
-      {hidden > 0 && (
-        <div>
-          <LinkButton
-            onClick={() => setLimit((value) => value + URLS_PER_STEP)}
-          >
-            {countLabel(
-              Math.min(hidden, URLS_PER_STEP),
-              'Show 1 more URL',
-              'Show {n} more URLs',
-              uiLocale,
-            )}
-          </LinkButton>
-        </div>
-      )}
-      {canToggle && (
-        <div>
-          <LinkButton onClick={toggle}>
-            {showAll
-              ? 'Show only URLs that need attention'
-              : countLabel(
-                  sorted.length,
-                  'Show 1 URL',
-                  'Show all {n} URLs',
-                  uiLocale,
-                )}
-          </LinkButton>
+      {(hidden > 0 || canToggle) && (
+        <div className={styles.controls}>
+          {hidden > 0 && (
+            <Button
+              tone="ghost"
+              label={countLabel(
+                Math.min(hidden, URLS_PER_STEP),
+                'Show 1 more URL',
+                'Show {n} more URLs',
+                uiLocale,
+              )}
+              onClick={() => setLimit((value) => value + URLS_PER_STEP)}
+            />
+          )}
+          {canToggle && (
+            <Button
+              tone="ghost"
+              label={
+                showAll
+                  ? 'Show only URLs that need attention'
+                  : countLabel(
+                      sorted.length,
+                      'Show 1 URL',
+                      'Show all {n} URLs',
+                      uiLocale,
+                    )
+              }
+              onClick={toggle}
+            />
+          )}
         </div>
       )}
     </>

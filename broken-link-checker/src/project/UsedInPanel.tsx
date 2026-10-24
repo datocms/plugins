@@ -1,5 +1,12 @@
-import { faPenToSquare } from '@fortawesome/free-regular-svg-icons';
-import { useId, useState } from 'react';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import Pill from 'datocms-react-ui/Pill';
+import RowList from 'datocms-react-ui/RowList';
+import SidebarPanel, {
+  type SidebarPanelCollapse,
+} from 'datocms-react-ui/SidebarPanel';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useRef, useState } from 'react';
+import { PenIcon } from '../icons';
 import { countLabel, placeName } from '../report/format';
 import {
   groupFacts,
@@ -8,14 +15,14 @@ import {
   recordUsagePage,
 } from '../report/view';
 import type { LinkGroup } from '../types';
-import { Button } from '../ui/Button';
 import { ExternalLink } from '../ui/ExternalLink';
-import { Icon } from '../ui/Icon';
-import { PlaceLabel } from '../ui/PlaceLabel';
+import styles from './Detail.module.css';
 
 const RECORD_CHUNK = 50;
 const PLACES_PER_RECORD = 5;
 const PAGINATE_ABOVE = 200;
+/** The records of a widely used URL scroll inside their section. */
+const RECORDS_MAX_HEIGHT = 400;
 
 type UsedInPanelProps = {
   group: LinkGroup;
@@ -23,133 +30,133 @@ type UsedInPanelProps = {
   /** On a multi-locale site each place names its locale. */
   showLocale: boolean;
   uiLocale: string;
+  /** The open state of the section, kept by the report across rows. */
+  collapse: SidebarPanelCollapse;
   onOpenRecord: (recordId: string) => void;
 };
 
-type RecordContentProps = {
+type RecordEntryProps = {
   record: RecordUsagePreview;
   groupUrl: string;
   changed: boolean;
   showLocale: boolean;
   uiLocale: string;
+  onOpenRecord: (recordId: string) => void;
 };
 
-function moreText(extra: number, uiLocale: string) {
-  return countLabel(extra, 'and 1 more place', 'and {n} more places', uiLocale);
-}
-
-function RecordContent({
-  record,
-  groupUrl,
-  changed,
-  showLocale,
-  uiLocale,
-}: RecordContentProps) {
-  const extra = record.occurrenceCount - PLACES_PER_RECORD;
+/** A record without an ID is told apart by its model, as the report groups it. */
+function recordKey(record: RecordUsagePreview): string {
   return (
-    <span className="dl-record">
-      <span className="dl-record__model">{record.modelName}</span>
-      <span className="dl-record__title">{record.title}</span>
-      {/* On its own line, like the table's: the title's 2-line clamp would cut it off */}
-      {changed && (
-        <span className="dl-row-tag blc-record-row__tag">Content changed</span>
-      )}
-      {record.occurrences.slice(0, PLACES_PER_RECORD).map((occurrence) => (
-        <span key={occurrence.id} className="blc-record-row__place">
-          <PlaceLabel
-            occurrence={occurrence}
-            uiLocale={uiLocale}
-            showLocale={showLocale}
-          />
-          {occurrence.url !== groupUrl && (
-            <span className="blc-record-row__variant">
-              Links to <ExternalLink url={occurrence.url} />
-            </span>
-          )}
-        </span>
-      ))}
-      {extra > 0 && (
-        <span className="blc-record-row__more">
-          {moreText(extra, uiLocale)}
-        </span>
-      )}
-    </span>
+    record.recordId ??
+    `unsaved:${record.occurrences[0]?.modelId ?? record.modelName}:${record.title}`
   );
-}
-
-/** What the row shows besides its title, for screen readers: the button's name is only "Open record …". */
-function recordDescription({
-  record,
-  groupUrl,
-  changed,
-  showLocale,
-  uiLocale,
-}: RecordContentProps): string {
-  const extra = record.occurrenceCount - PLACES_PER_RECORD;
-  return [
-    record.modelName,
-    changed && 'Content changed',
-    ...record.occurrences.slice(0, PLACES_PER_RECORD).map((occurrence) => {
-      const place = placeName(occurrence, uiLocale, showLocale);
-      return occurrence.url === groupUrl
-        ? place
-        : `${place}, links to ${occurrence.url}`;
-    }),
-    extra > 0 && moreText(extra, uiLocale),
-  ]
-    .filter(Boolean)
-    .join('. ');
 }
 
 /**
- * The whole row opens the record: its button is stretched under the content,
- * so the URLs in the row stay real links above it (a link can't sit inside a
- * button).
+ * One record, an item of the list of records: its row opens it, and the
+ * places that hold the URL follow right under the row. The kit's row caps
+ * its content at a few lines (it cuts the rest), so five places can't sit
+ * inside it; out of the row's button, a spelling of the URL that differs
+ * stays a link of its own, in the text of its line.
  */
-function RecordRow({
+function RecordEntry({
+  record,
+  groupUrl,
+  changed,
+  showLocale,
+  uiLocale,
   onOpenRecord,
-  ...props
-}: RecordContentProps & { onOpenRecord: (recordId: string) => void }) {
-  const descriptionId = useId();
-  const { recordId, title } = props.record;
-  if (recordId === undefined)
-    return (
-      <div className="blc-record-row">
-        <RecordContent {...props} />
-      </div>
-    );
+}: RecordEntryProps) {
+  const { recordId } = record;
+  const extra = record.occurrenceCount - PLACES_PER_RECORD;
+  const row = (
+    <EntityRow
+      layout="row"
+      kicker={record.modelName}
+      title={record.title}
+      multilineTitle
+      afterTitle={changed ? <Pill>Content changed</Pill> : undefined}
+      trailing={
+        recordId === undefined ? undefined : <PenIcon className={styles.pen} />
+      }
+    />
+  );
   return (
-    <div className="blc-record-row blc-record-row--openable">
-      <button
-        type="button"
-        className="blc-record-row__open"
-        aria-label={`Open record ${title}`}
-        aria-describedby={descriptionId}
-        onClick={() => onOpenRecord(recordId)}
-      />
-      <RecordContent {...props} />
-      <Icon icon={faPenToSquare} className="blc-record-row__icon" />
-      <span id={descriptionId} hidden>
-        {recordDescription(props)}
-      </span>
-    </div>
+    <li className={styles.record}>
+      <RowList>
+        {recordId === undefined ? (
+          <RowList.Item>{row}</RowList.Item>
+        ) : (
+          <RowList.Item onClick={() => onOpenRecord(recordId)}>
+            {row}
+            {/* The row takes its name from its content, which comes first: then what it does. */}
+            <span className="visually-hidden">, open record</span>
+          </RowList.Item>
+        )}
+      </RowList>
+      <div className={styles.places}>
+        <ul>
+          {record.occurrences.slice(0, PLACES_PER_RECORD).map((occurrence) => (
+            <li key={occurrence.id}>
+              {placeName(occurrence, uiLocale, showLocale)}
+              {occurrence.url !== groupUrl && (
+                <span className={styles.variant}>
+                  Links to <ExternalLink url={occurrence.url} inText />
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {extra > 0 && (
+          <p>
+            {countLabel(
+              extra,
+              'and 1 more place',
+              'and {n} more places',
+              uiLocale,
+            )}
+          </p>
+        )}
+      </div>
+    </li>
   );
 }
 
-/** The records that use the selected URL, grouped by record; each row opens the record. */
+/**
+ * After a page change, brings the top of the records back into view when it
+ * scrolled above the panel: the pages sit under the last record.
+ */
+function revealTop(element: HTMLElement | null) {
+  if (!element) return;
+  for (let box = element.parentElement; box; box = box.parentElement) {
+    const { overflowY } = getComputedStyle(box);
+    if (overflowY !== 'auto' && overflowY !== 'scroll') continue;
+    if (box.scrollHeight <= box.clientHeight) continue;
+    const offset =
+      element.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    if (offset < 0) box.scrollTop += offset;
+    return;
+  }
+}
+
+/**
+ * The records that use the open URL, grouped by record in discovery order:
+ * 50 at first and 50 more on each step, or pages of 50 above 200 records.
+ */
 export function UsedInPanel({
   group,
   changedRecordIds,
   showLocale,
   uiLocale,
+  collapse,
   onOpenRecord,
 }: UsedInPanelProps) {
   const [limit, setLimit] = useState(RECORD_CHUNK);
   const [page, setPage] = useState(1);
+  const recordsRef = useRef<HTMLUListElement>(null);
   const total = groupFacts(group).recordCount;
   const paginated = total > PAGINATE_ABOVE;
-  const pages = pageCount(total, RECORD_CHUNK);
-  const current = Math.min(page, pages);
+  const current = Math.min(page, pageCount(total, RECORD_CHUNK));
   const records = recordUsagePage(
     group,
     paginated ? current : 1,
@@ -159,12 +166,20 @@ export function UsedInPanel({
   const remaining = total - limit;
 
   return (
-    <ul className="blc-records">
-      {records.map((record) => {
-        const { recordId } = record;
-        return (
-          <li key={recordId ?? `${record.modelName}:${record.title}`}>
-            <RecordRow
+    <SidebarPanel
+      title="Records"
+      count={total}
+      flush
+      maxHeight={RECORDS_MAX_HEIGHT}
+      collapse={collapse}
+    >
+      {/* One list of records, each with its row and its places. */}
+      <ul ref={recordsRef} className={styles.records}>
+        {records.map((record) => {
+          const { recordId } = record;
+          return (
+            <RecordEntry
+              key={recordKey(record)}
               record={record}
               groupUrl={group.prepared.url}
               changed={recordId !== undefined && changedRecordIds.has(recordId)}
@@ -172,50 +187,38 @@ export function UsedInPanel({
               uiLocale={uiLocale}
               onOpenRecord={onOpenRecord}
             />
-          </li>
-        );
-      })}
+          );
+        })}
+      </ul>
       {paginated ? (
-        <li className="blc-records__more">
-          <nav className="dl-pagination" aria-label="Records using this URL">
-            <button
-              type="button"
-              className="dl-pagination__nav"
-              disabled={current <= 1}
-              onClick={() => setPage(current - 1)}
-            >
-              « Previous
-            </button>
-            <span>
-              Page {current.toLocaleString(uiLocale)} of{' '}
-              {pages.toLocaleString(uiLocale)}
-            </span>
-            <button
-              type="button"
-              className="dl-pagination__nav"
-              disabled={current >= pages}
-              onClick={() => setPage(current + 1)}
-            >
-              Next »
-            </button>
-          </nav>
-        </li>
-      ) : remaining > 0 ? (
-        <li className="blc-records__more">
-          <Button
-            buttonSize="xs"
-            fullWidth
-            onClick={() => setLimit((value) => value + RECORD_CHUNK)}
-          >
-            {countLabel(
-              Math.min(RECORD_CHUNK, remaining),
-              'Show 1 more record',
-              'Show {n} more records',
-              uiLocale,
-            )}
-          </Button>
-        </li>
-      ) : null}
-    </ul>
+        <Toolbar>
+          <Toolbar.Pagination
+            ariaLabel="Records using this URL"
+            compact
+            currentPage={current - 1}
+            perPage={RECORD_CHUNK}
+            totalEntries={total}
+            onChange={(next) => {
+              setPage(next + 1);
+              revealTop(recordsRef.current);
+            }}
+          />
+        </Toolbar>
+      ) : (
+        remaining > 0 && (
+          <div className={styles.more}>
+            <SidebarPanel.Action
+              label={countLabel(
+                Math.min(RECORD_CHUNK, remaining),
+                'Show 1 more record',
+                'Show {n} more records',
+                uiLocale,
+              )}
+              onClick={() => setLimit((value) => value + RECORD_CHUNK)}
+            />
+          </div>
+        )
+      )}
+    </SidebarPanel>
   );
 }

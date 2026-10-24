@@ -1,6 +1,8 @@
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
 import { DOCS_URL } from '../constants';
-import { BlankSlate } from '../ui/BlankSlate';
-import { LinkButton } from '../ui/LinkButton';
+import { LinkIcon, SearchIcon } from '../icons';
+import { countLabel } from '../report/format';
 
 export type ResultsEmptyKind = 'noLinks' | 'clean' | 'cleanSoFar' | 'noMatch';
 
@@ -10,18 +12,25 @@ type ResultsEmptyProps = {
   total: number;
   /** Some content couldn't be read. */
   partial: boolean;
+  /** Switches the view to all URLs. */
   onShowAll: () => void;
   uiLocale: string;
 };
 
 function cleanSentence(total: number, partial: boolean, uiLocale: string) {
   const scope = partial ? ' in the content that could be read' : '';
-  return total === 1
-    ? `The only URL found is not broken, invalid or unverified${scope}.`
-    : `None of the ${total.toLocaleString(uiLocale)} URLs found is broken, invalid or unverified${scope}.`;
+  return countLabel(
+    total,
+    `The only URL found is not broken, invalid or unverified${scope}.`,
+    `None of the {n} URLs found is broken, invalid or unverified${scope}.`,
+    uiLocale,
+  );
 }
 
-/** Replaces the table, header included, when there are no rows to show. */
+/**
+ * Takes the place of the table when the view has no rows to show, under the
+ * progress or the summary that always sits above it.
+ */
 export function ResultsEmpty({
   kind,
   total,
@@ -32,43 +41,47 @@ export function ResultsEmpty({
   switch (kind) {
     case 'noLinks':
       return (
-        <BlankSlate title="No links found">
-          <p>The scanned records don't contain any website links.</p>
-          <p>
-            Links are read from Single-line String, Multiple-paragraph Text and
-            Structured Text fields, including those inside blocks.{' '}
-            <a href={DOCS_URL} target="_blank" rel="noreferrer">
-              Read more about how links are checked.
-            </a>
-          </p>
-        </BlankSlate>
+        <BlankSlate
+          placement="section"
+          icon={<LinkIcon />}
+          title="No links found"
+          description="The scanned records don't contain any website links. Links are read from Single-line String, Multiple-paragraph Text and Structured Text fields, including those inside blocks."
+          // One link: the kit names its button "Documentation".
+          docs={[{ href: DOCS_URL }]}
+        />
       );
     case 'clean':
       return (
-        <BlankSlate title="Nothing needs attention">
-          <p>{cleanSentence(total, partial, uiLocale)}</p>
-          <p>
-            <LinkButton onClick={onShowAll}>Show all URLs</LinkButton>
-          </p>
-        </BlankSlate>
+        <BlankSlate
+          placement="section"
+          icon={<LinkIcon />}
+          title="Nothing needs attention"
+          description={cleanSentence(total, partial, uiLocale)}
+          actions={<Button label="Show all URLs" onClick={onShowAll} />}
+        />
       );
     case 'cleanSoFar':
       return (
-        <BlankSlate title="Nothing needs attention yet">
-          <p>URLs that need attention appear here as they're checked.</p>
-          <p>
-            <LinkButton onClick={onShowAll}>Show all URLs</LinkButton>
-          </p>
-        </BlankSlate>
+        <BlankSlate
+          placement="section"
+          icon={<LinkIcon />}
+          title="Nothing needs attention yet"
+          description="URLs that need attention appear here as they're checked."
+          actions={<Button label="Show all URLs" onClick={onShowAll} />}
+        />
       );
     case 'noMatch':
+      // The kit's no-results state (Pane.FilterBlankSlate) centers in the
+      // area and would cover the notice above, so the same state sits in the
+      // flow.
       return (
-        <BlankSlate title="No results found">
-          <p>
-            Consider broadening your search parameters or exploring different
-            keywords to find what you are looking for.
-          </p>
-        </BlankSlate>
+        <BlankSlate
+          placement="section"
+          small
+          icon={<SearchIcon />}
+          title={{ id: 'listFilter.noResults.title' }}
+          description={{ id: 'listFilter.noResults.description' }}
+        />
       );
   }
 }

@@ -8,20 +8,10 @@ import userEvent, { type UserEvent } from '@testing-library/user-event';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALL_SCOPE, type Scope } from '../report/scope';
-import {
-  deferred,
-  mediaState,
-  pageContext,
-  rawRecord,
-  resetMediaState,
-} from '../test/fixtures';
+import { deferred, pageContext, rawRecord } from '../test/fixtures';
 import { downloadReport } from '../utils/csv';
 import ProjectPage from './ProjectPage';
 
-vi.mock(
-  'datocms-react-ui',
-  async () => (await import('../test/fixtures')).reactUi,
-);
 vi.mock('@datocms/cma-client-browser', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@datocms/cma-client-browser')>()),
   buildClient: vi.fn(),
@@ -33,9 +23,9 @@ const ITALIAN_URL = 'https://italian.example/page';
 
 const rawList = vi.fn();
 const fetchMock = vi.fn<typeof fetch>();
+const baseMatchMedia = window.matchMedia;
 
 beforeEach(() => {
-  resetMediaState();
   rawList
     .mockReset()
     .mockResolvedValue({ data: [rawRecord()], meta: { total_count: 1 } });
@@ -49,6 +39,11 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async () => new Response(null, { status: 404 }));
   vi.stubGlobal('fetch', fetchMock);
+  // Menus close without their animation, so a closed menu is gone at once.
+  vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    ...baseMatchMedia(query),
+    matches: query === '(prefers-reduced-motion: reduce)',
+  }));
 });
 
 afterEach(() => {
@@ -66,21 +61,42 @@ function contextWith(overrides: Record<string, unknown>): RenderPageCtx {
   return { ...pageContext(), ...overrides } as RenderPageCtx;
 }
 
+/** The table of the URLs (the kit's table has no role of its own). */
 function table() {
-  return within(screen.getByRole('table', { name: 'Link check results' }));
+  const element = document.querySelector<HTMLElement>('.Table');
+  if (!element) throw new Error('No table');
+  return within(element);
 }
 
-function sidebar() {
-  return within(screen.getByRole('complementary', { name: 'Link details' }));
-}
-
-function rowOf(url: string): HTMLTableRowElement {
-  const row = table().getByText(url).closest('tr');
+function rowOf(url: string): HTMLElement {
+  const row = table().getByText(url).closest<HTMLElement>('.Table__row');
   if (!row) throw new Error(`No row for ${url}`);
   return row;
 }
 
-/** The pane's one "Scan links": the blank slate's before the first scan, then the toolbar's. */
+function detail() {
+  return within(screen.getByRole('complementary', { name: 'URL' }));
+}
+
+/** The callout of an incomplete or canceled scan, outside the live region. */
+function summary(headline: string) {
+  return screen.findByText(headline, {
+    ignore: '[role="status"], script, style',
+  });
+}
+
+/** A complete scan: the page's live region announces it. */
+async function scanComplete() {
+  await waitFor(() =>
+    expect(
+      screen
+        .getAllByRole('status')
+        .some((region) => region.textContent === 'Scan complete'),
+    ).toBe(true),
+  );
+}
+
+/** The overview's "Scan links" before the first scan, then the title bar's. */
 async function scanAll(user: UserEvent) {
   await user.click(screen.getByRole('button', { name: 'Scan links' }));
 }
@@ -102,24 +118,32 @@ function apiError(status: number, statusText: string) {
   });
 }
 
-function scopeButton() {
-  return screen.getByRole('button', { name: 'Choose what to scan…' });
-}
-
-/** Picks a scope through the toolbar's scope button; the modal resolves `result`. */
+/** Picks a scope from the caret of "Scan links"; the modal resolves `result`. */
 async function chooseScope(
   user: UserEvent,
   ctx: RenderPageCtx,
   result: Scope | undefined,
 ) {
   vi.mocked(ctx.openModal).mockResolvedValueOnce(result);
-  await user.click(scopeButton());
+  await user.click(screen.getByRole('button', { name: 'More scan options' }));
+  await user.click(
+    await screen.findByRole('menuitem', { name: 'Choose what to scan…' }),
+  );
 }
 
 /** Page model and English only: one URL, checked with HEAD then GET. */
 async function scanEnglishPages(user: UserEvent, ctx: RenderPageCtx) {
   await chooseScope(user, ctx, { modelIds: ['page'], localeIds: ['en'] });
-  await screen.findByRole('heading', { name: 'Scan complete' });
+  await scanComplete();
+}
+
+async function openExport(user: UserEvent) {
+  const bar = screen
+    .getByRole('heading', { level: 1 })
+    .closest<HTMLElement>('.Toolbar');
+  if (!bar) throw new Error('No title bar');
+  await user.click(within(bar).getByRole('button', { name: 'Actions' }));
+  return screen.findByRole('menuitem', { name: 'Export as CSV' });
 }
 
 describe('project page', () => {
@@ -128,17 +152,10 @@ describe('project page', () => {
       <ProjectPage ctx={pageContext({ currentUserAccessToken: undefined })} />,
     );
     expect(
-      screen.getByRole('heading', { name: 'API access needed' }),
+      screen.getByRole('heading', { level: 1, name: 'API access needed' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/"Broken links" sidebar panel/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Scan links' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /^Choose what to scan/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(/“Broken links” sidebar panel/)).toBeVisible();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(buildClient).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -153,6 +170,7 @@ describe('project page', () => {
         },
         meta: {
           final_permissions: {
+            can_edit_schema: true,
             positive_item_type_permissions: [],
             negative_item_type_permissions: [],
           },
@@ -161,27 +179,23 @@ describe('project page', () => {
     });
     const view = render(<ProjectPage ctx={noReadAccess} />);
     expect(
-      screen.getByRole('heading', { name: 'No models to scan' }),
+      screen.getByRole('heading', { level: 1, name: 'No models to scan' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Your role cannot read the records of any model/),
+      screen.getByText(/Your role can't read the records of any model/),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Scan links' }),
-    ).not.toBeInTheDocument();
+    // Models exist: Schema can't help.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     view.unmount();
 
-    const empty = render(<ProjectPage ctx={contextWith({ itemTypes: {} })} />);
+    render(<ProjectPage ctx={contextWith({ itemTypes: {} })} />);
     expect(
       screen.getByText("This environment doesn't have any models yet."),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Models are created in Schema.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Scan links' }),
-    ).not.toBeInTheDocument();
-    empty.unmount();
+    // Only roles that can edit the schema are led there.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('points roles that can edit the schema to Schema in an empty environment', async () => {
@@ -190,19 +204,13 @@ describe('project page', () => {
       itemTypes: {},
       environment: 'sandbox',
       isEnvironmentPrimary: false,
-      navigateTo: vi.fn().mockResolvedValue(undefined),
       currentRole: {
         ...pageContext().currentRole,
         meta: { final_permissions: { can_edit_schema: true } },
       },
     });
     render(<ProjectPage ctx={ctx} />);
-    expect(
-      screen.queryByText('Models are created in Schema.'),
-    ).not.toBeInTheDocument();
-    await user.click(
-      screen.getByRole('button', { name: 'Create a model in Schema' }),
-    );
+    await user.click(screen.getByRole('link', { name: 'Open Schema' }));
     expect(ctx.navigateTo).toHaveBeenCalledWith('/environments/sandbox/schema');
   });
 
@@ -211,21 +219,18 @@ describe('project page', () => {
     const ctx = pageContext();
     render(<ProjectPage ctx={ctx} />);
     expect(
-      screen.getByRole('heading', { name: 'No links checked yet' }),
+      screen.getByRole('heading', { level: 1, name: 'Link checker' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Scan your saved records to find broken links.'),
+      screen.getByText('Scan your saved records to find broken website links.'),
     ).toBeInTheDocument();
-    // One primary in the pane: the blank slate's. The toolbar offers the scope.
+    // Before the first scan there is no title bar: the overview holds the scan.
     expect(screen.getAllByRole('button', { name: 'Scan links' })).toHaveLength(
       1,
     );
-    expect(scopeButton()).toBeEnabled();
 
     await scanAll(user);
-    expect(
-      await screen.findByRole('heading', { name: 'Scan complete' }),
-    ).toBeInTheDocument();
+    await scanComplete();
     // The summary names what the scan covered.
     expect(
       screen.getByText(/^All models • All locales • 2 records read • /),
@@ -253,7 +258,9 @@ describe('project page', () => {
     expect(table().getByText(ENGLISH_URL)).toBeInTheDocument();
     expect(table().getByText(ITALIAN_URL)).toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'No links checked yet' }),
+      screen.queryByText(
+        'Scan your saved records to find broken website links.',
+      ),
     ).not.toBeInTheDocument();
     expect(ctx.editItem).not.toHaveBeenCalled();
   });
@@ -264,30 +271,28 @@ describe('project page', () => {
     render(<ProjectPage ctx={ctx} />);
 
     await chooseScope(user, ctx, undefined);
-    expect(ctx.openModal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'scan-scope',
-        title: 'Choose what to scan',
-        width: 's',
-        initialHeight: 328,
-        parameters: {
-          environment: 'main',
-          models: [
-            { id: 'news', name: 'News' },
-            { id: 'page', name: 'Page' },
-          ],
-          locales: [
-            { code: 'en', label: 'English' },
-            { code: 'it', label: 'Italian' },
-          ],
-          scope: ALL_SCOPE,
-        },
-      }),
-    );
+    expect(ctx.openModal).toHaveBeenCalledWith({
+      id: 'scan-scope',
+      title: 'Choose what to scan',
+      width: 's',
+      initialHeight: 392,
+      parameters: {
+        environment: 'main',
+        models: [
+          { id: 'news', name: 'News' },
+          { id: 'page', name: 'Page' },
+        ],
+        locales: [
+          { code: 'en', label: 'English' },
+          { code: 'it', label: 'Italian' },
+        ],
+        scope: ALL_SCOPE,
+      },
+    });
     await act(async () => undefined);
     expect(rawList).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('heading', { name: 'No links checked yet' }),
+      screen.getByRole('heading', { level: 1, name: 'Link checker' }),
     ).toBeInTheDocument();
 
     await scanEnglishPages(user, ctx);
@@ -317,6 +322,21 @@ describe('project page', () => {
     );
   });
 
+  it('sizes the scope modal for a single-locale site', async () => {
+    const user = userEvent.setup();
+    const ctx = contextWith({
+      site: {
+        id: 'site-1',
+        attributes: { locales: ['en'], internal_domain: null },
+      },
+    });
+    render(<ProjectPage ctx={ctx} />);
+    await chooseScope(user, ctx, undefined);
+    expect(ctx.openModal).toHaveBeenCalledWith(
+      expect.objectContaining({ initialHeight: 234 }),
+    );
+  });
+
   it('keeps the report open through the native editor and marks a saved record as changed', async () => {
     const user = userEvent.setup();
     const ctx = pageContext();
@@ -327,12 +347,12 @@ describe('project page', () => {
 
     await user.click(table().getByText(ENGLISH_URL));
     await user.click(
-      sidebar().getByRole('button', { name: 'Open record Example page' }),
+      detail().getByRole('button', {
+        name: /^Page\s*Example page\s*,\s*open record$/,
+      }),
     );
     expect(ctx.editItem).toHaveBeenCalledWith('record-1');
-    expect(
-      screen.getByRole('table', { name: 'Link check results' }),
-    ).toBeInTheDocument();
+    expect(table().getByText(ENGLISH_URL)).toBeInTheDocument();
     expect(ctx.navigateTo).not.toHaveBeenCalled();
 
     await act(async () =>
@@ -343,7 +363,7 @@ describe('project page', () => {
       ),
     );
     expect(table().getByText('Content changed')).toBeInTheDocument();
-    expect(sidebar().getByText('Content changed')).toBeInTheDocument();
+    expect(detail().getByText('Content changed')).toBeInTheDocument();
     expect(
       screen.getByText(/Records changed after this scan/),
     ).toBeInTheDocument();
@@ -363,10 +383,12 @@ describe('project page', () => {
 
     await user.click(table().getByText(ENGLISH_URL));
     await user.click(
-      sidebar().getByRole('button', { name: 'Open record Example page' }),
+      detail().getByRole('button', {
+        name: /^Page\s*Example page\s*,\s*open record$/,
+      }),
     );
     await waitFor(() =>
-      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the record!"),
+      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the record."),
     );
     expect(consoleError).toHaveBeenCalled();
     expect(table().getByText(ENGLISH_URL)).toBeInTheDocument();
@@ -381,9 +403,7 @@ describe('project page', () => {
     });
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
-    expect(
-      await screen.findByRole('heading', { name: 'Scan incomplete' }),
-    ).toBeInTheDocument();
+    expect(await summary('Scan incomplete')).toBeInTheDocument();
     expect(screen.getByText('News: Record access denied')).toBeInTheDocument();
     expect(table().getByText(ENGLISH_URL)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Scan links' })).toBeEnabled();
@@ -400,9 +420,7 @@ describe('project page', () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Cancel scan' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Scan canceled' }),
-    ).toBeInTheDocument();
+    expect(await summary('Scan canceled')).toBeInTheDocument();
     expect(table().getAllByText('Not checked').length).toBeGreaterThan(0);
     expect(
       screen.queryByRole('button', { name: 'Cancel scan' }),
@@ -420,35 +438,31 @@ describe('project page', () => {
     const response = deferred<Response>();
     fetchMock.mockImplementationOnce(() => response.promise);
     await user.click(table().getByText(ENGLISH_URL));
-    await user.click(sidebar().getByRole('button', { name: 'Recheck URL' }));
-    // An async action keeps its label while pending.
-    const pending = sidebar().getByRole('button', { name: 'Recheck URL' });
+    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
+    // The rechecked URL's action keeps its label while pending.
+    const pending = detail().getByRole('button', { name: 'Recheck URL' });
     expect(pending).toBeDisabled();
-    expect(within(pending).getByTestId('spinner')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Scan links' })).toBeDisabled();
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    expect(within(rowOf(ENGLISH_URL)).getByText('Checking')).toBeVisible();
+    const scan = screen.getByRole('button', { name: 'Scan links' });
+    expect(scan).toHaveAttribute('aria-disabled', 'true');
+    await user.click(scan);
+    expect(recordReads()).toHaveLength(1);
     expect(
-      screen.getByText(
-        'You cannot start a scan while a URL is being rechecked',
-      ),
-    ).toBeInTheDocument();
-    expect(scopeButton()).toBeDisabled();
-    expect(
-      screen.getByText(
-        'You cannot choose what to scan while a URL is being rechecked',
-      ),
-    ).toBeInTheDocument();
+      screen.getByRole('button', { name: 'More scan options' }),
+    ).toHaveAttribute('aria-disabled', 'true');
     expect(
       screen.queryByRole('button', { name: 'Cancel scan' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Scan complete' }),
-    ).toBeInTheDocument();
+    await scanComplete();
 
     await act(async () =>
       response.resolve(new Response(null, { status: 200 })),
     );
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Scan links' })).toBeEnabled(),
+      expect(
+        screen.getByRole('button', { name: 'Scan links' }),
+      ).not.toHaveAttribute('aria-disabled'),
     );
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
@@ -459,12 +473,20 @@ describe('project page', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     render(<ProjectPage ctx={ctx} />);
     await scanAll(user);
-    await screen.findByRole('heading', { name: 'Scan complete' });
+    await scanComplete();
 
-    await user.type(screen.getByLabelText('Search URLs'), 'italian');
+    await user.click(screen.getByRole('button', { name: /^Link checker/ }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: /^All URLs/ }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Filter URLs' }));
+    await user.type(
+      within(screen.getByRole('search', { name: 'URLs' })).getByRole('textbox'),
+      'italian',
+    );
     expect(await screen.findByText('1 URL')).toBeInTheDocument();
     expect(screen.queryByText(ENGLISH_URL)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+    await user.click(await openExport(user));
     expect(downloadReport).toHaveBeenCalledTimes(1);
     const [exported] = vi.mocked(downloadReport).mock.calls[0];
     expect(exported.groups.map((group) => group.prepared.url)).toEqual([
@@ -475,43 +497,8 @@ describe('project page', () => {
     vi.mocked(downloadReport).mockImplementationOnce(() => {
       throw new Error('Download blocked');
     });
-    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
-    expect(ctx.alert).toHaveBeenCalledWith("Couldn't export the report!");
-  });
-
-  it('opens the Info sidebar over the report in a narrow frame, without remounting the report', async () => {
-    const user = userEvent.setup();
-    mediaState.queries['(max-width: 999px)'] = true;
-    const { container } = render(<ProjectPage ctx={pageContext()} />);
-    await scanAll(user);
-    await screen.findByRole('heading', { name: 'Scan complete' });
-    // The split stays on its rail: the kit's overlay mode would swap trees.
-    expect(container.querySelector('[data-mode]')).toHaveAttribute(
-      'data-mode',
-      'split',
-    );
-    // Below 1800px the sidebar starts collapsed and opens on selection.
-    expect(
-      screen.getByRole('button', { name: 'Show sidebar' }),
-    ).toBeInTheDocument();
-    const results = screen.getByRole('table', { name: 'Link check results' });
-    const row = rowOf(ENGLISH_URL);
-
-    await user.click(table().getByText(ENGLISH_URL));
-    const aside = screen.getByRole('complementary', { name: 'Link details' });
-    expect(aside.closest('.blc-overlay')).not.toBeNull();
-    expect(aside).toHaveFocus();
-    expect(screen.getByRole('table', { name: 'Link check results' })).toBe(
-      results,
-    );
-
-    await user.keyboard('{Escape}');
-    expect(
-      screen.queryByRole('complementary', { name: 'Link details' }),
-    ).not.toBeInTheDocument();
-    expect(rowOf(ENGLISH_URL)).toBe(row);
-    expect(row).toHaveFocus();
-    expect(row).toHaveAttribute('aria-current', 'true');
+    await user.click(await openExport(user));
+    expect(ctx.alert).toHaveBeenCalledWith("Couldn't export the report.");
   });
 
   it('keeps a rechecked URL in its row, and exports the settled report meanwhile', async () => {
@@ -519,22 +506,22 @@ describe('project page', () => {
     mixedResults();
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
-    await screen.findByRole('heading', { name: 'Scan complete' });
+    await scanComplete();
     expect(table().queryByText(ITALIAN_URL)).not.toBeInTheDocument();
     expect(screen.getByText('1 URL')).toBeInTheDocument();
 
     const response = deferred<Response>();
     fetchMock.mockImplementationOnce(() => response.promise);
     await user.click(table().getByText(ENGLISH_URL));
-    await user.click(sidebar().getByRole('button', { name: 'Recheck URL' }));
-    expect(within(rowOf(ENGLISH_URL)).getAllByText('Checking').length).toBe(2);
+    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
+    expect(within(rowOf(ENGLISH_URL)).getByText('Checking')).toBeVisible();
     expect(screen.getByText('1 URL')).toBeInTheDocument();
     expect(screen.getByText(/1 needs attention/)).toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'Nothing needs attention' }),
+      screen.queryByText('Nothing needs attention'),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+    await user.click(await openExport(user));
     const [exported] = vi.mocked(downloadReport).mock.calls[0];
     expect(exported.state).toBe('complete');
     expect(
@@ -546,8 +533,32 @@ describe('project page', () => {
       response.resolve(new Response(null, { status: 200 })),
     );
     expect(
-      await screen.findByRole('heading', { name: 'Nothing needs attention' }),
+      await screen.findByText('Nothing needs attention'),
     ).toBeInTheDocument();
+  });
+
+  it('closes the open row and keeps the detail sections as they were on a new scan', async () => {
+    const user = userEvent.setup();
+    render(<ProjectPage ctx={pageContext()} />);
+    await scanAll(user);
+    await scanComplete();
+    await user.click(table().getByText(ENGLISH_URL));
+    await user.click(detail().getByRole('button', { name: /^Records/ }));
+    expect(detail().getByRole('button', { name: /^Records/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+
+    await scanAll(user);
+    await scanComplete();
+    expect(
+      screen.queryByRole('complementary', { name: 'URL' }),
+    ).not.toBeInTheDocument();
+    await user.click(table().getByText(ENGLISH_URL));
+    expect(detail().getByRole('button', { name: /^Records/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it.each([
@@ -581,7 +592,7 @@ describe('project page', () => {
     });
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
-    await screen.findByRole('heading', { name: 'Scan incomplete' });
+    await summary('Scan incomplete');
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledWith(error);
   });
@@ -594,9 +605,12 @@ describe('project page', () => {
       .mockImplementation(() => undefined);
     vi.mocked(ctx.openModal).mockRejectedValueOnce(new Error('Host error'));
     render(<ProjectPage ctx={ctx} />);
-    await user.click(scopeButton());
+    await user.click(screen.getByRole('button', { name: 'More scan options' }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Choose what to scan…' }),
+    );
     await waitFor(() =>
-      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the scan dialog!"),
+      expect(ctx.alert).toHaveBeenCalledWith("Couldn't open the scan dialog."),
     );
     expect(consoleError).toHaveBeenCalled();
     expect(rawList).not.toHaveBeenCalled();
@@ -612,7 +626,7 @@ describe('project page', () => {
     expect(screen.getByRole('button', { name: 'Cancel scan' })).toHaveFocus();
 
     await user.click(screen.getByRole('button', { name: 'Cancel scan' }));
-    await screen.findByRole('heading', { name: 'Scan canceled' });
+    await summary('Scan canceled');
     expect(screen.getByRole('button', { name: 'Scan links' })).toHaveFocus();
   });
 });

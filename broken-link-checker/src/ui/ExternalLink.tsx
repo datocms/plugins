@@ -1,6 +1,6 @@
-import { faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
+import { ExternalLinkIcon } from '../icons';
 import { BreakableUrl } from './BreakableUrl';
-import { Icon } from './Icon';
+import styles from './ExternalLink.module.css';
 
 /** Only absolute web addresses open: never `javascript:`, `data:` or a relative path. */
 export function isOpenableUrl(url: string): boolean {
@@ -12,22 +12,34 @@ export function isOpenableUrl(url: string): boolean {
   }
 }
 
+type ExternalLinkProps = {
+  url: string;
+  /**
+   * The link is part of a sentence: it keeps the color of the text around
+   * it, underlined. Without it, a URL on its own takes the link ink.
+   */
+  inText?: boolean;
+};
+
 /**
  * A URL from the content, opened in a new tab. Anything that isn't an
  * absolute http(s) address stays plain text.
  */
-export function ExternalLink({ url }: { url: string }) {
+export function ExternalLink({ url, inText = false }: ExternalLinkProps) {
   if (!isOpenableUrl(url)) return <BreakableUrl url={url} />;
   return (
     <a
-      className="blc-external"
+      className={inText ? styles.inText : styles.link}
       href={url}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${url} (opens in a new tab)`}
     >
       <BreakableUrl url={url} />
-      <Icon icon={faArrowUpRightFromSquare} />
+      {/* The icon stays on the URL's last line; its CSS adds no copied text. */}
+      <span className={styles.tail}>
+        <ExternalLinkIcon className={styles.icon} />
+      </span>
     </a>
   );
 }

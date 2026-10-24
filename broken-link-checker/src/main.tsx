@@ -1,8 +1,5 @@
-import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
-import './styles/recipes.css';
-import './styles/app.css';
+import { connect } from 'datocms-plugin-sdk';
 import { PAGE_ID, PANEL_ID, SCOPE_MODAL_ID } from './constants';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import ProjectPage from './entrypoints/ProjectPage';
@@ -40,8 +37,9 @@ connect({
         label: 'Broken links',
         startOpen: false,
         placement: ['after', 'links'],
-        // The idle panel: just the "Check links" button
-        initialHeight: 41,
+        // The idle panel: just the "Check links" action, 26px tall at the
+        // sidebar's width. The host adds the frame's padding around it.
+        initialHeight: 26,
       },
     ];
   },

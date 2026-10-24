@@ -1,147 +1,61 @@
-import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
-import { Spinner } from 'datocms-react-ui';
-import type { ReactNode } from 'react';
-import { formatDateTime } from '../report/format';
+import Callout from 'datocms-react-ui/Callout';
+import InfoList from 'datocms-react-ui/InfoList';
+import SidebarPanel, {
+  type SidebarPanelCollapse,
+} from 'datocms-react-ui/SidebarPanel';
+import SmartDate from 'datocms-react-ui/SmartDate';
 import { hasFragment, resultExplanation } from '../report/view';
 import type { LinkGroup } from '../types';
-import { Button } from '../ui/Button';
 import { ExternalLink } from '../ui/ExternalLink';
-import { Icon } from '../ui/Icon';
 import { LogStatus } from '../ui/LogStatus';
-import { DisabledReason } from '../ui/WithTooltip';
+import styles from './Detail.module.css';
 
 type LinkPanelProps = {
-  group?: LinkGroup;
-  scanning: boolean;
-  rechecking: boolean;
-  /** This group is the one being rechecked. */
-  rechecked: boolean;
-  uiLocale: string;
-  onRecheck: (group: LinkGroup) => void;
+  group: LinkGroup;
+  /** The open state of the section, kept by the report across rows. */
+  collapse: SidebarPanelCollapse;
 };
 
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * The open URL: where it points and its latest result. When its records
+ * changed after the scan, a note says so above the facts; it sits in the
+ * section, so the panel holds only sections and they give it its inset.
+ */
+export function LinkPanel({ group, collapse }: LinkPanelProps) {
+  const { prepared, result } = group;
+  // Other results are explained by their word or the HTTP status row.
+  const explanation = resultExplanation(result);
   return (
-    <div className="dl-info-row">
-      <span className="dl-info-row__label">{label}</span>
-      <span className="dl-info-row__value">{children}</span>
-    </div>
-  );
-}
-
-function LinkUrl({ group }: { group: LinkGroup }) {
-  return (
-    <p className="blc-link-url">
-      <ExternalLink url={group.prepared.url} />
-    </p>
-  );
-}
-
-function LinkNotes({ group }: { group: LinkGroup }) {
-  // Other results are explained by their word, the HTTP status row or the summary's callout.
-  const reason = resultExplanation(group.result);
-  const fragment = hasFragment(group);
-  if (!reason && !fragment && !group.stale) return null;
-  return (
-    <div className="blc-link-notes">
-      {reason && <p className="blc-note">{reason}</p>}
-      {fragment && (
-        <p className="blc-note">
-          Some records link to a #fragment of this page. The page is checked
-          without it, so the anchor itself is not verified.
-        </p>
-      )}
+    <SidebarPanel title="Link" collapse={collapse}>
       {group.stale && (
-        <p className="blc-note">
+        <Callout title="Content changed after the scan">
           A record using this URL changed after the scan. Scan again to refresh
-          where it's used; "Recheck URL" only refreshes its status.
-        </p>
+          where it's used; “Recheck URL” only refreshes its status.
+        </Callout>
       )}
-    </div>
-  );
-}
-
-function RecheckButton({
-  group,
-  scanning,
-  rechecking,
-  rechecked,
-  onRecheck,
-}: Omit<LinkPanelProps, 'group' | 'uiLocale'> & { group: LinkGroup }) {
-  const disabled = scanning || rechecking;
-  const pending = rechecking && rechecked;
-  const reason =
-    scanning || (rechecking && !rechecked)
-      ? 'You cannot recheck a URL while links are being checked'
-      : null;
-  return (
-    <div className="blc-sidebar-action">
-      <DisabledReason block reason={reason}>
-        <Button
-          buttonSize="xs"
-          fullWidth
-          leftIcon={pending ? undefined : <Icon icon={faArrowsRotate} />}
-          disabled={disabled}
-          style={disabled ? { pointerEvents: 'none' } : undefined}
-          onClick={() => onRecheck(group)}
-        >
-          {/* An async action keeps its label and adds a spinner while pending */}
-          {pending ? (
-            <>
-              Recheck URL&nbsp;
-              <Spinner size={20} />
-            </>
-          ) : (
-            'Recheck URL'
+      <InfoList>
+        <InfoList.Row title="URL">
+          <ExternalLink url={prepared.url} />
+          {hasFragment(group) && (
+            <div className={styles.note}>
+              Some records link to a #fragment of this page. The anchor itself
+              isn't verified.
+            </div>
           )}
-        </Button>
-      </DisabledReason>
-    </div>
-  );
-}
-
-/** The selected URL: where it points, its latest result, and "Recheck URL". */
-export function LinkPanel({
-  group,
-  scanning,
-  rechecking,
-  rechecked,
-  uiLocale,
-  onRecheck,
-}: LinkPanelProps) {
-  if (!group)
-    return (
-      <p className="dl-sidebar-panel__empty">
-        Select a URL to see its details and where it's used.
-      </p>
-    );
-  const { result } = group;
-  return (
-    <>
-      <LinkUrl group={group} />
-      <div>
-        <InfoRow label="Status">
+        </InfoList.Row>
+        <InfoList.Row title="Status">
           <LogStatus status={result.status} />
-        </InfoRow>
+          {explanation && <div className={styles.note}>{explanation}</div>}
+        </InfoList.Row>
         {result.httpStatus !== undefined && (
-          <InfoRow label="HTTP status">{result.httpStatus}</InfoRow>
+          <InfoList.Row title="HTTP status">{result.httpStatus}</InfoList.Row>
         )}
         {result.checkedAt && (
-          <InfoRow label="Checked at">
-            {formatDateTime(result.checkedAt, uiLocale)}
-          </InfoRow>
+          <InfoList.Row title="Checked">
+            <SmartDate value={result.checkedAt} />
+          </InfoList.Row>
         )}
-      </div>
-      <LinkNotes group={group} />
-      {group.prepared.status === 'queued' && (
-        <RecheckButton
-          group={group}
-          scanning={scanning}
-          rechecking={rechecking}
-          rechecked={rechecked}
-          onRecheck={onRecheck}
-        />
-      )}
-    </>
+      </InfoList>
+    </SidebarPanel>
   );
 }

@@ -1,256 +1,220 @@
-import { faDownload, faFilter } from '@fortawesome/free-solid-svg-icons';
-import { Toolbar, ToolbarStack, ToolbarTitle } from 'datocms-react-ui';
-import { type CSSProperties, useLayoutEffect, useRef } from 'react';
-import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
-import { DisabledReason, WithTooltip } from '../ui/WithTooltip';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import Pane, { type ListPresetOption } from 'datocms-react-ui/Pane';
+import SplitButton from 'datocms-react-ui/SplitButton';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useLayoutEffect, useRef } from 'react';
+import { README_URL } from '../constants';
+import {
+  STATUS_ORDER,
+  type StatusCounts,
+  type StatusView,
+} from '../report/view';
+import { STATUS_META } from '../ui/LogStatus';
+import styles from './Report.module.css';
 
-/** `firstRun`: before the first scan the blank slate holds "Scan links", so the toolbar doesn't. */
-export type PageToolbarMode =
-  | 'none'
-  | 'firstRun'
-  | 'idle'
-  | 'scanning'
-  | 'rechecking';
-export type ExportState = 'hidden' | 'enabled' | 'disabled' | 'preparing';
+export type PageToolbarMode = 'idle' | 'scanning' | 'rechecking';
 
-type PageToolbarProps = {
-  mode: PageToolbarMode;
-  /** The rows in the current view: "248 URLs" */
-  countLabel?: string;
-  /** The pane's width, once measured: narrow panes keep only what fits beside the title. */
-  paneWidth?: number;
-  exportState?: ExportState;
-  iconOnlyExport?: boolean;
-  onScan?: () => void;
-  onChooseScope?: () => void;
-  onCancel?: () => void;
-  onExport?: () => void;
+/**
+ * `none`: a settled report with no URLs; `waiting`: a running scan has no URL
+ * yet; `preparing`: a CSV is being written.
+ */
+export type ExportState = 'ready' | 'none' | 'waiting' | 'preparing';
+
+/**
+ * The page's texts for the kit: the first option of the title's menu, every
+ * URL whatever its status, reads "All URLs". A constant, so the Canvas that
+ * takes it doesn't render again.
+ */
+export const REPORT_TEXTS = { 'admin.listPresets.all': 'All URLs' };
+
+const RECHECK_BLOCKS_SCAN = {
+  reason: "You can't start a scan while a URL is being rechecked.",
+};
+const RECHECK_BLOCKS_SCOPE = {
+  reason: "You can't choose what to scan while a URL is being rechecked.",
+};
+/** Why the export can't run now. */
+const EXPORT_DISABLED: Record<ExportState, { reason: string } | undefined> = {
+  ready: undefined,
+  none: { reason: 'The report has no URLs to export.' },
+  waiting: { reason: 'The report has no URLs to export yet.' },
+  preparing: { reason: 'The CSV is being prepared.' },
 };
 
-const BLOCKED: CSSProperties = { pointerEvents: 'none' };
-const CHOOSE_SCOPE = 'Choose what to scan…';
+/** A view the title's menu gives back by its id; null is "All URLs". */
+function isStatusView(id: string | null): id is StatusView {
+  return id === 'attention' || STATUS_ORDER.some((status) => status === id);
+}
 
 /**
- * The title is the last thing to give way. Below 700px "Choose what to scan…"
- * keeps only its icon; below 560px the count goes, and so does the scope
- * button while a scan runs (it's disabled then, and "Cancel scan" is wider).
+ * The views of the title's menu after "All URLs", which the kit puts first:
+ * "Needs attention" (the default), then each status in severity order. A
+ * view that keeps no URL shows only while it's picked, as the kit's own
+ * presets do (useListPresets), so the default view is there at first even
+ * with no URL.
  */
-const ICON_ONLY_SCOPE_BELOW = 700;
-const NARROW_BELOW = 560;
-
-const isBelow = (width: number | undefined, limit: number) =>
-  width !== undefined && width < limit;
-
-function ExportButton({
-  state,
-  iconOnly,
-  onExport,
-}: {
-  state: ExportState;
-  iconOnly: boolean;
-  onExport?: () => void;
-}) {
-  if (state === 'hidden') return null;
-  const disabled = state === 'disabled' || state === 'preparing';
-  const button = (
-    <Button
-      buttonSize="s"
-      leftIcon={
-        iconOnly ? <Icon icon={faDownload} title="Export CSV" /> : undefined
-      }
-      disabled={disabled}
-      aria-busy={state === 'preparing' || undefined}
-      style={disabled ? BLOCKED : undefined}
-      onClick={onExport}
-    >
-      {iconOnly ? undefined : 'Export CSV'}
-    </Button>
-  );
-  if (disabled)
-    return (
-      <DisabledReason
-        reason={
-          state === 'preparing'
-            ? 'The CSV report is being prepared'
-            : 'You cannot export the report as it has no URLs'
-        }
-      >
-        {button}
-      </DisabledReason>
-    );
-  return iconOnly ? (
-    <WithTooltip content="Export CSV">{button}</WithTooltip>
-  ) : (
-    button
-  );
+function presetsFor(
+  counts: StatusCounts,
+  current: StatusView,
+): ListPresetOption[] {
+  const views: ListPresetOption[] = [
+    {
+      id: 'attention',
+      label: 'Needs attention',
+      shortLabel: 'Needs attention',
+      count: counts.attention,
+    },
+    ...STATUS_ORDER.map((status) => ({
+      id: status,
+      label: STATUS_META[status].label,
+      shortLabel: STATUS_META[status].label,
+      count: counts[status],
+    })),
+  ];
+  return views.filter((view) => view.count > 0 || view.id === current);
 }
 
 /**
- * Opens the scope modal, which starts a scan; the summary names the scope a
- * report covers. While a scan or recheck runs the button stays, disabled with
- * its reason (a narrow pane drops it during a scan).
- */
-function ChooseScopeButton({
-  compact,
-  blockedReason,
-  onChooseScope,
-}: {
-  compact: boolean;
-  blockedReason: string | null;
-  onChooseScope?: () => void;
-}) {
-  const blocked = blockedReason !== null;
-  const button = (
-    <Button
-      buttonSize="s"
-      leftIcon={
-        <Icon icon={faFilter} title={compact ? CHOOSE_SCOPE : undefined} />
-      }
-      disabled={blocked}
-      style={blocked ? BLOCKED : undefined}
-      onClick={onChooseScope}
-    >
-      {compact ? undefined : CHOOSE_SCOPE}
-    </Button>
-  );
-  if (blocked)
-    return <DisabledReason reason={blockedReason}>{button}</DisabledReason>;
-  return compact ? (
-    <WithTooltip content="Choose what to scan">{button}</WithTooltip>
-  ) : (
-    button
-  );
-}
-
-function scopeBlockedReason(mode: PageToolbarMode): string | null {
-  if (mode === 'scanning')
-    return 'You cannot choose what to scan while a scan is running';
-  if (mode === 'rechecking')
-    return 'You cannot choose what to scan while a URL is being rechecked';
-  return null;
-}
-
-function ScanButton({
-  blocked,
-  onScan,
-}: {
-  blocked: boolean;
-  onScan?: () => void;
-}) {
-  const button = (
-    <Button
-      buttonType="primary"
-      buttonSize="s"
-      disabled={blocked}
-      style={blocked ? BLOCKED : undefined}
-      onClick={onScan}
-    >
-      Scan links
-    </Button>
-  );
-  if (!blocked) return button;
-  return (
-    <DisabledReason reason="You cannot start a scan while a URL is being rechecked">
-      {button}
-    </DisabledReason>
-  );
-}
-
-type FocusSlot = 'scope' | 'action';
-
-/**
- * A mode change swaps the scan action (Scan links or Cancel scan) and switches
- * the other controls between enabled and disabled-with-a-reason, which
- * remounts them; a new scan remounts the whole toolbar. Focus on a control
- * that's gone would fall to <body>, so it moves to whatever now sits in the
- * same place, and to the new action when a scan starts.
+ * A mode change swaps the scan action (the split "Scan links", or "Cancel
+ * scan"), and a disabled reason wraps the control in its tooltip, which
+ * remounts it; a new scan remounts the whole toolbar. Focus on a control that
+ * is gone would fall to <body>, so it moves to what now holds the same place,
+ * and to "Cancel scan" when a scan starts.
  */
 function useToolbarFocus(mode: PageToolbarMode) {
-  const scopeRef = useRef<HTMLDivElement>(null);
-  const actionRef = useRef<HTMLDivElement>(null);
+  const actionRef = useRef<HTMLSpanElement>(null);
   const previous = useRef<PageToolbarMode | null>(null);
   // Read while rendering, before the commit replaces the focused control.
-  const focusedSlot = useRef<FocusSlot | null>(null);
-  const active = document.activeElement;
-  focusedSlot.current = scopeRef.current?.contains(active)
-    ? 'scope'
-    : actionRef.current?.contains(active)
-      ? 'action'
-      : null;
+  const hadFocus = useRef(false);
+  hadFocus.current =
+    actionRef.current?.contains(document.activeElement) ?? false;
   useLayoutEffect(() => {
     const before = previous.current;
     previous.current = mode;
     if (before === mode) return;
-    const slot =
-      focusedSlot.current ??
-      (mode === 'scanning' && before !== 'scanning' ? 'action' : null);
-    if (!slot || !document.hasFocus()) return;
+    const move =
+      hadFocus.current || (mode === 'scanning' && before !== 'scanning');
+    if (!move || !document.hasFocus()) return;
     if (document.activeElement !== document.body) return;
-    const wrapper = slot === 'scope' ? scopeRef.current : actionRef.current;
-    // A disabled control takes focus through its tooltip anchor.
-    wrapper
+    // A control disabled with a reason stays focusable, so it explains why.
+    actionRef.current
       ?.querySelector<HTMLElement>('button:not(:disabled), [tabindex="0"]')
       ?.focus();
   }, [mode]);
-  return { scopeRef, actionRef };
+  return actionRef;
 }
 
-/** Title ── space ── [count] [Choose what to scan…] [Export CSV] [Scan links or Cancel scan] */
+type PageToolbarProps = {
+  mode: PageToolbarMode;
+  /** The status view of the list. */
+  status: StatusView;
+  counts: StatusCounts;
+  onStatusChange: (status: StatusView) => void;
+  /** The rows in the current view ("248 URLs"); nothing when there are none. */
+  countLabel?: string;
+  exportState: ExportState;
+  onExport: () => void;
+  /**
+   * The filter toggle, when the list has something to filter (from
+   * useFilterToolbar). With `onOpen`, `F` and `/` open the row and focus its
+   * text field.
+   */
+  filter?: { open: boolean; onToggle: () => void; onOpen: () => void };
+  onScan: () => void;
+  onChooseScope: () => void;
+  onCancel: () => void;
+};
+
+/**
+ * The title bar of the report, the kit's bar of a view pane: the title is the
+ * menu of the status views with the page's help at its bottom, then the count
+ * and the "⋮" with the export; the filter toggle (F) and the scan action sit
+ * at the right end.
+ */
 export function PageToolbar({
   mode,
+  status,
+  counts,
+  onStatusChange,
   countLabel,
-  paneWidth,
-  exportState = 'hidden',
-  iconOnlyExport = false,
+  exportState,
+  onExport,
+  filter,
   onScan,
   onChooseScope,
   onCancel,
-  onExport,
 }: PageToolbarProps) {
-  const { scopeRef, actionRef } = useToolbarFocus(mode);
-  const narrow = isBelow(paneWidth, NARROW_BELOW);
-  const showScope = mode !== 'none' && !(narrow && mode === 'scanning');
+  const actionRef = useToolbarFocus(mode);
+  const rechecking = mode === 'rechecking';
+  // With no view to pick ("All URLs" of a report with no URL), the title is
+  // no menu, as with the kit's own presets.
+  const views = presetsFor(counts, status);
+
   return (
-    <Toolbar style={{ flex: 'none', minHeight: 60 }}>
-      <ToolbarStack
-        stackSize="s"
-        style={{ gap: 'var(--spacing-m)', minWidth: 0 }}
+    <Pane.Header>
+      <Pane.Header.Title
+        level={1}
+        help={
+          <Toolbar.Help docsUrl={README_URL}>
+            Finds broken website links in the saved records of this environment.
+            Results stay only while this page is open, so export them as CSV to
+            keep a copy.
+          </Toolbar.Help>
+        }
+        presets={
+          views.length > 0
+            ? {
+                options: views,
+                value: status === 'all' ? null : status,
+                onChange: (id) => onStatusChange(isStatusView(id) ? id : 'all'),
+              }
+            : undefined
+        }
       >
-        <ToolbarTitle className="dl-toolbar__title">
-          <h1 className="blc-heading">Link checker</h1>
-        </ToolbarTitle>
-        <div style={{ flex: 1 }} />
-        {countLabel && !narrow && (
-          <span className="dl-toolbar__subtitle blc-toolbar-count">
-            {countLabel}
-          </span>
+        Link checker
+      </Pane.Header.Title>
+      <Pane.Header.Subtitle>{countLabel}</Pane.Header.Subtitle>
+      <Pane.Header.Menu>
+        <Dropdown.Option
+          disabled={EXPORT_DISABLED[exportState]}
+          onPick={onExport}
+        >
+          Export as CSV
+        </Dropdown.Option>
+      </Pane.Header.Menu>
+      <Pane.Header.Button>
+        {filter && (
+          <Toolbar.FilterToggle
+            pressed={filter.open}
+            onClick={filter.onToggle}
+            onOpen={filter.onOpen}
+          />
         )}
-        {showScope && (
-          <div ref={scopeRef} style={{ display: 'contents' }}>
-            <ChooseScopeButton
-              compact={isBelow(paneWidth, ICON_ONLY_SCOPE_BELOW)}
-              blockedReason={scopeBlockedReason(mode)}
-              onChooseScope={onChooseScope}
+        <span ref={actionRef} className={styles.action}>
+          {mode === 'scanning' ? (
+            <Toolbar.Button
+              tone="soft"
+              label="Cancel scan"
+              onClick={onCancel}
             />
-          </div>
-        )}
-        <ExportButton
-          state={exportState}
-          iconOnly={iconOnlyExport}
-          onExport={onExport}
-        />
-        <div ref={actionRef} style={{ display: 'contents' }}>
-          {mode === 'scanning' && (
-            <Button buttonSize="s" onClick={onCancel}>
-              Cancel scan
-            </Button>
+          ) : (
+            <SplitButton
+              tone="primary"
+              label="Scan links"
+              disabled={rechecking ? RECHECK_BLOCKS_SCAN : undefined}
+              onClick={onScan}
+              menu={{
+                ariaLabel: 'More scan options',
+                disabled: rechecking ? RECHECK_BLOCKS_SCOPE : undefined,
+              }}
+            >
+              <Dropdown.Option onPick={onChooseScope}>
+                Choose what to scan…
+              </Dropdown.Option>
+            </SplitButton>
           )}
-          {(mode === 'idle' || mode === 'rechecking') && (
-            <ScanButton blocked={mode === 'rechecking'} onScan={onScan} />
-          )}
-        </div>
-      </ToolbarStack>
-    </Toolbar>
+        </span>
+      </Pane.Header.Button>
+    </Pane.Header>
   );
 }

@@ -1,0 +1,51 @@
+/* A screen of the project page that is only a blank slate (no access, no
+   models, the first run): Main is the positioned box that fills the frame,
+   so the blank slate stays in its center. */
+.screen {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* A callout and the controls of its list, right after it. The notice is one
+   block of the list area, whose gap gives the space around it; the smaller
+   gap inside keeps the controls with their callout. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* The notice gives the space: the callout keeps no margin of its own. */
+.callout {
+  margin: 0;
+}
+
+/* The controls of the list in the callout: "Show all", then the pages. */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  align-items: flex-start;
+}
+
+/* The pages take the whole width, centered. */
+.pages {
+  align-self: stretch;
+}
+
+/* A running scan above its results: the bar, then one line of facts. */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* Tabular figures keep the line in place while the counts change. */
+.progressLine {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--color--ink-subtle);
+}

@@ -1,16 +1,18 @@
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import Spinner from 'datocms-react-ui/Spinner';
 import { countLabel, joinFacts } from '../report/format';
 import { type ScanProgress, settledUrls } from '../report/view';
+import styles from './Notices.module.css';
 
-type ScanProgressBlockProps = {
+type ScanProgressProps = {
   /** "All models • All locales" */
   scope: string;
   progress: ScanProgress;
-  /** 0 to 1, or null while the record count is unknown. */
+  /** 0 to 1, never moving backwards; null while the record count is unknown. */
   fraction: number | null;
   discovering: boolean;
   recordTotal?: number;
-  /** Centered in the pane before any URL is found; above the results after. */
-  centered: boolean;
   uiLocale: string;
 };
 
@@ -51,51 +53,69 @@ function urlsFact(progress: ScanProgress, uiLocale: string) {
 }
 
 /**
- * A running scan's one loading indicator: a title with the percentage, the
- * bar, and what has been read and processed so far. Without a record count the
- * bar sweeps until reading ends.
+ * The share in whole percents, rounded down: "99%" until the scan really
+ * ends. The bar gets the same value, so it never says more than the title.
  */
-export function ScanProgressBlock({
-  scope,
+function progressText({
   progress,
   fraction,
   discovering,
   recordTotal,
-  centered,
   uiLocale,
-}: ScanProgressBlockProps) {
+}: ScanProgressProps) {
   const percent = fraction === null ? null : Math.floor(fraction * 100);
-  const facts = joinFacts([
-    scope,
-    recordsFact(progress, discovering, uiLocale, recordTotal),
-    urlsFact(progress, uiLocale),
-  ]);
+  return {
+    value: percent === null ? undefined : percent / 100,
+    title:
+      percent === null ? 'Scanning links…' : `Scanning links (${percent}%)…`,
+    facts: joinFacts([
+      recordsFact(progress, discovering, uiLocale, recordTotal),
+      urlsFact(progress, uiLocale),
+    ]),
+  };
+}
+
+/**
+ * A running scan before any URL needs attention: the progress is all the
+ * list area has to show. `placement` is "area" alone, "section" under a
+ * notice. The bar shows only once the share is known.
+ */
+export function ScanProgressSlate({
+  placement,
+  ...props
+}: ScanProgressProps & { placement: 'area' | 'section' }) {
+  const { value, title, facts } = progressText(props);
   return (
-    <section
-      className={`blc-scan-progress${centered ? ' blc-scan-progress--centered' : ''}`}
-      aria-label="Scan progress"
+    <BlankSlate
+      placement={placement}
+      loading
+      title={title}
+      description={props.scope}
+      caption={facts}
     >
-      <h2 className="blc-scan-progress__title">
-        {percent === null ? 'Scanning links…' : `Scanning links (${percent}%)…`}
-      </h2>
-      <div
-        className="dl-progress"
-        role="progressbar"
-        aria-label="Scan progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent ?? undefined}
-      >
-        <div
-          className={
-            percent === null
-              ? 'dl-progress__bar blc-scan-progress__sweep'
-              : 'dl-progress__bar'
-          }
-          style={percent === null ? undefined : { width: `${percent}%` }}
-        />
+      {value !== undefined && (
+        <ProgressBar value={value} ariaLabel="Scanning links" />
+      )}
+    </BlankSlate>
+  );
+}
+
+/**
+ * A running scan above its results: the bar, then one line with the title,
+ * the scope and the facts. While the share is unknown a spinner stands in for
+ * the bar.
+ */
+export function ScanProgressBlock(props: ScanProgressProps) {
+  const { value, title, facts } = progressText(props);
+  return (
+    <div className={styles.progress}>
+      {value !== undefined && (
+        <ProgressBar value={value} ariaLabel="Scanning links" />
+      )}
+      <div className={styles.progressLine}>
+        {value === undefined && <Spinner inline label={false} />}
+        <span>{joinFacts([title, props.scope, facts])}</span>
       </div>
-      <p className="blc-scan-progress__facts">{facts}</p>
-    </section>
+    </div>
   );
 }

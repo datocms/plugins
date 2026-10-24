@@ -11,6 +11,28 @@ describe('ExternalLink', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/pricing#team');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    // A copied URL gets no invisible character: the text is the URL alone.
+    expect(link.textContent).toBe('https://example.com/pricing#team');
+  });
+
+  it('takes the link ink on its own, and the color of the text in a sentence', () => {
+    render(
+      <>
+        <ExternalLink url="https://example.com/" />
+        <p style={{ color: 'gray' }}>
+          Links to <ExternalLink url="https://example.com/#team" inText />
+        </p>
+      </>,
+    );
+    const own = screen.getByRole('link', { name: /^https:\/\/example.com\/ / });
+    const inText = screen.getByRole('link', { name: /#team/ });
+    expect(getComputedStyle(own).color).toBe('var(--color--ink-link)');
+    const sentence = inText.closest('p');
+    if (!sentence) throw new Error('No sentence');
+    expect(getComputedStyle(inText).color).toBe(
+      getComputedStyle(sentence).color,
+    );
+    expect(inText).toHaveAttribute('target', '_blank');
   });
 
   it('keeps anything else as plain text', () => {

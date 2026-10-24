@@ -1,15 +1,19 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas, useMediaQuery } from 'datocms-react-ui';
-import { type ReactNode, useMemo, useRef, useState } from 'react';
+import Canvas, { type NavigationAdapter } from 'datocms-react-ui/Canvas';
+import { ListDetailWidthsProvider } from 'datocms-react-ui/ListDetail';
+import { useInMemorySidebarPanelOpen } from 'datocms-react-ui/SidebarPanel';
+import { useInMemoryTableLayout } from 'datocms-react-ui/Table';
+import { useMemo, useRef, useState } from 'react';
 import { SCOPE_MODAL_ID } from '../constants';
 import { createSchemaLoader } from '../data/schema';
 import {
-  FirstRunSlate,
+  FirstRunOverview,
   NoAccessState,
   NoModelsState,
 } from '../project/PageStates';
-import { PageToolbar } from '../project/PageToolbar';
-import { ReportLayout } from '../project/ReportLayout';
+import { REPORT_TEXTS } from '../project/PageToolbar';
+import { ReportLayout, ROW_BASE_URL } from '../project/ReportLayout';
+import { DEFAULT_TABLE_LAYOUT } from '../project/ReportTable';
 import { createProjectProducer } from '../project/scanProject';
 import { useSettledScan } from '../project/useSettledScan';
 import { localeName } from '../report/format';
@@ -23,55 +27,51 @@ import {
 import { updateGroup } from '../state/group';
 import { useScan } from '../state/useScan';
 import type { CheckResult, LinkGroup } from '../types';
-import { useWidth } from '../ui/useWidth';
 import { contextKey } from '../utils/contextKey';
 import { downloadReport } from '../utils/csv';
-import type { ScopeModalParams } from './ScopeModal';
+import { type ScopeModalParams, scopeModalHeight } from './ScopeModal';
 
 type PageProps = { ctx: RenderPageCtx };
 
-/** A positioned box the panes and the split can fill. */
-function PageFrame({ ctx, children }: PageProps & { children: ReactNode }) {
-  return (
-    <Canvas ctx={ctx} noAutoResizer>
-      <div className="dl-frame blc-page dl-kit-form-parity">{children}</div>
-    </Canvas>
-  );
-}
+type PageLocation = NonNullable<NavigationAdapter['location']>;
 
-/** One pane with a title-only toolbar: permissions hide the scan controls. */
-function StatePane({ children }: { children: ReactNode }) {
-  return (
-    <div className="dl-pane dl-pane--last blc-main-pane">
-      <PageToolbar mode="none" />
-      <div className="dl-pane__body">{children}</div>
-    </div>
-  );
-}
-
-type FirstRunPaneProps = {
-  onScan: () => void;
-  onChooseScope: () => void;
+/** No row open: the list alone. The location lives only in memory. */
+const BASE_LOCATION: PageLocation = {
+  pathname: ROW_BASE_URL,
+  search: '',
 };
 
-/** The blank slate holds the pane's one primary "Scan links"; the toolbar offers the scope. */
-function FirstRunPane({ onScan, onChooseScope }: FirstRunPaneProps) {
-  const paneRef = useRef<HTMLDivElement>(null);
-  const paneWidth = useWidth(paneRef);
-  return (
-    <div ref={paneRef} className="dl-pane dl-pane--last blc-main-pane">
-      <PageToolbar
-        mode="firstRun"
-        paneWidth={paneWidth}
-        onChooseScope={onChooseScope}
-      />
-      <div className="dl-pane__body">
-        <div className="dl-page dl-page--wide">
-          <FirstRunSlate onScan={onScan} />
-        </div>
-      </div>
-    </div>
+function locationOf(to: string): PageLocation {
+  const [pathname, query] = to.split('?');
+  return { pathname, search: query ? `?${query}` : '' };
+}
+
+/**
+ * The open row lives in an in-memory route ("/links/<URL key>"), and the
+ * widths of the list and of the detail in state, so a new scan keeps them.
+ */
+function usePageNavigation() {
+  const [location, setLocation] = useState(BASE_LOCATION);
+  const navigation = useMemo<NavigationAdapter>(
+    () => ({ location, navigate: (to) => setLocation(locationOf(to)) }),
+    [location],
   );
+  const [listWidth, setListWidth] = useState<number>();
+  const [detailWidth, setDetailWidth] = useState<number>();
+  const widths = useMemo(
+    () => ({
+      listWidth,
+      onListWidthChange: setListWidth,
+      detailWidth,
+      onDetailWidthChange: setDetailWidth,
+    }),
+    [listWidth, detailWidth],
+  );
+  return {
+    navigation,
+    widths,
+    closeRow: () => setLocation(BASE_LOCATION),
+  };
 }
 
 function ProjectScanner({ ctx }: PageProps) {
@@ -99,9 +99,12 @@ function ProjectScanner({ ctx }: PageProps) {
   const scanRun = useRef(0);
   const exportRunning = useRef(false);
   const [exporting, setExporting] = useState(false);
-  // Read once: below 1800px the sidebar starts as a rail and opens on selection.
-  const wide = useMediaQuery('(min-width: 1800px)').matches;
-  const [collapsed, setCollapsed] = useState(!wide);
+  const { navigation, widths, closeRow } = usePageNavigation();
+  // What the user arranged outlives a new scan, which remounts the report.
+  const [tableLayout, setTableLayout] =
+    useInMemoryTableLayout(DEFAULT_TABLE_LAYOUT);
+  const [linkOpen, setLinkOpen] = useInMemorySidebarPanelOpen(true);
+  const [recordsOpen, setRecordsOpen] = useInMemorySidebarPanelOpen(true);
   const siteLocales = ctx.site.attributes.locales;
   const uiLocale = ctx.ui.locale;
   const scanning = scan.running && recheckKey === undefined;
@@ -113,6 +116,8 @@ function ProjectScanner({ ctx }: PageProps) {
     setScope(next);
     setChangedRecordIds(new Set());
     setRecordTotal(undefined);
+    // A URL of the new report could have the open row's key.
+    closeRow();
     scanRun.current += 1;
     const run = scanRun.current;
     void scan.start(
@@ -139,13 +144,12 @@ function ProjectScanner({ ctx }: PageProps) {
         id: SCOPE_MODAL_ID,
         title: 'Choose what to scan',
         width: 's',
-        // The intro, the switches (the locale one on multi-locale sites) and the button
-        initialHeight: siteLocales.length > 1 ? 328 : 242,
+        initialHeight: scopeModalHeight(siteLocales.length > 1),
         parameters,
       });
     } catch (error) {
       console.error(error);
-      void ctx.alert("Couldn't open the scan dialog!");
+      void ctx.alert("Couldn't open the scan dialog.");
       return;
     }
     // ✕ and Esc resolve undefined: nothing to start.
@@ -171,7 +175,7 @@ function ProjectScanner({ ctx }: PageProps) {
       setChangedRecordIds((previous) => new Set(previous).add(recordId));
     } catch (error) {
       console.error(error);
-      void ctx.alert("Couldn't open the record!");
+      void ctx.alert("Couldn't open the record.");
     }
   };
 
@@ -198,7 +202,7 @@ function ProjectScanner({ ctx }: PageProps) {
       );
     } catch (error) {
       console.error(error);
-      void ctx.alert("Couldn't export the report!");
+      void ctx.alert("Couldn't export the report.");
     } finally {
       exportRunning.current = false;
       setExporting(false);
@@ -212,75 +216,72 @@ function ProjectScanner({ ctx }: PageProps) {
     const envPrefix = ctx.isEnvironmentPrimary
       ? ''
       : `/environments/${ctx.environment}`;
-    const openSchema = async () => {
-      try {
-        await ctx.navigateTo(`${envPrefix}/schema`);
-      } catch (error) {
-        console.error(error);
-        void ctx.alert("Couldn't open Schema!");
-      }
-    };
+    // The CMS router of a plain Canvas opens Schema.
     return (
-      <StatePane>
-        <div className="dl-page">
-          <NoModelsState
-            hasModels={hasModels}
-            onOpenSchema={
-              currentRole.meta.final_permissions.can_edit_schema
-                ? () => void openSchema()
-                : undefined
-            }
-          />
-        </div>
-      </StatePane>
+      <Canvas ctx={ctx} noAutoResizer>
+        <NoModelsState
+          hasModels={hasModels}
+          schemaPath={
+            currentRole.meta.final_permissions.can_edit_schema
+              ? `${envPrefix}/schema`
+              : undefined
+          }
+        />
+      </Canvas>
     );
   }
 
-  if (!scan.report)
-    return (
-      <FirstRunPane
-        onScan={() => startScan(scope)}
-        onChooseScope={() => void chooseScope()}
-      />
-    );
-
   return (
-    <ReportLayout
-      key={scan.report.startedAt}
-      report={scan.report}
-      scanning={scanning}
-      rechecking={rechecking}
-      recheckKey={recheckKey}
-      recheckResult={recheckResult}
-      settled={settled}
-      recordTotal={recordTotal}
-      changedRecordIds={changedRecordIds}
-      multiLocale={siteLocales.length > 1}
-      uiLocale={uiLocale}
-      collapsed={collapsed}
-      onCollapsedChange={setCollapsed}
-      onScan={() => startScan(scope)}
-      onChooseScope={() => void chooseScope()}
-      onCancel={scan.cancel}
-      exporting={exporting}
-      onExport={() => void exportCsv()}
-      onRecheck={(group) => void recheck(group)}
-      onOpenRecord={(recordId) => void openRecord(recordId)}
-    />
+    <Canvas
+      ctx={ctx}
+      noAutoResizer
+      navigation={navigation}
+      texts={REPORT_TEXTS}
+    >
+      <ListDetailWidthsProvider value={widths}>
+        {scan.report ? (
+          <ReportLayout
+            key={scan.report.startedAt}
+            report={scan.report}
+            scanning={scanning}
+            rechecking={rechecking}
+            recheckKey={recheckKey}
+            recheckResult={recheckResult}
+            settled={settled}
+            recordTotal={recordTotal}
+            changedRecordIds={changedRecordIds}
+            multiLocale={siteLocales.length > 1}
+            uiLocale={uiLocale}
+            tableLayout={tableLayout}
+            onTableLayoutChange={setTableLayout}
+            linkPanel={{ open: linkOpen, onToggle: setLinkOpen }}
+            recordsPanel={{ open: recordsOpen, onToggle: setRecordsOpen }}
+            onScan={() => startScan(scope)}
+            onChooseScope={() => void chooseScope()}
+            onCancel={scan.cancel}
+            exporting={exporting}
+            onExport={() => void exportCsv()}
+            onRecheck={(group) => void recheck(group)}
+            onOpenRecord={(recordId) => void openRecord(recordId)}
+          />
+        ) : (
+          <FirstRunOverview
+            onScan={() => startScan(scope)}
+            onChooseScope={() => void chooseScope()}
+          />
+        )}
+      </ListDetailWidthsProvider>
+    </Canvas>
   );
 }
 
 /** The Link checker page. Scanning saved records needs the current user's API token. */
 export default function ProjectPage({ ctx }: PageProps) {
-  return (
-    <PageFrame ctx={ctx}>
-      {ctx.currentUserAccessToken ? (
-        <ProjectScanner ctx={ctx} />
-      ) : (
-        <StatePane>
-          <NoAccessState />
-        </StatePane>
-      )}
-    </PageFrame>
-  );
+  if (!ctx.currentUserAccessToken)
+    return (
+      <Canvas ctx={ctx} noAutoResizer>
+        <NoAccessState />
+      </Canvas>
+    );
+  return <ProjectScanner ctx={ctx} />;
 }

@@ -1,113 +1,123 @@
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import { useState } from 'react';
-import { formatWarning } from '../report/format';
-import { proxyRefused } from '../report/view';
+import { countLabel, formatWarning } from '../report/format';
+import { pageSlice, proxyRefused } from '../report/view';
 import type { ScanReport } from '../types';
-import { LinkButton } from '../ui/LinkButton';
 import { ProxyRefusedCallout } from '../ui/ProxyRefusedCallout';
+import styles from './Panel.module.css';
 
 const WARNINGS_SHOWN = 3;
 const LARGE_WARNING_COUNT = 200;
 const WARNINGS_PER_PAGE = 50;
 
-function PanelWarnings({
-  warnings,
-  uiLocale,
-}: {
+type CoverageCalloutProps = {
+  cancelled: boolean;
   warnings: readonly string[];
+  /** No content could be read at all. */
+  readNothing: boolean;
   uiLocale: string;
-}) {
+};
+
+/** The callout's problem in a few words; when nothing was read, the reason below it says why. */
+function calloutTitle(cancelled: boolean, listed: boolean) {
+  if (cancelled) return 'Check canceled';
+  return listed ? "Some content couldn't be read" : "Couldn't read the record";
+}
+
+function issuesToggleLabel(count: number, expanded: boolean, uiLocale: string) {
+  if (expanded) return 'Show fewer issues';
+  return countLabel(
+    count,
+    'Show 1 issue',
+    count > LARGE_WARNING_COUNT ? 'Browse {n} issues' : 'Show all {n} issues',
+    uiLocale,
+  );
+}
+
+/** The content that couldn't be read, as a list: 3 at first, then all, or pages of 50 above 200. */
+function shownIssues(
+  warnings: readonly string[],
+  expanded: boolean,
+  page: number,
+): readonly string[] {
+  if (!expanded) return warnings.slice(0, WARNINGS_SHOWN);
+  if (warnings.length > LARGE_WARNING_COUNT)
+    return pageSlice(warnings, page + 1, WARNINGS_PER_PAGE);
+  return warnings;
+}
+
+/**
+ * What a canceled or partial check leaves out. When nothing could be read,
+ * the reason alone is the message. Otherwise the content that couldn't be
+ * read is a list; its controls sit right under the callout, since a callout
+ * holds no buttons.
+ */
+function CoverageCallout({
+  cancelled,
+  warnings,
+  readNothing,
+  uiLocale,
+}: CoverageCalloutProps) {
   const [expanded, setExpanded] = useState(false);
-  const [page, setPage] = useState(1);
-  const paginated = expanded && warnings.length > LARGE_WARNING_COUNT;
-  const pages = Math.ceil(warnings.length / WARNINGS_PER_PAGE);
-  const current = Math.min(page, pages);
-  const shown = paginated
-    ? warnings.slice(
-        (current - 1) * WARNINGS_PER_PAGE,
-        current * WARNINGS_PER_PAGE,
-      )
-    : expanded
-      ? warnings
-      : warnings.slice(0, WARNINGS_SHOWN);
+  const [page, setPage] = useState(0);
+  const reasonsOnly = readNothing && warnings.length <= LARGE_WARNING_COUNT;
+  const listed = warnings.length > 0 && !reasonsOnly;
+  const canToggle = listed && warnings.length > WARNINGS_SHOWN;
   return (
     <>
-      <p>
-        <strong>
-          Some content couldn't be read, so its links weren't checked:
-        </strong>
-      </p>
-      <ul className="blc-callout__list">
-        {shown.map((warning) => (
-          <li key={warning}>{formatWarning(warning, uiLocale)}</li>
-        ))}
-      </ul>
-      {paginated && (
-        <nav className="dl-pagination" aria-label="Content issues">
-          <button
-            type="button"
-            className="dl-pagination__nav"
-            disabled={current <= 1}
-            onClick={() => setPage(current - 1)}
-          >
-            « Previous
-          </button>
-          <span>
-            {current.toLocaleString(uiLocale)} of{' '}
-            {pages.toLocaleString(uiLocale)}
-          </span>
-          <button
-            type="button"
-            className="dl-pagination__nav"
-            disabled={current >= pages}
-            onClick={() => setPage(current + 1)}
-          >
-            Next »
-          </button>
-        </nav>
-      )}
-      {warnings.length > WARNINGS_SHOWN && (
-        <div className="blc-callout__toggle">
-          <LinkButton onClick={() => setExpanded((value) => !value)}>
-            {expanded
-              ? 'Show fewer issues'
-              : `${warnings.length > LARGE_WARNING_COUNT ? 'Browse' : 'Show all'} ${warnings.length.toLocaleString(uiLocale)} issues`}
-          </LinkButton>
+      <Callout
+        tone="warning"
+        title={calloutTitle(cancelled, listed)}
+        className={canToggle ? styles.calloutAboveControls : undefined}
+      >
+        {cancelled && <p>URLs that weren't checked show as “Not checked”.</p>}
+        {reasonsOnly &&
+          warnings.map((warning) => (
+            <p key={warning}>{formatWarning(warning, uiLocale)}</p>
+          ))}
+        {listed && (
+          <>
+            <p>
+              {cancelled
+                ? "Some content couldn't be read, so its links weren't checked:"
+                : "Its links weren't checked:"}
+            </p>
+            <ul>
+              {shownIssues(warnings, expanded, page).map((warning) => (
+                <li key={warning}>{formatWarning(warning, uiLocale)}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Callout>
+      {canToggle && (
+        <div className={styles.controls}>
+          <Button
+            tone="ghost"
+            label={issuesToggleLabel(warnings.length, expanded, uiLocale)}
+            onClick={() => setExpanded((value) => !value)}
+          />
+          {expanded && warnings.length > LARGE_WARNING_COUNT && (
+            <Toolbar className={styles.pages}>
+              <Toolbar.Pagination
+                ariaLabel="Content issues"
+                compact
+                currentPage={page}
+                perPage={WARNINGS_PER_PAGE}
+                totalEntries={warnings.length}
+                onChange={setPage}
+              />
+            </Toolbar>
+          )}
         </div>
       )}
     </>
   );
 }
 
-/** The settled results may be out of date once the content changes. */
-function StaleNote({ stale }: { stale: boolean }) {
-  if (!stale) return null;
-  return (
-    <p className="blc-note">
-      The record changed after this check. Check again to refresh the results.
-    </p>
-  );
-}
-
-/** Why a check read nothing at all: the reason alone, without the partial-read intro. */
-function UnreadNote({
-  warnings,
-  uiLocale,
-}: {
-  warnings: readonly string[];
-  uiLocale: string;
-}) {
-  if (warnings.length > LARGE_WARNING_COUNT)
-    return <PanelWarnings warnings={warnings} uiLocale={uiLocale} />;
-  return (
-    <>
-      {warnings.map((warning) => (
-        <p key={warning}>{formatWarning(warning, uiLocale)}</p>
-      ))}
-    </>
-  );
-}
-
-/** What limits the settled results: a stale form, a canceled check, content that couldn't be read. */
+/** What limits the settled results: a refused check, a stale form, a canceled check, content that couldn't be read. */
 export function PanelNotes({
   report,
   running,
@@ -119,25 +129,22 @@ export function PanelNotes({
 }) {
   if (!report || running) return null;
   const cancelled = report.state === 'cancelled';
-  const hasWarnings = report.warnings.length > 0;
   return (
     <>
-      {proxyRefused(report.groups) && <ProxyRefusedCallout compact />}
-      <StaleNote stale={report.stale === true} />
-      {(cancelled || hasWarnings) && (
-        <div className="dl-callout dl-callout--warning blc-callout--compact">
-          {cancelled && (
-            <p>
-              Check canceled. URLs that weren't checked show as "Not checked".
-            </p>
-          )}
-          {hasWarnings &&
-            (report.recordsScanned === 0 ? (
-              <UnreadNote warnings={report.warnings} uiLocale={uiLocale} />
-            ) : (
-              <PanelWarnings warnings={report.warnings} uiLocale={uiLocale} />
-            ))}
-        </div>
+      {proxyRefused(report.groups) && <ProxyRefusedCallout />}
+      {report.stale === true && (
+        <Callout title="Results out of date">
+          The record changed after this check. Check again to refresh the
+          results.
+        </Callout>
+      )}
+      {(cancelled || report.warnings.length > 0) && (
+        <CoverageCallout
+          cancelled={cancelled}
+          warnings={report.warnings}
+          readNothing={report.recordsScanned === 0}
+          uiLocale={uiLocale}
+        />
       )}
     </>
   );

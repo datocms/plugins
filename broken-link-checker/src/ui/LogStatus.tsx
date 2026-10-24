@@ -1,88 +1,36 @@
-import {
-  faCircleCheck,
-  faCircleQuestion,
-  faCircleStop,
-  faHourglassHalf,
-  type IconDefinition,
-} from '@fortawesome/free-regular-svg-icons';
-import {
-  faArrowRightArrowLeft,
-  faCircleExclamation,
-  faCircleMinus,
-  faShieldHalved,
-  faTriangleExclamation,
-} from '@fortawesome/free-solid-svg-icons';
+import FeedbackDot from 'datocms-react-ui/FeedbackDot';
 import type { CheckStatus } from '../types';
-import { Icon } from './Icon';
+
+export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 
 type StatusMeta = {
   label: string;
-  icon: IconDefinition;
-  className: string;
+  tone: StatusTone;
 };
 
 /**
- * Operational results as icon + word: only the icon carries the tone. Nothing
- * spins here: the scan summary's spinner is the page's one loading indicator.
+ * Each result as a word with the tone of its dot: red for what is broken,
+ * amber for what couldn't be verified, green for a reachable link, grey for
+ * what wasn't checked or needs no check.
  */
 export const STATUS_META: Record<CheckStatus, StatusMeta> = {
-  broken: {
-    label: 'Broken',
-    icon: faCircleExclamation,
-    className: 'dl-log-status--failed',
-  },
-  invalid: {
-    label: 'Invalid',
-    icon: faTriangleExclamation,
-    className: 'dl-log-status--failed',
-  },
-  unverified: {
-    label: 'Unverified',
-    icon: faCircleQuestion,
-    className: 'blc-log-status--warning',
-  },
-  cancelled: {
-    label: 'Not checked',
-    icon: faCircleStop,
-    className: 'blc-log-status--subtle',
-  },
-  blocked: {
-    label: 'Blocked',
-    icon: faShieldHalved,
-    className: 'blc-log-status--subtle',
-  },
-  checking: {
-    label: 'Checking',
-    icon: faHourglassHalf,
-    className: 'blc-log-status--subtle',
-  },
-  queued: {
-    label: 'Pending',
-    icon: faArrowRightArrowLeft,
-    className: 'dl-log-status--pending',
-  },
-  reachable: {
-    label: 'Reachable',
-    icon: faCircleCheck,
-    className: 'dl-log-status--success',
-  },
-  skipped: {
-    label: 'Skipped',
-    icon: faCircleMinus,
-    className: '',
-  },
+  broken: { label: 'Broken', tone: 'danger' },
+  invalid: { label: 'Invalid', tone: 'danger' },
+  unverified: { label: 'Unverified', tone: 'warning' },
+  cancelled: { label: 'Not checked', tone: 'neutral' },
+  blocked: { label: 'Blocked', tone: 'neutral' },
+  checking: { label: 'Checking', tone: 'neutral' },
+  queued: { label: 'Pending', tone: 'neutral' },
+  reachable: { label: 'Reachable', tone: 'success' },
+  skipped: { label: 'Skipped', tone: 'neutral' },
 };
 
+/** A check result: the dot and its word (the dot never stands alone). */
 export function LogStatus({ status }: { status: CheckStatus }) {
-  const meta = STATUS_META[status];
+  const { label, tone } = STATUS_META[status];
   return (
-    <span
-      className={
-        meta.className ? `dl-log-status ${meta.className}` : 'dl-log-status'
-      }
-    >
-      <Icon icon={meta.icon} />
-      {meta.label}
+    <span>
+      <FeedbackDot tone={tone} /> {label}
     </span>
   );
 }

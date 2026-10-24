@@ -1,14 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ALL_SCOPE, type Scope } from '../report/scope';
 import { modalContext } from '../test/fixtures';
 import ScopeModal, { type ScopeModalParams } from './ScopeModal';
-
-vi.mock(
-  'datocms-react-ui',
-  async () => (await import('../test/fixtures')).reactUi,
-);
 
 function params(overrides: Partial<ScopeModalParams> = {}): ScopeModalParams {
   return {
@@ -32,21 +27,43 @@ function renderModal(parameters: Record<string, unknown>) {
   return ctx;
 }
 
-const modelSwitch = () =>
-  screen.getByRole('switch', { name: 'Limit to specific models?' });
-const localeSwitch = () =>
-  screen.queryByRole('switch', { name: 'Limit to specific locales?' });
+const radio = (name: string) => screen.getByRole('radio', { name });
+// The required fields' names end with the asterisk of their label.
+const modelSelect = () =>
+  screen.queryByRole('combobox', { name: /^Models to scan/ });
+const localeSelect = () =>
+  screen.queryByRole('combobox', { name: /^Locales to scan/ });
 const submit = () => screen.getByRole('button', { name: 'Scan links' });
+
+/** Opens a react-select and picks an option by its label. */
+async function pick(
+  user: ReturnType<typeof userEvent.setup>,
+  select: HTMLElement,
+  label: string,
+) {
+  await user.click(select);
+  await user.click(await screen.findByRole('option', { name: label }));
+}
+
+/** The picked values of a multiple select, from the labels of its pills. */
+function pills(select: HTMLElement) {
+  const field = select.closest('.form__field');
+  if (!(field instanceof HTMLElement)) return [];
+  return Array.from(
+    field.querySelectorAll('.SelectInput__multi-value-label'),
+    (label) => label.textContent,
+  );
+}
 
 describe('scope modal', () => {
   it('scans everything by default', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(params());
-    expect(screen.getByText('main')).toHaveClass('blc-code');
-    expect(modelSwitch()).not.toBeChecked();
-    expect(localeSwitch()).not.toBeChecked();
-    expect(screen.queryByLabelText('Models')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Locales')).not.toBeInTheDocument();
+    expect(screen.getByText('main')).toHaveClass('IdText');
+    expect(radio('All models')).toBeChecked();
+    expect(radio('All locales')).toBeChecked();
+    expect(modelSelect()).not.toBeInTheDocument();
+    expect(localeSelect()).not.toBeInTheDocument();
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: 'all',
@@ -57,25 +74,26 @@ describe('scope modal', () => {
   it('reveals the model select and asks for a model before scanning', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(params());
-    await user.click(modelSwitch());
-    // The kit's label points at the select's container, so the name comes from aria-label.
-    const models = screen.getByRole('listbox', { name: 'Models' });
-    expect(screen.queryByText('Field is required')).not.toBeInTheDocument();
-    expect(submit()).toBeEnabled();
+    await user.click(radio('Only some models'));
+    const models = modelSelect();
+    expect(models).toBeInTheDocument();
+    if (!models) return;
+    expect(screen.queryByText('Pick at least one model.')).toBeNull();
     await user.click(submit());
     expect(ctx.resolve).not.toHaveBeenCalled();
-    expect(screen.getByText('Field is required')).toBeInTheDocument();
+    expect(screen.getByText('Pick at least one model.')).toBeInTheDocument();
+    expect(models).toHaveAttribute('aria-invalid', 'true');
     expect(models).toHaveFocus();
-    await user.selectOptions(models, 'page');
-    expect(screen.queryByText('Field is required')).not.toBeInTheDocument();
+    await pick(user, models, 'Page');
+    expect(screen.queryByText('Pick at least one model.')).toBeNull();
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
       localeIds: 'all',
     } satisfies Scope);
 
-    await user.click(modelSwitch());
-    expect(screen.queryByLabelText('Models')).not.toBeInTheDocument();
+    await user.click(radio('All models'));
+    expect(modelSelect()).not.toBeInTheDocument();
   });
 
   it('asks for a locale when only the locale list is empty', async () => {
@@ -83,15 +101,15 @@ describe('scope modal', () => {
     const ctx = renderModal(
       params({ scope: { modelIds: ['page'], localeIds: 'all' } }),
     );
-    await user.click(
-      screen.getByRole('switch', { name: 'Limit to specific locales?' }),
-    );
+    await user.click(radio('Only some locales'));
     await user.click(submit());
     expect(ctx.resolve).not.toHaveBeenCalled();
-    expect(screen.getAllByText('Field is required')).toHaveLength(1);
-    const locales = screen.getByRole('listbox', { name: 'Locales' });
+    expect(screen.getByText('Pick at least one locale.')).toBeInTheDocument();
+    expect(screen.queryByText('Pick at least one model.')).toBeNull();
+    const locales = localeSelect();
     expect(locales).toHaveFocus();
-    await user.selectOptions(locales, 'it');
+    if (!locales) return;
+    await pick(user, locales, 'Italian');
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
@@ -99,23 +117,23 @@ describe('scope modal', () => {
     } satisfies Scope);
   });
 
-  it('opens on a limited scope with the switches on and the selects filled', async () => {
+  it('opens on a limited scope with "Only some" picked and the selects filled', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(
       params({
         scope: { modelIds: ['page', 'deleted-model'], localeIds: ['it'] },
       }),
     );
-    expect(modelSwitch()).toBeChecked();
-    expect(localeSwitch()).toBeChecked();
-    const models = screen.getByLabelText<HTMLSelectElement>('Models');
-    const locales = screen.getByLabelText<HTMLSelectElement>('Locales');
-    expect(
-      Array.from(models.selectedOptions, (option) => option.value),
-    ).toEqual(['page']);
-    expect(
-      Array.from(locales.selectedOptions, (option) => option.value),
-    ).toEqual(['it']);
+    expect(radio('Only some models')).toBeChecked();
+    expect(radio('Only some locales')).toBeChecked();
+    const models = modelSelect();
+    const locales = localeSelect();
+    expect(models).toBeInTheDocument();
+    expect(locales).toBeInTheDocument();
+    if (!models || !locales) return;
+    // The model that no longer exists is dropped.
+    expect(pills(models)).toEqual(['Page']);
+    expect(pills(locales)).toEqual(['Italian']);
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
@@ -123,7 +141,7 @@ describe('scope modal', () => {
     } satisfies Scope);
   });
 
-  it('has no locale switch on a single-locale site', async () => {
+  it('has no locale choice on a single-locale site', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(
       params({
@@ -131,8 +149,8 @@ describe('scope modal', () => {
         scope: { modelIds: 'all', localeIds: ['en'] },
       }),
     );
-    expect(localeSwitch()).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Locales')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'All locales' })).toBeNull();
+    expect(localeSelect()).not.toBeInTheDocument();
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: 'all',
@@ -144,8 +162,8 @@ describe('scope modal', () => {
     const user = userEvent.setup();
     const ctx = renderModal({ scope: { modelIds: 42 } });
     expect(screen.getByText('main')).toBeInTheDocument();
-    expect(modelSwitch()).not.toBeChecked();
-    expect(localeSwitch()).not.toBeInTheDocument();
+    expect(radio('All models')).toBeChecked();
+    expect(screen.queryByRole('radio', { name: 'All locales' })).toBeNull();
     await user.click(submit());
     expect(ctx.resolve).toHaveBeenCalledWith(ALL_SCOPE);
   });

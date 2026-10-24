@@ -1,8 +1,13 @@
-import { Spinner } from 'datocms-react-ui';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
+import Spinner from 'datocms-react-ui/Spinner';
+import { countLabel } from '../report/format';
 import { countStatuses } from '../report/view';
 import type { ScanReport } from '../types';
-import { Button } from '../ui/Button';
-import { DisabledReason } from '../ui/WithTooltip';
+import styles from './Panel.module.css';
+
+const SAVING = {
+  reason: "You can't check links while the record is being saved.",
+};
 
 type PanelControlsProps = {
   running: boolean;
@@ -12,7 +17,13 @@ type PanelControlsProps = {
   onCancel: () => void;
 };
 
-/** Sits above the results, so the button doesn't move while they stream in. */
+/**
+ * The panel's one action, above the results, so it doesn't move while they
+ * stream in: the small action of a panel, its text in line with the content
+ * below it as far as its focus ring stays in the frame (see the CSS module).
+ * It stays the same button while its label changes, so the focus stays on it
+ * when a check starts or ends.
+ */
 export function PanelControls({
   running,
   submitting,
@@ -20,33 +31,24 @@ export function PanelControls({
   onCheck,
   onCancel,
 }: PanelControlsProps) {
-  return running ? (
-    <Button buttonSize="xs" fullWidth onClick={onCancel}>
-      Cancel check
-    </Button>
-  ) : (
-    <DisabledReason
-      block
-      reason={
-        submitting
-          ? 'You cannot check links while the record is being saved'
-          : null
-      }
-    >
-      <Button
-        buttonSize="xs"
-        fullWidth
-        disabled={submitting}
-        style={submitting ? { pointerEvents: 'none' } : undefined}
-        onClick={onCheck}
-      >
-        {hasReport ? 'Check again' : 'Check links'}
-      </Button>
-    </DisabledReason>
+  return (
+    <div className={styles.action}>
+      <SidebarPanel.Action
+        label={
+          running ? 'Cancel check' : hasReport ? 'Check again' : 'Check links'
+        }
+        disabled={!running && submitting ? SAVING : undefined}
+        onClick={running ? onCancel : onCheck}
+      />
+    </div>
   );
 }
 
-/** One status line while a check runs. */
+/**
+ * One status line while a check runs: the inline spinner before the text of
+ * the state, which already says that the check runs. The spinner is a block
+ * element, so the line is a <div>, not a <p>.
+ */
 export function PanelProgress({
   report,
   uiLocale,
@@ -55,15 +57,17 @@ export function PanelProgress({
   uiLocale: string;
 }) {
   const counts = countStatuses(report.groups);
-  const left = (counts.queued + counts.checking).toLocaleString(uiLocale);
   return (
-    <div className="blc-panel-status">
-      <span className="blc-spinner-box">
-        <Spinner size={25} placement="centered" />
-      </span>
+    <div>
+      <Spinner inline label={false} />{' '}
       {report.discovering
         ? 'Reading the record…'
-        : `Checking URLs (${left} left)…`}
+        : countLabel(
+            counts.queued + counts.checking,
+            'Checking URLs (1 left)…',
+            'Checking URLs ({n} left)…',
+            uiLocale,
+          )}
     </div>
   );
 }

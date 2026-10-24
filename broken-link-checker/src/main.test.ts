@@ -8,11 +8,9 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { sdkModel } from './test/fixtures';
 
 vi.mock('datocms-plugin-sdk', () => ({ connect: vi.fn() }));
-vi.mock(
-  'datocms-react-ui',
-  async () => (await import('./test/fixtures')).reactUi,
-);
 vi.mock('./utils/render', () => ({ render: vi.fn() }));
+// The kit's stylesheet uses CSS that jsdom can't parse; the hooks don't need it.
+vi.mock('datocms-react-ui/styles.css', () => ({}));
 
 type Hooks = NonNullable<Parameters<typeof connect>[0]>;
 let hooks: Hooks;
@@ -51,7 +49,7 @@ describe('plugin hooks', () => {
   });
 
   it('opens the record panel at the idle panel height', () => {
-    expect(panelHeight(['en', 'it'])).toBe(41);
-    expect(panelHeight(['en'])).toBe(41);
+    expect(panelHeight(['en', 'it'])).toBe(26);
+    expect(panelHeight(['en'])).toBe(26);
   });
 });

@@ -1,73 +1,67 @@
+import Callout from 'datocms-react-ui/Callout';
 import {
-  faCircleCheck,
-  faCircleStop,
-  faClock,
-  type IconDefinition,
-} from '@fortawesome/free-regular-svg-icons';
-import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import {
-  countLabel,
-  formatDateTime,
-  inSentence,
-  joinFacts,
-} from '../report/format';
+  type DateSettings,
+  useDateSettings,
+} from 'datocms-react-ui/DateSettings';
+import { formatDateTime } from 'datocms-react-ui/utils/formatDate';
+import type { Ref } from 'react';
+import { countLabel, joinFacts } from '../report/format';
 import { type ScanProgress, scanProgress } from '../report/view';
 import type { ScanReport } from '../types';
-import { Icon } from '../ui/Icon';
-import { LinkButton } from '../ui/LinkButton';
-import { DisabledReason } from '../ui/WithTooltip';
+import {
+  CoverageCallout,
+  coverageText,
+  type IssueListState,
+  type SettledPhase,
+} from './CoverageCallout';
+import styles from './Notices.module.css';
 import type { SettledScan } from './useSettledScan';
 
-export type ScanAgain = {
-  disabledReason: string | null;
-  onClick: () => void;
-};
-
-type ScanSummaryProps = {
-  report: ScanReport;
-  settled?: SettledScan;
-  uiLocale: string;
-  /** Passed only when the stale line carries the action (no coverage callout). */
-  scanAgain?: ScanAgain;
-};
-
-type Phase = Exclude<ScanReport['state'], 'running'>;
-
 const SETTLED: Record<
-  Phase,
-  { headline: string; icon: IconDefinition; tone: string }
+  SettledPhase,
+  { title: string; tone: 'neutral' | 'warning' }
 > = {
-  complete: { headline: 'Scan complete', icon: faCircleCheck, tone: 'success' },
-  partial: {
-    headline: 'Scan incomplete',
-    icon: faTriangleExclamation,
-    tone: 'warning',
-  },
-  cancelled: { headline: 'Scan canceled', icon: faCircleStop, tone: 'subtle' },
+  complete: { title: 'Scan complete', tone: 'neutral' },
+  partial: { title: 'Scan incomplete', tone: 'warning' },
+  cancelled: { title: 'Scan canceled', tone: 'warning' },
 };
+
+/**
+ * Two sentences, so the note has a title: the tag of the changed URLs in the
+ * table. The next step is the title bar's "Scan links".
+ */
+const STALE_TITLE = 'Content changed';
+const STALE_TEXT =
+  'Records changed after this scan, so some results may be out of date. Scan again to refresh them.';
 
 /** During a recheck the report reads as running, so the settled scan decides. */
-function summaryPhase(report: ScanReport, settled?: SettledScan): Phase {
+function summaryPhase(report: ScanReport, settled?: SettledScan): SettledPhase {
   const state = settled?.state ?? report.state;
   return state === 'running' ? 'complete' : state;
 }
 
-function recordsRead(progress: ScanProgress, uiLocale: string) {
-  return countLabel(
-    progress.records,
-    '1 record read',
-    '{n} records read',
-    uiLocale,
-  );
+/** The headline of a settled scan: "Scan complete". */
+export function summaryHeadline(
+  report: ScanReport,
+  settled?: SettledScan,
+): string {
+  return SETTLED[summaryPhase(report, settled)].title;
 }
 
 function settledMeta(
   scope: string,
   progress: ScanProgress,
-  phase: Phase,
+  phase: SettledPhase,
   uiLocale: string,
+  dateSettings: DateSettings,
   finishedAt?: string,
 ) {
+  const records = countLabel(
+    progress.records,
+    '1 record read',
+    '{n} records read',
+    uiLocale,
+  );
   const found =
     progress.found === 0
       ? 'No URLs found'
@@ -84,87 +78,103 @@ function settledMeta(
   const blocked =
     progress.blocked > 0 &&
     countLabel(progress.blocked, '1 blocked', '{n} blocked', uiLocale);
+  // "Finished today, 14:32", in the user's date settings.
   const time =
     finishedAt &&
-    `${phase === 'cancelled' ? 'Stopped' : 'Finished'} ${inSentence(formatDateTime(finishedAt, uiLocale))}`;
-  return joinFacts([
-    scope,
-    recordsRead(progress, uiLocale),
-    found,
-    attention,
-    blocked,
-    time,
-  ]);
+    `${phase === 'cancelled' ? 'Stopped' : 'Finished'} ${formatDateTime(finishedAt, dateSettings, 'today')}`;
+  return joinFacts([scope, records, found, attention, blocked, time]);
 }
 
-function ScanAgainLink({ disabledReason, onClick }: ScanAgain) {
-  if (disabledReason === null)
-    return <LinkButton onClick={onClick}>Scan again</LinkButton>;
-  return (
-    <DisabledReason reason={disabledReason}>
-      <button
-        type="button"
-        className="dl-button dl-button--link"
-        disabled
-        style={{ pointerEvents: 'none' }}
-      >
-        Scan again
-      </button>
-    </DisabledReason>
-  );
-}
-
-function SummaryMark({ phase }: { phase: Phase }) {
-  const { icon, tone } = SETTLED[phase];
-  return (
-    <span className={`blc-mark blc-mark--${tone}`}>
-      <Icon icon={icon} />
-    </span>
-  );
-}
+type ScanSummaryProps = {
+  /** The report as the view reads it (a rechecked URL keeps its previous result). */
+  report: ScanReport;
+  settled?: SettledScan;
+  /** URLs that ended as "Not checked". */
+  notCheckedCount: number;
+  /** The list pane is narrow: the pages of the content issues show fewer numbers. */
+  compactPagination?: boolean;
+  /** How the content issues show, kept by the report from the running scan on. */
+  issueList?: IssueListState;
+  uiLocale: string;
+};
 
 /**
- * A settled scan's state, shown once: headline, facts (starting with what the
- * scan covered) and the stale note. A running scan shows ScanProgressBlock instead.
+ * The summary callout of a settled scan: how it ended (complete, incomplete
+ * or canceled), what it leaves out and its facts (what it covered and when it
+ * finished). When records changed after the scan, a note of its own follows
+ * the summary and the controls of its list. The title bar's "Scan links"
+ * scans again, so neither callout holds an action.
  */
 export function ScanSummary({
   report,
   settled,
+  notCheckedCount,
+  compactPagination,
+  issueList,
   uiLocale,
-  scanAgain,
 }: ScanSummaryProps) {
+  const dateSettings = useDateSettings();
   const phase = summaryPhase(report, settled);
+  const { title, tone } = SETTLED[phase];
+  const { lead, listIntro } = coverageText(
+    phase,
+    report.warnings,
+    notCheckedCount,
+    uiLocale,
+  );
   const meta = settledMeta(
     report.scope,
     scanProgress(report),
     phase,
     uiLocale,
+    dateSettings,
     settled?.finishedAt ?? report.finishedAt,
   );
 
   return (
-    <section aria-label="Scan summary">
-      <h2 className="blc-summary__headline" aria-live="polite">
-        <SummaryMark phase={phase} />
-        {SETTLED[phase].headline}
-      </h2>
-      <p className="blc-summary__meta">{meta}</p>
+    <>
+      <CoverageCallout
+        tone={tone}
+        title={title}
+        lead={lead}
+        listIntro={listIntro}
+        warnings={report.warnings}
+        compactPagination={compactPagination}
+        issueList={issueList}
+        uiLocale={uiLocale}
+      >
+        <p>{meta}</p>
+      </CoverageCallout>
       {report.stale && (
-        <p className="blc-summary__stale">
-          <span className="blc-mark blc-mark--subtle">
-            <Icon icon={faClock} />
-          </span>
-          <span>
-            Records changed after this scan, so some results may be out of date.
-            {scanAgain && (
-              <>
-                {' '}
-                <ScanAgainLink {...scanAgain} />
-              </>
-            )}
-          </span>
-        </p>
+        <Callout title={STALE_TITLE} className={styles.callout}>
+          {STALE_TEXT}
+        </Callout>
       )}
-    </section>
+    </>
+  );
+}
+
+/**
+ * The settled headline for screen readers ("Scan complete", "Scan
+ * incomplete", "Scan canceled"). Mount it with the report, before the scan
+ * settles: a live region announces what changes in it, not what it holds
+ * when it appears. It stays empty while a scan runs.
+ */
+export function ScanAnnouncement({
+  report,
+  settled,
+  scanning,
+  ref,
+}: {
+  report: ScanReport;
+  settled?: SettledScan;
+  scanning: boolean;
+  /** Always mounted at the top of the list area, so the list can find its scroll box from it. */
+  ref?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div ref={ref} className="visually-hidden" role="status">
+      {scanning ? '' : summaryHeadline(report, settled)}
+    </div>
   );
 }

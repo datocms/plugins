@@ -1,34 +1,39 @@
-import {
-  SidebarPanel,
-  Toolbar,
-  ToolbarStack,
-  ToolbarTitle,
-} from 'datocms-react-ui';
-import { useEffect, useRef } from 'react';
-import { countLabel } from '../report/format';
-import { groupFacts } from '../report/view';
+import { ListDetail } from 'datocms-react-ui/ListDetail';
+import type { SidebarPanelCollapse } from 'datocms-react-ui/SidebarPanel';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { RecheckIcon } from '../icons';
 import type { LinkGroup } from '../types';
 import { LinkPanel } from './LinkPanel';
 import { UsedInPanel } from './UsedInPanel';
 
-type InfoSidebarProps = {
-  group?: LinkGroup;
+const RECHECK_BLOCKED =
+  "You can't recheck a URL while links are being checked.";
+
+export type LinkDetailProps = {
+  /** The open URL, with its live result: a rechecked URL reads "Checking". */
+  group: LinkGroup;
   scanning: boolean;
   rechecking: boolean;
-  /** `recheckKey === group.key` */
+  /** This URL is the one being rechecked (`recheckKey === group.key`). */
   rechecked: boolean;
   changedRecordIds: ReadonlySet<string>;
   /** On a multi-locale site each place names its locale. */
   showLocale: boolean;
   uiLocale: string;
-  /** In the overlay, which mounts on open: focus starts here. */
-  isOverlay: boolean;
+  /** The open state of the "Link" section, kept across rows. */
+  linkPanel: SidebarPanelCollapse;
+  /** The open state of the "Records" section, kept across rows. */
+  recordsPanel: SidebarPanelCollapse;
   onRecheck: (group: LinkGroup) => void;
   onOpenRecord: (recordId: string) => void;
 };
 
-/** Secondary information about the selected URL, in stacked panels. */
-export function InfoSidebar({
+/**
+ * The detail of the open row: the URL, its result and the records that use
+ * it. The parent keys it by `group.key`, so each URL starts again (its record
+ * pages, its steps). "Recheck URL" exists only for a URL that can be checked.
+ */
+export function LinkDetail({
   group,
   scanning,
   rechecking,
@@ -36,68 +41,43 @@ export function InfoSidebar({
   changedRecordIds,
   showLocale,
   uiLocale,
-  isOverlay,
+  linkPanel,
+  recordsPanel,
   onRecheck,
   onOpenRecord,
-}: InfoSidebarProps) {
-  const asideRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (isOverlay) asideRef.current?.focus({ preventScroll: true });
-  }, [isOverlay]);
-
+}: LinkDetailProps) {
+  const { prepared } = group;
+  const pending = rechecking && rechecked;
+  // A scan, or the recheck of another URL, holds the checker.
+  const blocked = scanning || (rechecking && !rechecked);
   return (
-    <aside
-      ref={asideRef}
-      className="dl-pane dl-pane--last blc-info"
-      aria-label="Link details"
-      tabIndex={isOverlay ? -1 : undefined}
-    >
-      <Toolbar style={{ flex: 'none', minHeight: 60 }}>
-        <ToolbarStack
-          stackSize="s"
-          style={{ gap: 'var(--spacing-m)', minWidth: 0 }}
-        >
-          <ToolbarTitle className="dl-toolbar__title">
-            <h2 className="blc-heading">Info</h2>
-          </ToolbarTitle>
-          <div style={{ flex: 1 }} />
-        </ToolbarStack>
-      </Toolbar>
-      {/* The panels keep their open state across selections. */}
-      <div className="dl-pane__body dl-kit-panels">
-        <SidebarPanel title="Link" startOpen>
-          <LinkPanel
-            group={group}
-            scanning={scanning}
-            rechecking={rechecking}
-            rechecked={rechecked}
-            uiLocale={uiLocale}
-            onRecheck={onRecheck}
+    <ListDetail.Panel
+      title="URL"
+      entity={{ title: prepared.hostname ?? prepared.url }}
+      toolbarAction={
+        prepared.status === 'queued' && (
+          <Toolbar.Button
+            tone="primary"
+            icon={RecheckIcon}
+            label="Recheck URL"
+            busy={pending}
+            disabled={blocked ? { reason: RECHECK_BLOCKED } : undefined}
+            onClick={() => {
+              onRecheck(group);
+            }}
           />
-        </SidebarPanel>
-        {group && (
-          <SidebarPanel
-            title={countLabel(
-              groupFacts(group).recordCount,
-              'Used in 1 record',
-              'Used in {n} records',
-              uiLocale,
-            )}
-            startOpen
-            noPadding
-          >
-            <UsedInPanel
-              key={group.key}
-              group={group}
-              changedRecordIds={changedRecordIds}
-              showLocale={showLocale}
-              uiLocale={uiLocale}
-              onOpenRecord={onOpenRecord}
-            />
-          </SidebarPanel>
-        )}
-      </div>
-    </aside>
+        )
+      }
+    >
+      <LinkPanel group={group} collapse={linkPanel} />
+      <UsedInPanel
+        group={group}
+        changedRecordIds={changedRecordIds}
+        showLocale={showLocale}
+        uiLocale={uiLocale}
+        collapse={recordsPanel}
+        onOpenRecord={onOpenRecord}
+      />
+    </ListDetail.Panel>
   );
 }

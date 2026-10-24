@@ -1,8 +1,14 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas, Form, SelectField, SwitchField } from 'datocms-react-ui';
-import { useMemo, useState } from 'react';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import IdText from 'datocms-react-ui/IdText';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import { type FormEvent, useState } from 'react';
 import { ALL_SCOPE, isScope, type Scope } from '../report/scope';
-import { Button } from '../ui/Button';
+import { useFrameSizedToContent } from '../ui/useFrameSizedToContent';
+import styles from './ScopeModal.module.css';
 
 /** What the project page passes to `openModal`. */
 export type ScopeModalParams = {
@@ -12,7 +18,34 @@ export type ScopeModalParams = {
   scope: Scope;
 };
 
+/**
+ * The `initialHeight` of the dialog: its content height (the host adds the
+ * 20px body padding) before it measures itself, so the frame doesn't jump.
+ * The locale field shows only on multi-locale sites. Measured in a browser on
+ * the dialog as it opens on the whole project ("All models", "All locales"),
+ * at the 600px width of `width: 's'`.
+ */
+export function scopeModalHeight(multiLocale: boolean): number {
+  return multiLocale ? 392 : 234;
+}
+
 type Option = { label: string; value: string };
+
+type Extent = 'all' | 'some';
+
+const MODEL_EXTENTS = [
+  { value: 'all', label: 'All models' },
+  { value: 'some', label: 'Only some models' },
+] as const;
+
+const LOCALE_EXTENTS = [
+  { value: 'all', label: 'All locales' },
+  { value: 'some', label: 'Only some locales' },
+] as const;
+
+/** The input ids, for the focus after a failed submit. */
+const MODELS_INPUT_ID = 'scope-models';
+const LOCALES_INPUT_ID = 'scope-locales';
 
 function isEntryList<K extends string>(
   value: unknown,
@@ -49,67 +82,12 @@ function knownIds(ids: Scope['modelIds'], options: readonly Option[]) {
   return ids.filter((id) => available.has(id));
 }
 
-const REQUIRED = 'Field is required';
+const asExtent = (value: string | null): Extent =>
+  value === 'some' ? 'some' : 'all';
 
-/**
- * The combobox input's own id. The kit gives `id` to react-select's container
- * and points the label there, so the input needs its own id and an aria-label.
- */
-const inputIdFor = (id: string) => `${id}-input`;
-
-type ScopeSelectProps = {
-  id: string;
-  label: string;
-  placeholder: string;
-  noOptions: string;
-  options: Option[];
-  value: string[];
-  error?: string;
-  onChange: (ids: string[]) => void;
-};
-
-function ScopeSelect({
-  id,
-  label,
-  placeholder,
-  noOptions,
-  options,
-  value,
-  error,
-  onChange,
-}: ScopeSelectProps) {
-  const byId = useMemo(
-    () => new Map(options.map((option) => [option.value, option])),
-    [options],
-  );
-  const selected = value.flatMap((picked) => {
-    const option = byId.get(picked);
-    return option ? [option] : [];
-  });
-  return (
-    <SelectField
-      id={id}
-      name={id}
-      label={label}
-      placeholder={placeholder}
-      value={selected}
-      error={error}
-      onChange={(next) => onChange(next.map((option) => option.value))}
-      selectInputProps={{
-        'aria-label': label,
-        'aria-invalid': error !== undefined,
-        inputId: inputIdFor(id),
-        isMulti: true,
-        options,
-        noOptionsMessage: () => noOptions,
-        closeMenuOnSelect: false,
-      }}
-    />
-  );
-}
-
-/** "Choose what to scan": each switch reveals its select when on; ✕ or Esc resolve nothing. */
+/** "Choose what to scan": ✕ or Esc resolve nothing. */
 export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
+  useFrameSizedToContent();
   const params: ScopeModalParams = isModalParams(ctx.parameters)
     ? ctx.parameters
     : {
@@ -127,28 +105,31 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
     label,
   }));
   const multiLocale = localeOptions.length > 1;
-  const [limitModels, setLimitModels] = useState(
-    params.scope.modelIds !== 'all',
+  const [modelExtent, setModelExtent] = useState<Extent>(
+    params.scope.modelIds === 'all' ? 'all' : 'some',
   );
   const [modelIds, setModelIds] = useState(() =>
     knownIds(params.scope.modelIds, modelOptions),
   );
-  const [limitLocales, setLimitLocales] = useState(
-    multiLocale && params.scope.localeIds !== 'all',
+  const [localeExtent, setLocaleExtent] = useState<Extent>(
+    multiLocale && params.scope.localeIds !== 'all' ? 'some' : 'all',
   );
   const [localeIds, setLocaleIds] = useState(() =>
     knownIds(params.scope.localeIds, localeOptions),
   );
   // Errors show after a submit attempt, then follow the selection.
   const [attempted, setAttempted] = useState(false);
+  const limitModels = modelExtent === 'some';
+  const limitLocales = multiLocale && localeExtent === 'some';
   const modelsMissing = limitModels && modelIds.length === 0;
   const localesMissing = limitLocales && localeIds.length === 0;
 
-  const submit = () => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (modelsMissing || localesMissing) {
       setAttempted(true);
       document
-        .getElementById(inputIdFor(modelsMissing ? 'models' : 'locales'))
+        .getElementById(modelsMissing ? MODELS_INPUT_ID : LOCALES_INPUT_ID)
         ?.focus();
       return;
     }
@@ -161,58 +142,79 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
 
   return (
     <Canvas ctx={ctx}>
-      <Form className="dl-kit-form-parity" onSubmit={submit}>
-        <p className="blc-modal-intro">
+      <form onSubmit={submit} noValidate>
+        <p className={styles.intro}>
           Scans the latest saved version of every record in the{' '}
-          <code className="blc-code">{params.environment}</code> environment,
-          drafts and invalid records included.
+          <IdText id={params.environment} /> environment, drafts and invalid
+          records included.
         </p>
-        <SwitchField
-          id="limit-models"
-          name="limitModels"
-          label="Limit to specific models?"
-          hint="If enabled, only the models you select are scanned"
-          value={limitModels}
-          onChange={setLimitModels}
-        />
-        {limitModels && (
-          <ScopeSelect
-            id="models"
-            label="Models"
-            placeholder="Select models…"
-            noOptions="No models found"
-            options={modelOptions}
-            value={modelIds}
-            error={attempted && modelsMissing ? REQUIRED : undefined}
-            onChange={setModelIds}
+        <FieldWrapper label="Models">
+          <RadioGroupInput
+            value={modelExtent}
+            onChange={(value) => setModelExtent(asExtent(value))}
+            options={MODEL_EXTENTS}
           />
+        </FieldWrapper>
+        {limitModels && (
+          <FieldWrapper
+            id={MODELS_INPUT_ID}
+            label="Models to scan"
+            required
+            error={
+              attempted && modelsMissing
+                ? 'Pick at least one model.'
+                : undefined
+            }
+          >
+            <SelectInput
+              multiple
+              value={modelIds}
+              onChange={(ids) => setModelIds(ids ?? [])}
+              options={modelOptions}
+              placeholder="Select models…"
+              noOptionsMessage={() => 'No models found'}
+              closeMenuOnSelect={false}
+            />
+          </FieldWrapper>
         )}
         {multiLocale && (
-          <SwitchField
-            id="limit-locales"
-            name="limitLocales"
-            label="Limit to specific locales?"
-            hint="If enabled, only the locales you select are scanned. Fields that aren't localized are always scanned."
-            value={limitLocales}
-            onChange={setLimitLocales}
-          />
+          <FieldWrapper
+            label="Locales"
+            hint="Fields that aren't localized are always scanned."
+          >
+            <RadioGroupInput
+              value={localeExtent}
+              onChange={(value) => setLocaleExtent(asExtent(value))}
+              options={LOCALE_EXTENTS}
+            />
+          </FieldWrapper>
         )}
         {limitLocales && (
-          <ScopeSelect
-            id="locales"
-            label="Locales"
-            placeholder="Select locales…"
-            noOptions="No locales found"
-            options={localeOptions}
-            value={localeIds}
-            error={attempted && localesMissing ? REQUIRED : undefined}
-            onChange={setLocaleIds}
-          />
+          <FieldWrapper
+            id={LOCALES_INPUT_ID}
+            label="Locales to scan"
+            required
+            error={
+              attempted && localesMissing
+                ? 'Pick at least one locale.'
+                : undefined
+            }
+          >
+            <SelectInput
+              multiple
+              value={localeIds}
+              onChange={(ids) => setLocaleIds(ids ?? [])}
+              options={localeOptions}
+              placeholder="Select locales…"
+              noOptionsMessage={() => 'No locales found'}
+              closeMenuOnSelect={false}
+            />
+          </FieldWrapper>
         )}
-        <Button type="submit" buttonType="primary" buttonSize="xl" fullWidth>
-          Scan links
-        </Button>
-      </Form>
+        <div className={styles.actions}>
+          <Button tone="primary" submit label="Scan links" />
+        </div>
+      </form>
     </Canvas>
   );
 }

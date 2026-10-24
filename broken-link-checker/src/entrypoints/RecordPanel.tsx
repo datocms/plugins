@@ -1,9 +1,10 @@
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { useEffect, useMemo, useRef } from 'react';
+import Canvas from 'datocms-react-ui/Canvas';
+import { type CSSProperties, useEffect, useMemo, useRef } from 'react';
 import { readFormRecord } from '../data/formRecord';
 import { createSchemaLoader } from '../data/schema';
 import { extractLinks } from '../extraction/extract';
+import styles from '../panel/Panel.module.css';
 import { PanelControls, PanelProgress } from '../panel/PanelControls';
 import { PanelNotes } from '../panel/PanelNotes';
 import {
@@ -15,6 +16,7 @@ import { formatWarning, hasWarningRewrite } from '../report/format';
 import type { ScanSession } from '../state/session';
 import { useScan } from '../state/useScan';
 import type { LinkOccurrence, ScanReport } from '../types';
+import { useFrameSizedToContent } from '../ui/useFrameSizedToContent';
 import { contextKey } from '../utils/contextKey';
 
 const FIELDS_FAILED =
@@ -94,6 +96,7 @@ export default function RecordPanel({
 }: {
   ctx: RenderItemFormSidebarPanelCtx;
 }) {
+  useFrameSizedToContent();
   const { itemTypes, loadItemTypeFields, currentRole, environment } = ctx;
   const loader = useMemo(
     () =>
@@ -140,14 +143,20 @@ export default function RecordPanel({
       );
     } catch (error) {
       console.error(error);
-      void ctx.alert("Couldn't open the field!");
+      void ctx.alert("Couldn't open the field.");
     }
   };
 
   const report = scan.report;
+  const [, right = 0, , left = 0] = ctx.bodyPadding;
+  // The frame's side padding: the place rows go out into it (see the CSS module).
+  const frameInsets = {
+    '--frame-inset-left': `${left}px`,
+    '--frame-inset-right': `${right}px`,
+  } as CSSProperties;
   return (
     <Canvas ctx={ctx}>
-      <div className="dl-kit-form-parity blc-panel">
+      <div className={styles.panel} style={frameInsets}>
         <PanelControls
           running={scan.running}
           submitting={ctx.isSubmitting}
@@ -173,10 +182,10 @@ export default function RecordPanel({
           uiLocale={uiLocale}
           onGoToField={(occurrence) => void goToField(occurrence)}
         />
-        {/* Mounted from the start, so screen readers announce the result when a check settles */}
-        <div role="status" className="blc-visually-hidden">
-          {announcement(report, scan.running, uiLocale)}
-        </div>
+      </div>
+      {/* Mounted from the start, so screen readers announce the result when a check settles */}
+      <div role="status" className="visually-hidden">
+        {announcement(report, scan.running, uiLocale)}
       </div>
     </Canvas>
   );

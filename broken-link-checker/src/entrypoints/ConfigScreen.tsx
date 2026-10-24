@@ -1,13 +1,20 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import { Page } from 'datocms-react-ui/Page';
+import Pill from 'datocms-react-ui/Pill';
+import SettingsList from 'datocms-react-ui/SettingsList';
 import { PAGE_ID } from '../constants';
-import { Button } from '../ui/Button';
+import { useFrameSizedToContent } from '../ui/useFrameSizedToContent';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+/** Nothing to configure: what the plugin does, and where to find it. */
 export default function ConfigScreen({ ctx }: Props) {
+  useFrameSizedToContent();
   const hasToken = ctx.plugin.attributes.permissions.includes(
     'currentUserAccessToken',
   );
@@ -17,46 +24,52 @@ export default function ConfigScreen({ ctx }: Props) {
     : `/environments/${ctx.environment}`;
   const pagePath = `${environmentPrefix}/editor/p/${ctx.plugin.id}/pages/${PAGE_ID}`;
 
-  const openPage = async () => {
-    try {
-      await ctx.navigateTo(pagePath);
-    } catch (error) {
-      console.error(error);
-      void ctx.alert("Couldn't open the Link checker!");
-    }
-  };
-
   return (
     <Canvas ctx={ctx}>
-      <div className="dl-kit-form-parity blc-config">
-        {!hasToken && (
-          <div className="dl-callout dl-callout--warning">
-            <p>
-              Project scans need permission to make API calls on behalf of the
-              logged-in user, which this plugin doesn't have. Ask a project
-              admin to grant it, then reload the page. Checks from the record
-              sidebar panel still work.
-            </p>
-          </div>
-        )}
-        <p>
-          The <strong>Link checker</strong> finds broken website links in your
-          records. There's nothing to configure here.
-        </p>
-        {/* Without the permission the page can't scan, so nothing leads there. */}
-        {hasToken && (
-          <>
-            <p>
-              Scan saved records from "Link checker" in the Content area, or
-              check the record you're editing from its "Broken links" sidebar
-              panel.
-            </p>
-            <Button buttonSize="s" onClick={() => void openPage()}>
-              Go to Link checker
-            </Button>
-          </>
-        )}
-      </div>
+      <Page>
+        <Page.Content>
+          {!hasToken && (
+            <Page.Group
+              title="API access"
+              tone="warning"
+              status={<Pill tone="warning">Not granted</Pill>}
+            >
+              <Callout tone="warning" title="Project scans are off">
+                This plugin needs permission to make API calls on behalf of the
+                logged-in user: ask a project admin to grant it, then reload the
+                page. Checks from the record sidebar panel still work.
+              </Callout>
+            </Page.Group>
+          )}
+          <Page.Group title="Link checker">
+            <SettingsList>
+              {/* Without the permission the content area has no "Link checker", so nothing leads there. */}
+              {hasToken ? (
+                <SettingsList.Row
+                  title="Project scans"
+                  description="Scan the saved records of this environment from “Link checker” in the content area."
+                  action={
+                    <Button
+                      tone="ghost"
+                      label="Open Link checker"
+                      to={pagePath}
+                    />
+                  }
+                />
+              ) : (
+                <SettingsList.Row
+                  title="Project scans"
+                  description="Scanning the saved records of this environment needs the API access above."
+                />
+              )}
+              <SettingsList.Row
+                title="Record checks"
+                description="Check the record you're editing from its “Broken links” sidebar panel."
+              />
+            </SettingsList>
+          </Page.Group>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

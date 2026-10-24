@@ -1,162 +1,125 @@
-import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
-import { TextInput, Toolbar, ToolbarStack } from 'datocms-react-ui';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import { localeName } from '../report/format';
-import {
-  DEFAULT_FILTERS,
-  type Filters,
-  isDefaultFilters,
-  type ReportDimensions,
-  STATUS_ORDER,
-  type StatusCounts,
-  type StatusView,
-} from '../report/view';
-import { Icon } from '../ui/Icon';
-import { STATUS_META } from '../ui/LogStatus';
-import { WithTooltip } from '../ui/WithTooltip';
-import { TextDropdown, type TextDropdownOption } from './TextDropdown';
+import type { Filters, ReportDimensions } from '../report/view';
+import styles from './Report.module.css';
+
+type Choice = {
+  value: string;
+  label: string;
+  /** More words the menu's search finds: a locale's code ("it", "en-US"). */
+  keywords?: string[];
+};
+
+type ChoiceMenuProps = {
+  /** The label of the trigger and of the first choice when nothing is picked. */
+  allLabel: string;
+  choices: readonly Choice[];
+  /** `''` is the first choice: every model, every locale. */
+  value: string;
+  onChange: (value: string) => void;
+};
+
+/**
+ * A menu of choices whose trigger shows the current one: "All models" first,
+ * then the report's own. The menu shows a search above 5 options by itself.
+ */
+function ChoiceMenu({ allLabel, choices, value, onChange }: ChoiceMenuProps) {
+  const current = choices.find((choice) => choice.value === value);
+  return (
+    <Dropdown
+      triggerComponent={ButtonTrigger}
+      label={value === '' ? allLabel : (current?.label ?? value)}
+    >
+      <Dropdown.Menu>
+        <Dropdown.Option active={value === ''} onPick={() => onChange('')}>
+          {allLabel}
+        </Dropdown.Option>
+        <Dropdown.Separator />
+        {choices.map((choice) => (
+          <Dropdown.Option
+            key={choice.value}
+            keywords={choice.keywords}
+            active={choice.value === value}
+            onPick={() => onChange(choice.value)}
+          >
+            {choice.label}
+          </Dropdown.Option>
+        ))}
+      </Dropdown.Menu>
+    </Dropdown>
+  );
+}
+
+function localeChoices(locales: readonly string[], uiLocale: string): Choice[] {
+  return locales
+    .map((code) => ({
+      value: code,
+      label: localeName(code, uiLocale),
+      keywords: [code],
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, uiLocale));
+}
 
 type FilterToolbarProps = {
   filters: Filters;
   onChange: (next: Filters) => void;
-  counts: StatusCounts;
   dimensions: ReportDimensions;
+  /** The text field takes the focus when the user opens the row. */
+  autoFocus: boolean;
+  /** Closes the row, which clears the text, model and locale filters. */
+  onClose: () => void;
   uiLocale: string;
 };
 
-function statusOptions(
-  counts: StatusCounts,
-  current: StatusView,
-): TextDropdownOption[] {
-  const statuses = STATUS_ORDER.filter(
-    (status) => counts[status] > 0 || status === current,
-  );
-  return [
-    { value: 'attention', label: 'Needs attention', count: counts.attention },
-    {
-      value: 'all',
-      label: 'All URLs',
-      count: counts.all,
-      separatorAfter: statuses.length > 0,
-    },
-    ...statuses.map((status) => ({
-      value: status,
-      label: STATUS_META[status].label,
-      count: counts[status],
-    })),
-  ];
-}
-
-function modelOptions(
-  models: ReportDimensions['models'],
-): TextDropdownOption[] {
-  return [
-    { value: '', label: 'All models', separatorAfter: models.length > 0 },
-    ...models.map((model) => ({ value: model.id, label: model.name })),
-  ];
-}
-
-function localeOptions(
-  locales: readonly string[],
-  uiLocale: string,
-): TextDropdownOption[] {
-  const named = locales
-    .map((code) => ({ value: code, label: localeName(code, uiLocale) }))
-    .sort((a, b) => a.label.localeCompare(b.label, uiLocale));
-  return [
-    { value: '', label: 'All locales', separatorAfter: named.length > 0 },
-    ...named,
-  ];
-}
-
-/** A picker holding a filter stays visible in a narrow pane. */
-function pickerClass(name: string, value: string) {
-  return value ? `${name} blc-filter--set` : name;
-}
-
 /**
- * The second 60px header row: search, then textual pickers, then "Clear filters".
- * A narrow pane drops the Model and Locale pickers rather than wrap; one that
- * holds a filter stays, on a second line if it must.
+ * The filter row under the title bar: the text of the URL, then the model and
+ * the locale, each only when the report has more than one. A URL matches when
+ * one of its places matches all three. The three filter one list, so they
+ * are one filter form: one search landmark, named after the pane ("URLs").
+ * The "✕" of the text and Escape in it close the row, which clears the three.
  */
 export function FilterToolbar({
   filters,
   onChange,
-  counts,
   dimensions,
+  autoFocus,
+  onClose,
   uiLocale,
 }: FilterToolbarProps) {
+  const pickModel = dimensions.models.length > 1;
+  const pickLocale = dimensions.locales.length > 1;
   return (
-    <Toolbar style={{ flex: 'none', minHeight: 60, borderTop: 0 }}>
-      <ToolbarStack
-        stackSize="s"
-        className="blc-filter-row"
-        style={{ minWidth: 0, justifyContent: 'flex-start' }}
-      >
-        <div className="dl-search blc-search">
-          <Icon icon={faMagnifyingGlass} className="dl-search__icon" />
-          <TextInput
-            id="blc-search"
-            labelText="Search URLs"
-            placeholder="Search URLs…"
-            value={filters.query}
-            onChange={(query) => onChange({ ...filters, query })}
-          />
-          {filters.query && (
-            <button
-              type="button"
-              className="dl-search__clear"
-              aria-label="Clear search"
-              onClick={() => onChange({ ...filters, query: '' })}
-            >
-              <Icon icon={faXmark} />
-            </button>
-          )}
-        </div>
-        <TextDropdown
-          name="Status"
-          value={filters.status}
-          options={statusOptions(counts, filters.status)}
-          onChange={(status) =>
-            onChange({ ...filters, status: status as StatusView })
-          }
-          uiLocale={uiLocale}
+    <Toolbar fields onClose={onClose}>
+      <Toolbar.Search className={styles.filters}>
+        <Toolbar.FilterInput
+          value={filters.query}
+          onChange={(query) => onChange({ ...filters, query })}
+          autoFocus={autoFocus}
+          onClose={onClose}
         />
-        {dimensions.models.length > 1 && (
-          <div className={pickerClass('blc-filter-model', filters.modelId)}>
-            <TextDropdown
-              name="Model"
-              value={filters.modelId}
-              options={modelOptions(dimensions.models)}
-              onChange={(modelId) => onChange({ ...filters, modelId })}
-              uiLocale={uiLocale}
-            />
-          </div>
+        {(pickModel || pickLocale) && <Toolbar.Divider />}
+        {pickModel && (
+          <ChoiceMenu
+            allLabel="All models"
+            choices={dimensions.models.map(({ id, name }) => ({
+              value: id,
+              label: name,
+            }))}
+            value={filters.modelId}
+            onChange={(modelId) => onChange({ ...filters, modelId })}
+          />
         )}
-        {dimensions.locales.length > 1 && (
-          <div className={pickerClass('blc-filter-locale', filters.locale)}>
-            <TextDropdown
-              name="Locale"
-              value={filters.locale}
-              options={localeOptions(dimensions.locales, uiLocale)}
-              onChange={(locale) => onChange({ ...filters, locale })}
-              uiLocale={uiLocale}
-            />
-          </div>
+        {pickLocale && (
+          <ChoiceMenu
+            allLabel="All locales"
+            choices={localeChoices(dimensions.locales, uiLocale)}
+            value={filters.locale}
+            onChange={(locale) => onChange({ ...filters, locale })}
+          />
         )}
-        <div style={{ flex: 1 }} />
-        {!isDefaultFilters(filters) && (
-          <WithTooltip content="Clear filters">
-            <button
-              type="button"
-              className="dl-icon-button"
-              aria-label="Clear filters"
-              onClick={() => onChange(DEFAULT_FILTERS)}
-            >
-              <Icon icon={faXmark} />
-            </button>
-          </WithTooltip>
-        )}
-      </ToolbarStack>
+      </Toolbar.Search>
     </Toolbar>
   );
 }
