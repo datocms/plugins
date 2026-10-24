@@ -1,0 +1,27 @@
+/* The whole frame, as a box: the positioned parent with a height that the
+   Pane and the area blank slates fill. The full sidebar sets its own height
+   (the Canvas has no auto-resizer), so a fixed box covers the frame; the
+   inline inset keeps the body padding of the host. */
+.frame {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+}
+
+/* The messages of a chat: they fill the content of the pane and scroll by
+   themselves, so the sidebar can keep them scrolled to the last one */
+.log {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: var(--spacing-l);
+  overflow-y: auto;
+}
+
+/* The text of the title of a chat: it shrinks with the bar and ends with an
+   ellipsis (the title keeps the text on one line) */
+.chatTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

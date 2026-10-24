@@ -1,0 +1,202 @@
+/* The entries of a chat. The kit draws the parts (callouts, buttons, rows,
+   pills, code, dots); these rules only lay them out in a column and draw the
+   things the kit has no component for: the bubble of a user message, the
+   activity disclosure of a reply and the card of an action to approve. */
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  min-width: 0;
+  line-height: 1.5;
+}
+
+/* A user message: a bubble at the right, its text as typed */
+.user {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.bubble {
+  box-sizing: border-box;
+  max-width: 85%;
+  padding: var(--spacing-m);
+  color: var(--color--ink);
+  background-color: var(--color--surface-muted);
+  border-radius: var(--radius-s);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* A reply: its activity, then its text, full width */
+.reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  min-width: 0;
+}
+
+.pending {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  color: var(--color--ink-subtle);
+}
+
+.errorMessage {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The activity of a reply: a disclosure and its list of steps */
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+/* The disclosure has no look of its own (RawButton): a quiet line of subtle
+   text, with the surface of an inset row on hover and keyboard focus (the
+   base styles add the focus ring). The negative margin keeps its text on the
+   edge of the column. */
+.activityToggle {
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--spacing-s);
+  margin: var(--negative-spacing-s);
+  font: inherit;
+  color: var(--color--ink-subtle);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-s);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color--ink);
+    background-color: var(--color--surface-hover);
+  }
+}
+
+.activityTitle {
+  flex: none;
+  color: var(--color--ink);
+}
+
+.activitySummary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: 0;
+  margin: 0;
+}
+
+/* A step: its state (a dot, or a spinner while it runs) before its label */
+.step {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: var(--spacing-s);
+  align-items: start;
+}
+
+.stepMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.5em;
+}
+
+.stepLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* An action to approve: a card at rest in the log, with what it does, its
+   details and the decision */
+.approval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  min-width: 0;
+  padding: var(--spacing-l);
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow--resting);
+}
+
+.approvalText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.approvalTitle {
+  font-weight: var(--font-weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.approvalSummary {
+  overflow-wrap: anywhere;
+}
+
+/* The hidden attribute keeps the box out while the details are closed */
+.approvalDetails:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.approvalTool {
+  color: var(--color--ink-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* "Show details" at the left, the decision at the right */
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.decision {
+  display: flex;
+  gap: var(--spacing-s);
+  margin-left: auto;
+}
+
+.approvalOutcome {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+  color: var(--color--ink-subtle);
+}
+
+/* The empty chat fills the log at least, thus its flex box keeps the blank
+   slate in the center (see Greeting) */
+.greeting {
+  min-height: 100%;
+}
+
+/* The starters of an empty chat: inset rows whose text stays on the edge of
+   the text of the blank slate */
+.starters {
+  margin: 0 calc(-1 * (var(--row-inset) + var(--spacing-m)));
+}

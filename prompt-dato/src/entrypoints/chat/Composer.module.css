@@ -1,0 +1,41 @@
+/* The composer is one element of the footer of the pane (the pane draws the
+   line above it): the context and the message, then the bar of its
+   actions. */
+.composer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  min-width: 0;
+  padding: var(--spacing-l) var(--spacing-l) 0;
+}
+
+/* The record and the fields that the chat gets, in a row that wraps */
+.context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+/* A field in the context: its name, then the cross that removes it. The box
+   draws the surface around the EntityRow, which draws only the content: a
+   chip that the user operates, thus the box of a field (no shadow). */
+.scopedField {
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: var(--spacing-s);
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+}

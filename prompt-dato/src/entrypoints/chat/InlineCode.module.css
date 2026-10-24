@@ -1,0 +1,9 @@
+/* Code inside a line of text, on the surface of code. The base styles of the
+   kit already give `code` its monospaced family. */
+.code {
+  padding: 0.1em 0.35em;
+  font-size: var(--monospaced-font-size);
+  color: var(--color--code--ink);
+  background-color: var(--color--code--surface);
+  border-radius: var(--radius-s);
+}

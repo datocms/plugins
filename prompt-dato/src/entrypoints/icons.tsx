@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { JSX, ReactNode, SVGProps } from 'react';
 
 export type IconKey =
   | 'edit'
@@ -89,5 +89,132 @@ export const iconPaths: Record<IconKey, ReactNode> = {
 };
 
 export function isIconKey(value: unknown): value is IconKey {
-  return typeof value === 'string' && (ICON_KEYS as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' &&
+    (ICON_KEYS as readonly string[]).includes(value)
+  );
 }
+
+export type IconProps = SVGProps<SVGSVGElement>;
+export type IconComponent = (props: IconProps) => JSX.Element;
+
+// The frame of every icon: a 24-unit stroke drawing in the current color.
+// The icon is 1em, like the icons of the kit, so the place around it sizes
+// it. The kit fills every svg (`svg { fill: … }` in styles.css, and
+// `fill: currentColor` in some components), which beats the fill attribute:
+// the inline style keeps these stroke drawings unfilled.
+function Icon({
+  children,
+  style,
+  ...props
+}: IconProps & { children: ReactNode }): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ fill: 'none', ...style }}
+    >
+      {children}
+    </svg>
+  );
+}
+
+// The add and close icons are bold
+export function AddIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon strokeWidth={2.5} {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+export function CloseIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon strokeWidth={2.5} {...props}>
+      <path d="M6 6l12 12" />
+      <path d="M18 6L6 18" />
+    </Icon>
+  );
+}
+
+export function ChatIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </Icon>
+  );
+}
+
+export function SendIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M5 12h14" />
+      <path d="M13 6l6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function AtIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94" />
+    </Icon>
+  );
+}
+
+export function BoltIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M13 2L4 14h6l-1 8 10-12h-7l1-8z" />
+    </Icon>
+  );
+}
+
+export function SettingsIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </Icon>
+  );
+}
+
+export function RecordIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <path d="M14 2v6h6" />
+    </Icon>
+  );
+}
+
+// An icon component for each key of iconPaths: the icons of the starters
+function pathIcon(key: IconKey): IconComponent {
+  function PathIcon(props: IconProps): JSX.Element {
+    return <Icon {...props}>{iconPaths[key]}</Icon>;
+  }
+  return PathIcon;
+}
+
+export const STARTER_ICONS: Record<IconKey, IconComponent> = {
+  edit: pathIcon('edit'),
+  title: pathIcon('title'),
+  bullets: pathIcon('bullets'),
+  check: pathIcon('check'),
+  slug: pathIcon('slug'),
+  search: pathIcon('search'),
+  calendar: pathIcon('calendar'),
+  sparkle: pathIcon('sparkle'),
+  tag: pathIcon('tag'),
+  image: pathIcon('image'),
+};

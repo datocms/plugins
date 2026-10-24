@@ -1,30 +1,22 @@
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown, type DropdownHandle } from 'datocms-react-ui/Dropdown';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
+import Pane from 'datocms-react-ui/Pane';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import Tooltip from 'datocms-react-ui/Tooltip';
 import {
-  memo,
+  type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import ReactMarkdown, {
-  defaultUrlTransform,
-  type Components,
-  type UrlTransform,
-} from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { dlog, setDebugEnabled } from '../lib/debugLog';
-import {
-  type ChatMessage,
-  isLikelyMcpAuthError,
-  isLikelyPreviousResponseError,
-  type PendingApproval,
-  recoverChatTurn,
-  sendChatTurn,
-  type SendChatTurnResult,
-  submitToolResponses,
-} from '../lib/providerRuntime';
 import {
   DEFAULT_REASONING_EFFORT,
   getProviderApiKey,
@@ -32,11 +24,6 @@ import {
   isFullyConfigured,
   readParams,
 } from '../lib/pluginParams';
-import {
-  buildRecordContext,
-  type FieldInfo,
-  listFieldsForCurrentItemType,
-} from '../lib/recordContext';
 import {
   applyTurnStreamEvent,
   createProcessTrace,
@@ -48,6 +35,21 @@ import {
   type ProcessTrace,
   type TurnStreamEvent,
 } from '../lib/processTrace';
+import {
+  type ChatMessage,
+  isLikelyMcpAuthError,
+  isLikelyPreviousResponseError,
+  type PendingApproval,
+  recoverChatTurn,
+  type SendChatTurnResult,
+  sendChatTurn,
+  submitToolResponses,
+} from '../lib/providerRuntime';
+import {
+  buildRecordContext,
+  type FieldInfo,
+  listFieldsForCurrentItemType,
+} from '../lib/recordContext';
 import { clearRemovedDiagnosticsStore } from '../lib/removedDiagnostics';
 import {
   addSidebarChatThread,
@@ -55,7 +57,6 @@ import {
   buildSidebarChatHistoryKey,
   createEmptySidebarChatHistory,
   createSidebarChatThread,
-  getSidebarThreadPreview,
   getSidebarThreadTitle,
   INTERRUPTED_TURN_MESSAGE,
   isSidebarThreadEmpty,
@@ -69,56 +70,23 @@ import {
   updateSidebarChatThread,
   writeSidebarChatHistory,
 } from '../lib/sidebarChatHistory';
-import { SendActivityGlyph, WorkingInline } from './ActivityGlyphs';
-import { type IconKey, iconPaths } from './icons';
-import { JsonPreview } from './JsonPreview';
-import { ProcessTraceView } from './ProcessTraceView';
+import { buildRecordEditPath, pluginSettingsPath } from '../utils/paths';
+import { ChatList } from './chat/ChatList';
+import { Composer, focusComposer } from './chat/Composer';
+import {
+  type FieldNavigationTarget,
+  getHashFieldPath,
+} from './chat/fieldLinks';
+import { Transcript } from './chat/Transcript';
+import { AddIcon, RecordIcon, SettingsIcon } from './icons';
+import s from './PromptSidebar.module.css';
 import { useActivityTimeline } from './useActivityTimeline';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
 
-type Suggestion = {
-  prompt: string;
-  title: string;
-  hint: string;
-  icon: IconKey;
-};
-
-const STATIC_SUGGESTIONS: Suggestion[] = [
-  {
-    prompt: 'Write a compelling excerpt from the body of this record.',
-    title: 'Generate an excerpt',
-    hint: 'from the body',
-    icon: 'edit',
-  },
-  {
-    prompt: 'Rewrite the title so it is more engaging and under 60 characters.',
-    title: 'Punch up the title',
-    hint: 'for SEO and click-through',
-    icon: 'title',
-  },
-  {
-    prompt: 'Summarize the body into 5 bullet points.',
-    title: 'Summarize to bullets',
-    hint: '5 key takeaways',
-    icon: 'bullets',
-  },
-  {
-    prompt: 'Prepare this record for publish.',
-    title: 'Prepare for publish',
-    hint: 'fill meta, slug, and excerpt',
-    icon: 'check',
-  },
-];
-
 const LOCALE_KEY_SEPARATOR = '\u001f';
-const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
-
-const fieldUrlTransform: UrlTransform = (url) =>
-  url.startsWith('field:') ? url : defaultUrlTransform(url);
 
 function resolveFirstName(ctx: RenderItemFormSidebarCtx): string {
   const user = ctx.currentUser;
@@ -136,228 +104,34 @@ function resolveFirstName(ctx: RenderItemFormSidebarCtx): string {
   return 'there';
 }
 
+/** The CMS path of the form of the open record, for the links to its fields */
+function recordEditPathOf(ctx: RenderItemFormSidebarCtx): string | null {
+  const recordId = ctx.item?.id;
+  return recordId ? buildRecordEditPath(ctx, ctx.itemType.id, recordId) : null;
+}
+
 function generateMessageId(): string {
   return `m_${Date.now().toString(36)}_${Math.random()
     .toString(36)
     .slice(2, 8)}`;
 }
 
-function NewChatIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
+const WAIT_FOR_REPLY = { reason: 'Wait for the reply to finish.' };
 
 /**
- * Parses a `field:` pseudo-URL (e.g. `field:title`, `field:title.en`,
- * `field://title.en`) into the current record editor field target.
+ * The whole frame, as a box: the positioned parent with a height that the
+ * Pane and the area blank slates fill. It keeps the body padding of the host.
  */
-type FieldNavigationTarget = {
-  fieldPath: string;
-  localized: boolean;
-  locale: string | null;
-};
-
-function parseFieldHref(
-  href: string,
-  fields: FieldInfo[],
-  locales: string[],
-): FieldNavigationTarget | null {
-  if (!href.startsWith('field:')) return null;
-  const encoded = href.slice('field:'.length).replace(/^\/+/, '');
-  const raw = safeDecodeURIComponent(encoded);
-  if (raw.length === 0) return null;
-
-  for (const field of fields) {
-    if (raw === field.apiKey) {
-      return {
-        fieldPath: raw,
-        localized: field.localized,
-        locale: null,
-      };
-    }
-
-    if (!field.localized) continue;
-
-    for (const locale of locales) {
-      if (raw === `${field.apiKey}.${locale}`) {
-        return {
-          fieldPath: field.apiKey,
-          localized: true,
-          locale,
-        };
-      }
-
-      if (raw.startsWith(`${field.apiKey}.${locale}.`)) {
-        return {
-          fieldPath: raw,
-          localized: true,
-          locale,
-        };
-      }
-    }
-  }
-
-  const [topLevelApiKey] = raw.split('.');
-  const topLevelField = fields.find((field) => field.apiKey === topLevelApiKey);
-  const locale = getLocaleFromFieldPath(raw, locales);
-
-  return {
-    fieldPath: raw,
-    localized: Boolean(topLevelField?.localized || locale),
-    locale,
-  };
-}
-
-function safeDecodeURIComponent(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-type RecordEditPathContext = {
-  environment: string;
-  isEnvironmentPrimary: boolean;
-};
-
-function getEnvironmentPrefix(ctx: RecordEditPathContext): string {
-  return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
-}
-
-function buildRecordEditPath(
-  ctx: RecordEditPathContext,
-  modelId: string,
-  recordId: string,
-): string {
-  return `${getEnvironmentPrefix(
-    ctx,
-  )}/editor/item_types/${modelId}/items/${recordId}/edit`;
-}
-
-function getLocaleFromFieldPath(
-  fieldPath: string,
-  locales: string[],
-): string | null {
-  return fieldPath.split('.').find((part) => locales.includes(part)) ?? null;
-}
-
-function fieldPathIncludesLocale(fieldPath: string, locale: string): boolean {
-  return fieldPath.split('.').includes(locale);
-}
-
-function getHashFieldPath(target: FieldNavigationTarget): string {
-  if (!target.localized || !target.locale) return target.fieldPath;
-  return fieldPathIncludesLocale(target.fieldPath, target.locale)
-    ? target.fieldPath
-    : `${target.fieldPath}.${target.locale}`;
-}
-
-type FieldMentionPillProps = {
-  target: FieldNavigationTarget;
-  children: React.ReactNode;
-  onScrollToField: (target: FieldNavigationTarget) => void;
-};
-
-function FieldMentionPill({
-  target,
-  children,
-  onScrollToField,
-}: FieldMentionPillProps) {
-  return (
-    <button
-      type="button"
-      className={`${s.contextPill} ${s.fieldMentionPill}`}
-      onClick={() => onScrollToField(target)}
-      title={
-        target.locale
-          ? `Scroll to @${target.fieldPath}`
-          : `Scroll to @${target.fieldPath}`
-      }
-    >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="4" />
-        <path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94" />
-      </svg>
-      <span>{children}</span>
-      {target.locale ? (
-        <span className={s.fieldMentionLocale}>
-          {target.locale.toUpperCase()}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-type AssistantMarkdownProps = {
-  text: string;
-  fields: FieldInfo[];
-  locales: string[];
-  onScrollToField: (target: FieldNavigationTarget) => void;
-};
-
-const AssistantMarkdown = memo(function AssistantMarkdown({
-  text,
-  fields,
-  locales,
-  onScrollToField,
-}: AssistantMarkdownProps) {
-  const components = useMemo<Components>(
-    () => ({
-      a: ({ children, href, ...props }) => {
-        if (typeof href === 'string' && href.startsWith('field:')) {
-          const target = parseFieldHref(href, fields, locales);
-          if (!target) return <span>{children}</span>;
-
-          return (
-            <FieldMentionPill
-              target={target}
-              onScrollToField={onScrollToField}
-            >
-              {children}
-            </FieldMentionPill>
-          );
-        }
-
-        return (
-          <a {...props} href={href} target="_blank" rel="noreferrer noopener">
-            {children}
-          </a>
-        );
-      },
-    }),
-    [fields, locales, onScrollToField],
-  );
+function SidebarFrame({ children }: { children: ReactNode }) {
+  const { bodyPadding } = useCtx();
+  const inset = bodyPadding.map((side) => `${side}px`).join(' ');
 
   return (
-    <ReactMarkdown
-      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-      urlTransform={fieldUrlTransform}
-      components={components}
-    >
-      {text}
-    </ReactMarkdown>
+    <div className={s.frame} style={{ inset }}>
+      {children}
+    </div>
   );
-});
+}
 
 function buildApprovalItem(
   approval: PendingApproval,
@@ -373,20 +147,6 @@ function buildApprovalItem(
     state: 'pending',
     detailsOpen: false,
   };
-}
-
-function approvalTitle(toolName: string): string {
-  if (toolName === 'upsert_and_execute_unsafe_script') {
-    return 'Apply project changes?';
-  }
-  return 'Run project action?';
-}
-
-function approvalSummary(toolName: string): string {
-  if (toolName === 'upsert_and_execute_unsafe_script') {
-    return 'This will apply changes to your project.';
-  }
-  return 'This will run a project action.';
 }
 
 function isUnsafeWriteApproval(item: { toolName: string }): boolean {
@@ -665,7 +425,9 @@ function missingMethodTokenHints(trace: ProcessTrace): string[] {
   for (const entry of trace.entries) {
     const text = `${entry.error ?? ''}\n${entry.output ?? ''}`;
     if (!/method_tokens|verification token|unverified/i.test(text)) continue;
-    const matches = text.matchAll(/client\.([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)/g);
+    const matches = text.matchAll(
+      /client\.([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)/g,
+    );
     for (const match of matches) {
       const resource = match[1];
       const method = match[2];
@@ -685,7 +447,10 @@ function recentReasoningSummary(trace: ProcessTrace): string | null {
   return null;
 }
 
-function finalReplyLooksBlocked(trace: ProcessTrace, replyText: string): boolean {
+function finalReplyLooksBlocked(
+  trace: ProcessTrace,
+  replyText: string,
+): boolean {
   if (trace.status === 'failed' || trace.status === 'interrupted') return true;
   if (replyText.length === 0 && firstProblemAction(trace)) return true;
   const lower = replyText.toLowerCase();
@@ -808,48 +573,125 @@ function loadSidebarState(scope: SidebarHistoryScope): LoadedSidebarState {
   };
 }
 
-function formatThreadTimestamp(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '';
-
-  const date = new Date(value);
-  const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
-
-  try {
-    if (sameDay) {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(date);
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'short',
-      day: 'numeric',
-    }).format(date);
-  } catch {
-    return date.toLocaleString();
-  }
+function UnsavedRecordNotice() {
+  return (
+    <SidebarFrame>
+      <BlankSlate
+        placement="area"
+        small
+        icon={<RecordIcon />}
+        title="Save the record first"
+        description="Chat works on records that were saved at least once."
+      />
+    </SidebarFrame>
+  );
 }
 
-function UnsavedRecordNotice({ ctx }: Props) {
+function SetupNotice({ ctx }: Props) {
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.sidebar}>
-        <div className={s.unsavedRecordNotice}>
-          <div className={s.unsavedRecordTitle}>Save this record first</div>
-          <div className={s.unsavedRecordText}>
-            This record needs to have been saved at least once before chat
-            becomes available.
-          </div>
-        </div>
-      </div>
-    </Canvas>
+    <SidebarFrame>
+      <BlankSlate
+        placement="area"
+        small
+        icon={<SettingsIcon />}
+        title="Prompt Dato isn't set up"
+        description="Connect to DatoCMS and add an API key for a chat provider in the plugin settings."
+        actions={
+          <Button
+            tone="primary"
+            label="Open plugin settings"
+            to={pluginSettingsPath(ctx)}
+          />
+        }
+      />
+    </SidebarFrame>
+  );
+}
+
+/**
+ * The title of an open chat. A long title ends with an ellipsis: its full
+ * text then shows in a tooltip.
+ */
+function ChatTitle({ title }: { title: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const { width } = useElementLayout(textRef);
+  const [isCut, setIsCut] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the text is measured again when it or its width changes
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    setIsCut(element ? element.scrollWidth > element.clientWidth : false);
+  }, [title, width]);
+
+  return (
+    <Toolbar.Title>
+      <Tooltip label={isCut ? title : null} placement="bottom-start">
+        <span ref={textRef} className={s.chatTitle}>
+          {title}
+        </span>
+      </Tooltip>
+    </Toolbar.Title>
+  );
+}
+
+type ChatHeaderProps = {
+  /** The open chat, or null before the first message of a new one */
+  thread: SidebarChatThread | null;
+  isSending: boolean;
+  onBack: () => void;
+  onDelete: () => unknown;
+  onNewChat: () => void;
+};
+
+/**
+ * The bar of an open chat: back to the list, the title, the "⋮" with the
+ * delete, and a new chat. Leaving the chat waits for the reply to finish,
+ * because the reply writes to this chat.
+ */
+function ChatHeader({
+  thread,
+  isSending,
+  onBack,
+  onDelete,
+  onNewChat,
+}: ChatHeaderProps) {
+  const waitForReply = isSending ? WAIT_FOR_REPLY : undefined;
+  // An empty chat has nothing to delete: Back removes it
+  const canDelete = thread !== null && !isSidebarThreadEmpty(thread);
+  const title = thread?.title ?? 'New chat';
+
+  return (
+    <Toolbar>
+      {!isSending && (
+        <Toolbar.GoBack onClick={onBack} ariaLabel="Back to chats" />
+      )}
+      <ChatTitle title={title} />
+      <Toolbar.DotsDropdown hidden={!canDelete} label={`Actions for ${title}`}>
+        <Dropdown.Option
+          alert
+          disabled={waitForReply}
+          onPick={() => {
+            void onDelete();
+          }}
+        >
+          Delete chat
+        </Dropdown.Option>
+      </Toolbar.DotsDropdown>
+      <Toolbar.Space />
+      <Toolbar.Button
+        icon={AddIcon}
+        label="New chat"
+        disabled={waitForReply}
+        onClick={onNewChat}
+      />
+    </Toolbar>
   );
 }
 
 function PromptSidebarChat({ ctx }: Props) {
   const currentItemId = ctx.item?.id ?? null;
+  // ctx is a new object on every render: the scope changes only with these ids
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   const sidebarScope = useMemo(
     () => buildSidebarHistoryScope(ctx),
     [
@@ -860,24 +702,20 @@ function PromptSidebarChat({ ctx }: Props) {
       currentItemId,
     ],
   );
-  const [initialSidebarState] = useState(() =>
-    loadSidebarState(sidebarScope),
-  );
+  const [initialSidebarState] = useState(() => loadSidebarState(sidebarScope));
   const [history, setHistory] = useState<SidebarChatHistory>(
     initialSidebarState.history,
   );
   const [historyScopeKey, setHistoryScopeKey] = useState(sidebarScope.scopeKey);
   const [view, setView] = useState<SidebarView>(initialSidebarState.view);
   const [isSending, setIsSending] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false);
   const [autoApproveEdits, setAutoApproveEdits] = useState(false);
   const [draftTextByThreadId, setDraftTextByThreadId] = useState<
     Record<string, string>
   >({});
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const mentionRef = useRef<HTMLDivElement>(null);
-  const mentionToggleRef = useRef<HTMLButtonElement>(null);
+  // Opens the field picker from code, when the user types `@`
+  const fieldPickerRef = useRef<DropdownHandle>(null);
   const ctxRef = useRef(ctx);
   // Mirrored ref: async drain loops read this without React closure staleness.
   const autoApproveRef = useRef(false);
@@ -915,7 +753,8 @@ function PromptSidebarChat({ ctx }: Props) {
   const activeThread = useMemo(
     () =>
       activeThreadId
-        ? history.threads.find((thread) => thread.id === activeThreadId) ?? null
+        ? (history.threads.find((thread) => thread.id === activeThreadId) ??
+          null)
         : null,
     [activeThreadId, history.threads],
   );
@@ -933,17 +772,17 @@ function PromptSidebarChat({ ctx }: Props) {
     useActivityTimeline(activityMessages);
   const conversationRef = useRef<ConversationItem[]>(conversation);
   conversationRef.current = conversation;
-  const text = activeThreadId ? (draftTextByThreadId[activeThreadId] ?? '') : '';
+  const text = activeThreadId
+    ? (draftTextByThreadId[activeThreadId] ?? '')
+    : '';
   const scopedFieldIds = activeThread?.scopedFieldIds ?? [];
   const lastResponseId = activeThread?.lastResponseId ?? null;
   const isChatView = view === 'chat';
-  const showHistoryList = configured && sidebarScope.savedRecord && view === 'list';
+  const showHistoryList =
+    configured && sidebarScope.savedRecord && view === 'list';
   const localeKey = ctx.site.attributes.locales.join(LOCALE_KEY_SEPARATOR);
   const siteLocales = useMemo(
-    () =>
-      localeKey.length > 0
-        ? localeKey.split(LOCALE_KEY_SEPARATOR)
-        : [],
+    () => (localeKey.length > 0 ? localeKey.split(LOCALE_KEY_SEPARATOR) : []),
     [localeKey],
   );
 
@@ -964,7 +803,6 @@ function PromptSidebarChat({ ctx }: Props) {
   const firstName = resolveFirstName(ctx);
 
   const resetTransientChatState = useCallback(() => {
-    setMentionOpen(false);
     setAutoApproveEdits(false);
     autoApproveRef.current = false;
   }, []);
@@ -1215,11 +1053,11 @@ function PromptSidebarChat({ ctx }: Props) {
     [setConversation],
   );
 
+  // ctx.fields is a stable reference within a render of this hook; rebuild
+  // only when the model changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   const allFields = useMemo<FieldInfo[]>(
     () => listFieldsForCurrentItemType(ctx),
-    // ctx.fields is a stable reference within a render of this hook; rebuild
-    // only when the model changes.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
     [ctx.itemType.id],
   );
 
@@ -1233,9 +1071,7 @@ function PromptSidebarChat({ ctx }: Props) {
         if (!recordId) {
           await currentCtx.scrollToField(
             target.fieldPath,
-            target.localized
-              ? (target.locale ?? currentCtx.locale)
-              : undefined,
+            target.localized ? (target.locale ?? currentCtx.locale) : undefined,
           );
           return;
         }
@@ -1288,57 +1124,29 @@ function PromptSidebarChat({ ctx }: Props) {
     [allFields, scopedFieldIds],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the log scrolls to the last message on every change of the conversation
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [conversation]);
 
-  // Close the mention popover on outside click.
-  useEffect(() => {
-    if (!mentionOpen) return;
-    const onDocClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (
-        mentionRef.current?.contains(target) ||
-        mentionToggleRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setMentionOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [mentionOpen]);
-
-  const autoGrow = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, []);
-
-  const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = event.target.value;
+  const handleChange = (next: string | null) => {
+    const value = next ?? '';
     setText(value);
-    autoGrow();
 
-    // Open popover when the user types `@` either at the start of the input
-    // or right after whitespace (matches the design's behavior).
-    if (value.endsWith('@') && (value.length === 1 || /\s@$/.test(value))) {
-      if (unscopedFields.length > 0) setMentionOpen(true);
-    } else if (!value.includes('@')) {
-      setMentionOpen(false);
+    // Open the field picker when the user types `@` either at the start of
+    // the input or right after whitespace.
+    if (
+      value.endsWith('@') &&
+      (value.length === 1 || /\s@$/.test(value)) &&
+      unscopedFields.length > 0
+    ) {
+      fieldPickerRef.current?.open();
     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionOpen && event.key === 'Escape') {
-      event.preventDefault();
-      setMentionOpen(false);
-      return;
-    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       if (text.trim() && !isSending) handleSend();
@@ -1426,10 +1234,7 @@ function PromptSidebarChat({ ctx }: Props) {
     }
   };
 
-  const recordTurnError = (
-    error: unknown,
-    draftId: string | null,
-  ) => {
+  const recordTurnError = (error: unknown, draftId: string | null) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const reauth = isLikelyMcpAuthError(error);
     failAssistantProcess(draftId, message);
@@ -1578,7 +1383,8 @@ function PromptSidebarChat({ ctx }: Props) {
       } catch (error) {
         if (controller.signal.aborted) return;
 
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
         if (turnTrace.status !== 'failed') {
           turnTrace = failProcessTrace(turnTrace, message);
         }
@@ -1615,9 +1421,7 @@ function PromptSidebarChat({ ctx }: Props) {
     if (!trimmed || isSending) return;
     if (!activeThread) return;
     if (!configured) {
-      ctx.navigateTo(
-        `${getEnvironmentPrefix(ctx)}/configuration/plugins/${ctx.plugin.id}/edit`,
-      );
+      ctx.navigateTo(pluginSettingsPath(ctx));
       return;
     }
 
@@ -1648,7 +1452,6 @@ function PromptSidebarChat({ ctx }: Props) {
       text: '',
     }));
     setText('');
-    requestAnimationFrame(autoGrow);
     setIsSending(true);
     const turnStartedAt = Date.now();
     let turnTrace = createProcessTrace();
@@ -1763,8 +1566,7 @@ function PromptSidebarChat({ ctx }: Props) {
   ) => {
     setConversation((prev) =>
       prev.map((item) =>
-        item.kind === 'approval' &&
-        item.approvalRequestId === approvalRequestId
+        item.kind === 'approval' && item.approvalRequestId === approvalRequestId
           ? mutator(item)
           : item,
       ),
@@ -2052,12 +1854,12 @@ function PromptSidebarChat({ ctx }: Props) {
       return;
     }
     const confirmed = await ctx.openConfirm({
-      title: 'Auto-approve every action?',
+      title: 'Auto-approve every change?',
       content:
-        'With "Accept all edits" enabled, write proposals will be approved automatically and applied to your project without you reviewing them first. This can create, update, and delete records, change schema, and run arbitrary scripts on your behalf. Only enable this if you trust the current task and want to skim. The toggle resets when you reload or switch records.',
+        'Changes run in your project without your review: creating, updating and deleting records, changing the schema and running scripts. Auto-approve stays on until you turn it off, go back to the chats, start or open another chat, or leave this record.',
       choices: [
         {
-          label: 'Yes, auto-approve',
+          label: 'Auto-approve changes',
           value: true,
           intent: 'negative',
         },
@@ -2079,27 +1881,20 @@ function PromptSidebarChat({ ctx }: Props) {
 
   const handleSuggestion = (prompt: string) => {
     setText(prompt);
-    requestAnimationFrame(() => {
-      autoGrow();
-      textareaRef.current?.focus();
-    });
-  };
-
-  const openSettings = () => {
-    ctx.navigateTo(
-      `${getEnvironmentPrefix(ctx)}/configuration/plugins/${ctx.plugin.id}/edit`,
-    );
+    focusComposer();
   };
 
   const handleNewChat = () => {
     if (isSending) return;
     const thread = createSidebarChatThread();
     const currentEmptyThreadId =
-      activeThread && isSidebarThreadEmpty(activeThread) ? activeThread.id : null;
+      activeThread && isSidebarThreadEmpty(activeThread)
+        ? activeThread.id
+        : null;
     setHistory((previous) => {
       const currentThreadId = activeThreadIdRef.current;
       const currentThread = currentThreadId
-        ? previous.threads.find((item) => item.id === currentThreadId) ?? null
+        ? (previous.threads.find((item) => item.id === currentThreadId) ?? null)
         : null;
       const baseHistory =
         currentThread && isSidebarThreadEmpty(currentThread)
@@ -2111,7 +1906,7 @@ function PromptSidebarChat({ ctx }: Props) {
     clearDraftForThread(currentEmptyThreadId);
     setView('chat');
     resetTransientChatState();
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    focusComposer();
   };
 
   const handleOpenThread = (threadId: string) => {
@@ -2122,7 +1917,7 @@ function PromptSidebarChat({ ctx }: Props) {
     }));
     setView('chat');
     resetTransientChatState();
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    focusComposer();
   };
 
   const handleBackToList = () => {
@@ -2137,15 +1932,16 @@ function PromptSidebarChat({ ctx }: Props) {
     resetTransientChatState();
   };
 
-  const handleDeleteThread = async (threadId: string) => {
-    if (isSending) return;
+  /** Asks, then removes the chat. Resolves to true when it was removed. */
+  const handleDeleteThread = async (threadId: string): Promise<boolean> => {
+    if (isSending) return false;
 
     const confirmed = await ctx.openConfirm({
-      title: 'Delete chat?',
-      content: 'This removes the selected chat from this browser.',
+      title: 'Delete this chat?',
+      content: "It's removed from this browser. This can't be undone.",
       choices: [
         {
-          label: 'Delete',
+          label: 'Delete chat',
           value: true,
           intent: 'negative',
         },
@@ -2157,6 +1953,17 @@ function PromptSidebarChat({ ctx }: Props) {
       setHistory((previous) => removeSidebarChatThread(previous, threadId));
       clearDraftForThread(threadId);
       resetTransientChatState();
+      return true;
+    }
+    return false;
+  };
+
+  // The removal leaves no active thread, and the chat view does not leave by
+  // itself in that case: go back to the list.
+  const handleDeleteActiveThread = async () => {
+    if (!activeThread) return;
+    if (await handleDeleteThread(activeThread.id)) {
+      setView('list');
     }
   };
 
@@ -2164,11 +1971,12 @@ function PromptSidebarChat({ ctx }: Props) {
     if (isSending || history.threads.length === 0) return;
 
     const confirmed = await ctx.openConfirm({
-      title: 'Clear all chats?',
-      content: 'This removes every chat saved for this record from this browser.',
+      title: 'Delete all chats?',
+      content:
+        "Every chat about this record is removed from this browser. This can't be undone.",
       choices: [
         {
-          label: 'Clear all',
+          label: 'Delete all chats',
           value: true,
           intent: 'negative',
         },
@@ -2183,22 +1991,13 @@ function PromptSidebarChat({ ctx }: Props) {
     }
   };
 
-  const toggleMention = () => {
-    if (unscopedFields.length === 0) return;
-    setMentionOpen((open) => !open);
-  };
-
   const addScope = (fieldId: string) => {
     setScopedFieldIds((prev) =>
       prev.includes(fieldId) ? prev : [...prev, fieldId],
     );
-    setMentionOpen(false);
-    // If the user opened the popover by typing `@`, strip the trailing `@`.
+    // If the user opened the picker by typing `@`, strip the trailing `@`.
     setText((prev) => prev.replace(/@$/, '').trimEnd());
-    requestAnimationFrame(() => {
-      autoGrow();
-      textareaRef.current?.focus();
-    });
+    focusComposer();
   };
 
   const removeScope = (fieldId: string) => {
@@ -2206,589 +2005,95 @@ function PromptSidebarChat({ ctx }: Props) {
   };
 
   const showEmptyState = isChatView && configured && conversation.length === 0;
+  const recordEditPath = recordEditPathOf(ctx);
+
+  if (!configured) {
+    return <SetupNotice ctx={ctx} />;
+  }
+
+  if (showHistoryList) {
+    return (
+      <SidebarFrame>
+        <ChatList
+          threads={history.threads}
+          isSending={isSending}
+          onNewChat={handleNewChat}
+          onOpenThread={handleOpenThread}
+          onDeleteAll={handleClearAllChats}
+        />
+      </SidebarFrame>
+    );
+  }
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.sidebar}>
-        {showHistoryList ? (
-          <div className={s.historyView}>
-            <div className={s.historyHeader}>
-              <div className={s.historyHeading}>
-                <div className={s.historyTitle}>Chats</div>
-                <div className={s.historySubtitle}>This record</div>
-              </div>
-              <div className={s.historyHeaderActions}>
-                {history.threads.length > 0 ? (
-                  <button
-                    type="button"
-                    className={s.clearChatsButton}
-                    onClick={handleClearAllChats}
-                    disabled={isSending}
-                  >
-                    Clear all
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className={s.newChatButton}
-                  onClick={handleNewChat}
-                  disabled={isSending}
-                >
-                  <NewChatIcon />
-                  New chat
-                </button>
-              </div>
-            </div>
-
-            {history.threads.length === 0 ? (
-              <div className={s.historyEmpty}>
-                <div className={s.historyEmptyTitle}>
-                  No chats for this record
-                </div>
-                <div className={s.historyEmptyText}>
-                  Start a chat to keep a local history for this record.
-                </div>
-              </div>
-            ) : (
-              <div className={s.historyList}>
-                {history.threads.map((thread) => (
-                  <div key={thread.id} className={s.historyRow}>
-                    <button
-                      type="button"
-                      className={s.historyRowMain}
-                      onClick={() => handleOpenThread(thread.id)}
-                      disabled={isSending}
-                    >
-                      <span className={s.historyRowTitle}>
-                        {thread.title}
-                      </span>
-                      <span className={s.historyRowPreview}>
-                        {getSidebarThreadPreview(thread)}
-                      </span>
-                    </button>
-                    <div className={s.historyRowSide}>
-                      <span className={s.historyRowTime}>
-                        {formatThreadTimestamp(thread.updatedAt)}
-                      </span>
-                      <button
-                        type="button"
-                        className={s.historyDelete}
-                        aria-label={`Delete ${thread.title}`}
-                        title="Delete chat"
-                        disabled={isSending}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDeleteThread(thread.id);
-                        }}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4h8v2" />
-                          <path d="M19 6l-1 14H6L5 6" />
-                          <path d="M10 11v5" />
-                          <path d="M14 11v5" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            {configured && sidebarScope.savedRecord ? (
-              <div className={s.chatTopbar}>
-                <button
-                  type="button"
-                  className={s.chatBackBtn}
-                  onClick={handleBackToList}
-                  disabled={isSending}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M15 18l-6-6 6-6" />
-                  </svg>
-                  Back
-                </button>
-                <div
-                  className={s.chatTopbarTitle}
-                  title={activeThread?.title ?? 'New chat'}
-                >
-                  {activeThread?.title ?? 'New chat'}
-                </div>
-                <button
-                  type="button"
-                  className={s.newChatButton}
-                  onClick={handleNewChat}
-                  disabled={isSending}
-                >
-                  <NewChatIcon />
-                  New chat
-                </button>
-              </div>
-            ) : null}
-        <div className={s.messages} ref={messagesRef}>
-          {!configured ? (
-            <div className={s.empty}>
-              <div className={s.emptyHead}>Set up Prompt Dato</div>
-              <div className={s.emptySub}>
-                Connect to DatoCMS and add an OpenAI API key in the plugin
-                settings to start chatting.
-              </div>
-              <button
-                type="button"
-                className={s.primaryAction}
-                onClick={openSettings}
-              >
-                Open plugin settings
-              </button>
-            </div>
-          ) : null}
-
-          {showEmptyState ? (
-            <div className={s.empty}>
-              <div className={s.emptyHead}>
-                <span className={s.wave}>👋</span> Hi {firstName}
-              </div>
-              <div className={s.emptySub}>
-                I can help with this record — rewrite, summarize, or generate
-                fields from what you've already written. What are we working
-                on?
-              </div>
-              <div className={s.suggestions}>
-                {STATIC_SUGGESTIONS.map((item) => (
-                  <button
-                    key={item.title}
-                    type="button"
-                    className={s.suggestion}
-                    onClick={() => handleSuggestion(item.prompt)}
-                  >
-                    <span className={s.sIcon}>
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        {iconPaths[item.icon] ?? iconPaths.sparkle}
-                      </svg>
-                    </span>
-                    <span>
-                      <b>{item.title}</b>
-                      {item.hint}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {conversation.map((item) => {
-            if (item.kind === 'message') {
-              const isAssistant = item.role === 'assistant';
-              const showBubble =
-                !isAssistant ||
-                item.text.trim().length > 0 ||
-                item.process === undefined;
-              return (
-                <div
-                  key={item.id}
-                  className={`${s.msg} ${
-                    isAssistant ? s.msgAssistant : s.msgUser
-                  }`}
-                >
-                  <div className={s.msgRow}>
-                    <div className={s.messageStack}>
-                      {showBubble ? (
-                        <div
-                          className={`${s.bubble} ${
-                            isAssistant ? s.markdownBubble : ''
-                          }`}
-                        >
-                          {isAssistant ? (
-                            <AssistantMarkdown
-                              text={item.text}
-                              fields={allFields}
-                              locales={siteLocales}
-                              onScrollToField={handleScrollToField}
-                            />
-                          ) : (
-                            item.text
-                          )}
-                        </div>
-                      ) : null}
-                      {isAssistant && item.process ? (
-                        <ProcessTraceView
-                          trace={item.process}
-                          open={isActivityOpen(item.id, item.process)}
-                          onToggle={() => toggleActivity(item.id, item.process)}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            if (item.kind === 'pending') {
-              return (
-                <div key={item.id} className={`${s.msg} ${s.msgAssistant}`}>
-                  <div className={s.msgRow}>
-                    <WorkingInline label="Preparing response" />
-                  </div>
-                </div>
-              );
-            }
-            if (item.kind === 'approval') {
-              const resolved = item.state === 'approved' || item.state === 'denied';
-              const submitting = item.state === 'submitting';
-              return (
-                <div
-                  key={item.id}
-                  className={`${s.msg} ${s.msgAssistant}`}
-                >
-                  <div className={s.msgRow}>
-                    <div className={s.proposal}>
-                      <div className={s.proposalHead}>
-                        <span className={s.proposalLabel}>Action proposal</span>
-                      </div>
-                      <div className={s.proposalBody}>
-                        <div className={s.proposalTitle}>
-                          {approvalTitle(item.toolName)}
-                        </div>
-                        <div className={s.proposalSub}>
-                          {approvalSummary(item.toolName)} Review details before
-                          approving.
-                        </div>
-                      </div>
-                      {item.detailsOpen ? (
-                        <div className={s.proposalDetails}>
-                          <div className={s.proposalToolLine}>
-                            Project action <code>{item.toolName}</code>
-                          </div>
-                          <JsonPreview
-                            className={s.proposalArgs}
-                            value={item.argumentsJson}
-                          />
-                        </div>
-                      ) : null}
-                      {!resolved ? (
-                        <div className={s.proposalActions}>
-                          <button
-                            type="button"
-                            className={`${s.proposalBtn} ${s.proposalBtnDetails}`}
-                            onClick={() =>
-                              toggleApprovalDetails(item.approvalRequestId)
-                            }
-                            disabled={submitting}
-                          >
-                            {item.detailsOpen
-                              ? 'Hide details'
-                              : 'See details'}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${s.proposalBtn} ${s.proposalBtnDeny}`}
-                            onClick={() =>
-                              resolveApproval(item.approvalRequestId, false)
-                            }
-                            disabled={submitting}
-                          >
-                            Deny
-                          </button>
-                          <button
-                            type="button"
-                            className={`${s.proposalBtn} ${s.proposalBtnApprove}`}
-                            onClick={() =>
-                              resolveApproval(item.approvalRequestId, true)
-                            }
-                            disabled={submitting}
-                          >
-                            {submitting ? 'Applying…' : 'Approve'}
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          className={`${s.proposalStatus} ${
-                            item.state === 'approved'
-                              ? s.proposalStatusOk
-                              : s.proposalStatusNo
-                          }`}
-                        >
-                          {item.state === 'approved'
-                            ? 'Approved — call completed'
-                            : 'Denied — call not run'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div key={item.id} className={`${s.msg} ${s.msgAssistant}`}>
-                <div className={s.msgRow}>
-                  <div className={s.errorBubble}>
-                    <strong>Something went wrong.</strong>
-                    <div className={s.errorDetail}>{item.message}</div>
-                    {item.reauth ? (
-                      <button
-                        type="button"
-                        className={s.linkAction}
-                        onClick={openSettings}
-                      >
-                        Reconnect to DatoCMS
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+    <SidebarFrame>
+      {/* A new record or scope starts a new pane, thus the menus of the old
+          one (the field picker, the "⋮") do not stay open */}
+      <Pane
+        key={sidebarScope.scopeKey}
+        header={
+          <ChatHeader
+            thread={activeThread}
+            isSending={isSending}
+            onBack={handleBackToList}
+            onDelete={handleDeleteActiveThread}
+            onNewChat={handleNewChat}
+          />
+        }
+        footer={
+          <Composer
+            text={text}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onSend={handleSend}
+            isSending={isSending}
+            hasPendingApproval={hasPendingApproval}
+            scopedFields={scopedFields}
+            unscopedFields={unscopedFields}
+            onAddScope={addScope}
+            onRemoveScope={removeScope}
+            fieldPickerRef={fieldPickerRef}
+            supportsWriteApprovals={supportsWriteApprovals}
+            autoApproveEdits={autoApproveEdits}
+            onAutoApproveClick={() => {
+              void handleAutoApproveClick();
+            }}
+          />
+        }
+      >
+        <div
+          ref={messagesRef}
+          role="log"
+          aria-label="Messages"
+          aria-busy={isSending}
+          className={s.log}
+        >
+          <Transcript
+            conversation={conversation}
+            showGreeting={showEmptyState}
+            firstName={firstName}
+            onStarter={handleSuggestion}
+            fields={allFields}
+            locales={siteLocales}
+            recordEditPath={recordEditPath}
+            onScrollToField={handleScrollToField}
+            isActivityOpen={isActivityOpen}
+            toggleActivity={toggleActivity}
+            supportsWriteApprovals={supportsWriteApprovals}
+            isSending={isSending}
+            resolveApproval={resolveApproval}
+            toggleApprovalDetails={toggleApprovalDetails}
+            settingsPath={pluginSettingsPath(ctx)}
+          />
         </div>
-
-        {configured ? (
-          <div className={s.pillBar} aria-label="Chat context">
-            <div
-              className={s.pillBarLabel}
-              title="Items the chat will pay extra attention to"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 3l1.6 4.2L18 9l-4.4 1.8L12 15l-1.6-4.2L6 9l4.4-1.8z" />
-                <path d="M19 14l.7 1.8L21.5 17l-1.8.7L19 19l-.7-1.3L16.5 17l1.8-1.2z" />
-              </svg>
-              Emphasized context
-            </div>
-            <div className={s.pillBarRow}>
-            <span
-              className={`${s.contextPill} ${s.lockedPill}`}
-              title="The current record is always shared with chat"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                <path d="M14 2v6h6" />
-              </svg>
-              Current record
-            </span>
-            {scopedFields.map((field) => (
-              <span
-                key={field.id}
-                className={`${s.contextPill} ${s.scopePill}`}
-                title={`Focused on ${field.label}`}
-              >
-                <span className={s.scopeName}>@{field.label}</span>
-                <button
-                  type="button"
-                  onClick={() => removeScope(field.id)}
-                  aria-label={`Remove ${field.label} from context`}
-                  title="Remove from context"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M6 6l12 12" />
-                    <path d="M18 6L6 18" />
-                  </svg>
-                </button>
-              </span>
-            ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className={s.composerWrap}>
-          {configured && mentionOpen && unscopedFields.length > 0 ? (
-            <div
-              ref={mentionRef}
-              className={`${s.mentionPop} ${s.open}`}
-              role="listbox"
-            >
-              <div className={s.mhead}>Add field to context</div>
-              {unscopedFields.map((field) => (
-                <button
-                  key={field.id}
-                  type="button"
-                  className={s.mopt}
-                  onClick={() => addScope(field.id)}
-                >
-                  <span className={s.micon}>
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M4 6h16" />
-                      <path d="M4 12h10" />
-                      <path d="M4 18h16" />
-                    </svg>
-                  </span>
-                  <span className={s.mmain}>
-                    {field.label}
-                    <small>{field.fieldType}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className={s.composer}>
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              placeholder={
-                !configured
-                  ? 'Configure the plugin to start chatting…'
-                  : hasPendingApproval
-                    ? 'Approve or deny the pending action first…'
-                    : 'Ask anything about this record…'
-              }
-              value={text}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              disabled={!configured || hasPendingApproval}
-            />
-            <div className={s.composerBottom}>
-              <div className={s.composerTools}>
-                {supportsWriteApprovals ? (
-                  <button
-                    type="button"
-                    className={`${s.autoApproveToggle} ${
-                      autoApproveEdits ? s.autoApproveToggleActive : ''
-                    }`}
-                    title={
-                      autoApproveEdits
-                        ? 'Auto-approving every MCP write. Click to turn off.'
-                        : 'Auto-approve every MCP write for this session (asks for confirmation)'
-                    }
-                    aria-pressed={autoApproveEdits}
-                    disabled={!configured}
-                    onClick={handleAutoApproveClick}
-                  >
-                    {autoApproveEdits ? (
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        stroke="none"
-                        aria-hidden="true"
-                      >
-                        <path d="M13 2L4 14h6l-1 8 10-12h-7l1-8z" />
-                      </svg>
-                    ) : (
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
-                    )}
-                    <span>
-                      {autoApproveEdits
-                        ? 'Auto-approving edits'
-                        : 'Asking before edits'}
-                    </span>
-                  </button>
-                ) : null}
-                <button
-                  ref={mentionToggleRef}
-                  type="button"
-                  className={`${s.toolBtn} ${
-                    mentionOpen ? s.toolBtnPressed : ''
-                  }`}
-                  title="Add a field to the chat context (@)"
-                  aria-label="Add a field to the chat context"
-                  disabled={!configured || unscopedFields.length === 0}
-                  onClick={toggleMention}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="4" />
-                    <path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94" />
-                  </svg>
-                </button>
-              </div>
-              <button
-                type="button"
-                className={`${s.sendBtn} ${isSending ? s.sendBtnBusy : ''}`}
-                disabled={
-                  !configured ||
-                  !text.trim() ||
-                  isSending ||
-                  hasPendingApproval
-                }
-                onClick={handleSend}
-                title={isSending ? 'Sending' : 'Send'}
-                aria-label={isSending ? 'Sending' : 'Send'}
-              >
-                <SendActivityGlyph active={isSending} />
-              </button>
-            </div>
-          </div>
-        </div>
-          </>
-        )}
-      </div>
-    </Canvas>
+      </Pane>
+    </SidebarFrame>
   );
 }
 
 export default function PromptSidebar({ ctx }: Props) {
   if (!ctx.item?.id) {
-    return <UnsavedRecordNotice ctx={ctx} />;
+    return <UnsavedRecordNotice />;
   }
 
   return <PromptSidebarChat ctx={ctx} />;

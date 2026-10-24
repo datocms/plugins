@@ -1,0 +1,107 @@
+/* The Markdown of a reply. The kit has no styles for free text, and its base
+   styles reset the blocks: these rules give them back their spacing, list
+   markers, quotes and tables, with the tokens only. Inline code is the
+   InlineCode of the chat, blocks of code the kit's CodeSnippet, and field
+   links its Pill. Links keep the base look (the ink of the text, underlined,
+   and the focus ring). */
+.root {
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  :is(p, ul, ol, blockquote, hr, .tableScroll, .codeBlock) {
+    margin: 0 0 var(--spacing-m);
+  }
+
+  :is(strong, th) {
+    font-weight: var(--font-weight-strong);
+  }
+
+  :is(ul, ol) {
+    padding-left: var(--spacing-l);
+  }
+
+  ul > li {
+    list-style-type: disc;
+  }
+
+  ol > li {
+    list-style-type: decimal;
+  }
+
+  li + li,
+  li > :is(ul, ol) {
+    margin-top: var(--spacing-s);
+  }
+
+  li > :is(p, ul, ol):last-child {
+    margin-bottom: 0;
+  }
+
+  /* A task list shows its checkboxes, not markers */
+  :global(.contains-task-list) {
+    padding-left: 0;
+
+    > li {
+      list-style-type: none;
+    }
+  }
+
+  blockquote {
+    padding-left: var(--spacing-m);
+    color: var(--color--ink-subtle);
+    border-left: 3px solid var(--color--border);
+  }
+
+  /* The text of the cells stays on one line: the box scrolls */
+  table {
+    border-collapse: collapse;
+    white-space: nowrap;
+  }
+
+  :is(th, td) {
+    padding: var(--spacing-s) var(--spacing-m);
+    text-align: left;
+    vertical-align: top;
+    border: 1px solid var(--color--border);
+  }
+
+  th {
+    background-color: var(--color--surface-muted);
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--color--border);
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  /* A Markdown heading: a bold line, with more space above it than below */
+  .heading {
+    margin-bottom: var(--spacing-s);
+    font-weight: var(--font-weight-strong);
+    line-height: 1.35;
+  }
+
+  * + .heading {
+    margin-top: var(--spacing-l);
+  }
+
+  /* Last, thus they win over the margins above */
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}

@@ -4,6 +4,7 @@ import {
   type RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import PromptSidebar from './entrypoints/PromptSidebar';
 import { dlog } from './lib/debugLog';
@@ -32,11 +33,20 @@ if (handleOAuthCallbackIfPresent()) {
     },
     renderItemFormSidebar(sidebarId: string, ctx: RenderItemFormSidebarCtx) {
       if (sidebarId === SIDEBAR_ID) {
-        render(<PromptSidebar ctx={ctx} />);
+        // The full sidebar has the height of the CMS pane, not of its content
+        render(
+          <Canvas ctx={ctx} noAutoResizer>
+            <PromptSidebar ctx={ctx} />
+          </Canvas>,
+        );
       }
     },
     renderConfigScreen(ctx: RenderConfigScreenCtx) {
-      render(<ConfigScreen ctx={ctx} />);
+      render(
+        <Canvas ctx={ctx}>
+          <ConfigScreen ctx={ctx} />
+        </Canvas>,
+      );
     },
   });
 }
