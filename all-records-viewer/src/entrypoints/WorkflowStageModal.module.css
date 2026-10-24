@@ -1,23 +1,14 @@
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-l);
-  padding: var(--spacing-l);
-  color: var(--color--ink);
-}
-
-.intro,
-.error {
+/* The sentence that names the only stage: the form spaces it, not the browser */
+.text {
   margin: 0;
-  color: var(--color--ink-subtle);
 }
 
-.error {
-  color: var(--color--danger-soft--ink);
-}
-
-.actions {
+/* The buttons under the field: Cancel at the left, the action at the right,
+   with the gap of the fields of a form above them */
+.footer {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-m);
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin-top: var(--form-field-gap);
 }

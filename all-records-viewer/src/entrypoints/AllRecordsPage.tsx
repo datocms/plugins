@@ -1,7 +1,20 @@
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import ListArea from 'datocms-react-ui/ListArea';
+import { getPaginatedListState } from 'datocms-react-ui/ListDetail';
+import Main from 'datocms-react-ui/Main';
+import MultipleSelectionActionBar, {
+  type Action,
+  type MaybeAction,
+} from 'datocms-react-ui/MultipleSelectionActionBar';
+import Pane from 'datocms-react-ui/Pane';
+import Toolbar, { useFilterToolbar } from 'datocms-react-ui/Toolbar';
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -12,15 +25,10 @@ import {
 import { AllRecordsTable } from '../components/AllRecordsTable';
 import { columnSettingsStorageKey } from '../components/columnSettings';
 import { FilterDropdown } from '../components/FilterDropdown';
-import { Pagination } from '../components/Pagination';
-import { SelectionActionBar } from '../components/SelectionActionBar';
-import type {
-  SelectionActionId,
-  SelectionAction as SelectionBarAction,
-  TableRecord,
-} from '../components/types';
+import { MoveToStageMenu } from '../components/MoveToStageMenu';
+import type { TableRecord } from '../components/types';
 import { useColumnSettings } from '../components/useColumnSettings';
-import { MAX_BULK_ITEMS, WORKFLOW_STAGE_MODAL_ID } from '../constants';
+import { MAX_BULK_ITEMS, PER_PAGE_OPTIONS } from '../constants';
 import { buildCmaClient } from '../data/cma';
 import { collectSelection } from '../data/collectSelection';
 import { loadItemsById, loadUploadsById, mapBounded } from '../data/loadById';
@@ -31,6 +39,7 @@ import {
   sortableColumnIds,
 } from '../data/ordering';
 import { DEFAULT_ORDER_BY, throwIfItemsRequestAborted } from '../data/query';
+import { CircleExclamationIcon, RefreshIcon, TableListIcon } from '../icons';
 import {
   availableMoveDestinationIds,
   evaluateMoveSelection,
@@ -42,7 +51,6 @@ import { identityKey } from '../operations/permissions';
 import { bulkErrorMessage, bulkResultMessage } from '../operations/results';
 import type {
   BulkOperationProgress,
-  BulkOperationRequest,
   BulkOperationResult,
   SelectionAction as BulkSelectionAction,
   MoveSelectionContext,
@@ -51,7 +59,6 @@ import type {
   SelectionInput,
 } from '../operations/types';
 import type { RawField } from '../presentation/fields';
-import { formatDate } from '../presentation/formatters';
 import { createPresentationResolver } from '../presentation/resolver';
 import {
   getItemStatus,
@@ -76,12 +83,22 @@ import { useItemsPage } from '../state/useItemsPage';
 import { useModelFields } from '../state/useModelFields';
 import { usePresentations } from '../state/usePresentations';
 import { useSelectedItemsPage } from '../state/useSelectedItemsPage';
-import type { ModelSummary, QueryState, RawItem, RawItemType } from '../types';
-import styles from './AllRecordsPage.module.css';
+import { TEXTS } from '../texts';
+import type {
+  ModelSummary,
+  QueryState,
+  RawItem,
+  RawItemType,
+  WorkflowStageOption,
+} from '../types';
+import s from './AllRecordsPage.module.css';
 
 type Props = {
   ctx: RenderPageCtx;
 };
+
+/** The bulk action that runs now, if any */
+type BusyAction = BulkSelectionAction | 'move';
 
 const STATUS_FILTER_OPTIONS = [
   { label: 'All statuses', value: '' },
@@ -90,22 +107,19 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'Published', value: 'published' },
 ] as const;
 
+const PER_PAGE_SELECT_OPTIONS = [...PER_PAGE_OPTIONS];
+
+const ACTION_RUNNING = { reason: 'Wait for the current action to finish.' };
+const RECORDS_LOADING = { reason: 'Wait for the records to load.' };
+
+function ignore(): void {}
+
 function isDefined<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined;
 }
 
-function itemDate(value: unknown, locale: string, timeZone: string): string {
-  if (typeof value !== 'string') {
-    return '—';
-  }
-
-  return (
-    formatDate(value, {
-      dateOnly: false,
-      locales: [locale],
-      timeZone,
-    }) ?? '—'
-  );
+function isoDate(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
 }
 
 function operationLabel(action: BulkSelectionAction): string {
@@ -170,14 +184,19 @@ function creatorRoleMap(
   return result;
 }
 
-function recordsLabel(count: number): string {
-  return `${count} ${count === 1 ? 'record' : 'records'}`;
+// A number with the separators of the locale of the user ("1,234"), as the
+// `#` of the ICU texts of Canvas
+function formatNumber(locale: string, value: number): string {
+  return new Intl.NumberFormat(locale).format(value);
 }
 
-function emptyStateMessage(queryState: QueryState): string {
-  return queryState.query || queryState.model || queryState.status
-    ? 'No records match the current filters.'
-    : 'No readable records are available.';
+// The count of the title bar ("1,234 records"), with the separators and the
+// plural rules of the locale of the user, as the ICU texts of Canvas do
+function formatRecordCount(locale: string, count: number): string {
+  const number = formatNumber(locale, count);
+  return new Intl.PluralRules(locale).select(count) === 'one'
+    ? `${number} record`
+    : `${number} records`;
 }
 
 function displayedOrderBy(queryState: QueryState) {
@@ -268,48 +287,106 @@ function useOrderingState(args: {
   };
 }
 
-function evaluatedSelectionBarAction(
-  evaluation: SelectionEvaluation,
-  onClick: () => void | Promise<void>,
-): SelectionBarAction | undefined {
-  if (evaluation.eligibleCount === 0) return undefined;
+type SelectionBarActionId =
+  | BusyAction
+  | 'selectAllMatching'
+  | 'toggleSelection'
+  | 'invert';
 
-  return {
-    disabledReason: evaluation.disabledReason ?? undefined,
-    onClick,
-  };
-}
+/** The "Move to stage" action: a menu of stages, or a reason why not */
+type MoveBarAction = { menu: ReactNode } | { disabledReason: string };
 
+// The buttons of the selection bar. The plain actions change the selection;
+// the main actions on it are primary, with Delete last. An action that does
+// not apply to any selected record does not show. While an action runs, its
+// own button shows a spinner and the others say why they wait.
 function buildSelectionBarActions(args: {
-  deleteEvaluation: SelectionEvaluation;
-  publishEvaluation: SelectionEvaluation;
-  unpublishEvaluation: SelectionEvaluation;
-  moveEnabled: boolean;
-  onDelete: () => void | Promise<void>;
-  onPublish: () => void | Promise<void>;
-  onUnpublish: () => void | Promise<void>;
-  onMove: () => void | Promise<void>;
-}): Partial<Record<SelectionActionId, SelectionBarAction>> {
-  return {
-    delete: evaluatedSelectionBarAction(args.deleteEvaluation, args.onDelete),
-    publish: evaluatedSelectionBarAction(
-      args.publishEvaluation,
-      args.onPublish,
-    ),
-    unpublish: evaluatedSelectionBarAction(
-      args.unpublishEvaluation,
-      args.onUnpublish,
-    ),
-    move: args.moveEnabled ? { onClick: args.onMove } : undefined,
+  running: SelectionBarActionId | null;
+  loading: boolean;
+  showingSelected: boolean;
+  /** The number of matching records, when the bar offers to select them */
+  selectAllMatchingCount: number | null;
+  evaluations: Record<BulkSelectionAction, SelectionEvaluation>;
+  move: MoveBarAction | null;
+  onSelectAllMatching: () => void | Promise<void>;
+  onToggleSelection: () => void;
+  onInvertSelection: () => void;
+  onRun: (action: BulkSelectionAction) => void | Promise<void>;
+}): (MaybeAction | MaybeAction[])[] {
+  const waitReason = args.running
+    ? ACTION_RUNNING
+    : args.loading
+      ? RECORDS_LOADING
+      : undefined;
+  const disabled = (id: SelectionBarActionId) =>
+    args.running === id ? undefined : waitReason;
+  const mainAction = (
+    action: BulkSelectionAction,
+    label: string,
+  ): MaybeAction =>
+    args.evaluations[action].eligibleCount > 0 && {
+      id: action,
+      tone: 'primary',
+      label,
+      disabled: disabled(action),
+      onClick: () => args.onRun(action),
+    };
+  const move: Action | null = args.move && {
+    id: 'move',
+    tone: 'primary',
+    label: 'Move to stage',
+    ...('menu' in args.move
+      ? // The menu shows no spinner of its own: it waits like the others
+        { disabled: waitReason, menu: args.move.menu }
+      : { disabled: { reason: args.move.disabledReason }, menu: null }),
   };
+
+  return [
+    [
+      args.selectAllMatchingCount !== null && {
+        id: 'selectAllMatching',
+        label: {
+          id: 'allRecords.selectAllMatching',
+          values: { count: args.selectAllMatchingCount },
+        },
+        disabled: disabled('selectAllMatching'),
+        onClick: args.onSelectAllMatching,
+      },
+      {
+        id: 'toggleSelection',
+        label: args.showingSelected ? 'Hide selection' : 'Show selection',
+        disabled: disabled('toggleSelection'),
+        onClick: args.onToggleSelection,
+      },
+      {
+        id: 'invert',
+        label: 'Invert selection',
+        disabled: disabled('invert'),
+        onClick: args.onInvertSelection,
+      },
+    ],
+    mainAction('publish', 'Publish'),
+    mainAction('unpublish', 'Unpublish'),
+    move,
+    mainAction('delete', 'Delete'),
+  ];
 }
 
-type EnabledMoveContext = Extract<MoveSelectionContext, { enabled: true }>;
+function bulkProgressText(
+  locale: string,
+  progress: BulkOperationProgress,
+): string {
+  const n = (value: number) => formatNumber(locale, value);
+  return `${n(progress.completed)} of ${n(progress.requested)} processed; ${n(progress.successful)} succeeded; ${n(progress.failed)} failed`;
+}
 
-type MoveDestination = {
-  id: string;
-  name: string;
-};
+function collectionProgressText(
+  locale: string,
+  count: number,
+  total: number,
+): string {
+  return `Selecting ${formatNumber(locale, count)} of ${formatNumber(locale, total)} records…`;
+}
 
 function reportBulkResult(
   ctx: RenderPageCtx,
@@ -321,54 +398,6 @@ function reportBulkResult(
   } else {
     ctx.notice(message);
   }
-}
-
-async function chooseMoveDestination(args: {
-  client: Client;
-  ctx: RenderPageCtx;
-  moveContext: EnabledMoveContext;
-  selectionInput: SelectionInput;
-  selectedCount: number;
-  signal?: AbortSignal;
-}): Promise<MoveDestination | null> {
-  const workflow = await args.client.workflows.find(
-    args.moveContext.workflowId,
-  );
-  if (args.signal?.aborted) return null;
-  const allowedIds = new Set(
-    availableMoveDestinationIds({
-      ...args.selectionInput,
-      destinationStageIds: workflow.stages.map((stage) => stage.id),
-    }),
-  );
-  const stages = workflow.stages.filter((stage) => allowedIds.has(stage.id));
-
-  if (stages.length === 0) {
-    args.ctx.alert(
-      'None of the selected records can be moved to another stage.',
-    );
-    return null;
-  }
-
-  const stageId = await args.ctx.openModal({
-    id: WORKFLOW_STAGE_MODAL_ID,
-    title: 'Move to stage',
-    width: 's',
-    initialHeight: 260,
-    parameters: {
-      count: args.selectedCount,
-      stages: stages.map((stage) => ({ id: stage.id, name: stage.name })),
-    },
-  });
-  if (typeof stageId !== 'string') return null;
-
-  const destination = stages.find((stage) => stage.id === stageId);
-  if (!destination) {
-    args.ctx.alert('The selected workflow stage is no longer available.');
-    return null;
-  }
-
-  return { id: destination.id, name: destination.name };
 }
 
 async function confirmSelectionAction(
@@ -393,67 +422,29 @@ async function confirmSelectionAction(
   );
 }
 
-async function prepareMoveOperation(args: {
-  ctx: RenderPageCtx;
-  client: Client;
-  moveContext: EnabledMoveContext;
-  selectionInput: SelectionInput;
-  signal?: AbortSignal;
-}): Promise<BulkOperationRequest | null> {
-  const destination = await chooseMoveDestination({
-    ...args,
-    selectedCount: args.selectionInput.items.length,
-  });
-  if (!destination || args.signal?.aborted) return null;
-  const evaluation = evaluateMoveSelection({
-    ...args.selectionInput,
-    destinationStageId: destination.id,
-  });
-  if (evaluation.disabledReason) {
-    args.ctx.alert(evaluation.disabledReason);
-    return null;
-  }
-  const confirmed = await args.ctx.openConfirm({
-    title: `Move selected records to ${destination.name}`,
-    content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
-    choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
-    cancel: { label: 'Cancel', value: false },
-  });
-  return confirmed
-    ? {
-        operation: 'move_to_stage',
-        itemIds: evaluation.itemIds,
-        stage: destination.id,
-      }
-    : null;
+async function confirmMoveToStage(
+  ctx: RenderPageCtx,
+  destination: WorkflowStageOption,
+  evaluation: SelectionEvaluation,
+): Promise<boolean> {
+  return Boolean(
+    await ctx.openConfirm({
+      title: `Move selected records to ${destination.name}`,
+      content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
+      choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
+      cancel: { label: 'Cancel', value: false },
+    }),
+  );
 }
 
-function selectionScaleProps(args: {
-  showingSelected: boolean;
-  total: number;
-  perPage: number;
-  selectedCount: number;
-  selectionBelongsToCurrentFilter: boolean;
-  selectAll: () => Promise<void>;
-  collectionProgress: string | null;
-  bulkProgress: BulkOperationProgress | null;
-  cancel: () => void;
-}) {
-  return {
-    onSelectAllMatching:
-      !args.showingSelected &&
-      args.total > args.perPage &&
-      (!args.selectionBelongsToCurrentFilter || args.selectedCount < args.total)
-        ? args.selectAll
-        : undefined,
-    progressText:
-      args.collectionProgress ??
-      (args.bulkProgress
-        ? `${args.bulkProgress.completed} of ${args.bulkProgress.requested} processed; ${args.bulkProgress.successful} succeeded; ${args.bulkProgress.failed} failed`
-        : undefined),
-    onCancel:
-      args.collectionProgress || args.bulkProgress ? args.cancel : undefined,
-  };
+// Why the filters do nothing now, if they do nothing
+function disabledFiltersReason(args: {
+  actionRunning: boolean;
+  orderingPending: boolean;
+}): { reason: string } | undefined {
+  if (args.actionRunning) return ACTION_RUNNING;
+  if (args.orderingPending) return RECORDS_LOADING;
+  return undefined;
 }
 
 function displayPage<T>(showingSelected: boolean, selected: T, page: T): T {
@@ -521,6 +512,528 @@ async function loadCurrentSelection(
   });
 }
 
+type MoveCheck =
+  | { evaluation: SelectionEvaluation }
+  /** `refresh` reloads the list after the alert, as for a failed action */
+  | { message: string; refresh: boolean };
+
+// The menu showed the stages of the selection before its reload: check the
+// pick again against the current records.
+function checkMoveDestination(args: {
+  selection: SelectionInput;
+  destination: WorkflowStageOption;
+  workflowId: string;
+  workflowStageIds: readonly string[];
+}): MoveCheck {
+  const moveContext = getMoveSelectionContext(args.selection);
+  if (!moveContext.enabled) {
+    return { message: moveContext.disabledReason, refresh: true };
+  }
+  const unavailable = {
+    message: 'The selected workflow stage is no longer available.',
+    refresh: false,
+  };
+  if (moveContext.workflowId !== args.workflowId) return unavailable;
+  const availableIds = availableMoveDestinationIds({
+    ...args.selection,
+    destinationStageIds: args.workflowStageIds,
+  });
+  if (availableIds.length === 0) {
+    return {
+      message: 'None of the selected records can be moved to another stage.',
+      refresh: false,
+    };
+  }
+  if (!availableIds.includes(args.destination.id)) return unavailable;
+  const evaluation = evaluateMoveSelection({
+    ...args.selection,
+    destinationStageId: args.destination.id,
+  });
+  return evaluation.disabledReason
+    ? { message: evaluation.disabledReason, refresh: false }
+    : { evaluation };
+}
+
+/** The last loaded page of the list: its total, and the filters it is of */
+type LoadedResult = {
+  totalCount: number;
+  /** The filters of the load (JSON of model, status and query) */
+  filterScope: string;
+};
+
+// The last loaded page of the list: undefined until the first load ends, then
+// kept while the list loads again (useItemsPage forgets it while a Preview
+// order waits for the fields of the model). useItemsPage keeps the object of
+// a loaded page until the next load starts, thus the filters of the render
+// that first sees an object are the filters it was loaded for. The renders
+// between a change of the filters and the start of the new load see the old
+// object, and keep the filters of the old load.
+function useLoadedResult(
+  itemsPage: { loaded: boolean; totalCount: number },
+  filterScope: string,
+): LoadedResult | undefined {
+  const [last, setLast] = useState<{
+    page: object;
+    result: LoadedResult;
+  }>();
+  if (itemsPage.loaded && last?.page !== itemsPage) {
+    const result = { totalCount: itemsPage.totalCount, filterScope };
+    setLast({ page: itemsPage, result });
+    return result;
+  }
+  return last?.result;
+}
+
+const NO_ITEMS: readonly RawItem[] = [];
+
+// The rows of "Show selection". useSelectedItemsPage empties its rows each
+// time it loads them again (another page of the selection, a record that
+// leaves the selection, a refresh): meanwhile the table keeps the rows of the
+// last load, less the records that are no longer selected, as the list keeps
+// its last page. Before the first load of the selection there are none, thus
+// the area shows its loading state.
+function useSelectionRows(args: {
+  page: { items: readonly RawItem[]; loading: boolean; error: string | null };
+  loadStarted: boolean;
+  selectedById: ReadonlyMap<string, RawItem>;
+}): readonly RawItem[] {
+  const { page, loadStarted, selectedById } = args;
+  const [lastRows, setLastRows] = useState<readonly RawItem[]>(NO_ITEMS);
+  useEffect(() => {
+    if (!loadStarted) {
+      setLastRows(NO_ITEMS);
+    } else if (!page.loading && !page.error) {
+      setLastRows(page.items);
+    }
+  }, [loadStarted, page.items, page.loading, page.error]);
+  const keptRows = useMemo(() => {
+    const kept = lastRows.filter((item) => selectedById.has(item.id));
+    // The same array while no row left: the presentations stay as they are
+    return kept.length === lastRows.length ? lastRows : kept;
+  }, [lastRows, selectedById]);
+  return loadStarted && page.loading ? keptRows : page.items;
+}
+
+type PageState =
+  | 'no-token'
+  | 'no-models'
+  | 'loading'
+  | 'empty'
+  | 'no-results'
+  | 'ready'
+  | 'failed';
+
+function pageStateOf(args: {
+  hasToken: boolean;
+  hasModels: boolean;
+  failed: boolean;
+  showingSelected: boolean;
+  loaded: LoadedResult | undefined;
+  filterScope: string;
+  queryState: QueryState;
+}): PageState {
+  if (!args.hasToken) return 'no-token';
+  if (!args.hasModels) return 'no-models';
+  if (args.failed) return 'failed';
+  // "Show selection" lists the selected records, which are never empty. A
+  // page of them that can't be loaded is a state of the list area.
+  if (args.showingSelected) return 'ready';
+  // The list loads for other filters: the last page tells nothing about them,
+  // thus the title bar stays and the list shows its loading state (or the
+  // last rows) until the new page arrives
+  if (args.loaded && args.loaded.filterScope !== args.filterScope) {
+    return 'ready';
+  }
+  return getPaginatedListState(
+    args.loaded === undefined ? undefined : args.loaded.totalCount === 0,
+    Boolean(
+      args.queryState.query || args.queryState.model || args.queryState.status,
+    ),
+  );
+}
+
+// The states that are the whole page, with no title bar
+function PageBlankSlate({ state }: { state: PageState }) {
+  switch (state) {
+    case 'no-token':
+      return (
+        <BlankSlate
+          placement="area"
+          titleLevel={1}
+          error
+          icon={<CircleExclamationIcon />}
+          title="No access to your API token"
+          description="This page needs the “Current user access token” permission. Turn it on in the plugin settings, then reload the page."
+        />
+      );
+    case 'no-models':
+      return (
+        <BlankSlate
+          placement="area"
+          titleLevel={1}
+          icon={<TableListIcon />}
+          title="All records"
+          description="This environment has no models yet. The records of every model show here."
+        />
+      );
+    case 'empty':
+      return (
+        <BlankSlate
+          placement="area"
+          titleLevel={1}
+          icon={<TableListIcon />}
+          title="All records"
+          description="There are no records to show yet. The records of every model that you can read show here."
+        />
+      );
+    default:
+      return (
+        <BlankSlate placement="area" loading title="Loading the records" />
+      );
+  }
+}
+
+// What the area of the list shows: the error of the last load, the "no
+// results" of the filters, the spinner while a page has no rows yet, a page
+// of the selection whose records can't be shown, or the table (with the
+// relevance notice while searching)
+function RecordsArea({
+  state,
+  error,
+  waitingForRows,
+  selectionUnavailable,
+  searching,
+  onRetry,
+  children,
+}: {
+  state: PageState;
+  error: string | null;
+  waitingForRows: boolean;
+  selectionUnavailable: boolean;
+  searching: boolean;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  if (state === 'failed') {
+    return (
+      <BlankSlate
+        placement="area"
+        error
+        icon={<CircleExclamationIcon />}
+        title="Couldn't load the records"
+        code={error ?? undefined}
+        description="Check your connection, then try again."
+        actions={
+          <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+        }
+      />
+    );
+  }
+  if (state === 'no-results') {
+    return <Pane.FilterBlankSlate />;
+  }
+  if (waitingForRows) {
+    return <BlankSlate placement="area" loading title="Loading the records" />;
+  }
+  // The selection bar stays: the user can hide the selection or clear it
+  if (selectionUnavailable) {
+    return (
+      <BlankSlate
+        placement="area"
+        icon={<TableListIcon />}
+        title="The selected records can't be shown"
+        description="They were deleted, or you can no longer read them."
+      />
+    );
+  }
+  return (
+    <>
+      {searching && (
+        <Callout>
+          While you search, the records are sorted by relevance.
+        </Callout>
+      )}
+      {children}
+    </>
+  );
+}
+
+type FilterOption = { label: string; value: string };
+
+// The title bar, and the search row under it while the filter is open
+function RecordsTitleBar({
+  count,
+  locale,
+  busy,
+  modelOptions,
+  queryState,
+  filtersDisabled,
+  searchLocked,
+  search,
+  onSearchChange,
+  filter,
+  onFilter,
+}: {
+  /** The number of listed records, once the first load ends */
+  count: number | null;
+  locale: string;
+  busy: boolean;
+  modelOptions: readonly FilterOption[];
+  queryState: QueryState;
+  filtersDisabled: { reason: string } | undefined;
+  searchLocked: boolean;
+  search: string;
+  onSearchChange: (value: string) => void;
+  filter: ReturnType<typeof useFilterToolbar>;
+  onFilter: (patch: Partial<QueryState>) => void;
+}) {
+  return (
+    <>
+      <Toolbar>
+        <Toolbar.Title
+          level={1}
+          help={
+            <Toolbar.Help>
+              Every record of this environment, from all its models, in one
+              table. Select records to publish, unpublish, delete or move them
+              to a workflow stage.
+            </Toolbar.Help>
+          }
+        >
+          All records
+        </Toolbar.Title>
+        <Toolbar.Subtitle hidden={count === null}>
+          {count !== null && formatRecordCount(locale, count)}
+        </Toolbar.Subtitle>
+        <Toolbar.Spinner show={busy} />
+        <Toolbar.Space />
+        <Toolbar.Group>
+          <FilterDropdown
+            tooltip="Filter by model"
+            value={queryState.model ?? ''}
+            options={modelOptions}
+            disabled={filtersDisabled}
+            onChange={(value) => onFilter({ model: value || null })}
+          />
+          <FilterDropdown
+            tooltip="Filter by status"
+            value={queryState.status ?? ''}
+            options={STATUS_FILTER_OPTIONS}
+            disabled={filtersDisabled}
+            onChange={(value) =>
+              onFilter({ status: (value as QueryState['status']) || null })
+            }
+          />
+          <Toolbar.FilterToggle
+            pressed={filter.open}
+            // Closing the filter clears the search: not while it is locked
+            onClick={filter.open && searchLocked ? ignore : filter.onToggle}
+            onOpen={filter.onOpen}
+          />
+        </Toolbar.Group>
+      </Toolbar>
+      {filter.open && (
+        // Escape in the field closes the filter, as the toggle does
+        <Toolbar fields onClose={searchLocked ? undefined : filter.onClose}>
+          <Toolbar.FilterInput
+            value={search}
+            onChange={onSearchChange}
+            autoFocus={filter.autoFocus}
+            onClose={filter.onClose}
+            disabled={searchLocked}
+          />
+        </Toolbar>
+      )}
+    </>
+  );
+}
+
+// The pages of the list. The kit shows the pages when there is more than
+// one, and the "Show" select when the list is longer than its smallest page.
+function RecordsPagination({
+  currentPage,
+  perPage,
+  totalEntries,
+  disabled,
+  onPageChange,
+  onPerPageChange,
+}: {
+  currentPage: number;
+  perPage: number;
+  totalEntries: number;
+  disabled: boolean;
+  onPageChange: (page: number) => void;
+  onPerPageChange: (perPage: number) => void;
+}) {
+  return (
+    <Toolbar>
+      <Toolbar.Pagination
+        currentPage={currentPage}
+        perPage={perPage}
+        totalEntries={totalEntries}
+        disabled={disabled}
+        onChange={onPageChange}
+        perPageSelect={{
+          options: PER_PAGE_SELECT_OPTIONS,
+          onChange: onPerPageChange,
+        }}
+      />
+    </Toolbar>
+  );
+}
+
+function hasPagination(totalEntries: number, perPage: number): boolean {
+  return totalEntries > Math.min(perPage, ...PER_PAGE_OPTIONS);
+}
+
+// The progress of a long action, after the actions of the selection bar
+function ActionProgress({
+  text,
+  onCancel,
+}: {
+  text: string;
+  onCancel: () => void;
+}) {
+  return (
+    <div className={s.progress}>
+      <span role="status" aria-live="polite">
+        {text}
+      </span>
+      <Button
+        tone="overlay"
+        size="micro"
+        label="Cancel remaining"
+        onClick={onCancel}
+      />
+    </div>
+  );
+}
+
+// "Select all matching records" shows outside "Show selection", when the
+// matches do not fit in one page and the selection is not all of them yet
+function selectAllMatchingCountOf(args: {
+  showingSelected: boolean;
+  totalCount: number;
+  perPage: number;
+  selectedCount: number;
+  selectionBelongsToCurrentFilter: boolean;
+}): number | null {
+  const offered =
+    !args.showingSelected &&
+    args.totalCount > args.perPage &&
+    (!args.selectionBelongsToCurrentFilter ||
+      args.selectedCount < args.totalCount);
+  return offered ? args.totalCount : null;
+}
+
+// Move to stage applies to the records of one model with a workflow. When
+// the selection mixes models and one of them has a workflow, the action
+// stays visible and tells why it is disabled.
+function moveBarActionOf(args: {
+  client: Client | null;
+  moveContext: MoveSelectionContext;
+  selectionInput: SelectionInput;
+  onPick: (
+    destination: WorkflowStageOption,
+    workflowId: string,
+    workflowStageIds: readonly string[],
+  ) => void;
+}): MoveBarAction | null {
+  const { client, moveContext } = args;
+  if (moveContext.enabled) {
+    return client
+      ? {
+          menu: (
+            <MoveToStageMenu
+              client={client}
+              workflowId={moveContext.workflowId}
+              selectionInput={args.selectionInput}
+              onPick={args.onPick}
+            />
+          ),
+        }
+      : null;
+  }
+  const someModelHasWorkflow = args.selectionInput.items.some((item) =>
+    Boolean(
+      args.selectionInput.modelsById.get(item.relationships.item_type.data.id)
+        ?.workflowId,
+    ),
+  );
+  return someModelHasWorkflow
+    ? { disabledReason: moveContext.disabledReason }
+    : null;
+}
+
+// What the state of the page locks, and what it shows, now
+function pageFlagsOf(args: {
+  busyAction: BusyAction | null;
+  collectingSelection: boolean;
+  orderingPending: boolean;
+  displayLoading: boolean;
+  presentationsLoading: boolean;
+  showingSelected: boolean;
+  selectedPageLoadStarted: boolean;
+  firstLoadDone: boolean;
+  rowCount: number;
+  query: string;
+}) {
+  const actionRunning = args.busyAction !== null || args.collectingSelection;
+  const tableDisabled = actionRunning || args.orderingPending;
+  // The rows of the list are on the way: another page loads, a Preview order
+  // waits for the fields of the model, or "Show selection" has not started to
+  // load the selected records yet
+  const listLoading =
+    args.displayLoading ||
+    (args.showingSelected
+      ? !args.selectedPageLoadStarted
+      : args.orderingPending);
+
+  return {
+    tableDisabled,
+    filtersDisabled: disabledFiltersReason({
+      actionRunning,
+      orderingPending: args.orderingPending,
+    }),
+    selectionEnabled: !(
+      tableDisabled ||
+      args.displayLoading ||
+      args.presentationsLoading
+    ),
+    paginationDisabled: args.displayLoading || tableDisabled,
+    barRunning:
+      args.busyAction ??
+      (args.collectingSelection ? ('selectAllMatching' as const) : null),
+    barLoading: args.orderingPending || args.displayLoading,
+    // The spinner of the title bar shows on reloads, never before the first
+    // load, and while a bulk action saves
+    titleBusy:
+      args.firstLoadDone &&
+      (listLoading || args.presentationsLoading || args.busyAction !== null),
+    waitingForRows: args.rowCount === 0 && listLoading,
+    // None of the selected records of this page loaded: they were deleted, or
+    // the user can no longer read them. They stay selected.
+    selectionUnavailable:
+      args.showingSelected && !listLoading && args.rowCount === 0,
+    searching: args.query !== '' && !args.showingSelected,
+  };
+}
+
+function progressTextOf(
+  locale: string,
+  collectionProgress: string | null,
+  bulkProgress: BulkOperationProgress | null,
+): string | null {
+  if (collectionProgress) return collectionProgress;
+  return bulkProgress ? bulkProgressText(locale, bulkProgress) : null;
+}
+
+const PANE_STATES: ReadonlySet<PageState> = new Set([
+  'ready',
+  'no-results',
+  'failed',
+]);
+
 export default function AllRecordsPage({ ctx }: Props) {
   const queryState = useMemo(
     () => parseQueryState(ctx.location.search),
@@ -539,7 +1052,7 @@ export default function AllRecordsPage({ ctx }: Props) {
     queryState.query,
   ]);
   const [showingSelected, setShowingSelected] = useState(false);
-  const [busyAction, setBusyAction] = useState<SelectionActionId | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [selectionPage, setSelectionPage] = useState(0);
   const [collectingSelection, setCollectingSelection] = useState(false);
@@ -748,6 +1261,16 @@ export default function AllRecordsPage({ ctx }: Props) {
     showingSelected,
     refreshVersion,
   );
+  // Until the selected records start to load, the hook still holds the empty
+  // result of the list mode, which is not an empty selection page
+  const [selectedPageLoadStarted, setSelectedPageLoadStarted] = useState(false);
+  useEffect(() => {
+    if (!showingSelected) {
+      setSelectedPageLoadStarted(false);
+    } else if (selectedItemsPage.loading) {
+      setSelectedPageLoadStarted(true);
+    }
+  }, [showingSelected, selectedItemsPage.loading]);
   useEffect(() => {
     if (itemsPage.loaded) {
       setSelectedById((current) =>
@@ -766,9 +1289,14 @@ export default function AllRecordsPage({ ctx }: Props) {
     selectedItemsPage.loading,
     selectedItemsPage.error,
   ]);
+  const selectionRows = useSelectionRows({
+    page: selectedItemsPage,
+    loadStarted: selectedPageLoadStarted,
+    selectedById,
+  });
   const displayItems = displayPage(
     showingSelected,
-    selectedItemsPage.items,
+    selectionRows,
     itemsPage.items,
   );
   const displayLoading = displayPage(
@@ -808,28 +1336,25 @@ export default function AllRecordsPage({ ctx }: Props) {
           id: item.id,
           title: presentation?.title ?? `Record #${item.id}`,
           imageUrl: presentation?.image?.url,
-          imageAlt: '',
           model: model?.name ?? 'Unknown model',
           status,
           statusLabel: presentation?.statusLabel ?? ITEM_STATUS_LABEL[status],
-          updatedAt: itemDate(
-            item.meta.updated_at,
-            ctx.ui.locale,
-            ctx.site.attributes.timezone,
-          ),
-          createdAt: itemDate(
-            item.meta.created_at,
-            ctx.ui.locale,
-            ctx.site.attributes.timezone,
-          ),
+          updatedAt: isoDate(item.meta.updated_at),
+          createdAt: isoDate(item.meta.created_at),
           publishedValid: validity.publishedValid,
           currentValid: validity.currentValid,
           draftModeActive: model?.draftModeActive ?? false,
+          url: buildRecordEditorUrl({
+            environment: ctx.environment,
+            isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+            modelId: item.relationships.item_type.data.id,
+            itemId: item.id,
+          }),
         };
       }),
     [
-      ctx.site.attributes.timezone,
-      ctx.ui.locale,
+      ctx.environment,
+      ctx.isEnvironmentPrimary,
       displayItems,
       modelsById,
       presentations.byItemId,
@@ -912,7 +1437,7 @@ export default function AllRecordsPage({ ctx }: Props) {
     setRefreshVersion((value) => value + 1);
   }
 
-  function beginAction(action?: SelectionActionId): AbortController | null {
+  function beginAction(action?: BusyAction): AbortController | null {
     if (actionLocked.current) return null;
     actionLocked.current = true;
     const controller = new AbortController();
@@ -971,7 +1496,9 @@ export default function AllRecordsPage({ ctx }: Props) {
         modelIds: models.map((model) => model.id),
         onProgress: (count, total) => {
           if (actionController.current === controller) {
-            setCollectionProgress(`Selecting ${count} of ${total} records…`);
+            setCollectionProgress(
+              collectionProgressText(ctx.ui.locale, count, total),
+            );
           }
         },
       });
@@ -1094,7 +1621,22 @@ export default function AllRecordsPage({ ctx }: Props) {
     }
   }
 
-  async function runMoveToStage(): Promise<void> {
+  function reportMoveCheck(
+    controller: AbortController,
+    check: Extract<MoveCheck, { message: string }>,
+  ): void {
+    if (check.refresh) {
+      reportActionError(controller, check.message);
+    } else {
+      ctx.alert(check.message);
+    }
+  }
+
+  async function runMoveToStage(
+    destination: WorkflowStageOption,
+    workflowId: string,
+    workflowStageIds: readonly string[],
+  ): Promise<void> {
     if (!client) {
       ctx.alert(
         'This action requires the current user access token permission.',
@@ -1106,28 +1648,36 @@ export default function AllRecordsPage({ ctx }: Props) {
     try {
       const currentSelection = await selectionForAction(controller);
       if (!currentSelection) return;
-      const currentMoveContext = getMoveSelectionContext(currentSelection);
-      if (!currentMoveContext.enabled) {
-        reportActionError(controller, currentMoveContext.disabledReason);
+      const check = checkMoveDestination({
+        selection: currentSelection,
+        destination,
+        workflowId,
+        workflowStageIds,
+      });
+      if ('message' in check) {
+        reportMoveCheck(controller, check);
         return;
       }
-      const request = await prepareMoveOperation({
+      const { evaluation } = check;
+      const confirmed = await confirmMoveToStage(ctx, destination, evaluation);
+      if (!confirmed || controller.signal.aborted) return;
+      const result = await executeBulkOperation(
         client,
-        ctx,
-        moveContext: currentMoveContext,
-        selectionInput: currentSelection,
-        signal: controller.signal,
-      });
-      if (!request || controller.signal.aborted) return;
-      const result = await executeBulkOperation(client, request, {
-        signal: controller.signal,
-        onProgress: operationProgress(controller, request.itemIds.length),
-      });
+        {
+          operation: 'move_to_stage',
+          itemIds: evaluation.itemIds,
+          stage: destination.id,
+        },
+        {
+          signal: controller.signal,
+          onProgress: operationProgress(controller, evaluation.itemIds.length),
+        },
+      );
       await applyBulkResult(
         controller,
         currentSelection,
         result,
-        request.itemIds,
+        evaluation.itemIds,
       );
     } catch (error) {
       reportActionError(controller, bulkErrorMessage('move_to_stage', error));
@@ -1136,244 +1686,224 @@ export default function AllRecordsPage({ ctx }: Props) {
     }
   }
 
-  const tableDisabled =
-    busyAction !== null || collectingSelection || ordering.pending;
-  const totalLabel = recordsLabel(itemsPage.totalCount);
-  const selectionActions = buildSelectionBarActions({
-    deleteEvaluation,
-    publishEvaluation,
-    unpublishEvaluation,
-    moveEnabled: moveContext.enabled,
-    onDelete: () => runSelectionAction('delete'),
-    onPublish: () => runSelectionAction('publish'),
-    onUnpublish: () => runSelectionAction('unpublish'),
-    onMove: runMoveToStage,
+  function cancelRemaining(): void {
+    actionController.current?.abort();
+    setCollectionProgress((value) => (value ? 'Cancelling…' : null));
+  }
+
+  const filter = useFilterToolbar({
+    isFiltering: searchInput !== '' || queryState.query !== '',
+    onClear: () => {
+      searchWasEdited.current = false;
+      setSearchInput('');
+      updateLocation({ query: '' });
+    },
   });
 
-  if (!ctx.currentUserAccessToken) {
-    return (
-      <Canvas ctx={ctx} noAutoResizer>
-        <div className={styles.page}>
-          <div className={styles.state}>
-            <h2>API access required</h2>
-            <p>
-              Grant the Current user access token permission to this plugin,
-              then reload the page.
-            </p>
-          </div>
-        </div>
-      </Canvas>
-    );
-  }
+  const loaded = useLoadedResult(itemsPage, matchingFilterScope);
+  const loadedTotalCount = loaded?.totalCount;
+  const pageState = pageStateOf({
+    hasToken: Boolean(ctx.currentUserAccessToken),
+    hasModels: models.length > 0,
+    failed: Boolean(displayError),
+    showingSelected,
+    loaded,
+    filterScope: matchingFilterScope,
+    queryState,
+  });
+  const flags = pageFlagsOf({
+    busyAction,
+    collectingSelection,
+    orderingPending: ordering.pending,
+    displayLoading,
+    presentationsLoading: presentations.loading,
+    showingSelected,
+    selectedPageLoadStarted,
+    firstLoadDone: loadedTotalCount !== undefined,
+    rowCount: tableRows.length,
+    query: queryState.query,
+  });
+  const listedCount = displayPage(
+    showingSelected,
+    selectedItems.length,
+    loadedTotalCount ?? 0,
+  );
+  const progressText = progressTextOf(
+    ctx.ui.locale,
+    collectionProgress,
+    bulkProgress,
+  );
 
-  if (models.length === 0) {
-    return (
-      <Canvas ctx={ctx} noAutoResizer>
-        <div className={styles.page}>
-          <div className={styles.state}>
-            <h2>No record models</h2>
-            <p>This environment does not contain any non-block models.</p>
-          </div>
-        </div>
-      </Canvas>
-    );
-  }
+  const selectionActions = buildSelectionBarActions({
+    running: flags.barRunning,
+    loading: flags.barLoading,
+    showingSelected,
+    selectAllMatchingCount: selectAllMatchingCountOf({
+      showingSelected,
+      totalCount: itemsPage.totalCount,
+      perPage: queryState.perPage,
+      selectedCount: selectedItems.length,
+      selectionBelongsToCurrentFilter:
+        selectionFilterScope.current === matchingFilterScope,
+    }),
+    evaluations: {
+      publish: publishEvaluation,
+      unpublish: unpublishEvaluation,
+      delete: deleteEvaluation,
+    },
+    move: moveBarActionOf({
+      client,
+      moveContext,
+      selectionInput,
+      onPick: (destination, workflowId, workflowStageIds) => {
+        void runMoveToStage(destination, workflowId, workflowStageIds);
+      },
+    }),
+    // A click while another action runs returns nothing, thus the button of
+    // the running action keeps its spinner.
+    onSelectAllMatching: () =>
+      actionLocked.current ? undefined : selectAllMatching(),
+    onToggleSelection: () => {
+      setSelectionPage(0);
+      setShowingSelected((current) => !current);
+    },
+    onInvertSelection: () => {
+      noteSelectionFilter();
+      setSelectedById((current) => invertPageSelection(current, displayItems));
+    },
+    onRun: (action) =>
+      actionLocked.current ? undefined : runSelectionAction(action),
+  });
+
+  const table = (
+    <AllRecordsTable
+      columns={columns}
+      rows={tableRows}
+      selectedIds={selectedIds}
+      orderBy={displayedOrderBy(queryState)}
+      sortableColumnIds={ordering.columnIds}
+      sortingEnabled={!queryState.query}
+      selectionEnabled={flags.selectionEnabled}
+      onColumnsChange={setColumns}
+      onOrderByChange={(orderBy) => {
+        if (!flags.tableDisabled) updateLocation({ orderBy });
+      }}
+      onToggleRow={(itemId) => {
+        const item = itemById.get(itemId);
+        if (!item) {
+          return;
+        }
+        noteSelectionFilter();
+        setSelectedById((current) => {
+          const next = new Map(current);
+          if (next.has(itemId)) {
+            next.delete(itemId);
+          } else {
+            next.set(itemId, compactSelectedItem(item));
+          }
+          return next;
+        });
+      }}
+      onTogglePage={(selected) => {
+        noteSelectionFilter();
+        setSelectedById((current) =>
+          setPageSelection(current, displayItems, selected),
+        );
+      }}
+    />
+  );
+
+  const pane = (
+    <Pane
+      ariaLabel="Records"
+      header={
+        <RecordsTitleBar
+          count={loadedTotalCount === undefined ? null : listedCount}
+          locale={ctx.ui.locale}
+          busy={flags.titleBusy}
+          modelOptions={modelFilterOptions}
+          queryState={queryState}
+          filtersDisabled={flags.filtersDisabled}
+          searchLocked={flags.tableDisabled}
+          search={searchInput}
+          onSearchChange={(value) => {
+            searchWasEdited.current = true;
+            setSearchInput(value);
+            // A row that opened for a search of the URL is the user's once
+            // they edit it: it stays open when they empty it by typing, and
+            // only the magnifier or the ✕ close it
+            filter.onOpen();
+          }}
+          filter={filter}
+          onFilter={updateLocation}
+        />
+      }
+      footer={
+        hasPagination(listedCount, queryState.perPage) && (
+          <RecordsPagination
+            currentPage={displayPage(
+              showingSelected,
+              selectionPage,
+              queryState.page,
+            )}
+            perPage={queryState.perPage}
+            totalEntries={listedCount}
+            disabled={flags.paginationDisabled}
+            onPageChange={(page) =>
+              showingSelected
+                ? setSelectionPage(page)
+                : updateLocation({ page })
+            }
+            onPerPageChange={(perPage) => {
+              setSelectionPage(0);
+              updateLocation({ perPage });
+            }}
+          />
+        )
+      }
+      slideUpToolbar={
+        <MultipleSelectionActionBar
+          open={selectedItems.length > 0}
+          status={{
+            id: 'allRecords.selected',
+            values: { count: selectedItems.length },
+          }}
+          onDeselectAll={() => {
+            if (!actionLocked.current) clearSelection();
+          }}
+          actions={selectionActions}
+          extra={
+            progressText && (
+              <ActionProgress text={progressText} onCancel={cancelRemaining} />
+            )
+          }
+        />
+      }
+    >
+      <ListArea>
+        <RecordsArea
+          state={pageState}
+          error={displayError}
+          waitingForRows={flags.waitingForRows}
+          selectionUnavailable={flags.selectionUnavailable}
+          searching={flags.searching}
+          onRetry={refresh}
+        >
+          {table}
+        </RecordsArea>
+      </ListArea>
+    </Pane>
+  );
 
   return (
-    <Canvas ctx={ctx} noAutoResizer>
-      <div className={styles.page}>
-        <header className={styles.toolbar}>
-          <h1 className={styles.title}>All Records</h1>
-          <div className={styles.spacer} />
-          <div className={styles.total}>{totalLabel}</div>
-        </header>
-
-        <div className={styles.filterBar}>
-          <div className={styles.searchWrap}>
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 512 512"
-              className={styles.searchIcon}
-            >
-              <path
-                fill="currentColor"
-                d="M416 208a208 208 0 1 1-416 0 208 208 0 0 1 416 0Zm-48 0a160 160 0 1 0-320 0 160 160 0 0 0 320 0Zm9.4 203.4 96 96a24 24 0 0 0 33.9-33.9l-96-96a24 24 0 0 0-33.9 33.9Z"
-              />
-            </svg>
-            <input
-              type="text"
-              className={styles.search}
-              aria-label="Search records"
-              placeholder="Search records"
-              value={searchInput}
-              disabled={tableDisabled}
-              onChange={(event) => {
-                searchWasEdited.current = true;
-                setSearchInput(event.target.value);
-              }}
-            />
-            {searchInput && (
-              <button
-                type="button"
-                className={styles.clearSearch}
-                disabled={tableDisabled}
-                aria-label="Clear search"
-                onClick={() => {
-                  searchWasEdited.current = false;
-                  setSearchInput('');
-                  updateLocation({ query: '' });
-                }}
-              >
-                ×
-              </button>
-            )}
-          </div>
-
-          <FilterDropdown
-            ariaLabel="Filter by model"
-            value={queryState.model ?? ''}
-            options={modelFilterOptions}
-            disabled={tableDisabled}
-            onChange={(value) => updateLocation({ model: value || null })}
-          />
-
-          <FilterDropdown
-            ariaLabel="Filter by publication status"
-            value={queryState.status ?? ''}
-            options={STATUS_FILTER_OPTIONS}
-            alignment="right"
-            disabled={tableDisabled}
-            onChange={(value) =>
-              updateLocation({
-                status: (value as QueryState['status']) || null,
-              })
-            }
-          />
-        </div>
-
-        <main className={styles.content}>
-          {displayError ? (
-            <div className={styles.state}>
-              <h2>Could not load records</h2>
-              <p>{displayError}</p>
-              <button type="button" className={styles.retry} onClick={refresh}>
-                Retry
-              </button>
-            </div>
-          ) : (
-            <AllRecordsTable
-              columns={columns}
-              rows={tableRows}
-              selectedIds={selectedIds}
-              orderBy={displayedOrderBy(queryState)}
-              sortableColumnIds={ordering.columnIds}
-              onColumnsChange={setColumns}
-              onOrderByChange={(orderBy) => updateLocation({ orderBy })}
-              onToggleRow={(itemId) => {
-                const item = itemById.get(itemId);
-                if (!item) {
-                  return;
-                }
-                noteSelectionFilter();
-                setSelectedById((current) => {
-                  const next = new Map(current);
-                  if (next.has(itemId)) {
-                    next.delete(itemId);
-                  } else {
-                    next.set(itemId, compactSelectedItem(item));
-                  }
-                  return next;
-                });
-              }}
-              onTogglePage={(selected) => {
-                noteSelectionFilter();
-                setSelectedById((current) =>
-                  setPageSelection(current, displayItems, selected),
-                );
-              }}
-              onOpenRow={(row) => {
-                const item = itemById.get(row.id);
-                const modelId = item?.relationships.item_type.data.id;
-                if (!item || !modelId) {
-                  return;
-                }
-                void ctx.navigateTo(
-                  buildRecordEditorUrl({
-                    environment: ctx.environment,
-                    isEnvironmentPrimary: ctx.isEnvironmentPrimary,
-                    modelId,
-                    itemId: item.id,
-                  }),
-                );
-              }}
-              loading={displayLoading || presentations.loading}
-              disabled={tableDisabled || displayLoading}
-              sortingDisabled={Boolean(queryState.query)}
-              emptyState={emptyStateMessage(queryState)}
-            />
-          )}
-        </main>
-
-        <div className={styles.slideUpToolbar}>
-          <SelectionActionBar
-            selectedCount={selectedItems.length}
-            showingSelected={showingSelected}
-            onToggleShowingSelected={() => {
-              setSelectionPage(0);
-              setShowingSelected((current) => !current);
-            }}
-            onInvertSelection={() => {
-              noteSelectionFilter();
-              setSelectedById((current) =>
-                invertPageSelection(current, displayItems),
-              );
-            }}
-            onClearSelection={clearSelection}
-            disabled={tableDisabled || displayLoading}
-            busyAction={busyAction}
-            {...selectionScaleProps({
-              showingSelected,
-              total: itemsPage.totalCount,
-              perPage: queryState.perPage,
-              selectedCount: selectedItems.length,
-              selectionBelongsToCurrentFilter:
-                selectionFilterScope.current === matchingFilterScope,
-              selectAll: selectAllMatching,
-              collectionProgress,
-              bulkProgress,
-              cancel: () => {
-                actionController.current?.abort();
-                setCollectionProgress((value) =>
-                  value ? 'Cancelling…' : null,
-                );
-              },
-            })}
-            actions={selectionActions}
-          />
-        </div>
-
-        <Pagination
-          currentPage={displayPage(
-            showingSelected,
-            selectionPage,
-            queryState.page,
-          )}
-          perPage={queryState.perPage}
-          totalEntries={displayPage(
-            showingSelected,
-            selectedItems.length,
-            itemsPage.totalCount,
-          )}
-          disabled={displayLoading || tableDisabled}
-          onPageChange={(page) =>
-            showingSelected ? setSelectionPage(page) : updateLocation({ page })
-          }
-          onPerPageChange={(perPage) => {
-            setSelectionPage(0);
-            updateLocation({ perPage });
-          }}
-        />
-      </div>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
+      <Main className={s.layout}>
+        {PANE_STATES.has(pageState) ? (
+          pane
+        ) : (
+          <PageBlankSlate state={pageState} />
+        )}
+      </Main>
     </Canvas>
   );
 }

@@ -1,41 +1,22 @@
-import type { ReactNode } from 'react';
-import type {
-  ColumnId,
-  ColumnSetting,
-  OrderBy,
-  PublicationStatus,
-} from '../types';
+import type { PublicationStatus } from '../types';
 
-export type TableColumn = {
-  id: ColumnId;
-  label: string;
-  sortable: boolean;
-};
-
+/** One record as the table shows it */
 export type TableRecord = {
   id: string;
-  title: ReactNode;
+  /** The presentation title, or a fallback that names the record */
+  title: string;
   imageUrl?: string | null;
-  imageAlt?: string;
-  model: ReactNode;
-  status: PublicationStatus | 'new';
-  statusLabel?: ReactNode;
-  updatedAt: ReactNode;
-  createdAt: ReactNode;
+  /** The name of the model */
+  model: string;
+  status: PublicationStatus;
+  statusLabel: string;
+  /** ISO 8601 */
+  updatedAt: string | null;
+  /** ISO 8601 */
+  createdAt: string | null;
   publishedValid?: boolean | null;
   currentValid?: boolean | null;
   draftModeActive?: boolean | null;
-};
-
-export type TableSortHandler = (orderBy: OrderBy | null) => void;
-
-export type ColumnSettingsHandler = (columns: readonly ColumnSetting[]) => void;
-
-export type SelectionActionId = 'delete' | 'publish' | 'unpublish' | 'move';
-
-export type SelectionAction = {
-  label?: ReactNode;
-  disabled?: boolean;
-  disabledReason?: string;
-  onClick: () => void | Promise<void>;
+  /** The path of the record editor */
+  url: string;
 };

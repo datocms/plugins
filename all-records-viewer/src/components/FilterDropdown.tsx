@@ -1,11 +1,5 @@
-import {
-  CaretDownIcon,
-  CaretUpIcon,
-  Dropdown,
-  DropdownMenu,
-  DropdownOption,
-} from 'datocms-react-ui';
-import styles from './FilterDropdown.module.css';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
 
 export type FilterDropdownOption = {
   label: string;
@@ -13,53 +7,46 @@ export type FilterDropdownOption = {
 };
 
 export type FilterDropdownProps = {
-  ariaLabel: string;
+  /** What the menu filters, for example "Filter by model" */
+  tooltip: string;
   value: string;
+  /** The first option is the one without a filter ("All models") */
   options: readonly FilterDropdownOption[];
   onChange: (value: string) => void;
-  alignment?: 'left' | 'right';
-  disabled?: boolean;
+  disabled?: { reason: string };
 };
 
+/** A menu of choices in the title bar: the trigger shows the current value. */
 export function FilterDropdown({
-  ariaLabel,
+  tooltip,
   value,
   options,
   onChange,
-  alignment = 'left',
-  disabled = false,
+  disabled,
 }: FilterDropdownProps) {
   const selected =
     options.find((option) => option.value === value) ?? options[0];
 
   return (
     <Dropdown
-      renderTrigger={({ open, onClick }) => (
-        <button
-          type="button"
-          className={styles.trigger}
-          aria-label={ariaLabel}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          disabled={disabled}
-          onClick={onClick}
-        >
-          <span>{selected?.label ?? value}</span>
-          {open ? <CaretUpIcon /> : <CaretDownIcon />}
-        </button>
-      )}
+      triggerComponent={ButtonTrigger}
+      tone="ghost"
+      label={selected?.label ?? value}
+      tooltip={tooltip}
+      disabled={disabled}
     >
-      <DropdownMenu alignment={alignment}>
+      {/* The filters sit at the right end of the title bar */}
+      <Dropdown.Menu placement="bottom-end">
         {options.map((option) => (
-          <DropdownOption
+          <Dropdown.Option
             key={option.value || '__all__'}
-            active={option.value === value}
-            onClick={() => onChange(option.value)}
+            active={option.value === (selected?.value ?? value)}
+            onPick={() => onChange(option.value)}
           >
             {option.label}
-          </DropdownOption>
+          </Dropdown.Option>
         ))}
-      </DropdownMenu>
+      </Dropdown.Menu>
     </Dropdown>
   );
 }

@@ -2,13 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   columnSettingsStorageKey,
   DEFAULT_COLUMN_SETTINGS,
+  fromTableLayout,
   loadColumnSettings,
   MIN_COLUMN_WIDTH,
   normalizeColumnSettings,
-  reorderColumn,
-  resizeAdjacentColumns,
   saveColumnSettings,
-  toggleColumn,
+  toTableLayout,
 } from './columnSettings';
 
 describe('column settings', () => {
@@ -35,79 +34,71 @@ describe('column settings', () => {
     ]);
   });
 
-  it('never removes the final visible column', () => {
-    expect(toggleColumn([{ id: 'id', width: 1 }], 'id')).toEqual([
-      { id: 'id', width: 1 },
-    ]);
+  it('converts the stored setting to the table layout and back', () => {
+    const columns = [
+      { id: '_preview' as const, width: 0.6 },
+      { id: 'id' as const, width: 0.4 },
+    ];
+    const layout = toTableLayout(columns);
+    expect(layout).toEqual({
+      columns: [
+        { name: '_preview', width: 0.6 },
+        { name: 'id', width: 0.4 },
+      ],
+    });
+    expect(fromTableLayout(layout)).toEqual(columns);
   });
 
-  it('adds a column at 15% and redistributes a removed width', () => {
-    const added = toggleColumn(
-      [
-        { id: '_preview', width: 0.5 },
-        { id: '_model', width: 0.5 },
+  it('keeps every column at the minimum width when the table adds one', () => {
+    // The table shrinks the shown columns by 0.85 and adds one at 0.15
+    const columns = fromTableLayout({
+      columns: [
+        { name: '_preview', width: 0.8 * 0.85 },
+        { name: '_model', width: 0.05 * 0.85 },
+        { name: '_status', width: 0.05 * 0.85 },
+        { name: '_updated_at', width: 0.05 * 0.85 },
+        { name: '_created_at', width: 0.05 * 0.85 },
+        { name: 'id', width: 0.15 },
       ],
-      'id',
-    );
-    expect(added).toEqual([
-      { id: '_preview', width: 0.425 },
-      { id: '_model', width: 0.425 },
-      { id: 'id', width: 0.15 },
-    ]);
-    expect(toggleColumn(added, 'id')).toEqual([
-      { id: '_preview', width: 0.5 },
-      { id: '_model', width: 0.5 },
-    ]);
-  });
+    });
 
-  it('keeps every existing column at or above 5% when adding one', () => {
-    const added = toggleColumn(
-      [
-        { id: '_preview', width: 0.8 },
-        { id: '_model', width: 0.05 },
-        { id: '_status', width: 0.05 },
-        { id: '_updated_at', width: 0.05 },
-        { id: '_created_at', width: 0.05 },
-      ],
+    expect(columns.map((column) => column.id)).toEqual([
+      '_preview',
+      '_model',
+      '_status',
+      '_updated_at',
+      '_created_at',
       'id',
-    );
-
-    expect(added.every((column) => column.width >= MIN_COLUMN_WIDTH)).toBe(
+    ]);
+    expect(columns.every((column) => column.width >= MIN_COLUMN_WIDTH)).toBe(
       true,
     );
     expect(
-      added.reduce((total, column) => total + column.width, 0),
+      columns.reduce((total, column) => total + column.width, 0),
     ).toBeCloseTo(1);
+    // The stored setting keeps the layout instead of resetting it
+    expect(normalizeColumnSettings(columns).map((column) => column.id)).toEqual(
+      columns.map((column) => column.id),
+    );
   });
 
-  it('reorders without changing widths', () => {
+  it('drops unknown and duplicate columns of the table layout', () => {
     expect(
-      reorderColumn(
-        [
-          { id: '_preview', width: 0.7 },
-          { id: '_model', width: 0.3 },
+      fromTableLayout({
+        columns: [
+          { name: '_model', width: 1 },
+          { name: 'unknown', width: 1 },
+          { name: '_model', width: 2 },
+          { name: '_status', width: 3 },
         ],
-        '_model',
-        '_preview',
-      ),
+      }),
     ).toEqual([
-      { id: '_model', width: 0.3 },
-      { id: '_preview', width: 0.7 },
+      { id: '_model', width: 0.25 },
+      { id: '_status', width: 0.75 },
     ]);
-  });
-
-  it('resizes only an adjacent pair and enforces the 5% minimum', () => {
-    const columns = [
-      { id: '_preview' as const, width: 0.7 },
-      { id: '_model' as const, width: 0.3 },
-    ];
-    const resized = resizeAdjacentColumns(columns, 0, 0.1);
-    expect(resized.map((column) => column.id)).toEqual(['_preview', '_model']);
-    expect(resized[0].width).toBeCloseTo(0.8);
-    expect(resized[1].width).toBeCloseTo(0.2);
-    const clamped = resizeAdjacentColumns(columns, 0, 0.26);
-    expect(clamped[0].width).toBeCloseTo(0.95);
-    expect(clamped[1].width).toBeCloseTo(0.05);
+    expect(
+      fromTableLayout({ columns: [{ name: 'unknown', width: 1 }] }),
+    ).toEqual(DEFAULT_COLUMN_SETTINGS);
   });
 
   it('uses a site/environment/user-specific storage key', () => {

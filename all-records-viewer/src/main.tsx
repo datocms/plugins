@@ -1,5 +1,5 @@
-import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import { connect } from 'datocms-plugin-sdk';
 import { PAGE_ID, WORKFLOW_STAGE_MODAL_ID } from './constants';
 import AllRecordsPage from './entrypoints/AllRecordsPage';
 import WorkflowStageModal from './entrypoints/WorkflowStageModal';
@@ -9,7 +9,7 @@ connect({
   contentAreaSidebarItems() {
     return [
       {
-        label: 'All Records',
+        label: 'All records',
         icon: 'table-list',
         placement: ['before', 'menuItems'],
         pointsTo: { pageId: PAGE_ID },

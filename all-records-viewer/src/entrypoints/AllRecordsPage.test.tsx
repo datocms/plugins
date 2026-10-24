@@ -5,9 +5,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BulkJobResult } from '../operations/types';
 import type { RawField } from '../presentation/fields';
@@ -39,40 +39,13 @@ vi.mock('@datocms/cma-client-browser', () => ({
   }),
 }));
 
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => children,
-  CaretDownIcon: () => null,
-  CaretUpIcon: () => null,
-  Dropdown: ({
-    children,
-    renderTrigger,
-  }: {
-    children: ReactNode;
-    renderTrigger: (args: { open: boolean; onClick: () => void }) => ReactNode;
-  }) => (
-    <>
-      {renderTrigger({ open: false, onClick: () => undefined })}
-      {children}
-    </>
-  ),
-  DropdownMenu: ({ children }: { children: ReactNode }) => children,
-  DropdownOption: ({
-    active,
-    children,
-    onClick,
-  }: {
-    active?: boolean;
-    children: ReactNode;
-    onClick: () => void;
-  }) => (
-    <button type="button" aria-pressed={active} onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
-
+// The page renders its own Canvas: the ctx has what Canvas reads
 function buildCtx(overrides: Record<string, unknown> = {}): RenderPageCtx {
   return {
+    mode: 'renderPage',
+    cssDesignTokens: {},
+    colorScheme: 'light',
+    bodyPadding: [0, 0, 0, 0],
     location: { pathname: '', search: '', hash: '' },
     environment: 'main',
     isEnvironmentPrimary: true,
@@ -83,6 +56,7 @@ function buildCtx(overrides: Record<string, unknown> = {}): RenderPageCtx {
       id: 'site-1',
       type: 'site',
       attributes: {
+        internal_domain: 'acme.admin.datocms.com',
         locales: ['en'],
         timezone: 'UTC',
         imgix_host: null,
@@ -105,6 +79,7 @@ function buildCtx(overrides: Record<string, unknown> = {}): RenderPageCtx {
     loadItemTypeFields: vi.fn().mockResolvedValue([]),
     alert: vi.fn(),
     notice: vi.fn(),
+    customToast: vi.fn(),
     openConfirm: vi.fn(),
     openModal: vi.fn(),
     ...overrides,
@@ -193,6 +168,12 @@ function mockRecords(records: readonly RawItem[]): void {
   });
 }
 
+function records(count: number): RawItem[] {
+  return Array.from({ length: count }, (_, index) =>
+    item(`record-${index + 1}`),
+  );
+}
+
 function buildOperationCtx(
   overrides: Record<string, unknown> = {},
 ): RenderPageCtx {
@@ -225,15 +206,26 @@ function deferred<T>() {
 
 const UI_WAIT_OPTIONS = { timeout: 10_000 };
 
+// The row checkbox is named by the first cell of the row: the title, or
+// "Record #<id>" for a record without one. Label queries are faster than
+// role queries on pages of 200 rows.
+function recordCheckbox(id: string): HTMLElement {
+  return screen.getByLabelText(`Record #${id}`, { selector: 'input' });
+}
+
+function queryRecordCheckbox(id: string): HTMLElement | null {
+  return screen.queryByLabelText(`Record #${id}`, { selector: 'input' });
+}
+
+function rowCheckboxes(): HTMLElement[] {
+  return screen.getAllByLabelText(/^Record #/, { selector: 'input' });
+}
+
+// The table is ready when its rows can be selected: no load, presentation
+// or action is running
 function requireReadyRecordCheckbox(id: string): HTMLElement {
-  const checkbox = screen.getByRole('checkbox', {
-    name: `Select record ${id}`,
-  });
+  const checkbox = recordCheckbox(id);
   expect(checkbox).toBeEnabled();
-  expect(screen.getByRole('table', { name: 'All records' })).toHaveAttribute(
-    'aria-busy',
-    'false',
-  );
   return checkbox;
 }
 
@@ -241,10 +233,17 @@ async function readyRecordCheckbox(id: string): Promise<HTMLElement> {
   return waitFor(() => requireReadyRecordCheckbox(id), UI_WAIT_OPTIONS);
 }
 
-async function readyButton(name: string): Promise<HTMLElement> {
+// A button disabled with a reason keeps its focus: it has aria-disabled
+// instead of the disabled attribute
+function expectActionable(button: HTMLElement): void {
+  expect(button).toBeEnabled();
+  expect(button).not.toHaveAttribute('aria-disabled', 'true');
+}
+
+async function readyButton(name: string | RegExp): Promise<HTMLElement> {
   return waitFor(() => {
     const button = screen.getByRole('button', { name });
-    expect(button).toBeEnabled();
+    expectActionable(button);
     return button;
   }, UI_WAIT_OPTIONS);
 }
@@ -261,19 +260,41 @@ async function clickReadyRecordCheckbox(id: string): Promise<void> {
 async function clickReadyButton(name: string | RegExp): Promise<void> {
   await waitFor(() => {
     const button = screen.getByRole('button', { name });
-    expect(button).toBeEnabled();
+    expectActionable(button);
     fireEvent.click(button);
   }, UI_WAIT_OPTIONS);
+}
+
+// The triggers of the menus open on mouse down
+async function openReadyMenu(name: string): Promise<void> {
+  await waitFor(() => {
+    const trigger = screen.getByRole('button', { name });
+    expectActionable(trigger);
+    fireEvent.mouseDown(trigger);
+  }, UI_WAIT_OPTIONS);
+}
+
+async function pickMenuOption(name: string): Promise<void> {
+  fireEvent.mouseDown(
+    await screen.findByRole('menuitem', { name }, UI_WAIT_OPTIONS),
+  );
 }
 
 async function selectAllMatching(count: number): Promise<void> {
   await clickReadyRecordCheckbox('record-1');
   await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
-  await clickReadyButton('Select all matching records');
+  await clickReadyButton(`Select all ${count} matching records`);
   await screen.findByText(
     `${count} records selected`,
     undefined,
     UI_WAIT_OPTIONS,
+  );
+}
+
+// The bar slides out: it leaves the page once its transition ends
+async function expectNoSelectionBar(): Promise<void> {
+  await waitFor(() =>
+    expect(screen.queryByText(/records? selected$/)).not.toBeInTheDocument(),
   );
 }
 
@@ -313,9 +334,13 @@ describe('AllRecordsPage states', () => {
     render(<AllRecordsPage ctx={buildCtx()} />);
 
     expect(
-      screen.getByRole('heading', { name: 'API access required' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'No access to your API token',
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Current user access token/)).toBeInTheDocument();
+    expect(cmaMocks.rawList).not.toHaveBeenCalled();
   });
 
   it('shows a dedicated state when the environment has no record models', () => {
@@ -326,12 +351,163 @@ describe('AllRecordsPage states', () => {
     );
 
     expect(
-      screen.getByRole('heading', { name: 'No record models' }),
+      screen.getByRole('heading', { level: 1, name: 'All records' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/This environment has no models yet/),
     ).toBeInTheDocument();
   });
 
+  it('shows the overview when there are no records, and no results for a filter', async () => {
+    const ctx = buildOperationCtx();
+    const { rerender } = render(<AllRecordsPage ctx={ctx} />);
+
+    expect(
+      await screen.findByText(/There are no records to show yet/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'All records' }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <AllRecordsPage
+        ctx={buildCtx({
+          ...ctx,
+          location: { pathname: '', search: '?model=model-1', hash: '' },
+        })}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        'No records match the filters. Try other filters, or clear some of them.',
+      ),
+    ).toBeInTheDocument();
+    // The title bar stays, so the filters can change
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'All records' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the title bar while the list loads for other filters', async () => {
+    const ctx = buildOperationCtx();
+    const ctxAt = (search: string) =>
+      buildCtx({ ...ctx, location: { pathname: '', search, hash: '' } });
+    const noResults =
+      'No records match the filters. Try other filters, or clear some of them.';
+    const { rerender } = render(<AllRecordsPage ctx={ctxAt('?query=zzz')} />);
+    await screen.findByText(noResults, undefined, UI_WAIT_OPTIONS);
+    const toggle = screen.getByRole('button', { name: 'Filter Records' });
+
+    // From no results to another filter: the old result is not of the new
+    // filter, thus the list loads instead of saying "no results"
+    const otherFilter = deferred<unknown>();
+    cmaMocks.rawList.mockImplementation(() => otherFilter.promise);
+    rerender(<AllRecordsPage ctx={ctxAt('?status=draft')} />);
+
+    expect(toggle).toBeInTheDocument();
+    expect(screen.queryByText(noResults)).not.toBeInTheDocument();
+    expect(screen.getByText('Loading the records')).toBeInTheDocument();
+    await act(async () => {
+      otherFilter.resolve({ data: [], meta: { total_count: 0 } });
+    });
+    expect(await screen.findByText(noResults)).toBeInTheDocument();
+
+    // From no results to no filter: the overview never replaces the page
+    // while the records load
+    const noFilter = deferred<unknown>();
+    cmaMocks.rawList.mockImplementation(() => noFilter.promise);
+    rerender(<AllRecordsPage ctx={ctxAt('')} />);
+
+    expect(toggle).toBeInTheDocument();
+    expect(
+      screen.queryByText(/There are no records to show yet/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Loading the records')).toBeInTheDocument();
+    await act(async () => {
+      noFilter.resolve({ data: [item('record-1')], meta: { total_count: 1 } });
+    });
+    expect(await readyRecordCheckbox('record-1')).toBeInTheDocument();
+    expect(toggle).toBeInTheDocument();
+  });
+
+  it('keeps a search row of the URL open when the user empties it', async () => {
+    mockRecords([item('record-1')]);
+    const navigateTo = vi.fn();
+    const ctxAt = (search: string) =>
+      buildCtx({
+        currentUserAccessToken: 'user-token',
+        itemTypes: { 'model-1': model() },
+        navigateTo,
+        location: { pathname: '', search, hash: '' },
+      });
+    const { rerender } = render(<AllRecordsPage ctx={ctxAt('?query=old')} />);
+    const search = within(
+      await screen.findByRole('search', { name: 'Records' }, UI_WAIT_OPTIONS),
+    ).getByRole('textbox');
+
+    fireEvent.change(search, { target: { value: '' } });
+    await waitFor(() =>
+      expect(navigateTo).toHaveBeenCalledWith(
+        '/editor/p/plugin-1/pages/all-records',
+      ),
+    );
+    rerender(<AllRecordsPage ctx={ctxAt('')} />);
+
+    // The user is still typing in it
+    expect(search).toBeInTheDocument();
+    expect(search).toHaveValue('');
+  });
+
+  it('closes the search row and clears the search on Escape', async () => {
+    mockRecords([item('record-1')]);
+    const navigateTo = vi.fn();
+    render(
+      <AllRecordsPage
+        ctx={buildCtx({
+          currentUserAccessToken: 'user-token',
+          itemTypes: { 'model-1': model() },
+          navigateTo,
+          location: { pathname: '', search: '?query=old', hash: '' },
+        })}
+      />,
+    );
+    const search = within(
+      await screen.findByRole('search', { name: 'Records' }, UI_WAIT_OPTIONS),
+    ).getByRole('textbox');
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+
+    expect(navigateTo).toHaveBeenCalledWith(
+      '/editor/p/plugin-1/pages/all-records',
+    );
+    expect(
+      screen.queryByRole('search', { name: 'Records' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('writes the trimmed search to the URL 300 ms after the last change', async () => {
+    mockRecords([item('record-1')]);
+    const ctx = buildOperationCtx();
+    render(<AllRecordsPage ctx={ctx} />);
+
+    await clickReadyButton('Filter Records');
+    const search = within(
+      await screen.findByRole('search', { name: 'Records' }),
+    ).getByRole('textbox');
+    fireEvent.change(search, { target: { value: '  term ' } });
+
+    expect(search).toHaveValue('  term ');
+    expect(ctx.navigateTo).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(ctx.navigateTo).toHaveBeenCalledWith(
+        '/editor/p/plugin-1/pages/all-records?query=term',
+      ),
+    );
+  });
+
   it('does not let a stale debounced value overwrite URL-driven search', async () => {
-    vi.useFakeTimers();
+    mockRecords([item('record-1')]);
     const navigateTo = vi.fn();
     const itemTypes = { 'model-1': model() };
     const initialCtx = buildCtx({
@@ -341,7 +517,10 @@ describe('AllRecordsPage states', () => {
       location: { pathname: '', search: '?query=old', hash: '' },
     });
     const { rerender } = render(<AllRecordsPage ctx={initialCtx} />);
+    // A search in the URL keeps the filter row open
+    await screen.findByRole('search', { name: 'Records' }, UI_WAIT_OPTIONS);
 
+    vi.useFakeTimers();
     navigateTo.mockClear();
     rerender(
       <AllRecordsPage
@@ -359,16 +538,16 @@ describe('AllRecordsPage states', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole('textbox', { name: 'Search records' })).toHaveValue(
-      'new',
-    );
+    expect(
+      within(screen.getByRole('search', { name: 'Records' })).getByRole(
+        'textbox',
+      ),
+    ).toHaveValue('new');
     expect(navigateTo).not.toHaveBeenCalled();
   });
 
   it('retains off-page records when selecting the current page', async () => {
-    mockRecords(
-      Array.from({ length: 100 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(100));
     const navigateTo = vi.fn();
     const itemTypes = { 'model-1': model() };
     const firstCtx = buildCtx({
@@ -393,11 +572,10 @@ describe('AllRecordsPage states', () => {
     );
 
     await readyRecordCheckbox('record-51');
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Select all records on this page',
-      }),
-    );
+    expect(
+      screen.getByRole('button', { name: 'Go to page 2' }),
+    ).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(screen.getByLabelText('Select all records on this page'));
     expect(screen.getByText('51 records selected')).toBeInTheDocument();
   });
 
@@ -427,12 +605,11 @@ describe('AllRecordsPage states', () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.queryByText('1 record selected')).not.toBeInTheDocument(),
-    );
+    await expectNoSelectionBar();
   });
 
   it('disables metadata sorting while relevance search is active', async () => {
+    mockRecords([item('record-1')]);
     render(
       <AllRecordsPage
         ctx={buildCtx({
@@ -443,21 +620,26 @@ describe('AllRecordsPage states', () => {
       />,
     );
 
+    await readyRecordCheckbox('record-1');
+    expect(screen.getByText('Last update')).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Last update' }),
-    ).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Last update' })).toHaveAttribute(
-      'title',
-      'Sorting is unavailable while searching',
-    );
+      screen.queryByRole('link', { name: 'Last update' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'While you search, the records are sorted by relevance.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('navigates from default Last update DESC to ASC and continues toggling', async () => {
+    mockRecords([item('record-1')]);
     const ctx = buildOperationCtx({
       location: { pathname: '', search: '?model=model-1', hash: '' },
     });
     const { rerender } = render(<AllRecordsPage ctx={ctx} />);
-    await clickReadyButton(/^Last update\s*▼$/);
+    await readyRecordCheckbox('record-1');
+    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_ASC',
     );
@@ -474,7 +656,8 @@ describe('AllRecordsPage states', () => {
         })}
       />,
     );
-    await clickReadyButton(/^Last update\s*▲$/);
+    await readyRecordCheckbox('record-1');
+    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_DESC',
     );
@@ -491,7 +674,8 @@ describe('AllRecordsPage states', () => {
         })}
       />,
     );
-    await clickReadyButton(/^Last update\s*▼$/);
+    await readyRecordCheckbox('record-1');
+    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_ASC',
     );
@@ -551,6 +735,7 @@ describe('AllRecordsPage states', () => {
   });
 
   it('stores global Model and Status header sorting in the page URL', async () => {
+    mockRecords([item('record-1')]);
     const navigateTo = vi.fn();
     render(
       <AllRecordsPage
@@ -562,20 +747,20 @@ describe('AllRecordsPage states', () => {
       />,
     );
 
-    const modelHeader = await screen.findByRole('button', { name: 'Model' });
-    await waitFor(() => expect(modelHeader).toBeEnabled());
-    fireEvent.click(modelHeader);
+    await readyRecordCheckbox('record-1');
+    fireEvent.click(screen.getByRole('link', { name: 'Model' }));
     expect(navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?orderBy=_model_ASC',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Status' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Status' }));
     expect(navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?orderBy=_status_ASC',
     );
   });
 
   it('does not offer a constant Status sort while status-filtered', async () => {
+    mockRecords([item('record-1')]);
     render(
       <AllRecordsPage
         ctx={buildCtx({
@@ -590,8 +775,10 @@ describe('AllRecordsPage states', () => {
       />,
     );
 
-    await screen.findByRole('table', { name: 'All records' });
-    expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
+    await readyRecordCheckbox('record-1');
+    expect(screen.getByText('Status')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Status' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Model' })).toBeInTheDocument();
   });
 
   it('shows a load failure and retries without reloading the plugin', async () => {
@@ -608,26 +795,90 @@ describe('AllRecordsPage states', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Could not load records' }),
+      await screen.findByText("Couldn't load the records"),
     ).toBeInTheDocument();
     expect(screen.getByText('Network unavailable')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => expect(cmaMocks.rawList).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
-        screen.queryByRole('heading', { name: 'Could not load records' }),
+        screen.queryByText("Couldn't load the records"),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it('explains a selection page whose records were deleted, and keeps the selection', async () => {
+    const current = new Map([['record-1', item('record-1')]]);
+    cmaMocks.rawList.mockImplementation((query: MockListQuery) => {
+      const matching = query.filter?.ids
+        ? query.filter.ids.split(',').flatMap((id) => {
+            const record = current.get(id);
+            return record ? [record] : [];
+          })
+        : [...current.values()];
+      return Promise.resolve({
+        data: matching,
+        meta: { total_count: matching.length },
+      });
+    });
+    render(<AllRecordsPage ctx={buildOperationCtx()} />);
+    await clickReadyRecordCheckbox('record-1');
+    await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
+
+    // Someone else deletes the record
+    current.delete('record-1');
+    await clickReadyButton('Show selection');
+
+    expect(
+      await screen.findByText(
+        "The selected records can't be shown",
+        undefined,
+        UI_WAIT_OPTIONS,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 record selected')).toBeInTheDocument();
+    expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
+
+    await clickReadyButton('Hide selection');
+    await screen.findByRole('button', { name: 'Show selection' });
+  });
+
+  it('keeps the rows of Show selection while it loads them again', async () => {
+    mockRecords(records(3));
+    render(<AllRecordsPage ctx={buildOperationCtx()} />);
+    await clickReadyRecordCheckbox('record-1');
+    await clickReadyRecordCheckbox('record-2');
+    await screen.findByText('2 records selected', undefined, UI_WAIT_OPTIONS);
+    await clickReadyButton('Show selection');
+    await readyRecordCheckbox('record-2');
+    expect(queryRecordCheckbox('record-3')).not.toBeInTheDocument();
+
+    const reload = deferred<{
+      data: RawItem[];
+      meta: { total_count: number };
+    }>();
+    cmaMocks.rawList.mockImplementationOnce(() => reload.promise);
+    await clickReadyRecordCheckbox('record-1');
+
+    // The record that left the selection goes; the other row stays, locked,
+    // while the selection loads again
+    await waitFor(() =>
+      expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument(),
+    );
+    expect(recordCheckbox('record-2')).toBeDisabled();
+    expect(screen.queryByText('Loading the records')).not.toBeInTheDocument();
+
+    reload.resolve({ data: [item('record-2')], meta: { total_count: 1 } });
+    await readyRecordCheckbox('record-2');
+    expect(screen.getByText('1 record selected')).toBeInTheDocument();
   });
 });
 
 describe('AllRecordsPage large selections', () => {
   it('keeps all matches hidden after reducing page size for a complete same-filter selection', async () => {
-    mockRecords(
-      Array.from({ length: 200 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(200));
     const ctx = buildOperationCtx({
       location: {
         pathname: '',
@@ -638,11 +889,7 @@ describe('AllRecordsPage large selections', () => {
     const { rerender } = render(<AllRecordsPage ctx={ctx} />);
     await waitFor(() => {
       requireReadyRecordCheckbox('record-1');
-      fireEvent.click(
-        screen.getByRole('checkbox', {
-          name: 'Select all records on this page',
-        }),
-      );
+      fireEvent.click(screen.getByLabelText('Select all records on this page'));
     }, UI_WAIT_OPTIONS);
     await screen.findByText('200 records selected');
 
@@ -662,7 +909,7 @@ describe('AllRecordsPage large selections', () => {
 
     expect(screen.getByText('200 records selected')).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
+      screen.queryByRole('button', { name: /matching record/ }),
     ).not.toBeInTheDocument();
     expect(
       cmaMocks.rawList.mock.calls.filter(([query]) => query.filter?.ids),
@@ -670,17 +917,17 @@ describe('AllRecordsPage large selections', () => {
   });
 
   it('removes missing IDs after a partial delete while retaining current survivors', async () => {
-    const records = new Map([
+    const current = new Map([
       ['record-1', item('record-1')],
       ['record-2', item('record-2')],
     ]);
     cmaMocks.rawList.mockImplementation((query: MockListQuery) => {
       const matching = query.filter?.ids
         ? query.filter.ids.split(',').flatMap((id) => {
-            const record = records.get(id);
+            const record = current.get(id);
             return record ? [record] : [];
           })
-        : [...records.values()];
+        : [...current.values()];
       return Promise.resolve({
         data: matching.slice(
           query.page.offset,
@@ -690,7 +937,7 @@ describe('AllRecordsPage large selections', () => {
       });
     });
     cmaMocks.rawBulkDestroy.mockImplementationOnce(() => {
-      records.delete('record-1');
+      current.delete('record-1');
       return Promise.resolve({ data: [], meta: { successful: 1, failed: 1 } });
     });
     const ctx = buildOperationCtx();
@@ -703,12 +950,16 @@ describe('AllRecordsPage large selections', () => {
     await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
     await clickReadyButton('Show selection');
     expect(await readyRecordCheckbox('record-2')).toBeChecked();
-    expect(
-      screen.queryByRole('checkbox', { name: 'Select record record-1' }),
-    ).not.toBeInTheDocument();
+    expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
     expect(ctx.alert).toHaveBeenCalledTimes(1);
     expect(ctx.alert).toHaveBeenCalledWith(
       '1 record deleted; 1 record failed.',
+    );
+    expect(ctx.openConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Delete selected records',
+        content: '2 records will be affected. This action cannot be undone.',
+      }),
     );
     expect(cmaMocks.rawBulkDestroy).toHaveBeenCalledTimes(1);
     expect(await readyButton('Publish')).toBeEnabled();
@@ -720,13 +971,12 @@ describe('AllRecordsPage large selections', () => {
       id: 'workflow-1',
       type: 'workflow',
     };
-    const records = Array.from({ length: 201 }, (_, index) => {
-      const record = item(`record-${index + 1}`);
+    const all = records(201);
+    for (const record of all) {
       record.meta.stage = 'draft';
-      return record;
-    });
-    const byId = new Map(records.map((record) => [record.id, record]));
-    mockRecords(records);
+    }
+    const byId = new Map(all.map((record) => [record.id, record]));
+    mockRecords(all);
     cmaMocks.workflowFind.mockResolvedValue({
       stages: [
         { id: 'draft', name: 'Draft' },
@@ -761,29 +1011,40 @@ describe('AllRecordsPage large selections', () => {
     );
     const ctx = buildOperationCtx({
       itemTypes: { 'model-1': workflowModel },
-      openModal: vi
-        .fn()
-        .mockResolvedValueOnce('review')
-        .mockResolvedValueOnce('draft'),
     });
     render(<AllRecordsPage ctx={ctx} />);
     await selectAllMatching(201);
 
-    await clickReadyButton('Move to stage');
+    // Every record is in Draft: the menu offers only the other stage
+    await openReadyMenu('Move to stage');
+    await screen.findByRole('menuitem', { name: 'Review' }, UI_WAIT_OPTIONS);
+    expect(
+      screen.getAllByRole('menuitem').map((option) => option.textContent),
+    ).toEqual(['Review']);
+    await pickMenuOption('Review');
+    // The pick closes the menu; the next opening loads the stages again
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem')).not.toBeInTheDocument(),
+    );
     await screen.findByText('200 records selected', undefined, UI_WAIT_OPTIONS);
-    await clickReadyButton('Move to stage');
+
+    // 199 records are in Review now, and one is still in Draft
+    await openReadyMenu('Move to stage');
+    await screen.findByRole('menuitem', { name: 'Draft' }, UI_WAIT_OPTIONS);
+    expect(
+      screen.getAllByRole('menuitem').map((option) => option.textContent),
+    ).toEqual(['Draft', 'Review']);
+    await pickMenuOption('Draft');
 
     await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
-    expect(ctx.openModal).toHaveBeenNthCalledWith(
-      2,
+    expect(cmaMocks.workflowFind).toHaveBeenCalledTimes(2);
+    expect(cmaMocks.workflowFind).toHaveBeenCalledWith('workflow-1');
+    expect(ctx.openModal).not.toHaveBeenCalled();
+    expect(ctx.openConfirm).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
-        parameters: {
-          count: 200,
-          stages: [
-            { id: 'draft', name: 'Draft' },
-            { id: 'review', name: 'Review' },
-          ],
-        },
+        title: 'Move selected records to Review',
+        content: '201 records will be affected. Destination: Review.',
       }),
     );
     expect(ctx.openConfirm).toHaveBeenNthCalledWith(
@@ -812,6 +1073,71 @@ describe('AllRecordsPage large selections', () => {
         expect(query.filter.ids.split(',').length).toBeLessThanOrEqual(100);
       }
     }
+  });
+
+  it('shows Move to stage only for records of one model with a workflow', async () => {
+    const workflowModel = model();
+    workflowModel.relationships.workflow.data = {
+      id: 'workflow-1',
+      type: 'workflow',
+    };
+    const otherModel = model();
+    otherModel.id = 'model-2';
+    const other = item('record-2');
+    other.relationships.item_type.data.id = otherModel.id;
+    mockRecords([item('record-1'), other]);
+    render(
+      <AllRecordsPage
+        ctx={buildOperationCtx({
+          itemTypes: { 'model-1': workflowModel, 'model-2': otherModel },
+        })}
+      />,
+    );
+
+    await clickReadyRecordCheckbox('record-2');
+    await readyButton('Publish');
+    expect(
+      screen.queryByRole('button', { name: 'Move to stage' }),
+    ).not.toBeInTheDocument();
+
+    await clickReadyRecordCheckbox('record-1');
+    await screen.findByText('2 records selected');
+    expect(
+      screen.getByRole('button', { name: 'Move to stage' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('shows a failed load of the stages in the Move to stage menu', async () => {
+    const workflowModel = model();
+    workflowModel.relationships.workflow.data = {
+      id: 'workflow-1',
+      type: 'workflow',
+    };
+    mockRecords([item('record-1')]);
+    cmaMocks.workflowFind.mockRejectedValueOnce(
+      new Error('Network unavailable'),
+    );
+    const ctx = buildOperationCtx({
+      itemTypes: { 'model-1': workflowModel },
+    });
+    render(<AllRecordsPage ctx={ctx} />);
+    await clickReadyRecordCheckbox('record-1');
+
+    await openReadyMenu('Move to stage');
+
+    expect(
+      await screen.findByText(
+        "Couldn't load the stages",
+        undefined,
+        UI_WAIT_OPTIONS,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Network unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText('Close the menu, then open it again.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+    expect(ctx.openConfirm).not.toHaveBeenCalled();
   });
 
   it('checks current creator permissions before confirming a selected action', async () => {
@@ -942,18 +1268,24 @@ describe('AllRecordsPage large selections', () => {
           : [referenceField, imageField],
       ),
     });
-    render(<AllRecordsPage ctx={ctx} />);
+    const { container } = render(<AllRecordsPage ctx={ctx} />);
     await screen.findByText('Original linked title');
-    expect(screen.getByRole('table').querySelector('img')).toHaveAttribute(
+    expect(container.querySelector('img')).toHaveAttribute(
       'src',
       expect.stringContaining('/original.jpg'),
     );
 
-    await clickReadyRecordCheckbox('record-1');
+    await waitFor(() => {
+      const checkbox = screen.getByLabelText('Original linked title', {
+        selector: 'input',
+      });
+      expect(checkbox).toBeEnabled();
+      fireEvent.click(checkbox);
+    }, UI_WAIT_OPTIONS);
     await clickReadyButton('Publish');
 
     await screen.findByText('Updated linked title');
-    expect(screen.getByRole('table').querySelector('img')).toHaveAttribute(
+    expect(container.querySelector('img')).toHaveAttribute(
       'src',
       expect.stringContaining('/updated.jpg'),
     );
@@ -966,9 +1298,7 @@ describe('AllRecordsPage large selections', () => {
   });
 
   it('waits for deferred presentations before selecting a 200-record page', async () => {
-    mockRecords(
-      Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(401));
     const fields = deferred<RawField[]>();
     const ctx = buildOperationCtx({
       location: { pathname: '', search: '?perPage=200', hash: '' },
@@ -977,18 +1307,11 @@ describe('AllRecordsPage large selections', () => {
     render(<AllRecordsPage ctx={ctx} />);
     await waitFor(() => {
       expect(ctx.loadItemTypeFields).toHaveBeenCalled();
-      expect(
-        screen.getByRole('checkbox', { name: 'Select record record-1' }),
-      ).toBeDisabled();
-      expect(
-        screen.getByRole('table', { name: 'All records' }),
-      ).toHaveAttribute('aria-busy', 'true');
+      expect(recordCheckbox('record-1')).toBeDisabled();
     }, UI_WAIT_OPTIONS);
 
     const selection = selectAllMatching(401);
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/records? selected$/)).not.toBeInTheDocument();
     expect(
       cmaMocks.rawList.mock.calls.some(
         ([query]) => query.order_by === 'id_ASC',
@@ -1008,39 +1331,34 @@ describe('AllRecordsPage large selections', () => {
   });
 
   it('does not offer selecting all matches when all records fit on one page', async () => {
-    mockRecords(
-      Array.from({ length: 50 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(50));
     render(<AllRecordsPage ctx={buildOperationCtx()} />);
 
     expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
+      screen.queryByRole('button', { name: /matching record/ }),
     ).not.toBeInTheDocument();
     await clickReadyRecordCheckbox('record-1');
     expect(screen.getByText('1 record selected')).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
+      screen.queryByRole('button', { name: /matching record/ }),
     ).not.toBeInTheDocument();
   });
 
-  it.each([
-    50,
-  ])('hydrates and renders at most %i selected records and paginates without URL navigation', async (perPage) => {
-    mockRecords(
-      Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),
-    );
+  it('hydrates and renders at most 50 selected records and paginates without URL navigation', async () => {
+    const perPage = 50;
+    mockRecords(records(401));
     const ctx = buildOperationCtx({
       location: { pathname: '', search: `?perPage=${perPage}`, hash: '' },
     });
     render(<AllRecordsPage ctx={ctx} />);
     expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
+      screen.queryByRole('button', { name: /matching record/ }),
     ).not.toBeInTheDocument();
 
     await selectAllMatching(401);
 
     expect(
-      screen.queryByRole('button', { name: 'Select all matching records' }),
+      screen.queryByRole('button', { name: /matching record/ }),
     ).not.toBeInTheDocument();
     const collectionQueries = cmaMocks.rawList.mock.calls
       .map(([query]) => query)
@@ -1054,26 +1372,19 @@ describe('AllRecordsPage large selections', () => {
 
     await clickReadyButton('Show selection');
     await readyRecordCheckbox('record-1');
+    expect(rowCheckboxes()).toHaveLength(perPage);
+    expect(screen.getByText('401 records')).toBeInTheDocument();
     expect(
-      screen.getAllByRole('checkbox', { name: /^Select record / }),
-    ).toHaveLength(perPage);
-    expect(screen.getByRole('button', { name: '1' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
-    await clickReadyButton('Next »');
+      screen.getByRole('button', { name: 'Go to page 1' }),
+    ).toHaveAttribute('aria-current', 'page');
+    await clickReadyButton('Next page');
 
     await readyRecordCheckbox(`record-${perPage + 1}`);
+    expect(rowCheckboxes()).toHaveLength(perPage);
+    expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
     expect(
-      screen.getAllByRole('checkbox', { name: /^Select record / }),
-    ).toHaveLength(perPage);
-    expect(
-      screen.queryByRole('checkbox', { name: 'Select record record-1' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+      screen.getByRole('button', { name: 'Go to page 2' }),
+    ).toHaveAttribute('aria-current', 'page');
     expect(ctx.navigateTo).not.toHaveBeenCalled();
     expect(
       cmaMocks.rawList.mock.calls.map(([query]) => query.filter.ids),
@@ -1094,9 +1405,7 @@ describe('AllRecordsPage large selections', () => {
   });
 
   it('publishes 401 selected records continuously in 200/200/1 batches with one confirmation', async () => {
-    mockRecords(
-      Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(401));
     const firstJob = deferred<BulkJobResult>();
     const secondJob = deferred<BulkJobResult>();
     cmaMocks.rawBulkPublish
@@ -1115,7 +1424,11 @@ describe('AllRecordsPage large selections', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show selection' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
 
     await act(async () =>
       firstJob.resolve({ data: [], meta: { successful: 200, failed: 0 } }),
@@ -1140,17 +1453,11 @@ describe('AllRecordsPage large selections', () => {
       ),
     ).toEqual([200, 200, 1]);
     expect(ctx.alert).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('region', { name: 'Selection actions' }),
-      ).not.toBeInTheDocument(),
-    );
+    await expectNoSelectionBar();
   });
 
   it('cancels future batches while allowing the accepted job to finish and retains unsubmitted records', async () => {
-    mockRecords(
-      Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(401));
     const acceptedJob = deferred<BulkJobResult>();
     cmaMocks.rawBulkPublish.mockImplementationOnce(() => acceptedJob.promise);
     const ctx = buildOperationCtx();
@@ -1175,9 +1482,7 @@ describe('AllRecordsPage large selections', () => {
     expect(ctx.notice).not.toHaveBeenCalled();
     await clickReadyButton('Show selection');
     expect(await readyRecordCheckbox('record-201')).toBeChecked();
-    expect(
-      screen.queryByRole('checkbox', { name: 'Select record record-1' }),
-    ).not.toBeInTheDocument();
+    expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
   });
 
   it('retains a partially failed batch and excluded records while removing fully successful batches', async () => {
@@ -1190,10 +1495,7 @@ describe('AllRecordsPage large selections', () => {
     };
     const excludedRecord = item('record-401');
     excludedRecord.relationships.item_type.data.id = secondModel.id;
-    mockRecords([
-      ...Array.from({ length: 400 }, (_, index) => item(`record-${index + 1}`)),
-      excludedRecord,
-    ]);
+    mockRecords([...records(400), excludedRecord]);
     cmaMocks.rawBulkPublish
       .mockResolvedValueOnce({ data: [], meta: { successful: 200, failed: 0 } })
       .mockResolvedValueOnce({
@@ -1228,11 +1530,9 @@ describe('AllRecordsPage large selections', () => {
 
     await clickReadyButton('Show selection');
     expect(await readyRecordCheckbox('record-201')).toBeChecked();
-    await clickReadyButton('5');
+    await clickReadyButton('Go to page 5');
     expect(await readyRecordCheckbox('record-401')).toBeChecked();
-    expect(
-      screen.getAllByRole('checkbox', { name: /^Select record / }),
-    ).toHaveLength(1);
+    expect(rowCheckboxes()).toHaveLength(1);
   });
 
   it('locks duplicate confirmation requests and prevents mutation after the environment changes', async () => {
@@ -1263,15 +1563,11 @@ describe('AllRecordsPage large selections', () => {
     expect(cmaMocks.rawBulkPublish).not.toHaveBeenCalled();
     expect(ctx.notice).not.toHaveBeenCalled();
     expect(ctx.alert).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
+    await expectNoSelectionBar();
   });
 
   it('stops future jobs and discards stale UI updates when the environment changes during an accepted job', async () => {
-    mockRecords(
-      Array.from({ length: 401 }, (_, index) => item(`record-${index + 1}`)),
-    );
+    mockRecords(records(401));
     const acceptedJob = deferred<BulkJobResult>();
     cmaMocks.rawBulkPublish.mockImplementationOnce(() => acceptedJob.promise);
     const ctx = buildOperationCtx();
@@ -1296,8 +1592,6 @@ describe('AllRecordsPage large selections', () => {
     expect(ctx.alert).not.toHaveBeenCalled();
     expect(nextCtx.notice).not.toHaveBeenCalled();
     expect(nextCtx.alert).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
+    await expectNoSelectionBar();
   });
 });
