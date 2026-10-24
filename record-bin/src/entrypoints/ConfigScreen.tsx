@@ -1,22 +1,21 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  Dropdown,
-  DropdownMenu,
-  DropdownOption,
-  Form,
-  Section,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import type React from 'react';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import Pill, { type PillTone } from 'datocms-react-ui/Pill';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import StringInput from 'datocms-react-ui/StringInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useCallback, useEffect, useState } from 'react';
 import type { LambdaConnectionState } from '../types/types';
 import { createDebugLogger, isDebugEnabled } from '../utils/debugLogger';
 import {
   DEPLOY_PROVIDER_OPTIONS,
-  type DeployProvider,
   PLUGIN_README_URL,
 } from '../utils/deployProviders';
 import { getDeploymentUrlFromParameters } from '../utils/getDeploymentUrlFromParameters';
@@ -36,6 +35,7 @@ import {
   LambdaHealthCheckError,
   verifyLambdaHealth,
 } from '../utils/verifyLambdaHealth';
+import s from './styles.module.css';
 
 const DEFAULT_CONNECTION_ERROR_SUMMARY =
   'Could not validate the Record Bin lambda deployment.';
@@ -50,7 +50,9 @@ const getConnectionErrorSummary = (
   return connection.errorMessage || DEFAULT_CONNECTION_ERROR_SUMMARY;
 };
 
-const getRecordBinPingIndicator = ({
+type DisabledReason = { reason: string } | undefined;
+
+const getLambdaStatus = ({
   isHealthChecking,
   isConnecting,
   connectionState,
@@ -60,42 +62,20 @@ const getRecordBinPingIndicator = ({
   isConnecting: boolean;
   connectionState: LambdaConnectionState | undefined;
   activeDeploymentUrl: string;
-}): { label: string; color: string } => {
+}): { label: string; tone: PillTone } => {
   if (isHealthChecking || isConnecting) {
-    return {
-      label: 'Checking ping...',
-      color: 'var(--color--warning-soft--ink)',
-    };
+    return { label: 'Checking…', tone: 'neutral' };
   }
   if (connectionState?.status === 'connected') {
-    return {
-      label: 'Connected (ping successful)',
-      color: 'var(--color--success-soft--ink)',
-    };
+    return { label: 'Connected', tone: 'success' };
   }
   if (connectionState?.status === 'disconnected') {
-    return {
-      label: 'Disconnected (ping failed)',
-      color: 'var(--color--danger-soft--ink)',
-    };
+    return { label: 'Disconnected', tone: 'warning' };
   }
   if (activeDeploymentUrl) {
-    return { label: 'Connection pending', color: 'var(--color--ink-subtle)' };
+    return { label: 'Not checked', tone: 'neutral' };
   }
-  return {
-    label: 'Disconnected (no lambda URL configured)',
-    color: 'var(--color--ink-subtle)',
-  };
-};
-
-const getRecordBinConnectButtonLabel = (
-  isConnecting: boolean,
-  hasActiveDeploymentUrl: boolean,
-): string => {
-  if (isConnecting) {
-    return hasActiveDeploymentUrl ? 'Changing Lambda URL...' : 'Connecting...';
-  }
-  return hasActiveDeploymentUrl ? 'Change Lambda URL' : 'Connect';
+  return { label: 'Not connected', tone: 'neutral' };
 };
 
 const getLambdaSaveBlockReason = ({
@@ -194,58 +174,6 @@ const computeHasUnsavedChanges = (
   );
 };
 
-const LAMBDA_ACTION_BUTTON_STYLE: React.CSSProperties = {
-  width: '100%',
-  height: '40px',
-  fontSize: 'var(--font-size-m)',
-  fontWeight: 500,
-  lineHeight: '1',
-  padding: '0 var(--spacing-m)',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  boxSizing: 'border-box',
-  flex: '1 1 0',
-  whiteSpace: 'nowrap',
-};
-
-const CARD_STYLE: React.CSSProperties = {
-  border: '1px solid var(--color--border)',
-  borderRadius: '6px',
-  background: 'var(--color--surface)',
-  padding: 'var(--spacing-l)',
-  marginBottom: 'var(--spacing-l)',
-  textAlign: 'left',
-};
-
-const SUBTLE_TEXT_STYLE: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--color--ink-subtle)',
-  fontSize: 'var(--font-size-xs)',
-};
-
-const INFO_TEXT_STYLE: React.CSSProperties = {
-  marginTop: 0,
-  marginBottom: 'var(--spacing-s)',
-  color: 'var(--color--ink)',
-  fontSize: 'var(--font-size-s)',
-};
-
-const ADVANCED_SETTINGS_STYLE: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--spacing-m)',
-};
-
-const SWITCH_FIELD_NO_HINT_GAP_STYLE: React.CSSProperties = {
-  '--spacing-s': '0',
-} as React.CSSProperties;
-
-const SWITCH_FIELD_NO_HINT_GAP_WITH_EXTRA_SPACING: React.CSSProperties = {
-  '--spacing-s': '0',
-  marginBottom: '0.25rem',
-} as React.CSSProperties;
-
 const computeShowConnectionError = (
   isLambdaFullModeEnabled: boolean,
   connectionErrorSummary: string,
@@ -263,42 +191,239 @@ const computeShowLambdaLessWarning = (
   hasActiveDeploymentUrl: boolean,
 ): boolean => runtimeModeSelection === 'lambdaless' && hasActiveDeploymentUrl;
 
-const computeShowSaveBlockOutsideAdvanced = (
-  showAdvancedSettings: boolean,
-  lambdaSaveBlockReason: string,
-): boolean => !showAdvancedSettings && lambdaSaveBlockReason.length > 0;
+const getConnectDisabled = ({
+  isHealthChecking,
+  isDisconnecting,
+  deploymentUrlInput,
+}: {
+  isHealthChecking: boolean;
+  isDisconnecting: boolean;
+  deploymentUrlInput: string;
+}): DisabledReason => {
+  if (isHealthChecking) {
+    return { reason: 'Wait for the connection check to finish.' };
+  }
+  if (isDisconnecting) {
+    return { reason: 'Wait for the Lambda function to disconnect.' };
+  }
+  if (!deploymentUrlInput.trim()) {
+    return { reason: 'Enter the URL of your Lambda function.' };
+  }
+  return undefined;
+};
 
-const computeSaveButtonDisabled = ({
-  isLoading,
+const getSaveDisabled = ({
   isDisconnecting,
   isConnecting,
   canSaveWithLambdaMode,
+  lambdaSaveBlockReason,
   hasUnsavedChanges,
 }: {
-  isLoading: boolean;
   isDisconnecting: boolean;
   isConnecting: boolean;
   canSaveWithLambdaMode: boolean;
+  lambdaSaveBlockReason: string;
   hasUnsavedChanges: boolean;
-}): boolean =>
-  isLoading ||
-  isDisconnecting ||
-  isConnecting ||
-  !canSaveWithLambdaMode ||
-  !hasUnsavedChanges;
+}): DisabledReason => {
+  if (isDisconnecting) {
+    return { reason: 'Wait for the Lambda function to disconnect.' };
+  }
+  if (isConnecting) {
+    return { reason: 'Wait for the Lambda function to connect.' };
+  }
+  if (!canSaveWithLambdaMode) {
+    return { reason: lambdaSaveBlockReason };
+  }
+  if (!hasUnsavedChanges) {
+    return { reason: 'There are no changes to save.' };
+  }
+  return undefined;
+};
 
-const computeLambdaActionButtonsDisabled = (
-  isConnecting: boolean,
-  isHealthChecking: boolean,
-  isDisconnecting: boolean,
-): boolean => isConnecting || isHealthChecking || isDisconnecting;
+type LambdaFunctionGroupProps = {
+  status: { label: string; tone: PillTone };
+  showConnectionError: boolean;
+  errorTone: 'warning' | 'danger';
+  connectionErrorSummary: string;
+  connectionErrorDetails: string[];
+  showConnectionDetails: boolean;
+  showConnectionErrorDetails: boolean;
+  onToggleConnectionDetails: () => void;
+  activeDeploymentUrl: string;
+  disconnectDisabled: DisabledReason;
+  onDisconnect: () => Promise<void>;
+  deploymentUrlInput: string;
+  onDeploymentUrlChange: (value: string | null) => void;
+  connectLabel: string;
+  connectDisabled: DisabledReason;
+  onConnect: () => Promise<void>;
+};
 
-const computeDislambdaActionButtonsDisabled = (
-  isDisconnecting: boolean,
-  isHealthChecking: boolean,
-  activeDeploymentUrl: string,
-): boolean =>
-  isDisconnecting || isHealthChecking || !activeDeploymentUrl.trim();
+function LambdaFunctionGroup({
+  status,
+  showConnectionError,
+  errorTone,
+  connectionErrorSummary,
+  connectionErrorDetails,
+  showConnectionDetails,
+  showConnectionErrorDetails,
+  onToggleConnectionDetails,
+  activeDeploymentUrl,
+  disconnectDisabled,
+  onDisconnect,
+  deploymentUrlInput,
+  onDeploymentUrlChange,
+  connectLabel,
+  connectDisabled,
+  onConnect,
+}: LambdaFunctionGroupProps) {
+  return (
+    <Page.Group
+      title="Lambda function"
+      tone={status.tone === 'warning' ? 'warning' : undefined}
+      status={<Pill tone={status.tone}>{status.label}</Pill>}
+      actions={
+        <Dropdown triggerComponent={ButtonTrigger} tone="ghost" label="Deploy">
+          <Dropdown.Menu placement="bottom-end">
+            {DEPLOY_PROVIDER_OPTIONS.map((option) => (
+              <Dropdown.Option key={option.provider} href={option.url} newTab>
+                {option.label}
+              </Dropdown.Option>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown>
+      }
+      footer={
+        <Button
+          tone="primary"
+          expand={false}
+          label={connectLabel}
+          onClick={onConnect}
+          disabled={connectDisabled}
+        />
+      }
+    >
+      {showConnectionError && (
+        <Callout tone={errorTone}>{connectionErrorSummary}</Callout>
+      )}
+      {showConnectionError && connectionErrorDetails.length > 0 && (
+        <div className={s.block}>
+          <Button
+            tone="ghost"
+            label={showConnectionDetails ? 'Hide details' : 'Show details'}
+            onClick={onToggleConnectionDetails}
+          />
+          {showConnectionErrorDetails && (
+            <div className={s.snippet}>
+              <CodeSnippet
+                ariaLabel="Error details"
+                code={connectionErrorDetails.join('\n')}
+                maxHeight={240}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {activeDeploymentUrl.trim().length > 0 && (
+        <SettingsList className={s.block}>
+          <SettingsList.Row
+            title="Current URL"
+            value={activeDeploymentUrl}
+            action={
+              <Button
+                tone="ghost"
+                label="Disconnect"
+                onClick={onDisconnect}
+                disabled={disconnectDisabled}
+              />
+            }
+          />
+        </SettingsList>
+      )}
+      <FieldWrapper
+        label="Lambda URL"
+        hint="The plugin pings /api/datocms/plugin-health at this URL to check the connection."
+      >
+        <StringInput
+          code
+          value={deploymentUrlInput}
+          placeholder="https://record-bin.example.com/"
+          onChange={onDeploymentUrlChange}
+        />
+      </FieldWrapper>
+    </Page.Group>
+  );
+}
+
+type AdvancedSettingsGroupProps = {
+  open: boolean;
+  onToggle: () => void;
+  debugEnabled: boolean;
+  onDebugChange: (value: boolean) => void;
+  isLambdaFullModeEnabled: boolean;
+  lambdaSetupDisabled: boolean;
+  onLambdaModeChange: (value: boolean) => void;
+  showLambdaLessWarning: boolean;
+  saveDisabled: DisabledReason;
+  onSave: () => Promise<void>;
+};
+
+function AdvancedSettingsGroup({
+  open,
+  onToggle,
+  debugEnabled,
+  onDebugChange,
+  isLambdaFullModeEnabled,
+  lambdaSetupDisabled,
+  onLambdaModeChange,
+  showLambdaLessWarning,
+  saveDisabled,
+  onSave,
+}: AdvancedSettingsGroupProps) {
+  return (
+    <Page.Group
+      title="Advanced settings"
+      collapse={{ open, onToggle }}
+      footer={
+        <Button
+          tone="primary"
+          expand={false}
+          label="Save"
+          onClick={onSave}
+          disabled={saveDisabled}
+        />
+      }
+    >
+      <FieldWrapper hint="Logs the plugin's events and requests to the browser console.">
+        <SwitchInput
+          label="Enable debug logs"
+          value={debugEnabled}
+          onChange={(value) => onDebugChange(Boolean(value))}
+        />
+      </FieldWrapper>
+      <FieldWrapper
+        hint="Needs a Lambda function that you deploy. If you don't know what serverless functions are, keep this off."
+        docs={{
+          label: 'Runtime modes',
+          to: `${PLUGIN_README_URL}#runtime-modes`,
+        }}
+      >
+        <SwitchInput
+          label="Also save records deleted from the API"
+          value={isLambdaFullModeEnabled}
+          disabled={lambdaSetupDisabled}
+          onChange={(value) => onLambdaModeChange(Boolean(value))}
+        />
+      </FieldWrapper>
+      {showLambdaLessWarning && (
+        <Callout tone="warning">
+          Saving switches to Lambda-less mode and removes the webhook of the
+          connected Lambda function.
+        </Callout>
+      )}
+    </Page.Group>
+  );
+}
 
 export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const initialConnectionState = (ctx.plugin.attributes.parameters
@@ -595,6 +720,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     ],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The health check runs once, when the screen opens.
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
@@ -610,12 +736,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       cancelled = true;
       debugLogger.log('Config screen unmounted');
     };
-  }, [
-    debugLogger,
-    initialConnectionState,
-    initialDebugEnabled,
-    runMountHealthCheck,
-  ]);
+  }, []);
 
   const handleConnectLambdaError = useCallback(
     async (connectError: unknown, candidateUrl: string) => {
@@ -861,21 +982,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     runtimeModeSelection,
   ]);
 
-  const handleDeployProviderClick = useCallback(
-    (provider: DeployProvider) => {
-      const option = DEPLOY_PROVIDER_OPTIONS.find(
-        (candidate) => candidate.provider === provider,
-      );
-      if (!option) {
-        return;
-      }
-
-      debugLogger.log('Opening deploy helper from config', { provider });
-      window.open(option.url, '_blank', 'noreferrer');
-    },
-    [debugLogger],
-  );
-
   const saveSettingsHandler = useCallback(async () => {
     debugLogger.log('Saving plugin settings', {
       debugEnabled,
@@ -962,19 +1068,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
   const isLambdaFullModeEnabled = runtimeModeSelection === 'lambda';
   const hasActiveDeploymentUrl = activeDeploymentUrl.trim().length > 0;
-  const pingIndicator = getRecordBinPingIndicator({
-    isHealthChecking,
-    isConnecting,
-    connectionState,
-    activeDeploymentUrl,
-  });
-  const connectButtonLabel = getRecordBinConnectButtonLabel(
-    isConnecting,
-    hasActiveDeploymentUrl,
-  );
-  const disconnectButtonLabel = isDisconnecting
-    ? 'Disconnecting...'
-    : 'Disconnect';
   const lambdaSetupDisabled =
     isConnecting || isDisconnecting || isHealthChecking || isLoading;
   const hasUnsavedChanges = computeHasUnsavedChanges(
@@ -996,297 +1089,85 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     connectionState,
   });
 
-  const showConnectionError = computeShowConnectionError(
-    isLambdaFullModeEnabled,
-    connectionErrorSummary,
-  );
-  const showConnectionErrorDetails = computeShowConnectionErrorDetails(
-    isLambdaFullModeEnabled,
-    showConnectionDetails,
-    connectionErrorDetails.length,
-  );
-  const showLambdaLessWarning = computeShowLambdaLessWarning(
-    runtimeModeSelection,
-    hasActiveDeploymentUrl,
-  );
-  const showSaveBlockOutsideAdvanced = computeShowSaveBlockOutsideAdvanced(
-    showAdvancedSettings,
-    lambdaSaveBlockReason,
-  );
-  const saveButtonDisabled = computeSaveButtonDisabled({
-    isLoading,
-    isDisconnecting,
-    isConnecting,
-    canSaveWithLambdaMode,
-    hasUnsavedChanges,
-  });
-  const lambdaActionButtonsDisabled = computeLambdaActionButtonsDisabled(
-    isConnecting,
-    isHealthChecking,
-    isDisconnecting,
-  );
-  const dislambdaActionButtonsDisabled = computeDislambdaActionButtonsDisabled(
-    isDisconnecting,
-    isHealthChecking,
-    activeDeploymentUrl,
-  );
-
   return (
     <Canvas ctx={ctx}>
-      <div
-        style={{
-          maxWidth: '760px',
-          margin: '0 auto',
-        }}
-      >
-        {isLambdaFullModeEnabled && (
-          <div style={CARD_STYLE}>
-            <h2
-              style={{
-                marginTop: 0,
-                marginBottom: 'var(--spacing-s)',
-                fontSize: 'var(--font-size-l)',
-              }}
-            >
-              Lambda setup
-            </h2>
-            <p style={INFO_TEXT_STYLE}>
-              <strong>Current URL:</strong>{' '}
-              <span style={{ wordBreak: 'break-all' }}>
-                {activeDeploymentUrl || 'No lambda function connected.'}
-              </span>
-            </p>
-            <p
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-start',
-                alignItems: 'center',
-                gap: 'var(--spacing-s)',
-                marginTop: 0,
-                marginBottom: 'var(--spacing-s)',
-                fontSize: 'var(--font-size-s)',
-                color: 'var(--color--ink-subtle)',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  display: 'inline-block',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '999px',
-                  background: pingIndicator.color,
-                }}
-              />
-              <span>{pingIndicator.label}</span>
-            </p>
-            <p
-              style={{ ...SUBTLE_TEXT_STYLE, marginBottom: 'var(--spacing-l)' }}
-            >
-              Status is based on the `/api/datocms/plugin-health` ping.
-            </p>
-
-            <TextField
-              name="deploymentURL"
-              id="deploymentURL"
-              label="Lambda URL"
-              value={deploymentUrlInput}
-              placeholder="https://record-bin.example.com/"
-              onChange={(newValue) => {
-                setDeploymentUrlInput(newValue);
+      <Page>
+        <Page.Content>
+          {isLambdaFullModeEnabled && (
+            <LambdaFunctionGroup
+              status={getLambdaStatus({
+                isHealthChecking,
+                isConnecting,
+                connectionState,
+                activeDeploymentUrl,
+              })}
+              showConnectionError={computeShowConnectionError(
+                isLambdaFullModeEnabled,
+                connectionErrorSummary,
+              )}
+              errorTone={
+                connectionState?.status === 'disconnected'
+                  ? 'warning'
+                  : 'danger'
+              }
+              connectionErrorSummary={connectionErrorSummary}
+              connectionErrorDetails={connectionErrorDetails}
+              showConnectionDetails={showConnectionDetails}
+              showConnectionErrorDetails={computeShowConnectionErrorDetails(
+                isLambdaFullModeEnabled,
+                showConnectionDetails,
+                connectionErrorDetails.length,
+              )}
+              onToggleConnectionDetails={() =>
+                setShowConnectionDetails((current) => !current)
+              }
+              activeDeploymentUrl={activeDeploymentUrl}
+              disconnectDisabled={
+                isHealthChecking
+                  ? { reason: 'Wait for the connection check to finish.' }
+                  : undefined
+              }
+              onDisconnect={disconnectCurrentLambdaHandler}
+              deploymentUrlInput={deploymentUrlInput}
+              onDeploymentUrlChange={(value) => {
+                setDeploymentUrlInput(value ?? '');
                 clearConnectionErrorState();
               }}
+              connectLabel={hasActiveDeploymentUrl ? 'Change URL' : 'Connect'}
+              connectDisabled={getConnectDisabled({
+                isHealthChecking,
+                isDisconnecting,
+                deploymentUrlInput,
+              })}
+              onConnect={connectLambdaHandler}
             />
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'nowrap',
-                width: '100%',
-                gap: 'var(--spacing-s)',
-                marginTop: 'var(--spacing-l)',
-              }}
-            >
-              <div style={{ flex: '1 1 0' }}>
-                <Dropdown
-                  renderTrigger={({ onClick }) => (
-                    <Button
-                      buttonType="muted"
-                      onClick={onClick}
-                      disabled={lambdaActionButtonsDisabled}
-                      style={LAMBDA_ACTION_BUTTON_STYLE}
-                    >
-                      Deploy lambda
-                    </Button>
-                  )}
-                >
-                  <DropdownMenu alignment="left">
-                    {DEPLOY_PROVIDER_OPTIONS.map((option) => (
-                      <DropdownOption
-                        key={option.provider}
-                        onClick={() =>
-                          handleDeployProviderClick(option.provider)
-                        }
-                      >
-                        {option.label}
-                      </DropdownOption>
-                    ))}
-                  </DropdownMenu>
-                </Dropdown>
-              </div>
-              <Button
-                onClick={disconnectCurrentLambdaHandler}
-                buttonType="negative"
-                disabled={dislambdaActionButtonsDisabled}
-                style={LAMBDA_ACTION_BUTTON_STYLE}
-              >
-                {disconnectButtonLabel}
-              </Button>
-              <Button
-                buttonType="primary"
-                onClick={connectLambdaHandler}
-                disabled={lambdaActionButtonsDisabled}
-                style={LAMBDA_ACTION_BUTTON_STYLE}
-              >
-                {connectButtonLabel}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {showConnectionError && (
-          <div
-            style={{
-              border: '1px solid var(--color--danger-soft--border)',
-              borderRadius: '6px',
-              background: 'var(--color--danger-soft--surface)',
-              padding: 'var(--spacing-m)',
-              marginBottom: 'var(--spacing-m)',
-            }}
-          >
-            <p style={{ marginTop: 0, marginBottom: 'var(--spacing-s)' }}>
-              {connectionErrorSummary}
-            </p>
-            {connectionErrorDetails.length > 0 && (
-              <Button
-                buttonType="muted"
-                buttonSize="s"
-                onClick={() => setShowConnectionDetails((current) => !current)}
-              >
-                {showConnectionDetails ? 'Hide details' : 'Show details'}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {showConnectionErrorDetails && (
-          <div
-            style={{
-              border: '1px solid var(--color--danger-soft--border)',
-              borderRadius: '6px',
-              background: 'var(--color--surface)',
-              padding: 'var(--spacing-m)',
-              marginBottom: 'var(--spacing-l)',
-              textAlign: 'left',
-            }}
-          >
-            {connectionErrorDetails.map((detail) => (
-              <p key={detail}>{detail}</p>
-            ))}
-          </div>
-        )}
-
-        <Form>
-          <Section
-            title="Advanced settings"
-            collapsible={{
-              isOpen: showAdvancedSettings,
-              onToggle: () => setShowAdvancedSettings((current) => !current),
-            }}
-          >
-            <div style={ADVANCED_SETTINGS_STYLE}>
-              <div style={SWITCH_FIELD_NO_HINT_GAP_WITH_EXTRA_SPACING}>
-                <SwitchField
-                  name="debug"
-                  id="debug"
-                  label="Enable debug logs"
-                  hint="When enabled, plugin events and requests are logged to the browser console."
-                  value={debugEnabled}
-                  onChange={(newValue) => setDebugEnabled(newValue)}
-                />
-              </div>
-              <div style={SWITCH_FIELD_NO_HINT_GAP_STYLE}>
-                <SwitchField
-                  name="lambdaMode"
-                  id="lambdaMode"
-                  label="Also save records deleted from the API"
-                  hint="If you do not know what Serverless Functions are, keep this disabled"
-                  value={isLambdaFullModeEnabled}
-                  switchInputProps={{
-                    name: 'lambdaMode',
-                    value: isLambdaFullModeEnabled,
-                    disabled: lambdaSetupDisabled,
-                  }}
-                  onChange={(newValue) => {
-                    setRuntimeModeSelection(newValue ? 'lambda' : 'lambdaless');
-                    clearConnectionErrorState();
-                  }}
-                />
-              </div>
-              <p style={SUBTLE_TEXT_STYLE}>
-                <a
-                  href={`${PLUGIN_README_URL}#runtime-modes`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Runtime mode guide and differences
-                </a>
-              </p>
-              {isLambdaFullModeEnabled && (
-                <p style={SUBTLE_TEXT_STYLE}>
-                  To capture API deletions, connect a Lambda function above.
-                </p>
-              )}
-              {showLambdaLessWarning && (
-                <p style={SUBTLE_TEXT_STYLE}>
-                  Lambda is currently connected. Click Save to complete the
-                  switch to Lambda-less and remove the managed webhook.
-                </p>
-              )}
-              {lambdaSaveBlockReason && (
-                <p
-                  style={{
-                    ...SUBTLE_TEXT_STYLE,
-                    color: 'var(--color--danger-soft--ink)',
-                  }}
-                >
-                  {lambdaSaveBlockReason}
-                </p>
-              )}
-            </div>
-          </Section>
-          {showSaveBlockOutsideAdvanced && (
-            <p
-              style={{
-                ...SUBTLE_TEXT_STYLE,
-                marginTop: 'var(--spacing-s)',
-                color: 'var(--color--danger-soft--ink)',
-              }}
-            >
-              Open Advanced settings to configure API capture before saving.
-            </p>
           )}
-          <Button
-            onClick={saveSettingsHandler}
-            fullWidth
-            buttonType={isLoading ? 'muted' : 'primary'}
-            disabled={saveButtonDisabled}
-          >
-            Save
-          </Button>
-        </Form>
-      </div>
+          <AdvancedSettingsGroup
+            open={showAdvancedSettings}
+            onToggle={() => setShowAdvancedSettings((current) => !current)}
+            debugEnabled={debugEnabled}
+            onDebugChange={setDebugEnabled}
+            isLambdaFullModeEnabled={isLambdaFullModeEnabled}
+            lambdaSetupDisabled={lambdaSetupDisabled}
+            onLambdaModeChange={(value) => {
+              setRuntimeModeSelection(value ? 'lambda' : 'lambdaless');
+              clearConnectionErrorState();
+            }}
+            showLambdaLessWarning={computeShowLambdaLessWarning(
+              runtimeModeSelection,
+              hasActiveDeploymentUrl,
+            )}
+            saveDisabled={getSaveDisabled({
+              isDisconnecting,
+              isConnecting,
+              canSaveWithLambdaMode,
+              lambdaSaveBlockReason,
+              hasUnsavedChanges,
+            })}
+            onSave={saveSettingsHandler}
+          />
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

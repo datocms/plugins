@@ -1,5 +1,7 @@
 import type { RenderItemFormOutletCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, FieldGroup, Form } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
 import { useCallback, useRef, useState } from 'react';
 import type { errorObject } from '../types/types';
 import { createBoundedFetch } from '../utils/boundedFetch';
@@ -16,6 +18,7 @@ import {
   isRestoreSuccessResponse,
   parseJsonStringSafely,
 } from '../utils/restoreError';
+import s from './styles.module.css';
 
 type DebugLogger = ReturnType<typeof createDebugLogger>;
 
@@ -126,7 +129,7 @@ const executeRestoreViaLambda = async ({
       status: restoreResponse.status,
       restorationError,
     });
-    await alertFn('The record could not be restored!');
+    await alertFn('The record could not be restored.');
     return false;
   }
 
@@ -134,7 +137,7 @@ const executeRestoreViaLambda = async ({
     restoredRecordId: parsedResponse.restoredRecord.id,
     restoredModelId: parsedResponse.restoredRecord.modelID,
   });
-  noticeFn('The record has been successfully restored!');
+  noticeFn('The record has been restored.');
   navigateTo(
     buildRecordEditPath(
       environment,
@@ -191,7 +194,7 @@ const executeRestoreWithoutLambda = async ({
         'Lambda-less restoration request failed',
         error.restorationError,
       );
-      await alertFn('The record could not be restored!');
+      await alertFn('The record could not be restored.');
       return;
     }
     throw error;
@@ -214,7 +217,7 @@ const executeRestoreWithoutLambda = async ({
       'The record was restored, but its archive could not be removed.',
     );
   }
-  noticeFn('The record has been successfully restored!');
+  noticeFn('The record has been restored.');
   navigateTo(
     buildRecordEditPath(
       environment,
@@ -326,20 +329,11 @@ const runLambdaModeRestore = async ({
   });
 };
 
-const RESTORATION_ERROR_BOX_STYLE = {
-  border: '1px solid var(--color--danger-soft--border)',
-  borderRadius: '6px',
-  background: 'var(--color--danger-soft--surface)',
-  padding: 'var(--spacing-m)',
-  marginBottom: 'var(--spacing-m)',
-};
-
 const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
   const debugLogger = createDebugLogger(
     isDebugEnabled(ctx.plugin.attributes.parameters),
     'BinOutlet',
   );
-  const [isLoading, setLoading] = useState(false);
   const restorationInProgress = useRef(false);
   const [error, setError] = useState<errorObject>();
 
@@ -351,7 +345,6 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
       itemTypeId: ctx.itemType.id,
     });
     setError(undefined);
-    setLoading(true);
 
     const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
     const rawRecordBody = ctx.formValues.record_body;
@@ -419,20 +412,19 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     } catch (err) {
       setError(buildRestoreErrorPayload(err));
       debugLogger.error('Restoration flow failed', err);
-      await alertFn('The record could not be restored!');
+      await alertFn('The record could not be restored.');
     } finally {
       restorationInProgress.current = false;
-      setLoading(false);
     }
   }, [ctx, debugLogger]);
 
-  const errorModalHandler = async () => {
+  const errorModalHandler = () => {
     if (!error) {
       return;
     }
 
     debugLogger.log('Opening restoration error modal');
-    await ctx.openModal({
+    void ctx.openModal({
       id: 'errorModal',
       title: 'Restoration error',
       width: 'l',
@@ -445,57 +437,27 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
 
   return (
     <Canvas ctx={ctx}>
-      <Form>
-        <FieldGroup>
-          <Button
-            buttonType={isLoading ? 'muted' : 'primary'}
-            disabled={isLoading}
-            fullWidth
-            onClick={restorationHandler}
-          >
-            Restore record ♻️
-          </Button>
-        </FieldGroup>
-        <FieldGroup>
-          {error && (
-            <div style={RESTORATION_ERROR_BOX_STYLE}>
-              <h3
-                style={{
-                  marginTop: 0,
-                  marginBottom: 'var(--spacing-s)',
-                  fontSize: 'var(--font-size-m)',
-                }}
-              >
-                Restoration error
-              </h3>
-              <p style={{ marginTop: 0, marginBottom: 'var(--spacing-s)' }}>
-                Restoring a record is an optimistic operation. If this record
-                references linked records that no longer exist, restoration can
-                fail.
-              </p>
-              <p style={{ marginTop: 0, marginBottom: 'var(--spacing-s)' }}>
-                In case of API errors, inspect the details below and update the{' '}
-                <code>record_body</code> JSON if needed before trying again.
-              </p>
-              <p style={{ marginTop: 0, marginBottom: 'var(--spacing-s)' }}>
-                {primaryErrorLine}
-              </p>
-              {secondaryErrorLine && (
-                <p style={{ marginTop: 0, marginBottom: 'var(--spacing-s)' }}>
-                  {secondaryErrorLine}
-                </p>
-              )}
-              <Button onClick={errorModalHandler}>
-                See full restoration error report
-              </Button>
-              <p style={{ marginTop: 'var(--spacing-s)', marginBottom: 0 }}>
-                You can manually correct the JSON payload, save the record, and
-                re-attempt restoration.
-              </p>
-            </div>
-          )}
-        </FieldGroup>
-      </Form>
+      {error && (
+        <Callout tone="danger" title="Couldn't restore the record">
+          <p>{primaryErrorLine}</p>
+          {secondaryErrorLine && <p>{secondaryErrorLine}</p>}
+          <p>
+            It can fail when the record links to records that no longer exist.
+            Fix the <code>record_body</code> JSON, save the record, and try
+            again.
+          </p>
+        </Callout>
+      )}
+      <div className={s.actions}>
+        <Button
+          tone="primary"
+          label="Restore record"
+          onClick={restorationHandler}
+        />
+        {error && (
+          <Button label="See the full error" onClick={errorModalHandler} />
+        )}
+      </div>
     </Canvas>
   );
 };

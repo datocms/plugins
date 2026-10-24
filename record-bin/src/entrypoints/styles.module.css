@@ -1,0 +1,13 @@
+.block {
+  margin-bottom: var(--form-field-gap);
+}
+
+.snippet {
+  margin-top: var(--spacing-s);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}

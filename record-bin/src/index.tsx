@@ -5,14 +5,14 @@ import {
   type RenderItemFormOutletCtx,
   type RenderModalCtx,
 } from 'datocms-plugin-sdk';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import BinOutlet from './entrypoints/BinOutlet';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import ErrorModal from './entrypoints/ErrorModal';
 import { createDebugLogger, isDebugEnabled } from './utils/debugLogger';
 import { getRuntimeMode } from './utils/getRuntimeMode';
 import { captureDeletedItemsWithoutLambda } from './utils/lambdaLessCapture';
+import { render } from './utils/render';
 
 connect({
   async onBeforeItemsDestroy(items, ctx) {
@@ -27,7 +27,7 @@ connect({
     if (items.length > 200) {
       await ctx
         .notice(
-          'Record Bin stopped this deletion: the dashboard must support bounded bulk operations before a selection above 200 records can be deleted safely. The original records have been kept.',
+          "Record Bin cancelled this deletion because a selection above 200 records can't be archived safely. Delete at most 200 records at a time.",
         )
         .catch((error) =>
           debugLogger.warn('Could not display deletion limit notice', error),
