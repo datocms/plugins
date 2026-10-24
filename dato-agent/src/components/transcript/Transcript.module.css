@@ -1,0 +1,302 @@
+/* The conversation with the agent. The kit draws the parts (callouts,
+   buttons, rows, pills, code); these rules only lay them out in a column and
+   draw the two things the kit has no component for: the bubble of a user
+   message and the card of a change to approve. */
+
+/* The log fills the content of the pane and scrolls by itself: the follow
+   logic reads its scroll position. */
+.log {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding: var(--spacing-l);
+  line-height: 1.5;
+}
+
+/* Inside the column, the kit's callouts take their place from the gap */
+.callout {
+  margin: 0;
+}
+
+/* A user message: a bubble at the right, its error under it */
+.userTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  align-items: flex-end;
+  min-width: 0;
+
+  > .callout {
+    align-self: stretch;
+  }
+}
+
+.bubble {
+  box-sizing: border-box;
+  max-width: 88%;
+  padding: var(--spacing-m);
+  background-color: var(--color--surface-muted);
+  border-radius: var(--radius-s);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* A turn of the agent: its parts, in their order */
+.agentTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  min-width: 0;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.stopped {
+  margin: 0;
+  color: var(--color--ink-subtle);
+}
+
+/* Buttons in a row, wrapping in a narrow frame */
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+}
+
+.failureActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* The activity of a turn: a disclosure and its list of steps */
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* The disclosure button has no look of its own (RawButton, on the kit's
+   button reset): a quiet line of subtle text, with the surface of an inset
+   row on hover and keyboard focus. The kit's focus ring shows on it. The
+   negative margin keeps its text on the edge of the column. */
+.activityToggle {
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--spacing-s);
+  margin: var(--negative-spacing-s);
+  color: var(--color--ink-subtle);
+  text-align: left;
+  border-radius: var(--radius-s);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color--ink);
+    background-color: var(--color--surface-hover);
+  }
+}
+
+.activityFailed {
+  color: var(--color--ink-danger);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color--ink-danger);
+  }
+}
+
+.working {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  color: var(--color--ink-subtle);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding: var(--spacing-s) 0 0;
+}
+
+/* A step: its state (a dot, or a spinner while it runs) before its text */
+.step {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: var(--spacing-s);
+}
+
+.stepMarker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.5em;
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.stepHeading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--spacing-s);
+  align-items: baseline;
+  margin: 0;
+}
+
+.stepStatus,
+.stepDescription {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+.stepDescription {
+  margin: 0;
+}
+
+/* What the agent returned: a caption over inset rows. The rows go out of
+   the column by their inset, so their text stays on its edge. */
+.receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.receiptTitle {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The inset of the list plus the padding of the content of a row
+   (--spacing-m in a frame as narrow as the agent's) */
+.receiptRows {
+  margin: calc(-1 * var(--row-inset))
+    calc(-1 * (var(--row-inset) + var(--spacing-m)));
+}
+
+/* The picture of a row fills the square slot of the entity row */
+.rowThumbnail {
+  object-fit: cover;
+  background-color: var(--color--surface-muted);
+}
+
+/* An emoji goes in the slot as it is, centered: the row draws no tile
+   behind it */
+.rowEmoji {
+  display: grid;
+  place-items: center;
+  font-size: var(--font-size-l);
+  line-height: 1;
+}
+
+.rowAvatar {
+  display: grid;
+  place-items: center;
+}
+
+/* A change to approve: a card with the change, its error and its actions.
+   It has the box of a card (the raised surface, the border, the radius) and
+   rests on the page. */
+.approval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m);
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow--resting);
+}
+
+.approvalHeader {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: flex-start;
+}
+
+.approvalIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 1.5em;
+  color: var(--color--ink-subtle);
+
+  svg {
+    fill: currentColor;
+  }
+}
+
+.approvalText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.approvalTitle {
+  margin: 0;
+  font-weight: var(--font-weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.approvalDescription {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Review details at the left, the decision at the right */
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.decision {
+  display: flex;
+  gap: var(--spacing-s);
+  margin-left: auto;
+}
+
+/* A decided change: one quiet line */
+.approvalResolved {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+  color: var(--color--ink-subtle);
+}
+
+.approvalResolution {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.approvalOutcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}

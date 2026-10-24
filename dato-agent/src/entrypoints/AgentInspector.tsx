@@ -1,5 +1,5 @@
 import type { Field, ItemType, RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
 import { useCallback, useEffect, useRef } from 'react';
 import { openApprovalDetailsModal } from '../lib/approvalDetailsModal';
 import { confirmEnableAutoApproval } from '../lib/autoApproval';
@@ -12,6 +12,7 @@ import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import { createInspectorNavigator } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
+import { TEXTS } from '../texts';
 import AgentFrame from './AgentFrame';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
@@ -266,7 +267,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
   const mentionHost = createAgentMentionHost(ctx);
 
   return (
-    <Canvas ctx={ctx} noAutoResizer>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       <AgentFrame
         key={frameKey}
         pluginId={ctx.plugin.id}

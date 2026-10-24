@@ -1,0 +1,70 @@
+/* The references of a message or of the composer. The pills and the cards
+   are the kit's: these classes only size the pictures they show and place
+   them in the text. */
+
+/* A picture in a pill (record thumbnail, image): as tall as the line of the
+   pill, with the corners of an avatar */
+.thumbnail {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  object-fit: cover;
+  border-radius: var(--radius-s);
+}
+
+/* The avatar of a user in a pill: it never shrinks. The small avatar is
+   2px taller than the line of the pill: it takes the 1px padding above and
+   below, so a user's pill keeps the height of the other references. */
+.avatar {
+  display: flex;
+  flex: none;
+  margin-block: -1px;
+}
+
+/* A record or model emoji in a pill: it never shrinks */
+.emoji {
+  flex: none;
+  line-height: 1;
+}
+
+/* A visual asset in a message: a small card on its own line */
+.preview {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  margin-block: var(--spacing-s);
+}
+
+/* The media of the card. The muted surface shows while the image loads. */
+.previewImage {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background-color: var(--color--surface-muted);
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+/* The button around a reference in the editor: it has no look of its own,
+   the pill inside draws the reference. Its corners follow the pill, so a
+   focus ring has the shape of the pill. */
+.editorReference {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  border-radius: var(--radius-full);
+}
+
+/* A reference node of the editor, with the remove button of a file */
+.node {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.invalid {
+  font-style: italic;
+  color: var(--color--ink-subtle);
+}

@@ -3,7 +3,7 @@ import type {
   ItemType,
   RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   FieldReferenceInput,
@@ -28,6 +28,7 @@ import { createAgentMentionHost } from '../lib/mentionHost';
 import { createSidebarNavigator } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import { usePersistedSidebarWidth } from '../lib/persistedWidth';
+import { TEXTS } from '../texts';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
@@ -489,7 +490,7 @@ function AuthorizedAgentSidebar({ ctx }: Props) {
   });
 
   return (
-    <Canvas ctx={ctx} noAutoResizer>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       <ScopeMigratingAgentFrame
         key={frameKey}
         pluginId={ctx.plugin.id}

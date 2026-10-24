@@ -1,0 +1,40 @@
+/* A mention menu follows the editor, not a trigger: it opens above or below
+   the composer box, as wide as it. The parts of datocms-react-ui/Dropdown
+   draw the panel, the group title and the options; these rules only place
+   them. */
+.menu {
+  position: absolute;
+  right: 0;
+  left: 0;
+}
+
+.below {
+  top: 100%;
+  margin-top: var(--spacing-s);
+}
+
+.above {
+  bottom: 100%;
+  margin-bottom: var(--spacing-s);
+}
+
+/* The options scroll; the search and the group title stay in view */
+.options {
+  max-height: min(232px, 45vh);
+  overflow-y: auto;
+}
+
+/* A status or an empty text, with its Retry at the end of the line */
+.status {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.statusText {
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}

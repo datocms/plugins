@@ -1,25 +1,29 @@
+import { useRegisterActions } from 'datocms-react-ui/Actions';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FeedbackDot, {
+  type FeedbackDotProps,
+} from 'datocms-react-ui/FeedbackDot';
+import InfoList from 'datocms-react-ui/InfoList';
+import Pane from 'datocms-react-ui/Pane';
+import Pill from 'datocms-react-ui/Pill';
+import RowList from 'datocms-react-ui/RowList';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
+import Spinner from 'datocms-react-ui/Spinner';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import Tooltip from 'datocms-react-ui/Tooltip';
 import {
-  BackIcon,
-  Button,
-  Form,
-  Spinner,
-  Tooltip,
-  TooltipContent,
-  TooltipDelayGroup,
-  TooltipTrigger,
-} from 'datocms-react-ui';
-import {
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
-  useId,
   useRef,
   useState,
 } from 'react';
-import datoMarkUrl from '../assets/dato-mark.svg';
+import { AddIcon, BoltIcon, HistoryIcon } from '../icons';
 import { DEFAULT_MAX_CONVERSATIONS } from '../lib/conversations';
 import {
-  MCP_ACCESS_CHANGE_GUIDANCE,
   MCP_ACCESS_CHANGE_URL,
   type McpAccessLevel,
   mcpAccessLabel,
@@ -31,24 +35,10 @@ import type {
   Mention,
 } from '../lib/mentions';
 import { fallbackAssetMention, fallbackRecordMention } from '../lib/mentions';
-import { MentionDisplay } from '../recordComments/entrypoints/components/shared/MentionDisplay';
-import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
-import {
-  BoltIcon,
-  CheckIcon,
-  CircleCheckIcon,
-  ConnectionIcon,
-  CopyIcon,
-  DisconnectIcon,
-  EditIcon,
-  HistoryIcon,
-  PlusIcon,
-  RetryIcon,
-  WarningIcon,
-} from './AgentIcons';
 import styles from './AgentSurface.module.css';
-import { Markdown } from './Markdown';
+import FullFrame from './FullFrame';
 import { MentionComposer } from './MentionComposer';
+import { Transcript } from './transcript/Transcript';
 
 export type AgentConnectionStatus =
   | 'setup'
@@ -324,1813 +314,718 @@ export type AgentSurfaceProps = {
   ) => boolean | Promise<boolean> | undefined;
 };
 
-const ACTIVITY_LABELS: Record<AgentActivityStatus, string> = {
-  pending: 'Waiting',
-  running: 'In progress',
-  success: 'Completed',
-  error: 'Failed',
-  cancelled: 'Cancelled',
+type ConnectionActionProps = Pick<
+  AgentSurfaceProps,
+  | 'connection'
+  | 'onConnectDatoCms'
+  | 'onDisconnectDatoCms'
+  | 'onCheckDatoCmsAccess'
+  | 'onRestartDatoCmsConnection'
+>;
+
+/** What keeps the chat busy: a control that it locks says why */
+type ChatLock = {
+  autoApproveChanging: boolean;
+  hostActionPending: boolean;
+  isRunning: boolean;
+  approvalPending: boolean;
+  approvalDeciding: boolean;
 };
 
-type CredentialPanelProps = Pick<
-  AgentSurfaceProps,
-  | 'connection'
-  | 'onConnectDatoCms'
-  | 'onDisconnectDatoCms'
-  | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
-  | 'recentConversations'
-  | 'onSelectConversation'
-  | 'onStartNewChat'
->;
-
-type AccessNoticeProps = Pick<
-  AgentSurfaceProps,
-  'connection' | 'onCheckDatoCmsAccess'
->;
-
-function OAuthAccessNotice({
-  connection,
-  onCheckDatoCmsAccess,
-}: AccessNoticeProps) {
-  if (connection.datoCmsStatus !== 'connected' || !connection.oauthAccessLevel)
-    return null;
-  return (
-    <div className={styles.authorizationNotice} role="status">
-      <p>
-        OAuth access:{' '}
-        <strong>{mcpAccessLabel(connection.oauthAccessLevel)}</strong>
-      </p>
-      {connection.pluginReadOnly && (
-        <p>Plugin Read Only is enabled. All agent writes are disabled.</p>
-      )}
-      {connection.oauthAccessLevel === 'unknown' && (
-        <p>Read-only work is available. Check access before making changes.</p>
-      )}
-      {connection.oauthAccessLevel === 'content_only' && (
-        <p>
-          Content changes are available. Schema and management changes are
-          unavailable.
-        </p>
-      )}
-      {connection.oauthAccessLevel === 'content_view_only' && (
-        <p>All agent writes, including asset creation, are disabled.</p>
-      )}
-      {(connection.oauthAccessLevel === 'content_view_only' ||
-        connection.oauthAccessLevel === 'content_only') && (
-        <p>
-          {MCP_ACCESS_CHANGE_GUIDANCE}{' '}
-          <a href={MCP_ACCESS_CHANGE_URL} target="_blank" rel="noreferrer">
-            Account settings
-          </a>
-        </p>
-      )}
-      <Button
-        buttonSize="xxs"
-        buttonType="muted"
-        type="button"
-        disabled={connection.accessChecking || !onCheckDatoCmsAccess}
-        onClick={onCheckDatoCmsAccess}
-      >
-        {connection.accessChecking ? 'Checking access…' : 'Check access again'}
-      </Button>
-    </div>
-  );
+function chatLockReason(lock: ChatLock): string | undefined {
+  if (lock.autoApproveChanging) return 'Confirm or cancel auto-approve first.';
+  if (lock.hostActionPending) return 'Wait for the current action to finish.';
+  if (lock.isRunning) return 'Wait for the agent to finish.';
+  if (lock.approvalPending) return 'Approve or deny the proposed change first.';
+  if (lock.approvalDeciding) return 'Wait for the decision to save.';
+  return undefined;
 }
 
-function UnverifiedAccessNotice({
-  connection,
-  onCheckDatoCmsAccess,
-}: AccessNoticeProps) {
-  if (connection.oauthAccessLevel !== 'unknown') return null;
-  return (
-    <div className={styles.authorizationNotice} role="status">
-      <p>
-        DatoCMS access is not verified. Read-only work is available; changes are
-        paused.
-      </p>
-      <Button
-        buttonSize="xxs"
-        buttonType="muted"
-        type="button"
-        disabled={connection.accessChecking || !onCheckDatoCmsAccess}
-        onClick={onCheckDatoCmsAccess}
-      >
-        {connection.accessChecking ? 'Checking access…' : 'Check access again'}
-      </Button>
-    </div>
-  );
+/**
+ * Why the composer is off while no turn runs (a running turn shows Stop):
+ * Send says it in its tooltip, since the editor shows no placeholder then.
+ */
+function composerLockReason(
+  lock: Pick<
+    ChatLock,
+    'hostActionPending' | 'approvalPending' | 'approvalDeciding'
+  > & { connecting: boolean },
+): string {
+  if (lock.hostActionPending) return 'Wait for the current action to finish.';
+  if (lock.approvalPending) return 'Approve or deny the proposed change first.';
+  if (lock.approvalDeciding) return 'Wait for the decision to save.';
+  if (lock.connecting) return 'Wait for DatoCMS to connect.';
+  return 'Wait for the current step to finish.';
 }
 
-function DatoCmsConnectionField({
-  connection,
-  onConnectDatoCms,
-  onDisconnectDatoCms,
-  onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
-}: Pick<
-  CredentialPanelProps,
-  | 'connection'
-  | 'onConnectDatoCms'
-  | 'onDisconnectDatoCms'
-  | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
->) {
-  const datoCmsConnected = connection.datoCmsStatus === 'connected';
-  const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
-  const accountLabel = connection.datoCmsAccountLabel?.trim();
-  const connectedLabel =
-    accountLabel && !/remote\s+mcp|^connected\b/i.test(accountLabel)
-      ? accountLabel
-      : 'DatoCMS';
+function approvalLock(entries: readonly AgentTranscriptEntry[]) {
+  let approvalPending = false;
+  let approvalDeciding = false;
 
-  return (
-    <Form
-      className={styles.connectionForm}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onConnectDatoCms?.();
-      }}
-    >
-      <div>
-        <div className={styles.connectionRow}>
-          <span className={styles.datoMark}>
-            <img alt="" aria-hidden="true" src={datoMarkUrl} />
-          </span>
-          <strong className={styles.connectionLabel}>{connectedLabel}</strong>
-          <span className={styles.connectionActions}>
-            {datoCmsConnecting ? (
-              <span
-                aria-label="Connecting to DatoCMS"
-                className={styles.connectionSpinner}
-                role="status"
-              >
-                <Spinner size={16} />
-              </span>
-            ) : datoCmsConnected ? (
-              <>
-                <span
-                  aria-label="Connected"
-                  className={styles.connectedStatus}
-                  role="img"
-                >
-                  <CircleCheckIcon />
-                </span>
-                {onDisconnectDatoCms && (
-                  <Tooltip placement="left">
-                    <TooltipTrigger>
-                      <button
-                        aria-label="Disconnect DatoCMS"
-                        className={`${styles.iconButton} ${styles.disconnectButton}`}
-                        onClick={onDisconnectDatoCms}
-                        type="button"
-                      >
-                        <DisconnectIcon />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Disconnect</TooltipContent>
-                  </Tooltip>
-                )}
-              </>
-            ) : (
-              <Button
-                buttonSize="xxs"
-                buttonType="primary"
-                disabled={!onConnectDatoCms}
-                type="submit"
-              >
-                {connection.datoCmsStatus === 'mcp_auth_required'
-                  ? 'Reconnect DatoCMS'
-                  : 'Connect'}
-              </Button>
-            )}
-          </span>
-        </div>
-
-        {!datoCmsConnected && (
-          <p className={styles.authorizationNotice} role="note">
-            When DatoCMS asks which projects to authorize, select{' '}
-            <strong>only the project where this plugin is installed.</strong>
-          </p>
-        )}
-      </div>
-
-      <OAuthAccessNotice
-        connection={connection}
-        onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-      />
-      {connection.datoCmsError && (
-        <p className={styles.inlineError} role="alert">
-          {connection.datoCmsError}
-          {!datoCmsConnecting && onRestartDatoCmsConnection && (
-            <button type="button" onClick={onRestartDatoCmsConnection}>
-              Start sign-in again with a new registration
-            </button>
-          )}
-        </p>
-      )}
-    </Form>
-  );
-}
-
-function RecentChats({
-  conversations,
-  disabled,
-  onSelectConversation,
-  onStartNewChat,
-}: {
-  conversations: readonly AgentConversationSummaryViewModel[];
-  disabled?: boolean;
-  onSelectConversation?: (
-    conversation: AgentConversationSummaryViewModel,
-  ) => void;
-  onStartNewChat?: () => void;
-}) {
-  const headingId = useId();
-  const visibleConversations = conversations.slice(
-    0,
-    DEFAULT_MAX_CONVERSATIONS,
-  );
-
-  if (visibleConversations.length === 0 && !onStartNewChat) {
-    return null;
+  for (const entry of entries) {
+    if (entry.kind !== 'approval') continue;
+    if (entry.approval.status === 'pending') approvalPending = true;
+    if (
+      entry.approval.status === 'approving' ||
+      entry.approval.status === 'rejecting'
+    ) {
+      approvalDeciding = true;
+    }
   }
 
+  return { approvalPending, approvalDeciding };
+}
+
+const DATO_CMS_STATUS: Record<
+  Exclude<DatoCmsConnectionStatus, 'connecting'>,
+  { tone: FeedbackDotProps['tone']; word: string }
+> = {
+  connected: { tone: 'success', word: 'Connected' },
+  disconnected: { tone: 'neutral', word: 'Not connected' },
+  mcp_auth_required: { tone: 'warning', word: 'Sign-in expired' },
+  error: { tone: 'danger', word: 'Connection failed' },
+};
+
+/** The note under the access level, for the levels that limit the agent */
+const ACCESS_NOTES: Partial<Record<McpAccessLevel, string>> = {
+  unknown: 'Read-only work is available. Check access before making changes.',
+  content_only:
+    'Content changes are available. Schema and management changes are unavailable.',
+  content_view_only:
+    'All agent writes, including asset creation, are disabled.',
+};
+
+function accessCanBeWidened(level: McpAccessLevel | undefined) {
+  return level === 'content_only' || level === 'content_view_only';
+}
+
+/** The name of the DatoCMS account, when it is more than a status word */
+function datoCmsLabel(connection: AgentConnectionViewModel) {
+  const accountLabel = connection.datoCmsAccountLabel?.trim();
+
+  return accountLabel && !/remote\s+mcp|^connected\b/i.test(accountLabel)
+    ? accountLabel
+    : 'DatoCMS';
+}
+
+function DatoCmsStatus({ status }: { status: DatoCmsConnectionStatus }) {
+  if (status === 'connecting') {
+    return (
+      <span className={styles.status} role="status">
+        <Spinner inline label={false} />
+        Connecting…
+      </span>
+    );
+  }
+
+  const { tone, word } = DATO_CMS_STATUS[status];
+
   return (
-    <section className={styles.recentChats} aria-labelledby={headingId}>
-      <div className={styles.recentChatsHeader}>
-        <div className={styles.recentChatsTitle}>
-          <HistoryIcon />
-          <h3 id={headingId}>Chats</h3>
-        </div>
-        {onStartNewChat && (
-          <Tooltip placement="left">
-            <TooltipTrigger>
-              <button
-                aria-label="New chat"
-                className={`${styles.iconButton} ${styles.newChatButton}`}
-                disabled={disabled}
-                onClick={onStartNewChat}
-                type="button"
-              >
-                <PlusIcon />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>New chat</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-
-      {visibleConversations.length > 0 ? (
-        <ul className={styles.recentChatsList}>
-          {visibleConversations.map((conversation) => {
-            const title = conversation.title.trim() || 'Untitled chat';
-
-            return (
-              <li key={conversation.id}>
-                <button
-                  aria-current={conversation.isCurrent ? 'page' : undefined}
-                  className={styles.recentChat}
-                  disabled={disabled || !onSelectConversation}
-                  onClick={() => onSelectConversation?.(conversation)}
-                  title={title}
-                  type="button"
-                >
-                  <strong className={styles.recentChatTitle}>{title}</strong>
-                  {conversation.isCurrent && (
-                    <span
-                      aria-label="Current chat"
-                      className={styles.currentChatIcon}
-                      role="img"
-                    >
-                      <CheckIcon />
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div className={styles.noRecentChats}>
-          <span>No chats yet</span>
-        </div>
-      )}
-    </section>
+    <span className={styles.status} role="status">
+      <FeedbackDot tone={tone} />
+      {word}
+    </span>
   );
 }
 
-function CredentialPanel({
+/** The buttons of a row of the connection: they fix what the row says */
+function RowActions({ children }: { children: ReactNode }) {
+  return <div className={styles.rowActions}>{children}</div>;
+}
+
+/** The DatoCMS connection, with Connect, Start sign-in again and Disconnect */
+function DatoCmsRow({
   connection,
   onConnectDatoCms,
   onDisconnectDatoCms,
-  onCheckDatoCmsAccess,
   onRestartDatoCmsConnection,
-  recentConversations = [],
-  onSelectConversation,
-  onStartNewChat,
-  isSettings,
-  headingRef,
-  conversationActionsDisabled,
-}: CredentialPanelProps & {
-  isSettings: boolean;
-  headingRef?: RefObject<HTMLHeadingElement | null>;
-  conversationActionsDisabled?: boolean;
-}) {
-  const providerConfigStatus =
-    connection.providerConfigStatus ?? connection.openAiConfigStatus;
-  const configuredProviderLabel =
-    connection.providerLabel ??
-    (connection.openAiConfigStatus ? 'OpenAI' : 'AI provider');
+}: Omit<ConnectionActionProps, 'onCheckDatoCmsAccess'>) {
+  const status = connection.datoCmsStatus;
+  const connected = status === 'connected';
+  const connecting = status === 'connecting';
+  const canConnect = !connected && !connecting && Boolean(onConnectDatoCms);
+  const canRestart = Boolean(
+    connection.datoCmsError && onRestartDatoCmsConnection && !connecting,
+  );
+  const canDisconnect = connected && Boolean(onDisconnectDatoCms);
 
   return (
-    <section
-      className={styles.credentials}
-      aria-labelledby="agent-credentials-title"
-    >
-      <header className={styles.credentialsHeader}>
-        <span className={styles.credentialsHeaderIcon}>
-          <ConnectionIcon />
-        </span>
-        <h2
-          id="agent-credentials-title"
-          ref={headingRef}
-          tabIndex={isSettings ? -1 : undefined}
-        >
-          Connection
-        </h2>
-      </header>
+    <InfoList.Row title={datoCmsLabel(connection)}>
+      <DatoCmsStatus status={status} />
+      {(canConnect || canRestart || canDisconnect) && (
+        <RowActions>
+          {canConnect && (
+            // The submit of the form of the panel
+            <Button
+              label={
+                status === 'mcp_auth_required' ? 'Reconnect DatoCMS' : 'Connect'
+              }
+              submit
+              tone="primary"
+            />
+          )}
+          {canRestart && (
+            <Button
+              label="Start sign-in again"
+              onClick={() => onRestartDatoCmsConnection?.()}
+              tone="ghost"
+            />
+          )}
+          {canDisconnect && (
+            <Button
+              label="Disconnect"
+              onClick={() => onDisconnectDatoCms?.()}
+              tone="ghost"
+            />
+          )}
+        </RowActions>
+      )}
+    </InfoList.Row>
+  );
+}
 
-      {providerConfigStatus === 'missing' && (
-        <div className={styles.configurationNotice} role="status">
-          <WarningIcon />
-          <span>{configuredProviderLabel} setup required</span>
+/** The access of the connection, its note and its re-check */
+function AccessRow({
+  connection,
+  onCheckDatoCmsAccess,
+}: Pick<ConnectionActionProps, 'connection' | 'onCheckDatoCmsAccess'>) {
+  const accessLevel =
+    connection.datoCmsStatus === 'connected'
+      ? connection.oauthAccessLevel
+      : undefined;
+  if (!accessLevel) return null;
+
+  const accessNote = ACCESS_NOTES[accessLevel];
+
+  return (
+    <InfoList.Row title="Access">
+      {mcpAccessLabel(accessLevel)}
+      {accessNote && <div className={styles.note}>{accessNote}</div>}
+      {onCheckDatoCmsAccess && (
+        <RowActions>
+          <CheckAccessButton
+            checking={Boolean(connection.accessChecking)}
+            onCheck={onCheckDatoCmsAccess}
+            tone="ghost"
+          />
+        </RowActions>
+      )}
+    </InfoList.Row>
+  );
+}
+
+/** The model provider, and whether an admin must set it up */
+function ProviderRow({ connection }: { connection: AgentConnectionViewModel }) {
+  const providerStatus =
+    connection.providerConfigStatus ?? connection.openAiConfigStatus;
+  const providerName =
+    connection.providerLabel ??
+    (connection.openAiConfigStatus ? 'OpenAI' : undefined);
+  const providerMissing = providerStatus === 'missing';
+  if (!providerName && !providerMissing) return null;
+
+  return (
+    <InfoList.Row title="Model provider">
+      <span className={styles.value}>
+        {providerName}
+        {providerMissing && <Pill tone="warning">Setup required</Pill>}
+      </span>
+      {/* Who fixes it is in view, not in a tooltip a touch can't open */}
+      {providerMissing && (
+        <div className={styles.note}>
+          A project admin sets it up in the plugin settings.
         </div>
       )}
-
-      <TooltipDelayGroup delay={250}>
-        <DatoCmsConnectionField
-          connection={connection}
-          onConnectDatoCms={onConnectDatoCms}
-          onDisconnectDatoCms={onDisconnectDatoCms}
-          onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-          onRestartDatoCmsConnection={onRestartDatoCmsConnection}
-        />
-        <RecentChats
-          conversations={recentConversations}
-          disabled={conversationActionsDisabled}
-          onSelectConversation={onSelectConversation}
-          onStartNewChat={onStartNewChat}
-        />
-      </TooltipDelayGroup>
-    </section>
+    </InfoList.Row>
   );
 }
 
-function EmptyState() {
+/**
+ * The facts of the connection, each with the actions that change it in its
+ * row: the DatoCMS connection, the access and the model provider.
+ */
+function ConnectionFacts(props: ConnectionActionProps) {
   return (
-    <section className={styles.emptyState} aria-label="Empty conversation">
-      <p>What can I help with?</p>
-    </section>
+    <InfoList>
+      <DatoCmsRow {...props} />
+      <AccessRow {...props} />
+      <ProviderRow connection={props.connection} />
+    </InfoList>
   );
 }
 
-function FailureActions({
-  failure,
-  onRetry,
-  onCopyDiagnostics,
+function ConnectionMessages({
+  connection,
 }: {
-  failure: NonNullable<AgentMessageEntry['failure']>;
-  onRetry?: AgentSurfaceProps['onRetryFailedTurn'];
-  onCopyDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
+  connection: AgentConnectionViewModel;
 }) {
-  const [retryPending, setRetryPending] = useState(false);
-  const [copyState, setCopyState] = useState<
-    'idle' | 'copying' | 'copied' | 'error'
-  >('idle');
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(
-    () => () => {
-      if (copiedTimerRef.current !== undefined) {
-        clearTimeout(copiedTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const retry = async () => {
-    if (retryPending || !onRetry) {
-      return;
-    }
-
-    setRetryPending(true);
-
-    try {
-      await onRetry(failure.id);
-    } catch {
-      return;
-    } finally {
-      setRetryPending(false);
-    }
-  };
-
-  const copyDiagnostics = async () => {
-    if (retryPending || copyState === 'copying' || !onCopyDiagnostics) {
-      return;
-    }
-
-    if (copiedTimerRef.current !== undefined) {
-      clearTimeout(copiedTimerRef.current);
-      copiedTimerRef.current = undefined;
-    }
-
-    setCopyState('copying');
-
-    try {
-      await onCopyDiagnostics(failure.id);
-      setCopyState('copied');
-      copiedTimerRef.current = setTimeout(() => {
-        copiedTimerRef.current = undefined;
-        setCopyState('idle');
-      }, 2_000);
-    } catch {
-      setCopyState('error');
-    }
-  };
+  const connected = connection.datoCmsStatus === 'connected';
+  const accessLevel = connected ? connection.oauthAccessLevel : undefined;
 
   return (
     <>
-      <div className={styles.failureActions}>
-        {failure.retryable && (
-          <button
-            className={`${styles.failureAction} ${styles.failureActionPrimary}`}
-            disabled={retryPending || !onRetry}
-            onClick={() => {
-              void retry();
-            }}
-            type="button"
-          >
-            <RetryIcon />
-            <span>{retryPending ? 'Trying again…' : 'Try again'}</span>
-          </button>
-        )}
-        <button
-          className={styles.failureAction}
-          disabled={
-            retryPending || copyState === 'copying' || !onCopyDiagnostics
-          }
-          onClick={() => {
-            void copyDiagnostics();
-          }}
-          type="button"
-        >
-          <CopyIcon />
-          <span>{copyState === 'copied' ? 'Copied' : 'Copy diagnostics'}</span>
-        </button>
-      </div>
-      <span aria-live="polite" className={styles.visuallyHidden} role="status">
-        {copyState === 'copied' ? 'Diagnostics copied' : ''}
-      </span>
-      {copyState === 'error' && (
-        <p className={styles.failureActionError} role="alert">
-          Couldn’t copy diagnostics
-        </p>
+      {connection.datoCmsError && (
+        <Callout className={styles.callout} tone="danger">
+          {connection.datoCmsError}
+        </Callout>
+      )}
+      {!connected && (
+        <Callout className={styles.callout}>
+          When DatoCMS asks which projects to authorize, select{' '}
+          <strong>only the project where this plugin is installed.</strong>
+        </Callout>
+      )}
+      {connection.pluginReadOnly && (
+        <Callout className={styles.callout}>
+          Read-only mode is on, so the agent can’t change anything.
+        </Callout>
+      )}
+      {accessCanBeWidened(accessLevel) && (
+        <Callout className={styles.callout} title="Limited OAuth access">
+          To change it, revoke the authorization in{' '}
+          <a href={MCP_ACCESS_CHANGE_URL} rel="noreferrer" target="_blank">
+            Account settings
+          </a>
+          , then reconnect. This affects all MCP clients of your account, and
+          your project role can still limit access.
+        </Callout>
       )}
     </>
   );
 }
 
-function mentionIdentity(mention: Mention) {
-  return mention.type === 'field'
-    ? `${mention.type}:${mention.fieldPath}:${mention.locale ?? ''}`
-    : `${mention.type}:${mention.id}`;
-}
-
-function withStableKeys<T>(
-  values: readonly T[],
-  identity: (value: T) => string,
-) {
-  const occurrences = new Map<string, number>();
-  const keyed: Array<{ key: string; value: T }> = [];
-  for (const value of values) {
-    const base = identity(value);
-    const occurrence = occurrences.get(base) ?? 0;
-    occurrences.set(base, occurrence + 1);
-    keyed.push({ key: `${base}:${occurrence}`, value });
-  }
-  return keyed;
-}
-
-function messageError(entry: AgentMessageEntry) {
-  if (typeof entry.error === 'string') return entry.error.trim() || undefined;
-  return entry.error ? 'The response was interrupted.' : undefined;
-}
-
-function UserMessageContent({
-  content,
-  currentRecordId,
-  mentionHost,
-  disabled,
-  onOpenMention,
-  segments,
+function CheckAccessButton({
+  checking,
+  onCheck,
+  tone,
 }: {
-  content: string;
-  currentRecordId?: string;
-  mentionHost: AgentMentionHost;
-  disabled: boolean;
-  onOpenMention: (mention: Mention) => void;
-  segments?: readonly CommentSegment[];
+  checking: boolean;
+  onCheck: () => void;
+  tone?: 'soft' | 'ghost';
 }) {
-  if (!segments?.length)
-    return <div className={commentStyles.text}>{content}</div>;
+  return (
+    <Button
+      busy={checking}
+      label="Check access again"
+      onClick={onCheck}
+      tone={tone}
+    />
+  );
+}
+
+/**
+ * The DatoCMS connection: what the user must know first (an error, how to
+ * authorize, what limits the agent), then its state with the actions that
+ * change it
+ */
+function ConnectionPanel(props: ConnectionActionProps) {
+  const { connection, onConnectDatoCms } = props;
 
   return (
-    <div className={commentStyles.text}>
-      {withStableKeys(segments, (segment) =>
-        segment.type === 'text'
-          ? `text:${segment.content.slice(0, 64)}`
-          : mentionIdentity(segment.mention),
-      ).map(({ key, value: segment }) =>
-        segment.type === 'text' ? (
-          <span key={key}>{segment.content}</span>
-        ) : (
-          <MentionDisplay
-            currentRecordId={currentRecordId}
-            isClickable={
-              !disabled &&
-              !(
-                segment.mention.type === 'user' &&
-                segment.mention.id === mentionHost.projectOwnerId
-              )
-            }
-            isProjectOwner={
-              segment.mention.type === 'user' &&
-              segment.mention.id === mentionHost.projectOwnerId
-            }
-            key={key}
-            mention={segment.mention}
-            onClick={() => onOpenMention(segment.mention)}
-            projectUsers={[mentionHost.currentUser]}
+    <SidebarPanel title="Connection" titleLevel={2}>
+      <form
+        className={styles.connection}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConnectDatoCms?.();
+        }}
+      >
+        <ConnectionMessages connection={connection} />
+        <ConnectionFacts {...props} />
+      </form>
+    </SidebarPanel>
+  );
+}
+
+/**
+ * A chat: it opens on click, or only shows while switching isn't possible.
+ * While it opens, a spinner shows at its end.
+ */
+function ChatRow({
+  conversation,
+  onSelect,
+  opening,
+}: {
+  conversation: AgentConversationSummaryViewModel;
+  onSelect?: (conversation: AgentConversationSummaryViewModel) => void;
+  opening: boolean;
+}) {
+  const selected = Boolean(conversation.isCurrent);
+  const content = (
+    <EntityRow
+      layout="row"
+      multilineTitle
+      title={conversation.title.trim() || 'Untitled chat'}
+      trailing={opening ? <Spinner inline label="Opening chat" /> : undefined}
+    />
+  );
+
+  return onSelect ? (
+    <RowList.Item onClick={() => onSelect(conversation)} selected={selected}>
+      {content}
+    </RowList.Item>
+  ) : (
+    <RowList.Item selected={selected}>{content}</RowList.Item>
+  );
+}
+
+function ChatsPanel({
+  conversations,
+  locked,
+  onSelectConversation,
+  openingConversationId,
+}: {
+  conversations: readonly AgentConversationSummaryViewModel[];
+  /** The rows only show the chats: switching is not possible now */
+  locked: boolean;
+  onSelectConversation?: (
+    conversation: AgentConversationSummaryViewModel,
+  ) => void;
+  /** The chat that is opening */
+  openingConversationId?: string;
+}) {
+  const visibleConversations = conversations.slice(
+    0,
+    DEFAULT_MAX_CONVERSATIONS,
+  );
+
+  return (
+    <SidebarPanel
+      count={visibleConversations.length}
+      flush
+      title="Chats"
+      titleLevel={2}
+    >
+      {visibleConversations.length === 0 ? (
+        <SidebarPanel.Blank message="No chats yet" />
+      ) : (
+        <RowList>
+          {visibleConversations.map((conversation) => (
+            <ChatRow
+              conversation={conversation}
+              key={conversation.id}
+              onSelect={locked ? undefined : onSelectConversation}
+              opening={conversation.id === openingConversationId}
+            />
+          ))}
+        </RowList>
+      )}
+    </SidebarPanel>
+  );
+}
+
+type ChatsViewProps = ConnectionActionProps &
+  Pick<AgentSurfaceProps, 'recentConversations'> & {
+    connected: boolean;
+    contentRef: RefObject<HTMLDivElement | null>;
+    /** Why the chats can't change now, when they can't */
+    conversationLockReason?: string;
+    /** A chat is opening, or a new chat is starting */
+    conversationActionPending: boolean;
+    /** The chat that is opening */
+    openingConversationId?: string;
+    onBack: () => void;
+    onSelectConversation?: (
+      conversation: AgentConversationSummaryViewModel,
+    ) => void;
+    onStartNewChat?: () => void;
+  };
+
+/**
+ * The chats and the connection: the first view before DatoCMS is connected,
+ * and the view that "Open chats" shows after.
+ */
+function ChatsView({
+  connected,
+  contentRef,
+  conversationActionPending,
+  conversationLockReason,
+  onBack,
+  onSelectConversation,
+  onStartNewChat,
+  openingConversationId,
+  recentConversations = [],
+  ...connectionProps
+}: ChatsViewProps) {
+  const showChats = recentConversations.length > 0 || Boolean(onStartNewChat);
+
+  // Escape goes back to the chat, once DatoCMS is connected
+  useRegisterActions([
+    {
+      id: 'chats.back',
+      name: 'Back to chat',
+      shortcut: { key: 'escape' },
+      applicable: () => connected,
+      run: onBack,
+      palette: 'hidden',
+    },
+  ]);
+
+  return (
+    <Pane
+      ariaLabel="Chats"
+      header={
+        <Toolbar>
+          {connected && (
+            <Toolbar.GoBack
+              action="chats.back"
+              ariaLabel="Back to chat"
+              onClick={onBack}
+            />
+          )}
+          <Toolbar.Title>{connected ? 'Chats' : 'Dato Agent'}</Toolbar.Title>
+          {/* A new chat is starting. The button stays as it is: it keeps
+              the focus if the chat doesn't start. */}
+          <Toolbar.Spinner
+            show={conversationActionPending && !openingConversationId}
           />
-        ),
-      )}
-    </div>
+          <Toolbar.Space />
+          {onStartNewChat && (
+            <Toolbar.Button
+              disabled={
+                conversationLockReason
+                  ? { reason: conversationLockReason }
+                  : undefined
+              }
+              icon={AddIcon}
+              label="New chat"
+              onClick={onStartNewChat}
+            />
+          )}
+        </Toolbar>
+      }
+    >
+      <div ref={contentRef}>
+        <ConnectionPanel {...connectionProps} />
+        {showChats && (
+          <ChatsPanel
+            conversations={recentConversations}
+            locked={Boolean(conversationLockReason)}
+            onSelectConversation={onSelectConversation}
+            openingConversationId={openingConversationId}
+          />
+        )}
+      </div>
+    </Pane>
   );
 }
 
-function AssistantMessageContent({
-  entry,
-  onRetryFailedTurn,
-  onCopyFailureDiagnostics,
-  suppressInterruptedNotice = false,
-}: {
-  entry: AgentMessageEntry;
-  onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
-  onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
-  suppressInterruptedNotice?: boolean;
-}) {
-  const errorMessage = messageError(entry);
-  const stoppedOnly =
-    entry.interrupted && !errorMessage && entry.content.trim() === 'Stopped.';
-  const showInterruptedNotice =
-    entry.interrupted && !errorMessage && !suppressInterruptedNotice;
-  const showContent = Boolean(entry.content) && !stoppedOnly;
+type AutoApproveToggleProps = {
+  enabled: boolean;
+  changing: boolean;
+  /** Why auto-approve can't change at all (Read-only mode, the access) */
+  unavailableReason?: string;
+  /** Why it can't change now */
+  lockReason?: string;
+  onChange?: AgentSurfaceProps['onAutoApproveChange'];
+};
 
-  if (!showContent && !errorMessage && !showInterruptedNotice) return null;
-
-  return (
-    <div className={styles.agentTurnItem}>
-      {showContent && (
-        <Markdown
-          className={styles.assistantMarkdown}
-          content={entry.content}
-        />
-      )}
-      {showInterruptedNotice && (
-        <p className={styles.interruptedNotice} role="status">
-          Stopped
-        </p>
-      )}
-      {errorMessage && (
-        <p className={styles.inlineError} role="alert">
-          {errorMessage}
-        </p>
-      )}
-      {errorMessage && entry.failure && (
-        <FailureActions
-          failure={entry.failure}
-          onCopyDiagnostics={onCopyFailureDiagnostics}
-          onRetry={onRetryFailedTurn}
-        />
-      )}
-    </div>
-  );
-}
-
-function MessageEntry({
-  currentRecordId,
-  disabled,
-  entry,
-  mentionHost,
-  onOpenMention,
-  onRetryFailedTurn,
-  onCopyFailureDiagnostics,
-}: {
-  disabled: boolean;
-  currentRecordId?: string;
-  entry: AgentMessageEntry;
-  mentionHost: AgentMentionHost;
-  onOpenMention: (mention: Mention) => void;
-  onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
-  onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
-}) {
-  const errorMessage = messageError(entry);
-
-  if (!entry.content && !errorMessage && !entry.interrupted) {
+function AutoApproveToggle({
+  enabled,
+  changing,
+  unavailableReason,
+  lockReason,
+  onChange,
+}: AutoApproveToggleProps) {
+  // Without a way to change it and without a reason, the toggle doesn't apply
+  if (!onChange && !unavailableReason) {
     return null;
   }
 
+  const reason = changing ? undefined : (unavailableReason ?? lockReason);
+  // A disabled or busy button has no hint: its reason is its tooltip
+  const hint =
+    reason || changing
+      ? null
+      : enabled
+        ? 'Turn off auto-approve'
+        : 'Turn on auto-approve';
+
   return (
-    <article
-      aria-label={entry.label ?? (entry.role === 'user' ? 'You' : 'Dato agent')}
-      className={
-        entry.role === 'user'
-          ? `${styles.message} ${styles.userMessage}`
-          : `${styles.message} ${styles.assistantMessage}${
-              errorMessage ? ` ${styles.assistantError}` : ''
-            }`
-      }
-    >
-      {entry.content && entry.role === 'user' && (
-        <UserMessageContent
-          content={entry.content}
-          currentRecordId={currentRecordId}
-          mentionHost={mentionHost}
-          disabled={disabled}
-          onOpenMention={onOpenMention}
-          segments={entry.segments}
-        />
-      )}
-      {entry.role === 'assistant' && (
-        <AssistantMessageContent
-          entry={entry}
-          onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-          onRetryFailedTurn={onRetryFailedTurn}
-        />
-      )}
-      {entry.role === 'user' && errorMessage && (
-        <p className={styles.inlineError} role="alert">
-          {errorMessage}
-        </p>
-      )}
-    </article>
+    <Tooltip label={hint} placement="bottom">
+      <Toolbar.Button
+        busy={changing}
+        disabled={reason ? { reason } : undefined}
+        icon={BoltIcon}
+        label="Auto"
+        onClick={() => {
+          void onChange?.(!enabled);
+        }}
+        pressed={enabled}
+        // Changes may run without review: a risk the user chose, thus the
+        // warning tone (danger is for a problem)
+        trailing={enabled ? <Pill tone="warning">On</Pill> : undefined}
+      />
+    </Tooltip>
   );
 }
 
-function activitiesWithStatus(
-  activities: readonly AgentActivityViewModel[],
-  status: AgentActivityStatus,
-): AgentActivityViewModel[] {
-  return activities.filter((activity) => activity.status === status);
+function currentChatTitle(
+  conversations: readonly AgentConversationSummaryViewModel[],
+) {
+  const current = conversations.find((conversation) => conversation.isCurrent);
+  if (!current) return 'New chat';
+
+  return current.title.trim() || 'Untitled chat';
 }
 
-function activityPresentation(entry: AgentActivityEntry): {
-  summary: string;
-  showSpinner: boolean;
-  failed: boolean;
-} {
-  const { activities, phase } = entry;
-  const current = activitiesWithStatus(activities, 'running').at(-1);
-  const failedCount = activitiesWithStatus(activities, 'error').length;
-  const cancelledCount = activitiesWithStatus(activities, 'cancelled').length;
-  const completedCount = activitiesWithStatus(activities, 'success').length;
-  const pendingCount = activitiesWithStatus(activities, 'pending').length;
+/** The messages about the chat, above the composer */
+function ChatNotices({
+  autoApproveError,
+  connection,
+  onCheckDatoCmsAccess,
+  persistenceWarning,
+}: Pick<
+  AgentSurfaceProps,
+  | 'autoApproveError'
+  | 'connection'
+  | 'onCheckDatoCmsAccess'
+  | 'persistenceWarning'
+>) {
+  return (
+    <>
+      {autoApproveError && (
+        <Callout className={styles.callout} tone="danger">
+          {autoApproveError}
+        </Callout>
+      )}
+      {connection.oauthAccessLevel === 'unknown' && (
+        <div className={styles.notice}>
+          <Callout
+            className={styles.callout}
+            title="DatoCMS access isn’t verified"
+            tone="warning"
+          >
+            Read-only work is available; changes are paused.
+          </Callout>
+          {onCheckDatoCmsAccess && (
+            <CheckAccessButton
+              checking={Boolean(connection.accessChecking)}
+              onCheck={onCheckDatoCmsAccess}
+            />
+          )}
+        </div>
+      )}
+      {persistenceWarning && (
+        <Callout className={styles.callout} tone="warning">
+          {persistenceWarning}
+        </Callout>
+      )}
+    </>
+  );
+}
 
-  if (phase === 'running') {
-    if (current) {
-      return { summary: current.label, showSpinner: true, failed: false };
-    }
-
-    return {
-      summary: failedCount > 0 ? 'Trying another approach…' : 'Working…',
-      showSpinner: true,
-      failed: false,
-    };
-  }
-
-  if (phase === 'failed') {
-    return {
-      summary: 'Couldn’t complete this request',
-      showSpinner: false,
-      failed: true,
-    };
-  }
-
-  if (phase === 'cancelled' || cancelledCount > 0) {
-    return { summary: 'Stopped', showSpinner: false, failed: false };
-  }
-
-  if (phase === 'waiting' || pendingCount > 0) {
-    return {
-      summary: 'Waiting for approval',
-      showSpinner: false,
-      failed: false,
-    };
-  }
-
-  if (failedCount > 0) {
-    return {
-      summary: 'DatoCMS activity',
-      showSpinner: false,
-      failed: false,
-    };
-  }
-
+function fallbackMentionHost(): AgentMentionHost {
   return {
-    summary: `${completedCount} ${
-      completedCount === 1 ? 'step' : 'steps'
-    } completed`,
-    showSpinner: false,
-    failed: false,
+    currentUser: {
+      id: 'current-user',
+      name: 'You',
+      email: '',
+      avatarUrl: null,
+      userType: 'user',
+    },
+    projectOwnerId: 'project-owner',
+    projectModels: [],
+    recordModels: [],
+    canMentionFields: false,
+    canMentionAssets: false,
+    canMentionModels: false,
+    loadProjectUsers: async () => [],
+    selectAsset: async () => undefined,
+    selectRecord: async () => undefined,
+    resolveAsset: async ({ uploadId, label }) =>
+      fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
+    resolveRecord: async ({ itemId, label }) =>
+      fallbackRecordMention({
+        id: itemId,
+        title: label || `Record #${itemId}`,
+      }),
+    openUser: () => undefined,
+    openModel: () => undefined,
+    openLocalFile: async () => undefined,
   };
 }
 
-function activityStatusLabel(
-  activity: AgentActivityViewModel,
-  phase: AgentActivityPhase,
-): string {
-  if (activity.timestampLabel) {
-    return activity.timestampLabel;
-  }
-
-  if (activity.status !== 'error' || phase === 'failed') {
-    return ACTIVITY_LABELS[activity.status];
-  }
-
-  return phase === 'running' ? 'Trying another approach' : 'Not completed';
+function focusComposer(region: HTMLElement | null) {
+  region?.querySelector<HTMLElement>('[role="textbox"]')?.focus();
 }
 
-function ActivityItem({
-  activity,
-  phase,
-}: {
-  activity: AgentActivityViewModel;
-  phase: AgentActivityPhase;
-}) {
-  const recoverable = activity.status === 'error' && phase !== 'failed';
-
-  return (
-    <li
-      className={`${styles.activityItem} ${
-        recoverable
-          ? styles.activityRecoverable
-          : styles[`activity_${activity.status}`]
-      }`}
-    >
-      <span className={styles.activityMarker} aria-hidden="true" />
-      <div className={styles.activityContent}>
-        <div className={styles.activityHeading}>
-          <strong>{activity.label}</strong>
-          <span>{activityStatusLabel(activity, phase)}</span>
-        </div>
-        {activity.description && <p>{activity.description}</p>}
-        {activity.detail && <pre>{activity.detail}</pre>}
-      </div>
-    </li>
-  );
-}
-
-function ActivityEntry({ entry }: { entry: AgentActivityEntry }) {
-  if (entry.activities.length === 0) {
-    return entry.phase === 'running' ? (
-      <div className={styles.activityStatus} role="status">
-        <Spinner size={14} />
-        <span>Working…</span>
-      </div>
-    ) : null;
-  }
-
-  const presentation = activityPresentation(entry);
-
-  return (
-    <details
-      className={`${styles.activityDisclosure}${
-        presentation.failed ? ` ${styles.activityDisclosureFailed}` : ''
-      }`}
-    >
-      <summary>
-        {presentation.showSpinner && <Spinner size={14} />}
-        <span>{presentation.summary}</span>
-      </summary>
-      {entry.activities.length > 0 && (
-        <ol className={styles.activityList}>
-          {entry.activities.map((activity) => (
-            <ActivityItem
-              activity={activity}
-              key={activity.id}
-              phase={entry.phase}
-            />
-          ))}
-        </ol>
-      )}
-    </details>
-  );
-}
-
-function RecordsEntry({
-  currentRecordId,
-  disabled,
-  entry,
-  mentionHost,
-  onOpenRecord,
-}: {
-  disabled?: boolean;
-  currentRecordId?: string;
-  entry: AgentRecordsEntry;
-  mentionHost: AgentMentionHost;
-  onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
-}) {
-  const modelsById = new Map(
-    mentionHost.projectModels.map((model) => [model.id, model]),
-  );
-
-  return (
-    <aside
-      aria-busy={entry.opening || undefined}
-      aria-label={entry.title ?? 'Records'}
-      className={styles.mentionReceipt}
-    >
-      {entry.title && (
-        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
-      )}
-      <div className={styles.mentionReceiptItems}>
-        {entry.records.map((record) => {
-          const model = record.itemTypeId
-            ? modelsById.get(record.itemTypeId)
-            : undefined;
-          const mention =
-            record.mention ??
-            fallbackRecordMention({
-              id: record.itemId,
-              title: record.title,
-              ...(model
-                ? {
-                    model: {
-                      modelId: model.id,
-                      modelApiKey: model.apiKey,
-                      modelName: model.name,
-                      modelEmoji: null,
-                      isSingleton: false,
-                    },
-                  }
-                : {}),
-            });
-          return (
-            <MentionDisplay
-              accessibleLabel={`Open ${mention.title}`}
-              currentRecordId={currentRecordId}
-              isClickable={!disabled && Boolean(onOpenRecord)}
-              key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}
-              mention={mention}
-              onClick={() => {
-                if (!disabled && onOpenRecord) {
-                  void Promise.resolve(onOpenRecord(record, entry.id)).catch(
-                    () => undefined,
-                  );
-                }
-              }}
-            />
-          );
-        })}
-      </div>
-      {entry.error && (
-        <p className={styles.inlineError} role="alert">
-          {entry.error}
-        </p>
-      )}
-    </aside>
-  );
-}
-
-function FieldsEntry({
-  disabled,
-  entry,
-  onOpenField,
-}: {
-  disabled?: boolean;
-  entry: AgentFieldsEntry;
-  onOpenField?: AgentSurfaceProps['onOpenField'];
-}) {
-  return (
-    <aside
-      aria-busy={Boolean(entry.openingKey) || undefined}
-      aria-label={entry.title ?? 'Fields'}
-      className={styles.mentionReceipt}
-    >
-      {entry.title && (
-        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
-      )}
-      <div className={styles.mentionReceiptItems}>
-        {entry.fields.map((field) => (
-          <MentionDisplay
-            accessibleLabel={`Show ${field.title}`}
-            isClickable={!disabled && Boolean(onOpenField)}
-            key={`${field.fieldPath}:${field.locale ?? ''}`}
-            mention={
-              field.mention ?? {
-                type: 'field',
-                apiKey: field.fieldPath.split('.').at(-1) || field.fieldPath,
-                label: field.title,
-                localized: Boolean(field.locale),
-                fieldPath: field.fieldPath,
-                ...(field.locale ? { locale: field.locale } : {}),
-              }
-            }
-            onClick={() => {
-              if (!disabled && onOpenField) {
-                void Promise.resolve(onOpenField(field, entry.id)).catch(
-                  () => undefined,
-                );
-              }
-            }}
-          />
-        ))}
-      </div>
-      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
-    </aside>
-  );
-}
-
-function AssetsEntry({
-  disabled,
-  entry,
-  onOpenAsset,
-}: {
-  disabled?: boolean;
-  entry: AgentAssetsEntry;
-  onOpenAsset?: AgentSurfaceProps['onOpenAsset'];
-}) {
-  return (
-    <aside
-      aria-busy={Boolean(entry.openingKey) || undefined}
-      aria-label={entry.title ?? 'Assets'}
-      className={styles.mentionReceipt}
-    >
-      {entry.title && (
-        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
-      )}
-      <div className={styles.mentionReceiptItems}>
-        {entry.assets.map((asset) => (
-          <span className={styles.mentionReceiptItem} key={asset.uploadId}>
-            <MentionDisplay
-              accessibleLabel={`Open ${asset.title}`}
-              assetLayout="row"
-              isClickable={!disabled && !asset.deleted && Boolean(onOpenAsset)}
-              mention={
-                asset.mention ??
-                fallbackAssetMention(asset.uploadId, asset.title)
-              }
-              onClick={() => {
-                if (!disabled && !asset.deleted && onOpenAsset) {
-                  void Promise.resolve(onOpenAsset(asset, entry.id)).catch(
-                    () => undefined,
-                  );
-                }
-              }}
-            />
-            {asset.deleted && (
-              <span className={styles.mentionReceiptState}>Deleted</span>
-            )}
-          </span>
-        ))}
-      </div>
-      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
-    </aside>
-  );
-}
-
-function MentionsEntry({
-  currentRecordId,
-  disabled,
-  entry,
-  mentionHost,
-}: {
-  disabled?: boolean;
-  currentRecordId?: string;
-  entry: AgentMentionsEntry;
-  mentionHost: AgentMentionHost;
-}) {
-  return (
-    <aside
-      aria-label={entry.title ?? 'References'}
-      className={styles.mentionReceipt}
-    >
-      {entry.title && (
-        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
-      )}
-      <div className={styles.mentionReceiptItems}>
-        {withStableKeys(entry.mentions, mentionIdentity).map(
-          ({ key, value: mention }) => {
-            const isOwner =
-              mention.type === 'user' &&
-              mention.id === mentionHost.projectOwnerId;
-            const isOpenable =
-              !disabled &&
-              !isOwner &&
-              (mention.type === 'user' ||
-                mention.type === 'model' ||
-                mention.type === 'file');
-            return (
-              <MentionDisplay
-                accessibleLabel={
-                  mention.type === 'user'
-                    ? `Open ${mention.name}`
-                    : mention.type === 'model'
-                      ? `Open ${mention.name}`
-                      : mention.type === 'file'
-                        ? `Show details for ${mention.filename}`
-                        : undefined
-                }
-                assetLayout="row"
-                currentRecordId={currentRecordId}
-                isClickable={isOpenable}
-                isProjectOwner={isOwner}
-                key={key}
-                mention={mention}
-                onClick={() => {
-                  if (!isOpenable) return;
-                  if (mention.type === 'user') {
-                    void mentionHost.openUser(mention.id);
-                  } else if (mention.type === 'model') {
-                    mentionHost.openModel(mention.id, mention.isBlockModel);
-                  } else if (mention.type === 'file') {
-                    void mentionHost.openLocalFile(mention);
-                  }
-                }}
-                projectUsers={entry.mentions.filter(
-                  (
-                    candidate,
-                  ): candidate is Extract<Mention, { type: 'user' }> =>
-                    candidate.type === 'user',
-                )}
-              />
-            );
-          },
-        )}
-      </div>
-      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
-    </aside>
-  );
-}
-
-function approvalActionDisabled(
-  disabled: boolean | undefined,
-  action: ((approval: UnsafeApprovalViewModel) => void) | undefined,
-): boolean {
-  return Boolean(disabled) || !action;
-}
-
-function ApprovalFooter({
-  approval,
-  canDecide,
-  disabled,
-  onReview,
-  onApprove,
-  onReject,
-}: {
-  approval: UnsafeApprovalViewModel;
-  canDecide: boolean;
-  disabled?: boolean;
-  onReview?: (approval: UnsafeApprovalViewModel) => void;
-  onApprove?: (approval: UnsafeApprovalViewModel) => void;
-  onReject?: (approval: UnsafeApprovalViewModel) => void;
-}) {
-  const hasDetails = Boolean(
-    (approval.details?.length || approval.script) && onReview,
-  );
-  if (!hasDetails && !canDecide) {
-    return null;
-  }
-
-  return (
-    <div className={styles.approvalFooter}>
-      {hasDetails && (
-        <button
-          aria-haspopup="dialog"
-          className={styles.approvalDetailsButton}
-          disabled={disabled}
-          onClick={() => onReview?.(approval)}
-          type="button"
-        >
-          Review details
-        </button>
-      )}
-      {canDecide && (
-        <div className={styles.approvalActions}>
-          <Button
-            buttonSize="xs"
-            buttonType="negative"
-            disabled={approvalActionDisabled(disabled, onReject)}
-            onClick={() => onReject?.(approval)}
-          >
-            Deny
-          </Button>
-          <Button
-            buttonSize="xs"
-            buttonType="primary"
-            disabled={approvalActionDisabled(disabled, onApprove)}
-            onClick={() => onApprove?.(approval)}
-          >
-            Approve
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ApprovalOutcomeEntry({
-  approval,
-  autoApproveEnabled,
-  disabled,
-  onReview,
-  onRepair,
-}: {
-  approval: UnsafeApprovalViewModel;
-  autoApproveEnabled: boolean;
-  disabled?: boolean;
-  onReview?: (approval: UnsafeApprovalViewModel) => void;
-  onRepair?: (approval: UnsafeApprovalViewModel) => void;
-}) {
-  const titleId = useId();
-  const outcome = approval.outcome;
-
-  if (!outcome) return null;
-
-  const presentation = {
-    failed_before_execution: {
-      title: 'Change didn’t run',
-      description: 'No project content was changed.',
-    },
-    failed_after_execution: {
-      title: 'Change may be incomplete',
-      description:
-        'Some project content may have changed. Check DatoCMS before trying again.',
-    },
-    unknown: {
-      title: 'Outcome needs checking',
-      description:
-        'The change may have run. Check DatoCMS before trying again.',
-    },
-  }[outcome.kind];
-  const canRepair = Boolean(approval.recovery && onRepair);
-  const repairStarting = approval.recovery?.status === 'starting';
-  const repairLabel = repairStarting
-    ? 'Preparing fix…'
-    : autoApproveEnabled
-      ? 'Fix with Auto'
-      : 'Fix and review';
-
-  return (
-    <section
-      aria-labelledby={titleId}
-      className={`${styles.approvalCard} ${styles.approvalOutcomeCard}`}
-      role="group"
-    >
-      <div className={styles.approvalOutcomeHeader} role="status">
-        <span
-          aria-hidden="true"
-          className={`${styles.approvalIcon} ${styles.approvalIconWarning}`}
-        >
-          <WarningIcon />
-        </span>
-        <div className={styles.approvalOutcomeBody}>
-          <strong id={titleId}>{presentation.title}</strong>
-          <p>{presentation.description}</p>
-          {approval.error && (
-            <p className={styles.approvalOutcomeGuard}>{approval.error}</p>
-          )}
-        </div>
-      </div>
-      <div className={styles.approvalOutcomeFooter}>
-        {(approval.details?.length || approval.script) && onReview && (
-          <button
-            aria-haspopup="dialog"
-            className={styles.approvalDetailsButton}
-            disabled={disabled}
-            onClick={() => onReview(approval)}
-            type="button"
-          >
-            Review details
-          </button>
-        )}
-        {canRepair && (
-          <div className={styles.approvalRepairAction}>
-            <Button
-              buttonSize="xs"
-              buttonType="primary"
-              disabled={Boolean(disabled || repairStarting)}
-              onClick={() => onRepair?.(approval)}
-            >
-              {repairLabel}
-              {autoApproveEnabled && !repairStarting && (
-                <span className={styles.visuallyHidden}>
-                  . Auto is on. The corrected operation may run automatically.
-                </span>
-              )}
-            </Button>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ApprovalEntry({
-  approval,
-  autoApproveEnabled,
-  disabled,
-  onReview,
-  onApprove,
-  onReject,
-  onRepair,
-}: {
-  approval: UnsafeApprovalViewModel;
-  autoApproveEnabled: boolean;
-  disabled?: boolean;
-  onReview?: (approval: UnsafeApprovalViewModel) => void;
-  onApprove?: (approval: UnsafeApprovalViewModel) => void;
-  onReject?: (approval: UnsafeApprovalViewModel) => void;
-  onRepair?: (approval: UnsafeApprovalViewModel) => void;
-}) {
-  const titleId = useId();
-  const descriptionId = useId();
-  const statusId = useId();
-
-  if (approval.automatic && !approval.error && !approval.outcome) {
-    return null;
-  }
-
-  const canDecide = approval.status === 'pending';
-  const statusMessage =
-    approval.error ??
-    {
-      pending: undefined,
-      approving: 'Approving…',
-      rejecting: 'Denying…',
-      approved: 'Approved.',
-      rejected: 'Denied. No action was taken.',
-      error: 'This change could not be approved.',
-    }[approval.status];
-  const isResolved =
-    approval.status === 'approved' || approval.status === 'rejected';
-
-  if (isResolved && approval.outcome) {
-    return (
-      <ApprovalOutcomeEntry
-        approval={approval}
-        autoApproveEnabled={autoApproveEnabled}
-        disabled={disabled}
-        onRepair={onRepair}
-        onReview={onReview}
-      />
-    );
-  }
-
-  if (isResolved) {
-    return (
-      <section
-        aria-label={`${approval.title}. ${statusMessage}`}
-        className={`${styles.approvalCard} ${styles.approvalCardResolved}`}
-        role="group"
-      >
-        <span className={styles.approvalIcon}>
-          <EditIcon />
-        </span>
-        <p className={styles.approvalResolution} role="status">
-          {statusMessage}
-        </p>
-        {(approval.details?.length || approval.script) && onReview && (
-          <button
-            aria-haspopup="dialog"
-            className={styles.approvalDetailsButton}
-            disabled={disabled}
-            onClick={() => onReview(approval)}
-            type="button"
-          >
-            Review details
-          </button>
-        )}
-      </section>
-    );
-  }
-
-  return (
-    <section
-      aria-describedby={`${descriptionId}${statusMessage ? ` ${statusId}` : ''}`}
-      aria-labelledby={titleId}
-      className={styles.approvalCard}
-      role="group"
-    >
-      <div className={styles.approvalHeader}>
-        <span className={styles.approvalIcon}>
-          <EditIcon />
-        </span>
-        <div className={styles.approvalBody}>
-          <h3 id={titleId}>{approval.title}</h3>
-          <p id={descriptionId}>{approval.description}</p>
-        </div>
-      </div>
-      <ApprovalFooter
-        approval={approval}
-        canDecide={canDecide}
-        disabled={disabled}
-        onApprove={onApprove}
-        onReject={onReject}
-        onReview={onReview}
-      />
-      {statusMessage && (
-        <p
-          className={
-            approval.error || approval.status === 'error'
-              ? styles.inlineError
-              : styles.approvalResolution
-          }
-          id={statusId}
-          role={
-            approval.error || approval.status === 'error' ? 'alert' : 'status'
-          }
-        >
-          {statusMessage}
-        </p>
-      )}
-    </section>
-  );
-}
-
-type TranscriptGroup =
-  | { kind: 'user'; id: string; entry: AgentMessageEntry }
-  | { kind: 'agent'; id: string; entries: AgentTranscriptEntry[] };
-
-function groupTranscriptEntries(
-  entries: readonly AgentTranscriptEntry[],
-): TranscriptGroup[] {
-  const groups: TranscriptGroup[] = [];
-
-  for (const entry of entries) {
-    if (entry.kind === 'message' && entry.role === 'user') {
-      groups.push({ kind: 'user', id: `user:${entry.id}`, entry });
-      continue;
-    }
-
-    const previous = groups.at(-1);
-    if (previous?.kind === 'agent') {
-      previous.entries.push(entry);
-    } else {
-      groups.push({
-        kind: 'agent',
-        id: `agent:${entry.id}`,
-        entries: [entry],
-      });
-    }
-  }
-
-  return groups;
-}
-
-function agentEntryIsVisible(entry: AgentTranscriptEntry): boolean {
-  switch (entry.kind) {
-    case 'message':
-      return (
-        entry.role === 'assistant' &&
-        Boolean(entry.content || messageError(entry) || entry.interrupted)
-      );
-    case 'activity':
-      return entry.phase === 'running' || entry.activities.length > 0;
-    case 'approval':
-      return (
-        !entry.approval.automatic ||
-        Boolean(entry.approval.error || entry.approval.outcome)
-      );
-    case 'records':
-      return Boolean(entry.title || entry.error || entry.records.length > 0);
-    case 'fields':
-      return Boolean(entry.title || entry.error || entry.fields.length > 0);
-    case 'assets':
-      return Boolean(entry.title || entry.error || entry.assets.length > 0);
-    case 'mentions':
-      return Boolean(entry.title || entry.error || entry.mentions.length > 0);
-  }
-}
-
-function findLatestUserEntryId(
-  entries: readonly AgentTranscriptEntry[],
-): string | undefined {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry?.kind === 'message' && entry.role === 'user') {
-      return entry.id;
-    }
-  }
-
-  return undefined;
-}
-
-type TranscriptMentionActions = Pick<
-  AgentSurfaceProps,
-  'onOpenRecord' | 'onOpenField' | 'onOpenAsset'
-> & { mentionHost: AgentMentionHost };
-
-function ignoreHostActionFailure(result: void | Promise<void>) {
-  void Promise.resolve(result).catch(() => undefined);
-}
-
-function openTranscriptMention(
-  mention: Mention,
-  actions: TranscriptMentionActions,
-) {
-  switch (mention.type) {
-    case 'record':
-      if (!actions.onOpenRecord) return;
-      ignoreHostActionFailure(
-        actions.onOpenRecord({
-          itemId: mention.id,
-          itemTypeId: mention.modelId,
-          title: mention.title,
-        }),
-      );
-      return;
-    case 'field':
-      if (!actions.onOpenField) return;
-      ignoreHostActionFailure(
-        actions.onOpenField({
-          fieldPath: mention.fieldPath,
-          title: mention.label,
-          ...(mention.locale ? { locale: mention.locale } : {}),
-        }),
-      );
-      return;
-    case 'asset':
-      if (!actions.onOpenAsset) return;
-      ignoreHostActionFailure(
-        actions.onOpenAsset({ uploadId: mention.id, title: mention.filename }),
-      );
-      return;
-    case 'file':
-      ignoreHostActionFailure(actions.mentionHost.openLocalFile(mention));
-      return;
-    case 'model':
-      actions.mentionHost.openModel(mention.id, mention.isBlockModel);
-      return;
-    case 'user':
-      ignoreHostActionFailure(actions.mentionHost.openUser(mention.id));
-  }
-}
-
-function AgentTurnEntry({
-  autoApproveEnabled,
-  currentRecordId,
-  entries,
-  hostActionPending,
-  mentionHost,
-  onApproveUnsafeAction,
-  onCopyFailureDiagnostics,
-  onOpenAsset,
-  onOpenField,
-  onOpenRecord,
-  onRejectUnsafeAction,
-  onRepairUnsafeAction,
-  onRetryFailedTurn,
-  onReviewUnsafeAction,
-}: {
-  entries: readonly AgentTranscriptEntry[];
-  autoApproveEnabled: boolean;
-  currentRecordId?: string;
-  hostActionPending?: boolean;
-  mentionHost: AgentMentionHost;
-  onApproveUnsafeAction?: AgentSurfaceProps['onApproveUnsafeAction'];
-  onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
-  onOpenAsset?: AgentSurfaceProps['onOpenAsset'];
-  onOpenField?: AgentSurfaceProps['onOpenField'];
-  onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
-  onRejectUnsafeAction?: AgentSurfaceProps['onRejectUnsafeAction'];
-  onRepairUnsafeAction?: AgentSurfaceProps['onRepairUnsafeAction'];
-  onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
-  onReviewUnsafeAction?: AgentSurfaceProps['onReviewUnsafeAction'];
-}) {
-  const visibleEntries = entries.filter(agentEntryIsVisible);
-  if (visibleEntries.length === 0) return null;
-
-  const label =
-    visibleEntries.find(
-      (entry): entry is AgentMessageEntry => entry.kind === 'message',
-    )?.label ?? 'Dato agent';
-  const hasCancelledActivity = visibleEntries.some(
-    (entry) => entry.kind === 'activity' && entry.phase === 'cancelled',
-  );
-
-  return (
-    <article
-      aria-label={label}
-      className={`${styles.message} ${styles.assistantMessage}`}
-    >
-      <div className={styles.agentTurnContent}>
-        {visibleEntries.map((entry) => {
-          switch (entry.kind) {
-            case 'message':
-              return (
-                <AssistantMessageContent
-                  entry={entry}
-                  key={entry.id}
-                  onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-                  onRetryFailedTurn={onRetryFailedTurn}
-                  suppressInterruptedNotice={hasCancelledActivity}
-                />
-              );
-            case 'activity':
-              return <ActivityEntry entry={entry} key={entry.id} />;
-            case 'records':
-              return (
-                <RecordsEntry
-                  currentRecordId={currentRecordId}
-                  disabled={Boolean(hostActionPending || entry.opening)}
-                  entry={entry}
-                  key={entry.id}
-                  mentionHost={mentionHost}
-                  onOpenRecord={onOpenRecord}
-                />
-              );
-            case 'fields':
-              return (
-                <FieldsEntry
-                  disabled={Boolean(hostActionPending)}
-                  entry={entry}
-                  key={entry.id}
-                  onOpenField={onOpenField}
-                />
-              );
-            case 'assets':
-              return (
-                <AssetsEntry
-                  disabled={Boolean(hostActionPending)}
-                  entry={entry}
-                  key={entry.id}
-                  onOpenAsset={onOpenAsset}
-                />
-              );
-            case 'mentions':
-              return (
-                <MentionsEntry
-                  currentRecordId={currentRecordId}
-                  disabled={Boolean(hostActionPending)}
-                  entry={entry}
-                  key={entry.id}
-                  mentionHost={mentionHost}
-                />
-              );
-            case 'approval':
-              return (
-                <ApprovalEntry
-                  approval={entry.approval}
-                  autoApproveEnabled={autoApproveEnabled}
-                  disabled={hostActionPending}
-                  key={entry.id}
-                  onApprove={onApproveUnsafeAction}
-                  onReject={onRejectUnsafeAction}
-                  onRepair={onRepairUnsafeAction}
-                  onReview={onReviewUnsafeAction}
-                />
-              );
-            default:
-              return null;
-          }
-        })}
-      </div>
-    </article>
-  );
-}
-
-function Transcript({
-  autoApproveEnabled,
-  currentRecordId,
-  entries,
-  mentionHost,
-  onOpenRecord,
-  onOpenField,
-  onOpenAsset,
-  onReviewUnsafeAction,
-  onApproveUnsafeAction,
-  onRejectUnsafeAction,
-  onRepairUnsafeAction,
-  onRetryFailedTurn,
-  onCopyFailureDiagnostics,
+/**
+ * Where the focus goes: into the chats view when it opens, back to the
+ * composer when it closes, and back to the composer after a turn that the
+ * composer started (never after a turn started elsewhere).
+ */
+function useSurfaceFocus({
+  composerDisabled,
   isRunning,
-  hostActionPending,
-}: Pick<
-  AgentSurfaceProps,
-  | 'entries'
-  | 'autoApproveEnabled'
-  | 'currentRecordId'
-  | 'onOpenRecord'
-  | 'onOpenField'
-  | 'onOpenAsset'
-  | 'onReviewUnsafeAction'
-  | 'onApproveUnsafeAction'
-  | 'onRejectUnsafeAction'
-  | 'onRepairUnsafeAction'
-  | 'onRetryFailedTurn'
-  | 'onCopyFailureDiagnostics'
-  | 'isRunning'
-  | 'hostActionPending'
-> & { mentionHost: AgentMentionHost }) {
-  const transcriptRef = useRef<HTMLElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScrollRef = useRef(true);
-  const latestUserEntryId = findLatestUserEntryId(entries);
-  const previousLatestUserEntryIdRef = useRef(latestUserEntryId);
+  settingsOpen,
+  showChats,
+}: {
+  composerDisabled: boolean;
+  isRunning: boolean;
+  settingsOpen: boolean;
+  showChats: boolean;
+}) {
+  const chatsContentRef = useRef<HTMLDivElement>(null);
+  const composerRegionRef = useRef<HTMLDivElement>(null);
+  const focusComposerAfterSettingsRef = useRef(false);
+  const restoreComposerAfterRunRef = useRef(false);
+  const wasRunningRef = useRef(isRunning);
 
   useEffect(() => {
-    void entries;
-    void isRunning;
-    const hasNewUserTurn =
-      latestUserEntryId !== undefined &&
-      latestUserEntryId !== previousLatestUserEntryIdRef.current;
-    previousLatestUserEntryIdRef.current = latestUserEntryId;
+    if (settingsOpen) {
+      // The title of the first panel: the toggle in its heading
+      chatsContentRef.current
+        ?.querySelector<HTMLElement>('button[aria-expanded]')
+        ?.focus();
+    }
+  }, [settingsOpen]);
 
-    if (hasNewUserTurn) {
-      shouldAutoScrollRef.current = true;
+  useEffect(() => {
+    if (
+      !showChats &&
+      !isRunning &&
+      !composerDisabled &&
+      focusComposerAfterSettingsRef.current
+    ) {
+      focusComposerAfterSettingsRef.current = false;
+      focusComposer(composerRegionRef.current);
+    }
+  }, [composerDisabled, isRunning, showChats]);
+
+  useEffect(() => {
+    const turnFinished = wasRunningRef.current && !isRunning;
+    wasRunningRef.current = isRunning;
+
+    if (!turnFinished) {
+      return;
     }
 
-    if (shouldAutoScrollRef.current) {
-      endRef.current?.scrollIntoView?.({ block: 'end' });
+    const shouldRestore = restoreComposerAfterRunRef.current;
+    restoreComposerAfterRunRef.current = false;
+    if (shouldRestore && !showChats && !composerDisabled) {
+      focusComposer(composerRegionRef.current);
     }
-  }, [entries, isRunning, latestUserEntryId]);
+  }, [composerDisabled, isRunning, showChats]);
 
-  return (
-    <main
-      aria-busy={isRunning}
-      aria-live="polite"
-      aria-relevant="additions text"
-      className={styles.transcript}
-      onScroll={() => {
-        const transcript = transcriptRef.current;
+  /** The next close of the chats view gives the focus to the composer */
+  const focusComposerAfterSettings = useCallback(() => {
+    focusComposerAfterSettingsRef.current = true;
+  }, []);
 
-        if (!transcript) {
-          return;
-        }
+  /** The composer starts a turn: it gets the focus back when it ends */
+  const rememberComposerFocus = useCallback(() => {
+    restoreComposerAfterRunRef.current = Boolean(
+      composerRegionRef.current?.contains(document.activeElement),
+    );
+  }, []);
 
-        shouldAutoScrollRef.current =
-          transcript.scrollHeight -
-            transcript.scrollTop -
-            transcript.clientHeight <=
-          80;
-      }}
-      ref={transcriptRef}
-      role="log"
-    >
-      <div className={styles.transcriptInner}>
-        {entries.length === 0 ? (
-          <EmptyState />
-        ) : (
-          groupTranscriptEntries(entries).map((group) =>
-            group.kind === 'user' ? (
-              <MessageEntry
-                currentRecordId={currentRecordId}
-                disabled={Boolean(hostActionPending)}
-                entry={group.entry}
-                key={group.id}
-                mentionHost={mentionHost}
-                onOpenMention={(mention) => {
-                  if (hostActionPending) return;
-                  openTranscriptMention(mention, {
-                    mentionHost,
-                    onOpenAsset,
-                    onOpenField,
-                    onOpenRecord,
-                  });
-                }}
-                onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-                onRetryFailedTurn={onRetryFailedTurn}
-              />
-            ) : (
-              <AgentTurnEntry
-                autoApproveEnabled={Boolean(autoApproveEnabled)}
-                currentRecordId={currentRecordId}
-                entries={group.entries}
-                hostActionPending={hostActionPending}
-                key={group.id}
-                mentionHost={mentionHost}
-                onApproveUnsafeAction={onApproveUnsafeAction}
-                onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-                onOpenAsset={onOpenAsset}
-                onOpenField={onOpenField}
-                onOpenRecord={onOpenRecord}
-                onRejectUnsafeAction={onRejectUnsafeAction}
-                onRepairUnsafeAction={onRepairUnsafeAction}
-                onRetryFailedTurn={onRetryFailedTurn}
-                onReviewUnsafeAction={onReviewUnsafeAction}
-              />
-            ),
-          )
-        )}
-        <div ref={endRef} />
-      </div>
-    </main>
-  );
-}
-
-function UtilityControls({
-  connected,
-  chatsOpen,
-  autoApproveEnabled,
-  autoApproveChanging,
-  autoApproveError,
-  autoApproveDisabledReason,
-  disabled,
-  onAutoApproveChange,
-  onCloseChats,
-  onOpenChats,
-}: {
-  connected: boolean;
-  chatsOpen: boolean;
-  autoApproveEnabled: boolean;
-  autoApproveChanging: boolean;
-  autoApproveError?: string;
-  autoApproveDisabledReason?: string;
-  disabled: boolean;
-  onAutoApproveChange?: (
-    enabled: boolean,
-  ) => boolean | Promise<boolean> | undefined;
-  onCloseChats: () => void;
-  onOpenChats: () => void;
-}) {
-  if (!connected) {
-    return null;
-  }
-
-  const autoApproveLabel =
-    autoApproveDisabledReason ??
-    (autoApproveChanging
-      ? 'Confirming auto-approve'
-      : autoApproveEnabled
-        ? 'Turn off auto-approve'
-        : 'Turn on auto-approve');
-  const autoApproveDisabled =
-    disabled || Boolean(autoApproveDisabledReason) || !onAutoApproveChange;
-
-  return (
-    <div
-      aria-label="Chat controls"
-      className={styles.utilityBar}
-      role="toolbar"
-    >
-      <button
-        aria-label={chatsOpen ? 'Back to chat' : 'Open chats'}
-        className={styles.chatListButton}
-        disabled={disabled}
-        onClick={chatsOpen ? onCloseChats : onOpenChats}
-        title={chatsOpen ? 'Back to chat' : 'Chats'}
-        type="button"
-      >
-        {chatsOpen ? (
-          <BackIcon aria-hidden="true" height={13} width={13} />
-        ) : (
-          <HistoryIcon />
-        )}
-      </button>
-      {!chatsOpen && (
-        <Tooltip placement="bottom">
-          <TooltipTrigger>
-            <button
-              aria-label={autoApproveLabel}
-              aria-pressed={autoApproveEnabled}
-              className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
-              disabled={autoApproveDisabled}
-              onClick={() => {
-                void onAutoApproveChange?.(!autoApproveEnabled);
-              }}
-              type="button"
-            >
-              {autoApproveChanging ? <Spinner size={14} /> : <BoltIcon />}
-              <span>Auto</span>
-              {autoApproveEnabled && (
-                <span aria-hidden="true" className={styles.autoApproveDanger}>
-                  Danger!
-                </span>
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{autoApproveLabel}</TooltipContent>
-        </Tooltip>
-      )}
-      {autoApproveError && !chatsOpen && (
-        <span className={styles.autoApproveToolbarError} role="alert">
-          {autoApproveError}
-        </span>
-      )}
-    </div>
-  );
+  return {
+    chatsContentRef,
+    composerRegionRef,
+    focusComposerAfterSettings,
+    rememberComposerFocus,
+  };
 }
 
 export function AgentSurface({
@@ -2167,128 +1062,60 @@ export function AgentSurface({
   persistenceWarning,
   onAutoApproveChange,
 }: AgentSurfaceProps) {
-  const resolvedMentionHost =
-    mentionHost ??
-    ({
-      currentUser: {
-        id: 'current-user',
-        name: 'You',
-        email: '',
-        avatarUrl: null,
-        userType: 'user',
-      },
-      projectOwnerId: 'project-owner',
-      projectModels: [],
-      recordModels: [],
-      canMentionFields: false,
-      canMentionAssets: false,
-      canMentionModels: false,
-      loadProjectUsers: async () => [],
-      selectAsset: async () => undefined,
-      selectRecord: async () => undefined,
-      resolveAsset: async ({ uploadId, label }) =>
-        fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
-      resolveRecord: async ({ itemId, label }) =>
-        fallbackRecordMention({
-          id: itemId,
-          title: label || `Record #${itemId}`,
-        }),
-      openUser: () => undefined,
-      openModel: () => undefined,
-      openLocalFile: async () => undefined,
-    } satisfies AgentMentionHost);
+  const resolvedMentionHost = mentionHost ?? fallbackMentionHost();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [conversationActionPending, setConversationActionPending] =
-    useState(false);
-  const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const composerRegionRef = useRef<HTMLDivElement>(null);
-  const focusComposerAfterSettingsRef = useRef(false);
-  const restoreComposerAfterRunRef = useRef(false);
-  const wasRunningRef = useRef(isRunning);
+  // The chat action that runs: a chat that opens (its id) or a new chat
+  const [pendingConversationAction, setPendingConversationAction] = useState<{
+    conversationId?: string;
+  } | null>(null);
+  const conversationActionPending = pendingConversationAction !== null;
   const connected = connection.status === 'connected';
   const showCredentials = !connected || settingsOpen;
-  const hasUnsettledApproval = entries.some(
-    (entry) =>
-      entry.kind === 'approval' &&
-      ['pending', 'approving', 'rejecting'].includes(entry.approval.status),
-  );
-  const conversationActionsDisabled =
-    conversationActionPending ||
-    autoApproveChanging ||
-    hostActionPending ||
-    isRunning ||
-    hasUnsettledApproval ||
+  const {
+    chatsContentRef,
+    composerRegionRef,
+    focusComposerAfterSettings,
+    rememberComposerFocus,
+  } = useSurfaceFocus({
+    composerDisabled,
+    isRunning,
+    settingsOpen,
+    showChats: showCredentials,
+  });
+  const approvalState = approvalLock(entries);
+  const lockReason = chatLockReason({
+    autoApproveChanging,
+    hostActionPending,
+    isRunning,
+    ...approvalState,
+  });
+  const connecting =
     connection.status === 'connecting' ||
     connection.datoCmsStatus === 'connecting';
-
-  useEffect(() => {
-    if (settingsOpen) {
-      settingsHeadingRef.current?.focus();
-    }
-  }, [settingsOpen]);
-
-  useEffect(() => {
-    if (
-      !showCredentials &&
-      !isRunning &&
-      !composerDisabled &&
-      focusComposerAfterSettingsRef.current
-    ) {
-      focusComposerAfterSettingsRef.current = false;
-      composerRegionRef.current
-        ?.querySelector<HTMLElement>('[role="textbox"]')
-        ?.focus();
-    }
-  }, [composerDisabled, isRunning, showCredentials]);
-
-  useEffect(() => {
-    const turnFinished = wasRunningRef.current && !isRunning;
-    wasRunningRef.current = isRunning;
-
-    if (!turnFinished) {
-      return;
-    }
-
-    const shouldRestore = restoreComposerAfterRunRef.current;
-    restoreComposerAfterRunRef.current = false;
-    if (shouldRestore && !showCredentials && !composerDisabled) {
-      composerRegionRef.current
-        ?.querySelector<HTMLElement>('[role="textbox"]')
-        ?.focus();
-    }
-  }, [composerDisabled, isRunning, showCredentials]);
+  const composerDisabledReason = composerDisabled
+    ? composerLockReason({ connecting, hostActionPending, ...approvalState })
+    : undefined;
+  // A chat that is opening only ignores more clicks and shows a spinner: its
+  // controls keep the focus, in case the switch is refused and the view
+  // stays
+  const conversationLockReason = connecting
+    ? 'Wait for DatoCMS to connect.'
+    : lockReason;
 
   const closeSettings = useCallback(() => {
-    focusComposerAfterSettingsRef.current = true;
+    focusComposerAfterSettings();
     setSettingsOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!settingsOpen || !connected) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) {
-        return;
-      }
-
-      event.preventDefault();
-      closeSettings();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [closeSettings, connected, settingsOpen]);
+  }, [focusComposerAfterSettings]);
 
   const runConversationAction = async (
     action: () => boolean | undefined | Promise<boolean | undefined>,
+    conversationId?: string,
   ) => {
-    if (conversationActionPending) {
+    if (conversationActionPending || conversationLockReason) {
       return;
     }
 
-    setConversationActionPending(true);
+    setPendingConversationAction({ conversationId });
 
     try {
       const completed = await action();
@@ -2303,90 +1130,58 @@ export function AgentSurface({
     } catch {
       return;
     } finally {
-      setConversationActionPending(false);
+      setPendingConversationAction(null);
     }
   };
 
   return (
-    <div className={styles.root}>
-      <UtilityControls
-        autoApproveChanging={autoApproveChanging}
-        autoApproveEnabled={autoApproveEnabled}
-        autoApproveError={autoApproveError}
-        autoApproveDisabledReason={autoApproveDisabledReason}
-        chatsOpen={settingsOpen}
-        connected={connected}
-        disabled={
-          settingsOpen
-            ? false
-            : isRunning ||
-              hasUnsettledApproval ||
-              autoApproveChanging ||
-              hostActionPending
-        }
-        onAutoApproveChange={onAutoApproveChange}
-        onCloseChats={closeSettings}
-        onOpenChats={() => setSettingsOpen(true)}
-      />
-
+    <FullFrame>
       {showCredentials ? (
-        <div className={styles.credentialsScroller}>
-          <CredentialPanel
-            connection={connection}
-            conversationActionsDisabled={conversationActionsDisabled}
-            headingRef={settingsOpen ? settingsHeadingRef : undefined}
-            isSettings={connected}
-            onConnectDatoCms={onConnectDatoCms}
-            onDisconnectDatoCms={onDisconnectDatoCms}
-            onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-            onRestartDatoCmsConnection={onRestartDatoCmsConnection}
-            onSelectConversation={
-              onSelectConversation
-                ? (conversation) => {
-                    void runConversationAction(() =>
-                      onSelectConversation(conversation),
-                    );
-                  }
-                : undefined
-            }
-            onStartNewChat={
-              onStartNewChat
-                ? () => {
-                    void runConversationAction(onStartNewChat);
-                  }
-                : undefined
-            }
-            recentConversations={recentConversations}
-          />
-        </div>
+        <ChatsView
+          connected={connected}
+          connection={connection}
+          contentRef={chatsContentRef}
+          conversationActionPending={conversationActionPending}
+          conversationLockReason={conversationLockReason}
+          onBack={closeSettings}
+          onCheckDatoCmsAccess={onCheckDatoCmsAccess}
+          onConnectDatoCms={onConnectDatoCms}
+          onDisconnectDatoCms={onDisconnectDatoCms}
+          onRestartDatoCmsConnection={onRestartDatoCmsConnection}
+          onSelectConversation={
+            onSelectConversation
+              ? (conversation) => {
+                  void runConversationAction(
+                    () => onSelectConversation(conversation),
+                    conversation.id,
+                  );
+                }
+              : undefined
+          }
+          onStartNewChat={
+            onStartNewChat
+              ? () => {
+                  void runConversationAction(onStartNewChat);
+                }
+              : undefined
+          }
+          openingConversationId={pendingConversationAction?.conversationId}
+          recentConversations={recentConversations}
+        />
       ) : (
-        <>
-          <Transcript
-            autoApproveEnabled={autoApproveEnabled}
-            currentRecordId={currentRecordId}
-            entries={entries}
-            isRunning={isRunning}
-            mentionHost={resolvedMentionHost}
-            onApproveUnsafeAction={onApproveUnsafeAction}
-            onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-            onOpenAsset={onOpenAsset}
-            onOpenField={onOpenField}
-            onOpenRecord={onOpenRecord}
-            hostActionPending={hostActionPending}
-            onRejectUnsafeAction={onRejectUnsafeAction}
-            onRepairUnsafeAction={onRepairUnsafeAction}
-            onRetryFailedTurn={onRetryFailedTurn}
-            onReviewUnsafeAction={onReviewUnsafeAction}
-          />
-          <div className={styles.composer} ref={composerRegionRef}>
-            <div className={styles.composerInner}>
-              <UnverifiedAccessNotice
+        <Pane
+          footer={
+            <div className={styles.footer} ref={composerRegionRef}>
+              <ChatNotices
+                autoApproveError={autoApproveError}
                 connection={connection}
                 onCheckDatoCmsAccess={onCheckDatoCmsAccess}
+                persistenceWarning={persistenceWarning}
               />
               <MentionComposer
                 currentRecordId={currentRecordId}
                 disabled={composerDisabled}
+                disabledReason={composerDisabledReason}
                 host={resolvedMentionHost}
                 isRunning={isRunning}
                 navigation={{
@@ -2421,19 +1216,58 @@ export function AgentSurface({
                 }}
                 onStop={onStop}
                 onSubmit={(submission) => {
-                  restoreComposerAfterRunRef.current = Boolean(
-                    composerRegionRef.current?.contains(document.activeElement),
-                  );
+                  rememberComposerFocus();
                   onSubmit(submission);
                 }}
-                persistenceWarning={persistenceWarning}
                 placeholder={composerPlaceholder}
               />
             </div>
-          </div>
-        </>
+          }
+          header={
+            <Toolbar>
+              <Toolbar.Title>
+                {currentChatTitle(recentConversations)}
+              </Toolbar.Title>
+              <Toolbar.Space />
+              {/* Not in a Toolbar.Group: a group shrinks with the title, and
+                  in a narrow sidebar its buttons would go out of the frame */}
+              <AutoApproveToggle
+                changing={autoApproveChanging}
+                enabled={autoApproveEnabled}
+                lockReason={lockReason}
+                onChange={onAutoApproveChange}
+                unavailableReason={autoApproveDisabledReason}
+              />
+              <Toolbar.Button
+                disabled={lockReason ? { reason: lockReason } : undefined}
+                icon={HistoryIcon}
+                iconOnly
+                label="Open chats"
+                onClick={() => setSettingsOpen(true)}
+              />
+            </Toolbar>
+          }
+        >
+          <Transcript
+            autoApproveEnabled={autoApproveEnabled}
+            currentRecordId={currentRecordId}
+            entries={entries}
+            hostActionPending={hostActionPending}
+            isRunning={isRunning}
+            mentionHost={resolvedMentionHost}
+            onApproveUnsafeAction={onApproveUnsafeAction}
+            onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+            onOpenAsset={onOpenAsset}
+            onOpenField={onOpenField}
+            onOpenRecord={onOpenRecord}
+            onRejectUnsafeAction={onRejectUnsafeAction}
+            onRepairUnsafeAction={onRepairUnsafeAction}
+            onRetryFailedTurn={onRetryFailedTurn}
+            onReviewUnsafeAction={onReviewUnsafeAction}
+          />
+        </Pane>
       )}
-    </div>
+    </FullFrame>
   );
 }
 

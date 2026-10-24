@@ -1,128 +1,129 @@
+/* The Markdown of a response. The kit has no styles for free text, and its
+   base styles reset the blocks: these rules give them back their spacing,
+   list markers, inline code, quotes and tables, with the tokens only. Blocks
+   of code are the kit's CodeSnippet. */
 .root {
   min-width: 0;
   max-width: 100%;
-  color: inherit;
-  font: inherit;
+  line-height: 1.5;
   overflow-wrap: anywhere;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  :is(p, ul, ol, blockquote, hr) {
+    margin: 0 0 var(--spacing-m);
+  }
+
+  :is(strong, th) {
+    font-weight: var(--font-weight-strong);
+  }
+
+  :is(ul, ol) {
+    padding-left: var(--spacing-l);
+  }
+
+  ul > li {
+    list-style-type: disc;
+  }
+
+  ol > li {
+    list-style-type: decimal;
+  }
+
+  li + li,
+  li > :is(ul, ol) {
+    margin-top: var(--spacing-s);
+  }
+
+  li > :is(p, ul, ol):last-child {
+    margin-bottom: 0;
+  }
+
+  /* A task list shows its checkboxes, not markers */
+  :global(.contains-task-list) {
+    padding-left: 0;
+
+    > li {
+      list-style-type: none;
+    }
+  }
+
+  /* A link in the text keeps the ink of the text and its underline (the
+     base styles), and the kit's focus ring */
+  a {
+    text-underline-offset: 2px;
+  }
+
+  /* Inline code, on the code surface (the base styles set its font) */
+  code {
+    padding: 0.1em 0.35em;
+    font-size: var(--monospaced-font-size);
+    color: var(--color--code--ink);
+    background-color: var(--color--code--surface);
+    border-radius: var(--radius-xs);
+  }
+
+  blockquote {
+    padding-left: var(--spacing-m);
+    color: var(--color--ink-subtle);
+    border-left: 3px solid var(--color--border);
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  :is(th, td) {
+    padding: var(--spacing-s) var(--spacing-m);
+    text-align: left;
+    vertical-align: top;
+    border: 1px solid var(--color--border);
+  }
+
+  th {
+    background-color: var(--color--surface-muted);
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--color--border);
+  }
 }
 
-.root > :first-child {
-  margin-top: 0;
+/* A Markdown heading: a bold block of the text, not a heading (Markdown.tsx) */
+.heading {
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-strong);
+  line-height: 1.35;
+
+  * + & {
+    margin-top: var(--spacing-l);
+  }
 }
 
-.root > :last-child {
-  margin-bottom: 0;
+.headingLarge {
+  font-size: var(--font-size-l);
 }
 
-.root p,
-.root ul,
-.root ol,
-.root pre,
-.root blockquote,
-.root table,
-.root h1,
-.root h2,
-.root h3,
-.root h4 {
+.codeBlock {
   margin: 0 0 var(--spacing-m);
 }
 
-.root h1,
-.root h2,
-.root h3,
-.root h4,
-.root strong,
-.root th {
-  font-weight: var(--font-weight-bold);
-}
-
-.root h1 {
-  font-size: var(--font-size-l);
-  line-height: 1.35;
-}
-
-.root h2,
-.root h3,
-.root h4 {
-  font-size: var(--font-size-m);
-  line-height: 1.4;
-}
-
-.root ul,
-.root ol {
-  padding-left: var(--spacing-l);
-}
-
-.root li + li {
-  margin-top: var(--spacing-s);
-}
-
-.root a {
-  color: var(--color--ink-link);
-  overflow-wrap: anywhere;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.root a:focus-visible {
-  border-radius: 3px;
-  outline: 3px solid var(--color--focus--outline);
-}
-
-.root code,
-.root pre {
-  font-family: var(--monospaced-font-family);
-}
-
-.root code {
-  padding: 1px 4px;
-  border: 1px solid var(--color--border);
-  border-radius: 3px;
-  background: var(--color--surface-muted);
-  font-size: 0.9em;
-  overflow-wrap: anywhere;
-}
-
-.root pre {
-  box-sizing: border-box;
+/* A wide table scrolls in its box, the text of its cells on one line. The
+   box scrolls, not the table: a table shown as a block loses its table
+   semantics in some screen readers. */
+.tableScroll {
   max-width: 100%;
+  margin: 0 0 var(--spacing-m);
   overflow-x: auto;
-  padding: var(--spacing-m);
-  border: 1px solid var(--color--border);
-  background: var(--color--surface-muted);
-  font-size: var(--font-size-s);
-  overflow-wrap: normal;
-  white-space: pre;
-}
-
-.root pre code {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: inherit;
-  overflow-wrap: normal;
-}
-
-.root blockquote {
-  padding-left: var(--spacing-m);
-  border-left: 3px solid var(--color--border-hover);
-  color: var(--color--ink-subtle);
-}
-
-.root table {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  border-collapse: collapse;
   white-space: nowrap;
-}
-
-.root th,
-.root td {
-  padding: var(--spacing-s);
-  border: 1px solid var(--color--border);
-  text-align: left;
 }
 
 .imageLink {

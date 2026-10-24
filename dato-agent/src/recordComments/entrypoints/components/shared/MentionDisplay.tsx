@@ -1,368 +1,245 @@
 import type { Mention } from '@ctypes/mentions';
 import type { UserInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
 import { areMentionsEqual } from '@utils/comparisonHelpers';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
 import {
   formatFieldType,
   getTruncatedFilename,
 } from '@utils/mentionFormatters';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
-import { memo, useEffect, useId, useMemo, useState } from 'react';
-import { cn } from '@/utils/cn';
+import Avatar from 'datocms-react-ui/Avatar';
+import MediaCard from 'datocms-react-ui/MediaCard';
+import Pill from 'datocms-react-ui/Pill';
+import RawButton from 'datocms-react-ui/RawButton';
+import Tooltip from 'datocms-react-ui/Tooltip';
+import { memo, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { AssetIcon, FileIcon, ModelIcon, RecordIcon } from '../../../../icons';
 import { getSessionLocalFile } from '../../../../lib/localFiles';
-import {
-  AssetMentionIcon,
-  ModelMentionIcon,
-  RecordDocumentIcon,
-} from '../Icons';
-
-function PortaledMentionTooltip({
-  children,
-  content,
-  tooltipId,
-}: {
-  children: React.ReactElement;
-  content?: React.ReactNode;
-  tooltipId: string;
-}) {
-  if (!content) return children;
-
-  return (
-    <Tooltip placement="top">
-      <TooltipTrigger>
-        <span className={styles.mentionTooltipTrigger}>{children}</span>
-      </TooltipTrigger>
-      <TooltipContent>
-        <span id={tooltipId}>{content}</span>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
+import styles from './MentionDisplay.module.css';
 
 type MentionDisplayProps = {
   mention: Mention;
   onClick?: (e: React.MouseEvent) => void;
+  /** False shows the reference as a static pill, which never opens */
   isClickable?: boolean;
+  /** The mentioned user owns the project: the hint says so */
   isProjectOwner?: boolean;
-  tabIndex?: number;
-  tooltipId?: string;
+  /**
+   * The reference is a node of the composer's editor: a static pill in a
+   * button that is not a tab stop, and never a preview card.
+   */
+  inComposer?: boolean;
+  /** Project users, to show the current name of a mentioned user */
   projectUsers?: UserInfo[];
-  accessibleLabel?: string;
-  assetLayout?: 'preview' | 'row';
+  /** The record open next to the agent: its reference never opens */
   currentRecordId?: string;
 };
 
-type AssetThumbnailMentionProps = {
-  mention: Extract<Mention, { type: 'asset' }>;
-  tabIndex: number;
-  onClick: (e: React.MouseEvent) => void;
-  tooltipId: string;
-  isClickable: boolean;
-  accessibleLabel?: string;
+type ClickHandler = (e: React.MouseEvent) => void;
+
+/** What a reference pill shows */
+type ReferenceView = {
+  icon?: ReactNode;
+  text: string;
+  /** The hint of the tooltip */
+  hint?: string;
+  /** The reference never opens, whatever the caller allows */
+  inert?: boolean;
 };
 
-function AssetThumbnailMention({
-  mention,
-  tabIndex,
-  onClick,
-  tooltipId,
-  isClickable,
-  accessibleLabel,
-}: AssetThumbnailMentionProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const truncatedName = getTruncatedFilename(mention.filename);
+type ReferenceProps = {
+  /** True when the caller lets the reference open and gives an action */
+  canOpen: boolean;
+  inComposer: boolean;
+  /** A visual asset or image file shows as a compact card, not a pill */
+  previewCard: boolean;
+  onClick: ClickHandler;
+};
 
-  // On error, fall back to simple filename display (same as non-visual assets)
-  if (hasError) {
+function isVisualMimeType(mimeType: string) {
+  return mimeType.startsWith('image/') || mimeType.startsWith('video/');
+}
+
+/** A thumbnail in a pill. When the image does not load, it shows the glyph. */
+function PillThumbnail({
+  fallback,
+  src,
+}: {
+  fallback: ReactNode;
+  src: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return fallback;
+
+  return (
+    <img
+      alt=""
+      className={styles.thumbnail}
+      onError={() => setFailed(true)}
+      src={src}
+    />
+  );
+}
+
+function ReferencePill({
+  canOpen,
+  inComposer,
+  onClick,
+  view,
+}: ReferenceProps & { view: ReferenceView }) {
+  const { hint, icon, text } = view;
+  const opens = canOpen && !view.inert;
+
+  // In the editor, a reference opens on click but is not a tab stop: a
+  // static pill in a button with tabIndex -1. A tooltip on the pill itself
+  // would make it focusable, so the hint goes on the button.
+  if (inComposer) {
     return (
-      <span className={styles.assetMentionWrapper}>
-        <PortaledMentionTooltip
-          content={mention.filename}
-          tooltipId={tooltipId}
+      <Tooltip label={hint}>
+        <RawButton
+          className={styles.editorReference}
+          disabled={opens ? undefined : 'focusable'}
+          onClick={opens ? onClick : undefined}
+          tabIndex={-1}
         >
-          <button
-            type="button"
-            tabIndex={tabIndex}
-            className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-            aria-describedby={tooltipId}
-            aria-label={accessibleLabel}
-            disabled={!isClickable}
-            onClick={isClickable ? onClick : undefined}
-          >
-            <span className={styles.assetMentionName}>{truncatedName}</span>
-          </button>
-        </PortaledMentionTooltip>
-      </span>
+          <Pill icon={icon} tone="soft">
+            {text}
+          </Pill>
+        </RawButton>
+      </Tooltip>
+    );
+  }
+
+  if (opens) {
+    return (
+      <Pill icon={icon} onClick={onClick} tone="soft" tooltip={hint}>
+        {text}
+      </Pill>
     );
   }
 
   return (
-    <span className={styles.assetMentionBlockWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={styles.assetMentionBlock}
-        aria-label={accessibleLabel}
-        disabled={!isClickable}
-        onClick={isClickable ? onClick : undefined}
-      >
-        {isLoading && (
-          <span
-            className={styles.assetMentionBlockSkeleton}
-            aria-hidden="true"
-          />
-        )}
-        <img
-          src={mention.thumbnailUrl ?? ''}
-          alt={mention.filename}
-          className={cn(
-            styles.assetMentionBlockThumb,
-            isLoading && styles.assetMentionBlockThumbHidden,
-          )}
-          onLoad={() => setIsLoading(false)}
-          onError={() => {
-            setIsLoading(false);
-            setHasError(true);
-          }}
-        />
-        <span className={styles.assetMentionBlockName}>{mention.filename}</span>
-      </button>
-    </span>
+    <Pill icon={icon} tone="soft" tooltip={hint}>
+      {text}
+    </Pill>
   );
 }
 
-type UserMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'user' }>;
-  isClickable: boolean;
-  isProjectOwner: boolean;
-  tabIndex: number;
-  tooltipId: string;
-  resolvedName: string;
-  onClick: (e: React.MouseEvent) => void;
-  accessibleLabel?: string;
-};
-
-function UserMentionDisplay({
-  mention,
-  isClickable,
-  isProjectOwner,
-  tabIndex,
-  tooltipId,
-  resolvedName,
+/** A visual asset or image file in a message: a compact card */
+function PreviewCard({
+  canOpen,
+  filename,
   onClick,
-  accessibleLabel,
-}: UserMentionDisplayProps) {
-  const tooltipText = isProjectOwner
-    ? 'Project Owner'
-    : mention.email || 'Organization';
+  onError,
+  src,
+}: {
+  canOpen: boolean;
+  filename: string;
+  onClick: ClickHandler;
+  onError: () => void;
+  src: string;
+}) {
+  const image = (
+    <img alt="" className={styles.previewImage} onError={onError} src={src} />
+  );
 
   return (
-    <span className={styles.userMentionWrapper}>
-      <PortaledMentionTooltip content={tooltipText} tooltipId={tooltipId}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(
-            styles.userMention,
-            !isClickable && styles.userMentionDisabled,
-          )}
-          aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          onClick={isClickable ? onClick : undefined}
-          disabled={!isClickable}
-        >
-          @{resolvedName}
-        </button>
-      </PortaledMentionTooltip>
-    </span>
+    <div className={styles.preview}>
+      {canOpen ? (
+        <MediaCard caption={filename} isCompact onClick={onClick}>
+          {image}
+        </MediaCard>
+      ) : (
+        <MediaCard caption={filename} isCompact>
+          {image}
+        </MediaCard>
+      )}
+    </div>
   );
 }
 
-type FieldMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'field' }>;
-  isClickable: boolean;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-  accessibleLabel?: string;
+type FileLikeReferenceProps = ReferenceProps & {
+  filename: string;
+  /** The image of the preview card and of the thumbnail, when it is visual */
+  previewUrl: string | null;
+  icon: ReactNode;
 };
 
-function FieldMentionDisplay({
-  mention,
-  isClickable,
-  tabIndex,
-  tooltipId,
-  onClick,
-  accessibleLabel,
-}: FieldMentionDisplayProps) {
-  const hasLocale = mention.localized && mention.locale;
-  const formattedFieldType = formatFieldType(mention.fieldType);
+/**
+ * An asset or a file from the computer: a preview card for an image in a
+ * message, else a pill with the filename (and the thumbnail of an image in
+ * the editor). When the card's image does not load,
+ * the reference falls back to the pill with the glyph.
+ */
+function FileLikeReference({
+  filename,
+  icon,
+  previewUrl,
+  ...referenceProps
+}: FileLikeReferenceProps) {
+  const [previewFailed, setPreviewFailed] = useState(false);
 
-  return (
-    <span className={styles.fieldMentionWrapper}>
-      <PortaledMentionTooltip
-        content={formattedFieldType}
-        tooltipId={tooltipId}
-      >
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(
-            styles.fieldMention,
-            !isClickable && styles.fieldMentionDisabled,
-          )}
-          aria-describedby={formattedFieldType ? tooltipId : undefined}
-          aria-label={accessibleLabel}
-          onClick={isClickable ? onClick : undefined}
-          disabled={!isClickable}
-        >
-          #{mention.apiKey}
-          {hasLocale && (
-            <span className={styles.fieldMentionLocaleBadge}>
-              {mention.locale}
-            </span>
-          )}
-        </button>
-      </PortaledMentionTooltip>
-    </span>
-  );
-}
-
-type AssetMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'asset' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-  isClickable: boolean;
-  accessibleLabel?: string;
-  assetLayout: 'preview' | 'row';
-};
-
-function AssetRowMention({
-  mention,
-  tabIndex,
-  onClick,
-  tooltipId,
-  isClickable,
-  accessibleLabel,
-}: Omit<AssetMentionDisplayProps, 'assetLayout'>) {
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const isVisualMedia =
-    mention.mimeType.startsWith('image/') ||
-    mention.mimeType.startsWith('video/');
-  const showThumbnail =
-    Boolean(mention.thumbnailUrl) && isVisualMedia && !thumbnailFailed;
-
-  return (
-    <span className={styles.assetMentionWrapper}>
-      <PortaledMentionTooltip content={mention.filename} tooltipId={tooltipId}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(styles.assetMention, styles.assetMentionRow)}
-          data-asset-layout="row"
-          aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          disabled={!isClickable}
-          onClick={isClickable ? onClick : undefined}
-        >
-          {showThumbnail ? (
-            <img
-              src={mention.thumbnailUrl ?? ''}
-              alt=""
-              aria-hidden="true"
-              className={styles.assetMentionThumb}
-              onError={() => setThumbnailFailed(true)}
-            />
-          ) : (
-            <AssetMentionIcon
-              aria-hidden="true"
-              className={styles.assetMentionRowIcon}
-            />
-          )}
-          <span className={styles.assetMentionName}>{mention.filename}</span>
-        </button>
-      </PortaledMentionTooltip>
-    </span>
-  );
-}
-
-function AssetMentionDisplay({
-  mention,
-  tabIndex,
-  tooltipId,
-  onClick,
-  isClickable,
-  accessibleLabel,
-  assetLayout,
-}: AssetMentionDisplayProps) {
-  if (assetLayout === 'row') {
+  if (previewUrl && referenceProps.previewCard && !previewFailed) {
     return (
-      <AssetRowMention
-        mention={mention}
-        tabIndex={tabIndex}
-        onClick={onClick}
-        tooltipId={tooltipId}
-        isClickable={isClickable}
-        accessibleLabel={accessibleLabel}
+      <PreviewCard
+        canOpen={referenceProps.canOpen}
+        filename={filename}
+        onClick={referenceProps.onClick}
+        onError={() => setPreviewFailed(true)}
+        src={previewUrl}
       />
     );
   }
 
-  const isVisualMedia =
-    mention.mimeType.startsWith('image/') ||
-    mention.mimeType.startsWith('video/');
-  const hasThumb = mention.thumbnailUrl && isVisualMedia;
-  const truncatedName = getTruncatedFilename(mention.filename);
-
-  if (hasThumb) {
-    return (
-      <AssetThumbnailMention
-        mention={mention}
-        tabIndex={tabIndex}
-        onClick={onClick}
-        tooltipId={tooltipId}
-        isClickable={isClickable}
-        accessibleLabel={accessibleLabel}
-      />
-    );
-  }
+  const text = getTruncatedFilename(filename);
+  const showsThumbnail = previewUrl && !previewFailed;
 
   return (
-    <span className={styles.assetMentionWrapper}>
-      <PortaledMentionTooltip content={mention.filename} tooltipId={tooltipId}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-          aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          disabled={!isClickable}
-          onClick={isClickable ? onClick : undefined}
-        >
-          <span className={styles.assetMentionName}>{truncatedName}</span>
-        </button>
-      </PortaledMentionTooltip>
-    </span>
+    <ReferencePill
+      {...referenceProps}
+      view={{
+        icon: showsThumbnail ? (
+          <PillThumbnail fallback={icon} key={previewUrl} src={previewUrl} />
+        ) : (
+          icon
+        ),
+        text,
+        // The full name, when the pill cuts it
+        hint: text === filename ? undefined : filename,
+      }}
+    />
   );
 }
 
-type LocalFileMentionDisplayProps = {
+function AssetReference({
+  mention,
+  ...props
+}: ReferenceProps & {
+  mention: Extract<Mention, { type: 'asset' }>;
+}) {
+  const previewUrl =
+    mention.thumbnailUrl && isVisualMimeType(mention.mimeType)
+      ? mention.thumbnailUrl
+      : null;
+
+  return (
+    <FileLikeReference
+      {...props}
+      filename={mention.filename}
+      icon={<AssetIcon />}
+      key={previewUrl ?? ''}
+      previewUrl={previewUrl}
+    />
+  );
+}
+
+/** A file from the computer: its image shows while the bytes are in the session */
+function LocalFileReference({
+  mention,
+  ...props
+}: ReferenceProps & {
   mention: Extract<Mention, { type: 'file' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-  isClickable: boolean;
-  accessibleLabel?: string;
-  assetLayout: 'preview' | 'row';
-};
-
-function LocalFileMentionDisplay({
-  mention,
-  ...displayProps
-}: LocalFileMentionDisplayProps) {
+}) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -381,32 +258,80 @@ function LocalFileMentionDisplay({
     return () => URL.revokeObjectURL(nextPreviewUrl);
   }, [mention.id, mention.mimeType]);
 
-  const assetLikeMention = useMemo<Extract<Mention, { type: 'asset' }>>(
-    () => ({
-      type: 'asset',
-      id: mention.id,
-      filename: mention.filename,
-      mimeType: mention.mimeType,
-      url: previewUrl ?? '',
-      thumbnailUrl: previewUrl,
-    }),
-    [mention, previewUrl],
+  return (
+    <FileLikeReference
+      {...props}
+      filename={mention.filename}
+      icon={<FileIcon />}
+      key={previewUrl ?? ''}
+      previewUrl={previewUrl}
+    />
   );
-
-  return <AssetMentionDisplay mention={assetLikeMention} {...displayProps} />;
 }
 
-type RecordMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'record' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-  isClickable: boolean;
-  isCurrentRecord: boolean;
-  accessibleLabel?: string;
-};
+function userView(
+  mention: Extract<Mention, { type: 'user' }>,
+  resolvedName: string,
+  isProjectOwner: boolean,
+): ReferenceView {
+  return {
+    // The box keeps the avatar square when a long name fills the pill
+    icon: (
+      <span className={styles.avatar}>
+        <Avatar
+          email={mention.email || null}
+          imageUrl={mention.avatarUrl}
+          name={resolvedName}
+          size="small"
+        />
+      </span>
+    ),
+    text: `@${resolvedName}`,
+    hint: isProjectOwner ? 'Project owner' : mention.email || 'Organization',
+  };
+}
 
-function recordMentionTooltip(
+// The '#' of the text is the glyph of a field: the pill has no icon.
+function fieldView(
+  mention: Extract<Mention, { type: 'field' }>,
+): ReferenceView {
+  const locale = mention.localized && mention.locale ? mention.locale : null;
+
+  return {
+    text: locale ? `#${mention.apiKey} · ${locale}` : `#${mention.apiKey}`,
+    hint: formatFieldType(mention.fieldType) ?? undefined,
+  };
+}
+
+function emojiIcon(emoji: string) {
+  return (
+    <span aria-hidden="true" className={styles.emoji}>
+      {emoji}
+    </span>
+  );
+}
+
+/** The thumbnail, else the emoji of the title or of the model, else the glyph */
+function recordIcon(
+  mention: Extract<Mention, { type: 'record' }>,
+  titleEmoji: string | null,
+): ReactNode {
+  if (mention.thumbnailUrl) {
+    return (
+      <PillThumbnail
+        fallback={<RecordIcon />}
+        key={mention.thumbnailUrl}
+        src={mention.thumbnailUrl}
+      />
+    );
+  }
+
+  const emoji =
+    titleEmoji || mention.modelEmoji || (mention.isSingleton ? '📄' : null);
+  return emoji ? emojiIcon(emoji) : <RecordIcon />;
+}
+
+function recordHint(
   mention: Extract<Mention, { type: 'record' }>,
   isCurrentRecord: boolean,
 ) {
@@ -415,145 +340,66 @@ function recordMentionTooltip(
   return mention.modelName;
 }
 
-function recordMentionAccessibleLabel(
-  displayTitle: string,
+function recordView(
+  mention: Extract<Mention, { type: 'record' }>,
   isCurrentRecord: boolean,
-  accessibleLabel?: string,
-) {
-  return isCurrentRecord ? `Current record: ${displayTitle}` : accessibleLabel;
-}
-
-function RecordMentionDisplay({
-  mention,
-  tabIndex,
-  tooltipId,
-  onClick,
-  isClickable,
-  isCurrentRecord,
-  accessibleLabel,
-}: RecordMentionDisplayProps) {
-  const { emoji: titleEmoji, textWithoutEmoji: cleanTitle } =
-    extractLeadingEmoji(mention.title);
-  const displayEmoji = mention.thumbnailUrl
-    ? null
-    : titleEmoji || mention.modelEmoji || (mention.isSingleton ? '📄' : null);
-  const displayTitle = titleEmoji ? cleanTitle : mention.title;
-  const tooltipText = recordMentionTooltip(mention, isCurrentRecord);
-  const canOpen = isClickable && !isCurrentRecord;
-
-  return (
-    <span className={styles.recordMentionWrapper}>
-      <PortaledMentionTooltip content={tooltipText} tooltipId={tooltipId}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(
-            styles.recordMention,
-            !mention.thumbnailUrl && styles.recordMentionNoThumb,
-            isCurrentRecord && styles.recordMentionCurrent,
-          )}
-          aria-describedby={tooltipId}
-          aria-label={recordMentionAccessibleLabel(
-            displayTitle,
-            isCurrentRecord,
-            accessibleLabel,
-          )}
-          disabled={!canOpen}
-          onClick={canOpen ? onClick : undefined}
-        >
-          {mention.thumbnailUrl ? (
-            <>
-              <img
-                src={mention.thumbnailUrl}
-                alt={`Thumbnail for ${displayTitle}`}
-                className={styles.recordMentionThumb}
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  target.onerror = null;
-                  target.style.display = 'none';
-                  const parentButton = target.closest('button');
-                  if (parentButton) {
-                    parentButton.setAttribute('data-img-error', 'true');
-                  }
-                }}
-              />
-              <span className={styles.recordMentionFallback} aria-hidden="true">
-                <RecordDocumentIcon className={styles.recordMentionIcon} />
-              </span>
-            </>
-          ) : displayEmoji ? (
-            <span className={styles.recordMentionEmoji}>{displayEmoji}</span>
-          ) : (
-            <RecordDocumentIcon className={styles.recordMentionIcon} />
-          )}
-          <span className={styles.recordMentionTitle}>{displayTitle}</span>
-        </button>
-      </PortaledMentionTooltip>
-    </span>
+): ReferenceView {
+  const { emoji: titleEmoji, textWithoutEmoji } = extractLeadingEmoji(
+    mention.title,
   );
+
+  return {
+    icon: recordIcon(mention, titleEmoji),
+    text: titleEmoji ? textWithoutEmoji : mention.title,
+    hint: recordHint(mention, isCurrentRecord),
+    inert: isCurrentRecord,
+  };
 }
 
-type ModelMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'model' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-  isClickable: boolean;
-  accessibleLabel?: string;
-};
+function modelView(
+  mention: Extract<Mention, { type: 'model' }>,
+): ReferenceView {
+  const { emoji, textWithoutEmoji } = extractLeadingEmoji(mention.name);
 
-function ModelMentionDisplay({
-  mention,
-  tabIndex,
-  tooltipId,
-  onClick,
-  isClickable,
-  accessibleLabel,
-}: ModelMentionDisplayProps) {
-  const { emoji: modelEmoji, textWithoutEmoji: cleanName } =
-    extractLeadingEmoji(mention.name);
-
-  return (
-    <span className={styles.modelMentionWrapper}>
-      <PortaledMentionTooltip
-        content={`${mention.isBlockModel ? 'Block' : 'Model'}: ${mention.apiKey}`}
-        tooltipId={tooltipId}
-      >
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={styles.modelMention}
-          aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          disabled={!isClickable}
-          onClick={isClickable ? onClick : undefined}
-        >
-          {modelEmoji ? (
-            <span className={styles.modelMentionEmoji}>{modelEmoji}</span>
-          ) : (
-            <ModelMentionIcon className={styles.modelMentionIcon} />
-          )}
-          {cleanName}
-        </button>
-      </PortaledMentionTooltip>
-    </span>
-  );
+  return {
+    icon: emoji ? emojiIcon(emoji) : <ModelIcon />,
+    text: textWithoutEmoji,
+    hint: `${mention.isBlockModel ? 'Block' : 'Model'}: ${mention.apiKey}`,
+  };
 }
 
+/** The name of a mentioned user, as the project knows it now */
+function useResolvedUserName(mention: Mention, projectUsers?: UserInfo[]) {
+  return useMemo(() => {
+    if (mention.type !== 'user') return '';
+    if (!projectUsers) return mention.name;
+
+    const matchingUser =
+      projectUsers.find((user) => user.id === mention.id) ??
+      (mention.email
+        ? projectUsers.find(
+            (user) => user.email && user.email === mention.email,
+          )
+        : undefined);
+
+    return matchingUser ? matchingUser.name : mention.name;
+  }, [mention, projectUsers]);
+}
+
+/**
+ * A reference in a message or in the composer: a soft pill with the icon of
+ * the thing and a hint, or a compact card for a visual asset in a message.
+ */
 const MentionDisplayComponent = ({
   mention,
   onClick,
   isClickable = true,
   isProjectOwner = false,
-  tabIndex = 0,
-  tooltipId: externalTooltipId,
+  inComposer = false,
   projectUsers,
-  accessibleLabel,
-  assetLayout = 'preview',
   currentRecordId,
 }: MentionDisplayProps) => {
-  const generatedId = useId();
-  const tooltipId = externalTooltipId ?? `mention-tooltip-${generatedId}`;
+  const resolvedUserName = useResolvedUserName(mention, projectUsers);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -561,103 +407,42 @@ const MentionDisplayComponent = ({
     onClick?.(e);
   };
 
-  const resolvedUserName = useMemo(() => {
-    if (mention.type !== 'user' || !projectUsers) {
-      return mention.type === 'user' ? mention.name : '';
-    }
-
-    let matchingUser = projectUsers.find((user) => user.id === mention.id);
-
-    if (!matchingUser && mention.email) {
-      matchingUser = projectUsers.find(
-        (user) => user.email && user.email === mention.email,
-      );
-    }
-
-    if (matchingUser) {
-      return matchingUser.name;
-    }
-
-    return mention.name;
-  }, [mention, projectUsers]);
+  const referenceProps: ReferenceProps = {
+    canOpen: isClickable && Boolean(onClick),
+    inComposer,
+    // The editor shows every reference as a pill in the line
+    previewCard: !inComposer,
+    onClick: handleClick,
+  };
 
   switch (mention.type) {
     case 'user':
       return (
-        <UserMentionDisplay
-          mention={mention}
-          isClickable={isClickable}
-          isProjectOwner={isProjectOwner}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          resolvedName={resolvedUserName}
-          onClick={handleClick}
-          accessibleLabel={accessibleLabel}
+        <ReferencePill
+          {...referenceProps}
+          view={userView(mention, resolvedUserName, isProjectOwner)}
         />
       );
 
     case 'field':
-      return (
-        <FieldMentionDisplay
-          mention={mention}
-          isClickable={isClickable}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-          accessibleLabel={accessibleLabel}
-        />
-      );
+      return <ReferencePill {...referenceProps} view={fieldView(mention)} />;
 
     case 'asset':
-      return (
-        <AssetMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-          isClickable={isClickable}
-          accessibleLabel={accessibleLabel}
-          assetLayout={assetLayout}
-        />
-      );
+      return <AssetReference {...referenceProps} mention={mention} />;
 
     case 'file':
-      return (
-        <LocalFileMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-          isClickable={isClickable}
-          accessibleLabel={accessibleLabel}
-          assetLayout={assetLayout}
-        />
-      );
+      return <LocalFileReference {...referenceProps} mention={mention} />;
 
     case 'record':
       return (
-        <RecordMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-          isClickable={isClickable}
-          isCurrentRecord={mention.id === currentRecordId}
-          accessibleLabel={accessibleLabel}
+        <ReferencePill
+          {...referenceProps}
+          view={recordView(mention, mention.id === currentRecordId)}
         />
       );
 
     case 'model':
-      return (
-        <ModelMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-          isClickable={isClickable}
-          accessibleLabel={accessibleLabel}
-        />
-      );
+      return <ReferencePill {...referenceProps} view={modelView(mention)} />;
 
     default:
       return null;
@@ -669,12 +454,9 @@ export const MentionDisplay = memo(
   (prevProps, nextProps) => {
     if (prevProps.isClickable !== nextProps.isClickable) return false;
     if (prevProps.isProjectOwner !== nextProps.isProjectOwner) return false;
-    if (prevProps.tabIndex !== nextProps.tabIndex) return false;
-    if (prevProps.tooltipId !== nextProps.tooltipId) return false;
+    if (prevProps.inComposer !== nextProps.inComposer) return false;
     if (prevProps.onClick !== nextProps.onClick) return false;
     if (prevProps.projectUsers !== nextProps.projectUsers) return false;
-    if (prevProps.accessibleLabel !== nextProps.accessibleLabel) return false;
-    if (prevProps.assetLayout !== nextProps.assetLayout) return false;
     if (prevProps.currentRecordId !== nextProps.currentRecordId) return false;
 
     return areMentionsEqual(prevProps.mention, nextProps.mention);

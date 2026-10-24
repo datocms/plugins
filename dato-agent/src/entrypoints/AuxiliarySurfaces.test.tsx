@@ -5,9 +5,14 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import type { RenderInspectorCtx, RenderModalCtx } from 'datocms-plugin-sdk';
-import type { ReactNode } from 'react';
+import type {
+  RenderInspectorCtx,
+  RenderInspectorPanelCtx,
+  RenderModalCtx,
+} from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fakeCtx } from '../test/canvas';
+import AgentUnavailableFrame from './AgentUnavailableFrame';
 import ApprovalDetailsModal from './ApprovalDetailsModal';
 import FileDetailsModal from './FileDetailsModal';
 import LoadingFrame from './LoadingFrame';
@@ -18,24 +23,6 @@ const generateChangeSummary = vi.hoisted(() => vi.fn());
 vi.mock('../lib/changeSummary', () => ({
   generateChangeSummary,
   MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS: 100_000,
-}));
-
-vi.mock('datocms-react-ui', () => ({
-  Button: ({
-    children,
-    disabled,
-    onClick,
-  }: {
-    children: ReactNode;
-    disabled?: boolean;
-    onClick?: () => void;
-  }) => (
-    <button disabled={disabled} onClick={onClick} type="button">
-      {children}
-    </button>
-  ),
-  Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Spinner: () => <div data-testid="spinner" />,
 }));
 
 beforeEach(() => {
@@ -63,7 +50,8 @@ function approvalModalCtx({
   resolve?: ReturnType<typeof vi.fn>;
   script?: string | null;
 } = {}): RenderModalCtx {
-  return {
+  return fakeCtx<RenderModalCtx>({
+    mode: 'renderModal',
     colorScheme,
     parameters: {
       canDecide,
@@ -83,16 +71,54 @@ function approvalModalCtx({
       },
     },
     resolve,
-  } as unknown as RenderModalCtx;
+  });
+}
+
+function fileModalCtx(parameters: Record<string, unknown>): RenderModalCtx {
+  return fakeCtx<RenderModalCtx>({ mode: 'renderModal', parameters });
+}
+
+function codeRegion() {
+  return screen.getByRole('region', { name: 'Generated TypeScript' });
+}
+
+function firstStringColor(container: HTMLElement): string {
+  const string = container.querySelector<HTMLElement>(
+    'pre[data-highlighted="true"] .token.string',
+  );
+  return string?.style.color ?? '';
 }
 
 describe('auxiliary surfaces', () => {
   it('announces the lazy-loading state', () => {
-    render(<LoadingFrame ctx={{} as RenderInspectorCtx} />);
+    render(<LoadingFrame ctx={fakeCtx<RenderInspectorCtx>()} />);
 
-    const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Loading Dato Agent (Beta)…');
-    expect(within(status).getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading Dato Agent');
+  });
+
+  it('sizes the unavailable message by its place', () => {
+    const title = 'Dato Agent isn’t available for your role';
+    // The chat column of the inspector is narrow
+    render(<AgentUnavailableFrame ctx={fakeCtx<RenderInspectorCtx>()} />);
+    expect(screen.getByText(title).closest('.blank-slate')).toHaveClass(
+      'blank-slate--small',
+    );
+    // The frame fails closed: the denial is announced
+    expect(screen.getByRole('status')).toHaveTextContent(title);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Ask a project admin to add your role in the plugin settings.',
+    );
+    cleanup();
+
+    // The inspector panel is the wide record pane
+    render(
+      <AgentUnavailableFrame
+        ctx={fakeCtx<RenderInspectorPanelCtx>({ mode: 'renderInspectorPanel' })}
+      />,
+    );
+    expect(screen.getByText(title).closest('.blank-slate')).not.toHaveClass(
+      'blank-slate--small',
+    );
   });
 
   it('renders syntax-highlighted TypeScript immediately while the summary loads', () => {
@@ -100,7 +126,7 @@ describe('auxiliary surfaces', () => {
       'const title: string = "Hello";',
       'await client.items.update("123", { title });',
     ].join('\n');
-    const { container } = render(
+    render(
       <ApprovalDetailsModal
         ctx={approvalModalCtx({ canDecide: true, script: source })}
       />,
@@ -108,19 +134,13 @@ describe('auxiliary surfaces', () => {
 
     expect(screen.getByText('Environment')).toBeVisible();
     expect(screen.getByText('Primary')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Summary' })).toBeVisible();
+    expect(screen.getByText('Summarizing this change')).toBeVisible();
     expect(
-      screen.getByRole('heading', {
-        name: 'Generating a summary of this change',
-      }),
-    ).toBeVisible();
-    expect(
-      screen
-        .getByRole('heading', {
-          name: 'Generating a summary of this change',
-        })
-        .parentElement?.querySelectorAll('[aria-hidden="true"] span'),
-    ).toHaveLength(3);
-    const code = container.querySelector('pre code');
+      screen.getByText('Summarizing this change').closest('[aria-busy]'),
+    ).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('heading', { name: 'TypeScript' })).toBeVisible();
+    const code = codeRegion().querySelector('pre code');
     expect(code?.textContent).toBe(source);
     expect(code?.closest('pre')).toHaveAttribute('data-highlighted', 'true');
     expect(code?.querySelectorAll('[data-line-number]')).toHaveLength(2);
@@ -140,18 +160,20 @@ describe('auxiliary surfaces', () => {
     );
   });
 
-  it('uses the native light and dark Prism themes', () => {
+  it('uses the native light and dark Prism themes for the token colors only', () => {
     const source = 'const value: string = "DatoCMS";';
     const light = render(
       <ApprovalDetailsModal
         ctx={approvalModalCtx({ colorScheme: 'light', script: source })}
       />,
     );
-    const lightCodeColor = (
-      light.container.querySelector(
-        'pre[data-highlighted="true"]',
-      ) as HTMLElement
-    ).style.color;
+    const lightStringColor = firstStringColor(light.container);
+    const lightCode = light.container.querySelector<HTMLElement>(
+      'pre[data-highlighted="true"]',
+    );
+    // The snippet draws the surface and the plain ink, not the theme
+    expect(lightCode?.style.color).toBe('');
+    expect(lightCode?.style.backgroundColor).toBe('');
     light.unmount();
 
     const dark = render(
@@ -159,43 +181,38 @@ describe('auxiliary surfaces', () => {
         ctx={approvalModalCtx({ colorScheme: 'dark', script: source })}
       />,
     );
-    const darkCodeColor = (
-      dark.container.querySelector(
-        'pre[data-highlighted="true"]',
-      ) as HTMLElement
-    ).style.color;
+    const darkStringColor = firstStringColor(dark.container);
 
-    expect(lightCodeColor).not.toBe('');
-    expect(darkCodeColor).not.toBe('');
-    expect(darkCodeColor).not.toBe(lightCodeColor);
+    expect(lightStringColor).not.toBe('');
+    expect(darkStringColor).not.toBe('');
+    expect(darkStringColor).not.toBe(lightStringColor);
   });
 
   it('preserves blank lines and a trailing newline exactly', () => {
     const source = 'const value = 1;\n\n';
-    const { container } = render(
-      <ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />,
-    );
+    render(<ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />);
 
-    const code = container.querySelector('pre code');
+    const code = codeRegion().querySelector('pre code');
     expect(code?.textContent).toBe(source);
     expect(code?.querySelectorAll('[data-line-number]')).toHaveLength(3);
   });
 
   it('keeps very large scripts complete without tokenizing or summarizing them', async () => {
     const source = 'x'.repeat(100_001);
-    const { container } = render(
-      <ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />,
-    );
+    render(<ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />);
 
-    const code = container.querySelector('pre code');
+    const code = codeRegion().querySelector('pre code');
     expect(code?.textContent).toBe(source);
     expect(code?.closest('pre')).toHaveAttribute('data-highlighted', 'false');
     expect(code?.querySelector('.token')).not.toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        'This change is too large to summarize. Review the TypeScript below.',
-      ),
-    ).toBeVisible();
+    // A short title says the problem, the text the next step
+    const tooLarge = await screen.findByText(
+      'This change is too large to summarize',
+    );
+    expect(tooLarge).toBeVisible();
+    expect(tooLarge.closest('.Callout')).toHaveTextContent(
+      'Review the TypeScript below.',
+    );
     expect(
       screen.queryByRole('button', { name: 'Retry' }),
     ).not.toBeInTheDocument();
@@ -208,7 +225,7 @@ describe('auxiliary surfaces', () => {
       <ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />,
     );
 
-    expect(container.querySelector('pre code')?.textContent).toBe(source);
+    expect(codeRegion().querySelector('pre code')?.textContent).toBe(source);
     expect(container.querySelector('img')).not.toBeInTheDocument();
   });
 
@@ -238,18 +255,26 @@ describe('auxiliary surfaces', () => {
       />,
     );
 
-    expect(screen.getByText('Change didn’t run')).toBeVisible();
-    expect(screen.getByText('No project content was changed.')).toBeVisible();
-    fireEvent.click(screen.getByText('Technical error'));
-    expect(container.querySelector('details pre')?.textContent).toBe(
-      diagnostic,
-    );
-    expect(container.querySelector('img')).not.toBeInTheDocument();
+    const notice = screen.getByText('Change didn’t run').closest('.Callout');
+    expect(notice).toHaveAttribute('role', 'alert');
+    expect(notice).toHaveTextContent('No project content was changed.');
+
+    const toggle = screen.getByRole('button', { name: 'Technical error' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(
-      await screen.findByText(
-        'AI-generated summaries can be wrong. Review the TypeScript to verify this summary.',
-      ),
-    ).toBeVisible();
+      screen.queryByRole('region', { name: 'Technical error' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByRole('region', { name: 'Technical error' }).textContent,
+    ).toBe(diagnostic);
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    const caveat = await screen.findByText('Summaries can be wrong');
+    expect(caveat).toBeVisible();
+    expect(caveat.closest('.Callout')).toHaveTextContent(
+      'Review the TypeScript to verify this summary.',
+    );
     expect(
       screen.queryByRole('button', { name: /Fix/i }),
     ).not.toBeInTheDocument();
@@ -274,6 +299,9 @@ describe('auxiliary surfaces', () => {
     expect(screen.getByText(title)).toBeVisible();
     expect(screen.getByText(copy)).toBeVisible();
     expect(
+      screen.queryByRole('button', { name: 'Technical error' }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole('button', { name: 'Approve' }),
     ).not.toBeInTheDocument();
     expect(
@@ -290,13 +318,18 @@ describe('auxiliary surfaces', () => {
 
     expect(generateChangeSummary).not.toHaveBeenCalled();
     expect(
-      screen.queryByRole('heading', { name: 'Generated TypeScript' }),
+      screen.queryByRole('heading', { name: 'TypeScript' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', {
-        name: 'Generating a summary of this change',
-      }),
+      screen.queryByRole('region', { name: 'Generated TypeScript' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Summary' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Summarizing this change'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Primary')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
   });
@@ -305,21 +338,33 @@ describe('auxiliary surfaces', () => {
     generateChangeSummary.mockResolvedValue(
       'Updates the title of one existing record.',
     );
-    render(
-      <ApprovalDetailsModal ctx={approvalModalCtx({ canDecide: true })} />,
-    );
+    const ctx = approvalModalCtx({ canDecide: true });
+    const { rerender } = render(<ApprovalDetailsModal ctx={ctx} />);
 
     expect(
       await screen.findByText('Updates the title of one existing record.'),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Summary' })).toBeVisible();
+    expect(screen.getByText('Summaries can be wrong')).toBeVisible();
     expect(
-      screen.getByText(
-        'AI-generated summaries can be wrong. Review the TypeScript before approving.',
-      ),
-    ).toBeVisible();
+      screen.getByText('Summaries can be wrong').closest('.Callout'),
+    ).toHaveTextContent('Review the TypeScript before approving.');
+    // The live region announces the summary; the warning announces itself
+    expect(
+      screen
+        .getByText('Updates the title of one existing record.')
+        .closest('[aria-live="polite"]'),
+    ).not.toBeNull();
+    expect(
+      screen.getByText('Summaries can be wrong').closest('[aria-live]'),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
+
+    rerender(<ApprovalDetailsModal ctx={ctx} />);
+    expect(
+      screen.getByText('Updates the title of one existing record.'),
+    ).toBeVisible();
     expect(generateChangeSummary).toHaveBeenCalledTimes(1);
   });
 
@@ -329,11 +374,12 @@ describe('auxiliary surfaces', () => {
       .mockResolvedValueOnce('Creates one draft article.');
     render(<ApprovalDetailsModal ctx={approvalModalCtx()} />);
 
-    expect(
-      await screen.findByText(
-        'Couldn’t generate a summary. Review the TypeScript below.',
-      ),
-    ).toBeVisible();
+    // A failed load is a blank slate with an error, inside the live region
+    const failure = await screen.findByText('Couldn’t summarize this change');
+    expect(failure).toBeVisible();
+    expect(failure.closest('.blank-slate')).not.toBeNull();
+    expect(failure.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(screen.getByText('Review the TypeScript below.')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Creates one draft article.')).toBeVisible();
@@ -359,6 +405,25 @@ describe('auxiliary surfaces', () => {
     },
   );
 
+  it('shows progress on the decision being saved and locks the other one', () => {
+    const resolve = vi.fn(() => new Promise<void>(() => undefined));
+    render(
+      <ApprovalDetailsModal
+        ctx={approvalModalCtx({ canDecide: true, resolve })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    const approve = screen.getByRole('button', { name: 'Approve' });
+    expect(approve).toHaveAttribute('aria-busy', 'true');
+    expect(approve).toBeDisabled();
+    const deny = screen.getByRole('button', { name: 'Deny' });
+    expect(deny).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(deny);
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts summary generation when the modal closes', () => {
     const { unmount } = render(
       <ApprovalDetailsModal ctx={approvalModalCtx()} />,
@@ -378,12 +443,21 @@ describe('auxiliary surfaces', () => {
     render(<ApprovalDetailsModal ctx={ctx} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not save this decision. Try again.',
-    );
+    const error = await screen.findByText('Couldn’t save this decision');
+    expect(error.closest('.Callout')).toHaveAttribute('role', 'alert');
+    expect(error.closest('.Callout')).toHaveTextContent('Try again.');
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Approve' })).not.toHaveAttribute(
+      'aria-disabled',
+    );
     expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Deny' })).not.toHaveAttribute(
+      'aria-disabled',
+    );
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Retry' })).not.toHaveAttribute(
+      'aria-disabled',
+    );
   });
 
   it('does not allow summary retries while a decision is being saved', async () => {
@@ -402,49 +476,70 @@ describe('auxiliary surfaces', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(retry);
     expect(generateChangeSummary).toHaveBeenCalledTimes(1);
 
     settleDecision?.();
   });
 
   it('distinguishes a session-local file from a DatoCMS asset', () => {
-    const availableCtx = {
-      parameters: {
-        filename: 'brief.pdf',
-        mimeType: 'application/pdf',
-        size: 2048,
-        lastModified: 1_786_000_000_000,
-        bytesAvailable: true,
-      },
-    } as unknown as RenderModalCtx;
+    const parameters = {
+      filename: 'brief.pdf',
+      mimeType: 'application/pdf',
+      size: 2048,
+      lastModified: 1_786_000_000_000,
+      bytesAvailable: true,
+    };
 
-    const { rerender } = render(<FileDetailsModal ctx={availableCtx} />);
+    const { rerender } = render(
+      <FileDetailsModal ctx={fileModalCtx(parameters)} />,
+    );
 
     expect(screen.getByText('brief.pdf')).toBeVisible();
+    expect(screen.getByText('application/pdf')).toBeVisible();
     expect(screen.getByText('2.0 KB')).toBeVisible();
-    expect(
-      screen.getByText('This file is not yet a DatoCMS asset.'),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
-        'File bytes are available only for this browser session.',
-      ),
-    ).toBeVisible();
+    const notice = screen
+      .getByText('Not a DatoCMS asset yet')
+      .closest('.Callout');
+    expect(notice).toHaveTextContent(
+      'Its content is available only in this browser session.',
+    );
+    const lastModified = screen
+      .getByText('Last modified')
+      .closest('.InfoList__row');
+    expect(lastModified?.querySelector('time')?.getAttribute('datetime')).toBe(
+      new Date(1_786_000_000_000).toISOString(),
+    );
 
     rerender(
       <FileDetailsModal
-        ctx={
-          {
-            ...availableCtx,
-            parameters: { ...availableCtx.parameters, bytesAvailable: false },
-          } as RenderModalCtx
-        }
+        ctx={fileModalCtx({ ...parameters, bytesAvailable: false })}
       />,
     );
     expect(
       screen.getByText(
-        'The file bytes are no longer available; only its metadata remains.',
+        'Its content is no longer available. Only its details remain.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('falls back to defaults for missing file details', () => {
+    render(<FileDetailsModal ctx={fileModalCtx({ lastModified: 0 })} />);
+
+    const rows = Array.from(document.querySelectorAll('.InfoList__row')).map(
+      (row) => row.textContent,
+    );
+    expect(rows).toEqual([
+      'FilenameUntitled file',
+      'Typeapplication/octet-stream',
+      'SizeUnknown',
+      'Last modifiedUnknown',
+    ]);
+    expect(
+      within(document.body).getByText(
+        'Its content is no longer available. Only its details remain.',
       ),
     ).toBeVisible();
   });

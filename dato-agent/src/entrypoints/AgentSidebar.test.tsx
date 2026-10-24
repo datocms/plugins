@@ -21,8 +21,8 @@ const mocks = vi.hoisted(() => ({
   nextFrameMountId: 0,
 }));
 
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children?: ReactNode }) => children,
+vi.mock('datocms-react-ui/Canvas', () => ({
+  default: ({ children }: { children?: ReactNode }) => children,
 }));
 
 vi.mock('./AgentFrame', () => ({

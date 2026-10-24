@@ -1,105 +1,61 @@
-.messages {
-  margin-top: 6px;
-}
-
-.messages:empty {
-  display: none;
-}
-
-.messages p {
-  margin: 0;
-  color: var(--color--ink-danger);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
-}
-
-.messages p + p {
-  margin-top: 3px;
-}
-
-.fileDropOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-dropdown);
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  color: var(--color--primary-soft--ink);
-  background: var(--color--surface);
-  pointer-events: none;
-  animation: file-drop-fade-in 120ms var(--inertial-ease) both;
-}
-
-.fileDropFrame {
-  position: absolute;
-  inset: var(--spacing-m);
-  border: 2px dotted var(--color--primary-soft--border);
-  border-radius: 5px;
-}
-
-.fileDropFrame::before {
-  position: absolute;
-  inset: -2px;
-  content: "";
-  background:
-    linear-gradient(var(--color--primary-soft--ink) 0 0) top left / 20px 2px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) top left / 2px 20px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) top right / 20px 2px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) top right / 2px 20px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom right / 20px 2px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom right / 2px 20px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom left / 20px 2px
-    no-repeat,
-    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom left / 2px 20px
-    no-repeat;
-}
-
-.fileDropContent {
+/* The box of the message field: the insert toolbar, the editor and the
+   send button in one frame. It is a field, thus it has the box of a text
+   input (the raised surface, the border, the radius of a control), its
+   focus ring and no shadow. The mention menus are placed against it
+   (position). */
+.box {
   position: relative;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  transition: border-color 0.2s var(--material-ease);
+
+  &:hover {
+    border-color: var(--color--border-hover);
+  }
+
+  &:has(:global(.ProseMirror):focus) {
+    border-color: var(--color--focus--border);
+    box-shadow: var(--focus-ring);
+  }
+
+  /* The field has an error: the editor has aria-invalid. The border and
+     the ring of an invalid text input of the kit (its ring is the focus
+     ring, in the danger-soft context). */
+  &:has(:global(.ProseMirror)[aria-invalid="true"]) {
+    border-color: var(--color--danger-soft--border);
+
+    &:has(:global(.ProseMirror):focus) {
+      box-shadow: 0 0 0 4px var(--color--danger-soft--outline);
+    }
+  }
+
+  /* The composer is off (the editor has aria-disabled): the text stays
+     readable on the neutral fill of a disabled field, and the border no
+     longer reacts to the pointer */
+  &:has(:global(.ProseMirror)[aria-disabled="true"]) {
+    background-color: var(--color--disabled-field--surface);
+    border-color: var(--color--border);
+
+    :global(.ProseMirror) {
+      color: var(--color--disabled-field--ink);
+    }
+
+    :global(.ProseMirror p.is-editor-empty:first-child::before) {
+      color: var(--color--disabled-field--ink-placeholder);
+    }
+  }
+}
+
+/* The toolbar keeps the rounded corners of the box */
+.toolbar {
+  overflow: clip;
+  border-radius: calc(var(--radius-s) - 1px) calc(var(--radius-s) - 1px) 0 0;
+}
+
+/* Send or Stop, at the end of the box */
+.actions {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-m);
-  text-align: center;
-}
-
-.fileDropContent strong {
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
-}
-
-.fileDropIcon {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  color: var(--color--primary-soft--ink);
-}
-
-.fileDropIcon svg {
-  width: 22px;
-  height: 22px;
-}
-
-@keyframes file-drop-fade-in {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fileDropOverlay {
-    animation: none;
-  }
+  justify-content: flex-end;
+  padding: 0 var(--spacing-s) var(--spacing-s);
 }

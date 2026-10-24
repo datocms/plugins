@@ -1,9 +1,7 @@
 import type { UserInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
-import { cn } from '@/utils/cn';
-import { UserMentionIcon } from './Icons';
+import Avatar from 'datocms-react-ui/Avatar';
+import { UserIcon } from '../../../icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
-import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type UserMentionDropdownProps = {
   users: UserInfo[];
@@ -18,6 +16,18 @@ type UserMentionDropdownProps = {
   onSelectedIndexChange?: (index: number) => void;
 };
 
+function emptyText(query: string, isLoading: boolean, error: string | null) {
+  if (isLoading) return 'Loading people…';
+  if (error) return error;
+  return query ? `No users match “${query}”` : 'No users available';
+}
+
+function statusText(isLoading: boolean, error: string | null) {
+  if (isLoading) return 'Loading people…';
+  if (error) return 'Couldn’t refresh people.';
+  return undefined;
+}
+
 const UserMentionDropdown = ({
   users,
   query,
@@ -29,78 +39,29 @@ const UserMentionDropdown = ({
   errorMessage = null,
   onRetry,
   onSelectedIndexChange,
-}: UserMentionDropdownProps) => {
-  const emptyMessage = isLoading
-    ? 'Loading people…'
-    : errorMessage ||
-      (query ? `No users matching "${query}"` : 'No users available');
-
-  const emptyAction =
-    errorMessage && onRetry ? (
-      <button
-        className={styles.mentionRetryButton}
-        onClick={onRetry}
-        type="button"
-      >
-        Retry
-      </button>
-    ) : undefined;
-
-  return (
-    <MentionDropdownBase
-      items={users}
-      emptyMessage={emptyMessage}
-      headerText="People"
-      selectedIndex={selectedIndex}
-      onClose={onClose}
-      position={position}
-      keyExtractor={(user) => user.id}
-      emptyAction={emptyAction}
-      statusAction={errorMessage ? emptyAction : undefined}
-      statusMessage={
-        isLoading
-          ? 'Loading people…'
-          : errorMessage
-            ? 'Couldn’t refresh people.'
-            : undefined
-      }
-      renderItem={(user, index, isSelected, selectedRef) => (
-        <button
-          ref={isSelected ? selectedRef : null}
-          type="button"
-          className={cn(
-            styles.mentionOption,
-            isSelected && styles.mentionOptionSelected,
-          )}
-          role="menuitem"
-          onMouseDown={(e) => {
-            // Prevent blur on textarea
-            e.preventDefault();
-          }}
-          onClick={() => onSelect(user)}
-          onMouseEnter={() => onSelectedIndexChange?.(index)}
-        >
-          <MentionDropdownOptionContent
-            description={user.email}
-            leading={
-              user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt=""
-                  className={styles.mentionUserAvatar}
-                />
-              ) : (
-                <span className={styles.mentionUserAvatarFallback}>
-                  <UserMentionIcon aria-hidden="true" />
-                </span>
-              )
-            }
-            title={user.name}
-          />
-        </button>
-      )}
-    />
-  );
-};
+}: UserMentionDropdownProps) => (
+  <MentionDropdownBase
+    busy={isLoading}
+    emptyMessage={emptyText(query, isLoading, errorMessage)}
+    headerIcon={<UserIcon />}
+    headerText="People"
+    items={users}
+    keyExtractor={(user) => user.id}
+    onClose={onClose}
+    onRetry={errorMessage && onRetry ? onRetry : undefined}
+    onSelect={onSelect}
+    onSelectedIndexChange={onSelectedIndexChange}
+    position={position}
+    renderOption={(user) => ({
+      image: (
+        <Avatar email={user.email} imageUrl={user.avatarUrl} name={user.name} />
+      ),
+      title: user.name,
+      details: user.email,
+    })}
+    selectedIndex={selectedIndex}
+    status={statusText(isLoading, errorMessage)}
+  />
+);
 
 export default UserMentionDropdown;

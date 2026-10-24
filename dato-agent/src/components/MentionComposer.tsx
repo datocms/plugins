@@ -1,5 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { dropTargetClassName, useFilePicker } from 'datocms-react-ui/dnd';
+import { useEditorToolbarWiring } from 'datocms-react-ui/EditorToolbar';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NewZIndex from 'datocms-react-ui/NewZIndex';
+import Portal from 'datocms-react-ui/Portal';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { SendIcon, StopIcon } from '../icons';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import {
   localFileDescriptorFromMention,
@@ -17,8 +31,7 @@ import {
   segmentsProviderText,
 } from '../lib/mentions';
 import ComposerToolbar from '../recordComments/entrypoints/components/ComposerToolbar';
-import { FileUploadIcon } from '../recordComments/entrypoints/components/Icons';
-import RecordModelSelectorDropdown from '../recordComments/entrypoints/components/RecordModelSelectorDropdown';
+import { RecordModelPanel } from '../recordComments/entrypoints/components/RecordModelSelectorDropdown';
 import {
   TipTapComposer,
   type TipTapComposerRef,
@@ -30,7 +43,6 @@ import type {
   FieldInfo,
   UserInfo,
 } from '../recordComments/entrypoints/hooks/useMentions';
-import commentBarStyles from '../recordComments/entrypoints/styles/commentbar.module.css';
 import styles from './MentionComposer.module.css';
 
 type MentionComposerProps = {
@@ -38,9 +50,10 @@ type MentionComposerProps = {
   navigation: NavigationCallbacks;
   currentRecordId?: string;
   disabled: boolean;
+  /** Why the composer is off, for the tooltip of Send */
+  disabledReason?: string;
   isRunning: boolean;
   placeholder: string;
-  persistenceWarning?: string;
   onSubmit: (submission: AgentComposerSubmission) => void;
   onStop?: () => void;
 };
@@ -77,7 +90,7 @@ function localFileRejection(
 }
 
 function selectAllowedLocalFiles(
-  files: FileList,
+  files: readonly File[],
   segments: readonly CommentSegment[],
 ): { acceptedFiles: File[]; error?: string } {
   const currentFiles = segments.flatMap((segment) =>
@@ -120,19 +133,42 @@ function selectAllowedLocalFiles(
   return { acceptedFiles, ...(error ? { error } : {}) };
 }
 
+const TOO_MANY_MENTIONS_MESSAGE = `Use no more than ${MAX_MENTIONS_PER_MESSAGE} references.`;
+const TOO_LONG_MESSAGE =
+  'This message is too long. Remove some text or references.';
+
+/** The error of the message, under the composer, or undefined */
+function messageError(tooManyMentions: boolean, tooLong: boolean) {
+  const errors = [
+    ...(tooManyMentions ? [TOO_MANY_MENTIONS_MESSAGE] : []),
+    ...(tooLong ? [TOO_LONG_MESSAGE] : []),
+  ];
+  return errors.length > 0 ? errors.join(' ') : undefined;
+}
+
+// The drop cue covers the whole frame: a file dropped anywhere is attached.
+// Inline, because the kit's drop target class sets `position: relative`.
+const DROP_LAYER_STYLE: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  pointerEvents: 'none',
+};
+
 export function MentionComposer({
   host,
   navigation,
   currentRecordId,
   disabled,
+  disabledReason,
   isRunning,
   placeholder,
-  persistenceWarning,
   onSubmit,
   onStop,
 }: MentionComposerProps) {
+  const ctx = useCtx();
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
   const composerRef = useRef<TipTapComposerRef>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const fileDragDepthRef = useRef(0);
   const [segments, setSegments] = useState<CommentSegment[]>([]);
   const segmentsRef = useRef(segments);
@@ -147,9 +183,12 @@ export function MentionComposer({
   const [fieldsLoading, setFieldsLoading] = useState(false);
   const [usersError, setUsersError] = useState<string>();
   const [fieldsError, setFieldsError] = useState<string>();
-  const [pickerError, setPickerError] = useState<string>();
-  const [isRecordModelSelectorOpen, setRecordModelSelectorOpen] =
-    useState(false);
+  // The panel of the record models that the "/" command opens
+  const [recordPanelOpen, setRecordPanelOpen] = useState(false);
+  // The record dropdown of the insert toolbar is open
+  const [recordMenuOpen, setRecordMenuOpen] = useState(false);
+  // An asset or record picker of the host is open
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const providerText = useMemo(
     () => segmentsProviderText(segments),
@@ -157,6 +196,7 @@ export function MentionComposer({
   );
   const tooManyMentions = mentionCount(segments) > MAX_MENTIONS_PER_MESSAGE;
   const tooLong = providerText.length > MAX_CONVERSATION_MESSAGE_CHARACTERS;
+  const fieldError = messageError(tooManyMentions, tooLong);
   const empty = !segmentsDisplayText(segments);
   const inputDisabled = disabled || isRunning;
   const inputDisabledRef = useRef(inputDisabled);
@@ -164,13 +204,42 @@ export function MentionComposer({
   const fieldsRequestRef = useRef<Promise<void> | null>(null);
   inputDisabledRef.current = inputDisabled;
   segmentsRef.current = segments;
-  const canSubmit = !inputDisabled && !empty && !tooLong && !tooManyMentions;
+
+  // The insert toolbar shows while the editor has the focus, while the
+  // record dropdown of the toolbar or the panel of the record models is open,
+  // or while a picker of the host is open (the editor gets the focus back
+  // when it closes)
+  const focusEditor = useCallback(() => composerRef.current?.focus(), []);
+  const {
+    setFocused: setEditorFocused,
+    onMenuToggle: setToolbarMenuOpen,
+    visible: toolbarVisible,
+  } = useEditorToolbarWiring({ busy: pickerOpen, focusEditor });
+
+  useEffect(() => {
+    setToolbarMenuOpen((recordPanelOpen || recordMenuOpen) && !inputDisabled);
+  }, [inputDisabled, recordMenuOpen, recordPanelOpen, setToolbarMenuOpen]);
+
+  // The record dropdown is another reference type: when it opens, the
+  // pending "/" command and the panel of the command close
+  const handleRecordMenuToggle = useCallback((open: boolean) => {
+    setRecordMenuOpen(open);
+    if (!open) return;
+    setRecordPanelOpen(false);
+    composerRef.current?.discardPendingMentionCommand();
+  }, []);
+
+  // Picker failures and refused files are toasts of the host
+  const reportError = useCallback((message: string) => {
+    void ctxRef.current.alert(message);
+  }, []);
 
   useEffect(() => {
     if (inputDisabled) {
       fileDragDepthRef.current = 0;
       setDraggingFiles(false);
-      setRecordModelSelectorOpen(false);
+      // The record panel closes with the composer
+      setRecordPanelOpen(false);
     }
   }, [inputDisabled]);
 
@@ -268,12 +337,11 @@ export function MentionComposer({
     });
     composerRef.current?.clear();
     setSegments([]);
-    setPickerError(undefined);
   }, [inputDisabled, onSubmit, segments]);
 
   const selectAsset = useCallback(async () => {
     if (inputDisabledRef.current) return;
-    setPickerError(undefined);
+    setPickerOpen(true);
     try {
       const mention = await host.selectAsset();
       if (inputDisabledRef.current) return;
@@ -281,26 +349,35 @@ export function MentionComposer({
       else composerRef.current?.focus();
     } catch {
       if (!inputDisabledRef.current) {
-        setPickerError('The asset picker could not be opened.');
+        reportError('The asset picker could not be opened.');
       }
+    } finally {
+      setPickerOpen(false);
     }
-  }, [host]);
+  }, [host, reportError]);
 
-  const selectLocalFiles = useCallback((files: FileList | null) => {
-    if (inputDisabledRef.current || !files?.length) return;
+  const selectLocalFiles = useCallback(
+    (files: readonly File[]) => {
+      if (inputDisabledRef.current || files.length === 0) return;
 
-    setPickerError(undefined);
-    const currentSegments =
-      composerRef.current?.getSegments() ?? segmentsRef.current;
-    const { acceptedFiles, error } = selectAllowedLocalFiles(
-      files,
-      currentSegments,
-    );
-    composerRef.current?.insertMentions(acceptedFiles.map(registerLocalFile));
-    if (error) setPickerError(error);
-    composerRef.current?.focus();
-  }, []);
+      const currentSegments =
+        composerRef.current?.getSegments() ?? segmentsRef.current;
+      const { acceptedFiles, error } = selectAllowedLocalFiles(
+        files,
+        currentSegments,
+      );
+      composerRef.current?.insertMentions(acceptedFiles.map(registerLocalFile));
+      if (error) reportError(error);
+      composerRef.current?.focus();
+    },
+    [reportError],
+  );
 
+  const filePicker = useFilePicker({ onPick: selectLocalFiles });
+
+  // The listeners are on the window, in the capture phase: a file dropped
+  // anywhere in the frame is attached, and a file dropped while the
+  // composer is disabled never opens in the frame.
   useEffect(() => {
     const resetFileDrag = () => {
       fileDragDepthRef.current = 0;
@@ -339,7 +416,7 @@ export function MentionComposer({
       if (!dragIncludesFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      const files = event.dataTransfer?.files ?? null;
+      const files = Array.from(event.dataTransfer?.files ?? []);
       resetFileDrag();
       if (!inputDisabledRef.current) selectLocalFiles(files);
     };
@@ -362,8 +439,8 @@ export function MentionComposer({
   const selectRecord = useCallback(
     async (model: AgentMentionHost['recordModels'][number]) => {
       if (inputDisabledRef.current || !model) return;
-      setRecordModelSelectorOpen(false);
-      setPickerError(undefined);
+      setRecordPanelOpen(false);
+      setPickerOpen(true);
       try {
         const mention = await host.selectRecord(model);
         if (inputDisabledRef.current) return;
@@ -371,11 +448,13 @@ export function MentionComposer({
         else composerRef.current?.focus();
       } catch {
         if (!inputDisabledRef.current) {
-          setPickerError('The record picker could not be opened.');
+          reportError('The record picker could not be opened.');
         }
+      } finally {
+        setPickerOpen(false);
       }
     },
-    [host],
+    [host, reportError],
   );
 
   return (
@@ -387,140 +466,192 @@ export function MentionComposer({
       projectUsers={projectUsers}
     >
       <NavigationCallbacksProvider callbacks={navigation}>
-        <div className={commentBarStyles.composerInputWrapper}>
-          <input
-            aria-label="Choose files from computer"
-            disabled={inputDisabled}
-            hidden
-            multiple
-            onChange={(event) => {
-              selectLocalFiles(event.currentTarget.files);
-              event.currentTarget.value = '';
-            }}
-            ref={fileInputRef}
-            type="file"
-          />
+        <FieldWrapper
+          label="Message"
+          labelExtras={{ hidden: true }}
+          error={fieldError}
+        >
+          {/* The box of the field: the insert toolbar, the editor and the
+              send button. The menus open above it. */}
+          <div className={styles.box}>
+            {filePicker.input}
 
-          <TipTapComposer
-            ariaLabel="Message the DatoCMS agent"
-            autoFocus={false}
-            canMentionAssets={host.canMentionAssets}
-            canMentionFields={host.canMentionFields}
-            canMentionModels={host.canMentionModels}
-            disabled={inputDisabled}
-            dropdownPosition="above"
-            fieldMentionsError={fieldsError ?? null}
-            fieldMentionsLoading={fieldsLoading}
-            maxLength={MAX_CONVERSATION_MESSAGE_CHARACTERS}
-            modelFields={modelFields}
-            onAssetTrigger={() => {
-              void selectAsset();
-            }}
-            onFieldMentionIntent={() => {
-              void loadFields();
-            }}
-            onFieldMentionsRetry={() => {
-              void loadFields(true);
-            }}
-            onRecordTrigger={() => {
-              if (!inputDisabledRef.current) setRecordModelSelectorOpen(true);
-            }}
-            onSegmentsChange={setSegments}
-            onSubmit={submit}
-            onUserMentionIntent={() => {
-              void loadUsers();
-            }}
-            onUserMentionsRetry={() => {
-              void loadUsers(true);
-            }}
-            placeholder={placeholder}
-            projectModels={host.projectModels}
-            projectUsers={projectUsers}
-            userMentionsError={usersError ?? null}
-            userMentionsLoading={usersLoading}
-            ref={composerRef}
-            segments={segments}
-          />
+            <div className={styles.toolbar}>
+              <ComposerToolbar
+                canMentionAssets={host.canMentionAssets}
+                canMentionFields={host.canMentionFields}
+                canMentionModels={host.canMentionModels}
+                disabled={inputDisabled}
+                hidden={!toolbarVisible}
+                onAssetClick={() => {
+                  setRecordPanelOpen(false);
+                  composerRef.current?.discardPendingMentionCommand();
+                  void selectAsset();
+                }}
+                onFieldClick={() => {
+                  setRecordPanelOpen(false);
+                  composerRef.current?.triggerMentionType('field');
+                }}
+                onFileClick={() => {
+                  if (!inputDisabledRef.current) filePicker.open();
+                }}
+                onModelClick={() => {
+                  setRecordPanelOpen(false);
+                  composerRef.current?.triggerMentionType('model');
+                }}
+                onRecordMenuToggle={handleRecordMenuToggle}
+                onRecordModelSelect={(model) => {
+                  void selectRecord(model);
+                }}
+                onUserClick={() => {
+                  setRecordPanelOpen(false);
+                  composerRef.current?.triggerMentionType('user');
+                }}
+                recordModels={host.recordModels}
+              />
+            </div>
 
-          {isRecordModelSelectorOpen && !inputDisabled && (
-            <RecordModelSelectorDropdown
-              models={host.recordModels}
-              onClose={() => {
-                setRecordModelSelectorOpen(false);
-                composerRef.current?.focus();
+            {/* The focus of the editor, or of a control of its menus */}
+            <div
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setEditorFocused(false);
+                }
               }}
-              onSelect={(model) => {
-                void selectRecord(model);
-              }}
-              position="above"
-            />
-          )}
+              onFocus={() => setEditorFocused(true)}
+            >
+              <TipTapComposer
+                ariaLabel="Message the DatoCMS agent"
+                autoFocus={false}
+                canMentionAssets={host.canMentionAssets}
+                canMentionFields={host.canMentionFields}
+                canMentionModels={host.canMentionModels}
+                disabled={inputDisabled}
+                dropdownPosition="above"
+                fieldMentionsError={fieldsError ?? null}
+                fieldMentionsLoading={fieldsLoading}
+                maxLength={MAX_CONVERSATION_MESSAGE_CHARACTERS}
+                modelFields={modelFields}
+                onAssetTrigger={() => {
+                  void selectAsset();
+                }}
+                onFieldMentionIntent={() => {
+                  void loadFields();
+                }}
+                onFieldMentionsRetry={() => {
+                  void loadFields(true);
+                }}
+                onRecordTrigger={() => {
+                  if (!inputDisabledRef.current) setRecordPanelOpen(true);
+                }}
+                onSegmentsChange={setSegments}
+                onSubmit={submit}
+                onUserMentionIntent={() => {
+                  void loadUsers();
+                }}
+                onUserMentionsRetry={() => {
+                  void loadUsers(true);
+                }}
+                placeholder={placeholder}
+                projectModels={host.projectModels}
+                projectUsers={projectUsers}
+                userMentionsError={usersError ?? null}
+                userMentionsLoading={usersLoading}
+                ref={composerRef}
+                segments={segments}
+              />
+            </div>
 
-          <ComposerToolbar
-            canMentionAssets={host.canMentionAssets}
-            canMentionFields={host.canMentionFields}
-            canMentionModels={host.canMentionModels}
-            disabled={inputDisabled}
-            isRunning={isRunning}
-            isSendDisabled={!canSubmit}
-            onAssetClick={() => {
-              composerRef.current?.discardPendingMentionCommand();
-              setRecordModelSelectorOpen(false);
-              void selectAsset();
-            }}
-            onFieldClick={() => {
-              setRecordModelSelectorOpen(false);
-              composerRef.current?.triggerMentionType('field');
-            }}
-            onFileClick={() => fileInputRef.current?.click()}
-            onModelClick={() => {
-              setRecordModelSelectorOpen(false);
-              composerRef.current?.triggerMentionType('model');
-            }}
-            onRecordClick={() => {
-              composerRef.current?.discardPendingMentionCommand();
-              setRecordModelSelectorOpen(true);
-            }}
-            onSendClick={submit}
-            onStopClick={onStop}
-            onUserClick={() => {
-              setRecordModelSelectorOpen(false);
-              composerRef.current?.triggerMentionType('user');
-            }}
-          />
-        </div>
+            {recordPanelOpen && !inputDisabled && (
+              <RecordModelPanel
+                models={host.recordModels}
+                onClose={() => {
+                  setRecordPanelOpen(false);
+                  composerRef.current?.focus();
+                }}
+                onLeave={() => setRecordPanelOpen(false)}
+                onSelect={(model) => {
+                  void selectRecord(model);
+                }}
+                position="above"
+              />
+            )}
 
-        <div aria-live="polite" className={styles.messages}>
-          {tooManyMentions && (
-            <p role="alert">
-              Use no more than {MAX_MENTIONS_PER_MESSAGE} references.
-            </p>
-          )}
-          {tooLong && (
-            <p role="alert">
-              This message is too long. Remove some text or references.
-            </p>
-          )}
-          {usersError && <p role="alert">{usersError}</p>}
-          {pickerError && <p role="alert">{pickerError}</p>}
-          {persistenceWarning && <p role="alert">{persistenceWarning}</p>}
-        </div>
+            {/* Send, or Stop while the agent runs: icon buttons, the size
+                of the buttons of the toolbar above. An icon button that
+                must stand out is soft, not primary. */}
+            <div className={styles.actions}>
+              {isRunning ? (
+                <Button
+                  disabled={
+                    onStop ? false : { reason: 'This turn can’t be stopped.' }
+                  }
+                  icon={StopIcon}
+                  iconOnly
+                  label="Stop"
+                  onClick={() => onStop?.()}
+                  size="micro"
+                  tone="soft"
+                />
+              ) : (
+                <Button
+                  disabled={sendDisabled({
+                    inputDisabled,
+                    disabledReason,
+                    empty,
+                    error: fieldError,
+                  })}
+                  icon={SendIcon}
+                  iconOnly
+                  label="Send"
+                  onClick={submit}
+                  size="micro"
+                  tone="soft"
+                />
+              )}
+            </div>
+          </div>
+        </FieldWrapper>
 
-        {isDraggingFiles &&
-          !inputDisabled &&
-          createPortal(
-            <div className={styles.fileDropOverlay} role="status">
-              <span aria-hidden="true" className={styles.fileDropFrame} />
-              <span className={styles.fileDropContent}>
-                <span className={styles.fileDropIcon}>
-                  <FileUploadIcon />
-                </span>
-                <strong>Drop the file here</strong>
-              </span>
-            </div>,
-            document.body,
-          )}
+        {isDraggingFiles && !inputDisabled && (
+          <Portal>
+            <NewZIndex>
+              {(zIndex) => (
+                <div
+                  className={dropTargetClassName({
+                    isOver: true,
+                    ringOnly: true,
+                  })}
+                  style={{ ...DROP_LAYER_STYLE, zIndex }}
+                >
+                  {/* Announced, as the cue of the drop */}
+                  <div className="DropTarget__label" role="status">
+                    <span>Drop files to attach</span>
+                  </div>
+                </div>
+              )}
+            </NewZIndex>
+          </Portal>
+        )}
       </NavigationCallbacksProvider>
     </ProjectDataProvider>
   );
+}
+
+/** Send is off while the composer is off or the message can't go, and says why */
+function sendDisabled({
+  inputDisabled,
+  disabledReason,
+  empty,
+  error,
+}: {
+  inputDisabled: boolean;
+  disabledReason: string | undefined;
+  empty: boolean;
+  error: string | undefined;
+}): boolean | { reason: string } {
+  if (inputDisabled) return disabledReason ? { reason: disabledReason } : true;
+  if (empty) return { reason: 'Type a message first.' };
+  if (error) return { reason: error };
+  return false;
 }

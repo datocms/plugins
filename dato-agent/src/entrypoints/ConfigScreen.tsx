@@ -1,16 +1,19 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  Section,
-  SelectField,
-  SwitchField,
-  TextareaField,
-  TextField,
-} from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper, { useFieldInput } from 'datocms-react-ui/FieldWrapper';
+import type { Message } from 'datocms-react-ui/Message';
+import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput, {
+  closeSelectMenu,
+  SelectMenuAction,
+} from 'datocms-react-ui/SelectInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import TextareaInput from 'datocms-react-ui/TextareaInput';
 import {
   type Dispatch,
   type ReactNode,
@@ -20,6 +23,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { RetryIcon } from '../icons';
 import {
   type AgentConfig,
   type AgentProvider,
@@ -43,7 +47,7 @@ import {
   preferredProviderModel,
   providerModelSupportsFastMode,
 } from '../lib/providerModels';
-import styles from './ConfigScreen.module.css';
+import { TEXTS } from '../texts';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -51,12 +55,19 @@ type Props = {
 
 type ProviderOption = {
   label: string;
+  /** What the provider does for the agent, and what it needs */
+  hint: string;
   value: AgentProvider;
 };
 
 type ReasoningOption = {
+  /** The name of the level, "High" */
   label: string;
+  /** What the level does, "Deeper reasoning" */
+  hint: string;
   value: ReasoningEffort;
+  /** The level that the provider recommends */
+  recommended?: boolean;
 };
 
 type ModelOption = {
@@ -92,9 +103,18 @@ type RoleDiscoveryState = {
 
 const MODEL_DISCOVERY_DELAY_MS = 500;
 
+// The plugin ships no logos of the providers: no option has an icon
 const PROVIDER_OPTIONS: ProviderOption[] = [
-  { label: providerLabel('openai'), value: 'openai' },
-  { label: providerLabel('anthropic'), value: 'anthropic' },
+  {
+    label: providerLabel('openai'),
+    hint: 'Uses OpenAI models. Needs an OpenAI API key.',
+    value: 'openai',
+  },
+  {
+    label: providerLabel('anthropic'),
+    hint: 'Uses Anthropic models. Needs an Anthropic API key.',
+    value: 'anthropic',
+  },
 ];
 
 const PROVIDER_DETAILS: Record<
@@ -121,13 +141,43 @@ const PROVIDER_DETAILS: Record<
 };
 
 const REASONING_OPTIONS: ReasoningOption[] = [
-  { label: 'None — fastest, no reasoning', value: 'none' },
-  { label: 'Low — faster responses', value: 'low' },
-  { label: 'Medium — balanced', value: 'medium' },
-  { label: 'High — deeper reasoning', value: 'high' },
-  { label: 'X-high — intensive reasoning', value: 'xhigh' },
-  { label: 'Max — maximum reasoning', value: 'max' },
+  { label: 'None', hint: 'Fastest, no reasoning', value: 'none' },
+  { label: 'Low', hint: 'Faster responses', value: 'low' },
+  { label: 'Medium', hint: 'Balanced', value: 'medium' },
+  { label: 'High', hint: 'Deeper reasoning', value: 'high' },
+  { label: 'X-high', hint: 'Intensive reasoning', value: 'xhigh' },
+  { label: 'Max', hint: 'Maximum reasoning', value: 'max' },
 ];
+
+/**
+ * The levels of the selected model are radios when there are two to five
+ * of them to compare, and a select when there are more (choice inputs). A
+ * model with a single level is no choice: the field shows it as text.
+ */
+const MAX_REASONING_RADIOS = 5;
+
+const RECOMMENDED_SUFFIX = ' (Recommended)';
+
+/** A level as a radio: its name, and what it does under it */
+function reasoningRadioOption(option: ReasoningOption) {
+  return {
+    value: option.value,
+    label: option.recommended
+      ? `${option.label}${RECOMMENDED_SUFFIX}`
+      : option.label,
+    hint: option.hint,
+  };
+}
+
+/** A level as an option of a select, on one line: "High — deeper reasoning" */
+function reasoningSelectOption(option: ReasoningOption) {
+  const hint = `${option.hint.charAt(0).toLowerCase()}${option.hint.slice(1)}`;
+
+  return {
+    value: option.value,
+    label: `${option.label} — ${hint}${option.recommended ? RECOMMENDED_SUFFIX : ''}`,
+  };
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -352,27 +402,108 @@ function buildRoleSelectionState(
   };
 }
 
-function configIsDirty(
+/**
+ * The groups of the page. Each one is a form with its own Save, which saves
+ * only its own keys: together, they hold every key of the configuration.
+ */
+type SettingsGroup = 'provider' | 'behavior' | 'access';
+
+const SETTINGS_GROUPS: readonly SettingsGroup[] = [
+  'provider',
+  'behavior',
+  'access',
+];
+
+const SETTINGS_GROUP_KEYS: Record<
+  SettingsGroup,
+  readonly (keyof AgentConfig)[]
+> = {
+  provider: [
+    'provider',
+    'openAiApiKey',
+    'model',
+    'reasoningEffort',
+    'openAiFastMode',
+    'anthropicApiKey',
+    'anthropicModel',
+    'anthropicModelMaxOutputTokens',
+    'anthropicReasoningEffort',
+    'anthropicFastMode',
+  ],
+  behavior: ['additionalInstructions'],
+  access: ['readOnly', 'enableRecordSidebar', 'allowedRoleIds'],
+};
+
+function groupFingerprint(config: AgentConfig, group: SettingsGroup): string {
+  return JSON.stringify(SETTINGS_GROUP_KEYS[group].map((key) => config[key]));
+}
+
+function copyConfigValue<Key extends keyof AgentConfig>(
+  target: AgentConfig,
+  source: AgentConfig,
+  key: Key,
+) {
+  target[key] = source[key];
+}
+
+/** The base configuration with the values of one group taken from another */
+function configWithGroupValues(
+  base: AgentConfig,
+  source: AgentConfig,
+  group: SettingsGroup,
+): AgentConfig {
+  const next = { ...base };
+  for (const key of SETTINGS_GROUP_KEYS[group]) {
+    copyConfigValue(next, source, key);
+  }
+  return next;
+}
+
+/**
+ * The parameters saved somewhere else reach each group that has no local
+ * edits; a group with edits keeps them
+ */
+function configWithExternalValues(
+  current: AgentConfig,
+  previousSaved: AgentConfig,
+  incoming: AgentConfig,
+): AgentConfig {
+  let next = current;
+  for (const group of SETTINGS_GROUPS) {
+    if (
+      groupFingerprint(current, group) ===
+      groupFingerprint(previousSaved, group)
+    ) {
+      next = configWithGroupValues(next, incoming, group);
+    }
+  }
+  return configFingerprint(next) === configFingerprint(current)
+    ? current
+    : next;
+}
+
+function groupIsDirty(
   config: AgentConfig,
-  savedFingerprint: string,
+  savedConfig: AgentConfig,
+  group: SettingsGroup,
   hasUnsavedRoleSnapshot: boolean,
 ): boolean {
   return (
-    configFingerprint(config) !== savedFingerprint || hasUnsavedRoleSnapshot
+    groupFingerprint(config, group) !== groupFingerprint(savedConfig, group) ||
+    (group === 'access' && hasUnsavedRoleSnapshot)
   );
 }
 
+/**
+ * The configuration to save with the first-run selection of every role, while
+ * the roles field shows it and nothing is saved for the roles yet
+ */
 function configWithRoleSnapshot(
   config: AgentConfig,
-  canManageUsers: boolean,
-  roleDiscovery: RoleDiscoveryState,
+  hasUnsavedRoleSnapshot: boolean,
   implicitRoleDraftIds: string[],
 ): AgentConfig {
-  if (
-    config.allowedRoleIds !== null ||
-    !canManageUsers ||
-    !roleDiscovery.loaded
-  ) {
+  if (!hasUnsavedRoleSnapshot || config.allowedRoleIds !== null) {
     return config;
   }
 
@@ -429,7 +560,7 @@ function useProviderModels(
           if (!abortController.signal.aborted) {
             setState({
               ...emptyDiscoveryState(request.requestKey),
-              error: `Could not load models: ${errorMessage(error)}`,
+              error: `Couldn’t load models: ${errorMessage(error)}`,
             });
           }
         });
@@ -446,13 +577,13 @@ function useProviderModels(
     : emptyDiscoveryState(request.requestKey);
 }
 
+// The state of the model list, under the model select. A failed load is the
+// error of the field instead.
 function modelDiscoveryHint(
   provider: AgentProvider,
   apiKey: string,
   discovery: ModelDiscoveryState,
-  retry: () => void,
-  refreshDisabled: boolean,
-): ReactNode {
+): Message | undefined {
   const { name } = PROVIDER_DETAILS[provider];
 
   if (!apiKey.trim()) {
@@ -462,34 +593,15 @@ function modelDiscoveryHint(
     return `Loading models from ${name}…`;
   }
   if (discovery.error) {
-    return (
-      <>
-        {discovery.error}{' '}
-        <button className={styles.retryButton} onClick={retry} type="button">
-          Retry
-        </button>
-      </>
-    );
+    return undefined;
   }
   if (!discovery.loaded) {
     return 'Waiting to load models…';
   }
   const count = discovery.models.length;
-  return (
-    <>
-      {count === 0
-        ? 'No compatible agent models are available for this API key.'
-        : `${count} compatible model${count === 1 ? '' : 's'} available.`}{' '}
-      <Button
-        buttonSize="xxs"
-        disabled={refreshDisabled}
-        onClick={retry}
-        type="button"
-      >
-        Refresh models
-      </Button>
-    </>
-  );
+  return count === 0
+    ? 'No compatible models for this API key.'
+    : { id: 'datoAgent.compatibleModels', values: { count } };
 }
 
 function configurationValidationError(
@@ -569,7 +681,7 @@ function reasoningOptions(
       supportedEfforts.includes(option.value),
   ).map((option) =>
     option.value === recommendedEffort
-      ? { ...option, label: `${option.label} (Recommended)` }
+      ? { ...option, recommended: true }
       : option,
   );
 }
@@ -612,6 +724,175 @@ function configWithSelectedModel(
   return fallback ? withActiveReasoningEffort(withModel, fallback) : withModel;
 }
 
+function fastModeHint(provider: AgentProvider, supported: boolean): string {
+  if (supported) {
+    return 'Uses premium processing for every model request, including tool steps, and can significantly increase API costs.';
+  }
+  return provider === 'anthropic'
+    ? 'Not available for this Claude model. Anthropic Fast mode currently requires a supported Opus model and preview access.'
+    : 'Not available for the selected OpenAI model.';
+}
+
+function configWithPickedModel(
+  config: AgentConfig,
+  modelId: string,
+  models: readonly ProviderModel[],
+): AgentConfig {
+  const nextModel = models.find((candidate) => candidate.id === modelId);
+  return nextModel
+    ? configWithSelectedModel(config, nextModel)
+    : withActiveModel(config, modelId);
+}
+
+type ModelFieldProps = {
+  apiKey: string;
+  attemptedSave: boolean;
+  availableModelOptions: ModelOption[];
+  config: AgentConfig;
+  discovery: ModelDiscoveryState;
+  model: string;
+  modelSelectDisabled: boolean;
+  retryModelDiscovery: () => void;
+  setConfig: Dispatch<SetStateAction<AgentConfig>>;
+};
+
+function ModelField({
+  apiKey,
+  attemptedSave,
+  availableModelOptions,
+  config,
+  discovery,
+  model,
+  modelSelectDisabled,
+  retryModelDiscovery,
+  setConfig,
+}: ModelFieldProps) {
+  const shownModel = availableModelOptions.some(
+    (option) => option.value === model,
+  )
+    ? model
+    : null;
+
+  return (
+    <FieldWrapper
+      label={PROVIDER_DETAILS[config.provider].modelLabel}
+      required
+      hint={modelDiscoveryHint(config.provider, apiKey, discovery)}
+      error={
+        discovery.error ?? modelFieldError(attemptedSave, config, discovery)
+      }
+    >
+      <SelectInput
+        value={shownModel}
+        options={availableModelOptions}
+        clearable={false}
+        loading={discovery.loading}
+        disabled={modelSelectDisabled}
+        // Loading the options again is a secondary action of the select: it
+        // is in the footer of its menu, once the list loaded or failed
+        menuFooter={
+          discovery.loaded || discovery.error ? (
+            <SelectMenuAction
+              icon={<RetryIcon />}
+              label={discovery.error ? 'Retry' : 'Refresh models'}
+              onPick={() => {
+                // The options change: the menu closes first
+                closeSelectMenu();
+                retryModelDiscovery();
+              }}
+            />
+          ) : undefined
+        }
+        onChange={(value) => {
+          // After a failed load the only option is the current model: picking
+          // it again changes nothing
+          if (value && value !== model) {
+            setConfig((current) =>
+              configWithPickedModel(current, value, discovery.models),
+            );
+          }
+        }}
+      />
+    </FieldWrapper>
+  );
+}
+
+type ReasoningEffortFieldProps = {
+  availableReasoningOptions: ReasoningOption[];
+  disabled: boolean;
+  provider: AgentProvider;
+  reasoningEffort: ReasoningEffort;
+  setConfig: Dispatch<SetStateAction<AgentConfig>>;
+};
+
+function ReasoningEffortField({
+  availableReasoningOptions,
+  disabled,
+  provider,
+  reasoningEffort,
+  setConfig,
+}: ReasoningEffortFieldProps) {
+  const selectedOption =
+    availableReasoningOptions.find(
+      (option) => option.value === reasoningEffort,
+    ) ?? availableReasoningOptions[0];
+  const pick = (value: string | null) => {
+    const effort = availableReasoningOptions.find(
+      (option) => option.value === value,
+    )?.value;
+    if (effort) {
+      setConfig((current) => withActiveReasoningEffort(current, effort));
+    }
+  };
+  const count = availableReasoningOptions.length;
+  const hint =
+    count === 1
+      ? 'The selected model supports only this level.'
+      : provider === 'anthropic'
+        ? 'Options supported by the selected Claude model.'
+        : 'Availability depends on the selected model.';
+
+  return (
+    <FieldWrapper label="Reasoning effort" hint={hint}>
+      {count <= 1 ? (
+        <FixedReasoningEffort option={selectedOption} />
+      ) : count <= MAX_REASONING_RADIOS ? (
+        <RadioGroupInput
+          value={selectedOption?.value ?? null}
+          options={availableReasoningOptions.map(reasoningRadioOption)}
+          disabled={disabled}
+          onChange={pick}
+        />
+      ) : (
+        <SelectInput
+          value={selectedOption?.value ?? null}
+          options={availableReasoningOptions.map(reasoningSelectOption)}
+          clearable={false}
+          disabled={disabled}
+          onChange={pick}
+        />
+      )}
+    </FieldWrapper>
+  );
+}
+
+/**
+ * The one level of a model that supports a single level: plain text, named
+ * by the label of the field and described by its hint
+ */
+function FixedReasoningEffort({ option }: { option?: ReasoningOption }) {
+  const fieldProps = useFieldInput({});
+
+  return (
+    <output
+      id={fieldProps.id}
+      aria-describedby={fieldProps['aria-describedby']}
+    >
+      {option ? reasoningSelectOption(option).label : 'Not available'}
+    </output>
+  );
+}
+
 type ProviderConfigurationFieldsProps = {
   apiKey: string;
   attemptedSave: boolean;
@@ -648,152 +929,238 @@ function ProviderConfigurationFields({
   setConfig,
 }: ProviderConfigurationFieldsProps) {
   const details = PROVIDER_DETAILS[config.provider];
-  const fastMode = activeFastMode(config);
   const fastModeSupported = selectedModel
     ? providerModelSupportsFastMode(config.provider, selectedModel.id)
     : false;
+  const fieldsDisabled = !canEditSchema || saving;
 
   return (
-    <Section title="AI provider">
-      <FieldGroup>
-        <SelectField<ProviderOption, false, never>
-          id="provider"
-          name="provider"
-          label="Vendor"
-          value={
-            PROVIDER_OPTIONS.find(
-              (option) => option.value === config.provider,
-            ) ?? PROVIDER_OPTIONS[0]
-          }
-          onChange={(option) => {
-            if (option) {
+    <>
+      <FieldWrapper label="Provider">
+        <RadioGroupInput
+          value={config.provider}
+          options={PROVIDER_OPTIONS}
+          disabled={fieldsDisabled}
+          onChange={(provider) => {
+            if (provider) {
               setAttemptedSave(false);
-              setConfig((current) => ({
-                ...current,
-                provider: option.value,
-              }));
+              setConfig((current) => ({ ...current, provider }));
             }
           }}
-          selectInputProps={{
-            options: PROVIDER_OPTIONS,
-            isDisabled: !canEditSchema || saving,
-          }}
         />
-        <TextField
-          id="provider-api-key"
-          name="provider-api-key"
-          label={details.apiKeyLabel}
-          required
+      </FieldWrapper>
+      <FieldWrapper
+        label={details.apiKeyLabel}
+        required
+        hint="Shared by this project. Each editor connects DatoCMS separately in the agent."
+        error={
+          attemptedSave && !apiKey.trim()
+            ? `${details.apiKeyLabel} is required.`
+            : undefined
+        }
+      >
+        <PasswordInput
           value={apiKey}
           placeholder={details.apiKeyPlaceholder}
-          error={
-            attemptedSave && !apiKey.trim()
-              ? `${details.apiKeyLabel} is required.`
-              : undefined
-          }
-          hint="Shared across this project. Each editor connects DatoCMS separately in the agent."
+          autoComplete="off"
+          spellCheck={false}
+          disabled={fieldsDisabled}
           onChange={(value) =>
-            setConfig((current) => withActiveApiKey(current, value))
+            setConfig((current) => withActiveApiKey(current, value ?? ''))
           }
-          textInputProps={{
-            'aria-required': true,
-            autoComplete: 'off',
-            disabled: !canEditSchema || saving,
-            monospaced: true,
-            spellCheck: false,
-            type: 'password',
-          }}
         />
-        <SelectField<ModelOption, false, never>
-          id="model"
-          name="model"
-          label={details.modelLabel}
-          required
-          value={
-            availableModelOptions.find((option) => option.value === model) ??
-            null
-          }
-          error={modelFieldError(attemptedSave, config, discovery)}
-          hint={modelDiscoveryHint(
-            config.provider,
-            apiKey,
-            discovery,
-            retryModelDiscovery,
-            saving,
-          )}
-          onChange={(option) => {
-            if (option) {
-              const nextModel = discovery.models.find(
-                (candidate) => candidate.id === option.value,
-              );
-              setConfig((current) =>
-                nextModel
-                  ? configWithSelectedModel(current, nextModel)
-                  : withActiveModel(current, option.value),
-              );
-            }
-          }}
-          selectInputProps={{
-            options: availableModelOptions,
-            isDisabled: modelSelectDisabled,
-            isLoading: discovery.loading,
-            required: true,
-          }}
-        />
-        <SelectField<ReasoningOption, false, never>
-          id="reasoning-effort"
-          name="reasoning-effort"
-          label="Reasoning effort"
-          value={
-            availableReasoningOptions.find(
-              (option) => option.value === reasoningEffort,
-            ) ??
-            availableReasoningOptions[0] ??
-            null
-          }
-          onChange={(option) => {
-            if (option) {
-              setConfig((current) =>
-                withActiveReasoningEffort(current, option.value),
-              );
-            }
-          }}
-          hint={
-            config.provider === 'anthropic'
-              ? 'Options supported by the selected Claude model.'
-              : 'Availability depends on the selected model.'
-          }
-          selectInputProps={{
-            options: availableReasoningOptions,
-            isDisabled:
-              !canEditSchema ||
-              saving ||
-              (config.provider === 'anthropic' && !selectedModel),
-          }}
-        />
-        <SwitchField
-          id="fast-mode"
-          name="fast-mode"
+      </FieldWrapper>
+      <ModelField
+        apiKey={apiKey}
+        attemptedSave={attemptedSave}
+        availableModelOptions={availableModelOptions}
+        config={config}
+        discovery={discovery}
+        model={model}
+        modelSelectDisabled={modelSelectDisabled}
+        retryModelDiscovery={retryModelDiscovery}
+        setConfig={setConfig}
+      />
+      <ReasoningEffortField
+        availableReasoningOptions={availableReasoningOptions}
+        disabled={
+          fieldsDisabled || (config.provider === 'anthropic' && !selectedModel)
+        }
+        provider={config.provider}
+        reasoningEffort={reasoningEffort}
+        setConfig={setConfig}
+      />
+      <FieldWrapper hint={fastModeHint(config.provider, fastModeSupported)}>
+        <SwitchInput
           label="Fast mode"
-          hint={
-            fastModeSupported
-              ? 'Uses premium processing for every model request, including tool steps, and can significantly increase API costs.'
-              : config.provider === 'anthropic'
-                ? 'Not available for this Claude model. Anthropic Fast mode currently requires a supported Opus model and preview access.'
-                : 'Not available for the selected OpenAI model.'
-          }
-          value={fastMode}
+          value={activeFastMode(config)}
+          disabled={fieldsDisabled || !fastModeSupported}
           onChange={(value) =>
-            setConfig((current) => withActiveFastMode(current, value))
+            setConfig((current) => withActiveFastMode(current, value ?? false))
           }
-          switchInputProps={{
-            name: 'fast-mode',
-            value: fastMode,
-            disabled: !canEditSchema || saving || !fastModeSupported,
-          }}
         />
-      </FieldGroup>
-    </Section>
+      </FieldWrapper>
+    </>
+  );
+}
+
+function saveDisabledReason(
+  isDirty: boolean,
+  waitingForModelDiscovery: boolean,
+  discovery: ModelDiscoveryState,
+): string | undefined {
+  if (!isDirty) {
+    return 'There are no changes to save.';
+  }
+  if (!waitingForModelDiscovery) {
+    return undefined;
+  }
+  return discovery.error
+    ? 'The model list didn’t load. Retry it first.'
+    : 'Wait for the model list to load.';
+}
+
+type SettingsFormProps = {
+  title: string;
+  /** Without the right to edit the schema, the group has no Save */
+  canSave: boolean;
+  /** This group saves now */
+  busy: boolean;
+  /** Why Save can't run now, or undefined when it can */
+  blockedReason?: string;
+  onSave: () => void;
+  children: ReactNode;
+};
+
+/**
+ * A topic of the settings: a form in a group, with the Save of its own
+ * values in the footer of the group
+ */
+function SettingsForm({
+  title,
+  canSave,
+  busy,
+  blockedReason,
+  onSave,
+  children,
+}: SettingsFormProps) {
+  return (
+    <form
+      aria-label={title}
+      onSubmit={(event) => {
+        event.preventDefault();
+        // Enter in a field submits the form too: save only when the Save
+        // button would
+        if (canSave && !busy && !blockedReason) {
+          onSave();
+        }
+      }}
+    >
+      <Page.Group
+        title={title}
+        footer={
+          canSave ? (
+            <Button
+              submit
+              tone="primary"
+              expand={false}
+              label="Save"
+              busy={busy}
+              disabled={
+                !busy && blockedReason ? { reason: blockedReason } : false
+              }
+            />
+          ) : undefined
+        }
+      >
+        {children}
+      </Page.Group>
+    </form>
+  );
+}
+
+type UpdateConfig = <Key extends keyof AgentConfig>(
+  key: Key,
+  value: AgentConfig[Key],
+) => void;
+
+type AccessFieldsProps = {
+  allowedRoleOptions: RoleOption[];
+  canManageUsers: boolean;
+  config: AgentConfig;
+  fieldsDisabled: boolean;
+  retryRoleDiscovery: () => void;
+  roleDiscovery: RoleDiscoveryState;
+  roleOptions: RoleOption[];
+  update: UpdateConfig;
+};
+
+function AccessFields({
+  allowedRoleOptions,
+  canManageUsers,
+  config,
+  fieldsDisabled,
+  retryRoleDiscovery,
+  roleDiscovery,
+  roleOptions,
+  update,
+}: AccessFieldsProps) {
+  const roleError =
+    canManageUsers && roleDiscovery.error
+      ? `Couldn’t load project roles: ${roleDiscovery.error}`
+      : undefined;
+
+  return (
+    <>
+      <FieldWrapper hint="The agent can inspect and plan, but can’t change project content or create assets.">
+        <SwitchInput
+          label="Read-only mode"
+          value={config.readOnly}
+          disabled={fieldsDisabled}
+          onChange={(value) => update('readOnly', value ?? false)}
+        />
+      </FieldWrapper>
+      <FieldWrapper hint="Adds the agent next to each record.">
+        <SwitchInput
+          label="Show in record sidebars"
+          value={config.enableRecordSidebar}
+          disabled={fieldsDisabled}
+          onChange={(value) => update('enableRecordSidebar', value ?? false)}
+        />
+      </FieldWrapper>
+      <FieldWrapper
+        label="Roles that can use Dato Agent"
+        hint={
+          canManageUsers
+            ? 'Project owners always have access. New roles must be added here.'
+            : 'Project owners always have access. New roles must be added here. Only users who can manage collaborators can change this list.'
+        }
+        error={roleError}
+        container={{
+          trailing: roleError && (
+            <Button tone="ghost" label="Retry" onClick={retryRoleDiscovery} />
+          ),
+        }}
+      >
+        <SelectInput
+          multiple
+          value={allowedRoleOptions.map((option) => option.value)}
+          options={roleOptions}
+          acceptValueNotIncludedInOptions={(roleId) => ({
+            label: `Unavailable role (${roleId})`,
+            value: roleId,
+          })}
+          placeholder="Pick roles"
+          loading={roleDiscovery.loading}
+          // Without the loaded roles every saved role would show as
+          // unavailable: the select stays locked until they load
+          disabled={fieldsDisabled || !canManageUsers || !roleDiscovery.loaded}
+          onChange={(roleIds) =>
+            update('allowedRoleIds', normalizedRoleIds(roleIds ?? []))
+          }
+        />
+      </FieldWrapper>
+    </>
   );
 }
 
@@ -808,15 +1175,20 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const incomingConfigRef = useRef(incomingConfig);
   incomingConfigRef.current = incomingConfig;
+  // The saved parameters: the state renders the groups with changes, the
+  // ref is the base of the next save
   const savedConfigRef = useRef(incomingConfig);
-  const [config, setConfig] = useState<AgentConfig>(() => incomingConfig);
-  const [savedConfigFingerprint, setSavedConfigFingerprint] = useState(() =>
-    configFingerprint(incomingConfig),
+  const [savedConfig, setSavedConfig] = useState<AgentConfig>(
+    () => incomingConfig,
   );
-  const savedConfigFingerprintRef = useRef(configFingerprint(incomingConfig));
+  const [config, setConfig] = useState<AgentConfig>(() => incomingConfig);
   const [modelRetryAttempt, setModelRetryAttempt] = useState(0);
   const [roleRetryAttempt, setRoleRetryAttempt] = useState(0);
-  const [saving, setSaving] = useState(false);
+  // The group that saves now. One save at a time: each save starts from the
+  // parameters that the one before saved.
+  const [savingGroup, setSavingGroup] = useState<SettingsGroup | null>(null);
+  const saving = savingGroup !== null;
+  // A save of the model provider was attempted: its fields show their errors
   const [attemptedSave, setAttemptedSave] = useState(false);
   const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
   const canManageUsers =
@@ -853,23 +1225,28 @@ export default function ConfigScreen({ ctx }: Props) {
       ),
     [config.allowedRoleIds, canManageUsers, roleDiscovery, roleOptions],
   );
-  const isDirty = configIsDirty(
-    config,
-    savedConfigFingerprint,
-    roleSelection.hasUnsavedRoleSnapshot,
-  );
+  const isDirty = (group: SettingsGroup) =>
+    groupIsDirty(
+      config,
+      savedConfig,
+      group,
+      roleSelection.hasUnsavedRoleSnapshot,
+    );
 
+  // New parameters from the host: after a save of this page (already in
+  // place), or saved somewhere else
   useEffect(() => {
-    const previousSavedFingerprint = savedConfigFingerprintRef.current;
+    const previousSaved = savedConfigRef.current;
+    if (configFingerprint(previousSaved) === incomingConfigFingerprint) {
+      return;
+    }
+    const incoming = incomingConfigRef.current;
 
     setConfig((current) =>
-      configFingerprint(current) === previousSavedFingerprint
-        ? incomingConfigRef.current
-        : current,
+      configWithExternalValues(current, previousSaved, incoming),
     );
-    savedConfigFingerprintRef.current = incomingConfigFingerprint;
-    savedConfigRef.current = incomingConfigRef.current;
-    setSavedConfigFingerprint(incomingConfigFingerprint);
+    savedConfigRef.current = incoming;
+    setSavedConfig(incoming);
   }, [incomingConfigFingerprint]);
 
   useEffect(() => {
@@ -930,15 +1307,28 @@ export default function ConfigScreen({ ctx }: Props) {
     saving ||
     !apiKey.trim() ||
     modelDiscovery.loading ||
-    !modelDiscovery.loaded ||
-    Boolean(modelDiscovery.error);
-  const saveDisabled =
-    saving ||
-    !isDirty ||
-    (providerConfigurationFingerprint(config) !==
-      providerConfigurationFingerprint(savedConfigRef.current) &&
-      (modelDiscovery.loading ||
-        Boolean(apiKey.trim() && !modelDiscovery.loaded)));
+    // A failed load keeps the select open to its Retry
+    (!modelDiscovery.loaded && !modelDiscovery.error);
+  const waitingForModelDiscovery =
+    providerConfigurationFingerprint(config) !==
+      providerConfigurationFingerprint(savedConfig) &&
+    (modelDiscovery.loading ||
+      Boolean(apiKey.trim() && !modelDiscovery.loaded));
+  // Why the Save of a group can't run now: one save runs at a time, and the
+  // model provider waits for the model list before it saves a change of the
+  // provider, the key or the model
+  const saveBlockedReason = (group: SettingsGroup): string | undefined => {
+    if (saving) {
+      return 'Wait for the settings to save.';
+    }
+    return group === 'provider'
+      ? saveDisabledReason(
+          isDirty(group),
+          waitingForModelDiscovery,
+          modelDiscovery,
+        )
+      : saveDisabledReason(isDirty(group), false, modelDiscovery);
+  };
   const retryModelDiscovery = () =>
     setModelRetryAttempt((attempt) => attempt + 1);
   const retryRoleDiscovery = () =>
@@ -949,11 +1339,16 @@ export default function ConfigScreen({ ctx }: Props) {
     value: AgentConfig[Key],
   ) => setConfig((current) => ({ ...current, [key]: value }));
 
-  const save = async () => {
-    if (!canEditSchema) {
-      return;
+  /** The values of a group as they are saved, or undefined when invalid */
+  const groupValuesForSave = (
+    group: SettingsGroup,
+  ): AgentConfig | undefined => {
+    if (group !== 'provider') {
+      return config;
     }
 
+    // The provider settings are checked only when they changed: the key,
+    // the model and the level must be the ones that the provider offers
     setAttemptedSave(true);
     const providerConfigurationChanged =
       providerConfigurationFingerprint(config) !==
@@ -966,191 +1361,133 @@ export default function ConfigScreen({ ctx }: Props) {
     const providerConfigForSave = selectedModelForSave
       ? configWithSelectedModel(config, selectedModelForSave)
       : config;
-    const configForSave = configWithRoleSnapshot(
-      providerConfigForSave,
-      canManageUsers,
-      roleDiscovery,
-      roleSelection.implicitRoleDraftIds,
-    );
     const validationError = providerConfigurationChanged
-      ? configurationValidationError(configForSave, modelDiscovery)
+      ? configurationValidationError(providerConfigForSave, modelDiscovery)
       : undefined;
-    if (validationError) {
+    return validationError ? undefined : providerConfigForSave;
+  };
+
+  const save = async (group: SettingsGroup) => {
+    if (!canEditSchema || saving) {
       return;
     }
 
-    setSaving(true);
+    const groupValues = groupValuesForSave(group);
+    if (!groupValues) {
+      return;
+    }
+    // Only the values of this group change: the other groups keep what is
+    // saved, and their edits stay on the page. The roles show the first-run
+    // selection of every role as allowed: the first save of any group saves
+    // it.
+    const savesRoleSnapshot = roleSelection.hasUnsavedRoleSnapshot;
+    const configForSave = configWithRoleSnapshot(
+      configWithGroupValues(savedConfigRef.current, groupValues, group),
+      savesRoleSnapshot,
+      roleSelection.implicitRoleDraftIds,
+    );
+
+    setSavingGroup(group);
     try {
       const normalizedConfig = normalizeConfig(configForSave);
       await ctx.updatePluginParameters(
         serializeConfig(ctx.plugin.attributes.parameters, normalizedConfig),
       );
-      const nextFingerprint = configFingerprint(normalizedConfig);
-      savedConfigFingerprintRef.current = nextFingerprint;
       savedConfigRef.current = normalizedConfig;
-      setSavedConfigFingerprint(nextFingerprint);
-      setConfig(normalizedConfig);
-      setAttemptedSave(false);
-      void ctx.notice('Dato Agent (Beta) settings saved').catch(() => {
+      setSavedConfig(normalizedConfig);
+      setConfig((current) => {
+        const next = configWithGroupValues(current, normalizedConfig, group);
+        // The saved selection is the one the roles field shows
+        return savesRoleSnapshot && next.allowedRoleIds === null
+          ? { ...next, allowedRoleIds: normalizedConfig.allowedRoleIds }
+          : next;
+      });
+      if (group === 'provider') {
+        setAttemptedSave(false);
+      }
+      void ctx.notice('Settings saved.').catch(() => {
         // The settings are already persisted. A delayed or failed toast must
         // not keep the form in its saving state.
       });
     } catch (error) {
-      await ctx.alert(`Could not save settings: ${errorMessage(error)}`);
+      await ctx.alert(`The settings couldn’t be saved: ${errorMessage(error)}`);
     } finally {
-      setSaving(false);
+      setSavingGroup(null);
     }
   };
 
+  const formProps = (group: SettingsGroup) => ({
+    canSave: canEditSchema,
+    busy: savingGroup === group,
+    blockedReason: saveBlockedReason(group),
+    onSave: () => {
+      void save(group);
+    },
+  });
+
   return (
-    <Canvas ctx={ctx}>
-      <div>
-        {!canEditSchema && (
-          <div className={styles.permissionNotice} role="status">
-            You can view these settings, but only roles allowed to edit the
-            schema can change them.
-          </div>
-        )}
-
-        <Form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <ProviderConfigurationFields
-            apiKey={apiKey}
-            attemptedSave={attemptedSave}
-            availableModelOptions={availableModelOptions}
-            availableReasoningOptions={availableReasoningOptions}
-            canEditSchema={canEditSchema}
-            config={config}
-            discovery={modelDiscovery}
-            model={model}
-            modelSelectDisabled={modelSelectDisabled}
-            reasoningEffort={reasoningEffort}
-            retryModelDiscovery={retryModelDiscovery}
-            saving={saving}
-            selectedModel={selectedModel}
-            setAttemptedSave={setAttemptedSave}
-            setConfig={setConfig}
-          />
-
-          <Section title="Agent behavior">
-            <FieldGroup>
-              <TextareaField
-                id="additional-instructions"
-                name="additional-instructions"
-                label="Additional instructions"
-                value={config.additionalInstructions}
-                placeholder="For example: Always use British English for public copy."
-                hint="Added to the built-in project and safety instructions."
-                onChange={(value) => update('additionalInstructions', value)}
-                textareaInputProps={{
-                  disabled: !canEditSchema || saving,
-                  rows: 5,
-                }}
-              />
-            </FieldGroup>
-          </Section>
-
-          <Section title="Permissions">
-            <FieldGroup>
-              <SwitchField
-                id="read-only"
-                name="read-only"
-                label="Read Only"
-                hint="Allows inspection and planning, but prevents the agent from changing project content or creating assets."
-                value={config.readOnly}
-                onChange={(value) => update('readOnly', value)}
-                switchInputProps={{
-                  name: 'read-only',
-                  value: config.readOnly,
-                  disabled: !canEditSchema || saving,
-                }}
-              />
-              <SwitchField
-                id="enable-record-sidebar"
-                name="enable-record-sidebar"
-                label="Show Dato Agent (Beta) in record sidebars"
-                hint="Adds contextual chat beside individual records."
-                value={config.enableRecordSidebar}
-                onChange={(value) => update('enableRecordSidebar', value)}
-                switchInputProps={{
-                  name: 'enable-record-sidebar',
-                  value: config.enableRecordSidebar,
-                  disabled: !canEditSchema || saving,
-                }}
-              />
-              <SelectField<RoleOption, true, never>
-                id="allowed-role-ids"
-                name="allowed-role-ids"
-                label="All roles that can use DatoAgent"
-                hint={
-                  <>
-                    Project owners always have access. New roles must be added
-                    manually.
-                    {!canManageUsers && (
-                      <>
-                        {' '}
-                        Only users who can manage collaborators can change this
-                        list.
-                      </>
-                    )}
-                  </>
-                }
-                error={
-                  canManageUsers && roleDiscovery.error ? (
-                    <>
-                      Could not load project roles: {roleDiscovery.error}{' '}
-                      <button
-                        className={styles.retryButton}
-                        onClick={retryRoleDiscovery}
-                        type="button"
-                      >
-                        Retry
-                      </button>
-                    </>
-                  ) : undefined
-                }
-                placeholder="No collaborator roles selected"
-                value={roleSelection.selectedRoleOptions}
-                selectInputProps={{
-                  inputId: 'allowed-role-ids-input',
-                  'aria-label': 'All roles that can use DatoAgent',
-                  isMulti: true,
-                  options: roleOptions,
-                  isLoading: roleDiscovery.loading,
-                  isDisabled:
-                    !canEditSchema ||
-                    !canManageUsers ||
-                    saving ||
-                    roleDiscovery.loading ||
-                    !roleDiscovery.loaded ||
-                    Boolean(roleDiscovery.error),
-                }}
-                onChange={(options) =>
-                  update(
-                    'allowedRoleIds',
-                    normalizedRoleIds(options.map((option) => option.value)),
-                  )
-                }
-              />
-            </FieldGroup>
-          </Section>
-
-          {canEditSchema && (
-            <Button
-              type="submit"
-              buttonType="primary"
-              disabled={saveDisabled}
-              fullWidth
-            >
-              {saving ? 'Saving…' : 'Save settings'}
-            </Button>
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <Page>
+        <Page.Content>
+          {!canEditSchema && (
+            <Callout title="You can only view these settings">
+              Only roles that can edit the schema can change them.
+            </Callout>
           )}
-        </Form>
-      </div>
+
+          <SettingsForm title="Model provider" {...formProps('provider')}>
+            <ProviderConfigurationFields
+              apiKey={apiKey}
+              attemptedSave={attemptedSave}
+              availableModelOptions={availableModelOptions}
+              availableReasoningOptions={availableReasoningOptions}
+              canEditSchema={canEditSchema}
+              config={config}
+              discovery={modelDiscovery}
+              model={model}
+              modelSelectDisabled={modelSelectDisabled}
+              reasoningEffort={reasoningEffort}
+              retryModelDiscovery={retryModelDiscovery}
+              saving={saving}
+              selectedModel={selectedModel}
+              setAttemptedSave={setAttemptedSave}
+              setConfig={setConfig}
+            />
+          </SettingsForm>
+
+          <SettingsForm title="Agent behavior" {...formProps('behavior')}>
+            <FieldWrapper
+              label="Additional instructions"
+              hint="Added to the built-in project and safety instructions."
+            >
+              {/* A viewer can still select and copy the instructions */}
+              <TextareaInput
+                value={config.additionalInstructions}
+                placeholder="Always use British English for public copy."
+                rows={5}
+                readOnly={!canEditSchema}
+                disabled={saving}
+                onChange={(value) =>
+                  update('additionalInstructions', value ?? '')
+                }
+              />
+            </FieldWrapper>
+          </SettingsForm>
+
+          <SettingsForm title="Access" {...formProps('access')}>
+            <AccessFields
+              allowedRoleOptions={roleSelection.selectedRoleOptions}
+              canManageUsers={canManageUsers}
+              config={config}
+              fieldsDisabled={!canEditSchema || saving}
+              retryRoleDiscovery={retryRoleDiscovery}
+              roleDiscovery={roleDiscovery}
+              roleOptions={roleOptions}
+              update={update}
+            />
+          </SettingsForm>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

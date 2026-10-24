@@ -1,0 +1,8 @@
+/* The frame is the viewport of the plugin, so a fixed box covers it all. The
+   inline inset of the component keeps the body padding of the host. */
+.root {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: auto;
+}

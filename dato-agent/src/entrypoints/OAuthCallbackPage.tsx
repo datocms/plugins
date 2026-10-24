@@ -1,3 +1,5 @@
+import Heading from 'datocms-react-ui/Heading';
+import Main from 'datocms-react-ui/Main';
 import styles from './OAuthCallbackPage.module.css';
 
 type Props = {
@@ -5,15 +7,20 @@ type Props = {
   message: string;
 };
 
+// The popup that the sign-in returns to. It is not a frame of the plugin, so
+// it has no ctx and no Canvas: it uses only components that need neither.
 export default function OAuthCallbackPage({ error = false, message }: Props) {
   return (
-    <main className={styles.page}>
+    <Main className={styles.page}>
       <div className={styles.content} role={error ? 'alert' : 'status'}>
-        <h1 className={error ? styles.error : undefined}>
+        <Heading
+          level={1}
+          className={error ? `${styles.title} ${styles.error}` : styles.title}
+        >
           {error ? 'Connection could not be completed' : 'DatoCMS connected'}
-        </h1>
-        <p>{message}</p>
+        </Heading>
+        <p className={styles.message}>{message}</p>
       </div>
-    </main>
+    </Main>
   );
 }

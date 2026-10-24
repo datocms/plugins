@@ -5,9 +5,10 @@ import type {
   RenderInspectorCtx,
   RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
-import { type ReactNode, useEffect } from 'react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import { fakeCtx } from '../test/canvas';
 import type { AgentFrameProps, AgentHostContextSnapshot } from './AgentFrame';
 import AgentInspector from './AgentInspector';
 import AgentSidebar from './AgentSidebar';
@@ -16,10 +17,6 @@ const frameMocks = vi.hoisted(() => ({
   latestProps: undefined as unknown,
   mountCount: 0,
   unmountCount: 0,
-}));
-
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('../lib/persistedWidth', () => ({
@@ -166,6 +163,8 @@ function commonContext({
   loadItemTypeFields,
 }: CommonContextInput) {
   return {
+    // The real Canvas wraps the frames: give it what it reads from the host.
+    ...fakeCtx(),
     plugin: {
       id: 'plugin-id',
       attributes: {
@@ -798,7 +797,7 @@ describe('Agent role access', () => {
 
     expect(screen.queryByTestId('agent-frame')).not.toBeInTheDocument();
     expect(
-      screen.getByText('Dato Agent is not available for your role.'),
+      screen.getByText('Dato Agent isn’t available for your role'),
     ).toBeVisible();
     expect(frameMocks.unmountCount).toBe(1);
   });
@@ -830,7 +829,7 @@ describe('Agent role access', () => {
 
     expect(screen.queryByTestId('agent-frame')).not.toBeInTheDocument();
     expect(
-      screen.getByText('Dato Agent is not available for your role.'),
+      screen.getByText('Dato Agent isn’t available for your role'),
     ).toBeVisible();
   });
 });

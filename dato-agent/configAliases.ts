@@ -14,12 +14,6 @@ export const recordCommentsAliases = [
     ),
   },
   {
-    find: '@styles',
-    replacement: fileURLToPath(
-      new URL('./src/recordComments/entrypoints/styles', import.meta.url),
-    ),
-  },
-  {
     find: '@utils',
     replacement: fileURLToPath(
       new URL('./src/recordComments/entrypoints/utils', import.meta.url),

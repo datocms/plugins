@@ -1,16 +1,13 @@
 import type { SlashCommandDefinition } from '@ctypes/slashCommands';
-import styles from '@styles/comment.module.css';
-import { memo, type ReactNode } from 'react';
-import { cn } from '@/utils/cn';
+import { type ComponentType, memo, type SVGProps } from 'react';
 import {
-  AssetMentionIcon,
-  FieldMentionIcon,
-  ModelMentionIcon,
-  RecordMentionIcon,
-  UserMentionIcon,
-} from '../Icons';
+  AssetIcon,
+  FieldIcon,
+  ModelIcon,
+  RecordIcon,
+  UserIcon,
+} from '../../../../icons';
 import { MentionDropdownBase } from '../shared/MentionDropdownBase';
-import { MentionDropdownOptionContent } from '../shared/MentionDropdownOptionContent';
 
 type SlashCommandMenuProps = {
   commands: SlashCommandDefinition[];
@@ -21,12 +18,15 @@ type SlashCommandMenuProps = {
   position?: 'above' | 'below';
 };
 
-const commandIcons: Record<SlashCommandDefinition['name'], ReactNode> = {
-  user: <UserMentionIcon aria-hidden="true" />,
-  field: <FieldMentionIcon aria-hidden="true" />,
-  record: <RecordMentionIcon aria-hidden="true" />,
-  asset: <AssetMentionIcon aria-hidden="true" />,
-  model: <ModelMentionIcon aria-hidden="true" />,
+const commandIcons: Record<
+  SlashCommandDefinition['name'],
+  ComponentType<SVGProps<SVGSVGElement>>
+> = {
+  user: UserIcon,
+  field: FieldIcon,
+  record: RecordIcon,
+  asset: AssetIcon,
+  model: ModelIcon,
 };
 
 export const SlashCommandMenu = memo(function SlashCommandMenu({
@@ -44,28 +44,17 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
       items={commands}
       keyExtractor={(command) => command.name}
       onClose={onClose}
+      onSelect={onSelect}
+      onSelectedIndexChange={onSelectedIndexChange}
       position={position}
-      renderItem={(command, index, isSelected, selectedRef) => (
-        <button
-          className={cn(
-            styles.mentionOption,
-            styles.slashCommandItem,
-            isSelected && styles.mentionOptionSelected,
-          )}
-          onClick={() => onSelect(command)}
-          onMouseDown={(event) => event.preventDefault()}
-          onMouseEnter={() => onSelectedIndexChange?.(index)}
-          ref={isSelected ? selectedRef : null}
-          role="menuitem"
-          type="button"
-        >
-          <MentionDropdownOptionContent
-            description={command.description}
-            leading={commandIcons[command.name]}
-            title={command.label}
-          />
-        </button>
-      )}
+      renderOption={(command) => {
+        const Icon = commandIcons[command.name];
+        return {
+          icon: <Icon />,
+          title: command.label,
+          details: command.description,
+        };
+      }}
       selectedIndex={selectedIndex}
     />
   );

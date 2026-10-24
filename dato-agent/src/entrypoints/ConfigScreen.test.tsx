@@ -7,9 +7,9 @@ import {
   within,
 } from '@testing-library/react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import type { FormEvent, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { listOpenAiProviderModels } from '../lib/providerModels';
+import { fakeCtx } from '../test/canvas';
 import ConfigScreen from './ConfigScreen';
 
 const modelMocks = vi.hoisted(() => ({
@@ -33,231 +33,6 @@ vi.mock('../lib/providerModels', async (importOriginal) => {
     listProviderModels: modelMocks.listProviderModels,
   };
 });
-
-type Option = {
-  label: string;
-  value: string;
-};
-
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
-  FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Form: ({
-    children,
-    onSubmit,
-  }: {
-    children: ReactNode;
-    onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
-  }) => <form onSubmit={onSubmit}>{children}</form>,
-  Section: ({ children, title }: { children: ReactNode; title: ReactNode }) => (
-    <section>
-      <h2>{title}</h2>
-      {children}
-    </section>
-  ),
-  TextField: ({
-    error,
-    hint,
-    id,
-    label,
-    name,
-    onChange,
-    placeholder,
-    required,
-    textInputProps,
-    value,
-  }: {
-    error?: ReactNode;
-    hint?: ReactNode;
-    id: string;
-    label: ReactNode;
-    name: string;
-    onChange: (value: string) => void;
-    placeholder?: string;
-    required?: boolean;
-    textInputProps?: {
-      'aria-required'?: boolean;
-      disabled?: boolean;
-      type?: string;
-    };
-    value: string;
-  }) => (
-    <div>
-      <label htmlFor={id}>{label}</label>
-      <input
-        aria-required={textInputProps?.['aria-required'] || required}
-        disabled={textInputProps?.disabled}
-        id={id}
-        name={name}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={textInputProps?.type}
-        value={value}
-      />
-      {error && <span>{error}</span>}
-      {hint && <div>{hint}</div>}
-    </div>
-  ),
-  SelectField: ({
-    error,
-    hint,
-    id,
-    label,
-    name,
-    onChange,
-    required,
-    selectInputProps,
-    value,
-  }: {
-    error?: ReactNode;
-    hint?: ReactNode;
-    id: string;
-    label: ReactNode;
-    name: string;
-    onChange: (value: Option | readonly Option[] | null) => void;
-    required?: boolean;
-    selectInputProps?: {
-      isDisabled?: boolean;
-      isLoading?: boolean;
-      isMulti?: boolean;
-      options?: Option[];
-      required?: boolean;
-    };
-    value?: Option | readonly Option[] | null;
-  }) => {
-    const selectedOptions = Array.isArray(value) ? value : value ? [value] : [];
-    const availableOptions = selectInputProps?.options ?? [];
-    const renderedOptions = [
-      ...availableOptions,
-      ...selectedOptions.filter(
-        (selected) =>
-          !availableOptions.some((option) => option.value === selected.value),
-      ),
-    ];
-
-    return (
-      <div>
-        <label htmlFor={id}>{label}</label>
-        <select
-          aria-busy={selectInputProps?.isLoading}
-          disabled={selectInputProps?.isDisabled}
-          id={id}
-          multiple={selectInputProps?.isMulti}
-          name={name}
-          onChange={(event) => {
-            if (selectInputProps?.isMulti) {
-              onChange(
-                Array.from(event.currentTarget.selectedOptions).flatMap(
-                  (selected) => {
-                    const option = renderedOptions.find(
-                      (candidate) => candidate.value === selected.value,
-                    );
-                    return option ? [option] : [];
-                  },
-                ),
-              );
-              return;
-            }
-
-            onChange(
-              availableOptions.find(
-                (option) => option.value === event.currentTarget.value,
-              ) ?? null,
-            );
-          }}
-          required={selectInputProps?.required || required}
-          value={
-            selectInputProps?.isMulti
-              ? selectedOptions.map((option) => option.value)
-              : (selectedOptions[0]?.value ?? '')
-          }
-        >
-          {renderedOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {error && <span>{error}</span>}
-        {hint && <div>{hint}</div>}
-      </div>
-    );
-  },
-  SwitchField: ({
-    hint,
-    id,
-    label,
-    onChange,
-    switchInputProps,
-    value,
-  }: {
-    hint?: ReactNode;
-    id: string;
-    label: ReactNode;
-    onChange: (value: boolean) => void;
-    switchInputProps?: { disabled?: boolean };
-    value: boolean;
-  }) => (
-    <div>
-      <label htmlFor={id}>
-        {label}
-        <input
-          checked={value}
-          disabled={switchInputProps?.disabled}
-          id={id}
-          onChange={(event) => onChange(event.target.checked)}
-          type="checkbox"
-        />
-      </label>
-      {hint && <span>{hint}</span>}
-    </div>
-  ),
-  TextareaField: ({
-    id,
-    label,
-    onChange,
-    textareaInputProps,
-    value,
-  }: {
-    id: string;
-    label: ReactNode;
-    onChange: (value: string) => void;
-    textareaInputProps?: { disabled?: boolean };
-    value: string;
-  }) => (
-    <label htmlFor={id}>
-      {label}
-      <textarea
-        disabled={textareaInputProps?.disabled}
-        id={id}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      />
-    </label>
-  ),
-  Button: ({
-    children,
-    disabled,
-    fullWidth,
-    onClick,
-    type = 'button',
-  }: {
-    children: ReactNode;
-    disabled?: boolean;
-    fullWidth?: boolean;
-    onClick?: () => void;
-    type?: 'button' | 'submit';
-  }) => (
-    <button
-      data-full-width={fullWidth ? 'true' : undefined}
-      disabled={disabled}
-      onClick={onClick}
-      type={type}
-    >
-      {children}
-    </button>
-  ),
-}));
 
 const OPENAI_MODEL = {
   id: 'gpt-5.6-terra',
@@ -296,6 +71,8 @@ const PARAMETERS = {
   allowedRoleIds: ['editor-role', 'reviewer-role'],
 };
 
+const ROLES_LABEL = 'Roles that can use Dato Agent';
+
 function createCtx({
   canEditSchema = true,
   canManageUsers = true,
@@ -306,9 +83,8 @@ function createCtx({
   parameters?: Record<string, unknown>;
 } = {}) {
   const updatePluginParameters = vi.fn().mockResolvedValue(undefined);
-  const notice = vi.fn().mockResolvedValue(undefined);
-  const alert = vi.fn().mockResolvedValue(undefined);
-  const ctx = {
+  const ctx = fakeCtx<RenderConfigScreenCtx>({
+    mode: 'renderConfigScreen',
     plugin: { attributes: { parameters } },
     currentRole: {
       id: 'editor-role',
@@ -324,11 +100,14 @@ function createCtx({
     environment: 'primary',
     cmaBaseUrl: 'https://site-api.example.com',
     updatePluginParameters,
-    notice,
-    alert,
-  } as unknown as RenderConfigScreenCtx;
+  });
 
-  return { alert, ctx, notice, updatePluginParameters };
+  return {
+    alert: vi.mocked(ctx.alert),
+    ctx,
+    notice: vi.mocked(ctx.notice),
+    updatePluginParameters,
+  };
 }
 
 async function finishModelDiscovery() {
@@ -341,6 +120,98 @@ async function finishRoleDiscovery() {
   await act(async () => {
     await Promise.resolve();
   });
+}
+
+// The search input of a select. A disabled select hides it from the
+// accessibility tree, thus the query goes through its label.
+function combobox(name: string) {
+  return screen.getByLabelText(name);
+}
+
+type GroupName = 'Model provider' | 'Agent behavior' | 'Access';
+
+/** The form of a group of settings: it is named after the title */
+function settingsForm(group: GroupName) {
+  return screen.getByRole('form', { name: group });
+}
+
+/** Each group saves its own values, with the Save in its footer */
+function saveButton(group: GroupName) {
+  return within(settingsForm(group)).getByRole('button', { name: 'Save' });
+}
+
+async function clickSave(group: GroupName) {
+  fireEvent.click(saveButton(group));
+  await act(async () => {});
+}
+
+// The text that a single select shows for its value: the select draws it
+// next to its search input
+function shownValue(select: HTMLElement) {
+  return select.parentElement?.parentElement?.textContent ?? '';
+}
+
+async function openMenu(select: HTMLElement) {
+  fireEvent.keyDown(select, { key: 'ArrowDown' });
+  await act(async () => {});
+}
+
+async function closeMenu(select: HTMLElement) {
+  fireEvent.keyDown(select, { key: 'Escape' });
+  await act(async () => {});
+}
+
+async function menuOptions(select: HTMLElement) {
+  await openMenu(select);
+  const options = screen
+    .getAllByRole('option')
+    .map((option) => option.textContent);
+  await closeMenu(select);
+  return options;
+}
+
+async function pickOption(select: HTMLElement, name: string) {
+  await openMenu(select);
+  fireEvent.click(screen.getByRole('option', { name }));
+  await act(async () => {});
+}
+
+// "Refresh models" is an action in the footer of the menu of the model
+async function refreshModels(select: HTMLElement) {
+  await openMenu(select);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
+  await act(async () => {});
+}
+
+// Two to five reasoning levels are radios, to compare at a glance: each
+// option shows its name, then what it does. Six levels are a select.
+function effortRadios() {
+  return within(screen.getByRole('radiogroup', { name: 'Reasoning effort' }))
+    .getAllByRole('radio')
+    .map((radio) => radio.closest('label')?.textContent);
+}
+
+function checkedEffort() {
+  return within(
+    screen.getByRole('radiogroup', { name: 'Reasoning effort' }),
+  ).getByRole('radio', { checked: true });
+}
+
+// The chosen roles show as pills, each with its name and a "Remove" button
+function chosenRoles() {
+  return screen
+    .queryAllByRole('button', { name: 'Remove' })
+    .map((button) => button.parentElement?.textContent);
+}
+
+function removeButtonOf(role: string) {
+  const button = screen
+    .getAllByRole('button', { name: 'Remove' })
+    .find((candidate) => candidate.parentElement?.textContent === role);
+  if (!button) {
+    throw new Error(`The role ${role} is not chosen`);
+  }
+  return button;
 }
 
 describe('ConfigScreen', () => {
@@ -364,32 +235,36 @@ describe('ConfigScreen', () => {
     vi.useRealTimers();
   });
 
-  it('uses a native provider form and preserves the OpenAI default', async () => {
+  it('uses kit fields for the provider and keeps the OpenAI default', async () => {
     const { ctx } = createCtx();
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(screen.getByLabelText('Vendor')).toHaveValue('openai');
     expect(
-      within(screen.getByLabelText('Vendor')).getByRole('option', {
-        name: 'OpenAI (ChatGPT)',
-      }),
-    ).toBeVisible();
+      screen.getByRole('radiogroup', { name: 'Provider' }),
+    ).toBeInTheDocument();
     expect(
-      within(screen.getByLabelText('Vendor')).getByRole('option', {
-        name: 'Anthropic (Claude)',
-      }),
-    ).toBeVisible();
-    expect(screen.getByLabelText('OpenAI API key')).toBeRequired();
-    expect(screen.getByLabelText('OpenAI API key')).toBeEnabled();
-    expect(screen.getByLabelText('OpenAI model')).toBeRequired();
-    expect(screen.getByLabelText('Fast mode')).toBeEnabled();
+      screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
+    ).not.toBeChecked();
+    expect(screen.getByLabelText('OpenAI API key*')).toBeRequired();
+    expect(screen.getByLabelText('OpenAI API key*')).toBeEnabled();
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveAttribute(
+      'type',
+      'password',
+    );
+    expect(combobox('OpenAI model*')).toBeRequired();
+    expect(screen.getByText('1 compatible model')).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
     expect(
       screen.getByText(/premium processing.*increase API costs/i),
     ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Save settings' }),
-    ).toHaveAttribute('data-full-width', 'true');
+    expect(saveButton('Model provider')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     expect(modelMocks.listProviderModels).toHaveBeenCalledWith(
       'openai',
       'sk-project',
@@ -397,24 +272,28 @@ describe('ConfigScreen', () => {
     );
   });
 
-  it('switches vendor fields without losing inactive OpenAI values', async () => {
+  it('switches provider fields without losing inactive OpenAI values', async () => {
     const { ctx } = createCtx();
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.change(screen.getByLabelText('Vendor'), {
-      target: { value: 'anthropic' },
-    });
-    expect(screen.getByLabelText('Anthropic API key')).toHaveValue('');
-    expect(screen.getByLabelText('Claude model')).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
+    );
+    expect(screen.getByLabelText('Anthropic API key*')).toHaveValue('');
+    expect(combobox('Claude model*')).toBeDisabled();
 
     modelMocks.listProviderModels.mockResolvedValueOnce([
       CLAUDE_OPUS,
       CLAUDE_SONNET,
     ]);
-    fireEvent.change(screen.getByLabelText('Anthropic API key'), {
+    fireEvent.change(screen.getByLabelText('Anthropic API key*'), {
       target: { value: 'sk-ant-project' },
     });
+    expect(saveButton('Model provider')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     await finishModelDiscovery();
 
     expect(modelMocks.listProviderModels).toHaveBeenLastCalledWith(
@@ -422,15 +301,12 @@ describe('ConfigScreen', () => {
       'sk-ant-project',
       expect.any(AbortSignal),
     );
-    expect(screen.getByLabelText('Claude model')).toHaveValue(
-      'claude-sonnet-5',
-    );
+    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    expect(saveButton('Model provider')).not.toHaveAttribute('aria-disabled');
 
-    fireEvent.change(screen.getByLabelText('Vendor'), {
-      target: { value: 'openai' },
-    });
-    expect(screen.getByLabelText('OpenAI API key')).toHaveValue('sk-project');
-    expect(screen.getByLabelText('OpenAI model')).toHaveValue('gpt-5.6-terra');
+    fireEvent.click(screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }));
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-project');
+    expect(shownValue(combobox('OpenAI model*'))).toBe(OPENAI_MODEL.label);
   });
 
   it('offers only effort levels reported by the selected Claude model', async () => {
@@ -449,21 +325,59 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    const effort = screen.getByLabelText('Reasoning effort');
-    expect(screen.getByLabelText('Claude model')).toHaveValue(
-      'claude-sonnet-5',
-    );
-    expect(effort).toHaveValue('high');
-    expect(
-      within(effort)
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual([
-      'Low — faster responses',
-      'High — deeper reasoning (Recommended)',
-      'Max — maximum reasoning',
+    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    // Three levels: radios, each with what it does under its name
+    expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
+    expect(effortRadios()).toEqual([
+      'LowFaster responses',
+      'High (Recommended)Deeper reasoning',
+      'MaxMaximum reasoning',
     ]);
-    expect(within(effort).queryByRole('option', { name: /None/ })).toBeNull();
+  });
+
+  it('shows a single supported level as text, with nothing to pick', async () => {
+    modelMocks.listProviderModels.mockResolvedValue([
+      { id: 'gpt-5-pro', label: 'gpt-5-pro', reasoningEfforts: ['high'] },
+    ]);
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, model: 'gpt-5-pro' },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    const effort = screen.getByLabelText('Reasoning effort');
+    expect(effort.tagName).toBe('OUTPUT');
+    expect(effort).toHaveTextContent('High — deeper reasoning');
+    expect(effort).toHaveAccessibleDescription(
+      'The selected model supports only this level.',
+    );
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Reasoning effort' }),
+    ).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBe(
+      null,
+    );
+
+    // The model's only level replaces the saved one
+    await clickSave('Model provider');
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-5-pro', reasoningEffort: 'high' }),
+    );
+  });
+
+  it('names each provider option, with what it uses and needs', async () => {
+    const { ctx } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Provider' }))
+        .getAllByRole('radio')
+        .map((radio) => radio.closest('label')?.textContent),
+    ).toEqual([
+      'OpenAI (ChatGPT)Uses OpenAI models. Needs an OpenAI API key.',
+      'Anthropic (Claude)Uses Anthropic models. Needs an Anthropic API key.',
+    ]);
   });
 
   it('marks Medium as the recommended OpenAI balance', async () => {
@@ -471,11 +385,9 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(
-      within(screen.getByLabelText('Reasoning effort')).getByRole('option', {
-        name: 'Medium — balanced (Recommended)',
-      }),
-    ).toBeInTheDocument();
+    expect(await menuOptions(combobox('Reasoning effort'))).toContain(
+      'Medium — balanced (Recommended)',
+    );
   });
 
   it('saves fast mode independently for OpenAI', async () => {
@@ -483,9 +395,8 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.click(screen.getByLabelText('Fast mode'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }));
+    await clickSave('Model provider');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -501,18 +412,36 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.change(screen.getByLabelText('Additional instructions'), {
-      target: { value: 'Use sentence case.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: 'Use sentence case.' } },
+    );
+    await clickSave('Agent behavior');
 
     expect(updatePluginParameters).toHaveBeenCalledOnce();
-    expect(notice).toHaveBeenCalledWith('Dato Agent (Beta) settings saved');
-    expect(
-      screen.getByRole('button', { name: 'Save settings' }),
-    ).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Saving…' })).toBeNull();
+    expect(notice).toHaveBeenCalledWith('Settings saved.');
+    expect(saveButton('Agent behavior')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(saveButton('Agent behavior')).not.toHaveAttribute('aria-busy');
+  });
+
+  it('alerts when the settings cannot be saved', async () => {
+    const { alert, ctx, notice, updatePluginParameters } = createCtx();
+    updatePluginParameters.mockRejectedValueOnce(new Error('Network down'));
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Access');
+
+    expect(alert).toHaveBeenCalledWith(
+      'The settings couldn’t be saved: Network down',
+    );
+    expect(notice).not.toHaveBeenCalled();
+    expect(saveButton('Access')).toBeEnabled();
+    expect(saveButton('Access')).not.toHaveAttribute('aria-disabled');
   });
 
   it('enables Anthropic fast mode only for supported Opus models', async () => {
@@ -531,16 +460,13 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(screen.getByLabelText('Fast mode')).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeDisabled();
     expect(screen.getByText(/requires a supported Opus model/i)).toBeVisible();
 
-    fireEvent.change(screen.getByLabelText('Claude model'), {
-      target: { value: CLAUDE_OPUS.id },
-    });
-    expect(screen.getByLabelText('Fast mode')).toBeEnabled();
-    fireEvent.click(screen.getByLabelText('Fast mode'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    await pickOption(combobox('Claude model*'), CLAUDE_OPUS.label);
+    expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }));
+    await clickSave('Model provider');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -573,20 +499,32 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    const model = screen.getByLabelText('OpenAI model');
-    expect(
-      within(model).getByRole('option', { name: 'gpt-6.1-sol' }),
-    ).toBeVisible();
-    expect(
-      within(model).queryByRole('option', { name: 'gpt-image-2' }),
-    ).toBeNull();
-    fireEvent.change(model, { target: { value: 'gpt-6-astra' } });
-    const effort = screen.getByLabelText('Reasoning effort');
-    expect(within(effort).queryByRole('option', { name: /None/ })).toBeNull();
-    expect(effort).toHaveValue('high');
+    const model = combobox('OpenAI model*');
+    const models = await menuOptions(model);
+    expect(models).toContain('gpt-6.1-sol');
+    expect(models).not.toContain('gpt-image-2');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    // Six levels, with None: a select
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBe(
+      combobox('Reasoning effort'),
+    );
+
+    await pickOption(model, 'gpt-6-astra');
+    // The model has five levels, without None: High takes the place of None.
+    // Five levels to compare are radios.
+    expect(
+      screen.queryByRole('combobox', { name: 'Reasoning effort' }),
+    ).toBeNull();
+    expect(effortRadios()).toEqual([
+      'LowFaster responses',
+      'Medium (Recommended)Balanced',
+      'HighDeeper reasoning',
+      'X-highIntensive reasoning',
+      'MaxMaximum reasoning',
+    ]);
+    expect(checkedEffort()).toHaveAccessibleName(/^High/);
+
+    await clickSave('Model provider');
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'gpt-6-astra',
@@ -605,7 +543,12 @@ describe('ConfigScreen', () => {
       OPENAI_MODEL,
       { ...OPENAI_MODEL, id: 'gpt-6.1-sol', label: 'gpt-6.1-sol' },
     ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
+    // A secondary action of the select: in the footer of its menu, not in
+    // a row of buttons under the field
+    expect(screen.queryByRole('button', { name: 'Refresh models' })).toBeNull();
+    await refreshModels(combobox('OpenAI model*'));
+    expect(screen.getByText('Waiting to load models…')).toBeVisible();
+    expect(combobox('OpenAI model*')).toBeDisabled();
     await finishModelDiscovery();
 
     expect(modelMocks.listProviderModels).toHaveBeenCalledTimes(2);
@@ -614,14 +557,14 @@ describe('ConfigScreen', () => {
       'sk-project',
       expect.any(AbortSignal),
     );
-    const model = screen.getByLabelText('OpenAI model');
-    expect(model).toHaveValue(OPENAI_MODEL.id);
-    expect(
-      within(model).getByRole('option', { name: 'gpt-6.1-sol' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Save settings' }),
-    ).toBeDisabled();
+    const model = combobox('OpenAI model*');
+    expect(shownValue(model)).toBe(OPENAI_MODEL.label);
+    expect(await menuOptions(model)).toContain('gpt-6.1-sol');
+    expect(screen.getByText('2 compatible models')).toBeVisible();
+    expect(saveButton('Model provider')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('lets an empty model list be refreshed when a model becomes available', async () => {
@@ -632,11 +575,13 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(screen.getByText(/No compatible agent models/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
+    expect(
+      screen.getByText('No compatible models for this API key.'),
+    ).toBeVisible();
+    await refreshModels(combobox('OpenAI model*'));
     await finishModelDiscovery();
-    expect(screen.getByLabelText('OpenAI model')).toHaveValue(OPENAI_MODEL.id);
-    expect(screen.getByText('1 compatible model available.')).toBeVisible();
+    expect(shownValue(combobox('OpenAI model*'))).toBe(OPENAI_MODEL.label);
+    expect(screen.getByText('1 compatible model')).toBeVisible();
   });
 
   it('saves the active Anthropic model selected from discovery', async () => {
@@ -655,8 +600,7 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    await clickSave('Model provider');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -690,11 +634,11 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.change(screen.getByLabelText('Claude model'), {
-      target: { value: CLAUDE_SONNET.id },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    await pickOption(combobox('Claude model*'), CLAUDE_SONNET.label);
+    // From five levels to three: still radios
+    expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
+    expect(effortRadios()).toHaveLength(3);
+    await clickSave('Model provider');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -714,13 +658,33 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
 
     await finishModelDiscovery();
-    expect(screen.getByText(/Temporary OpenAI error/)).toBeVisible();
-
+    expect(
+      screen.getByText('Couldn’t load models: Temporary OpenAI error'),
+    ).toBeVisible();
+    expect(combobox('OpenAI model*')).toHaveAttribute('aria-invalid', 'true');
+    // Retry is an action in the footer of the menu, not a button under the
+    // field: the select still opens
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(combobox('OpenAI model*')).toBeEnabled();
+    await openMenu(combobox('OpenAI model*'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     await finishModelDiscovery();
 
     expect(modelMocks.listProviderModels).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('1 compatible model available.')).toBeVisible();
+    expect(modelMocks.listProviderModels).toHaveBeenLastCalledWith(
+      'openai',
+      'sk-project',
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByText('1 compatible model')).toBeVisible();
+    await openMenu(combobox('OpenAI model*'));
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Refresh models' }),
+    ).toBeVisible();
+    await closeMenu(combobox('OpenAI model*'));
   });
 
   it('saves unrelated settings when provider discovery is unavailable', async () => {
@@ -733,12 +697,13 @@ describe('ConfigScreen', () => {
     await finishModelDiscovery();
     expect(screen.getByText(/Temporary OpenAI error/)).toBeVisible();
 
-    fireEvent.change(screen.getByLabelText('Additional instructions'), {
-      target: { value: 'Use the project editorial style.' },
-    });
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: 'Use the project editorial style.' } },
+    );
+    expect(saveButton('Agent behavior')).toBeEnabled();
+    expect(saveButton('Agent behavior')).not.toHaveAttribute('aria-disabled');
+    await clickSave('Agent behavior');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -746,6 +711,24 @@ describe('ConfigScreen', () => {
         model: PARAMETERS.model,
         openAiApiKey: PARAMETERS.openAiApiKey,
       }),
+    );
+  });
+
+  it('saves empty instructions as an empty string', async () => {
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, additionalInstructions: 'Be brief.' },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: '' } },
+    );
+    await clickSave('Agent behavior');
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ additionalInstructions: '' }),
     );
   });
 
@@ -762,9 +745,9 @@ describe('ConfigScreen', () => {
         }
       />,
     );
-    expect(screen.getByLabelText('OpenAI API key')).toHaveValue('sk-external');
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-external');
 
-    fireEvent.change(screen.getByLabelText('OpenAI API key'), {
+    fireEvent.change(screen.getByLabelText('OpenAI API key*'), {
       target: { value: 'sk-local-edit' },
     });
     rerender(
@@ -777,7 +760,7 @@ describe('ConfigScreen', () => {
       />,
     );
 
-    expect(screen.getByLabelText('OpenAI API key')).toHaveValue(
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue(
       'sk-local-edit',
     );
   });
@@ -788,38 +771,63 @@ describe('ConfigScreen', () => {
     });
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.change(screen.getByLabelText('Vendor'), {
-      target: { value: 'anthropic' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(
+      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
+    );
+    fireEvent.click(saveButton('Model provider'));
 
     expect(screen.getByText('Anthropic API key is required.')).toBeVisible();
+    expect(screen.getByLabelText('Anthropic API key*')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.getByText('Claude model is required.')).toBeVisible();
     expect(screen.queryByText('OpenAI API key is required.')).toBeNull();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();
   });
 
-  it('renders native permission fields in the required order', async () => {
+  it('renders the access fields in the required order', async () => {
     const { ctx } = createCtx();
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    const section = screen
-      .getByRole('heading', { name: 'Permissions' })
-      .closest('section');
-    expect(section).not.toBeNull();
-    expect(
-      Array.from(
-        section?.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
-          'input, select',
-        ) ?? [],
-      ).map((control) => control.id),
-    ).toEqual(['read-only', 'enable-record-sidebar', 'allowed-role-ids']);
+    // Each topic is a group: a card with its title
+    const group = screen
+      .getByRole('heading', { name: 'Access' })
+      .closest('.Page__group');
+    expect(group).not.toBeNull();
+    expect(Array.from(group?.querySelectorAll('input') ?? [])).toEqual([
+      screen.getByRole('checkbox', { name: 'Read-only mode' }),
+      screen.getByRole('checkbox', { name: 'Show in record sidebars' }),
+      combobox(ROLES_LABEL),
+    ]);
+    // Each group is a form, with the Save of its own values in its footer
+    expect(document.querySelectorAll('.Page__group')).toHaveLength(3);
+    expect(document.querySelectorAll('.Page__group')[2]).toBe(group);
+    for (const name of [
+      'Model provider',
+      'Agent behavior',
+      'Access',
+    ] as const) {
+      const form = settingsForm(name);
+      expect(form.tagName).toBe('FORM');
+      expect(
+        within(form).getByRole('heading', { level: 2, name }),
+      ).toBeVisible();
+      expect(form.querySelector('.Page__group footer')).toContainElement(
+        saveButton(name),
+      );
+    }
+    expect(settingsForm('Access')).toContainElement(group as HTMLElement);
     expect(
       screen.getByText(
-        'Project owners always have access. New roles must be added manually.',
+        'Project owners always have access. New roles must be added here.',
       ),
     ).toBeVisible();
+    expect(
+      screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent),
+    ).toEqual(['Model provider', 'Agent behavior', 'Access']);
   });
 
   it('shows every current role as an unsaved first-run draft', async () => {
@@ -834,21 +842,16 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    const roles = screen.getByLabelText(
-      'All roles that can use DatoAgent',
-    ) as HTMLSelectElement;
-    expect(
-      Array.from(roles.selectedOptions).map((option) => option.value),
-    ).toEqual(['editor-role', 'reviewer-role']);
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
+    expect(chosenRoles()).toEqual(['Editor', 'Reviewer']);
+    expect(saveButton('Access')).toBeEnabled();
+    expect(saveButton('Access')).not.toHaveAttribute('aria-disabled');
     expect(cmaMocks.buildClient).toHaveBeenCalledWith({
       apiToken: 'current-user-token',
       environment: 'primary',
       baseUrl: 'https://site-api.example.com',
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    await clickSave('Access');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -868,19 +871,33 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    const roles = screen.getByLabelText(
-      'All roles that can use DatoAgent',
-    ) as HTMLSelectElement;
-    expect(
-      Array.from(roles.selectedOptions).map((option) => option.value),
-    ).toEqual(['editor-role']);
+    expect(chosenRoles()).toEqual(['Editor']);
 
-    fireEvent.click(screen.getByLabelText('Read Only'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Access');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
+    );
+  });
+
+  it('adds a role picked from the role list', async () => {
+    cmaMocks.listRoles.mockResolvedValue([
+      { id: 'new-role', name: 'A newly created role' },
+      { id: 'editor-role', name: 'Editor' },
+    ]);
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, allowedRoleIds: ['editor-role'] },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    await pickOption(combobox(ROLES_LABEL), 'A newly created role');
+    expect(chosenRoles()).toEqual(['Editor', 'A newly created role']);
+    await clickSave('Access');
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedRoleIds: ['editor-role', 'new-role'] }),
     );
   });
 
@@ -889,15 +906,18 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    const roles = screen.getByLabelText(
-      'All roles that can use DatoAgent',
-    ) as HTMLSelectElement;
-    for (const option of roles.options) {
-      option.selected = false;
-    }
-    fireEvent.change(roles);
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(removeButtonOf('Editor'));
+    fireEvent.click(removeButtonOf('Reviewer'));
+    expect(chosenRoles()).toEqual([]);
+    // The empty list is a state: only project owners can use the agent, as
+    // the hint says. The placeholder says what to pick.
+    expect(screen.getByText('Pick roles')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Project owners always have access. New roles must be added here.',
+      ),
+    ).toBeVisible();
+    await clickSave('Access');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({ allowedRoleIds: [] }),
@@ -914,15 +934,13 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    expect(
-      screen.getByRole('option', {
-        name: 'Unavailable role (removed-role)',
-      }),
-    ).toHaveProperty('selected', true);
+    expect(chosenRoles()).toEqual([
+      'Editor',
+      'Unavailable role (removed-role)',
+    ]);
 
-    fireEvent.click(screen.getByLabelText('Read Only'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Access');
 
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -930,15 +948,8 @@ describe('ConfigScreen', () => {
       }),
     );
 
-    const roles = screen.getByLabelText(
-      'All roles that can use DatoAgent',
-    ) as HTMLSelectElement;
-    for (const option of roles.options) {
-      option.selected = option.value === 'editor-role';
-    }
-    fireEvent.change(roles);
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(removeButtonOf('Unavailable role (removed-role)'));
+    await clickSave('Access');
 
     expect(updatePluginParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
@@ -953,14 +964,14 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    expect(screen.getByText(/Temporary CMA error/)).toBeVisible();
     expect(
-      screen.getByLabelText('All roles that can use DatoAgent'),
-    ).toBeDisabled();
+      screen.getByText('Couldn’t load project roles: Temporary CMA error'),
+    ).toBeVisible();
+    expect(combobox(ROLES_LABEL)).toHaveAttribute('aria-invalid', 'true');
+    expect(combobox(ROLES_LABEL)).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText('Read Only'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Access');
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
     );
@@ -972,9 +983,9 @@ describe('ConfigScreen', () => {
     await finishRoleDiscovery();
 
     expect(cmaMocks.listRoles).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByLabelText('All roles that can use DatoAgent'),
-    ).toBeEnabled();
+    expect(combobox(ROLES_LABEL)).toBeEnabled();
+    expect(chosenRoles()).toEqual(['Editor']);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('does not request or edit the complete role list without user-management permission', async () => {
@@ -987,31 +998,162 @@ describe('ConfigScreen', () => {
 
     expect(cmaMocks.buildClient).not.toHaveBeenCalled();
     expect(cmaMocks.listRoles).not.toHaveBeenCalled();
-    expect(
-      screen.getByLabelText('All roles that can use DatoAgent'),
-    ).toBeDisabled();
+    expect(combobox(ROLES_LABEL)).toBeDisabled();
     expect(
       screen.getByText(/Only users who can manage collaborators/i),
     ).toBeVisible();
 
-    fireEvent.click(screen.getByLabelText('Read Only'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await act(async () => {});
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Access');
     expect(updatePluginParameters).toHaveBeenCalledWith(
       expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
     );
   });
 
-  it('disables every editable provider field for read-only roles', () => {
+  it('disables every editable field for read-only roles', () => {
     const { ctx } = createCtx({
       canEditSchema: false,
       canManageUsers: false,
     });
     render(<ConfigScreen ctx={ctx} />);
 
-    expect(screen.getByLabelText('Vendor')).toBeDisabled();
-    expect(screen.getByLabelText('OpenAI API key')).toBeDisabled();
-    expect(screen.getByLabelText('Fast mode')).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
+    const notice = screen.getByText('You can only view these settings');
+    expect(notice).toBeVisible();
+    expect(notice.closest('.Callout')).toHaveTextContent(
+      'Only roles that can edit the schema can change them.',
+    );
+    expect(
+      screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
+    ).toBeDisabled();
+    expect(screen.getByLabelText('OpenAI API key*')).toBeDisabled();
+    expect(combobox('OpenAI model*')).toBeDisabled();
+    expect(combobox('Reasoning effort')).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeDisabled();
+    // The instructions stay readable and copyable: read-only, not disabled
+    const instructions = screen.getByRole('textbox', {
+      name: 'Additional instructions',
+    });
+    expect(instructions).toHaveAttribute('readonly');
+    expect(instructions).toBeEnabled();
+    instructions.focus();
+    expect(instructions).toHaveFocus();
+    expect(
+      screen.getByRole('checkbox', { name: 'Read-only mode' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('checkbox', { name: 'Show in record sidebars' }),
+    ).toBeDisabled();
+    expect(combobox(ROLES_LABEL)).toBeDisabled();
+    expect(screen.queryAllByRole('button', { name: 'Save' })).toHaveLength(0);
+  });
+
+  it('saves only the values of its own group, and keeps the edits of the others', async () => {
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: 'Use sentence case.' } },
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    // Each group with changes can save; a group without them says why not
+    expect(saveButton('Agent behavior')).not.toHaveAttribute('aria-disabled');
+    expect(saveButton('Access')).not.toHaveAttribute('aria-disabled');
+    expect(saveButton('Model provider')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+
+    await clickSave('Access');
+
+    expect(updatePluginParameters).toHaveBeenCalledOnce();
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        readOnly: true,
+        additionalInstructions: PARAMETERS.additionalInstructions,
+      }),
+    );
+    // The instructions are still an unsaved edit
+    expect(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+    ).toHaveValue('Use sentence case.');
+    expect(saveButton('Access')).toHaveAttribute('aria-disabled', 'true');
+    expect(saveButton('Agent behavior')).not.toHaveAttribute('aria-disabled');
+
+    // The next save starts from what the first one saved
+    await clickSave('Agent behavior');
+    expect(updatePluginParameters).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        readOnly: true,
+        additionalInstructions: 'Use sentence case.',
+      }),
+    );
+  });
+
+  it('saves the first-run role selection with the first save of any group', async () => {
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, allowedRoleIds: null },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+    await finishRoleDiscovery();
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: 'Be brief.' } },
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    await clickSave('Agent behavior');
+
+    // The roles field shows every role as allowed: the first save keeps it
+    // so, and leaves the other access edits unsaved
+    expect(updatePluginParameters).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        additionalInstructions: 'Be brief.',
+        allowedRoleIds: ['editor-role', 'reviewer-role'],
+        readOnly: PARAMETERS.readOnly,
+      }),
+    );
+    expect(chosenRoles()).toEqual(['Editor', 'Reviewer']);
+    expect(
+      screen.getByRole('checkbox', { name: 'Read-only mode' }),
+    ).toBeChecked();
+    expect(saveButton('Access')).not.toHaveAttribute('aria-disabled');
+
+    // With the read-only edit undone, the access has nothing left to save
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
+    expect(saveButton('Access')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('takes settings saved elsewhere into the groups without local edits', () => {
+    const { ctx } = createCtx();
+    const { rerender } = render(<ConfigScreen ctx={ctx} />);
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+      { target: { value: 'A local edit.' } },
+    );
+    rerender(
+      <ConfigScreen
+        ctx={
+          createCtx({
+            parameters: {
+              ...PARAMETERS,
+              openAiApiKey: 'sk-external',
+              additionalInstructions: 'An external edit.',
+            },
+          }).ctx
+        }
+      />,
+    );
+
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-external');
+    expect(
+      screen.getByRole('textbox', { name: 'Additional instructions' }),
+    ).toHaveValue('A local edit.');
   });
 });

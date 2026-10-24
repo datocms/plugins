@@ -1,6 +1,9 @@
 import type { RenderInspectorPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import styles from './InspectorEmptyPanel.module.css';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
+import FullFrame from '../components/FullFrame';
+import { RecordIcon } from '../icons';
+import { TEXTS } from '../texts';
 
 type Props = {
   ctx: RenderInspectorPanelCtx;
@@ -8,10 +11,14 @@ type Props = {
 
 export default function InspectorEmptyPanel({ ctx }: Props) {
   return (
-    <Canvas ctx={ctx} noAutoResizer>
-      <div className={styles.empty}>
-        <p>Records will open here</p>
-      </div>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
+      <FullFrame>
+        <BlankSlate
+          icon={<RecordIcon />}
+          placement="area"
+          title="No record open"
+        />
+      </FullFrame>
     </Canvas>
   );
 }

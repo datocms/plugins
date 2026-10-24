@@ -2,27 +2,18 @@ import type { MentionType } from '@ctypes/mentions';
 import type { ReactNodeViewProps } from '@tiptap/react';
 import { NodeViewWrapper } from '@tiptap/react';
 import { attrsToMention } from '@utils/attrsToMention';
+import Button from 'datocms-react-ui/Button';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
-import { cn } from '@/utils/cn';
-import { CloseIcon } from '../Icons';
+import { CloseIcon } from '../../../../icons';
 import { MentionChip } from '../MentionChip';
+import styles from '../shared/MentionDisplay.module.css';
 import { useMentionClick } from './MentionClickContext';
-import styles from './TipTapComposer.module.css';
 
 type MentionNodeViewProps = ReactNodeViewProps;
 
-function InvalidMentionFallback() {
-  return (
-    <span
-      style={{
-        color: 'var(--color--ink-subtle)',
-        fontStyle: 'italic',
-        fontSize: 'inherit',
-      }}
-    >
-      [invalid mention]
-    </span>
-  );
+function stopEditorEvent(event: React.MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function createMentionNodeView(
@@ -34,23 +25,17 @@ function createMentionNodeView(
     editor,
     node,
   }: MentionNodeViewProps) {
-    const { onMentionClick } = useMentionClick();
+    const { onMentionClick, editable = editor.isEditable } = useMentionClick();
     const { currentRecordId, projectUsers } = useProjectDataContext();
     const mention = attrsToMention(
       mentionType,
       node.attrs as Record<string, unknown>,
     );
-    const isLocalFile = mention?.type === 'file';
-    const hasImagePreview =
-      isLocalFile && mention.mimeType.startsWith('image/');
 
     return (
       <NodeViewWrapper
         as="span"
-        className={cn(
-          isLocalFile && styles.fileMentionNode,
-          hasImagePreview && styles.fileMentionNodePreview,
-        )}
+        className={styles.node}
         contentEditable={false}
       >
         {mention ? (
@@ -62,25 +47,24 @@ function createMentionNodeView(
             {...(needsProjectUsers && { projectUsers })}
           />
         ) : (
-          <InvalidMentionFallback />
+          <span className={styles.invalid}>[invalid mention]</span>
         )}
-        {isLocalFile && (
-          <button
-            aria-label={`Remove ${mention.filename}`}
-            className={styles.fileMentionRemove}
+        {mention?.type === 'file' && editable && (
+          // The cross clears the file from the draft, only while the editor
+          // can change it. Mouse down must not move the caret or the
+          // selection of the editor.
+          <Button
+            icon={CloseIcon}
+            iconOnly
+            label={`Remove ${mention.filename}`}
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              stopEditorEvent(event);
               if (editor.isEditable) deleteNode();
             }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            type="button"
-          >
-            <CloseIcon />
-          </button>
+            onMouseDown={stopEditorEvent}
+            size="micro"
+            tone="ghost"
+          />
         )}
       </NodeViewWrapper>
     );

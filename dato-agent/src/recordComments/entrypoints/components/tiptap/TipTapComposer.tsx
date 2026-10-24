@@ -39,6 +39,7 @@ import {
   tipTapDocToFullSegments,
 } from '@utils/tipTapSerializer';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { useFieldInput } from 'datocms-react-ui/FieldWrapper';
 import {
   forwardRef,
   useCallback,
@@ -49,7 +50,6 @@ import {
   useState,
 } from 'react';
 import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
-import { cn } from '@/utils/cn';
 import FieldMentionDropdown from '../FieldMentionDropdown';
 import ModelMentionDropdown from '../ModelMentionDropdown';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
@@ -152,6 +152,17 @@ export const TipTapComposer = forwardRef<
     ref,
   ) => {
     const nav = useNavigationContext();
+    // In a FieldWrapper, the editor is the input of the field: the field's
+    // error and hint describe it, and its error marks it invalid. Its name
+    // stays `ariaLabel`, so the label of the field is not applied.
+    const fieldInput = useFieldInput({});
+    const fieldAttributes: Record<string, string> = {
+      ...(fieldInput.id ? { id: fieldInput.id } : {}),
+      ...(fieldInput['aria-describedby']
+        ? { 'aria-describedby': fieldInput['aria-describedby'] }
+        : {}),
+      ...(fieldInput['aria-invalid'] ? { 'aria-invalid': 'true' } : {}),
+    };
 
     // Slash command state
     const [activeSlashCommand, setActiveSlashCommand] =
@@ -369,8 +380,8 @@ export const TipTapComposer = forwardRef<
     );
 
     const mentionClickContextValue = useMemo(
-      () => ({ onMentionClick: handleMentionClick }),
-      [handleMentionClick],
+      () => ({ onMentionClick: handleMentionClick, editable: !disabled }),
+      [disabled, handleMentionClick],
     );
 
     // Handle command selection in the slash command menu
@@ -978,6 +989,7 @@ export const TipTapComposer = forwardRef<
       autofocus: autoFocus ? 'end' : false,
       editorProps: {
         attributes: {
+          ...fieldAttributes,
           'aria-label': ariaLabel,
           'aria-disabled': String(disabled),
           ...(maxLength ? { maxlength: String(maxLength) } : {}),
@@ -1387,11 +1399,15 @@ export const TipTapComposer = forwardRef<
       segmentsRef.current = segments;
     }, [editor, segments]);
 
-    const editorClassName = cn(styles.editor, large && styles.editorLarge);
+    const editorClassName = large
+      ? `${styles.editor} ${styles.editorLarge}`
+      : styles.editor;
 
+    // The menus are placed against the nearest positioned parent (the box
+    // of the composer), above or below it, as wide as it.
     return (
       <MentionClickContext.Provider value={mentionClickContextValue}>
-        <div style={{ position: 'relative' }}>
+        <div>
           <div className={editorClassName}>
             <EditorContent editor={editor} />
           </div>

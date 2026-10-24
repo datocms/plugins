@@ -1,10 +1,17 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import styles from './FileDetailsModal.module.css';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import InfoList from 'datocms-react-ui/InfoList';
+import SmartDate from 'datocms-react-ui/SmartDate';
+import type { CSSProperties } from 'react';
+import { TEXTS } from '../texts';
 
 type Props = {
   ctx: RenderModalCtx;
 };
+
+// A filename or a type with no spaces breaks anywhere, so it stays in its row
+const BREAK_ANYWHERE: CSSProperties = { overflowWrap: 'anywhere' };
 
 function stringParameter(value: unknown, fallback: string): string {
   return typeof value === 'string' && value ? value : fallback;
@@ -29,10 +36,10 @@ function formatFileSize(size: number | undefined): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-function formatLastModified(timestamp: number | undefined): string {
-  if (timestamp === undefined || timestamp === 0) return 'Unknown';
+function lastModifiedDate(timestamp: number | undefined): Date | undefined {
+  if (timestamp === undefined || timestamp === 0) return undefined;
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 export default function FileDetailsModal({ ctx }: Props) {
@@ -42,40 +49,34 @@ export default function FileDetailsModal({ ctx }: Props) {
     'application/octet-stream',
   );
   const size = nonNegativeNumberParameter(ctx.parameters.size);
-  const lastModified = nonNegativeNumberParameter(ctx.parameters.lastModified);
+  const lastModified = lastModifiedDate(
+    nonNegativeNumberParameter(ctx.parameters.lastModified),
+  );
   const bytesAvailable = ctx.parameters.bytesAvailable === true;
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={styles.root}>
-        <section className={styles.status} aria-label="File status">
-          <strong>This file is not yet a DatoCMS asset.</strong>
-          <p>
-            {bytesAvailable
-              ? 'File bytes are available only for this browser session.'
-              : 'The file bytes are no longer available; only its metadata remains.'}
-          </p>
-        </section>
-
-        <dl className={styles.metadata}>
-          <div>
-            <dt>Filename</dt>
-            <dd>{filename}</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>{mimeType}</dd>
-          </div>
-          <div>
-            <dt>Size</dt>
-            <dd>{formatFileSize(size)}</dd>
-          </div>
-          <div>
-            <dt>Last modified</dt>
-            <dd>{formatLastModified(lastModified)}</dd>
-          </div>
-        </dl>
-      </div>
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <Callout title="Not a DatoCMS asset yet" tone="warning">
+        {bytesAvailable
+          ? 'Its content is available only in this browser session.'
+          : 'Its content is no longer available. Only its details remain.'}
+      </Callout>
+      <InfoList>
+        <InfoList.Row title="Filename">
+          <span style={BREAK_ANYWHERE}>{filename}</span>
+        </InfoList.Row>
+        <InfoList.Row title="Type">
+          <span style={BREAK_ANYWHERE}>{mimeType}</span>
+        </InfoList.Row>
+        <InfoList.Row title="Size">{formatFileSize(size)}</InfoList.Row>
+        <InfoList.Row title="Last modified">
+          {lastModified ? (
+            <SmartDate show="dateTime" value={lastModified} />
+          ) : (
+            'Unknown'
+          )}
+        </InfoList.Row>
+      </InfoList>
     </Canvas>
   );
 }

@@ -1,5 +1,13 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import { DisclosureChevron } from 'datocms-react-ui/Chevron';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
+import Heading from 'datocms-react-ui/Heading';
+import InfoList from 'datocms-react-ui/InfoList';
+import RawButton from 'datocms-react-ui/RawButton';
 import {
   Highlight,
   type RenderProps as PrismRenderProps,
@@ -11,12 +19,14 @@ import type {
   UnsafeApprovalOutcomeViewModel,
   UnsafeApprovalScript,
 } from '../components/AgentSurface';
+import { RetryIcon, WarningIcon } from '../icons';
 import type { ApprovalDetailsDecision } from '../lib/approvalDetailsModal';
 import {
   generateChangeSummary,
   MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS,
 } from '../lib/changeSummary';
 import { normalizeConfig } from '../lib/config';
+import { TEXTS } from '../texts';
 import styles from './ApprovalDetailsModal.module.css';
 
 type Props = {
@@ -28,6 +38,8 @@ type SummaryState =
   | { status: 'success'; value: string }
   | { status: 'failed' }
   | { status: 'source_too_large' };
+
+const DECISION_PENDING_REASON = 'Wait for the decision to save.';
 
 function isApprovalDetail(value: unknown): value is UnsafeApprovalDetail {
   return (
@@ -123,6 +135,59 @@ function PlainCodeLines({ source }: { source: string }) {
   );
 }
 
+// The Prism theme gives only the colors of the tokens: the snippet draws the
+// surface and the ink of the plain text, in light and dark.
+function HighlightedCode({
+  colorScheme,
+  source,
+}: {
+  colorScheme: 'light' | 'dark';
+  source: string;
+}) {
+  return (
+    <Highlight
+      code={source}
+      language="typescript"
+      theme={colorScheme === 'dark' ? themes.palenight : themes.github}
+    >
+      {({ tokens, getLineProps, getTokenProps }) => (
+        <pre className={styles.code} data-highlighted="true">
+          <code data-language="typescript">
+            {sourceLines(source).map((sourceLine) => {
+              const highlightedLine = tokens[sourceLine.lineNumber - 1];
+              const preservesSource =
+                highlightedLine?.map((token) => token.content).join('') ===
+                sourceLine.content;
+              const lineClassName = preservesSource
+                ? getLineProps({ line: highlightedLine }).className
+                : '';
+              return (
+                <span
+                  className={`${styles.codeLine} ${lineClassName}`}
+                  data-line-number={sourceLine.lineNumber}
+                  key={sourceLine.key}
+                >
+                  <span className={styles.codeLineContent}>
+                    {preservesSource ? (
+                      <HighlightedTokens
+                        getTokenProps={getTokenProps}
+                        tokens={highlightedLine}
+                      />
+                    ) : (
+                      sourceLine.content
+                    )}
+                  </span>
+                  {sourceLine.hasFollowingLine ? '\n' : null}
+                </span>
+              );
+            })}
+          </code>
+        </pre>
+      )}
+    </Highlight>
+  );
+}
+
 function TypeScriptCode({
   colorScheme,
   source,
@@ -130,177 +195,228 @@ function TypeScriptCode({
   colorScheme: 'light' | 'dark';
   source: string;
 }) {
-  const headingId = useId();
   const highlighted = source.length <= MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS;
 
   return (
-    <section className={styles.codeSection}>
-      <h2 id={headingId}>Generated TypeScript</h2>
-      {highlighted ? (
-        <Highlight
-          code={source}
-          language="typescript"
-          theme={colorScheme === 'dark' ? themes.palenight : themes.github}
-        >
-          {({ tokens, getLineProps, getTokenProps, style }) => (
-            <pre
-              aria-labelledby={headingId}
-              className={styles.codeBlock}
-              data-highlighted="true"
-              style={{ color: style.color }}
-            >
-              <code data-language="typescript">
-                {sourceLines(source).map((sourceLine) => {
-                  const highlightedLine = tokens[sourceLine.lineNumber - 1];
-                  const preservesSource =
-                    highlightedLine?.map((token) => token.content).join('') ===
-                    sourceLine.content;
-                  const lineProps = preservesSource
-                    ? getLineProps({ line: highlightedLine })
-                    : { className: '' };
-                  return (
-                    <span
-                      {...lineProps}
-                      className={`${styles.codeLine} ${lineProps.className}`}
-                      data-line-number={sourceLine.lineNumber}
-                      key={sourceLine.key}
-                    >
-                      <span className={styles.codeLineContent}>
-                        {preservesSource ? (
-                          <HighlightedTokens
-                            getTokenProps={getTokenProps}
-                            tokens={highlightedLine}
-                          />
-                        ) : (
-                          sourceLine.content
-                        )}
-                      </span>
-                      {sourceLine.hasFollowingLine ? '\n' : null}
-                    </span>
-                  );
-                })}
-              </code>
-            </pre>
-          )}
-        </Highlight>
-      ) : (
-        <pre
-          aria-labelledby={headingId}
-          className={styles.codeBlock}
-          data-highlighted="false"
-        >
-          <code data-language="typescript">
-            <PlainCodeLines source={source} />
-          </code>
-        </pre>
-      )}
-    </section>
+    <div className={styles.block}>
+      <Heading className={styles.title} level={2}>
+        TypeScript
+      </Heading>
+      <CodeSnippet
+        ariaLabel="Generated TypeScript"
+        code={source}
+        maxHeight={360}
+      >
+        {highlighted ? (
+          <HighlightedCode colorScheme={colorScheme} source={source} />
+        ) : (
+          <pre className={styles.code} data-highlighted="false">
+            <code data-language="typescript">
+              <PlainCodeLines source={source} />
+            </code>
+          </pre>
+        )}
+      </CodeSnippet>
+    </div>
   );
 }
 
-function Summary({
-  canDecide,
-  disabled,
-  onRetry,
-  state,
-}: {
+type SummaryProps = {
   canDecide: boolean;
-  disabled: boolean;
   onRetry: () => void;
+  retryDisabledReason: string | undefined;
   state: SummaryState;
-}) {
+};
+
+function SummaryContent({
+  onRetry,
+  retryDisabledReason,
+  state,
+}: Omit<SummaryProps, 'canDecide'>) {
   if (state.status === 'loading') {
     return (
-      <section aria-busy="true" aria-live="polite" className={styles.summary}>
-        <h2>Generating a summary of this change</h2>
-        <div aria-hidden="true" className={styles.summaryShimmer}>
-          <span />
-          <span />
-          <span />
-        </div>
-      </section>
+      <BlankSlate
+        loading
+        placement="section"
+        small
+        title="Summarizing this change"
+      />
     );
   }
 
   if (state.status === 'failed') {
     return (
-      <section aria-live="polite" className={styles.summary}>
-        <h2>Summary</h2>
-        <div className={styles.summaryFailure}>
-          <p>Couldn’t generate a summary. Review the TypeScript below.</p>
+      <BlankSlate
+        actions={
           <Button
-            buttonSize="xxs"
-            buttonType="muted"
-            disabled={disabled}
+            disabled={
+              retryDisabledReason ? { reason: retryDisabledReason } : undefined
+            }
+            icon={RetryIcon}
+            label="Retry"
             onClick={onRetry}
-          >
-            Retry
-          </Button>
-        </div>
-      </section>
+          />
+        }
+        description="Review the TypeScript below."
+        error
+        icon={<WarningIcon />}
+        placement="section"
+        small
+        title="Couldn’t summarize this change"
+      />
     );
   }
 
   if (state.status === 'source_too_large') {
     return (
-      <section aria-live="polite" className={styles.summary}>
-        <h2>Summary</h2>
-        <div className={styles.summaryFailure}>
-          <p>
-            This change is too large to summarize. Review the TypeScript below.
-          </p>
-        </div>
-      </section>
+      <Callout
+        className={styles.callout}
+        title="This change is too large to summarize"
+      >
+        Review the TypeScript below.
+      </Callout>
     );
   }
 
+  return <p className={styles.summaryText}>{state.value}</p>;
+}
+
+// The live region holds the state of the summary. The caveat stays out of
+// it: a warning callout announces itself, so it is not read twice.
+function Summary({ canDecide, ...props }: SummaryProps) {
   return (
-    <section aria-live="polite" className={styles.summary}>
-      <h2>Summary</h2>
-      <p className={styles.summaryText}>{state.value}</p>
-      <p className={styles.summaryWarning}>
-        AI-generated summaries can be wrong.{' '}
-        {canDecide
-          ? 'Review the TypeScript before approving.'
-          : 'Review the TypeScript to verify this summary.'}
-      </p>
-    </section>
+    <div className={styles.block}>
+      <Heading className={styles.title} level={2}>
+        Summary
+      </Heading>
+      <div
+        aria-busy={props.state.status === 'loading'}
+        aria-live="polite"
+        className={styles.block}
+      >
+        <SummaryContent {...props} />
+      </div>
+      {props.state.status === 'success' && (
+        <Callout
+          className={styles.callout}
+          title="Summaries can be wrong"
+          tone="warning"
+        >
+          {canDecide
+            ? 'Review the TypeScript before approving.'
+            : 'Review the TypeScript to verify this summary.'}
+        </Callout>
+      )}
+    </div>
   );
 }
+
+const OUTCOME_PRESENTATION = {
+  failed_before_execution: {
+    title: 'Change didn’t run',
+    description: 'No project content was changed.',
+  },
+  failed_after_execution: {
+    title: 'Change may be incomplete',
+    description:
+      'Some project content may have changed. Check DatoCMS before trying again.',
+  },
+  unknown: {
+    title: 'Outcome needs checking',
+    description: 'The change may have run. Check DatoCMS before trying again.',
+  },
+} satisfies Record<
+  UnsafeApprovalOutcomeViewModel['kind'],
+  { title: string; description: string }
+>;
 
 function ApprovalOutcomeNotice({
   outcome,
 }: {
   outcome: UnsafeApprovalOutcomeViewModel;
 }) {
-  const presentation = {
-    failed_before_execution: {
-      title: 'Change didn’t run',
-      description: 'No project content was changed.',
-    },
-    failed_after_execution: {
-      title: 'Change may be incomplete',
-      description:
-        'Some project content may have changed. Check DatoCMS before trying again.',
-    },
-    unknown: {
-      title: 'Outcome needs checking',
-      description:
-        'The change may have run. Check DatoCMS before trying again.',
-    },
-  }[outcome.kind];
+  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
+  const diagnosticId = useId();
+  const presentation = OUTCOME_PRESENTATION[outcome.kind];
 
   return (
-    <section className={styles.outcomeNotice} role="status">
-      <strong>{presentation.title}</strong>
-      <p>{presentation.description}</p>
+    <div className={styles.block}>
+      <Callout
+        className={styles.callout}
+        title={presentation.title}
+        tone="warning"
+      >
+        {presentation.description}
+      </Callout>
       {outcome.diagnostic && (
-        <details className={styles.technicalError}>
-          <summary>Technical error</summary>
-          <pre>{outcome.diagnostic}</pre>
-        </details>
+        <>
+          <RawButton
+            className={styles.disclosure}
+            expandable={{ open: diagnosticOpen, controls: diagnosticId }}
+            onClick={() => setDiagnosticOpen((open) => !open)}
+          >
+            <DisclosureChevron open={diagnosticOpen} />
+            Technical error
+          </RawButton>
+          <div hidden={!diagnosticOpen} id={diagnosticId}>
+            <CodeSnippet
+              ariaLabel="Technical error"
+              code={outcome.diagnostic}
+              maxHeight={180}
+            />
+          </div>
+        </>
       )}
-    </section>
+    </div>
+  );
+}
+
+function Decision({
+  failed,
+  onResolve,
+  resolving,
+}: {
+  /** The last decision could not be saved */
+  failed: boolean;
+  onResolve: (decision: ApprovalDetailsDecision) => void;
+  resolving: ApprovalDetailsDecision | undefined;
+}) {
+  return (
+    <div className={styles.block}>
+      {failed && (
+        <Callout
+          className={styles.callout}
+          title="Couldn’t save this decision"
+          tone="danger"
+        >
+          Try again.
+        </Callout>
+      )}
+      <div className={`${styles.row} ${styles.actions}`}>
+        <Button
+          busy={resolving === 'deny'}
+          disabled={
+            resolving === 'approve'
+              ? { reason: DECISION_PENDING_REASON }
+              : undefined
+          }
+          label="Deny"
+          onClick={() => onResolve('deny')}
+          tone="soft"
+        />
+        <Button
+          busy={resolving === 'approve'}
+          disabled={
+            resolving === 'deny'
+              ? { reason: DECISION_PENDING_REASON }
+              : undefined
+          }
+          label="Approve"
+          onClick={() => onResolve('approve')}
+          tone="primary"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -319,7 +435,7 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
     scriptSource && scriptSource.length > MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS,
   );
   const [resolving, setResolving] = useState<ApprovalDetailsDecision>();
-  const [resolveError, setResolveError] = useState<string>();
+  const [resolveFailed, setResolveFailed] = useState(false);
   const [summaryAttempt, setSummaryAttempt] = useState(0);
   const [summaryState, setSummaryState] = useState<SummaryState>({
     status: sourceTooLarge ? 'source_too_large' : 'loading',
@@ -391,39 +507,40 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
     summaryControllerRef.current?.abort();
     summaryControllerRef.current = undefined;
     setResolving(decision);
-    setResolveError(undefined);
+    setResolveFailed(false);
     try {
       await ctx.resolve(decision);
     } catch {
-      setResolveError('Could not save this decision. Try again.');
+      setResolveFailed(true);
     } finally {
       setResolving(undefined);
     }
   };
 
   return (
-    <Canvas ctx={ctx}>
+    <Canvas ctx={ctx} texts={TEXTS}>
       <div className={styles.root}>
         {outcome && <ApprovalOutcomeNotice outcome={outcome} />}
 
         {scriptSource && (
           <Summary
             canDecide={canDecide}
-            disabled={Boolean(resolving)}
             onRetry={() => setSummaryAttempt((attempt) => attempt + 1)}
+            retryDisabledReason={
+              resolving ? DECISION_PENDING_REASON : undefined
+            }
             state={summaryState}
           />
         )}
 
         {details.length > 0 && (
-          <dl className={styles.metadata}>
+          <InfoList>
             {details.map((detail) => (
-              <div key={detail.label}>
-                <dt>{detail.label}</dt>
-                <dd>{detail.value}</dd>
-              </div>
+              <InfoList.Row key={detail.label} title={detail.label}>
+                <span className={styles.value}>{detail.value}</span>
+              </InfoList.Row>
             ))}
-          </dl>
+          </InfoList>
         )}
 
         {scriptSource && (
@@ -431,31 +548,11 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
         )}
 
         {canDecide && (
-          <>
-            {resolveError && (
-              <p className={styles.resolveError} role="alert">
-                {resolveError}
-              </p>
-            )}
-            <div className={styles.actions}>
-              <Button
-                buttonSize="s"
-                buttonType="negative"
-                disabled={Boolean(resolving)}
-                onClick={() => void resolve('deny')}
-              >
-                {resolving === 'deny' ? 'Denying…' : 'Deny'}
-              </Button>
-              <Button
-                buttonSize="s"
-                buttonType="primary"
-                disabled={Boolean(resolving)}
-                onClick={() => void resolve('approve')}
-              >
-                {resolving === 'approve' ? 'Approving…' : 'Approve'}
-              </Button>
-            </div>
-          </>
+          <Decision
+            failed={resolveFailed}
+            onResolve={(decision) => void resolve(decision)}
+            resolving={resolving}
+          />
         )}
       </div>
     </Canvas>

@@ -22,6 +22,24 @@ globalThis.ResizeObserver = class {
   disconnect() {}
 } as typeof ResizeObserver;
 
+// jsdom has no media queries. The components of datocms-react-ui read them
+// (hover support, reduced motion, the frame width), so answer "no match".
+Object.defineProperty(window, 'matchMedia', {
+  configurable: true,
+  writable: true,
+  value: (media: string): MediaQueryList =>
+    ({
+      matches: false,
+      media,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList,
+});
+
 // ProseMirror asks the browser for caret geometry while typing. JSDOM does not
 // implement these layout APIs, so give editor tests deterministic empty bounds.
 Object.defineProperty(document, 'elementFromPoint', {

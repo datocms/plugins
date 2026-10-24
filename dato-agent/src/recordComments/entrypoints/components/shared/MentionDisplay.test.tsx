@@ -1,33 +1,17 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearSessionLocalFiles,
+  registerLocalFile,
+} from '../../../../lib/localFiles';
+import { renderInCanvas } from '../../../../test/canvas';
 import type { Mention } from '../../types/mentions';
 import { MentionDisplay } from './MentionDisplay';
 
-vi.mock('datocms-react-ui', async () => {
-  const { createPortal } = await import('react-dom');
-  const PassThrough = ({ children }: { children?: ReactNode }) => children;
-
-  return {
-    Tooltip: PassThrough,
-    TooltipTrigger: PassThrough,
-    TooltipContent: ({ children }: { children?: ReactNode }) =>
-      createPortal(
-        <div data-testid="tooltip-portal" role="tooltip">
-          {children}
-        </div>,
-        document.body,
-      ),
-  };
+afterEach(() => {
+  cleanup();
+  clearSessionLocalFiles();
 });
-
-afterEach(cleanup);
 
 const mentions = {
   user: {
@@ -81,43 +65,50 @@ const mentions = {
   },
 } as const satisfies Record<string, Mention>;
 
-function expectPortaledTooltip(
+const heroImage = {
+  ...mentions.asset,
+  filename: 'homepage-hero.jpg',
+  mimeType: 'image/jpeg',
+  thumbnailUrl:
+    'https://www.datocms-assets.com/homepage-hero.jpg?w=300&fit=max',
+} as const satisfies Mention;
+
+/**
+ * The hint opens on keyboard focus, in a tooltip at the end of the body (out
+ * of the message), and describes its trigger.
+ */
+function expectHint(
   container: HTMLElement,
-  button: HTMLElement,
+  trigger: HTMLElement,
   text: string,
 ) {
-  const portal = screen.getByTestId('tooltip-portal');
-  const tooltipContent = within(portal).getByText(text);
+  fireEvent.focus(trigger);
+  const tooltip = screen.getByRole('tooltip');
 
-  expect(container).not.toContainElement(portal);
-  expect(button).toHaveAttribute('aria-describedby', tooltipContent.id);
-  expect(tooltipContent).toHaveTextContent(text);
+  expect(tooltip).toHaveTextContent(text);
+  expect(container).not.toContainElement(tooltip);
+  expect(trigger).toHaveAttribute('aria-describedby', tooltip.id);
 }
 
 describe('MentionDisplay', () => {
   it.each([
-    ['user', mentions.user, 'ada@example.com'],
-    ['field', mentions.field, 'Structured text'],
-    ['asset', mentions.asset, 'brand-guidelines.pdf'],
-    ['file', mentions.file, 'research-notes.pdf'],
-    ['record', mentions.record, 'Page'],
-    ['model', mentions.model, 'Model: article'],
+    ['user', mentions.user, '@Ada Lovelace', 'ada@example.com'],
+    ['field', mentions.field, '#seo_title · it', 'Structured text'],
+    ['asset', mentions.asset, 'brand-gu….pdf', 'brand-guidelines.pdf'],
+    ['file', mentions.file, 'research….pdf', 'research-notes.pdf'],
+    ['record', mentions.record, 'Homepage', 'Page'],
+    ['model', mentions.model, 'Article', 'Model: article'],
   ] as const)(
-    'renders the %s reference with a portaled tooltip and click behavior',
-    (type, mention, tooltipText) => {
+    'renders the %s reference as a pill that opens it, with its hint',
+    (_, mention, name, hint) => {
       const onClick = vi.fn();
-      const accessibleLabel = `Open ${type}`;
-      const { container } = render(
-        <MentionDisplay
-          accessibleLabel={accessibleLabel}
-          mention={mention}
-          onClick={onClick}
-        />,
+      const { container } = renderInCanvas(
+        <MentionDisplay mention={mention} onClick={onClick} />,
       );
-      const button = screen.getByRole('button', { name: accessibleLabel });
+      const pill = screen.getByRole('button', { name });
 
-      expectPortaledTooltip(container, button, tooltipText);
-      fireEvent.click(button);
+      expectHint(container, pill, hint);
+      fireEvent.click(pill);
 
       expect(onClick).toHaveBeenCalledOnce();
     },
@@ -136,19 +127,32 @@ describe('MentionDisplay', () => {
       },
       'Block: hero',
     ],
-  ] as const)('renders the exact %s tooltip content', (_, mention, text) => {
-    const { container } = render(
-      <MentionDisplay accessibleLabel="Open model" mention={mention} />,
+  ] as const)('gives the exact %s hint', (_, mention, text) => {
+    const { container } = renderInCanvas(
+      <MentionDisplay mention={mention} onClick={vi.fn()} />,
     );
-    const button = screen.getByRole('button', { name: 'Open model' });
 
-    expectPortaledTooltip(container, button, text);
+    expectHint(container, screen.getByRole('button'), text);
   });
 
-  it('uses the current project-user name and owner tooltip semantics', () => {
-    const { container, rerender } = render(
+  it('shows a model emoji in place of the model glyph', () => {
+    renderInCanvas(
+      <MentionDisplay
+        mention={{ ...mentions.model, name: '📰 Article' }}
+        onClick={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole('button', { name: 'Article' });
+
+    expect(within(pill).getByText('📰')).toHaveAttribute('aria-hidden', 'true');
+    expect(pill.querySelector('svg')).toBeNull();
+  });
+
+  it('uses the current project-user name and the owner hint', () => {
+    const { container, rerender } = renderInCanvas(
       <MentionDisplay
         mention={mentions.user}
+        onClick={vi.fn()}
         projectUsers={[
           {
             id: mentions.user.id,
@@ -157,35 +161,55 @@ describe('MentionDisplay', () => {
             avatarUrl: null,
           },
         ]}
-        tooltipId="regular-user-tooltip"
       />,
     );
     const renamedUser = screen.getByRole('button', { name: '@Ada Byron' });
 
-    expectPortaledTooltip(container, renamedUser, 'ada@example.com');
+    expectHint(container, renamedUser, 'ada@example.com');
 
+    const onClick = vi.fn();
     rerender(
       <MentionDisplay
-        accessibleLabel="Project owner"
         isClickable={false}
         isProjectOwner
         mention={mentions.user}
-        tooltipId="owner-tooltip"
+        onClick={onClick}
       />,
     );
-    const owner = screen.getByRole('button', { name: 'Project owner' });
 
-    expect(owner).toBeDisabled();
-    expectPortaledTooltip(container, owner, 'Project Owner');
+    // The owner can't be opened: a static pill that still gives its hint
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    const owner = screen.getByText('@Ada Lovelace');
+    expect(owner.parentElement).toHaveAttribute('tabindex', '0');
+    expectHint(container, owner.parentElement as HTMLElement, 'Project owner');
+    fireEvent.click(owner);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('shows the avatar of a mentioned user', () => {
+    renderInCanvas(
+      <MentionDisplay
+        mention={{
+          ...mentions.user,
+          avatarUrl: 'https://www.gravatar.com/avatar/ada',
+        }}
+        onClick={vi.fn()}
+      />,
+    );
+    const pill = screen.getByRole('button', { name: '@Ada Lovelace' });
+
+    expect(pill.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://www.gravatar.com/avatar/ada',
+    );
   });
 
   it('renders a record title and thumbnail and preserves click behavior', () => {
     const onClick = vi.fn();
     const thumbnailUrl =
       'https://www.datocms-assets.com/homepage.jpg?w=48&fit=max';
-    render(
+    renderInCanvas(
       <MentionDisplay
-        accessibleLabel="Open Homepage"
         mention={{
           ...mentions.record,
           title: '🏠 Homepage',
@@ -194,137 +218,184 @@ describe('MentionDisplay', () => {
         onClick={onClick}
       />,
     );
-    const button = screen.getByRole('button', { name: 'Open Homepage' });
-    const thumbnail = within(button).getByRole('img', {
-      name: 'Thumbnail for Homepage',
-    });
+    // The leading emoji of the title is not part of the name
+    const pill = screen.getByRole('button', { name: 'Homepage' });
+    const thumbnail = pill.querySelector('img');
 
-    expect(within(button).getByText('Homepage')).toBeVisible();
-    expect(within(button).queryByText('🏠')).not.toBeInTheDocument();
+    expect(within(pill).queryByText('🏠')).not.toBeInTheDocument();
     expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
+    expect(thumbnail).toHaveAttribute('alt', '');
 
-    fireEvent.click(button);
+    fireEvent.click(pill);
     expect(onClick).toHaveBeenCalledOnce();
+
+    // A thumbnail that doesn't load gives way to the record glyph
+    fireEvent.error(thumbnail as HTMLImageElement);
+    expect(pill.querySelector('img')).toBeNull();
+    expect(pill.querySelector('svg')).toBeInTheDocument();
   });
 
-  it('disables and grays the currently open record with a clear tooltip', () => {
+  it('keeps the currently open record inert, with a clear hint', () => {
     const onClick = vi.fn();
-    const { container } = render(
+    const { container } = renderInCanvas(
       <MentionDisplay
         currentRecordId={mentions.record.id}
         mention={mentions.record}
         onClick={onClick}
       />,
     );
-    const button = screen.getByRole('button', {
-      name: 'Current record: Homepage',
-    });
 
-    expect(button).toBeDisabled();
-    expect(button.className).toContain('recordMentionCurrent');
-    expectPortaledTooltip(container, button, 'Current record');
-    fireEvent.click(button);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    const title = screen.getByText('Homepage');
+    expectHint(container, title.parentElement as HTMLElement, 'Current record');
+    fireEvent.click(title);
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('renders a visual asset thumbnail and falls back to a portaled filename tooltip on image failure', () => {
+  it('shows a visual asset as a card and falls back to a pill with the filename hint when the image fails', () => {
     const onClick = vi.fn();
-    const filename = 'homepage-hero.jpg';
-    const thumbnailUrl =
-      'https://www.datocms-assets.com/homepage-hero.jpg?w=300&fit=max';
-    const { container } = render(
-      <MentionDisplay
-        accessibleLabel="Open homepage hero"
-        mention={{
-          ...mentions.asset,
-          filename,
-          mimeType: 'image/jpeg',
-          thumbnailUrl,
-        }}
-        onClick={onClick}
-      />,
+    const { container } = renderInCanvas(
+      <MentionDisplay mention={heroImage} onClick={onClick} />,
     );
-    const button = screen.getByRole('button', {
-      name: 'Open homepage hero',
-    });
-    const thumbnail = within(button).getByRole('img', { name: filename });
+    // The card's button covers the image and is named by the caption
+    const card = screen.getByRole('button', { name: 'homepage-hero.jpg' });
+    const image = container.querySelector('img');
 
-    expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
-    expect(within(button).getByText(filename)).toBeVisible();
-    fireEvent.click(button);
+    expect(image).toHaveAttribute('src', heroImage.thumbnailUrl);
+    expect(screen.getByText('homepage-hero.jpg')).toBeVisible();
+    fireEvent.click(card);
     expect(onClick).toHaveBeenCalledOnce();
 
-    fireEvent.error(thumbnail);
+    fireEvent.error(image as HTMLImageElement);
 
-    const fallback = screen.getByRole('button', {
-      name: 'Open homepage hero',
-    });
-    expect(within(fallback).getByText('homepage….jpg')).toBeVisible();
-    expect(
-      screen.queryByRole('img', { name: filename }),
-    ).not.toBeInTheDocument();
-    expectPortaledTooltip(container, fallback, filename);
+    const fallback = screen.getByRole('button', { name: 'homepage….jpg' });
+    expect(container.querySelector('img')).toBeNull();
+    expectHint(container, fallback, 'homepage-hero.jpg');
+    fireEvent.click(fallback);
+    expect(onClick).toHaveBeenCalledTimes(2);
   });
 
-  it('uses a one-row asset layout only when explicitly requested', () => {
-    const filename = 'homepage-hero.jpg';
-    const thumbnailUrl =
-      'https://www.datocms-assets.com/homepage-hero.jpg?w=300&fit=max';
-    const mention = {
-      ...mentions.asset,
-      filename,
-      mimeType: 'image/jpeg',
-      thumbnailUrl,
-    };
-    const { rerender } = render(
-      <MentionDisplay accessibleLabel="Open homepage hero" mention={mention} />,
-    );
-
-    const preview = screen.getByRole('button', {
-      name: 'Open homepage hero',
-    });
-    expect(preview).not.toHaveAttribute('data-asset-layout');
-    expect(preview.querySelector('img')).toHaveAttribute('alt', filename);
-
-    rerender(
+  it('shows a visual asset as a static card when it cannot open', () => {
+    const { container } = renderInCanvas(
       <MentionDisplay
-        accessibleLabel="Open homepage hero"
-        assetLayout="row"
-        mention={mention}
+        isClickable={false}
+        mention={heroImage}
+        onClick={vi.fn()}
       />,
     );
 
-    const row = screen.getByRole('button', { name: 'Open homepage hero' });
-    const thumbnail = row.querySelector('img');
-    expect(row).toHaveAttribute('data-asset-layout', 'row');
-    expect(row).toHaveTextContent(filename);
-    expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
-    expect(thumbnail).toHaveAttribute('alt', '');
-
-    fireEvent.error(thumbnail as HTMLImageElement);
-    expect(row.querySelector('img')).not.toBeInTheDocument();
-    expect(row.querySelector('svg')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      heroImage.thumbnailUrl,
+    );
+    expect(screen.getByText('homepage-hero.jpg')).toBeVisible();
   });
 
-  it.each(Object.entries(mentions))(
-    'does not invoke disabled %s references',
-    (type, mention) => {
+  it('previews an image file from the computer while its bytes are in the session', () => {
+    // jsdom has no object URLs
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:sketch'),
+      revokeObjectURL,
+    });
+    const mention = registerLocalFile(
+      new File(['png'], 'sketch.png', { type: 'image/png' }),
+    );
+
+    const { container, unmount } = renderInCanvas(
+      <MentionDisplay mention={mention} onClick={vi.fn()} />,
+    );
+
+    expect(screen.getByRole('button', { name: 'sketch.png' })).toBeVisible();
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'blob:sketch',
+    );
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:sketch');
+    Reflect.deleteProperty(URL, 'createObjectURL');
+    Reflect.deleteProperty(URL, 'revokeObjectURL');
+  });
+
+  it.each([
+    ['user', mentions.user, '@Ada Lovelace'],
+    ['field', mentions.field, '#seo_title · it'],
+    ['asset', mentions.asset, 'brand-gu….pdf'],
+    ['file', mentions.file, 'research….pdf'],
+    ['record', mentions.record, 'Homepage'],
+    ['model', mentions.model, 'Article'],
+  ] as const)(
+    'does not invoke a %s reference that cannot open',
+    (_, mention, text) => {
       const onClick = vi.fn();
-      render(
+      renderInCanvas(
         <MentionDisplay
-          accessibleLabel={`Open disabled ${type}`}
           isClickable={false}
           mention={mention}
           onClick={onClick}
         />,
       );
-      const button = screen.getByRole('button', {
-        name: `Open disabled ${type}`,
-      });
 
-      expect(button).toBeDisabled();
-      fireEvent.click(button);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByText(text));
       expect(onClick).not.toHaveBeenCalled();
     },
   );
+
+  describe('in the composer', () => {
+    it('is a static pill in a button that opens it but is not a tab stop', () => {
+      const onClick = vi.fn();
+      const { container } = renderInCanvas(
+        <MentionDisplay
+          inComposer
+          mention={mentions.field}
+          onClick={onClick}
+        />,
+      );
+      const chip = screen.getByRole('button', { name: '#seo_title · it' });
+
+      expect(chip).toHaveAttribute('tabindex', '-1');
+      expect(within(chip).getByText('#seo_title · it')).toBeVisible();
+      expectHint(container, chip, 'Structured text');
+
+      fireEvent.click(chip);
+      expect(onClick).toHaveBeenCalledOnce();
+    });
+
+    it('shows a visual asset as a pill with its thumbnail, never as a card', () => {
+      renderInCanvas(
+        <MentionDisplay inComposer mention={heroImage} onClick={vi.fn()} />,
+      );
+      const chip = screen.getByRole('button', { name: 'homepage….jpg' });
+      const thumbnail = chip.querySelector('img');
+
+      expect(chip).toHaveAttribute('tabindex', '-1');
+      expect(thumbnail).toHaveAttribute('src', heroImage.thumbnailUrl);
+      expect(thumbnail).toHaveAttribute('alt', '');
+
+      // A thumbnail that does not load gives way to the asset glyph
+      fireEvent.error(thumbnail as HTMLImageElement);
+      expect(chip.querySelector('img')).toBeNull();
+      expect(chip.querySelector('svg')).toBeInTheDocument();
+    });
+
+    it('keeps the current record inert', () => {
+      const onClick = vi.fn();
+      renderInCanvas(
+        <MentionDisplay
+          currentRecordId={mentions.record.id}
+          inComposer
+          mention={mentions.record}
+          onClick={onClick}
+        />,
+      );
+      const chip = screen.getByRole('button', { name: 'Homepage' });
+
+      expect(chip).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(chip);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+  });
 });

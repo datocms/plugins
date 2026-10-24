@@ -1,15 +1,13 @@
-:global(html),
-:global(body),
-:global(#root) {
-  min-height: 100%;
-  margin: 0;
-}
-
+/* The sign-in popup is not a frame of the plugin: the host's color tokens
+   never reach it. These local colors stand in for --color--surface,
+   --color--ink, --color--ink-subtle and --color--ink-danger, with a light
+   and a dark value each (light-dark() follows the color scheme of the
+   user). The sizes come from datocms-react-ui/styles.css. */
 .page {
-  --callback-surface: #fff;
-  --callback-ink: #34363a;
-  --callback-ink-subtle: #727378;
-  --callback-ink-danger: #a21d32;
+  --callback-surface: light-dark(#fff, #18181c);
+  --callback-ink: light-dark(#34363a, #f5f5f7);
+  --callback-ink-subtle: light-dark(#727378, #b6b6bf);
+  --callback-ink-danger: light-dark(#a21d32, #ff9aaa);
 
   box-sizing: border-box;
   display: flex;
@@ -17,11 +15,11 @@
   min-height: 100dvh;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px;
+  padding: var(--spacing-xxl) var(--spacing-xl);
   background: var(--callback-surface);
   color: var(--callback-ink);
   color-scheme: light dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--base-font-family);
   text-align: center;
 }
 
@@ -30,29 +28,20 @@
   max-width: 420px;
 }
 
-.content h1 {
-  margin: 0 0 8px;
-  font-size: 20px;
-  font-weight: 500;
+.title {
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-strong);
   line-height: 1.3;
 }
 
-.content p {
+.message {
   margin: 0;
   color: var(--callback-ink-subtle);
-  font-size: 15px;
+  font-size: var(--font-size-m);
   line-height: 1.5;
 }
 
-.content .error {
+.error {
   color: var(--callback-ink-danger);
-}
-
-@media (prefers-color-scheme: dark) {
-  .page {
-    --callback-surface: #18181c;
-    --callback-ink: #f5f5f7;
-    --callback-ink-subtle: #b6b6bf;
-    --callback-ink-danger: #ff9aaa;
-  }
 }

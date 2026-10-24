@@ -1,155 +1,123 @@
-import styles from '@styles/commentbar.module.css';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
-import { cn } from '@/utils/cn';
+import type { ModelInfo } from '@hooks/useMentions';
+import { EditorToolbar } from 'datocms-react-ui/EditorToolbar';
 import {
-  AssetMentionIcon,
-  FieldMentionIcon,
-  FileUploadIcon,
-  ModelMentionIcon,
-  RecordMentionIcon,
-  SendIcon,
-  StopIcon,
-  UserMentionIcon,
-} from './Icons';
-import ToolbarButton from './shared/ToolbarButton';
+  AssetIcon,
+  AttachIcon,
+  FieldIcon,
+  ModelIcon,
+  UserIcon,
+} from '../../../icons';
+import { RecordMentionDropdown } from './RecordModelSelectorDropdown';
+
+/** The label of a reference the user may not make: why it is disabled */
+const ASSETS_UNAVAILABLE = 'Mentioning assets needs the upload permission.';
+const MODELS_UNAVAILABLE = 'Mentioning models needs schema access.';
 
 type ComposerToolbarProps = {
   onUserClick: () => void;
   onFieldClick: () => void;
-  onRecordClick: () => void;
+  /** The models of the record dropdown: the readable ones are listed */
+  recordModels: readonly ModelInfo[];
+  /** The record dropdown opens or closes (useEditorToolbarWiring) */
+  onRecordMenuToggle: (open: boolean) => void;
+  /** A model is picked in the record dropdown */
+  onRecordModelSelect: (model: ModelInfo) => void;
   onAssetClick: () => void;
   onFileClick: () => void;
   onModelClick: () => void;
-  onSendClick: () => void;
-  isSendDisabled: boolean;
   canMentionAssets?: boolean;
   canMentionModels?: boolean;
   canMentionFields?: boolean;
   disabled?: boolean;
-  isRunning?: boolean;
-  onStopClick?: () => void;
+  /**
+   * Hides the toolbar: it shows only while the editor has the focus, or
+   * while one of its menus or pickers is open (useEditorToolbarWiring)
+   */
+  hidden?: boolean;
 };
 
-// Module-scope icons for reference stability
-const UserIcon = <UserMentionIcon />;
-const FieldIcon = <FieldMentionIcon />;
-const RecordIcon = <RecordMentionIcon />;
-const AssetIcon = <AssetMentionIcon />;
-const FileIcon = <FileUploadIcon />;
-const ModelIcon = <ModelMentionIcon />;
-const SendIconElement = <SendIcon />;
-const StopIconElement = <StopIcon />;
-
+/**
+ * The toolbar above the message: the references and the files that the
+ * user can insert. Each entry opens the same menu or picker as the "/"
+ * command. A press keeps the focus and the selection in the editor.
+ *
+ * Every entry is something to insert, so they share one group, in the order
+ * of the command; the record entry is a dropdown, since it picks a model
+ * first. Fields exist only next to a record; asset and model references that
+ * the role may not make stay in view, disabled, and their label says why.
+ *
+ * Like the toolbar of any editor, it shows only while the editor has the
+ * focus or one of its menus is open. Files can also be dropped anywhere in
+ * the frame, with or without the toolbar.
+ */
 const ComposerToolbar = ({
   onUserClick,
   onFieldClick,
-  onRecordClick,
+  recordModels,
+  onRecordMenuToggle,
+  onRecordModelSelect,
   onAssetClick,
   onFileClick,
   onModelClick,
-  onSendClick,
-  isSendDisabled,
   canMentionAssets = true,
   canMentionModels = true,
   canMentionFields = true,
   disabled = false,
-  isRunning = false,
-  onStopClick,
+  hidden = false,
 }: ComposerToolbarProps) => {
   return (
-    <div className={styles.composerToolbar}>
-      <div className={styles.toolbarMentions}>
-        <ToolbarButton
-          icon={UserIcon}
-          tooltipText="User"
+    <EditorToolbar ariaLabel="Insert" hidden={hidden}>
+      <EditorToolbar.Group>
+        <EditorToolbar.Button
+          active={false}
+          disabled={disabled}
+          label="Mention a user"
           onClick={onUserClick}
-          ariaLabel="Mention user"
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonUser)}
-          disabled={disabled}
-        />
-
+        >
+          <UserIcon />
+        </EditorToolbar.Button>
         {canMentionFields && (
-          <ToolbarButton
-            icon={FieldIcon}
-            tooltipText="Field"
-            onClick={onFieldClick}
-            ariaLabel="Mention field"
-            buttonClassName={cn(
-              styles.toolbarButton,
-              styles.toolbarButtonField,
-            )}
+          <EditorToolbar.Button
+            active={false}
             disabled={disabled}
-          />
+            label="Mention a field"
+            onClick={onFieldClick}
+          >
+            <FieldIcon />
+          </EditorToolbar.Button>
         )}
-
-        <ToolbarButton
-          icon={RecordIcon}
-          tooltipText="Record"
-          onClick={onRecordClick}
-          ariaLabel="Mention record"
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonRecord)}
+        <RecordMentionDropdown
           disabled={disabled}
+          models={recordModels}
+          onSelect={onRecordModelSelect}
+          onToggle={onRecordMenuToggle}
         />
-
-        <ToolbarButton
-          icon={AssetIcon}
-          tooltipText={canMentionAssets ? 'Asset' : 'No upload permission'}
-          onClick={onAssetClick}
+        <EditorToolbar.Button
+          active={false}
           disabled={disabled || !canMentionAssets}
-          ariaLabel={
-            canMentionAssets
-              ? 'Mention asset'
-              : 'Asset mentions unavailable - no upload permissions'
-          }
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
-        />
-
-        <ToolbarButton
-          icon={ModelIcon}
-          tooltipText={canMentionModels ? 'Model' : 'No schema access'}
-          onClick={onModelClick}
+          label={canMentionAssets ? 'Mention an asset' : ASSETS_UNAVAILABLE}
+          onClick={canMentionAssets ? onAssetClick : undefined}
+        >
+          <AssetIcon />
+        </EditorToolbar.Button>
+        <EditorToolbar.Button
+          active={false}
           disabled={disabled || !canMentionModels}
-          ariaLabel={
-            canMentionModels
-              ? 'Mention model'
-              : 'Model mentions unavailable - no schema access'
-          }
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonModel)}
-        />
-      </div>
-
-      <div className={styles.toolbarActions}>
-        <ToolbarButton
-          icon={FileIcon}
-          tooltipText="File from computer"
-          onClick={onFileClick}
-          ariaLabel="Upload files from computer"
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
+          label={canMentionModels ? 'Mention a model' : MODELS_UNAVAILABLE}
+          onClick={canMentionModels ? onModelClick : undefined}
+        >
+          <ModelIcon />
+        </EditorToolbar.Button>
+        <EditorToolbar.Button
+          active={false}
           disabled={disabled}
-        />
-
-        <Tooltip placement="top">
-          <TooltipTrigger>
-            <span className={styles.toolbarTooltipTrigger}>
-              <button
-                type="button"
-                className={cn(
-                  styles.sendButton,
-                  isRunning && styles.stopButton,
-                )}
-                onClick={isRunning ? onStopClick : onSendClick}
-                disabled={isRunning ? !onStopClick : disabled || isSendDisabled}
-                aria-label={isRunning ? 'Stop' : 'Send'}
-                title={isRunning ? 'Stop' : 'Send'}
-              >
-                {isRunning ? StopIconElement : SendIconElement}
-              </button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{isRunning ? 'Stop' : 'Send'}</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
+          label="Attach files"
+          onClick={onFileClick}
+        >
+          <AttachIcon />
+        </EditorToolbar.Button>
+      </EditorToolbar.Group>
+    </EditorToolbar>
   );
 };
 

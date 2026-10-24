@@ -1,9 +1,8 @@
 import type { ModelInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
-import { cn } from '@/utils/cn';
-import { ModelMentionIcon } from './Icons';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import Pill from 'datocms-react-ui/Pill';
+import { ModelIcon } from '../../../icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
-import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type ModelMentionDropdownProps = {
   models: ModelInfo[];
@@ -23,54 +22,28 @@ const ModelMentionDropdown = ({
   onClose,
   position = 'below',
   onSelectedIndexChange,
-}: ModelMentionDropdownProps) => {
-  const emptyMessage = query
-    ? `No models matching "${query}"`
-    : 'No models available';
-
-  return (
-    <MentionDropdownBase
-      items={models}
-      emptyMessage={emptyMessage}
-      headerText="Models"
-      selectedIndex={selectedIndex}
-      onClose={onClose}
-      position={position}
-      keyExtractor={(model) => model.id}
-      renderItem={(model, index, isSelected, selectedRef) => (
-        <button
-          ref={isSelected ? selectedRef : null}
-          type="button"
-          className={cn(
-            styles.mentionOption,
-            isSelected && styles.mentionOptionSelected,
-          )}
-          role="menuitem"
-          onMouseDown={(e) => {
-            // Prevent blur on textarea
-            e.preventDefault();
-          }}
-          onClick={() => onSelect(model)}
-          onMouseEnter={() => onSelectedIndexChange?.(index)}
-        >
-          <MentionDropdownOptionContent
-            leading={<ModelMentionIcon aria-hidden="true" />}
-            title={model.name}
-            trailing={
-              <span className={styles.mentionOptionMeta}>
-                {model.isBlockModel && (
-                  <span className={styles.mentionModelBadge}>Block</span>
-                )}
-                <span className={styles.mentionFieldApiKey}>
-                  ${model.apiKey}
-                </span>
-              </span>
-            }
-          />
-        </button>
-      )}
-    />
-  );
-};
+}: ModelMentionDropdownProps) => (
+  <MentionDropdownBase
+    emptyMessage={query ? `No models match “${query}”` : 'No models available'}
+    headerIcon={<ModelIcon />}
+    headerText="Models"
+    items={models}
+    keyExtractor={(model) => model.id}
+    onClose={onClose}
+    onSelect={onSelect}
+    onSelectedIndexChange={onSelectedIndexChange}
+    position={position}
+    renderOption={(model) => ({
+      title: model.name,
+      afterTitle: (
+        <>
+          <ApiKey>{model.apiKey}</ApiKey>
+          {model.isBlockModel && <Pill>Block</Pill>}
+        </>
+      ),
+    })}
+    selectedIndex={selectedIndex}
+  />
+);
 
 export default ModelMentionDropdown;
