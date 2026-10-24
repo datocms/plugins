@@ -32,7 +32,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 18 | automatic-environment-backups | 1785 | ^19.2.4 | Pending | |
 | 19 | block-to-links | 1422 | ^19.2.4 | Pending | |
 | 20 | seo-readability-analysis | 1355 | ^19.2.4 | Pending | |
-| 21 | delete-unused-assets | 1325 | ^19.2.4 | Done | Pilot. The review is a Pane with Table, filter, pagination and MultipleSelectionActionBar. Progress uses ProgressBar and InfoList, the summary a toned Callout. Build, lint and 23 tests pass. One minor issue open: the table's column menu can hide Filename. |
+| 21 | delete-unused-assets | 1325 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 22 | table-editor | 1148 | ^17.0.2 | Pending | |
 | 23 | tile-picker | 1110 | ^18.3.1 | Pending | |
 | 24 | bulk-change-author | 974 | ^19.2.4 | Pending | |

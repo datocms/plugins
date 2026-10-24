@@ -2,16 +2,20 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { useEffect, useRef } from 'react';
 
 // The SDK auto-resizer takes the lowest bottom edge of every element on the
-// page, including rows clipped inside a scrolling list, so the frame grows to
+// page, including rows clipped inside a scrolling pane, so the frame grows to
 // fit content nobody can see. Report the height of the Canvas box instead.
-// Render <Canvas noAutoResizer> and put the returned ref on its direct child.
+// Render <Canvas noAutoResizer> and put the returned ref on an element inside
+// it.
 export function useFrameHeight(ctx: RenderModalCtx) {
   const ref = useRef<HTMLDivElement>(null);
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx;
 
   useEffect(() => {
-    const canvas = ref.current?.parentElement;
+    const element = ref.current;
+    const canvas =
+      element?.closest<HTMLElement>('[data-color-scheme]') ??
+      element?.parentElement;
     if (!canvas || typeof ResizeObserver === 'undefined') {
       return;
     }

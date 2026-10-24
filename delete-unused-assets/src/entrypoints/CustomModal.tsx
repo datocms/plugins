@@ -1,8 +1,18 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '../ui/Button';
+import AssetReview, { ASSETS_PER_PAGE } from '../components/AssetReview';
+import DeletionProgressView from '../components/DeletionProgress';
+import DeletionSummary, {
+  deletedMessage,
+  isComplete,
+} from '../components/DeletionSummary';
+import { CircleExclamationIcon, ImageIcon } from '../icons';
+import { TEXTS } from '../texts';
+import { formatters } from '../utils/format';
 import {
   type DeletionProgress,
   type DeletionResult,
@@ -12,7 +22,6 @@ import {
   type UnusedAsset,
 } from '../utils/unusedAssets';
 import { useFrameHeight } from '../utils/useFrameHeight';
-import s from './styles.module.css';
 
 type PropTypes = {
   ctx: RenderModalCtx;
@@ -20,540 +29,10 @@ type PropTypes = {
 
 type Phase = 'discovering' | 'ready' | 'deleting' | 'finished' | 'error';
 
-const ASSETS_PER_PAGE = 100;
+type ScanError = { kind: 'noToken' } | { kind: 'failed'; message: string };
 
-const formatCount = (value: number) => value.toLocaleString('en-US');
-
-const pluralizeAssets = (count: number) =>
-  `${formatCount(count)} ${count === 1 ? 'asset' : 'assets'}`;
-
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
-
-// The dashboard's byte format: base 1024, two decimals without ".00", no space.
-function formatBytes(bytes: number) {
-  let value = Math.max(0, bytes);
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  const amount = unit === 0 ? String(value) : value.toFixed(2);
-  return `${amount.replace(/\.00$/, '')}${BYTE_UNITS[unit]}`;
-}
-
-const totalSize = (assets: UnusedAsset[]) =>
-  assets.reduce((sum, asset) => sum + asset.size, 0);
-
-function SearchField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className={s.search}>
-      <svg className={s.searchIcon} viewBox="0 0 512 512" aria-hidden="true">
-        <path d="M416 208c0 45.9-14.9 88.3-40 122.7l126.6 126.7c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0s208 93.1 208 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z" />
-      </svg>
-      <input
-        type="text"
-        className={s.searchInput}
-        placeholder="Search by filename…"
-        aria-label="Search assets"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {value && (
-        <button
-          type="button"
-          className={s.searchClear}
-          aria-label="Clear search"
-          onClick={() => onChange('')}
-        >
-          <svg viewBox="0 0 384 512" aria-hidden="true">
-            <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3l105.4 105.3c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.3-105.4z" />
-          </svg>
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SelectAllCheckbox({
-  selectedCount,
-  total,
-  onChange,
-}: {
-  selectedCount: number;
-  total: number;
-  onChange: (selected: boolean) => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  const partial = selectedCount > 0 && selectedCount < total;
-
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.indeterminate = partial;
-    }
-  }, [partial]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      className={s.checkbox}
-      disabled={total === 0}
-      checked={total > 0 && selectedCount === total}
-      onChange={(event) => onChange(event.target.checked)}
-    />
-  );
-}
-
-const PAGE_WINDOW = 5;
-
-function pageWindow(currentPage: number, pageCount: number) {
-  const size = Math.min(PAGE_WINDOW, pageCount);
-  const first = Math.min(
-    Math.max(0, currentPage - Math.floor(size / 2)),
-    pageCount - size,
-  );
-  return Array.from({ length: size }, (_, index) => first + index);
-}
-
-function ListPagination({
-  start,
-  end,
-  total,
-  filtered,
-  currentPage,
-  pageCount,
-  onPageChange,
-}: {
-  start: number;
-  end: number;
-  total: number;
-  filtered: boolean;
-  currentPage: number;
-  pageCount: number;
-  onPageChange: (page: number) => void;
-}) {
-  return (
-    <div className={s.listFooter}>
-      <span className={s.meta}>
-        Showing {formatCount(start + 1)}–{formatCount(end)} of{' '}
-        {filtered
-          ? `${formatCount(total)} matching ${total === 1 ? 'asset' : 'assets'}`
-          : pluralizeAssets(total)}
-      </span>
-      <nav className={s.pagination} aria-label="Pagination">
-        <button
-          type="button"
-          className={s.paginationNav}
-          disabled={currentPage === 0}
-          onClick={() => onPageChange(currentPage - 1)}
-        >
-          <span aria-hidden="true">« </span>Previous
-        </button>
-        <div className={s.paginationPages}>
-          {pageWindow(currentPage, pageCount).map((pageIndex) =>
-            pageIndex === currentPage ? (
-              <span
-                key={pageIndex}
-                className={`${s.paginationPage} ${s.paginationPageCurrent}`}
-                aria-current="page"
-              >
-                {formatCount(pageIndex + 1)}
-              </span>
-            ) : (
-              <button
-                key={pageIndex}
-                type="button"
-                className={s.paginationPage}
-                aria-label={`Page ${pageIndex + 1}`}
-                onClick={() => onPageChange(pageIndex)}
-              >
-                {formatCount(pageIndex + 1)}
-              </button>
-            ),
-          )}
-        </div>
-        <button
-          type="button"
-          className={s.paginationNav}
-          disabled={currentPage === pageCount - 1}
-          onClick={() => onPageChange(currentPage + 1)}
-        >
-          Next<span aria-hidden="true"> »</span>
-        </button>
-      </nav>
-    </div>
-  );
-}
-
-function AssetConfirmation({
-  assets,
-  onDelete,
-}: {
-  assets: UnusedAsset[];
-  onDelete: (selected: UnusedAsset[]) => void;
-}) {
-  const [page, setPage] = useState(0);
-  const [query, setQuery] = useState('');
-  // Every asset starts selected, so track the ones the user leaves out.
-  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
-  const listRef = useRef<HTMLUListElement>(null);
-
-  const search = query.trim().toLowerCase();
-  const visible = useMemo(
-    () =>
-      search
-        ? assets.filter((asset) =>
-            asset.filename.toLowerCase().includes(search),
-          )
-        : assets,
-    [assets, search],
-  );
-  const selected = useMemo(
-    () =>
-      excluded.size === 0
-        ? assets
-        : assets.filter((asset) => !excluded.has(asset.id)),
-    [assets, excluded],
-  );
-  const selectedBytes = useMemo(() => totalSize(selected), [selected]);
-  const visibleSelectedCount = useMemo(
-    () => visible.filter((asset) => !excluded.has(asset.id)).length,
-    [visible, excluded],
-  );
-
-  const pageCount = Math.max(1, Math.ceil(visible.length / ASSETS_PER_PAGE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const start = currentPage * ASSETS_PER_PAGE;
-  const end = Math.min(start + ASSETS_PER_PAGE, visible.length);
-
-  const goToPage = (nextPage: number) => {
-    setPage(nextPage);
-    if (listRef.current) {
-      listRef.current.scrollTop = 0;
-    }
-  };
-
-  const changeQuery = (nextQuery: string) => {
-    setQuery(nextQuery);
-    goToPage(0);
-  };
-
-  const toggle = (id: string, isSelected: boolean) => {
-    setExcluded((current) => {
-      const next = new Set(current);
-      if (isSelected) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  // With a search active, "Select all" only affects the matching assets.
-  const toggleAll = (isSelected: boolean) => {
-    if (!search) {
-      setExcluded(
-        isSelected ? new Set() : new Set(assets.map((asset) => asset.id)),
-      );
-      return;
-    }
-    setExcluded((current) => {
-      const next = new Set(current);
-      for (const asset of visible) {
-        if (isSelected) {
-          next.delete(asset.id);
-        } else {
-          next.add(asset.id);
-        }
-      }
-      return next;
-    });
-  };
-
-  return (
-    <div className={s.stack}>
-      <p className={s.lead}>
-        Found <strong>{pluralizeAssets(assets.length)}</strong> not in use. The
-        selected ones will be permanently deleted. This action cannot be undone.
-      </p>
-      <div className={s.list}>
-        <SearchField value={query} onChange={changeQuery} />
-        <div className={s.listHeader}>
-          <label className={s.selectAll}>
-            <SelectAllCheckbox
-              selectedCount={visibleSelectedCount}
-              total={visible.length}
-              onChange={toggleAll}
-            />
-            {search ? 'Select all matches' : 'Select all'}
-          </label>
-          <span className={s.meta}>
-            {formatCount(selected.length)} of {formatCount(assets.length)}{' '}
-            selected · {formatBytes(selectedBytes)}
-          </span>
-        </div>
-        {visible.length === 0 ? (
-          <p className={s.noResults}>No assets match your search</p>
-        ) : (
-          <ul className={s.listBody} ref={listRef}>
-            {visible.slice(start, end).map((asset) => (
-              <li key={asset.id} className={s.listRow}>
-                <label className={s.selectCell}>
-                  <input
-                    type="checkbox"
-                    className={s.checkbox}
-                    aria-label={`Select ${asset.filename}`}
-                    checked={!excluded.has(asset.id)}
-                    onChange={(event) => toggle(asset.id, event.target.checked)}
-                  />
-                </label>
-                <a
-                  className={s.listLink}
-                  href={asset.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {asset.filename}
-                </a>
-                <span className={s.listSize}>{formatBytes(asset.size)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {pageCount > 1 && (
-          <ListPagination
-            start={start}
-            end={end}
-            total={visible.length}
-            filtered={Boolean(search)}
-            currentPage={currentPage}
-            pageCount={pageCount}
-            onPageChange={goToPage}
-          />
-        )}
-      </div>
-      <Button
-        buttonType="negative"
-        buttonSize="xl"
-        fullWidth
-        disabled={selected.length === 0}
-        onClick={() => onDelete(selected)}
-      >
-        {selected.length === 0
-          ? 'Select assets to delete'
-          : `Delete ${pluralizeAssets(selected.length)}`}
-      </Button>
-    </div>
-  );
-}
-
-type CountRow = [label: string, value: number];
-
-function progressRows(progress: DeletionProgress): CountRow[] {
-  return [
-    ['Deleted', progress.deleted],
-    ['Skipped (in use or already removed)', progress.skipped],
-    ['Failed', progress.failed],
-  ];
-}
-
-function DeletionCounts({ rows }: { rows: CountRow[] }) {
-  return (
-    <dl className={s.counts}>
-      {rows.map(([label, value]) => (
-        <div key={label} className={s.countRow}>
-          <dt>{label}</dt>
-          <dd>{formatCount(value)}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function isComplete(result: DeletionResult) {
-  return (
-    !result.cancelled &&
-    !result.error &&
-    result.failed === 0 &&
-    result.processed === result.total
-  );
-}
-
-function CircleCheckIcon({ className }: { className: string }) {
-  return (
-    <svg className={className} viewBox="0 0 512 512" aria-hidden="true">
-      <path d="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm113-303c9.4-9.4 9.4-24.6 0-33.9s-24.6-9.4-33.9 0l-111 111-47-47c-9.4-9.4-24.6-9.4-33.9 0s-9.4 24.6 0 33.9l64 64c9.4 9.4 24.6 9.4 33.9 0l128-128z" />
-    </svg>
-  );
-}
-
-function CircleExclamationIcon({ className }: { className: string }) {
-  return (
-    <svg className={className} viewBox="0 0 512 512" aria-hidden="true">
-      <path d="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm0-384c-13.3 0-24 10.7-24 24v112c0 13.3 10.7 24 24 24s24-10.7 24-24V152c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0-64 0 32 32 0 1 0 64 0z" />
-    </svg>
-  );
-}
-
-function summaryCopy(result: DeletionResult, complete: boolean) {
-  if (complete) {
-    return {
-      title: 'Assets successfully deleted!',
-      description:
-        result.deleted === 1
-          ? 'The asset has been permanently removed from your project.'
-          : 'The assets have been permanently removed from your project.',
-    };
-  }
-  if (result.cancelled) {
-    return {
-      title: 'Deletion stopped',
-      description:
-        'Assets deleted before you stopped stay deleted. The rest were left untouched.',
-    };
-  }
-  return {
-    title: "Deletion didn't complete",
-    description:
-      "Some assets couldn't be deleted. Check the details below before starting another deletion.",
-  };
-}
-
-function DeletionSummary({ result }: { result: DeletionResult }) {
-  const complete = isComplete(result);
-  const { title, description } = summaryCopy(result, complete);
-  const details = (
-    [
-      ['Skipped (in use or already removed)', result.skipped],
-      ['Failed', result.failed],
-      ['Not processed', result.total - result.processed],
-    ] satisfies CountRow[]
-  ).filter(([, value]) => value > 0);
-
-  return (
-    <>
-      <div className={s.summaryHeader}>
-        {complete ? (
-          <CircleCheckIcon className={s.summaryIconSuccess} />
-        ) : (
-          <CircleExclamationIcon className={s.summaryIcon} />
-        )}
-        <h2 className={s.title}>{title}</h2>
-        <p className={s.summaryDescription}>{description}</p>
-      </div>
-      <dl className={s.stats}>
-        <div className={s.stat}>
-          <dt>{result.deleted === 1 ? 'Asset deleted' : 'Assets deleted'}</dt>
-          <dd>{formatCount(result.deleted)}</dd>
-        </div>
-        <div className={s.stat}>
-          <dt>
-            {result.freedBytesEstimated
-              ? 'Storage freed (estimated)'
-              : 'Storage freed'}
-          </dt>
-          <dd>{formatBytes(result.freedBytes)}</dd>
-        </div>
-      </dl>
-      {result.error && (
-        <p role="alert" className={`${s.callout} ${s.calloutDanger}`}>
-          {result.error}
-        </p>
-      )}
-      {details.length > 0 && <DeletionCounts rows={details} />}
-    </>
-  );
-}
-
-function DiscoveryStatus({ progress }: { progress: DiscoveryProgress }) {
-  return (
-    <div className={s.status} role="status" aria-live="polite">
-      <Spinner size={32} />
-      <p className={s.statusTitle}>Looking for unused assets…</p>
-      {progress.total > ASSETS_PER_PAGE && (
-        <p className={s.meta}>
-          Loaded {formatCount(progress.found)} of {formatCount(progress.total)}{' '}
-          unused assets…
-        </p>
-      )}
-    </div>
-  );
-}
-
-function DeletionStatus({
-  progress,
-  stopRequested,
-  onStop,
-}: {
-  progress: DeletionProgress;
-  stopRequested: boolean;
-  onStop: () => void;
-}) {
-  const started = progress.processed > 0;
-  const percent =
-    progress.total > 0
-      ? Math.floor((progress.processed / progress.total) * 100)
-      : 0;
-
-  return (
-    <div className={s.stack}>
-      <div className={s.progressBlock} role="status" aria-live="polite">
-        <div className={s.progressHeader}>
-          <span className={s.statusTitle}>
-            {stopRequested
-              ? 'Stopping after the current batch finishes…'
-              : `Deleting ${pluralizeAssets(progress.total)}…`}
-          </span>
-          <Spinner size={20} />
-          <span className={s.progressPercent}>{percent}%</span>
-        </div>
-        <div
-          className={s.progress}
-          role="progressbar"
-          aria-label="Deletion progress"
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.processed}
-        >
-          <div
-            className={
-              started
-                ? s.progressFill
-                : `${s.progressFill} ${s.progressFillPending}`
-            }
-            style={started ? { width: `${percent}%` } : undefined}
-          />
-        </div>
-        <p className={s.meta}>
-          {formatCount(progress.processed)} of {pluralizeAssets(progress.total)}{' '}
-          processed · {formatBytes(progress.freedBytes)} freed so far
-        </p>
-      </div>
-      <DeletionCounts rows={progressRows(progress)} />
-      <p className={s.meta}>
-        Keep this window open until the deletion finishes. Closing it stops the
-        deletion after the current batch.
-      </p>
-      {progress.total > ASSETS_PER_PAGE && (
-        <Button
-          buttonSize="l"
-          fullWidth
-          disabled={stopRequested}
-          onClick={onStop}
-        >
-          {stopRequested ? 'Stopping…' : 'Stop'}
-        </Button>
-      )}
-    </div>
-  );
-}
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 export default function CustomModal({ ctx }: PropTypes) {
   const [unusedAssets, setUnusedAssets] = useState<UnusedAsset[]>([]);
@@ -566,10 +45,16 @@ export default function CustomModal({ ctx }: PropTypes) {
   const [deletionResult, setDeletionResult] = useState<DeletionResult | null>(
     null,
   );
-  const [errorMessage, setErrorMessage] = useState('');
+  const [scanError, setScanError] = useState<ScanError | null>(null);
   const [stopRequested, setStopRequested] = useState(false);
+  // The scan of the current client; aborted on unmount or when the client
+  // changes.
+  const scanRef = useRef<AbortController | null>(null);
   // The running deletion; cleared on unmount or when the client changes.
   const deletionRef = useRef<AbortController | null>(null);
+  const deletionRunRef = useRef<Promise<void> | null>(null);
+  // The host's confirm is open: further clicks on Delete do nothing.
+  const confirmingRef = useRef(false);
   const frameRef = useFrameHeight(ctx);
 
   const { currentUserAccessToken, environment, cmaBaseUrl } = ctx;
@@ -587,18 +72,17 @@ export default function CustomModal({ ctx }: PropTypes) {
 
   useEffect(() => {
     const controller = new AbortController();
+    scanRef.current = controller;
     setUnusedAssets([]);
     setDiscoveryProgress({ found: 0, total: 0 });
     setDeletionProgress(null);
     setDeletionResult(null);
-    setErrorMessage('');
+    setScanError(null);
     setStopRequested(false);
     setPhase('discovering');
 
     if (!client) {
-      setErrorMessage(
-        'This plugin needs access to your API token to find and delete unused assets.',
-      );
+      setScanError({ kind: 'noToken' });
       setPhase('error');
     } else {
       discoverUnusedAssets(client, {
@@ -612,11 +96,9 @@ export default function CustomModal({ ctx }: PropTypes) {
           setUnusedAssets(assets);
           setPhase('ready');
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (controller.signal.aborted) return;
-          setErrorMessage(
-            "Couldn't find unused assets. Please close this window and try again.",
-          );
+          setScanError({ kind: 'failed', message: errorMessage(error) });
           setPhase('error');
         });
     }
@@ -625,6 +107,7 @@ export default function CustomModal({ ctx }: PropTypes) {
       controller.abort();
       deletionRef.current?.abort();
       deletionRef.current = null;
+      deletionRunRef.current = null;
     };
   }, [client]);
 
@@ -632,7 +115,7 @@ export default function CustomModal({ ctx }: PropTypes) {
     void ctx.resolve('').catch(() => {});
   };
 
-  const startDeletion = async (selected: UnusedAsset[]) => {
+  const startDeletion = (selected: UnusedAsset[]) => {
     if (!client || phase !== 'ready' || deletionRef.current) return;
 
     const controller = new AbortController();
@@ -641,74 +124,129 @@ export default function CustomModal({ ctx }: PropTypes) {
     setStopRequested(false);
     setPhase('deleting');
 
-    const result = await deleteUnusedAssets(client, selected, {
+    deletionRunRef.current = deleteUnusedAssets(client, selected, {
       signal: controller.signal,
       onProgress: (progress) => {
         if (isCurrentRun()) setDeletionProgress(progress);
       },
+    }).then((result) => {
+      if (!isCurrentRun()) return;
+      setDeletionResult(result);
+      setPhase('finished');
+      // A finished action is a toast: the summary keeps only the numbers. A
+      // run that only skipped assets (records started using them) deleted
+      // nothing, so it has no toast: the summary shows the skipped count.
+      if (isComplete(result) && result.deleted > 0) {
+        const message = deletedMessage(result, formatters(ctx.ui.locale));
+        void ctx.notice(message).catch(() => {});
+      }
     });
-    if (!isCurrentRun()) return;
-    setDeletionResult(result);
-    setPhase('finished');
+  };
+
+  // Asks through the host before the deletion: the selection bar's Delete is
+  // not a destructive button by itself.
+  const confirmAndDelete = async (selected: UnusedAsset[]) => {
+    const scan = scanRef.current;
+    if (!scan || confirmingRef.current || deletionRef.current) return;
+
+    confirmingRef.current = true;
+    const { assets } = formatters(ctx.ui.locale);
+    const one = selected.length === 1;
+    try {
+      const choice = await ctx.openConfirm({
+        title: `Delete ${assets(selected.length)}?`,
+        content: one
+          ? "It'll be permanently deleted from your project. This can't be undone."
+          : "They'll be permanently deleted from your project. This can't be undone.",
+        choices: [
+          {
+            label: `Delete ${assets(selected.length)}`,
+            value: 'delete',
+            intent: 'negative',
+          },
+        ],
+        cancel: { label: 'Cancel', value: false },
+      });
+      // The dialog may have closed, or scanned again, in the meantime.
+      if (choice === 'delete' && !scan.signal.aborted) {
+        startDeletion(selected);
+      }
+    } catch {
+      // The confirm didn't open: nothing is deleted.
+    } finally {
+      confirmingRef.current = false;
+    }
   };
 
   const stopDeletion = () => {
     deletionRef.current?.abort();
     setStopRequested(true);
+    return deletionRunRef.current ?? Promise.resolve();
   };
 
   return (
-    <Canvas ctx={ctx} noAutoResizer>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       <div ref={frameRef}>
+        {/* BlankSlate has no live region: the wrappers announce the scan
+            and its errors to screen readers. */}
         {phase === 'discovering' && (
-          <DiscoveryStatus progress={discoveryProgress} />
+          <div role="status" aria-live="polite">
+            <BlankSlate
+              placement="inline"
+              loading
+              title="Looking for unused assets"
+              caption={
+                discoveryProgress.total > ASSETS_PER_PAGE
+                  ? {
+                      id: 'deleteUnusedAssets.discoveryCaption',
+                      values: discoveryProgress,
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        )}
+        {phase === 'error' && scanError && (
+          <div role="alert">
+            <BlankSlate
+              placement="inline"
+              error
+              icon={<CircleExclamationIcon />}
+              {...(scanError.kind === 'noToken'
+                ? {
+                    title: 'No access to your API token',
+                    description:
+                      'This plugin needs access to your API token to find and delete unused assets. Check its permissions in the plugin settings.',
+                  }
+                : {
+                    title: "Couldn't find unused assets",
+                    description: 'Close this window and try again.',
+                    code: scanError.message,
+                  })}
+              actions={<Button label="Close" onClick={close} />}
+            />
+          </div>
         )}
         {phase === 'ready' &&
-          (unusedAssets.length ? (
-            <AssetConfirmation
-              assets={unusedAssets}
-              onDelete={(selected) => void startDeletion(selected)}
-            />
+          (unusedAssets.length > 0 ? (
+            <AssetReview assets={unusedAssets} onDelete={confirmAndDelete} />
           ) : (
-            <div className={s.empty}>
-              <h2 className={s.emptyTitle}>
-                There are no unused assets in your library
-              </h2>
-              <p className={s.meta}>
-                Every asset is in use, so there's nothing to delete.
-              </p>
-            </div>
+            <BlankSlate
+              placement="inline"
+              icon={<ImageIcon />}
+              title="No unused assets"
+              description="Every asset is used by at least one record, so there's nothing to delete."
+            />
           ))}
         {phase === 'deleting' && deletionProgress && (
-          <DeletionStatus
+          <DeletionProgressView
             progress={deletionProgress}
             stopRequested={stopRequested}
             onStop={stopDeletion}
           />
         )}
-        {(phase === 'error' || phase === 'finished') && (
-          <div className={s.stack}>
-            {phase === 'error' && (
-              <p role="alert" className={`${s.callout} ${s.calloutDanger}`}>
-                {errorMessage}
-              </p>
-            )}
-            {phase === 'finished' && deletionResult && (
-              <DeletionSummary result={deletionResult} />
-            )}
-            <Button
-              buttonType={
-                deletionResult && isComplete(deletionResult)
-                  ? 'primary'
-                  : 'muted'
-              }
-              buttonSize="l"
-              fullWidth
-              onClick={close}
-            >
-              Close
-            </Button>
-          </div>
+        {phase === 'finished' && deletionResult && (
+          <DeletionSummary result={deletionResult} onClose={close} />
         )}
       </div>
     </Canvas>
