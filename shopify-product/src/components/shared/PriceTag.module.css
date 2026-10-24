@@ -1,3 +1,4 @@
+/* A price, and the compare-at price struck through after it. */
 .price {
   display: inline-flex;
   flex-wrap: wrap;
@@ -8,16 +9,14 @@
   white-space: nowrap;
 }
 
+.start {
+  justify-content: flex-start;
+}
+
 .current {
   color: var(--color--ink);
 }
 
 .compareAt {
-  font-size: 0.9em;
   color: var(--color--ink-subtle);
-  text-decoration: line-through;
-}
-
-.start {
-  justify-content: flex-start;
 }

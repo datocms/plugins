@@ -28,8 +28,8 @@ import { moveEntry, StoredValueBuildError } from '../../lib/references';
 import {
   describeError,
   isAbortError,
-  ShopifyClientError,
   type ShopifyClient,
+  ShopifyClientError,
 } from '../../lib/shopifyClient';
 import type {
   Cardinality,
@@ -41,8 +41,8 @@ import type {
   PickerUnavailableEntry,
   ShopifyNode,
   StorageFormat,
-  StoredEntry,
   StoreConnection,
+  StoredEntry,
 } from '../../types';
 import type { FieldFeedback } from './useFieldFeedback';
 
@@ -260,6 +260,7 @@ export async function browse(env: ActionEnv): Promise<void> {
     env.params.kind,
     limited.length - kept,
     current.length - kept,
+    env.ctx.ui.locale,
   );
   if (message) env.feedback.announce(message);
 }
@@ -293,7 +294,7 @@ export async function replaceAt(env: ActionEnv, index: number): Promise<void> {
   if (!swapped.ok) {
     if (swapped.reason === 'duplicate') {
       void env.ctx.alert(
-        `Couldn't replace the ${kindNoun(env.params.kind)}, as it's already in this field!`,
+        `Couldn't replace the ${kindNoun(env.params.kind)}: it's already in this field.`,
       );
     }
     return;
@@ -324,16 +325,29 @@ export async function removeAt(env: ActionEnv, index: number): Promise<void> {
   if (saved) env.feedback.announce(`Removed ${rowLabel(row)}`);
 }
 
-/** Drag-and-drop: shows the new order at once, rolls it back if the write fails. */
+/**
+ * Drag and drop, "Move up" and "Move down": shows the new order at once,
+ * rolls it back if the write fails, and tells screen readers where the row
+ * went.
+ */
 export async function reorder(
   env: ActionEnv,
   from: number,
   to: number,
 ): Promise<void> {
+  const row = env.rows[from];
   const next = moveEntry(entriesOf(env), from, to);
   env.setOrder(next.map((entry) => entry.key));
   const saved = await writeEntries(env, storedTarget(env), next);
-  if (!saved) env.setOrder(null);
+  if (!saved) {
+    env.setOrder(null);
+    return;
+  }
+  if (row && from !== to && to >= 0 && to < next.length) {
+    env.feedback.announce(
+      `Moved ${rowLabel(row)} to position ${to + 1} of ${next.length}`,
+    );
+  }
 }
 
 /** "Update": writes only the new handle, in the format the value is saved in. */

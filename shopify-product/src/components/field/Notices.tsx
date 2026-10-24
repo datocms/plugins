@@ -1,113 +1,83 @@
-import { faArrowsRotate, faGear } from '@fortawesome/free-solid-svg-icons';
-import { Spinner } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Link from 'datocms-react-ui/Link';
 import type { ReactNode } from 'react';
-import { Button } from '../../ui/Button';
-import { Icon } from '../../ui/Icon';
-import Callout from '../shared/Callout';
-import Tip from '../shared/Tip';
+import { ArrowsRotateIcon } from '../../icons';
 import styles from './FieldParts.module.css';
+import { BUSY_REASON } from './useEditorActions';
 
-type ActionButtonProps = {
-  label: string;
-  icon?: ReactNode;
-  /**
-   * This action is running: the inline spinner shows, and clicks are
-   * ignored. The button stays enabled, so it keeps keyboard focus.
-   */
-  pending: boolean;
-  /** Another action is running. */
-  disabled: boolean;
-  /** Why the action can't run (tooltip), when it can't. */
-  reason?: string | null;
-  onClick: () => void;
+type NoticeProps = {
+  tone: 'neutral' | 'warning' | 'danger';
+  title?: string;
+  /** The button that acts on it: right under the callout, never inside it. */
+  action?: ReactNode;
+  children: ReactNode;
 };
 
-/** A small callout action, with a spinner while it runs. */
-function ActionButton({
-  label,
-  icon,
-  pending,
-  disabled,
-  reason = null,
-  onClick,
-}: ActionButtonProps) {
+/** A fact about the value, with the button that fixes it under it. */
+function Notice({ tone, title, action, children }: NoticeProps) {
   return (
-    <Tip
-      tip={reason}
-      anchor={reason !== null ? 'focusable' : true}
-      anchorClassName={styles.tooltipTarget}
-    >
-      <Button
-        buttonSize="xxs"
-        leftIcon={icon}
-        disabled={(disabled && !pending) || reason !== null}
-        onClick={pending ? undefined : onClick}
+    <>
+      <Callout
+        tone={tone}
+        title={title}
+        className={action ? styles.calloutWithAction : undefined}
       >
-        {label}
-        {pending && <Spinner size={16} />}
-      </Button>
-    </Tip>
+        {children}
+      </Callout>
+      {action && <div className={styles.actions}>{action}</div>}
+    </>
   );
 }
 
-/**
- * "Refresh saved data" syncs from Shopify. "Try again" has no icon, like
- * every other retry in the plugin.
- */
-const REFRESH_ICON = <Icon icon={faArrowsRotate} />;
+/** The text of the link to the plugin settings, wherever it shows. */
+export const SETTINGS_LINK_LABEL = 'Open the plugin settings';
 
 type LoadErrorProps = {
   title: string;
+  /**
+   * What went wrong. With `settings`, only the cause: the link to the
+   * settings is the next step.
+   */
   message: string;
-  /** Loading again: "Try again" shows its spinner. */
+  /** Loading again: "Try again" is busy. */
   retrying: boolean;
-  /** Only roles that can edit the schema can fix the connection. */
-  onOpenSettings?: () => void;
+  /**
+   * Only the plugin settings can fix it (the token, its permissions, the
+   * store address) and the role can open them: the next step is a link to
+   * them, in the text ("Open the plugin settings to update it.").
+   */
+  settings?: { path: string; step: string };
   /** Omitted when trying again can't help (a connection problem, for admins). */
   onRetry?: () => void;
 };
 
-/**
- * Hydration failed: the cause in plain words, then "Open plugin settings"
- * when only the settings can fix it and the role can open them, else "Try
- * again".
- */
+/** Hydration failed: the cause in plain words, then the next step. */
 export function LoadErrorNotice({
   title,
   message,
   retrying,
-  onOpenSettings,
+  settings,
   onRetry,
 }: LoadErrorProps) {
   return (
-    <Callout
+    <Notice
       tone="danger"
-      role="alert"
       title={title}
-      actions={
-        <>
-          {onOpenSettings && (
-            <ActionButton
-              label="Open plugin settings"
-              icon={<Icon icon={faGear} />}
-              pending={false}
-              disabled={false}
-              onClick={onOpenSettings}
-            />
-          )}
-          {onRetry && (
-            <ActionButton
-              label="Try again"
-              pending={retrying}
-              disabled={false}
-              onClick={onRetry}
-            />
-          )}
-        </>
+      action={
+        onRetry ? (
+          <Button label="Try again" busy={retrying} onClick={onRetry} />
+        ) : undefined
       }
     >
-      <p className={styles.calloutText}>{message}</p>
-    </Callout>
+      {message}
+      {settings && (
+        <>
+          {' '}
+          <Link to={settings.path}>{SETTINGS_LINK_LABEL}</Link> {settings.step}.
+        </>
+      )}
+    </Notice>
   );
 }
 
@@ -116,16 +86,14 @@ type FormatMismatchProps = {
   /** Why converting can't happen now, or null. */
   problem: string | null;
   readOnly: boolean;
+  /** Another action runs. */
   busy: boolean;
+  /** Converting runs. */
   pending: boolean;
   onConvert: () => void;
 };
 
-/**
- * A valid value in another format than the field's settings. A neutral
- * surface, so its soft button stays visible: the record's Save is the
- * form's one primary action.
- */
+/** A valid value in another format than the field's settings. */
 export function FormatMismatchNotice({
   message,
   problem,
@@ -134,29 +102,29 @@ export function FormatMismatchNotice({
   pending,
   onConvert,
 }: FormatMismatchProps) {
+  const reason = problem ?? (busy && !pending ? BUSY_REASON : null);
   return (
-    <Callout
+    <Notice
       tone="neutral"
-      role="status"
-      actions={
+      title="Saved in another format"
+      action={
         readOnly ? undefined : (
-          <ActionButton
+          <Button
             label="Convert to new format"
-            pending={pending}
-            disabled={busy}
-            reason={problem}
+            busy={pending}
+            disabled={reason ? { reason } : undefined}
             onClick={onConvert}
           />
         )
       }
     >
-      <p className={styles.calloutText}>{message}</p>
-    </Callout>
+      {message}
+    </Notice>
   );
 }
 
 type LegacyDriftProps = {
-  summary: ReactNode;
+  summary: string;
   readOnly: boolean;
   busy: boolean;
   pending: boolean;
@@ -172,23 +140,22 @@ export function LegacyDriftNotice({
   onRefresh,
 }: LegacyDriftProps) {
   return (
-    <Callout
+    <Notice
       tone="warning"
-      role="status"
       title="Shopify data changed since this was saved"
-      actions={
+      action={
         readOnly ? undefined : (
-          <ActionButton
+          <Button
             label="Refresh saved data"
-            icon={REFRESH_ICON}
-            pending={pending}
-            disabled={busy}
+            icon={ArrowsRotateIcon}
+            busy={pending}
+            disabled={busy && !pending ? { reason: BUSY_REASON } : undefined}
             onClick={onRefresh}
           />
         )
       }
     >
-      <p className={styles.calloutText}>{summary}</p>
-    </Callout>
+      {summary}
+    </Notice>
   );
 }

@@ -1,10 +1,20 @@
-import { FieldHint, SelectField } from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import type { LocalizationInfo } from '../../types';
-import styles from './MarketFields.module.css';
+import { MAX_RADIO_OPTIONS } from '../shared/choices';
 
 type Option = { value: string; label: string };
 
-const DEFAULT_OPTION: Option = { value: '', label: 'Shopify default' };
+/**
+ * The select's value for Shopify's default market (saved as `''`, which a
+ * select can't hold). ISO codes are upper case, so it can't match one.
+ */
+const DEFAULT_VALUE = 'default';
+const DEFAULT_OPTION: Option = {
+  value: DEFAULT_VALUE,
+  label: 'Shopify default',
+};
 
 type Props = {
   idPrefix: string;
@@ -82,14 +92,44 @@ function languageOptions(
   return [DEFAULT_OPTION, ...withSavedValue(languages, saved, name)];
 }
 
-function selected(options: Option[], value: string): Option {
-  return options.find((option) => option.value === value) ?? DEFAULT_OPTION;
-}
+/** `''` (Shopify's default) as the select's value, and back. */
+const toValue = (code: string): string => code || DEFAULT_VALUE;
+const fromValue = (value: string | null): string =>
+  value && value !== DEFAULT_VALUE ? value : '';
 
-function optionValue(option: unknown): string {
-  return option && typeof option === 'object' && 'value' in option
-    ? String(option.value)
-    : '';
+/** A few options show as radios (short labels: the small group), a longer list as a select. */
+function ChoiceInput({
+  name,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  name: string;
+  value: string;
+  options: Option[];
+  disabled: boolean;
+  onChange: (value: string | null) => void;
+}) {
+  return options.length <= MAX_RADIO_OPTIONS ? (
+    <RadioGroupInput
+      small
+      name={name}
+      value={value}
+      options={options}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  ) : (
+    <SelectInput
+      name={name}
+      value={value}
+      options={options}
+      clearable={false}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  );
 }
 
 /** The store's default market: country (with currency) and language. */
@@ -102,51 +142,40 @@ export default function MarketFields({
   disabled,
   onChange,
 }: Props) {
-  const countries = countryOptions(localization, country, locale);
-  const languages = languageOptions(localization, language, locale);
-
   return (
-    <div>
-      <div className={styles.pair}>
-        <div>
-          <SelectField
-            id={`${idPrefix}-country`}
+    <div className="form__field form__row">
+      <div className="form__row__cell">
+        <FieldWrapper
+          id={`${idPrefix}-country`}
+          label="Default country"
+          hint="Prices and currencies in the record editor and the picker follow it."
+        >
+          <ChoiceInput
             name={`${idPrefix}-country`}
-            label="Default country"
-            value={selected(countries, country)}
-            onChange={(option) =>
-              onChange({ defaultCountry: optionValue(option) })
-            }
-            selectInputProps={{
-              options: countries,
-              'aria-label': 'Default country',
-              isDisabled: disabled,
-              isClearable: false,
-            }}
+            value={toValue(country)}
+            options={countryOptions(localization, country, locale)}
+            disabled={disabled}
+            onChange={(value) => onChange({ defaultCountry: fromValue(value) })}
           />
-        </div>
-        <div>
-          <SelectField
-            id={`${idPrefix}-language`}
-            name={`${idPrefix}-language`}
-            label="Default language"
-            value={selected(languages, language)}
-            onChange={(option) =>
-              onChange({ defaultLanguage: optionValue(option) })
-            }
-            selectInputProps={{
-              options: languages,
-              'aria-label': 'Default language',
-              isDisabled: disabled,
-              isClearable: false,
-            }}
-          />
-        </div>
+        </FieldWrapper>
       </div>
-      <FieldHint>
-        Prices, currencies and product titles in the record editor and the
-        picker follow this market
-      </FieldHint>
+      <div className="form__row__cell">
+        <FieldWrapper
+          id={`${idPrefix}-language`}
+          label="Default language"
+          hint="Product titles in the record editor and the picker follow it."
+        >
+          <ChoiceInput
+            name={`${idPrefix}-language`}
+            value={toValue(language)}
+            options={languageOptions(localization, language, locale)}
+            disabled={disabled}
+            onChange={(value) =>
+              onChange({ defaultLanguage: fromValue(value) })
+            }
+          />
+        </FieldWrapper>
+      </div>
     </div>
   );
 }

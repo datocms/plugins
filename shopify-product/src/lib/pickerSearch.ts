@@ -19,7 +19,7 @@ import type {
   ShopifyNode,
   VariantSummary,
 } from '../types';
-import { nodeTitle } from './format';
+import { formatCount, nodeTitle } from './format';
 import { isNonEmptyString, isRecord } from './guards';
 import { sameShopifyHandle } from './legacy';
 import { normalizeFieldParameters, normalizeShopDomain } from './parameters';
@@ -132,8 +132,7 @@ export type PickerLabels = {
    */
   resultOne: string;
   resultMany: string;
-  searchLabel: string;
-  placeholder: string;
+  /** The footer of a single field, whose first pick resolves the picker. */
   singleHint: string;
   emptyTitle: string;
   emptyHint: string;
@@ -148,9 +147,7 @@ const LABELS: Record<ShopifyKind, PickerLabels> = {
     many: 'products',
     resultOne: 'product',
     resultMany: 'products',
-    searchLabel: 'Search products',
-    placeholder: 'Search products, or paste a SKU or barcode…',
-    singleHint: 'Click a product to choose it',
+    singleHint: 'Click a product to choose it.',
     emptyTitle: 'No products match',
     emptyHint: STOREFRONT_PRODUCTS_HINT,
   },
@@ -159,8 +156,6 @@ const LABELS: Record<ShopifyKind, PickerLabels> = {
     many: 'variants',
     resultOne: 'product',
     resultMany: 'products',
-    searchLabel: 'Search products and variants',
-    placeholder: 'Search products, or paste a SKU or barcode…',
     singleHint:
       'Click a variant to choose it. A product with several variants opens to show them.',
     emptyTitle: 'No products match',
@@ -171,9 +166,7 @@ const LABELS: Record<ShopifyKind, PickerLabels> = {
     many: 'collections',
     resultOne: 'collection',
     resultMany: 'collections',
-    searchLabel: 'Search collections',
-    placeholder: 'Search collections…',
-    singleHint: 'Click a collection to choose it',
+    singleHint: 'Click a collection to choose it.',
     emptyTitle: 'No collections match',
     emptyHint:
       'Only collections published to the Headless storefront this token belongs to are visible.',
@@ -184,21 +177,39 @@ export function pickerLabels(kind: ShopifyKind): PickerLabels {
   return LABELS[kind];
 }
 
-/** `"3 selected"`, or `"3 of 5 selected"` with a max. */
-export function selectionCountLabel(count: number, max?: number): string {
-  return typeof max === 'number' && Number.isFinite(max)
-    ? `${count} of ${max} selected`
-    : `${count} selected`;
-}
-
-/** Tooltip for items Replace can't pick: the field already has them. */
-export const ALREADY_IN_FIELD_MESSAGE = 'Already in this field';
-
-/** Tooltip for items disabled because the selection is full. */
-export function maxReachedMessage(max: number, kind: ShopifyKind): string {
+/**
+ * `"3 products selected"`, or `"3 of 5 products selected"` with a max (the
+ * noun follows the max: `"0 of 1 product selected"`). Below the minimum, the
+ * minimum follows: `"1 of 5 products selected · at least 2"`. The numbers
+ * take the separators of `locale`.
+ */
+export function selectionCountLabel(
+  count: number,
+  kind: ShopifyKind,
+  max?: number,
+  options: { min?: number; locale?: string } = {},
+): string {
+  const { min, locale } = options;
   const labels = pickerLabels(kind);
-  return `You can select up to ${max} ${max === 1 ? labels.one : labels.many}`;
+  const counted =
+    typeof max === 'number' && Number.isFinite(max)
+      ? `${formatCount(count, locale)} of ${formatCount(max, locale)} ${max === 1 ? labels.one : labels.many} selected`
+      : `${formatCount(count, locale)} ${count === 1 ? labels.one : labels.many} selected`;
+  return min && count < min
+    ? `${counted} · at least ${formatCount(min, locale)}`
+    : counted;
 }
+
+/** Why Replace can't pick an item: the field already has it. */
+export const ALREADY_IN_FIELD_MESSAGE = "It's already in this field.";
+
+/**
+ * Why items can't be picked once the selection is full. It follows the
+ * count, which names the items and gives the maximum ("3 of 3 products
+ * selected. You can't select more."), and stays short so the footer keeps
+ * room for the selected items.
+ */
+export const MAX_REACHED_MESSAGE = "You can't select more.";
 
 /** `"Accessory"`, `"Accessory or Premium"`, `"Accessory, Premium or Snow"`. */
 export function tagsLabel(tags: readonly string[]): string {
@@ -458,10 +469,10 @@ export function soldOutReason(
   search: EffectiveSearch,
 ): string | null {
   if (scope?.availableOnly) {
-    return 'Sold out: this field only allows variants available for sale';
+    return 'Sold out: this field only allows variants available for sale.';
   }
   return search.availableOnly
-    ? 'Sold out: turn off Available for sale to choose it'
+    ? 'Sold out: turn off Available for sale to choose it.'
     : null;
 }
 
@@ -512,7 +523,7 @@ export function languageFallbackNotice(
   const wanted = requested.language;
   const got = applied?.language;
   if (!wanted || !got || wanted === got) return null;
-  return `${wanted} isn't published for this market, so Shopify answered in ${got}`;
+  return `${wanted} isn't published for this market, so Shopify answered in ${got}.`;
 }
 
 /** Countries in name order for the given UI locale (Shopify sends ISO order). */

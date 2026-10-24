@@ -12,7 +12,8 @@ import {
  * - `{ index }`: the row at that position (its ⋮ trigger, else its first
  *   focusable element);
  * - `'first-row'`: the first row;
- * - `'add'`, `'browse'`: the "Add …" and "Browse Shopify" buttons.
+ * - `'add'`, `'browse'`: "Add …" (a multiple field) and "Browse Shopify" (a
+ *   single field).
  * Targets are tried in order; missing ones are skipped.
  */
 export type FocusTarget = { index: number } | 'first-row' | 'add' | 'browse';
@@ -36,11 +37,19 @@ export type FieldFeedback = {
 /** How long after an action settles focus is still looked after. */
 const SETTLE_GRACE_MS = 3000;
 
-/** Marks a row's outer element (the value is the row's key). */
+/**
+ * Marks a row's `li` (the value is the row's key). The kit's
+ * `CardList.Item` takes no data attributes, so the row sets it through its
+ * ref.
+ */
 export const ROW_ATTRIBUTE = 'data-entry-row';
-/** Marks the element inside a row that takes focus (the ⋮ trigger). */
+/** Marks the wrapper of the control inside a row that takes focus (the ⋮). */
 export const ROW_FOCUS_ATTRIBUTE = 'data-row-focus';
-/** Marks the wrapper of a field-level button: `add` or `browse`. */
+/**
+ * Marks the wrapper of a field-level button: `add` (around a multiple
+ * field's card, whose footer holds "Add …", or the empty slot in its place)
+ * or `browse` (around a single field's empty slot).
+ */
 export const FIELD_ACTION_ATTRIBUTE = 'data-field-action';
 
 type Intent = { token: number; targets: FocusTarget[]; until: number };
@@ -52,12 +61,35 @@ function isDisabled(element: Element): boolean {
   return element instanceof HTMLButtonElement && element.disabled;
 }
 
+/** Nothing has focus: the page itself, or an element that left it. */
+export function isFocusLost(): boolean {
+  const active = document.activeElement;
+  return !active || active === document.body || !active.isConnected;
+}
+
 function rowFocusTarget(row: Element | undefined): HTMLElement | null {
   if (!row) return null;
+  const marker = row.querySelector(`[${ROW_FOCUS_ATTRIBUTE}]`);
   return (
-    row.querySelector<HTMLElement>(`[${ROW_FOCUS_ATTRIBUTE}]`) ??
+    marker?.querySelector<HTMLElement>(FOCUSABLE) ??
     row.querySelector<HTMLElement>(FOCUSABLE)
   );
+}
+
+/** The first enabled button of the wrapper that isn't inside a row. */
+function fieldActionTarget(
+  root: HTMLElement,
+  name: 'add' | 'browse',
+): HTMLElement | null {
+  const wrapper = root.querySelector(`[${FIELD_ACTION_ATTRIBUTE}="${name}"]`);
+  if (!wrapper) return null;
+  const buttons = wrapper.querySelectorAll<HTMLElement>(
+    'button:not([disabled])',
+  );
+  for (const button of buttons) {
+    if (!button.closest(`[${ROW_ATTRIBUTE}]`)) return button;
+  }
+  return null;
 }
 
 function findTarget(
@@ -65,9 +97,7 @@ function findTarget(
   target: FocusTarget,
 ): HTMLElement | null {
   if (target === 'add' || target === 'browse') {
-    return root.querySelector<HTMLElement>(
-      `[${FIELD_ACTION_ATTRIBUTE}="${target}"] button:not([disabled])`,
-    );
+    return fieldActionTarget(root, target);
   }
   const rows = root.querySelectorAll(`[${ROW_ATTRIBUTE}]`);
   const index = target === 'first-row' ? 0 : target.index;
@@ -93,10 +123,11 @@ function focusWasLost(lost: HTMLElement | null): boolean {
 
 /**
  * Keeps keyboard and screen-reader users in place after editor actions.
- * Removing a row, replacing it, saving from the empty state or a notice
- * unmounts the control that was used; focus would fall to `<body>`. While an
- * action runs (see `expect`), this moves it to a sensible neighbor instead,
- * and `announce` says what changed. Nothing moves focus outside an action.
+ * Removing a row, replacing it, saving from the empty slot or a notice
+ * unmounts the control that was used, and a busy button is disabled; focus
+ * would fall to `<body>`. While an action runs (see `expect`), this moves it
+ * to a sensible neighbor instead, and `announce` says what changed. Nothing
+ * moves focus outside an action.
  */
 export function useFieldFeedback(): {
   rootRef: RefObject<HTMLDivElement | null>;

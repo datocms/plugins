@@ -1,89 +1,140 @@
 /*
- * The only scrolling region of the picker. A 5px inset (pulled back with a
- * negative margin) keeps 4px focus halos inside the scroll box while card
- * edges stay aligned with the header.
+ * Placement for the results. The kit draws the cards, tables, blank slates,
+ * pills and buttons; this lays them out: the grid, a product's details on its
+ * card (which have no component of their own), and the band of variants a
+ * card opens under its row.
  */
-.results {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0 -5px;
-  padding: var(--spacing-m) 5px var(--spacing-l);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-padding-block: var(--spacing-m);
+
+.sectionTitle {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  margin: 0 0 var(--spacing-m);
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-strong);
 }
+
+/* The sections, the panel and Load more space the tables: no margin of their
+   own under them. */
+.table {
+  margin-bottom: 0;
+}
+
+/* ---- Grid ---------------------------------------------------------------- */
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: var(--spacing-m);
-  align-items: stretch;
+  gap: var(--spacing-l);
 }
 
-.list {
+/* A card's caption ends with an ellipsis instead of widening its column. */
+.item {
+  min-width: 0;
+}
+
+/* The picture of a product: the whole shot, on the muted swatch. The card's
+   top corners round it. */
+.media {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+.mediaWide {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+/* What the editor compares before picking: price, availability, variants.
+   It is the body of the card, on the surface of a card like the caption. */
+.details {
   display: flex;
   flex-direction: column;
-}
-
-.list > section {
-  margin: var(--spacing-s) 0;
-}
-
-.section + .section,
-.section + div {
-  margin-top: var(--spacing-l);
-}
-
-.sectionTitle {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin: 0 0 var(--spacing-s);
+  gap: var(--spacing-s);
+  min-width: 0;
+  padding: var(--spacing-m) var(--spacing-m) var(--spacing-s);
   font-size: var(--font-size-xs);
-  font-weight: normal;
-  line-height: 1.2;
+  background-color: var(--color--surface-raised);
+}
+
+/* Without a picture, it is the top of the card: the card's corners round it. */
+.details:first-child {
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+.details > * {
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--spacing-s);
+  align-items: center;
+}
+
+.details > .subtle,
+.details > .line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+.subtle {
   color: var(--color--ink-subtle);
-  text-transform: uppercase;
 }
 
-.sectionTitle svg {
-  width: 1.1em;
-  height: 1.1em;
+/* ---- The variants a card opens -------------------------------------------- */
+
+/* A band under the card's row, spanning the grid: the product, its option
+   filters and the table of variants, stacked. No frame or padding: the table
+   lays out as in the ListArea. */
+.panel {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  min-width: 0;
 }
 
-/* A section loading inside visible content: 40px spinner, ~30vh box. */
-.spinnerBox {
-  position: relative;
-  height: 30vh;
+.optionFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
 }
 
-.inlineEmpty {
-  margin: var(--spacing-m) 0;
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-  text-align: center;
+/* A row of the list view's tree that isn't a variant: a message, the option
+   filters or Load more. */
+.treeCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s) var(--spacing-m);
+  align-items: center;
 }
+
+/* ---- Paging --------------------------------------------------------------- */
 
 .loadMore {
   display: flex;
   justify-content: center;
-  margin-top: var(--spacing-l);
 }
 
 .loadMore > * {
   max-width: 100%;
 }
 
+/* The end of the list, for infinite scroll: the ListArea's gap before it is
+   taken back, so it adds no space. */
 .sentinel {
   height: 1px;
-}
-
-.empty {
-  padding-top: 10vh;
-}
-
-/* Load more while its page loads: still focusable, the spinner says why. */
-.loading.loading {
-  cursor: progress;
+  margin-top: var(--negative-spacing-l);
 }

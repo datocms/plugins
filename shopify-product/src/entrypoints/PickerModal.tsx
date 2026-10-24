@@ -1,17 +1,22 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import PickerApp from '../components/picker/PickerApp';
-import Callout from '../components/shared/Callout';
 import { useDeepStable } from '../components/shared/useDeepStable';
 import { PICKER_MODAL_HEIGHT } from '../constants';
+import { CircleExclamationIcon } from '../icons';
 import {
   getActiveStores,
   isStoreUsable,
   normalizePluginParameters,
 } from '../lib/parameters';
 import { readPickerParameters } from '../lib/pickerSearch';
-import type { PickerModalParameters, StoreConnection } from '../types';
+import type {
+  PickerModalParameters,
+  ShopifyKind,
+  StoreConnection,
+} from '../types';
 import styles from './PickerModal.module.css';
 
 type Props = {
@@ -57,32 +62,62 @@ function resolveSetup(rawParameters: unknown, rawPlugin: unknown): Setup {
 /** Problems get a short self-resizing frame instead of the tall picker. */
 function ProblemFrame({
   ctx,
-  children,
+  title,
+  message,
 }: {
   ctx: RenderModalCtx;
-  children: ReactNode;
+  title: string;
+  message: string;
 }) {
   return (
     <Canvas ctx={ctx}>
-      <div className="dl-kit-form-parity">{children}</div>
+      <BlankSlate
+        placement="inline"
+        error
+        icon={<CircleExclamationIcon />}
+        title={title}
+        description={message}
+      />
     </Canvas>
   );
 }
 
+/** The search's placeholder (and name): an example of what it finds. */
+const PRODUCT_TEXTS = {
+  'fullTextQuery.placeholder': 'T-shirt, SKU or barcode',
+};
+const COLLECTION_TEXTS = { 'fullTextQuery.placeholder': 'Summer sale' };
+
+/**
+ * The plugin's one fixed-height frame: the host sizes the iframe once, and
+ * the root fills it inside the Canvas padding, so only the results scroll.
+ */
 function PickerFrame({
   ctx,
+  kind,
   children,
 }: {
   ctx: RenderModalCtx;
+  kind: ShopifyKind;
   children: ReactNode;
 }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: the height is set once per frame.
   useEffect(() => {
     void ctx.setHeight(PICKER_MODAL_HEIGHT);
   }, []);
+  const [top, , bottom] = ctx.bodyPadding;
   return (
-    <Canvas ctx={ctx} noAutoResizer>
-      <div className={`dl-kit-form-parity ${styles.root}`}>{children}</div>
+    <Canvas
+      ctx={ctx}
+      noAutoResizer
+      texts={kind === 'collection' ? COLLECTION_TEXTS : PRODUCT_TEXTS}
+    >
+      <div
+        className={styles.root}
+        style={{ height: `calc(100vh - ${top + bottom}px)` }}
+      >
+        {children}
+      </div>
     </Canvas>
   );
 }
@@ -90,8 +125,7 @@ function PickerFrame({
 /**
  * `renderModal('shopifyPicker')`: browse the store and resolve with a
  * `PickerModalResult`. The host draws the title, ✕ and Esc (which resolve
- * nothing, meaning cancel). The modal is the one fixed-height frame: the
- * results scroll inside it.
+ * nothing, meaning cancel).
  */
 export default function PickerModal({ ctx }: Props) {
   const rawParameters = useDeepStable<unknown>(ctx.parameters);
@@ -103,16 +137,12 @@ export default function PickerModal({ ctx }: Props) {
 
   if (!setup.ok) {
     return (
-      <ProblemFrame ctx={ctx}>
-        <Callout tone="danger" role="alert" title={setup.title}>
-          <p>{setup.message}</p>
-        </Callout>
-      </ProblemFrame>
+      <ProblemFrame ctx={ctx} title={setup.title} message={setup.message} />
     );
   }
 
   return (
-    <PickerFrame ctx={ctx}>
+    <PickerFrame ctx={ctx} kind={setup.params.fieldParameters.kind}>
       <PickerApp ctx={ctx} params={setup.params} store={setup.store} />
     </PickerFrame>
   );

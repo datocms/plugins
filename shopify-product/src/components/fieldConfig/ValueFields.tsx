@@ -1,4 +1,10 @@
-import { FieldHint, SwitchField, TextField } from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Pill from 'datocms-react-ui/Pill';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { allowedKinds } from '../../lib/parameters';
 import type {
   Cardinality,
@@ -7,21 +13,21 @@ import type {
   ShopifyKind,
   StorageFormat,
 } from '../../types';
-import ChoiceFieldset from './ChoiceFieldset';
 import {
   CARDINALITY_OPTIONS,
   cardinalityHint,
+  FORMAT_CHANGE_TITLE,
   FORMAT_OPTIONS,
   KIND_OPTIONS,
   kindUnavailableReason,
 } from './copy';
-import { describe, describedBy } from './describe';
 import type { LimitTexts } from './draft';
-import OptionCards from './OptionCards';
-import Segmented from './Segmented';
-import styles from './ValueFields.module.css';
+import { fieldNotice } from './notices';
 
-/** 1. What editors pick. Kinds the format can't store are disabled with the reason. */
+/**
+ * 1. What editors pick. Kinds the format can't store are disabled, with the
+ * reason as their visible hint (a tooltip would only repeat it).
+ */
 export function KindField({
   params,
   error,
@@ -32,24 +38,28 @@ export function KindField({
   onChange: (kind: ShopifyKind) => void;
 }) {
   const available = allowedKinds(params.format);
-  const options = KIND_OPTIONS.map((option) => ({
-    ...option,
-    disabledReason: available.includes(option.value)
-      ? undefined
-      : kindUnavailableReason(params.format),
-  }));
+  const reason = kindUnavailableReason(params.format);
+  const options: RadioGroupOption<ShopifyKind>[] = KIND_OPTIONS.map(
+    (option) => {
+      const enabled = available.includes(option.value);
+      return {
+        value: option.value,
+        label: option.label,
+        hint: enabled ? option.description : reason,
+        disabled: !enabled,
+      };
+    },
+  );
   return (
-    <ChoiceFieldset id="kind" legend="Editors pick" error={error}>
-      {(description) => (
-        <OptionCards
-          name="kind"
-          options={options}
-          value={params.kind}
-          onChange={onChange}
-          {...description}
-        />
-      )}
-    </ChoiceFieldset>
+    <FieldWrapper id="kind" label="Editors pick" error={error}>
+      <RadioGroupInput
+        value={params.kind}
+        options={options}
+        onChange={(kind) => {
+          if (kind) onChange(kind);
+        }}
+      />
+    </FieldWrapper>
   );
 }
 
@@ -58,25 +68,44 @@ export function FormatField({
   fieldType,
   format,
   error,
+  notice,
   onChange,
 }: {
   fieldType: FieldType;
   format: StorageFormat;
   error?: string;
+  /** The warning about values saved with another kind or format. */
+  notice: string | null;
   onChange: (format: StorageFormat) => void;
 }) {
+  const options: RadioGroupOption<StorageFormat>[] = FORMAT_OPTIONS[
+    fieldType
+  ].map((option) => ({
+    value: option.value,
+    label: option.badge ? (
+      <>
+        {option.label} <Pill tone="accent">{option.badge}</Pill>
+      </>
+    ) : (
+      option.label
+    ),
+    hint: option.description,
+  }));
   return (
-    <ChoiceFieldset id="format" legend="Stored value" error={error}>
-      {(description) => (
-        <OptionCards
-          name="format"
-          options={FORMAT_OPTIONS[fieldType]}
-          value={format}
-          onChange={onChange}
-          {...description}
-        />
-      )}
-    </ChoiceFieldset>
+    <FieldWrapper
+      id="format"
+      label="Stored value"
+      error={error}
+      container={fieldNotice(notice, FORMAT_CHANGE_TITLE)}
+    >
+      <RadioGroupInput
+        value={format}
+        options={options}
+        onChange={(next) => {
+          if (next) onChange(next);
+        }}
+      />
+    </FieldWrapper>
   );
 }
 
@@ -84,65 +113,37 @@ export function FormatField({
 export function CardinalityField({
   params,
   error,
+  notice,
   onChange,
 }: {
   params: FieldParametersV1;
   error?: string;
+  /** The warning about saved values that hold several items. */
+  notice: string | null;
   onChange: (cardinality: Cardinality) => void;
 }) {
-  return (
-    <ChoiceFieldset
-      id="cardinality"
-      legend="How many"
-      error={error}
-      hint={cardinalityHint(params.cardinality, params.kind)}
-    >
-      {({ describedBy }) => (
-        <Segmented
-          options={CARDINALITY_OPTIONS}
-          value={params.cardinality}
-          onChange={onChange}
-          describedBy={describedBy}
-        />
-      )}
-    </ChoiceFieldset>
+  const options: RadioGroupOption<Cardinality>[] = CARDINALITY_OPTIONS.map(
+    (option) => ({
+      value: option.value,
+      label: option.label,
+      hint: cardinalityHint(option.value, params.kind),
+    }),
   );
-}
-
-const LIMITS_HINT_ID = 'limits-hint';
-
-/** One limit input: described by its error, then by the pair's shared hint. */
-function LimitField({
-  id,
-  label,
-  value,
-  error,
-  onChange,
-}: {
-  id: 'min' | 'max';
-  label: string;
-  value: string;
-  error: string | undefined;
-  onChange: (value: string) => void;
-}) {
-  const errorId = `${id}-error`;
   return (
-    <div>
-      <TextField
-        id={id}
-        name={id}
-        label={label}
-        value={value}
-        error={error ? <span id={errorId}>{error}</span> : undefined}
-        onChange={onChange}
-        textInputProps={{
-          inputMode: 'numeric',
-          autoComplete: 'off',
-          'aria-invalid': error ? true : undefined,
-          'aria-describedby': describedBy(error && errorId, LIMITS_HINT_ID),
+    <FieldWrapper
+      id="cardinality"
+      label="How many"
+      error={error}
+      container={fieldNotice(notice)}
+    >
+      <RadioGroupInput
+        value={params.cardinality}
+        options={options}
+        onChange={(cardinality) => {
+          if (cardinality) onChange(cardinality);
         }}
       />
-    </div>
+    </FieldWrapper>
   );
 }
 
@@ -157,29 +158,39 @@ export function LimitsFields({
   onChange: (patch: Partial<LimitTexts>) => void;
 }) {
   return (
-    <div>
-      <div className={styles.pair}>
-        <LimitField
+    <div className="form__field form__row">
+      <div className="form__row__cell">
+        <FieldWrapper
           id="min"
           label="Minimum items"
-          value={limits.min}
+          hint="Optional. Below it, editors see a warning."
           error={errors.min}
-          onChange={(min) => onChange({ min })}
-        />
-        <LimitField
+        >
+          <StringInput
+            name="min"
+            inputMode="numeric"
+            autoComplete="off"
+            value={limits.min}
+            onChange={(min) => onChange({ min: min ?? '' })}
+          />
+        </FieldWrapper>
+      </div>
+      <div className="form__row__cell">
+        <FieldWrapper
           id="max"
           label="Maximum items"
-          value={limits.max}
+          hint="Optional. Editors can't add more items."
           error={errors.max}
-          onChange={(max) => onChange({ max })}
-        />
+        >
+          <StringInput
+            name="max"
+            inputMode="numeric"
+            autoComplete="off"
+            value={limits.max}
+            onChange={(max) => onChange({ max: max ?? '' })}
+          />
+        </FieldWrapper>
       </div>
-      <FieldHint>
-        <span id={LIMITS_HINT_ID}>
-          Optional. Editors can't add more than the maximum, and see a warning
-          below the minimum.
-        </span>
-      </FieldHint>
     </div>
   );
 }
@@ -194,28 +205,18 @@ export function SnapshotField({
   error?: string;
   onChange: (value: boolean) => void;
 }) {
-  const described = describe(
-    'snapshot',
-    'If enabled, each reference also stores the title, image and price captured at selection time, so frontends can render without calling Shopify. Shopify stays the source of truth.',
-    error,
-  );
   return (
-    <div>
-      <SwitchField
-        id="snapshot"
+    <FieldWrapper
+      id="snapshot"
+      hint="Each reference also stores the title, image and price captured at selection time, so frontends can render without calling Shopify. Shopify stays the source of truth."
+      error={error}
+    >
+      <SwitchInput
         name="snapshot"
-        label="Include a display snapshot?"
-        hint={described.hint}
+        label="Include a display snapshot"
         value={value}
-        error={described.error}
-        onChange={onChange}
-        switchInputProps={{
-          name: 'snapshot',
-          value,
-          'aria-invalid': described.invalid,
-          'aria-describedby': described.ids,
-        }}
+        onChange={(next) => onChange(Boolean(next))}
       />
-    </div>
+    </FieldWrapper>
   );
 }

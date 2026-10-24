@@ -21,6 +21,12 @@ export type ActionName =
   | 'refresh'
   | 'convert';
 
+/**
+ * Why a control that changes the value waits: one action runs at a time.
+ * The control keeps its focus (`disabled={{ reason }}`).
+ */
+export const BUSY_REASON = 'Wait until the current change is saved.';
+
 export type EditorActions = {
   /** The action in progress; others wait until it settles. */
   busy: ActionName | null;
@@ -28,6 +34,9 @@ export type EditorActions = {
   replace: (index: number) => void;
   remove: (index: number) => void;
   reorder: (from: number, to: number) => void;
+  /** "Move up" and "Move down": the keyboard's way to reorder. */
+  moveUp: (index: number) => void;
+  moveDown: (index: number) => void;
   updateHandle: (key: string, handle: string) => void;
   refreshLegacy: () => void;
   convert: () => void;
@@ -49,9 +58,9 @@ const FOCUS_AFTER: Record<ActionName, FocusTarget[]> = {
 
 /**
  * Binds the editor actions to the latest render's state. Every action runs
- * only from an editor's click or drag, one at a time, and never while the
- * field is disabled. Anything an action didn't handle itself (the host
- * connection dropping, say) ends in a toast, not a silent failure.
+ * only from an editor's click, menu pick or drag, one at a time, and never
+ * while the field is disabled. Anything an action didn't handle itself (the
+ * host connection dropping, say) ends in a toast, not a silent failure.
  */
 export function useEditorActions(env: ActionEnv): EditorActions {
   const [busy, setBusy] = useState<ActionName | null>(null);
@@ -79,21 +88,23 @@ export function useEditorActions(env: ActionEnv): EditorActions {
     [],
   );
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const move = (from: number, to: number) =>
+      run('reorder', (current) => reorder(current, from, to));
+    return {
       busy,
       browse: () => run('browse', browse),
       replace: (index: number) =>
         run('replace', (current) => replaceAt(current, index)),
       remove: (index: number) =>
         run('remove', (current) => removeAt(current, index)),
-      reorder: (from: number, to: number) =>
-        run('reorder', (current) => reorder(current, from, to)),
+      reorder: move,
+      moveUp: (index: number) => move(index, index - 1),
+      moveDown: (index: number) => move(index, index + 1),
       updateHandle: (key: string, handle: string) =>
         run('update-handle', (current) => updateHandle(current, key, handle)),
       refreshLegacy: () => run('refresh', refreshLegacy),
       convert: () => run('convert', convert),
-    }),
-    [busy, run],
-  );
+    };
+  }, [busy, run]);
 }

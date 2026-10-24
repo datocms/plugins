@@ -1,44 +1,47 @@
-import { faEyeSlash } from '@fortawesome/free-regular-svg-icons';
-import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import CardList from 'datocms-react-ui/CardList';
+import { DragHandle, type SortableItemApi } from 'datocms-react-ui/dnd';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import IdText from 'datocms-react-ui/IdText';
+import Pill from 'datocms-react-ui/Pill';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
 import type { ReactNode } from 'react';
+import { EyeSlashIcon } from '../../icons';
 import {
   type RowModel,
   rowMeta,
   unresolvedMessage,
 } from '../../lib/fieldValue';
-import { nodeImage, nodeTitle, truncateMiddle } from '../../lib/format';
+import { availability, nodeImage, nodeTitle } from '../../lib/format';
 import type { ShopifyImage } from '../../types';
-import { Button } from '../../ui/Button';
-import { Icon } from '../../ui/Icon';
 import AvailabilityBadge from '../shared/AvailabilityBadge';
 import PriceTag, { nodePrice } from '../shared/PriceTag';
 import Thumbnail from '../shared/Thumbnail';
-import styles from './EntryRow.module.css';
-import RowActions from './RowActions';
+import styles from './FieldParts.module.css';
+import RowMenu from './RowMenu';
+import { BUSY_REASON, type EditorActions } from './useEditorActions';
 import { ROW_ATTRIBUTE } from './useFieldFeedback';
 
-export type EntryRowProps = {
+export type EntryItemProps = {
   row: RowModel;
-  /** `ctx.ui.locale`, for prices. */
+  /** The row's position, and how many rows there are. */
+  index: number;
+  count: number;
+  /** `ctx.ui.locale`, for prices and stock counts. */
   locale: string;
   /** Show stock counts (the store's effective inventory capability). */
   inventory: boolean;
-  /** Read-only: no menu and no actions. */
+  /** Read-only field: links only, no changes. */
   readOnly: boolean;
-  /** Another action is running: actions are shown but disabled. */
-  busy: boolean;
-  onReplace: () => void;
-  onRemove: () => void;
-  onUpdateHandle: (handle: string) => void;
-  /** The drag handle, for sortable lists. */
-  dragHandle?: ReactNode;
-  /** The copy that follows the pointer while dragging. */
-  lifted?: boolean;
+  /** Several rows of a multiple field: drag handle, Move up and Move down. */
+  reorderable: boolean;
+  actions: EditorActions;
+  /** The drag handle and the drop line, from `SortableItem`. */
+  sortable: SortableItemApi;
 };
 
-const IDENTITY_MAX_LENGTH = 56;
-
-function rowTitle(row: RowModel): string {
+export function rowTitle(row: RowModel): string {
   return row.node ? nodeTitle(row.node) : row.fallback.label;
 }
 
@@ -49,188 +52,204 @@ function rowImage(row: RowModel): ShopifyImage | null {
     : null;
 }
 
-function RowThumb({ row }: { row: RowModel }) {
-  const image = rowImage(row);
-  if (!image && row.state === 'unresolved') {
-    return (
-      <span className={styles.thumbPlaceholder} aria-hidden="true">
-        <Icon icon={faEyeSlash} />
-      </span>
-    );
-  }
-  return <Thumbnail image={image} size={60} radius={4} />;
-}
-
+/**
+ * The title, linking to the storefront (in a new tab) when there is one. A
+ * fallback label that is a handle or an ID is monospaced. The link isn't
+ * draggable: a drag in the row only starts from its handle.
+ */
 function RowTitle({ row }: { row: RowModel }) {
   const title = rowTitle(row);
-  const code = !row.node && row.fallback.labelIsCode;
-  const className = [styles.title, code ? styles.code : '']
-    .filter(Boolean)
-    .join(' ');
-  if (row.storefrontUrl) {
-    return (
-      <a
-        className={`${className} ${styles.titleLink}`}
-        href={row.storefrontUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={title}
-      >
-        {title}
-      </a>
-    );
-  }
+  const text =
+    !row.node && row.fallback.labelIsCode ? <IdText id={title} /> : title;
+  if (!row.storefrontUrl) return <>{text}</>;
   return (
-    <span className={className} title={title}>
-      {title}
-    </span>
+    <a
+      href={row.storefrontUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      draggable={false}
+    >
+      {text}
+    </a>
   );
 }
 
-function RowDetails({ row, inventory }: { row: RowModel; inventory: boolean }) {
-  if (row.node) {
-    const meta = rowMeta(row.node);
-    return (
-      <>
-        {meta && <span className={styles.meta}>{meta}</span>}
-        <span className={styles.badges}>
-          <AvailabilityBadge node={row.node} inventory={inventory} />
-        </span>
-      </>
-    );
-  }
-  const identity = row.fallback.identity;
-  return identity ? (
-    <span className={`${styles.meta} ${styles.code}`} title={identity}>
-      {truncateMiddle(identity, IDENTITY_MAX_LENGTH)}
-    </span>
-  ) : null;
-}
-
-type IssueProps = Pick<
-  EntryRowProps,
-  'row' | 'readOnly' | 'busy' | 'onReplace' | 'onRemove' | 'onUpdateHandle'
->;
-
-function UnresolvedIssue({
+/** `vendor · type` (or the SKU of a variant) and the availability. */
+function RowDetails({
   row,
-  readOnly,
-  busy,
-  onReplace,
-  onRemove,
-}: IssueProps) {
+  locale,
+  inventory,
+}: {
+  row: RowModel;
+  locale: string;
+  inventory: boolean;
+}) {
+  if (!row.node) {
+    const identity = row.fallback.identity;
+    return identity ? <IdText id={identity} /> : null;
+  }
+  const meta = rowMeta(row.node);
+  const available = availability(row.node, { inventory }).label !== '';
   return (
-    <div className={styles.issue}>
-      <span className={styles.issueText}>
-        <Icon icon={faTriangleExclamation} className="dl-icon--current" />
-        {unresolvedMessage(row.entry)}
-      </span>
-      {!readOnly && (
-        <span className={styles.issueActions}>
-          <Button buttonSize="xxs" disabled={busy} onClick={onReplace}>
-            Replace
-          </Button>
-          <Button buttonSize="xxs" disabled={busy} onClick={onRemove}>
-            Remove
-          </Button>
-        </span>
+    <>
+      {meta && <span>{meta}</span>}
+      {meta && available && ' · '}
+      {available && (
+        <AvailabilityBadge
+          node={row.node}
+          locale={locale}
+          inventory={inventory}
+        />
       )}
-    </div>
+    </>
   );
-}
-
-function HandleDriftIssue({ row, readOnly, busy, onUpdateHandle }: IssueProps) {
-  const handle = row.handleDrift ?? '';
-  return (
-    <div className={styles.issue}>
-      <span className={styles.issueText}>
-        <Icon icon={faTriangleExclamation} className="dl-icon--current" />
-        <span>
-          The Shopify handle changed to{' '}
-          <code className={styles.inlineCode}>{handle}</code>
-        </span>
-      </span>
-      {!readOnly && (
-        <span className={styles.issueActions}>
-          <Button
-            buttonSize="xxs"
-            disabled={busy}
-            onClick={() => onUpdateHandle(handle)}
-          >
-            Update
-          </Button>
-        </span>
-      )}
-    </div>
-  );
-}
-
-function RowIssue(props: IssueProps) {
-  if (props.row.state === 'unresolved') return <UnresolvedIssue {...props} />;
-  if (props.row.handleDrift) return <HandleDriftIssue {...props} />;
-  return null;
-}
-
-function cardClass(row: RowModel, lifted: boolean): string {
-  return [
-    styles.card,
-    row.state === 'unresolved' ? styles.cardWarning : '',
-    row.state === 'pending' ? styles.cardFetching : '',
-    lifted ? styles.cardLifted : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
 }
 
 /**
- * One selected product, variant or collection, laid out like a linked-record
- * row: thumbnail, title (linking to the storefront when there is one), meta
- * line, availability, and the price flush right, with action buttons that
- * fade in to its left on hover. Unresolved and drifted entries add a
- * warning strip with their recovery actions.
+ * Why the row needs attention, under it. With a fix, the callout keeps the
+ * room of the button that goes right under it.
  */
-export default function EntryRow(props: EntryRowProps) {
-  const { row, readOnly, busy } = props;
+function rowIssue(row: RowModel, withFix: boolean): ReactNode {
+  const className = withFix ? styles.calloutWithAction : undefined;
+  if (row.state === 'unresolved') {
+    return (
+      <Callout tone="warning" className={className}>
+        {unresolvedMessage(row.entry)}
+      </Callout>
+    );
+  }
+  if (row.handleDrift) {
+    return (
+      <Callout tone="warning" className={className}>
+        The Shopify handle changed to <IdText id={row.handleDrift} />.
+      </Callout>
+    );
+  }
+  return null;
+}
+
+/**
+ * The action that fixes the row's issue: a button right under the issue,
+ * always visible (the row's actions show only on hover or focus, and a
+ * callout holds no buttons). Null when there is nothing to fix, or the field
+ * is read-only.
+ */
+function fixAction({
+  row,
+  index,
+  readOnly,
+  actions,
+}: Pick<EntryItemProps, 'row' | 'index' | 'readOnly' | 'actions'>): ReactNode {
+  if (readOnly) return null;
+  const disabled = actions.busy !== null ? { reason: BUSY_REASON } : undefined;
+  if (row.state === 'unresolved') {
+    return (
+      <Button
+        label="Replace"
+        disabled={disabled}
+        onClick={() => actions.replace(index)}
+      />
+    );
+  }
+  const handle = row.handleDrift;
+  if (!handle) return null;
+  return (
+    <Button
+      label="Update handle"
+      disabled={disabled}
+      onClick={() => actions.updateHandle(row.key, handle)}
+    />
+  );
+}
+
+/**
+ * One product, variant or collection of the field, as an item of the card:
+ * thumbnail, title, details, availability and price, then the ⋮ with the
+ * links and the changes. An issue shows under the row, with the button that
+ * fixes it. A row that still loads shows a progress line on its bottom edge.
+ */
+export default function EntryItem(props: EntryItemProps) {
+  const { row, index, readOnly, actions, sortable } = props;
   const title = rowTitle(row);
   const price = row.node ? nodePrice(row.node) : null;
-  // The copy that follows the pointer isn't a row to return focus to.
-  const marker = props.lifted ? {} : { [ROW_ATTRIBUTE]: row.key };
-  return (
-    <div className={styles.row} {...marker}>
-      {props.dragHandle}
-      <div
-        className={cardClass(row, props.lifted === true)}
-        aria-busy={row.state === 'pending'}
+  const fix = fixAction({ row, index, readOnly, actions });
+  const issue = rowIssue(row, fix !== null);
+
+  const summary = (
+    <>
+      {props.reorderable && (
+        <DragHandle ref={sortable.handleRef} gutter="normal" />
+      )}
+      <EntityRow
+        layout="row"
+        image={
+          <Thumbnail
+            image={rowImage(row)}
+            fallback={row.state === 'unresolved' ? <EyeSlashIcon /> : null}
+          />
+        }
+        title={<RowTitle row={row} />}
+        afterTitle={
+          row.state === 'unresolved' ? (
+            <Pill tone="warning">Not visible</Pill>
+          ) : undefined
+        }
+        trailing={
+          price ? <PriceTag price={price} locale={props.locale} /> : undefined
+        }
       >
-        <div className={styles.main}>
-          <RowThumb row={row} />
-          <div className={styles.content}>
-            <RowTitle row={row} />
-            <RowDetails row={row} inventory={props.inventory} />
-          </div>
-          {!readOnly && (
-            <RowActions
-              title={title}
-              adminUrl={row.adminUrl}
-              adminSearchUrl={row.adminSearchUrl}
-              storefrontUrl={row.storefrontUrl}
-              disabled={busy}
-              onReplace={props.onReplace}
-              onRemove={props.onRemove}
-              ghost={props.lifted === true}
-              linksOnly={row.state === 'unresolved'}
-            />
-          )}
-          {price && (
-            <PriceTag
-              price={price}
-              locale={props.locale}
-              className={styles.price}
-            />
-          )}
-        </div>
-        <RowIssue {...props} />
-      </div>
-    </div>
+        <RowDetails
+          row={row}
+          locale={props.locale}
+          inventory={props.inventory}
+        />
+      </EntityRow>
+      {row.state === 'pending' && (
+        <ProgressBar placement="edge" ariaLabel={`Loading ${title}`} />
+      )}
+      {/* The row is positioned: the drop line goes on its edges. */}
+      {!issue && sortable.dropIndicator}
+    </>
+  );
+
+  // Empty for a read-only row without links: the column stays empty.
+  const menu = (
+    <RowMenu
+      title={title}
+      index={index}
+      count={props.count}
+      adminUrl={row.adminUrl}
+      adminSearchUrl={row.adminSearchUrl}
+      storefrontUrl={row.storefrontUrl}
+      readOnly={readOnly}
+      busy={actions.busy !== null}
+      reorderable={props.reorderable}
+      replaceInRow={row.state === 'unresolved'}
+      onReplace={() => actions.replace(index)}
+      onRemove={() => actions.remove(index)}
+      onMoveUp={() => actions.moveUp(index)}
+      onMoveDown={() => actions.moveDown(index)}
+    />
+  );
+
+  return (
+    // The focus rescue finds rows by their attribute, on the item's `li`.
+    <CardList.Item
+      ref={sortable.ref}
+      {...{ [ROW_ATTRIBUTE]: row.key }}
+      className={styles.item}
+      row={{ summary, actions: menu }}
+      body={
+        issue ? (
+          <>
+            {/* The item is positioned: the drop line goes on its edges,
+                under the issue too. */}
+            {sortable.dropIndicator}
+            {issue}
+            {fix && <div className={styles.actions}>{fix}</div>}
+          </>
+        ) : undefined
+      }
+    />
   );
 }

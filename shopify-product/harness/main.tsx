@@ -1,6 +1,6 @@
-// Runs inside the plugin iframe (frame.html). Same CSS order as src/main.tsx.
+// Runs inside the plugin iframe (frame.html). The same CSS as src/main.tsx.
 import 'datocms-react-ui/styles.css';
-import '../src/kit-fixes.css';
+import '../src/frame.css';
 import { Component, type ReactNode, StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { cloneIntoThisRealm, getHost, type InspectorEntry } from './bridge';

@@ -1,4 +1,5 @@
-import { SwitchField } from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 
 type Props = {
   value: boolean;
@@ -6,20 +7,20 @@ type Props = {
   onChange: (value: boolean) => void;
 };
 
-/** "Use the demo store?" (the screen's top notice says when it's on). */
+/** "Use the demo store" (the screen's top notice says when it's on). */
 export default function DemoStoreSection({ value, disabled, onChange }: Props) {
-  // SwitchField renders more than one root element: keep it in one box.
   return (
-    <div>
-      <SwitchField
-        id="useDemoStore"
+    <FieldWrapper
+      id="useDemoStore"
+      hint="Browse sample products without a Shopify account."
+    >
+      <SwitchInput
         name="useDemoStore"
-        label="Use the demo store?"
-        hint="Browse sample products without a Shopify account"
+        label="Use the demo store"
         value={value}
-        onChange={onChange}
-        switchInputProps={{ name: 'useDemoStore', value, disabled }}
+        disabled={disabled}
+        onChange={(on) => onChange(Boolean(on))}
       />
-    </div>
+    </FieldWrapper>
   );
 }

@@ -1,9 +1,7 @@
-import { faSquareCheck } from '@fortawesome/free-regular-svg-icons';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import type { CSSProperties } from 'react';
-import { Button } from '../../src/ui/Button';
-import { Icon } from '../../src/ui/Icon';
 import { defineSurface } from '../surface';
 
 /**
@@ -31,21 +29,15 @@ function ExampleModal({ ctx }: { ctx: RenderModalCtx }) {
         {OPTIONS.map((option) => (
           <Button
             key={option}
-            fullWidth
-            buttonType={option === current ? 'primary' : 'muted'}
-            leftIcon={
-              option === current ? <Icon icon={faSquareCheck} /> : undefined
-            }
+            expand
+            tone={option === current ? 'primary' : 'soft'}
+            label={option}
             onClick={() => ctx.resolve(option)}
-          >
-            {option}
-          </Button>
+          />
         ))}
       </div>
       <div style={styles.footer}>
-        <Button buttonSize="s" onClick={() => ctx.resolve(null)}>
-          Cancel
-        </Button>
+        <Button label="Cancel" onClick={() => ctx.resolve(null)} />
       </div>
     </Canvas>
   );

@@ -1,8 +1,13 @@
-import { Section } from 'datocms-react-ui';
+import { Page } from 'datocms-react-ui/Page';
+import Pill from 'datocms-react-ui/Pill';
 import { useEffect } from 'react';
-import { connectionSignature, type StoreDraft } from './draft';
+import {
+  connectionSignature,
+  type StoreDraft,
+  storeDisplayName,
+} from './draft';
 import StoreFields from './StoreFields';
-import styles from './StoreList.module.css';
+import StoreMenu from './StoreMenu';
 import type { SettingsForm } from './useSettingsForm';
 
 type Props = {
@@ -10,7 +15,7 @@ type Props = {
   locale: string;
 };
 
-/** What a store block shows about its connection, derived from the checks. */
+/** What a store shows about its connection, derived from the checks. */
 function connectionView(form: SettingsForm, store: StoreDraft) {
   const signature = connectionSignature(store);
   const status = signature ? form.checks.statuses[signature] : undefined;
@@ -24,14 +29,10 @@ function connectionView(form: SettingsForm, store: StoreDraft) {
     capabilities: trusted ? store.capabilities : null,
     localization:
       status?.kind === 'connected' ? status.result.localization : null,
-    canSaveAnyway:
-      signature !== null &&
-      status?.kind === 'failed' &&
-      form.saveAnywaySignatures.has(signature),
   };
 }
 
-/** The "Shopify store(s)" section: one block per store. */
+/** One group per store; with several, each has a name and a "⋮" menu. */
 export default function StoreList({ form, locale }: Props) {
   const { stores } = form.draft;
   const multiple = stores.length > 1;
@@ -42,19 +43,31 @@ export default function StoreList({ form, locale }: Props) {
   }, [form.focusRequest]);
 
   return (
-    <Section
-      title={multiple ? 'Shopify stores' : 'Shopify store'}
-      titleClassName="dl-section-parity"
-      headerStyle={{ marginBottom: 'var(--spacing-m)' }}
-    >
-      <div className={styles.stores}>
-        {stores.map((store, index) => {
-          const view = connectionView(form, store);
-          return (
+    <>
+      {stores.map((store, index) => {
+        const position = index + 1;
+        const view = connectionView(form, store);
+        const name = storeDisplayName(store) || `Store ${position}`;
+        return (
+          <Page.Group
+            key={store.key}
+            title={multiple ? name : 'Shopify store'}
+            status={multiple && position === 1 ? <Pill>Default</Pill> : null}
+            actions={
+              multiple && !form.readOnly ? (
+                <StoreMenu
+                  name={name}
+                  isDefault={position === 1}
+                  busy={form.saving}
+                  onMakeDefault={() => form.makeDefault(store.key)}
+                  onRemove={() => form.removeStore(store.key)}
+                />
+              ) : null
+            }
+          >
             <StoreFields
-              key={store.key}
               store={store}
-              position={index + 1}
+              position={position}
               multiple={multiple}
               errors={form.errors.stores[index] ?? {}}
               status={view.status}
@@ -62,21 +75,16 @@ export default function StoreList({ form, locale }: Props) {
               localization={view.localization}
               locale={locale}
               locked={form.fieldsLocked}
-              busy={form.saving}
               readOnly={form.readOnly}
+              saving={form.saving}
               demoStore={form.draft.useDemoStore}
               onChange={(patch) => form.updateStore(store.key, patch)}
               onBlur={(field) => form.touchStore(store.key, field)}
               onTest={() => void form.testStore(store.key)}
-              onMakeDefault={() => void form.makeDefault(store.key)}
-              onRemove={() => void form.removeStore(store.key)}
-              onSaveAnyway={
-                view.canSaveAnyway ? () => void form.saveAnyway() : undefined
-              }
             />
-          );
-        })}
-      </div>
-    </Section>
+          </Page.Group>
+        );
+      })}
+    </>
   );
 }

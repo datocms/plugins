@@ -1,13 +1,12 @@
-import { faPlus } from '@fortawesome/free-solid-svg-icons';
-import { FieldHint, Section } from 'datocms-react-ui';
-import { Button } from '../../ui/Button';
-import { Icon } from '../../ui/Icon';
+import Button from 'datocms-react-ui/Button';
+import FieldHint from 'datocms-react-ui/FieldHint';
+import { Page } from 'datocms-react-ui/Page';
+import { PlusIcon } from '../../icons';
 import AutoApplySection from './AutoApplySection';
 import DemoStoreSection from './DemoStoreSection';
-import styles from './Disclosure.module.css';
+import { SAVING_REASON } from './focus';
+import styles from './Settings.module.css';
 import type { SettingsForm } from './useSettingsForm';
-
-export const ADVANCED_TOGGLE_ID = 'shopify-advanced-settings-toggle';
 
 type Props = {
   form: SettingsForm;
@@ -15,53 +14,43 @@ type Props = {
   onToggle: () => void;
 };
 
+const ADD_STORE_HINT_ID = 'add-store-hint';
+
 /** Everything most projects never touch: more stores, the demo store, auto-apply. */
 export default function AdvancedSettings({ form, open, onToggle }: Props) {
-  const contentId = 'shopify-advanced-settings';
+  // An error must stay visible: the group can't close while it shows.
+  const collapse = form.errors.autoApply ? { open: true } : { open, onToggle };
+
   return (
-    <Section
-      title={
-        <button
-          id={ADVANCED_TOGGLE_ID}
-          type="button"
-          className={styles.toggle}
-          aria-expanded={open}
-          aria-controls={contentId}
-        >
-          Advanced settings
-        </button>
-      }
-      titleClassName="dl-section-parity"
-      headerStyle={{ marginBottom: open ? 'var(--spacing-m)' : 0 }}
-      collapsible={{ isOpen: open, onToggle }}
-    >
-      <div id={contentId} className={styles.panel}>
-        {!form.readOnly && (
-          <div>
-            <Button
-              buttonSize="xs"
-              leftIcon={<Icon icon={faPlus} />}
-              disabled={form.saving}
-              onClick={form.addStore}
-            >
-              Add another store
-            </Button>
-            <FieldHint>Each field can then pick which store it uses</FieldHint>
-          </div>
-        )}
-        <DemoStoreSection
-          value={form.draft.useDemoStore}
-          disabled={form.fieldsLocked}
-          onChange={form.setUseDemoStore}
-        />
-        <AutoApplySection
-          value={form.draft.autoApplyToFieldsWithApiKey}
-          error={form.errors.autoApply}
-          disabled={form.fieldsLocked}
-          onChange={form.setAutoApply}
-          onBlur={form.touchAutoApply}
-        />
-      </div>
-    </Section>
+    <Page.Group title="Advanced settings" collapse={collapse}>
+      {!form.readOnly && (
+        <div className={styles.block}>
+          <Button
+            icon={PlusIcon}
+            label="Add another store"
+            aria-describedby={ADD_STORE_HINT_ID}
+            disabled={form.saving ? { reason: SAVING_REASON } : undefined}
+            onClick={form.addStore}
+          />
+          <FieldHint
+            id={ADD_STORE_HINT_ID}
+            hint="Each field can then pick which store it uses."
+          />
+        </div>
+      )}
+      <DemoStoreSection
+        value={form.draft.useDemoStore}
+        disabled={form.fieldsLocked}
+        onChange={form.setUseDemoStore}
+      />
+      <AutoApplySection
+        value={form.draft.autoApplyToFieldsWithApiKey}
+        error={form.errors.autoApply}
+        disabled={form.fieldsLocked && !form.readOnly}
+        readOnly={form.readOnly}
+        onChange={form.setAutoApply}
+        onBlur={form.touchAutoApply}
+      />
+    </Page.Group>
   );
 }

@@ -227,17 +227,24 @@ const DRIVERS: Record<string, Driver> = {
   'product-tray-focus': { focus: 'button[aria-label^="Remove"]' },
 };
 
+/** The kit's menu triggers and options act on mouse down, not on click. */
+function mouseDown(element: Element): void {
+  element.dispatchEvent(
+    new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+  );
+}
+
 function findMenuTrigger(label: string): HTMLButtonElement | undefined {
   return Array.from(
     document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup]'),
   ).find((button) => button.textContent?.trim().startsWith(label));
 }
 
-/** Clicks the trigger once the menu has something to show. */
+/** Opens the menu of the trigger whose text starts with `label`. */
 function openMenu(label: string): boolean {
   const trigger = findMenuTrigger(label);
   if (!trigger) return false;
-  if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+  if (trigger.getAttribute('aria-expanded') !== 'true') mouseDown(trigger);
   return true;
 }
 
@@ -250,14 +257,34 @@ function setInputValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/** The text a button is named by: its label, or the element it points to. */
+function nameOf(button: HTMLElement): string {
+  const labelledBy = button.getAttribute('aria-labelledby');
+  const label = labelledBy
+    ? document.getElementById(labelledBy)?.textContent
+    : null;
+  return (
+    button.getAttribute('aria-label') ??
+    label ??
+    button.textContent ??
+    ''
+  ).trim();
+}
+
+/**
+ * What opens a product's variants: its card's media button (grid), or the
+ * toggle of its row (list).
+ */
 function findCard(title: string): HTMLButtonElement | undefined {
   return Array.from(
     document.querySelectorAll<HTMLButtonElement>('button[aria-expanded]'),
-  ).find((button) => button.textContent?.includes(title));
+  ).find((button) => nameOf(button).startsWith(title));
 }
 
 function searchInput(): HTMLInputElement | null {
-  return document.querySelector<HTMLInputElement>('#shopify-picker-search');
+  return document.querySelector<HTMLInputElement>(
+    '#shopify-picker-search input',
+  );
 }
 
 /** Types into the search; true when it changed the value this time. */
@@ -268,13 +295,13 @@ function typeSearch(text: string): boolean {
   return true;
 }
 
+/** The List option of the Layout control. */
 function showList(list: boolean | undefined): void {
-  const button = document.querySelector<HTMLButtonElement>(
-    'button[aria-label="List view"]',
-  );
-  if (list && button && button.getAttribute('aria-pressed') !== 'true') {
-    button.click();
-  }
+  if (!list) return;
+  const option = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+  ).find((radio) => radio.textContent?.trim() === 'List');
+  if (option && option.getAttribute('aria-checked') !== 'true') option.click();
 }
 
 function openCard(title: string): boolean {
@@ -286,7 +313,7 @@ function openCard(title: string): boolean {
 
 function findOption(text: string): HTMLElement | undefined {
   return Array.from(
-    document.querySelectorAll<HTMLElement>('[role="menuitem"], button, li'),
+    document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
   ).find((element) => element.textContent?.trim() === text);
 }
 
@@ -297,7 +324,7 @@ function chooseNext(choices: Array<[string, string]>, done: Set<number>) {
   const [menu, option] = choices[index];
   const element = findOption(option);
   if (element) {
-    element.click();
+    mouseDown(element);
     done.add(index);
   } else {
     openMenu(menu);
@@ -358,7 +385,7 @@ export default defineSurface({
       picker(field({ max: 5 }), [entry(COMPLETE), entry(COMPARE), UNRESOLVED]),
     ),
     'product-tray-focus': state(
-      "Keyboard focus on a tray item's remove button; the Minimal Snowboard (no image, resolved on open) is a blank tile, and the unresolved product an eye-slash tile.",
+      "Keyboard focus on a tray chip's remove button; the Minimal Snowboard (no image, resolved on open) has a blank swatch, and the unresolved product the eye-slash and Not visible.",
       'Choose products',
       picker(field({ max: 5 }), [
         entry(COMPLETE),
@@ -368,7 +395,7 @@ export default defineSurface({
       ]),
     ),
     'product-kept-filter': state(
-      'Product type chosen, then a collection whose Search & Discovery filters do not include it: the value stays visible, struck.',
+      'Product type chosen, then a collection whose Search & Discovery filters do not include it: the value stays visible as a warning pill.',
       'Choose products',
       picker(field({})),
     ),
@@ -378,7 +405,7 @@ export default defineSurface({
       picker(field({ cardinality: 'single' }), [entry(HYDROGEN)]),
     ),
     'product-replace': state(
-      "Replace one item: the field's other items show selected and locked (Already in this field).",
+      "Replace one item: the field's other items show selected and locked, with an In this field pill.",
       'Choose a product',
       picker(field({ cardinality: 'single' }), [entry(COMPLETE)], {
         unavailable: [
@@ -403,7 +430,7 @@ export default defineSurface({
       picker(field({}), [entry(COMPLETE)]),
     ),
     'product-search-sku': state(
-      'A pasted SKU pins the exact SKU / barcode matches above the results.',
+      'A pasted SKU pins the SKU and barcode matches above the results.',
       'Choose products',
       picker(field({})),
     ),
@@ -413,7 +440,7 @@ export default defineSurface({
       picker(field({})),
     ),
     'product-max-reached': state(
-      'Max 2 and two picked: the rest are disabled with a reason.',
+      "Max 2 and two picked: the rest can't be picked, and the footer says why.",
       'Choose products',
       picker(field({ max: 2 }), [entry(COMPLETE), entry(HYDROGEN)]),
     ),
@@ -444,7 +471,7 @@ export default defineSurface({
       ),
     ),
     'variant-multiple': state(
-      'Variants, multiple: products open into variant tables.',
+      'Variants, multiple: products open a panel with a table of their variants.',
       'Choose product variants',
       picker(field({ kind: 'variant' }), [entry(ICE)]),
     ),

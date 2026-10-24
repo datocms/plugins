@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect } from 'react';
-import { ADVANCED_TOGGLE_ID } from '../../src/components/settings/AdvancedSettings';
 import ConfigScreen from '../../src/entrypoints/ConfigScreen';
 import { DEMO_STORE, type StoreConnection } from '../../src/types';
 import connectionTestFixture from '../../tests/fixtures/storefront-connection-test.json';
@@ -175,10 +174,19 @@ function click(selector: string, index = 0): void {
   document.querySelectorAll<HTMLElement>(selector)[index]?.click();
 }
 
-/** A key press on the focused element (menus listen on the document). */
+/** Key codes: the kit's menus read `which`, not only `key`. */
+const KEY_CODES: Record<string, number> = { ArrowDown: 40, Enter: 13 };
+
+/** A key press on the focused element (the open menu has the focus). */
 function press(key: string): void {
+  const code = KEY_CODES[key] ?? 0;
   (document.activeElement ?? document.body).dispatchEvent(
-    new KeyboardEvent('keydown', { key, bubbles: true }),
+    new KeyboardEvent('keydown', {
+      key,
+      keyCode: code,
+      which: code,
+      bubbles: true,
+    }),
   );
 }
 
@@ -189,11 +197,32 @@ function clickButton(label: string): void {
   button?.click();
 }
 
+/** The kit's menu triggers and options act on mouse down, not on click. */
+function mouseDown(element: Element | null | undefined): void {
+  element?.dispatchEvent(
+    new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+  );
+}
+
+function openMenu(selector: string): void {
+  mouseDown(document.querySelector(selector));
+}
+
+function pickOption(label: string): void {
+  mouseDown(
+    [...document.querySelectorAll('[role="menuitem"]')].find(
+      (option) => option.textContent?.trim() === label,
+    ),
+  );
+}
+
 const DOMAIN = 'input[id$="-domain"]';
 const TOKEN = 'input[id$="-token"]';
-const TOKENLESS = 'button[id$="-tokenless"]';
+const TOKENLESS = 'input[id$="-tokenless"]';
 const SAVE = 'button[type="submit"]';
-const ADVANCED = `#${ADVANCED_TOGGLE_ID}`;
+const STORE_2_MENU = 'button[aria-label="Actions for Europe"]';
+/** The collapse button of the Advanced settings group. */
+const openAdvanced = () => clickButton('Advanced settings');
 
 type Step = () => void;
 
@@ -205,25 +234,24 @@ const SCRIPTS: Record<string, Step[]> = {
   ],
   'tokenless-locked': [
     () => type(DOMAIN, 'datocms-demo'),
-    () => clickButton('More options'),
     () => click(TOKENLESS),
     () => click(SAVE),
   ],
   'missing-token': [() => type(DOMAIN, 'acme'), () => click(SAVE)],
   'inventory-missing': [() => clickButton('Re-check')],
   'three-stores-removed': [
-    () => click('button[aria-label="Actions for store 2"]'),
-    () => clickButton('Remove store'),
+    () => openMenu(STORE_2_MENU),
+    () => pickOption('Remove store'),
   ],
-  'store-menu': [() => click('button[aria-label="Actions for store 2"]')],
+  'store-menu': [() => openMenu(STORE_2_MENU)],
   'store-menu-keyboard': [
-    () => click('button[aria-label="Actions for store 2"]'),
+    () => openMenu(STORE_2_MENU),
+    () => press('ArrowDown'),
     () => press('ArrowDown'),
   ],
-  'advanced-settings': [() => click(ADVANCED)],
-  'more-options': [() => clickButton('More options')],
+  'advanced-settings': [openAdvanced],
   saving: [
-    () => click(ADVANCED),
+    openAdvanced,
     () => type('#autoApplyToFieldsWithApiKey', '^shopify_'),
     () => click(SAVE),
   ],
@@ -322,7 +350,7 @@ export default defineSurface({
     'more-options': {
       pluginParameters: v3([demoConnection({ defaultCountry: 'US' })]),
       description:
-        'A connected store with More options open: the tokenless switch and the default market.',
+        'A connected store with a default market: the tokenless switch and the market selects in its group (no More options disclosure anymore).',
     },
     'inventory-missing': {
       pluginParameters: v3([demoConnection()]),
@@ -371,7 +399,7 @@ export default defineSurface({
         },
       ]),
       description:
-        'The ⋮ menu opened, then Down: keyboard focus on Remove store.',
+        'The ⋮ menu opened, then Down twice: the highlight on Remove store.',
     },
     'invalid-domain': {
       pluginParameters: {},
@@ -389,7 +417,7 @@ export default defineSurface({
     'tokenless-locked': {
       pluginParameters: {},
       description:
-        'More options, then tokenless against the password-protected demo store, then Save: live store-locked error, More options held open.',
+        'Tokenless against the password-protected demo store, then Save: the live store-locked error on the connection.',
     },
     'network-error': {
       pluginParameters: v3([demoConnection()]),

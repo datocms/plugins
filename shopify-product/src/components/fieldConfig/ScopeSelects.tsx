@@ -1,33 +1,39 @@
-import {
-  CreatableSelectInput,
-  FieldHint,
-  FieldWrapper,
-  SelectInput,
-} from 'datocms-react-ui';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import type { CollectionSummary, FieldScope } from '../../types';
 import type { AsyncValue } from '../shared/useAsyncValue';
 import { COLLECTION_MISSING_WARNING, TAGS_IN_COLLECTION_WARNING } from './copy';
-import { describe, describedBy, useInputDescription } from './describe';
 import { joinWithOr } from './draft';
-import styles from './ScopeSection.module.css';
+import { fieldNotice } from './notices';
 import type { FilterValues } from './useShopifyOptions';
-import WarningNote from './WarningNote';
 
-type Option = { value: string; label: string; hint?: string };
+/** `details`: a second line in the menu (a collection's handle). */
+type Option = { value: string; label: string; details?: string };
 
 type ScopeChange = (patch: Partial<FieldScope>) => void;
 
-function OptionLabel(option: Option, meta: { context: 'menu' | 'value' }) {
-  if (meta.context === 'value' || !option.hint) return option.label;
+function formatOptionLabel(
+  option: Option,
+  meta: { context: 'menu' | 'value' },
+) {
+  if (meta.context === 'value' || !option.details) return option.label;
   return (
-    <span className={styles.option}>
-      <span>{option.label}</span>
-      <span className={styles.optionHint}>{option.hint}</span>
-    </span>
+    <EntityRow layout="row" title={option.label}>
+      {option.details}
+    </EntityRow>
   );
 }
 
-function textOptions(values: readonly string[], current: readonly string[]) {
+/** The menu option that adds a value the store didn't list. */
+function createLabel(text: string): string {
+  return `Use “${text}”`;
+}
+
+function textOptions(
+  values: readonly string[],
+  current: readonly string[],
+): Option[] {
   const all = [...values];
   for (const value of current) {
     if (!all.includes(value)) all.push(value);
@@ -55,58 +61,41 @@ export function CollectionField({
   const options: Option[] = (collections.value ?? []).map((collection) => ({
     value: collection.id,
     label: collection.title,
-    hint: collection.handle,
+    details: collection.handle,
   }));
-  const value = scope?.collectionId
-    ? {
-        value: scope.collectionId,
-        label: scope.collectionTitle ?? scope.collectionId,
-      }
-    : null;
-  const described = describe(
-    'scope-collection',
-    'Editors only see products from this collection',
-    undefined,
-  );
-  const warningId = 'scope-collection-warning';
-  useInputDescription(
-    'scope-collection',
-    describedBy(missing && warningId, described.ids),
-  );
-
   return (
-    <div>
-      <FieldWrapper
-        id="scope-collection"
-        label="Collection"
-        hint={described.hint}
-      >
-        <SelectInput<Option, false>
-          inputId="scope-collection"
-          value={value}
-          options={options}
-          isClearable
-          isLoading={collections.status === 'loading'}
-          filterOption={null}
-          placeholder="Select a collection…"
-          loadingMessage={() => 'Loading collections…'}
-          noOptionsMessage={() =>
-            search.trim() ? 'No collections match' : 'No collections found'
-          }
-          formatOptionLabel={OptionLabel}
-          onInputChange={(text) => onSearch(text)}
-          onChange={(option) =>
-            onChange({
-              collectionId: option?.value,
-              collectionTitle: option?.label,
-            })
-          }
-        />
-      </FieldWrapper>
-      {missing && (
-        <WarningNote id={warningId}>{COLLECTION_MISSING_WARNING}</WarningNote>
-      )}
-    </div>
+    <FieldWrapper
+      id="scope-collection"
+      label="Collection"
+      hint="Editors only see products from this collection."
+      container={fieldNotice(missing ? COLLECTION_MISSING_WARNING : null)}
+    >
+      <SelectInput
+        name="scope-collection"
+        value={scope?.collectionId ?? null}
+        options={options}
+        clearable
+        loading={collections.status === 'loading'}
+        search={{ onQueryChange: onSearch }}
+        placeholder="Select a collection"
+        loadingMessage={() => 'Loading collections…'}
+        noOptionsMessage={() =>
+          search.trim() ? 'No collections match' : 'No collections found'
+        }
+        formatOptionLabel={formatOptionLabel}
+        // The saved collection, before (or without) the list that has it.
+        acceptValueNotIncludedInOptions={(value) => ({
+          value,
+          label: scope?.collectionTitle ?? value,
+        })}
+        onChange={(value, option) =>
+          onChange({
+            collectionId: value ?? undefined,
+            collectionTitle: option?.label,
+          })
+        }
+      />
+    </FieldWrapper>
   );
 }
 
@@ -119,36 +108,33 @@ type FilterProps = {
 /** Product types come from the store; typing one that isn't listed works too. */
 export function ProductTypeField({ filters, scope, onChange }: FilterProps) {
   const current = scope?.productType;
-  const described = describe(
-    'scope-product-type',
-    'Editors only see products of this type',
-    undefined,
-  );
-  useInputDescription('scope-product-type', described.ids);
   return (
-    <div>
-      <FieldWrapper
-        id="scope-product-type"
-        label="Product type"
-        hint={described.hint}
-      >
-        <CreatableSelectInput<Option, false>
-          inputId="scope-product-type"
-          value={current ? { value: current, label: current } : null}
-          options={textOptions(
-            filters.value?.productTypes ?? [],
-            current ? [current] : [],
-          )}
-          isClearable
-          isLoading={filters.status === 'loading'}
-          placeholder="Select a product type…"
-          loadingMessage={() => 'Loading product types…'}
-          noOptionsMessage={() => 'No product types found'}
-          formatCreateLabel={(text) => `Use "${text}"`}
-          onChange={(option) => onChange({ productType: option?.value })}
-        />
-      </FieldWrapper>
-    </div>
+    <FieldWrapper
+      id="scope-product-type"
+      label="Product type"
+      hint="Editors only see products of this type."
+    >
+      <SelectInput
+        name="scope-product-type"
+        value={current ?? null}
+        options={textOptions(
+          filters.value?.productTypes ?? [],
+          current ? [current] : [],
+        )}
+        clearable
+        loading={filters.status === 'loading'}
+        creatable={{
+          onCreate: (productType) => onChange({ productType }),
+          formatLabel: createLabel,
+        }}
+        placeholder="Select a product type"
+        loadingMessage={() => 'Loading product types…'}
+        noOptionsMessage={() => 'No product types found'}
+        onChange={(productType) =>
+          onChange({ productType: productType ?? undefined })
+        }
+      />
+    </FieldWrapper>
   );
 }
 
@@ -160,8 +146,8 @@ export type TagFilterSupport = 'applies' | 'ignored' | 'unknown';
 
 function tagsHint(tags: readonly string[], support: TagFilterSupport): string {
   return tags.length > 1 && support === 'applies'
-    ? `Editors only see products tagged ${joinWithOr(tags)}`
-    : 'With several tags, editors see products that have any of them';
+    ? `Editors only see products tagged ${joinWithOr(tags)}.`
+    : 'With several tags, editors see products that have any of them.';
 }
 
 /**
@@ -178,68 +164,68 @@ export type TagsAccess =
 
 const TAGS_UNAVAILABLE_HINT: Record<'denied' | 'tokenless', string> = {
   denied:
-    'To limit choices by tag, enable "Read product tags" in Shopify (Headless → Storefront API permissions), then check the connection again in the plugin settings',
+    'To limit choices by tag, enable "Read product tags" in Shopify (Headless → Storefront API permissions), then check the connection again in the plugin settings.',
   tokenless:
-    'To limit choices by tag, connect this store with a Storefront access token in the plugin settings',
+    'To limit choices by tag, connect this store with a Storefront access token in the plugin settings.',
 };
+
+/** Why tags can't be offered: the token can't read them and none are saved. */
+function unavailableReason(
+  access: TagsAccess,
+  current: readonly string[],
+): string | null {
+  if (current.length > 0) return null;
+  return access === 'denied' || access === 'tokenless'
+    ? TAGS_UNAVAILABLE_HINT[access]
+    : null;
+}
 
 type TagsProps = FilterProps & {
   access: TagsAccess;
   support: TagFilterSupport;
 };
 
-/** Tags need the "Read product tags" Storefront permission. */
-export function TagsField(props: TagsProps) {
-  const { access, scope } = props;
-  if (
-    (access === 'denied' || access === 'tokenless') &&
-    (scope?.tags ?? []).length === 0
-  ) {
-    return (
-      <div>
-        <div className={styles.staticLabel}>Tags</div>
-        <FieldHint>{TAGS_UNAVAILABLE_HINT[access]}</FieldHint>
-      </div>
-    );
-  }
-  return <TagsSelect {...props} />;
-}
-
-/** Its own component, so the input's description is set when it mounts. */
-function TagsSelect({ filters, scope, onChange, access, support }: TagsProps) {
+/**
+ * Tags need the "Read product tags" Storefront permission. Without it the
+ * select stays disabled with the way to grant it, unless tags are already
+ * saved (so they can still be removed).
+ */
+export function TagsField({
+  filters,
+  scope,
+  onChange,
+  access,
+  support,
+}: TagsProps) {
   const current = scope?.tags ?? [];
-  const described = describe(
-    'scope-tags',
-    tagsHint(current, support),
-    undefined,
-  );
+  const unavailable = unavailableReason(access, current);
   const ignored = current.length > 0 && support === 'ignored';
-  const warningId = 'scope-tags-warning';
-  useInputDescription(
-    'scope-tags',
-    describedBy(ignored && warningId, described.ids),
-  );
   return (
-    <div>
-      <FieldWrapper id="scope-tags" label="Tags" hint={described.hint}>
-        <CreatableSelectInput<Option, true>
-          inputId="scope-tags"
-          isMulti
-          value={current.map((tag) => ({ value: tag, label: tag }))}
-          options={textOptions(filters.value?.tags ?? [], current)}
-          isLoading={filters.status === 'loading' || access === 'checking'}
-          placeholder="Select tags…"
-          loadingMessage={() => 'Loading tags…'}
-          noOptionsMessage={() => 'No tags found'}
-          formatCreateLabel={(text) => `Use "${text}"`}
-          onChange={(options) =>
-            onChange({ tags: options.map((option) => option.value) })
-          }
-        />
-      </FieldWrapper>
-      {ignored && (
-        <WarningNote id={warningId}>{TAGS_IN_COLLECTION_WARNING}</WarningNote>
-      )}
-    </div>
+    <FieldWrapper
+      id="scope-tags"
+      label="Tags"
+      hint={unavailable ?? tagsHint(current, support)}
+      container={fieldNotice(ignored ? TAGS_IN_COLLECTION_WARNING : null)}
+    >
+      <SelectInput
+        name="scope-tags"
+        multiple
+        value={current}
+        options={textOptions(filters.value?.tags ?? [], current)}
+        disabled={unavailable !== null}
+        loading={
+          unavailable === null &&
+          (filters.status === 'loading' || access === 'checking')
+        }
+        creatable={{
+          onCreate: (tag) => onChange({ tags: [...current, tag] }),
+          formatLabel: createLabel,
+        }}
+        placeholder="Select tags"
+        loadingMessage={() => 'Loading tags…'}
+        noOptionsMessage={() => 'No tags found'}
+        onChange={(tags) => onChange({ tags: tags ?? [] })}
+      />
+    </FieldWrapper>
   );
 }

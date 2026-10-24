@@ -1,6 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
+import './frame.css';
 import {
   FIELD_EXTENSION_ID,
   FIELD_EXTENSION_INITIAL_HEIGHT,

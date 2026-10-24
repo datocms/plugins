@@ -1,30 +1,26 @@
-import { cleanup, render, renderHook, screen } from '@testing-library/react';
-import { Canvas } from 'datocms-react-ui';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
+import Canvas from 'datocms-react-ui/Canvas';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import AvailabilityBadge, {
+  availabilityDotTone,
+  availabilityText,
+} from '../src/components/shared/AvailabilityBadge';
+import PriceTag from '../src/components/shared/PriceTag';
 import Thumbnail from '../src/components/shared/Thumbnail';
-import Tip from '../src/components/shared/Tip';
 import { useDeepStable } from '../src/components/shared/useDeepStable';
 import {
   getShopifyClient,
   resetShopifyClients,
 } from '../src/lib/shopifyClient';
+import type { ShopifyNode } from '../src/types';
 import { DEMO_STORE } from '../src/types';
-
-// datocms-react-ui measures with these (some at import time); jsdom has neither.
-vi.hoisted(() => {
-  class ObserverStub {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-    takeRecords() {
-      return [];
-    }
-  }
-  Object.assign(globalThis, {
-    IntersectionObserver: ObserverStub,
-    ResizeObserver: ObserverStub,
-  });
-});
 
 afterEach(() => {
   cleanup();
@@ -32,10 +28,16 @@ afterEach(() => {
 });
 
 const ctx = {
-  theme: {},
+  ui: { locale: 'en' },
+  site: { attributes: { internal_domain: null } },
+  colorScheme: 'light',
   cssDesignTokens: {},
   bodyPadding: [0, 0, 0, 0],
 } as unknown as Parameters<typeof Canvas>[0]['ctx'];
+
+function inCanvas(children: ReactNode) {
+  return render(<Canvas ctx={ctx}>{children}</Canvas>);
+}
 
 const SCENE =
   'Top and bottom view of a snowboard. The top view shows 7 stacked hexagons.';
@@ -63,31 +65,128 @@ describe('Thumbnail', () => {
       screen.getByRole('img', { name: 'Hydro board' }),
     ).toBeInTheDocument();
   });
+
+  it('shows the fallback without an image, and when the image fails', () => {
+    const { container, rerender } = render(
+      <Thumbnail image={null} fallback={<span>no image</span>} />,
+    );
+    expect(screen.getByText('no image')).toBeInTheDocument();
+
+    rerender(
+      <Thumbnail
+        image={{ url: 'https://cdn.shopify.com/a.png', altText: null }}
+        fallback={<span>no image</span>}
+      />,
+    );
+    expect(screen.queryByText('no image')).toBeNull();
+    const image = container.querySelector('img');
+    if (!image) throw new Error('No image');
+    fireEvent.error(image);
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('no image')).toBeInTheDocument();
+  });
 });
 
-describe('Tip', () => {
-  it('renders the children alone without a tip', () => {
-    const { container } = render(
-      <Tip tip={null}>
-        <button type="button">Add</button>
-      </Tip>,
-    );
-    expect(container.innerHTML).toBe('<button type="button">Add</button>');
-  });
+function product(overrides: Record<string, unknown> = {}): ShopifyNode {
+  return {
+    __typename: 'Product',
+    availableForSale: true,
+    totalInventory: 12,
+    priceRange: {
+      minVariantPrice: { amount: '10.0', currencyCode: 'EUR' },
+      maxVariantPrice: { amount: '10.0', currencyCode: 'EUR' },
+    },
+    compareAtPriceRange: {
+      maxVariantPrice: { amount: '15.0', currencyCode: 'EUR' },
+    },
+    ...overrides,
+  } as unknown as ShopifyNode;
+}
 
-  it('can make a focusable anchor around a disabled button', () => {
-    render(
+describe('AvailabilityBadge', () => {
+  it('says the state next to its dot, with the stock count only with inventory', () => {
+    const { container, rerender } = inCanvas(
+      <AvailabilityBadge node={product()} locale="en" />,
+    );
+    expect(container).toHaveTextContent('Available');
+    expect(container).not.toHaveTextContent('in stock');
+    expect(container.querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+
+    rerender(
       <Canvas ctx={ctx}>
-        <Tip tip="You reached the maximum" anchor="focusable">
-          <button type="button" disabled>
-            Add
-          </button>
-        </Tip>
+        <AvailabilityBadge node={product()} locale="en" inventory />
       </Canvas>,
     );
-    const anchor = screen.getByRole('button', { name: 'Add' }).parentElement;
-    expect(anchor).toHaveClass('dl-tooltip-anchor');
-    expect(anchor).toHaveAttribute('tabindex', '0');
+    expect(container).toHaveTextContent('Available · 12 in stock');
+  });
+
+  it('renders nothing for collections', () => {
+    const { container } = inCanvas(
+      <AvailabilityBadge
+        node={{ __typename: 'Collection' } as unknown as ShopifyNode}
+        locale="en"
+      />,
+    );
+    expect(container.querySelector('.Canvas')).toBeEmptyDOMElement();
+  });
+
+  it('maps availability to the tones of FeedbackDot and StatusCell', () => {
+    expect(availabilityDotTone('success')).toBe('success');
+    expect(availabilityDotTone('danger')).toBe('danger');
+    expect(availabilityDotTone('neutral')).toBe('neutral');
+    expect(
+      availabilityText({ label: 'Sold out', tone: 'danger', quantity: 0 }),
+    ).toBe('Sold out · 0 in stock');
+    expect(
+      availabilityText({ label: 'Available', tone: 'success', quantity: null }),
+    ).toBe('Available');
+  });
+
+  it('writes the stock count with the separators of the locale', () => {
+    const status = {
+      label: 'Available',
+      tone: 'success',
+      quantity: 1200,
+    } as const;
+    expect(availabilityText(status, 'en')).toBe('Available · 1,200 in stock');
+    expect(availabilityText(status, 'de')).toBe('Available · 1.200 in stock');
+  });
+});
+
+describe('PriceTag', () => {
+  it('strikes the compare-at price through and names it for screen readers', () => {
+    const { container } = render(
+      <PriceTag
+        price={{
+          min: { amount: '10.0', currencyCode: 'EUR' },
+          max: { amount: '10.0', currencyCode: 'EUR' },
+          compareAt: { amount: '15.0', currencyCode: 'EUR' },
+        }}
+        locale="en"
+      />,
+    );
+    const struck = container.querySelector('s');
+    expect(struck).toHaveTextContent('Compare at €15.00');
+    expect(screen.getByText('Compare at')).toHaveClass('visually-hidden');
+    expect(container).toHaveTextContent('€10.00');
+  });
+
+  it('shows no compare-at price that does not beat the price', () => {
+    const { container } = render(
+      <PriceTag
+        price={{
+          min: { amount: '10.0', currencyCode: 'EUR' },
+          max: { amount: '20.0', currencyCode: 'EUR' },
+          compareAt: { amount: '20.0', currencyCode: 'EUR' },
+        }}
+        locale="en"
+      />,
+    );
+    expect(container.querySelector('s')).toBeNull();
+    expect(container).toHaveTextContent('€10.00 – €20.00');
   });
 });
 

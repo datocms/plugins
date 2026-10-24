@@ -22,6 +22,7 @@ import type {
 import {
   adminUrl,
   adminUrlForNode,
+  formatCount,
   nodeKind,
   nodeMeta,
   shopSubdomain,
@@ -82,11 +83,6 @@ export function pickerTitle(
 /** "Add products", "Add variants", "Add collections". */
 export function addLabel(kind: ShopifyKind): string {
   return `Add ${kindNoun(kind, 2)}`;
-}
-
-/** The tooltip on the inert drag handle of a multiple field holding one item. */
-export function reorderUnavailableReason(kind: ShopifyKind): string {
-  return `Add another ${kindNoun(kind)} to reorder`;
 }
 
 /** "Couldn't load the product", "Couldn't load the collections". */
@@ -174,11 +170,11 @@ export function unresolvedMessage(entry: StoredEntry): string {
   return `No ${noun} with this handle is visible to the storefront: the handle may have changed in Shopify, or the ${noun} may be ${states}.`;
 }
 
-export const PERSIST_FAILED_MESSAGE = "Couldn't save the Shopify selection!";
+export const PERSIST_FAILED_MESSAGE = "Couldn't save the Shopify selection.";
 
-export const PICKER_FAILED_MESSAGE = "Couldn't open the Shopify picker!";
+export const PICKER_FAILED_MESSAGE = "Couldn't open the Shopify picker.";
 
-export const CLEAR_FAILED_MESSAGE = "Couldn't clear the value!";
+export const CLEAR_FAILED_MESSAGE = "Couldn't clear the value.";
 
 /**
  * Escapes text for `ctx.alert` and `ctx.notice`, which render sanitized HTML:
@@ -223,6 +219,39 @@ const CONNECTION_CAUSES: Partial<Record<ShopifyErrorCode, string>> = {
   forbidden: "This token isn't allowed to read products.",
 };
 
+/** What to do in the plugin settings, after the link that opens them. */
+const SETTINGS_STEPS: Partial<Record<ShopifyErrorCode, string>> = {
+  unauthorized: 'to update it',
+  forbidden: 'to check its permissions',
+  'store-locked': 'to add one',
+  'shop-not-found': 'to check the address',
+};
+
+/**
+ * The cause of a connection problem, without its next step: the next step
+ * is the plugin settings (for the roles that can open them) or an
+ * administrator.
+ */
+export function connectionProblemCause(error: unknown): string {
+  const cause =
+    error instanceof ShopifyClientError
+      ? CONNECTION_CAUSES[error.code]
+      : undefined;
+  return cause ?? describeError(error);
+}
+
+/**
+ * What to do once the plugin settings are open, for the sentence "Open the
+ * plugin settings to update it." (the link is the start of the sentence).
+ */
+export function settingsStep(error: unknown): string {
+  const step =
+    error instanceof ShopifyClientError
+      ? SETTINGS_STEPS[error.code]
+      : undefined;
+  return step ?? 'to check the Shopify connection';
+}
+
 /**
  * A load error in plain words. Roles that can't open the plugin settings
  * are asked to contact an administrator instead of being told to fix them.
@@ -231,27 +260,26 @@ export function loadErrorMessage(
   error: unknown,
   canEditSchema: boolean,
 ): string {
-  if (
-    canEditSchema ||
-    !isConnectionProblem(error) ||
-    !(error instanceof ShopifyClientError)
-  ) {
+  if (canEditSchema || !isConnectionProblem(error)) {
     return describeError(error);
   }
-  const cause = CONNECTION_CAUSES[error.code] ?? describeError(error);
-  return `${cause} Ask an administrator to check the Shopify connection.`;
+  return `${connectionProblemCause(error)} Ask an administrator to check the Shopify connection.`;
 }
 
 // Screen-reader announcements after an editor action (a `role="status"` region).
 
-/** "Added 2 products", "Removed 1 product", "Added 1 product and removed 2 products". */
+/**
+ * "Added 2 products", "Removed 1 product", "Added 1 product and removed 2
+ * products", with the separators of `locale`.
+ */
 export function selectionChangeMessage(
   kind: ShopifyKind,
   added: number,
   removed: number,
+  locale?: string,
 ): string | null {
-  const addedText = `${added} ${kindNoun(kind, added)}`;
-  const removedText = `${removed} ${kindNoun(kind, removed)}`;
+  const addedText = `${formatCount(added, locale)} ${kindNoun(kind, added)}`;
+  const removedText = `${formatCount(removed, locale)} ${kindNoun(kind, removed)}`;
   if (added > 0 && removed > 0) {
     return `Added ${addedText} and removed ${removedText}`;
   }
@@ -278,18 +306,33 @@ export function countKept(
 // Limits
 // ---------------------------------------------------------------------------
 
+/**
+ * The counter of a multiple field: "3 of 10 products" with a maximum, "3
+ * products · at least 2" with only a minimum. The field editor shows it
+ * through the ICU texts of `src/texts.ts`, which give its numbers the
+ * separators of the editor's locale.
+ */
+export type LimitsCounter = {
+  count: number;
+  max: number | null;
+  /** Shown only without a maximum. */
+  min: number | null;
+  /** The nouns of the kind: `product`, `products`. */
+  one: string;
+  many: string;
+};
+
 export type LimitsSummary = {
-  /** "3 of 10" with a maximum, "3 selected · at least 2" with only a minimum. */
-  counter: string | null;
-  /** "Add at least 2 products" while below the minimum. */
+  counter: LimitsCounter | null;
+  /** "Add at least 2 products." while below the minimum. */
   belowMin: string | null;
   /**
-   * "Remove 2 products, as this field holds up to 3" when the value holds
-   * more than the maximum (the maximum was lowered after it was saved).
+   * "Remove 2 products: this field holds up to 3." when the value holds more
+   * than the maximum (the maximum was lowered after it was saved).
    */
   aboveMax: string | null;
   atMax: boolean;
-  /** Why "Add" is disabled at the maximum. */
+  /** Why "Add" is unavailable at the maximum. */
   atMaxReason: string | null;
 };
 
@@ -299,20 +342,24 @@ function positiveLimit(value: number | undefined): number | null {
     : null;
 }
 
-function counterText(
+function limitsCounter(
+  kind: ShopifyKind,
   count: number,
   min: number | null,
   max: number | null,
-): string | null {
-  if (max !== null) return `${count} of ${max}`;
-  if (min !== null) return `${count} selected · at least ${min}`;
-  return null;
+): LimitsCounter | null {
+  if (max === null && min === null) return null;
+  return { count, max, min: max === null ? min : null, ...KIND_NOUNS[kind] };
 }
 
-/** Counter, minimum and maximum hints for multiple fields. */
+/**
+ * Counter, minimum and maximum hints for multiple fields. The numbers of the
+ * sentences take the separators of `locale`.
+ */
 export function limitsSummary(
   params: FieldParametersV1,
   count: number,
+  locale?: string,
 ): LimitsSummary {
   const none = {
     counter: null,
@@ -326,19 +373,20 @@ export function limitsSummary(
   const max = positiveLimit(params.max);
   const atMax = max !== null && count >= max;
   const extra = max !== null ? count - max : 0;
+  const number = (value: number | null) => formatCount(value ?? 0, locale);
   return {
-    counter: counterText(count, min, max),
+    counter: limitsCounter(params.kind, count, min, max),
     belowMin:
       min !== null && count < min
-        ? `Add at least ${min} ${kindNoun(params.kind, min)}`
+        ? `Add at least ${number(min)} ${kindNoun(params.kind, min)}.`
         : null,
     aboveMax:
       extra > 0
-        ? `Remove ${extra} ${kindNoun(params.kind, extra)}, as this field holds up to ${max}`
+        ? `Remove ${number(extra)} ${kindNoun(params.kind, extra)}: this field holds up to ${number(max)}.`
         : null,
     atMax,
     atMaxReason: atMax
-      ? `You cannot add more ${kindNoun(params.kind, 2)}, as this field holds up to ${max}`
+      ? `You can't add more ${kindNoun(params.kind, 2)}: this field holds up to ${number(max)}.`
       : null,
   };
 }
@@ -827,10 +875,10 @@ export function convertProblem(
   );
   if (structural) return structural;
   if (rows.some((row) => row.state === 'unresolved')) {
-    return `You cannot convert the value while a ${kindNoun(params.kind)} isn't visible to the storefront`;
+    return `You can't convert the value while a ${kindNoun(params.kind)} isn't visible to the storefront.`;
   }
   if (rows.some((row) => row.state !== 'resolved')) {
-    return 'You cannot convert the value until the Shopify data has loaded';
+    return "You can't convert the value until the Shopify data has loaded.";
   }
   return null;
 }
@@ -910,30 +958,6 @@ export function rawValueText(raw: unknown): string {
   } catch {
     return String(raw);
   }
-}
-
-export const RAW_PREVIEW_LENGTH = 240;
-export const RAW_PREVIEW_LINES = 6;
-
-/**
- * At most `maxLines` lines and `maxLength` characters of `text`, and whether
- * anything was cut.
- */
-export function previewText(
-  text: string,
-  maxLength = RAW_PREVIEW_LENGTH,
-  maxLines = RAW_PREVIEW_LINES,
-): { text: string; truncated: boolean } {
-  const lines = text.split('\n');
-  const firstLines =
-    lines.length > maxLines ? lines.slice(0, maxLines).join('\n') : text;
-  const characters = Array.from(firstLines);
-  const cut = characters.length > maxLength || firstLines !== text;
-  if (!cut) return { text, truncated: false };
-  return {
-    text: `${characters.slice(0, maxLength).join('')}…`,
-    truncated: true,
-  };
 }
 
 /** The `shop` of a stored reference document, for the shop-mismatch message. */

@@ -7,8 +7,8 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FieldExtension from '../src/entrypoints/FieldExtension';
 import {
@@ -32,67 +32,6 @@ import legacy1xText from './fixtures/legacy-1x-product.json?raw';
 import legacyBase64Text from './fixtures/legacy-base64-id.json?raw';
 import legacyCropCenterText from './fixtures/legacy-crop-center-image.json?raw';
 import legacyNodeFixture from './fixtures/legacy-product-node-2026-10.json';
-
-vi.mock('datocms-react-ui', async () => {
-  const { useState } = await import('react');
-  type ButtonProps = {
-    children?: ReactNode;
-    disabled?: boolean;
-    leftIcon?: ReactNode;
-    onClick?: () => void;
-  };
-  return {
-    Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
-    Button: ({ children, disabled, leftIcon, onClick }: ButtonProps) => (
-      <button type="button" disabled={disabled} onClick={onClick}>
-        {leftIcon}
-        {children}
-      </button>
-    ),
-    ButtonLink: ({ children }: { children: ReactNode }) => (
-      <a href="/">{children}</a>
-    ),
-    Spinner: () => <span data-testid="spinner" />,
-    Dropdown: ({
-      renderTrigger,
-      children,
-    }: {
-      renderTrigger: (ctx: { open: boolean; onClick: () => void }) => ReactNode;
-      children: ReactNode;
-    }) => {
-      const [open, setOpen] = useState(false);
-      return (
-        <div>
-          {renderTrigger({ open, onClick: () => setOpen((value) => !value) })}
-          {open && children}
-        </div>
-      );
-    },
-    DropdownMenu: ({ children }: { children: ReactNode }) => (
-      <div role="menu">{children}</div>
-    ),
-    DropdownOption: ({
-      children,
-      disabled,
-      onClick,
-    }: ButtonProps & { red?: boolean }) => (
-      <button
-        type="button"
-        role="menuitem"
-        disabled={disabled}
-        onClick={onClick}
-      >
-        {children}
-      </button>
-    ),
-    DropdownSeparator: () => <hr />,
-    Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-    TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-    TooltipContent: ({ children }: { children: ReactNode }) => (
-      <span role="tooltip">{children}</span>
-    ),
-  };
-});
 
 vi.mock('../src/lib/shopifyClient', async (importOriginal) => {
   const actual =
@@ -331,6 +270,16 @@ function createCtx(options: CtxOptions = {}) {
   const alert = vi.fn().mockResolvedValue(undefined);
   const navigateTo = vi.fn().mockResolvedValue(undefined);
   const ctx = {
+    mode: 'renderFieldExtension',
+    theme: {},
+    cssDesignTokens: {},
+    bodyPadding: [0, 0, 0, 0],
+    colorScheme: 'light',
+    site: { attributes: { internal_domain: null } },
+    startAutoResizer: vi.fn(),
+    stopAutoResizer: vi.fn(),
+    notice: vi.fn().mockResolvedValue(undefined),
+    customToast: vi.fn().mockResolvedValue(undefined),
     parameters: options.parameters ?? {},
     plugin: {
       id: 'plugin-1',
@@ -394,10 +343,56 @@ function writtenDocument(setFieldValue: ReturnType<typeof vi.fn>) {
   return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-/** The row's inline action buttons. */
-async function openRowMenu(title: string) {
-  return screen.getByRole('group', { name: `Actions for ${title}` });
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Opens a row's "⋮" with the mouse. */
+async function openRowMenu(user: User, title: string) {
+  await user.click(
+    screen.getByRole('button', { name: `Actions for ${title}` }),
+  );
+  return screen.findByRole('menu');
 }
+
+/** Picks an option of a row's "⋮". */
+async function pickRowAction(user: User, title: string, option: string) {
+  const menu = await openRowMenu(user, title);
+  await user.click(within(menu).getByRole('menuitem', { name: option }));
+}
+
+/** The names of the options of a row's "⋮". */
+async function rowActionNames(user: User, title: string) {
+  const menu = await openRowMenu(user, title);
+  const names = within(menu)
+    .getAllByRole('menuitem')
+    .map((option) => option.textContent);
+  fireEvent.keyDown(menu, { key: 'Escape', keyCode: 27, which: 27 });
+  await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  return names;
+}
+
+/** The titles of the rows, in order. */
+function rowTitles() {
+  return Array.from(document.querySelectorAll('[data-entry-row]')).map(
+    (row) => row.querySelector('.EntityRow__title')?.textContent,
+  );
+}
+
+/** Disabled with a reason: it says so with aria-disabled and keeps focus. */
+async function expectUnavailable(button: HTMLElement, reason: string) {
+  expect(button).toHaveAttribute('aria-disabled', 'true');
+  expect(button).toBeEnabled();
+  act(() => button.focus());
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(reason);
+}
+
+/**
+ * The empty slot's button: "Browse Shopify" for a single field, the card's
+ * own "Add …" for a multiple one.
+ */
+const browseButton = () =>
+  screen.getByRole('button', {
+    name: /Browse Shopify|Add (products|variants|collections)/,
+  });
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -405,19 +400,28 @@ async function openRowMenu(title: string) {
 
 describe('FieldExtension: setup states', () => {
   it.each([
-    [single(), 'No product selected'],
-    [multiple(), 'No products selected'],
-    [single({ kind: 'variant' }), 'No variant selected'],
-    [multiple({ kind: 'collection' }), 'No collections selected'],
-  ])('shows an empty state with Browse Shopify', (parameters, label) => {
-    const { ctx } = createCtx({ parameters });
-    render(<FieldExtension ctx={ctx} />);
-    expect(screen.getByText(label)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Browse Shopify' }),
-    ).toBeInTheDocument();
-    expect(client.loadNodes).not.toHaveBeenCalled();
-  });
+    [single(), 'No product selected', 'Browse Shopify'],
+    [multiple(), 'No products selected', 'Add products'],
+    [single({ kind: 'variant' }), 'No variant selected', 'Browse Shopify'],
+    [
+      multiple({ kind: 'collection' }),
+      'No collections selected',
+      'Add collections',
+    ],
+  ])(
+    'shows an empty slot that browses Shopify',
+    (parameters, label, action) => {
+      const { ctx } = createCtx({ parameters });
+      render(<FieldExtension ctx={ctx} />);
+      expect(screen.getByText(label)).toBeInTheDocument();
+      // All the slot is the button. A multiple field's slot has the action of
+      // the card it stands for.
+      const button = browseButton();
+      expect(button).toHaveTextContent(label);
+      expect(button).toHaveTextContent(action);
+      expect(client.loadNodes).not.toHaveBeenCalled();
+    },
+  );
 
   it('treats a 1.x string field as one product saved as a handle', () => {
     const { ctx } = createCtx({ fieldType: 'string' });
@@ -425,7 +429,7 @@ describe('FieldExtension: setup states', () => {
     expect(screen.getByText('No product selected')).toBeInTheDocument();
   });
 
-  it('points schema editors to the plugin settings, with the sandbox prefix, without calling Shopify', () => {
+  it('links schema editors to the plugin settings, with the sandbox prefix, without calling Shopify', () => {
     const { ctx, navigateTo } = createCtx({
       value: THREE_PRODUCTS,
       parameters: multiple(),
@@ -435,12 +439,15 @@ describe('FieldExtension: setup states', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       screen.getByText(
-        'Connect a Shopify store to start picking from your catalog',
+        /^Connect a Shopify store to start picking from your catalog\./,
       ),
     ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Open plugin settings' }),
+    const link = screen.getByRole('link', { name: 'Open the plugin settings' });
+    expect(link).toHaveAttribute(
+      'href',
+      '/environments/feature-x/configuration/plugins/plugin-1/edit',
     );
+    fireEvent.click(link);
     expect(navigateTo).toHaveBeenCalledWith(
       '/environments/feature-x/configuration/plugins/plugin-1/edit',
     );
@@ -454,10 +461,12 @@ describe('FieldExtension: setup states', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     expect(
-      screen.getByText('Ask an administrator to connect a Shopify store'),
+      screen.getByText(
+        'Connect a Shopify store to start picking from your catalog. Ask an administrator to connect one.',
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Open plugin settings' }),
+      screen.queryByRole('link', { name: 'Open the plugin settings' }),
     ).not.toBeInTheDocument();
   });
 
@@ -480,11 +489,11 @@ describe('FieldExtension: setup states', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       screen.getByText(
-        "This field uses acme-outlet.myshopify.com, which isn't connected to the plugin",
+        /^This field uses acme-outlet\.myshopify\.com, which isn't connected to the plugin\./,
       ),
     ).toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Open plugin settings' }),
+      screen.getByRole('link', { name: 'Open the plugin settings' }),
     );
     expect(navigateTo).toHaveBeenCalledWith(
       '/configuration/plugins/plugin-1/edit',
@@ -515,7 +524,7 @@ describe('FieldExtension: setup states', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Open plugin settings' }),
+      screen.queryByRole('link', { name: 'Open the plugin settings' }),
     ).toBeNull();
   });
 
@@ -524,7 +533,7 @@ describe('FieldExtension: setup states', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       screen.getByText(
-        'The Shopify editor works on Single-line string and JSON fields only',
+        'The Shopify editor works only on Single-line string and JSON fields.',
       ),
     ).toBeInTheDocument();
   });
@@ -643,7 +652,7 @@ describe('FieldExtension: legacy values', () => {
       openModalResult: pickerResult([COMPLETE]),
     });
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(openModal.mock.calls[0]?.[0]).toMatchObject({
       id: 'shopifyPicker',
@@ -667,7 +676,7 @@ describe('FieldExtension: legacy values', () => {
       openModalResult: pickerResult([COMPLETE]),
     });
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith(
         'shopify_product',
@@ -684,7 +693,7 @@ describe('FieldExtension: legacy values', () => {
     // The handle lookup never answers: the row must come from the picker.
     client.productByHandle.mockImplementation(() => new Promise(() => {}));
     const view = render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     const written = setFieldValue.mock.calls[0]?.[1];
     expect(written).toBe('the-compare-at-price-snowboard');
@@ -693,7 +702,7 @@ describe('FieldExtension: legacy values', () => {
     expect(
       screen.getByText('The Compare at Price Snowboard'),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId('spinner')).toBeNull();
+    expect(screen.queryByText('Loading the product')).toBeNull();
   });
 
   describe('outside the shop primary market', () => {
@@ -742,7 +751,7 @@ describe('FieldExtension: legacy values', () => {
         openModalResult: pickerResult([COMPLETE]),
       });
       render(<FieldExtension ctx={ctx} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+      fireEvent.click(browseButton());
       await waitFor(() =>
         expect(setFieldValue).toHaveBeenCalledWith(
           'shopify_product',
@@ -812,7 +821,7 @@ describe('FieldExtension: reference documents', () => {
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
-  it('shows a spinner during the first load', async () => {
+  it('shows a loading state during the first load', async () => {
     let resolve: (nodes: Array<ShopifyNode | null>) => void = () => undefined;
     client.loadNodes.mockImplementationOnce(
       () =>
@@ -825,7 +834,8 @@ describe('FieldExtension: reference documents', () => {
       value: THREE_PRODUCTS,
     });
     render(<FieldExtension ctx={ctx} />);
-    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.getByText('Loading the products')).toBeInTheDocument();
+    expect(screen.queryByText('the-complete-snowboard')).toBeNull();
     expect(screen.getByText('Loading Shopify data…')).toHaveAttribute(
       'role',
       'status',
@@ -833,7 +843,7 @@ describe('FieldExtension: reference documents', () => {
     await act(async () => {
       resolve([COMPLETE, COMPARE, OUT_OF_STOCK]);
     });
-    expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading the products')).not.toBeInTheDocument();
     expect(screen.getByText('The Complete Snowboard')).toBeInTheDocument();
   });
 
@@ -845,7 +855,7 @@ describe('FieldExtension: reference documents', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('3 of 10')).toBeInTheDocument();
+    expect(screen.getByText('3 of 10 products')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add products' }));
 
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
@@ -882,7 +892,7 @@ describe('FieldExtension: reference documents', () => {
       parameters: multiple(),
     });
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() => expect(openModal).toHaveBeenCalled());
     await act(async () => Promise.resolve());
     expect(setFieldValue).not.toHaveBeenCalled();
@@ -894,7 +904,7 @@ describe('FieldExtension: reference documents', () => {
       openModalResult: pickerResult([COMPARE]),
     });
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references[0].snapshot).toMatchObject(
       {
@@ -904,20 +914,30 @@ describe('FieldExtension: reference documents', () => {
     );
   });
 
-  it('disables Add at the maximum and explains why', async () => {
+  it('drops Add at the maximum and explains why', async () => {
     const { ctx } = createCtx({
       parameters: multiple({ max: 3 }),
       value: THREE_PRODUCTS,
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByRole('button', { name: 'Add products' })).toBeDisabled();
-    expect(screen.getByText('3 of 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add products' })).toBeNull();
     expect(
       screen.getByText(
-        'You cannot add more products, as this field holds up to 3',
+        "3 of 3 products. You can't add more products: this field holds up to 3.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("counts with the separators of the editor's locale", async () => {
+    const { ctx } = createCtx({
+      parameters: multiple({ max: 2000 }),
+      value: THREE_PRODUCTS,
+    });
+    const german = { ...ctx, ui: { ...ctx.ui, locale: 'de' } };
+    render(<FieldExtension ctx={german as RenderFieldExtensionCtx} />);
+    await screen.findByText('The Complete Snowboard');
+    expect(screen.getByText('3 of 2.000 products')).toBeInTheDocument();
   });
 
   it('warns below the minimum', async () => {
@@ -929,7 +949,17 @@ describe('FieldExtension: reference documents', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('Add at least 2 products')).toBeInTheDocument();
+    expect(screen.getByText('1 product · at least 2')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Add at least 2 products.',
+    );
+  });
+
+  it('gives the minimum as a hint while the field is empty', () => {
+    const { ctx } = createCtx({ parameters: multiple({ min: 2 }) });
+    render(<FieldExtension ctx={ctx} />);
+    expect(screen.getByText('Add at least 2 products.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('asks to remove the extra items above the maximum', async () => {
@@ -939,31 +969,89 @@ describe('FieldExtension: reference documents', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('3 of 2')).toBeInTheDocument();
-    expect(
-      screen.getByText('Remove 1 product, as this field holds up to 2'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add products' })).toBeDisabled();
+    expect(screen.getByText('3 of 2 products')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Remove 1 product: this field holds up to 2.',
+    );
+    expect(screen.queryByRole('button', { name: 'Add products' })).toBeNull();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
-  it('keeps the handle column for a single item, drawn disabled', async () => {
+  it('offers drag handles, Move up and Move down with several items', async () => {
+    const user = userEvent.setup();
+    const { ctx } = createCtx({
+      parameters: multiple(),
+      value: THREE_PRODUCTS,
+    });
+    const view = render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('The Complete Snowboard');
+    expect(view.container.querySelectorAll('.DragHandle')).toHaveLength(3);
+    expect(await rowActionNames(user, 'The Complete Snowboard')).toEqual([
+      'Open in Shopify admin',
+      'Replace',
+      'Move down',
+      'Remove',
+    ]);
+    expect(
+      await rowActionNames(user, 'The Compare at Price Snowboard'),
+    ).toEqual([
+      'Open in Shopify admin',
+      'Replace',
+      'Move up',
+      'Move down',
+      'Remove',
+    ]);
+    expect(await rowActionNames(user, 'The Out of Stock Snowboard')).toEqual([
+      'Open in Shopify admin',
+      'Replace',
+      'Move up',
+      'Remove',
+    ]);
+  });
+
+  it('has nothing to reorder with a single item', async () => {
+    const user = userEvent.setup();
     const { ctx } = createCtx({
       parameters: multiple(),
       value: referenceDocument('product', [
         { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
       ]),
     });
-    render(<FieldExtension ctx={ctx} />);
+    const view = render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
-    expect(screen.getByTestId('shopify-inert-handle')).toBeInTheDocument();
-    expect(
-      screen.getByText('Add another product to reorder'),
-    ).toBeInTheDocument();
+    expect(view.container.querySelector('.DragHandle')).toBeNull();
+    expect(await rowActionNames(user, 'The Complete Snowboard')).toEqual([
+      'Open in Shopify admin',
+      'Replace',
+      'Remove',
+    ]);
   });
 
-  it('has no handle column on single values', async () => {
+  it('has no drag handles on single values', async () => {
+    const { ctx } = createCtx({
+      parameters: single(),
+      value: referenceDocument('product', [
+        { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
+      ]),
+    });
+    const view = render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('The Complete Snowboard');
+    expect(view.container.querySelector('.DragHandle')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Add / })).toBeNull();
+  });
+
+  it('links each row to the Shopify admin and the storefront', async () => {
+    const user = userEvent.setup();
+    const listed = product(
+      COMPLETE_ID,
+      'The Complete Snowboard',
+      'the-complete-snowboard',
+      {
+        onlineStoreUrl:
+          'https://datocms-demo.myshopify.com/products/the-complete-snowboard',
+      },
+    );
+    client.loadNodes.mockResolvedValue([listed]);
     const { ctx } = createCtx({
       parameters: single(),
       value: referenceDocument('product', [
@@ -971,8 +1059,25 @@ describe('FieldExtension: reference documents', () => {
       ]),
     });
     render(<FieldExtension ctx={ctx} />);
-    await screen.findByText('The Complete Snowboard');
-    expect(screen.queryByTestId('shopify-inert-handle')).toBeNull();
+    const title = await screen.findByRole('link', {
+      name: 'The Complete Snowboard',
+    });
+    expect(title).toHaveAttribute('href', listed.onlineStoreUrl);
+    expect(title).toHaveAttribute('target', '_blank');
+    const menu = await openRowMenu(user, 'The Complete Snowboard');
+    expect(
+      within(
+        within(menu).getByRole('menuitem', { name: 'Open in Shopify admin' }),
+      ).getByRole('link'),
+    ).toHaveAttribute(
+      'href',
+      'https://admin.shopify.com/store/datocms-demo/products/10080752009562',
+    );
+    const store = within(
+      within(menu).getByRole('menuitem', { name: 'View on store' }),
+    ).getByRole('link');
+    expect(store).toHaveAttribute('href', listed.onlineStoreUrl);
+    expect(store).toHaveAttribute('target', '_blank');
   });
 
   it('replaces one row in place from a single-mode picker', async () => {
@@ -983,10 +1088,10 @@ describe('FieldExtension: reference documents', () => {
         product('gid://shopify/Product/3', 'Third board', 'third-board'),
       ]),
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Compare at Price Snowboard');
-    const menu = await openRowMenu('The Compare at Price Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Replace' }));
+    await pickRowAction(user, 'The Compare at Price Snowboard', 'Replace');
 
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     const options = openModal.mock.calls[0]?.[0];
@@ -1008,13 +1113,13 @@ describe('FieldExtension: reference documents', () => {
       value: THREE_PRODUCTS,
       openModalResult: pickerResult([COMPLETE]),
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Compare at Price Snowboard');
-    const menu = await openRowMenu('The Compare at Price Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Replace' }));
+    await pickRowAction(user, 'The Compare at Price Snowboard', 'Replace');
     await waitFor(() =>
       expect(alert).toHaveBeenCalledWith(
-        "Couldn't replace the product, as it's already in this field!",
+        "Couldn't replace the product: it's already in this field.",
       ),
     );
     expect(setFieldValue).not.toHaveBeenCalled();
@@ -1025,13 +1130,10 @@ describe('FieldExtension: reference documents', () => {
       parameters: multiple(),
       value: THREE_PRODUCTS,
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Compare at Price Snowboard');
-    const menu = await openRowMenu('The Compare at Price Snowboard');
-    expect(
-      within(menu).getByRole('button', { name: 'Open in Shopify admin' }),
-    ).toBeInTheDocument();
-    fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
+    await pickRowAction(user, 'The Compare at Price Snowboard', 'Remove');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(
       writtenDocument(setFieldValue).references.map(
@@ -1047,10 +1149,10 @@ describe('FieldExtension: reference documents', () => {
         { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
       ]),
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    const menu = await openRowMenu('The Complete Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
+    await pickRowAction(user, 'The Complete Snowboard', 'Remove');
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith('shopify_product', null),
     );
@@ -1063,10 +1165,10 @@ describe('FieldExtension: reference documents', () => {
         { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
       ]),
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    const menu = await openRowMenu('The Complete Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Replace' }));
+    await pickRowAction(user, 'The Complete Snowboard', 'Replace');
     await waitFor(() => expect(openModal).toHaveBeenCalled());
     expect(openModal.mock.calls[0]?.[0].parameters.selected).toHaveLength(1);
   });
@@ -1136,11 +1238,13 @@ describe('FieldExtension: stores saved without capabilities', () => {
     expect(
       await screen.findByText('The Complete Snowboard'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('12 in stock')).toBeNull();
+    expect(screen.queryByText(/in stock/)).toBeNull();
     expect(client.detectCapabilities).toHaveBeenCalledTimes(1);
 
     await grant();
-    expect(await screen.findByText('12 in stock')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Available · 12 in stock'),
+    ).toBeInTheDocument();
     // The rows load again for the stock fields, and never disappear.
     expect(client.loadNodes).toHaveBeenCalledTimes(2);
     expect(screen.getByText('The Complete Snowboard')).toBeInTheDocument();
@@ -1182,6 +1286,7 @@ describe('FieldExtension: stores saved without capabilities', () => {
 
 describe('FieldExtension: recovery', () => {
   it('keeps unresolved references visible with Replace and Remove', async () => {
+    const user = userEvent.setup();
     const value = referenceDocument('product', [
       { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
       { id: MISSING_ID, handle: 'retired-board' },
@@ -1195,21 +1300,24 @@ describe('FieldExtension: recovery', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(MISSING_ID)).toBeInTheDocument();
+    expect(screen.getByText('Not visible')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
 
-    // The warning strip carries Replace and Remove; the row's inline
-    // actions don't repeat them.
-    const inline = screen.getByRole('group', {
-      name: 'Actions for retired-board',
-    });
-    expect(within(inline).queryByRole('button', { name: 'Remove' })).toBeNull();
+    // Replace is the row's fix action, always visible right under the
+    // issue (not among the row's hover actions), so the menu doesn't
+    // repeat it.
+    const replace = screen.getByRole('button', { name: 'Replace' });
     expect(
-      within(inline).queryByRole('button', { name: 'Replace' }),
-    ).toBeNull();
-    const stripRemove = screen
-      .getAllByRole('button', { name: 'Remove' })
-      .find((button) => !button.closest('[role="group"]'));
-    fireEvent.click(stripRemove as HTMLElement);
+      screen
+        .getByText(/^Not visible to the storefront/)
+        .compareDocumentPosition(replace) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(await rowActionNames(user, 'retired-board')).toEqual([
+      'Open in Shopify admin',
+      'Move up',
+      'Remove',
+    ]);
+    await pickRowAction(user, 'retired-board', 'Remove');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
@@ -1221,20 +1329,21 @@ describe('FieldExtension: recovery', () => {
       fieldType: 'string',
       value: 'retired-board',
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     expect(
       await screen.findByText(/^No product with this handle is visible/),
     ).toBeInTheDocument();
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    const menu = await openRowMenu('retired-board');
-    fireEvent.click(
-      within(menu).getByRole('button', { name: 'Search in Shopify admin' }),
-    );
-    expect(open).toHaveBeenCalledWith(
+    const menu = await openRowMenu(user, 'retired-board');
+    const search = within(
+      within(menu).getByRole('menuitem', { name: 'Search in Shopify admin' }),
+    ).getByRole('link');
+    expect(search).toHaveAttribute(
+      'href',
       'https://admin.shopify.com/store/datocms-demo/products?query=retired-board',
-      '_blank',
-      'noopener,noreferrer',
     );
+    expect(search).toHaveAttribute('target', '_blank');
+    expect(search).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('announces a removal', async () => {
@@ -1242,10 +1351,10 @@ describe('FieldExtension: recovery', () => {
       parameters: multiple(),
       value: THREE_PRODUCTS,
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    const menu = await openRowMenu('The Complete Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
+    await pickRowAction(user, 'The Complete Snowboard', 'Remove');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(screen.getByText('Removed The Complete Snowboard')).toHaveAttribute(
       'role',
@@ -1286,7 +1395,14 @@ describe('FieldExtension: recovery', () => {
       await screen.findByText(/The Shopify handle changed to/),
     ).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    const update = screen.getByRole('button', { name: 'Update handle' });
+    // Right under the issue, visible without hovering the row.
+    expect(
+      screen
+        .getByText(/The Shopify handle changed to/)
+        .compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(update);
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       {
@@ -1341,6 +1457,29 @@ describe('FieldExtension: recovery', () => {
     });
   });
 
+  it('says why "Add products" waits while a conversion runs', async () => {
+    const { ctx, setFieldValue } = createCtx({
+      parameters: multiple(),
+      value: LEGACY_1X,
+    });
+    setFieldValue.mockImplementationOnce(() => new Promise(() => {}));
+    render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('The Complete Snowboard');
+    expect(
+      screen.queryByText('Wait until the current change is saved.'),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Convert to new format' }),
+    );
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalledOnce());
+    // The card's add button can't be disabled: the line under it says why.
+    expect(
+      screen.getByText('Wait until the current change is saved.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add products' }));
+    expect(ctx.openModal).not.toHaveBeenCalled();
+  });
+
   it('explains why converting is not possible yet', async () => {
     const { ctx } = createCtx({
       fieldType: 'string',
@@ -1351,14 +1490,10 @@ describe('FieldExtension: recovery', () => {
     await screen.findByText(
       'No product with this handle is visible to the storefront: the handle may have changed in Shopify, or the product may be unpublished from the Headless channel, archived, or deleted.',
     );
-    expect(
+    await expectUnavailable(
       screen.getByRole('button', { name: 'Convert to new format' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(
-        "You cannot convert the value while a product isn't visible to the storefront",
-      ),
-    ).toBeInTheDocument();
+      "You can't convert the value while a product isn't visible to the storefront.",
+    );
   });
 
   it('shows an invalid value as saved and clears it only after confirmation', async () => {
@@ -1399,14 +1534,13 @@ describe('FieldExtension: recovery', () => {
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
-  it('truncates long invalid values behind "Show full value"', () => {
+  it('shows a long invalid value whole, in a box that scrolls and copies it', () => {
     const raw = `{${'"x": 1, '.repeat(80)}`;
     const { ctx } = createCtx({ value: raw });
     render(<FieldExtension ctx={ctx} />);
-    const box = screen.getByLabelText('Saved value');
-    expect(box.textContent?.length).toBeLessThan(raw.length);
-    fireEvent.click(screen.getByRole('button', { name: 'Show full value' }));
-    expect(box).toHaveTextContent(raw.trim());
+    const box = screen.getByRole('region', { name: 'Saved value' });
+    expect(box.textContent).toBe(raw);
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
   });
 
   it('names both stores of a shop mismatch', () => {
@@ -1422,6 +1556,27 @@ describe('FieldExtension: recovery', () => {
     expect(
       screen.getByText(
         /It was saved for acme-outlet.myshopify.com, and this field uses datocms-demo.myshopify.com./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a value from a newer plugin version to its own next step', () => {
+    const { ctx } = createCtx({
+      parameters: multiple(),
+      value: JSON.stringify({
+        version: 2,
+        shop: SHOP,
+        kind: 'product',
+        references: [],
+      }),
+    });
+    render(<FieldExtension ctx={ctx} />);
+    expect(
+      screen.getByText('Saved by a newer plugin version'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The saved value was written by a newer version of this plugin. Update the plugin to edit it.',
       ),
     ).toBeInTheDocument();
   });
@@ -1470,13 +1625,14 @@ describe('FieldExtension: recovery', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await act(async () => Promise.resolve());
-    // No first-load spinner: the callout and the rows stay while it loads.
+    // No first-load state: the callout and the rows stay while it loads.
     expect(screen.getByText("Couldn't load the products")).toBeInTheDocument();
     expect(screen.getByText('the-complete-snowboard')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Try again' }),
-    ).not.toBeDisabled();
-    expect(screen.getAllByTestId('spinner')).toHaveLength(1);
+    expect(screen.queryByText('Loading the products')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Try again' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
     await act(async () => answer([COMPLETE, COMPARE, OUT_OF_STOCK]));
     expect(screen.queryByText("Couldn't load the products")).toBeNull();
     expect(screen.getByText('The Complete Snowboard')).toBeInTheDocument();
@@ -1491,15 +1647,15 @@ describe('FieldExtension: recovery', () => {
       value: THREE_PRODUCTS,
     });
     render(<FieldExtension ctx={ctx} />);
-    expect(
-      await screen.findByText(
-        'Shopify rejected the Storefront access token. Update it in the plugin settings.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Open plugin settings' }),
+    // The cause, then the link as the one next step.
+    const link = await screen.findByRole('link', {
+      name: 'Open the plugin settings',
+    });
+    expect(link.parentElement).toHaveTextContent(
+      /Couldn't load the products ?Shopify rejected the Storefront access token\. Open the plugin settings to update it\.$/,
     );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    fireEvent.click(link);
     expect(navigateTo).toHaveBeenCalledWith(
       '/configuration/plugins/plugin-1/edit',
     );
@@ -1521,7 +1677,7 @@ describe('FieldExtension: recovery', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Open plugin settings' }),
+      screen.queryByRole('link', { name: 'Open the plugin settings' }),
     ).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Try again' }),
@@ -1535,29 +1691,49 @@ describe('FieldExtension: recovery', () => {
     });
     setFieldValue.mockRejectedValueOnce(new Error('nope'));
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() =>
       expect(alert).toHaveBeenCalledWith(
-        "Couldn't save the Shopify selection!",
+        "Couldn't save the Shopify selection.",
       ),
     );
   });
 });
 
 describe('FieldExtension: disabled and localized fields', () => {
-  it('renders read-only rows with no actions', async () => {
+  it('renders read-only rows with only their links', async () => {
+    const user = userEvent.setup();
     const { ctx, openModal } = createCtx({
       parameters: multiple({ max: 5 }),
       value: THREE_PRODUCTS,
       disabled: true,
     });
-    render(<FieldExtension ctx={ctx} />);
+    const view = render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.queryByRole('group', { name: /Actions for/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
+    expect(await rowActionNames(user, 'The Complete Snowboard')).toEqual([
+      'Open in Shopify admin',
+    ]);
+    expect(view.container.querySelector('.DragHandle')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add products' })).toBeNull();
-    expect(screen.getByText('3 of 5')).toBeInTheDocument();
+    expect(screen.getByText('3 of 5 products')).toBeInTheDocument();
     expect(openModal).not.toHaveBeenCalled();
+  });
+
+  it('hides the menu of a read-only row with no links', async () => {
+    // A variant saved without its product: no admin link, no storefront.
+    const missingVariant = 'gid://shopify/ProductVariant/1';
+    const { ctx } = createCtx({
+      fieldType: 'string',
+      parameters: single({ format: 'gid', kind: 'variant' }),
+      value: missingVariant,
+      disabled: true,
+    });
+    render(<FieldExtension ctx={ctx} />);
+    expect(await screen.findByText('Not visible')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: `Actions for ${missingVariant}` }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Replace' })).toBeNull();
   });
 
   it('drops the limit hints and handles on a disabled field', async () => {
@@ -1568,17 +1744,18 @@ describe('FieldExtension: disabled and localized fields', () => {
       ]),
       disabled: true,
     });
-    render(<FieldExtension ctx={ctx} />);
+    const view = render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.queryByText('Add at least 2 products')).toBeNull();
-    expect(screen.queryByTestId('shopify-inert-handle')).toBeNull();
+    expect(screen.queryByText(/Add at least 2 products/)).toBeNull();
+    expect(screen.getByText('1 product · at least 2')).toBeInTheDocument();
+    expect(view.container.querySelector('.DragHandle')).toBeNull();
   });
 
   it('hides Browse Shopify on a disabled empty field', () => {
     const { ctx } = createCtx({ parameters: multiple(), disabled: true });
     render(<FieldExtension ctx={ctx} />);
     expect(screen.getByText('No products selected')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Browse Shopify' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Browse Shopify/ })).toBeNull();
   });
 
   it('reads localized fields in the record locale when the store has it', async () => {
@@ -1667,7 +1844,7 @@ describe('FieldExtension: handles in a language', () => {
     expect(
       await screen.findByText('the-complete-snowboard'),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update handle' }));
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
@@ -1686,7 +1863,7 @@ describe('FieldExtension: handles in a language', () => {
     render(<FieldExtension ctx={ctx} />);
     await waitFor(() => expect(client.localization).toHaveBeenCalled());
     await act(async () => {});
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith(
         'shopify_product',
@@ -1708,10 +1885,10 @@ describe('FieldExtension: handles in a language', () => {
       localized: true,
       openModalResult: pickerResult([ITALIAN[COMPARE_ID] as ShopifyNode]),
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('Lo snowboard completo');
-    const menu = await openRowMenu('Lo snowboard completo');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Replace' }));
+    await pickRowAction(user, 'Lo snowboard completo', 'Replace');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       { id: OUT_OF_STOCK_ID, handle: 'the-out-of-stock-snowboard' },
@@ -1774,10 +1951,10 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
       parameters: multiple(),
       value: THREE_PRODUCTS,
     });
+    const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Compare at Price Snowboard');
-    const menu = await openRowMenu('The Compare at Price Snowboard');
-    fireEvent.click(within(menu).getByRole('button', { name: 'Replace' }));
+    await pickRowAction(user, 'The Compare at Price Snowboard', 'Replace');
     await waitFor(() => expect(openModal).toHaveBeenCalled());
     expect(openModal.mock.calls[0]?.[0].parameters.unavailable).toEqual([
       { key: COMPLETE_ID, id: COMPLETE_ID },
@@ -1795,7 +1972,7 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
       openModalResult: pickerResult([COMPLETE]),
     });
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() =>
       expect(alert).toHaveBeenCalledWith(
         "Couldn't save the Shopify selection: Field &lt;title&gt; &amp; more is invalid",
@@ -1811,16 +1988,14 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
     // Vitest fails the run on an unhandled rejection, so none may escape.
     openModal.mockRejectedValueOnce(new Error('penpal: connection destroyed'));
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Shopify' }));
+    fireEvent.click(browseButton());
     await waitFor(() =>
-      expect(alert).toHaveBeenCalledWith("Couldn't open the Shopify picker!"),
+      expect(alert).toHaveBeenCalledWith("Couldn't open the Shopify picker."),
     );
     await act(async () => new Promise((done) => setTimeout(done, 0)));
     expect(setFieldValue).not.toHaveBeenCalled();
     // The field is usable again.
-    expect(
-      screen.getByRole('button', { name: 'Browse Shopify' }),
-    ).not.toBeDisabled();
+    expect(browseButton()).toBeEnabled();
   });
 
   it('tells the editor when the clear confirmation cannot open', async () => {
@@ -1833,7 +2008,7 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
     render(<FieldExtension ctx={ctx} />);
     fireEvent.click(screen.getByRole('button', { name: 'Clear value' }));
     await waitFor(() =>
-      expect(alert).toHaveBeenCalledWith("Couldn't clear the value!"),
+      expect(alert).toHaveBeenCalledWith("Couldn't clear the value."),
     );
     expect(setFieldValue).not.toHaveBeenCalled();
   });
@@ -1845,7 +2020,7 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('3 selected · at least 2')).toBeInTheDocument();
+    expect(screen.getByText('3 products · at least 2')).toBeInTheDocument();
   });
 });
 
@@ -1862,11 +2037,15 @@ describe('FieldExtension: values saved for another store', () => {
     expect(
       screen.getByText('Saved for another Shopify store'),
     ).toBeInTheDocument();
+    // The two shops say what's wrong: the generic sentence doesn't repeat it.
     expect(
       screen.getByText(
-        /^The saved value points to a different Shopify store than the one this field uses\. It was saved for acme-outlet\.myshopify\.com/,
+        "It was saved for acme-outlet.myshopify.com, and this field uses datocms-demo.myshopify.com. It's kept exactly as saved until you pick again or clear it.",
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/points to a different Shopify store/),
+    ).toBeNull();
   });
 
   it('picks again from this store, replacing the value without a confirmation', async () => {
@@ -1907,77 +2086,68 @@ describe('FieldExtension: values saved for another store', () => {
   });
 });
 
-describe('FieldExtension: drag and drop', () => {
-  function mockRowRects() {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: HTMLElement) {
-        const rows = Array.from(
-          document.querySelectorAll('[data-testid="shopify-sortable-row"]'),
-        );
-        const index = rows.indexOf(this);
-        const top = index < 0 ? 0 : index * 100;
-        return {
-          x: 0,
-          y: top,
-          top,
-          left: 0,
-          right: 600,
-          bottom: top + 90,
-          width: 600,
-          height: 90,
-          toJSON: () => ({}),
-        } as DOMRect;
-      },
-    );
-  }
+describe('FieldExtension: reordering', () => {
+  // There is no keyboard drag: "Move up" and "Move down" in each row's menu
+  // reorder for keyboard users, through the same write as a drop.
 
-  async function dragFirstRowDown() {
-    const [handle] = screen.getAllByRole('button', { name: /^Reorder / });
-    if (!handle) throw new Error('No drag handle');
-    handle.focus();
-    fireEvent.keyDown(handle, { code: 'Space' });
-    await act(async () => new Promise((done) => setTimeout(done, 0)));
-    fireEvent.keyDown(document, { code: 'ArrowDown' });
-    await act(async () => new Promise((done) => setTimeout(done, 0)));
-    fireEvent.keyDown(document, { code: 'Space' });
-  }
-
-  it('reorders with the keyboard and shows the new order at once', async () => {
-    mockRowRects();
+  it('moves a row down and shows the new order at once', async () => {
+    const user = userEvent.setup();
     const { ctx, setFieldValue } = createCtx({
       parameters: multiple(),
       value: THREE_PRODUCTS,
     });
+    let answer: () => void = () => undefined;
+    setFieldValue.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          answer = done;
+        }),
+    );
     const { rerender } = render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
 
-    await dragFirstRowDown();
+    await pickRowAction(user, 'The Complete Snowboard', 'Move down');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     const reordered = writtenDocument(setFieldValue).references.map(
       (ref: { id: string }) => ref.id,
     );
     expect(reordered).toEqual([COMPARE_ID, COMPLETE_ID, OUT_OF_STOCK_ID]);
-    const titles = () =>
-      screen
-        .getAllByTestId('shopify-sortable-row')
-        .map((row) => within(row).getAllByText(/Snowboard$/)[0]?.textContent);
-    expect(titles()).toEqual([
+    // Before the host answers.
+    expect(rowTitles()).toEqual([
       'The Compare at Price Snowboard',
       'The Complete Snowboard',
       'The Out of Stock Snowboard',
     ]);
+    await act(async () => answer());
 
     rerender(
       <FieldExtension ctx={withValue(ctx, setFieldValue.mock.calls[0]?.[1])} />,
     );
     await act(async () => Promise.resolve());
-    expect(titles()[0]).toBe('The Compare at Price Snowboard');
+    expect(rowTitles()[0]).toBe('The Compare at Price Snowboard');
     // Reordering never refetches.
     expect(client.loadNodes).toHaveBeenCalledOnce();
   });
 
+  it('moves a row up', async () => {
+    const user = userEvent.setup();
+    const { ctx, setFieldValue } = createCtx({
+      parameters: multiple(),
+      value: THREE_PRODUCTS,
+    });
+    render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('The Out of Stock Snowboard');
+    await pickRowAction(user, 'The Out of Stock Snowboard', 'Move up');
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
+    expect(
+      writtenDocument(setFieldValue).references.map(
+        (ref: { id: string }) => ref.id,
+      ),
+    ).toEqual([COMPLETE_ID, OUT_OF_STOCK_ID, COMPARE_ID]);
+  });
+
   it('rolls the order back when saving it fails', async () => {
-    mockRowRects();
+    const user = userEvent.setup();
     const { ctx, setFieldValue, alert } = createCtx({
       parameters: multiple(),
       value: THREE_PRODUCTS,
@@ -1985,13 +2155,42 @@ describe('FieldExtension: drag and drop', () => {
     setFieldValue.mockRejectedValueOnce(new Error('nope'));
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    await dragFirstRowDown();
+    await pickRowAction(user, 'The Complete Snowboard', 'Move down');
     await waitFor(() =>
       expect(alert).toHaveBeenCalledWith(
-        "Couldn't save the Shopify selection!",
+        "Couldn't save the Shopify selection.",
       ),
     );
-    const first = screen.getAllByTestId('shopify-sortable-row')[0];
-    expect(first).toHaveTextContent('The Complete Snowboard');
+    await waitFor(() => expect(rowTitles()[0]).toBe('The Complete Snowboard'));
+  });
+
+  it('waits for the running change before another one', async () => {
+    const user = userEvent.setup();
+    const { ctx, setFieldValue } = createCtx({
+      parameters: multiple(),
+      value: THREE_PRODUCTS,
+    });
+    setFieldValue.mockImplementationOnce(() => new Promise(() => {}));
+    render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('The Complete Snowboard');
+    await pickRowAction(user, 'The Complete Snowboard', 'Move down');
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalledOnce());
+    // The links still work; the changes say why they wait.
+    const menu = await openRowMenu(user, 'The Out of Stock Snowboard');
+    expect(
+      within(
+        within(menu).getByRole('menuitem', { name: 'Open in Shopify admin' }),
+      ).getByRole('link'),
+    ).toHaveAttribute('href');
+    const remove = within(menu).getByRole('menuitem', { name: 'Remove' });
+    await user.hover(remove);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Wait until the current change is saved.',
+    );
+    await user.click(remove);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add products' }));
+    expect(setFieldValue).toHaveBeenCalledOnce();
+    expect(ctx.openModal).not.toHaveBeenCalled();
   });
 });

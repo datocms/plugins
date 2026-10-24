@@ -1,0 +1,53 @@
+/* Placement only: the kit draws the toolbars, inputs, pills and buttons. */
+
+/* The box of the text filter: it fills the first toolbar. */
+.search {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The scope and filter pills wrap onto more lines in a narrow frame instead
+   of running under Clear filters and the sort. */
+.filters {
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+  padding-block: var(--spacing-s);
+}
+
+/* The part of the footer that holds the staged selection: the free width,
+   down to a third of it (its chips then scroll sideways). */
+.trayPart {
+  min-width: 33%;
+}
+
+/* The staged selection: one row of chips that scrolls sideways. The block
+   padding keeps the focus ring of the crosses inside the scroll box. */
+.tray {
+  display: flex;
+  flex: 1 1 0;
+  gap: var(--spacing-s);
+  min-width: 0;
+  padding: var(--spacing-s) 0;
+  margin: 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.chip {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-s);
+  align-items: center;
+  max-width: 16em;
+  padding-left: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+
+  > :first-child {
+    min-width: 0;
+  }
+}

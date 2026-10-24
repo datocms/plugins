@@ -1,13 +1,12 @@
-import { faCopy } from '@fortawesome/free-regular-svg-icons';
-import { FieldHint } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
+import CopyableValue from 'datocms-react-ui/CopyableValue';
+import FieldHint from 'datocms-react-ui/FieldHint';
 import { truncateMiddle } from '../../lib/format';
 import { buildExampleStoredValue } from '../../lib/references';
 import type { FieldParametersV1, FieldType } from '../../types';
-import { Icon } from '../../ui/Icon';
-import Tip from '../shared/Tip';
 import { exampleHint } from './copy';
-import styles from './StoredValueExample.module.css';
+import styles from './FieldSettings.module.css';
 
 type Props = {
   fieldType: FieldType;
@@ -16,12 +15,14 @@ type Props = {
   shopDomain?: string;
 };
 
+const LABEL = 'Stored value example';
+
 /**
  * 7. The value a field with these settings stores, built with the same
- * serializers the editor uses. The copy button copies it exactly; the block
- * shows JSON indented, with long URLs shortened in the middle so every key
- * stays on one line. One plain-text <pre>: every element counts for the
- * auto-resizer.
+ * serializers the editor uses, and copied exactly. A string field stores a
+ * short value (a handle, an ID): a read-only field with its copy button. A
+ * JSON field stores a document: a code box that shows it indented, with long
+ * URLs shortened in the middle so every key stays on one line.
  */
 export default function StoredValueExample({
   fieldType,
@@ -29,17 +30,35 @@ export default function StoredValueExample({
   shopDomain,
 }: Props) {
   const value = buildExampleStoredValue(fieldType, params, shopDomain);
+  if (fieldType === 'string' && value) {
+    return (
+      <CopyableValue
+        label={LABEL}
+        hint={exampleHint(params)}
+        value={value}
+        code
+      />
+    );
+  }
+  const shown = readable(fieldType, value);
   return (
-    <figure className={styles.example}>
-      <figcaption className={styles.caption}>Stored value example</figcaption>
-      <div className={styles.block}>
-        <pre className={styles.code}>
-          {readable(fieldType, value) || 'No example for these settings'}
-        </pre>
-        {value && <CopyButton text={value} />}
-      </div>
-      <FieldHint>{exampleHint(params)}</FieldHint>
-    </figure>
+    <div>
+      <p className={styles.caption}>{LABEL}</p>
+      {value ? (
+        <CodeSnippet ariaLabel={LABEL} code={value}>
+          {shown === value ? undefined : (
+            <pre className={styles.readable}>{shown}</pre>
+          )}
+        </CodeSnippet>
+      ) : (
+        <BlankSlate
+          placement="section"
+          small
+          title="No example for these settings"
+        />
+      )}
+      <FieldHint hint={exampleHint(params)} />
+    </div>
   );
 }
 
@@ -61,76 +80,4 @@ function readable(fieldType: FieldType, value: string): string {
   } catch {
     return value;
   }
-}
-
-type CopyState = 'idle' | 'copied' | 'failed';
-
-const TOOLTIP: Record<CopyState, string> = {
-  idle: 'Copy to clipboard',
-  copied: 'Copied!',
-  failed: "Couldn't copy to the clipboard",
-};
-
-const ANNOUNCEMENT: Record<CopyState, string> = {
-  idle: '',
-  copied: 'Stored value example copied',
-  failed: "Couldn't copy the stored value example",
-};
-
-/** For iframes without the Clipboard API permission. */
-function copyWithSelection(text: string): boolean {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.top = '0';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    return document.execCommand('copy');
-  } catch {
-    return false;
-  } finally {
-    textarea.remove();
-  }
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return copyWithSelection(text);
-  }
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [state, setState] = useState<CopyState>('idle');
-
-  useEffect(() => {
-    if (state === 'idle') return;
-    const timeout = window.setTimeout(() => setState('idle'), 2000);
-    return () => window.clearTimeout(timeout);
-  }, [state]);
-
-  return (
-    <>
-      <Tip tip={TOOLTIP[state]} placement="left">
-        <button
-          type="button"
-          className={`dl-icon-button ${styles.copy}`}
-          aria-label="Copy to clipboard"
-          onClick={async () => {
-            setState((await copyText(text)) ? 'copied' : 'failed');
-          }}
-        >
-          <Icon icon={faCopy} />
-        </button>
-      </Tip>
-      <span className="dl-sr-only" role="status">
-        {ANNOUNCEMENT[state]}
-      </span>
-    </>
-  );
 }

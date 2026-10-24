@@ -1,31 +1,31 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import Link from 'datocms-react-ui/Link';
 import get from 'lodash-es/get';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import EntryRow from '../components/field/EntryRow';
+import EntryList, { FieldLimits } from '../components/field/EntryList';
 import type { ActionEnv } from '../components/field/editorActions';
-import { EmptyState, SetupMessage } from '../components/field/FieldBox';
-import fieldStyles from '../components/field/FieldParts.module.css';
 import InvalidValue from '../components/field/InvalidValue';
-import { LimitHint, ListFooter } from '../components/field/ListFooter';
 import {
   FormatMismatchNotice,
   LegacyDriftNotice,
   LoadErrorNotice,
+  SETTINGS_LINK_LABEL,
 } from '../components/field/Notices';
-import SortableRows, {
-  type HandleMode,
-} from '../components/field/SortableRows';
 import { useStableMembership } from '../components/field/stableValues';
 import {
   type EditorActions,
   useEditorActions,
 } from '../components/field/useEditorActions';
+import { useFieldClients } from '../components/field/useFieldClients';
 import {
+  FIELD_ACTION_ATTRIBUTE,
   type FieldFeedback,
   useFieldFeedback,
 } from '../components/field/useFieldFeedback';
-import { useFieldClients } from '../components/field/useFieldClients';
 import {
   type Hydration,
   useHydration,
@@ -35,25 +35,29 @@ import { useLegacyDrift } from '../components/field/useLegacyDrift';
 import { useOptimisticOrder } from '../components/field/useOptimisticOrder';
 import { useCapabilities } from '../components/shared/useCapabilities';
 import { useDeepStable } from '../components/shared/useDeepStable';
+import { MagnifyingGlassIcon } from '../icons';
 import {
   buildRowModel,
   CLEAR_FAILED_MESSAGE,
+  connectionProblemCause,
   convertProblem,
+  emptyLabel,
   formatMismatchMessage,
   invalidValueTitle,
   isConnectionProblem,
   isFirstLoad,
   isFormatMismatch,
+  kindNoun,
+  type LimitsSummary,
   legacyDriftSummary,
   limitsSummary,
   loadErrorMessage,
   loadErrorTitle,
   pluginSettingsPath,
   type RowModel,
-  reorderUnavailableReason,
+  settingsStep,
   storedDocumentShop,
 } from '../lib/fieldValue';
-import { nodeTitle } from '../lib/format';
 import type { LegacyDrift } from '../lib/legacy';
 import {
   isPluginConfigured,
@@ -63,13 +67,13 @@ import {
   resolveFieldStore,
 } from '../lib/parameters';
 import { parseStoredValue } from '../lib/references';
+import { TEXTS } from '../texts';
 import type {
   FieldParametersV1,
   FieldType,
   ParsedStoredValue,
   StoreConnection,
 } from '../types';
-import styles from './FieldExtension.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -129,13 +133,29 @@ function canEditSchema(ctx: RenderFieldExtensionCtx): boolean {
   return ctx.currentRole.meta.final_permissions.can_edit_schema === true;
 }
 
-function openPluginSettings(ctx: RenderFieldExtensionCtx) {
-  void ctx.navigateTo(
-    pluginSettingsPath({
-      pluginId: ctx.plugin.id,
-      environment: ctx.environment,
-      isEnvironmentPrimary: ctx.isEnvironmentPrimary,
-    }),
+/** The plugin settings, for the roles that can open them; else undefined. */
+function settingsPathFor(ctx: RenderFieldExtensionCtx): string | undefined {
+  if (!canEditSchema(ctx)) return undefined;
+  return pluginSettingsPath({
+    pluginId: ctx.plugin.id,
+    environment: ctx.environment,
+    isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+  });
+}
+
+/** The next step of a setup problem: the plugin settings, or an administrator. */
+function SetupNextStep({
+  settingsPath,
+  askAdministrator,
+}: {
+  settingsPath: string | undefined;
+  askAdministrator: string;
+}) {
+  if (!settingsPath) return <>{askAdministrator}</>;
+  return (
+    <>
+      <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link>.
+    </>
   );
 }
 
@@ -148,34 +168,31 @@ function SetupProblem({
 }) {
   if (setup.status === 'unsupported') {
     return (
-      <SetupMessage message="The Shopify editor works on Single-line string and JSON fields only" />
+      <Callout>
+        The Shopify editor works only on Single-line string and JSON fields.
+      </Callout>
     );
   }
-  const admin = canEditSchema(ctx);
-  const onOpenSettings = admin ? () => openPluginSettings(ctx) : undefined;
+  const settingsPath = settingsPathFor(ctx);
   if (setup.status === 'store-missing') {
     return (
-      <SetupMessage
-        message={
-          <span>
-            This field uses {setup.shopDomain}, which isn't connected to the
-            plugin
-            {admin ? '' : '. Ask an administrator to connect it again.'}
-          </span>
-        }
-        onOpenSettings={onOpenSettings}
-      />
+      <Callout tone="warning" title="Store not connected">
+        This field uses {setup.shopDomain}, which isn't connected to the plugin.{' '}
+        <SetupNextStep
+          settingsPath={settingsPath}
+          askAdministrator="Ask an administrator to connect it again."
+        />
+      </Callout>
     );
   }
   return (
-    <SetupMessage
-      message={
-        admin
-          ? 'Connect a Shopify store to start picking from your catalog'
-          : 'Ask an administrator to connect a Shopify store'
-      }
-      onOpenSettings={onOpenSettings}
-    />
+    <Callout tone="warning" title="No Shopify store connected">
+      Connect a Shopify store to start picking from your catalog.{' '}
+      <SetupNextStep
+        settingsPath={settingsPath}
+        askAdministrator="Ask an administrator to connect one."
+      />
+    </Callout>
   );
 }
 
@@ -183,7 +200,7 @@ function SetupProblem({
 // Invalid values
 // ---------------------------------------------------------------------------
 
-function shopMismatchDetail(
+function shopMismatchMessage(
   failure: ParseFailure,
   shopDomain: string,
 ): string | null {
@@ -212,12 +229,15 @@ async function confirmAndClear(
   feedback.announce('Cleared the value');
 }
 
-/** "Clear value", behind a confirmation; focus then goes to "Browse Shopify". */
+/**
+ * "Clear value", behind a confirmation; focus then goes to the empty slot
+ * ("Browse Shopify", or "Add …" for a multiple field).
+ */
 async function clearValue(
   ctx: RenderFieldExtensionCtx,
   feedback: FieldFeedback,
 ) {
-  const token = feedback.expect(['browse']);
+  const token = feedback.expect(['browse', 'add']);
   try {
     await confirmAndClear(ctx, feedback);
   } catch {
@@ -237,81 +257,81 @@ type ViewProps = {
   rows: readonly RowModel[];
   hydration: Hydration;
   actions: EditorActions;
+  limits: LimitsSummary;
   inventory: boolean;
 };
 
-/** Nothing to show yet: the spinner stands in for the rows and the footer. */
+/** Nothing to show yet: the loading state stands in for the rows. */
 function showsFirstLoad(rows: readonly RowModel[], hydration: Hydration) {
   return isFirstLoad(rows) && hydration.status === 'loading';
 }
 
 /**
- * Multiple fields always keep the handle column, so the rows don't shift
- * when a second item arrives: inert with one item, sortable with more.
- * Disabled fields and single values have none.
+ * An empty single field: the slot is the "Browse Shopify" button. (A
+ * multiple field's slot stands for its card: see `EntryList`.)
  */
-function handleMode(
-  params: FieldParametersV1,
-  count: number,
-  disabled: boolean,
-): HandleMode {
-  if (params.cardinality !== 'multiple' || disabled) return 'none';
-  return count > 1 ? 'sortable' : 'inert';
+function EmptyValue({
+  params,
+  readOnly,
+  onBrowse,
+}: {
+  params: FieldParametersV1;
+  readOnly: boolean;
+  onBrowse: () => void;
+}) {
+  const message = emptyLabel(params.kind, params.cardinality);
+  if (readOnly) return <EmptySlot message={message} />;
+  return (
+    <div {...{ [FIELD_ACTION_ATTRIBUTE]: 'browse' }}>
+      <EmptySlot
+        message={message}
+        action={{
+          label: 'Browse Shopify',
+          icon: MagnifyingGlassIcon,
+          onClick: onBrowse,
+        }}
+      />
+    </div>
+  );
 }
 
-function rowLabel(row: RowModel): string {
-  return row.node ? nodeTitle(row.node) : row.fallback.label;
-}
-
-/**
- * "Browse Shopify" and "Add …" are disabled while another action runs, but
- * not during their own: a disabled button drops keyboard focus.
- */
-function browseBlocked(actions: EditorActions): boolean {
-  return actions.busy !== null && actions.busy !== 'browse';
-}
-
-function Rows({ ctx, params, rows, hydration, actions, inventory }: ViewProps) {
-  if (rows.length === 0) {
+function Rows({
+  ctx,
+  params,
+  rows,
+  hydration,
+  actions,
+  limits,
+  inventory,
+}: ViewProps) {
+  if (rows.length === 0 && params.cardinality !== 'multiple') {
     return (
-      <EmptyState
-        kind={params.kind}
-        cardinality={params.cardinality}
+      <EmptyValue
+        params={params}
         readOnly={ctx.disabled}
-        busy={browseBlocked(actions)}
         onBrowse={actions.browse}
       />
     );
   }
   if (showsFirstLoad(rows, hydration)) {
     return (
-      <div className={fieldStyles.loading}>
-        <Spinner size={25} placement="centered" />
-      </div>
+      <BlankSlate
+        placement="inline"
+        small
+        loading
+        title={`Loading the ${kindNoun(params.kind, rows.length)}`}
+      />
     );
   }
-  const items = rows.map((row) => ({ ...row, label: rowLabel(row) }));
-  const indexOf = (key: string) => rows.findIndex((row) => row.key === key);
   return (
-    <SortableRows
-      items={items}
-      handles={handleMode(params, rows.length, ctx.disabled)}
-      inertReason={reorderUnavailableReason(params.kind)}
-      onMove={actions.reorder}
-      renderRow={(row, dragHandle, lifted) => (
-        <EntryRow
-          row={row}
-          locale={ctx.ui.locale}
-          inventory={inventory}
-          readOnly={ctx.disabled || lifted}
-          busy={actions.busy !== null}
-          onReplace={() => actions.replace(indexOf(row.key))}
-          onRemove={() => actions.remove(indexOf(row.key))}
-          onUpdateHandle={(handle) => actions.updateHandle(row.key, handle)}
-          dragHandle={dragHandle}
-          lifted={lifted}
-        />
-      )}
+    <EntryList
+      params={params}
+      rows={rows}
+      actions={actions}
+      limits={limits}
+      locale={ctx.ui.locale}
+      inventory={inventory}
+      readOnly={ctx.disabled}
     />
   );
 }
@@ -329,8 +349,8 @@ type NoticesProps = {
 
 /**
  * Hydration failed. When only the plugin settings can fix it (the token, its
- * permissions, the store address), admins get "Open plugin settings" instead
- * of a "Try again" that can't help, and other roles are pointed to an
+ * permissions, the store address), admins get a link to them instead of a
+ * "Try again" that can't help, and other roles are pointed to an
  * administrator.
  */
 function LoadError({
@@ -340,15 +360,25 @@ function LoadError({
   hydration,
   onRetry,
 }: Pick<NoticesProps, 'ctx' | 'params' | 'rows' | 'hydration' | 'onRetry'>) {
-  const admin = canEditSchema(ctx);
-  const settingsFix = admin && isConnectionProblem(hydration.error);
+  const { error } = hydration;
+  const settingsPath = isConnectionProblem(error)
+    ? settingsPathFor(ctx)
+    : undefined;
   return (
     <LoadErrorNotice
       title={loadErrorTitle(params.kind, rows.length)}
-      message={loadErrorMessage(hydration.error, admin)}
+      message={
+        settingsPath
+          ? connectionProblemCause(error)
+          : loadErrorMessage(error, canEditSchema(ctx))
+      }
       retrying={hydration.retrying}
-      onOpenSettings={settingsFix ? () => openPluginSettings(ctx) : undefined}
-      onRetry={settingsFix ? undefined : onRetry}
+      settings={
+        settingsPath
+          ? { path: settingsPath, step: settingsStep(error) }
+          : undefined
+      }
+      onRetry={settingsPath ? undefined : onRetry}
     />
   );
 }
@@ -400,15 +430,15 @@ function ValueNotices({
 
 function LoadingStatus({ hydration }: { hydration: Hydration }) {
   return (
-    <div className="dl-sr-only" role="status">
+    <div className="visually-hidden" role="status">
       {hydration.status === 'loading' ? 'Loading Shopify data…' : ''}
     </div>
   );
 }
 
 /**
- * "Try again": the error callout stays, with a spinner, until Shopify
- * answers. When it then goes away, focus moves to the first row.
+ * "Try again": the error callout stays, with the button busy, until Shopify
+ * answers. Focus moves to the first row (the busy button can't keep it).
  */
 function useRetry(hydration: Hydration, feedback: FieldFeedback) {
   const token = useRef<number | null>(null);
@@ -498,38 +528,31 @@ function ValueEditor({ ctx, setup, parsed, feedback }: ValueEditorProps) {
   };
   const actions = useEditorActions(env);
   const onRetry = useRetry(hydration, feedback);
-  const limits = limitsSummary(params, rows.length);
+  const limits = limitsSummary(params, rows.length, ctx.ui.locale);
   const view: ViewProps = {
     ctx,
     params,
     rows,
     hydration,
     actions,
+    limits,
     inventory,
   };
 
   return (
     <>
+      <LoadingStatus hydration={hydration} />
       <ValueNotices {...view} parsed={parsed} drift={drift} onRetry={onRetry} />
       <Rows {...view} />
       {params.cardinality === 'multiple' &&
-        rows.length > 0 &&
         !showsFirstLoad(rows, hydration) && (
-          <ListFooter
-            kind={params.kind}
+          <FieldLimits
             limits={limits}
+            count={rows.length}
             readOnly={ctx.disabled}
-            busy={browseBlocked(actions)}
-            onAdd={actions.browse}
+            busy={actions.busy}
           />
         )}
-      {!ctx.disabled && !showsFirstLoad(rows, hydration) && (
-        <LimitHint
-          message={limits.aboveMax ?? limits.belowMin}
-          warning={rows.length > 0}
-        />
-      )}
-      <LoadingStatus hydration={hydration} />
     </>
   );
 }
@@ -569,8 +592,9 @@ function ShopMismatchValue({ ctx, setup, failure, feedback }: InvalidProps) {
   return (
     <InvalidValue
       title={invalidValueTitle(failure.code)}
-      message={failure.message}
-      detail={shopMismatchDetail(failure, store.shopDomain)}
+      message={
+        shopMismatchMessage(failure, store.shopDomain) ?? failure.message
+      }
       rawValue={failure.rawValue}
       readOnly={ctx.disabled}
       onClear={() => void clearValue(ctx, feedback)}
@@ -587,6 +611,7 @@ function InvalidStoredValue(props: InvalidProps) {
     <InvalidValue
       title={invalidValueTitle(failure.code)}
       message={failure.message}
+      keptNote={failure.code !== 'unsupported-version'}
       rawValue={failure.rawValue}
       readOnly={ctx.disabled}
       onClear={() => void clearValue(ctx, feedback)}
@@ -640,17 +665,18 @@ function FieldEditor({ ctx, feedback }: Props & { feedback: FieldFeedback }) {
  * control (the host draws the label, hint and errors) and writes the value
  * only when an editor acts: rendering, hydrating or saving the record never
  * changes it. After an action, focus stays in the field and a status region
- * says what changed.
+ * says what changed. The status regions come first, so the last element of
+ * the field is its content (a callout drops its bottom margin there).
  */
 export default function FieldExtension({ ctx }: Props) {
   const { rootRef, feedback, message } = useFieldFeedback();
   return (
-    <Canvas ctx={ctx}>
-      <div ref={rootRef} className={`dl-kit-form-parity ${styles.root}`}>
-        <FieldEditor ctx={ctx} feedback={feedback} />
-        <div className="dl-sr-only" role="status">
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <div ref={rootRef}>
+        <div className="visually-hidden" role="status">
           {message}
         </div>
+        <FieldEditor ctx={ctx} feedback={feedback} />
       </div>
     </Canvas>
   );

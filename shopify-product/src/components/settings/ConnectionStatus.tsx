@@ -1,13 +1,16 @@
-import { faCircleCheck } from '@fortawesome/free-regular-svg-icons';
-import { Spinner } from 'datocms-react-ui';
-import { type RefObject, useLayoutEffect, useRef } from 'react';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import FeedbackDot from 'datocms-react-ui/FeedbackDot';
+import type { Message } from 'datocms-react-ui/Message';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import SmartDate from 'datocms-react-ui/SmartDate';
+import Spinner from 'datocms-react-ui/Spinner';
+import type { ReactNode } from 'react';
 import { SHOPIFY_STOREFRONT_API_VERSION } from '../../constants';
 import type { ConnectionTestResult, StoreCapabilities } from '../../types';
-import { Icon } from '../../ui/Icon';
-import Callout from '../shared/Callout';
 import CapabilityList from './CapabilityList';
-import styles from './ConnectionStatus.module.css';
-import { StableButton } from './StableButton';
+import { SAVING_REASON, useFocusAfterBusy } from './focus';
+import styles from './Settings.module.css';
 import type { ConnectionStatus as Status } from './useConnectionChecks';
 
 type Props = {
@@ -16,32 +19,10 @@ type Props = {
   /** Capabilities that belong to the current connection, if known. */
   capabilities: StoreCapabilities | null;
   tokenless: boolean;
-  /** `ctx.ui.locale`, for the "Checked on" date. */
-  locale: string;
-  /** A save is running: the buttons wait for it (and keep focus meanwhile). */
-  disabled: boolean;
+  /** A save is running: the check waits for it. */
+  saving: boolean;
   onTest: () => void;
-  /** Offered after a failed save: saves without the connection check. */
-  onSaveAnyway?: () => void;
 };
-
-function formatCheckedOn(iso: string, locale: string): string | null {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  try {
-    return date.toLocaleDateString(locale, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-  } catch {
-    return date.toLocaleDateString('en', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-  }
-}
 
 /**
  * The pinned version, flagged when Shopify reports it expired. Shopify then
@@ -56,189 +37,126 @@ export function apiVersionText(result: ConnectionTestResult): string {
     : `API ${pinned} (expired)`;
 }
 
-function StatusLine({
-  status,
-  hasCapabilities,
-}: {
-  status: Status | undefined;
-  hasCapabilities: boolean;
-}) {
-  if (status?.kind === 'checking') {
-    return (
-      <span className={styles.line}>
-        <span className={styles.spinner}>
-          <Spinner size={16} />
-        </span>
-        Checking the connection…
-      </span>
-    );
+function statusValue(
+  status: Status | undefined,
+  hasCapabilities: boolean,
+): ReactNode {
+  switch (status?.kind) {
+    case 'checking':
+      return (
+        <>
+          <Spinner inline label={false} /> Checking the connection…
+        </>
+      );
+    case 'connected':
+      return (
+        <>
+          <FeedbackDot tone="success" /> Connected to{' '}
+          <strong>{status.result.shopName}</strong>
+        </>
+      );
+    case 'failed':
+      return (
+        <>
+          <FeedbackDot tone="danger" /> Not connected
+        </>
+      );
+    default:
+      return hasCapabilities ? 'Saved' : 'Not checked yet';
   }
-  if (status?.kind === 'connected') {
-    return (
-      <span className={styles.line}>
-        <Icon icon={faCircleCheck} className={styles.connectedIcon} />
-        <span>
-          Connected to <strong>{status.result.shopName}</strong>
-          <span className={styles.meta}>
-            {' '}
-            · {apiVersionText(status.result)}
-          </span>
-        </span>
-      </span>
-    );
-  }
-  return (
-    <span className={`${styles.line} ${styles.idle}`}>
-      {hasCapabilities
-        ? 'Connection saved'
-        : 'Not checked yet: test the connection or save the settings'}
-    </span>
-  );
 }
 
-/** Marks the button that (re)runs the check: where focus goes back to. */
-const STATUS_ACTION = 'data-status-action';
+/** A saved date that SmartDate can read (settings can hold anything). */
+function readableDate(iso: string): string | null {
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+}
 
 /**
- * Running an action here swaps the view: "Try again" unmounts while the
- * check runs, "Re-check" unmounts when it fails, "Save anyway" goes once the
- * save is through. When the button that ran it had focus, focus moves to the
- * current view's check button instead of dropping to `<body>`. It never takes
- * focus back from somewhere the user moved it.
+ * The row's one-sentence description. Once connected, it names the API
+ * version the plugin targets (flagged when Shopify says it expired).
  */
-function useFocusFollowsStatus(
-  root: RefObject<HTMLDivElement | null>,
-  settled: boolean,
-) {
-  const following = useRef(false);
-
-  useLayoutEffect(() => {
-    if (!following.current) return;
-    const active = document.activeElement;
-    if (!active || active === document.body || !active.isConnected) {
-      root.current
-        ?.querySelector<HTMLElement>(`[${STATUS_ACTION}] button`)
-        ?.focus({ preventScroll: true });
-    }
-    if (settled) following.current = false;
-  });
-
-  return (action: () => void) => () => {
-    following.current = Boolean(root.current?.contains(document.activeElement));
-    action();
-  };
-}
-
-function FailedStatus({
-  message,
-  disabled,
-  onTest,
-  onSaveAnyway,
-}: {
-  message: string;
-  disabled: boolean;
-  onTest: () => void;
-  onSaveAnyway?: () => void;
-}) {
-  return (
-    <div
-      data-connection-failed="true"
-      tabIndex={-1}
-      className={styles.focusTarget}
-    >
-      <Callout
-        tone="danger"
-        role="alert"
-        title="Couldn't connect to Shopify"
-        actions={
-          <>
-            {onSaveAnyway && (
-              <StableButton
-                buttonSize="xxs"
-                unavailable={disabled}
-                onClick={onSaveAnyway}
-              >
-                Save anyway
-              </StableButton>
-            )}
-            <span {...{ [STATUS_ACTION]: '' }} className={styles.action}>
-              <StableButton
-                buttonSize="xxs"
-                unavailable={disabled}
-                onClick={onTest}
-              >
-                Try again
-              </StableButton>
-            </span>
-          </>
-        }
-      >
-        {message}
-      </Callout>
-    </div>
-  );
+function statusDescription(
+  status: Status | undefined,
+  capabilities: StoreCapabilities | null,
+): Message | undefined {
+  const connected = status?.kind === 'connected' ? status : null;
+  // The date belongs to saved capabilities, not to ones detected just now.
+  const checkedAt =
+    capabilities && !connected?.detected
+      ? readableDate(capabilities.checkedAt)
+      : null;
+  const version = connected ? apiVersionText(connected.result) : null;
+  if (checkedAt) {
+    return (
+      <>
+        Checked on <SmartDate show="date" value={checkedAt} />
+        {version && ` with ${version}`}.
+      </>
+    );
+  }
+  if (connected && !capabilities) {
+    return `Connected with ${version}: re-check to detect tags and inventory.`;
+  }
+  if (version) return `Connected with ${version}.`;
+  if (!status && !capabilities) {
+    return 'Test the connection, or save the settings to check it.';
+  }
+  return undefined;
 }
 
 /**
- * The inline result of a store's connection check: who answered, which
- * optional scopes the token has, and how to fix a failure.
+ * The connection of a store: a failed check's message, then the status, the
+ * check button and what the token can read.
  */
 export default function ConnectionStatus({
   status,
   capabilities,
   tokenless,
-  locale,
-  disabled,
+  saving,
   onTest,
-  onSaveAnyway,
 }: Props) {
-  const root = useRef<HTMLDivElement>(null);
   const checking = status?.kind === 'checking';
-  const follow = useFocusFollowsStatus(root, !disabled && !checking);
-
-  if (status?.kind === 'failed') {
-    return (
-      <div ref={root}>
-        <FailedStatus
-          message={status.message}
-          disabled={disabled}
-          onTest={follow(onTest)}
-          onSaveAnyway={onSaveAnyway && follow(onSaveAnyway)}
-        />
-      </div>
-    );
-  }
-
-  const detectedThisSession = status?.kind === 'connected' && status.detected;
-  const checkedOn =
-    capabilities && !detectedThisSession
-      ? formatCheckedOn(capabilities.checkedAt, locale)
-      : null;
+  const failed = status?.kind === 'failed';
+  const focus = useFocusAfterBusy(checking);
 
   return (
-    <div ref={root} className={styles.box}>
-      <div className={styles.header} aria-live="polite">
-        <StatusLine status={status} hasCapabilities={capabilities !== null} />
-        <span {...{ [STATUS_ACTION]: '' }} className={styles.action}>
-          <StableButton
-            buttonSize="xs"
-            unavailable={disabled || checking}
-            onClick={follow(onTest)}
-          >
-            {status || capabilities ? 'Re-check' : 'Test connection'}
-          </StableButton>
-        </span>
-      </div>
-      {capabilities && (
-        <CapabilityList
-          capabilities={capabilities}
-          tokenless={tokenless}
-          checkedOn={checkedOn}
+    <>
+      {status?.kind === 'failed' && (
+        // Where a failed save moves focus: no buttons in it. The callout
+        // takes no attributes, so the focus target wraps it.
+        <div data-connection-failed="true" tabIndex={-1}>
+          <Callout tone="danger" title="Couldn't connect to Shopify">
+            {status.message}
+          </Callout>
+        </div>
+      )}
+      <SettingsList className={failed ? styles.afterCallout : undefined}>
+        <SettingsList.Row
+          title="Connection"
+          value={
+            <span aria-live="polite">
+              {statusValue(status, capabilities !== null)}
+            </span>
+          }
+          description={statusDescription(status, capabilities)}
+          action={
+            <Button
+              ref={focus.ref}
+              tone="ghost"
+              label={status || capabilities ? 'Re-check' : 'Test connection'}
+              busy={checking}
+              disabled={saving ? { reason: SAVING_REASON } : undefined}
+              onClick={() => {
+                focus.follow();
+                onTest();
+              }}
+            />
+          }
         />
-      )}
-      {!capabilities && status?.kind === 'connected' && (
-        <p className={styles.unknown}>Re-check to detect tags and inventory</p>
-      )}
-    </div>
+        {capabilities && (
+          <CapabilityList capabilities={capabilities} tokenless={tokenless} />
+        )}
+      </SettingsList>
+    </>
   );
 }

@@ -253,10 +253,16 @@ function planFor(input: ResultsInput): QueryPlan {
   return productsPlan(input);
 }
 
-/** The main results: collections, a collection's products, or products. */
+/**
+ * The main results: collections, a collection's products, or products. A new
+ * search, filter, sort or market keeps the last results on screen until its
+ * first page arrives (`query.reloading`).
+ */
 export function usePickerResults(input: ResultsInput): Results {
   const plan = planFor(input);
-  const query = usePagedQuery<ResultItem>(plan.key, plan.fetch);
+  const query = usePagedQuery<ResultItem>(plan.key, plan.fetch, {
+    keepPrevious: true,
+  });
   const { check } = plan;
   const items = useMemo(
     () =>

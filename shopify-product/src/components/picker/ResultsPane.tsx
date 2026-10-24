@@ -1,27 +1,35 @@
-import { faAnglesDown } from '@fortawesome/free-solid-svg-icons';
-import { Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Heading from 'datocms-react-ui/Heading';
+import ListArea from 'datocms-react-ui/ListArea';
 import {
   Fragment,
   type ReactNode,
   type RefObject,
   useEffect,
-  useMemo,
+  useId,
   useRef,
 } from 'react';
+import {
+  BagShoppingIcon,
+  CircleExclamationIcon,
+  LayerGroupIcon,
+  MagnifyingGlassIcon,
+} from '../../icons';
 import { pluralize } from '../../lib/format';
 import type { PickerLabels } from '../../lib/pickerSearch';
 import { describeError } from '../../lib/shopifyClient';
-import { Button } from '../../ui/Button';
-import { Icon } from '../../ui/Icon';
-import BlankSlate from '../shared/BlankSlate';
-import Callout from '../shared/Callout';
 import styles from './ResultsPane.module.css';
-import { gridItems, RovingContext, useRovingFocus } from './rovingFocus';
 import { useGridColumns } from './useGridColumns';
 import { useInView } from './useInView';
-import { useLoadMoreFocus, useRetryFocus } from './useKeepFocus';
+import {
+  itemTargets,
+  PINNED_ATTRIBUTE,
+  useLoadMoreFocus,
+  useRetryFocus,
+} from './useKeepFocus';
 import { CollectionNotVisibleError } from './usePickerData';
-import type { PickerView } from './usePickerView';
 
 /** Infinite scroll stops after this many loaded items; "Load more" goes on. */
 const AUTO_LOAD_LIMIT = 500;
@@ -33,15 +41,11 @@ export function errorMessage(error: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// A grid or list of items, with an optional full-width panel under one row
+// A grid of cards, with a full-width panel under one row
 // ---------------------------------------------------------------------------
 
-type ItemCollectionProps<T extends { id: string }> = {
+type ItemGridProps<T extends { id: string }> = {
   items: T[];
-  view: PickerView;
-  label: string;
-  /** List view only: column titles. */
-  header?: ReactNode;
   renderItem: (item: T) => ReactNode;
   expandedId?: string | null;
   renderPanel?: (item: T) => ReactNode;
@@ -58,44 +62,28 @@ function panelIndex(
   return Math.min(count - 1, rowEnd);
 }
 
-export function ItemCollection<T extends { id: string }>({
+export function ItemGrid<T extends { id: string }>({
   items,
-  view,
-  label,
-  header,
   renderItem,
   expandedId,
   renderPanel,
-}: ItemCollectionProps<T>) {
+}: ItemGridProps<T>) {
   const gridRef = useRef<HTMLDivElement>(null);
-  const columns = useGridColumns(gridRef, view === 'grid');
+  const columns = useGridColumns(gridRef, true);
   const expandedIndex = expandedId
     ? items.findIndex((item) => item.id === expandedId)
     : -1;
   const expanded = expandedIndex >= 0 ? items[expandedIndex] : undefined;
-  const after = panelIndex(
-    expandedIndex,
-    items.length,
-    view === 'grid' ? columns : 1,
-  );
+  const after = panelIndex(expandedIndex, items.length, columns);
 
   return (
-    <div>
-      {view === 'list' && header}
-      <div
-        ref={gridRef}
-        className={view === 'grid' ? styles.grid : styles.list}
-        aria-label={label}
-        role="group"
-        data-roving-grid=""
-      >
-        {items.map((item, index) => (
-          <Fragment key={item.id}>
-            {renderItem(item)}
-            {index === after && expanded && renderPanel?.(expanded)}
-          </Fragment>
-        ))}
-      </div>
+    <div ref={gridRef} className={styles.grid}>
+      {items.map((item, index) => (
+        <Fragment key={item.id}>
+          {renderItem(item)}
+          {index === after && expanded && renderPanel?.(expanded)}
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -104,23 +92,32 @@ export function ItemCollection<T extends { id: string }>({
 // Sections
 // ---------------------------------------------------------------------------
 
-export function Section({
+/** A titled part of the results: the SKU matches, then all the results. */
+export function ResultSection({
   title,
   icon,
+  pinned = false,
   children,
 }: {
   title: string;
   icon?: ReactNode;
+  /** The SKU matches: Load more's focus skips their items. */
+  pinned?: boolean;
   children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <section className={styles.section} aria-label={title}>
-      <h3 className={styles.sectionTitle}>
+    <div
+      role="group"
+      aria-labelledby={id}
+      {...(pinned ? { [PINNED_ATTRIBUTE]: '' } : {})}
+    >
+      <Heading level={2} id={id} className={styles.sectionTitle}>
         {icon}
         {title}
-      </h3>
+      </Heading>
       {children}
-    </section>
+    </div>
   );
 }
 
@@ -134,40 +131,17 @@ export type ResultsState = {
   hasNextPage: boolean;
   loadingMore: boolean;
   loadMoreError: unknown;
+  /** New results load while the last ones show (the toolbar spins). */
+  reloading: boolean;
   loadMore: () => void;
   retry: () => void;
   /** Items loaded so far (before client-side checks). */
   loadedCount: number;
 };
 
-function RetryCallout({
-  title,
-  error,
-  onRetry,
-}: {
-  title?: string;
-  error: unknown;
-  onRetry: () => void;
-}) {
-  return (
-    <Callout
-      tone="danger"
-      role="alert"
-      title={title}
-      actions={
-        <Button buttonSize="xxs" onClick={onRetry}>
-          Try again
-        </Button>
-      }
-    >
-      <p>{errorMessage(error)}</p>
-    </Callout>
-  );
-}
-
 /**
- * The visible "Load more" (infinite scroll stops at `AUTO_LOAD_LIMIT`). It
- * stays enabled while loading, so it keeps focus; a click then does nothing.
+ * The visible "Load more" (infinite scroll stops at `AUTO_LOAD_LIMIT`), or
+ * the Try again of a page that failed.
  */
 function LoadMore({
   state,
@@ -181,74 +155,99 @@ function LoadMore({
   /** Called before loading, so focus can move to the first new item. */
   keepFocus: () => void;
 }) {
-  if (state.loadMoreError) {
-    return (
-      <div ref={areaRef} className={styles.loadMore}>
-        <RetryCallout
-          error={state.loadMoreError}
-          onRetry={() => {
-            keepFocus();
-            state.retry();
-          }}
-        />
-      </div>
-    );
-  }
-  if (!state.hasNextPage) return null;
+  // The last results stay while new ones load; their next page doesn't.
+  if (state.reloading) return null;
+  if (!state.loadMoreError && !state.hasNextPage) return null;
   return (
     <div ref={areaRef} className={styles.loadMore}>
-      <Button
-        buttonSize="s"
-        leftIcon={<Icon icon={faAnglesDown} />}
-        className={state.loadingMore ? styles.loading : undefined}
-        onClick={() => {
-          if (state.loadingMore) return;
-          keepFocus();
-          state.loadMore();
-        }}
-      >
-        Load more {labels.resultMany}
-        {state.loadingMore && <Spinner size={20} />}
-      </Button>
+      {state.loadMoreError ? (
+        <BlankSlate
+          placement="section"
+          small
+          error
+          icon={<CircleExclamationIcon />}
+          title={`Couldn't load more ${labels.resultMany}`}
+          description={errorMessage(state.loadMoreError)}
+          actions={
+            <Button
+              label="Try again"
+              onClick={() => {
+                keepFocus();
+                state.retry();
+              }}
+            />
+          }
+        />
+      ) : (
+        <Button
+          label={`Load more ${labels.resultMany}`}
+          busy={state.loadingMore}
+          onClick={() => {
+            keepFocus();
+            state.loadMore();
+          }}
+        />
+      )}
     </div>
   );
 }
 
+/**
+ * Nothing to show: no match for the search, the filters or the field's
+ * limits, or nothing at all (the storefront shows nothing).
+ */
 function EmptyState({
   labels,
   searching,
   filtersActive,
+  scoped,
   onClearFilters,
 }: {
   labels: PickerLabels;
   searching: boolean;
   filtersActive: boolean;
+  scoped: boolean;
   onClearFilters: () => void;
 }) {
+  const narrowed = searching || filtersActive || scoped;
+  const EntityIcon =
+    labels.resultOne === 'collection' ? LayerGroupIcon : BagShoppingIcon;
   return (
     <BlankSlate
-      className={styles.empty}
-      title={labels.emptyTitle}
+      placement="area"
+      icon={narrowed ? <MagnifyingGlassIcon /> : <EntityIcon />}
+      title={
+        narrowed
+          ? labels.emptyTitle
+          : `No ${labels.resultMany} visible to this storefront`
+      }
+      description={
+        searching
+          ? `Check the spelling, or try fewer words. ${labels.emptyHint}`
+          : labels.emptyHint
+      }
       actions={
         filtersActive ? (
-          <Button buttonSize="s" onClick={onClearFilters}>
-            Clear filters
-          </Button>
+          <Button label="Clear filters" onClick={onClearFilters} />
         ) : undefined
       }
-    >
-      {searching && <p>Check the spelling, or try fewer words.</p>}
-      <p>{labels.emptyHint}</p>
-    </BlankSlate>
+    />
   );
 }
 
 export type ResultsPaneProps = {
   labels: PickerLabels;
+  /** `ctx.ui.locale`, for the numbers of the announcements. */
+  locale: string;
   state: ResultsState;
   /** True when no loaded item passes the filters. */
   isEmpty: boolean;
   filtersActive: boolean;
+  /**
+   * True when the field's settings limit what the picker offers (its locked
+   * scope pills): no results then means no match, not an empty storefront.
+   */
+  scoped: boolean;
   /** True while a search text is applied. */
   searching: boolean;
   onClearFilters: () => void;
@@ -257,67 +256,115 @@ export type ResultsPaneProps = {
   pinnedCount: number;
   /** Title over the main results while something is pinned. */
   mainTitle: string;
+  /**
+   * Why the prices and titles are in another language than the one asked
+   * for (Shopify fell back), or null. Shown above the results as a warning
+   * Callout.
+   */
+  marketNotice?: string | null;
+  /**
+   * The filters the browsed collection keeps but can't apply, or null. Shown
+   * above the results as a warning Callout, next to their warning pills.
+   */
+  filtersNotice?: string | null;
   children: ReactNode;
 };
 
 type MainResultsProps = ResultsPaneProps & {
   onRetry: () => void;
+  retryRef: RefObject<HTMLElement | null>;
+  /** The area that holds every result (the ListArea). */
+  area: () => HTMLElement | null;
 };
 
-/** The main grid or list, its states, and Load more. */
+/**
+ * The main grid or table, its states, and Load more: direct children of the
+ * ListArea, which spaces them.
+ */
 function MainResults(props: MainResultsProps) {
-  const { state, labels, isEmpty, pinnedCount } = props;
-  const listRef = useRef<HTMLDivElement>(null);
+  const { state, labels, isEmpty, pinnedCount, area } = props;
   const areaRef = useRef<HTMLDivElement>(null);
   const keepFocus = useLoadMoreFocus({
-    items: () => gridItems(listRef.current),
+    items: () => itemTargets(area(), { skipPinned: true }),
     area: areaRef,
     loadingMore: state.loadingMore,
   });
+  // With SKU matches above, the states sit in the section under its title;
+  // alone, they fill the area.
+  const placement = pinnedCount > 0 ? 'section' : 'area';
+  const inSection = (content: ReactNode) =>
+    pinnedCount > 0 ? (
+      <ResultSection title={props.mainTitle}>{content}</ResultSection>
+    ) : (
+      content
+    );
+
   if (state.status === 'error') {
-    return (
-      <RetryCallout
+    return inSection(
+      <BlankSlate
+        placement={placement}
+        small={pinnedCount > 0}
+        error
+        icon={<CircleExclamationIcon />}
         title={`Couldn't load the ${labels.resultMany}`}
-        error={state.error}
-        onRetry={props.onRetry}
-      />
+        description={errorMessage(state.error)}
+        actions={
+          <Button
+            ref={props.retryRef}
+            label="Try again"
+            onClick={props.onRetry}
+          />
+        }
+      />,
     );
   }
-  if (state.status !== 'ready') {
-    return (
-      <div className={styles.spinnerBox}>
-        <Spinner size={40} placement="centered" />
-      </div>
+  // While new results load, the last ones stay; but when the new search or
+  // filters leave none of them (a collection's products are matched in the
+  // browser), "no match" would be wrong until the new first page arrives:
+  // the loading state stands in for them.
+  if (state.status !== 'ready' || (state.reloading && isEmpty)) {
+    return inSection(
+      <BlankSlate
+        placement={placement}
+        small={pinnedCount > 0}
+        loading
+        title={`Loading the ${labels.resultMany}`}
+      />,
     );
   }
   if (isEmpty && !state.hasNextPage) {
     return pinnedCount > 0 ? (
-      <p className={styles.inlineEmpty}>No other {labels.resultMany} match</p>
+      inSection(
+        <BlankSlate
+          placement="section"
+          small
+          icon={<MagnifyingGlassIcon />}
+          title={`No other ${labels.resultMany} match`}
+        />,
+      )
     ) : (
       <EmptyState
         labels={labels}
         searching={props.searching}
         filtersActive={props.filtersActive}
+        scoped={props.scoped}
         onClearFilters={props.onClearFilters}
       />
     );
   }
   const body = isEmpty ? (
-    <p className={styles.inlineEmpty}>
-      None of the {labels.resultMany} loaded so far match
-    </p>
+    <BlankSlate
+      placement="section"
+      small
+      icon={<MagnifyingGlassIcon />}
+      title={`None of the ${labels.resultMany} loaded so far match`}
+    />
   ) : (
     props.children
   );
   return (
     <>
-      <div ref={listRef}>
-        {pinnedCount > 0 ? (
-          <Section title={props.mainTitle}>{body}</Section>
-        ) : (
-          body
-        )}
-      </div>
+      {inSection(body)}
       <LoadMore
         state={state}
         labels={labels}
@@ -330,26 +377,31 @@ function MainResults(props: MainResultsProps) {
 
 function announcement(props: ResultsPaneProps, visibleCount: number): string {
   const { state, labels } = props;
-  if (state.status === 'loading') return `Loading ${labels.resultMany}…`;
+  if (state.status === 'loading' || state.reloading) {
+    return `Loading ${labels.resultMany}…`;
+  }
+  if (state.status === 'error')
+    return `Couldn't load the ${labels.resultMany}.`;
   if (state.status !== 'ready') return '';
   if (state.loadingMore) return `Loading more ${labels.resultMany}…`;
+  if (state.loadMoreError) return `Couldn't load more ${labels.resultMany}.`;
   if (visibleCount === 0 && props.pinnedCount === 0) return labels.emptyTitle;
   const count = visibleCount + props.pinnedCount;
-  return `${pluralize(count, labels.resultOne, labels.resultMany)} shown`;
+  return `${pluralize(count, labels.resultOne, labels.resultMany, props.locale)} shown`;
 }
 
 /** Keeps loading pages while the end of the list is in view. */
 function useAutoLoad(
-  scrollRef: RefObject<HTMLDivElement | null>,
   sentinelRef: RefObject<HTMLDivElement | null>,
   state: ResultsState,
 ) {
   const canAutoLoad =
     state.status === 'ready' &&
+    !state.reloading &&
     state.hasNextPage &&
     !state.loadMoreError &&
     state.loadedCount < AUTO_LOAD_LIMIT;
-  const inView = useInView(scrollRef, sentinelRef, { enabled: canAutoLoad });
+  const inView = useInView(sentinelRef, { enabled: canAutoLoad });
   const { loadingMore, loadMore } = state;
   useEffect(() => {
     if (inView && canAutoLoad && !loadingMore) loadMore();
@@ -357,9 +409,9 @@ function useAutoLoad(
 }
 
 /**
- * The scrolling results: pinned SKU matches, the main grid or list, every
- * loading, empty and error state, infinite scroll with a visible "Load more"
- * fallback, and arrow-key navigation across items.
+ * The results, in the Pane's scrolling content: the market notice, the
+ * pinned SKU matches, the main grid or table, every loading, empty and error
+ * state, and infinite scroll with a visible "Load more" fallback.
  */
 export default function ResultsPane(
   props: ResultsPaneProps & {
@@ -368,12 +420,16 @@ export default function ResultsPane(
     onFocusLost: () => void;
   },
 ) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const roving = useRovingFocus(scrollRef);
-  useAutoLoad(scrollRef, sentinelRef, props.state);
+  const retryRef = useRef<HTMLElement>(null);
+  // The ListArea takes no ref: its first child's parent is the area. The
+  // items are found by their markers in it, without a wrapper.
+  const area = () => statusRef.current?.parentElement ?? null;
+  useAutoLoad(sentinelRef, props.state);
   const keepRetryFocus = useRetryFocus({
-    root: scrollRef,
+    firstItem: () => itemTargets(area())[0] ?? null,
+    retryButton: retryRef,
     status: props.state.status,
     fallback: props.onFocusLost,
   });
@@ -382,28 +438,31 @@ export default function ResultsPane(
     keepRetryFocus();
     retry();
   };
-  const rovingValue = useMemo(
-    () => ({ activeKey: roving.activeKey }),
-    [roving.activeKey],
-  );
 
   return (
-    <div
-      ref={scrollRef}
-      className={styles.results}
-      data-picker-scroll=""
-      aria-busy={props.state.status === 'loading'}
-      onKeyDown={roving.onKeyDown}
-      onFocus={roving.onFocus}
-    >
-      <RovingContext.Provider value={rovingValue}>
-        <div className="dl-sr-only" role="status" aria-live="polite">
-          {announcement(props, props.visibleCount)}
-        </div>
-        {props.pinned}
-        <MainResults {...props} onRetry={onRetry} />
-        <div ref={sentinelRef} className={styles.sentinel} aria-hidden="true" />
-      </RovingContext.Provider>
-    </div>
+    <ListArea>
+      <div
+        ref={statusRef}
+        className="visually-hidden"
+        role="status"
+        aria-live="polite"
+      >
+        {announcement(props, props.visibleCount)}
+      </div>
+      {props.marketNotice && (
+        <Callout tone="warning">{props.marketNotice}</Callout>
+      )}
+      {props.filtersNotice && (
+        <Callout tone="warning">{props.filtersNotice}</Callout>
+      )}
+      {props.pinned}
+      <MainResults
+        {...props}
+        onRetry={onRetry}
+        retryRef={retryRef}
+        area={area}
+      />
+      <div ref={sentinelRef} className={styles.sentinel} aria-hidden="true" />
+    </ListArea>
   );
 }

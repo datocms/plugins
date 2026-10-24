@@ -48,9 +48,9 @@ export type DraftErrors = {
 };
 
 export const DUPLICATE_STORE_ERROR = 'This store is already in the list';
-export const INVALID_PATTERN_ERROR = 'Field must be a valid regular expression';
+export const INVALID_PATTERN_ERROR = 'Enter a valid regular expression';
 export const NESTED_REPEAT_ERROR =
-  'Field cannot contain nested repeats like (a+)+, which can freeze record forms';
+  'Remove nested repeats like (a+)+: they can freeze record forms';
 
 let lastStoreKey = 0;
 

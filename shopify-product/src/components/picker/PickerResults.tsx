@@ -1,52 +1,40 @@
-import { faBarcode } from '@fortawesome/free-solid-svg-icons';
-import { variantDisabledReason } from '../../lib/pickerSearch';
+import {
+  Table,
+  useInMemoryTableLayout,
+  useLocalStorageTableLayout,
+} from 'datocms-react-ui/Table';
+import { BarcodeIcon } from '../../icons';
 import type { SkuMatch } from '../../lib/shopifyClient';
 import type {
   CollectionSummary,
   ProductSummary,
-  ShopifyKind,
   ShopifyNode,
   VariantSummary,
 } from '../../types';
-import { Icon } from '../../ui/Icon';
 import {
-  CollectionItem,
+  COLLECTION_COLUMNS,
+  COLLECTION_LAYOUT,
+  CollectionCard,
+  ITEM_PROPS,
+  type ItemEnv,
   type ItemNote,
   type ItemSelectionState,
-  ListHeader,
   lockedState,
-  ProductItem,
+  PRODUCT_COLUMNS,
+  PRODUCT_COLUMNS_STORAGE_KEY,
+  PRODUCT_LAYOUT,
+  ProductCard,
+  resultRow,
+  rowBehavior,
 } from './ResultItems';
-import { ItemCollection, Section } from './ResultsPane';
+import { ItemGrid, ResultSection } from './ResultsPane';
+import styles from './ResultsPane.module.css';
 import VariantPanel from './VariantPanel';
-import { VariantHeader, VariantList, VariantRow } from './VariantRows';
-import type { PickerView } from './usePickerView';
-import type { ShopifyClient } from '../../lib/shopifyClient';
+import { ProductTreeRows, VariantTable } from './VariantRows';
 
-/** Everything an item needs to render and act, shared by every section. */
-export type ItemEnv = {
-  kind: ShopifyKind;
-  view: PickerView;
-  locale: string;
-  inventory: boolean;
-  multiple: boolean;
-  client: ShopifyClient;
-  contextKey: string;
-  /** Why unselected items can't be picked (the selection is full), or null. */
-  disabledReason: string | null;
-  /** Variant mode: why sold-out variants can't be picked right now, or null. */
-  soldOutReason: string | null;
-  isSelected: (node: ShopifyNode) => boolean;
-  /** Already in the field (Replace): shown selected, and can't be picked. */
-  isUnavailable: (node: ShopifyNode) => boolean;
-  selectedVariants: (productId: string) => number;
-  expandedId: string | null;
-  pendingId: string | null;
-  pick: (node: ShopifyNode) => void;
-  /** Gives selected entries without a node the matching loaded nodes. */
-  hydrate: (nodes: readonly ShopifyNode[]) => void;
-  activateProduct: (product: ProductSummary) => void;
-};
+export type { ItemEnv } from './ResultItems';
+
+const ALWAYS_VISIBLE = { alwaysVisible: true };
 
 function selectionState(env: ItemEnv, node: ShopifyNode): ItemSelectionState {
   if (env.isUnavailable(node)) return lockedState(env.multiple);
@@ -54,129 +42,187 @@ function selectionState(env: ItemEnv, node: ShopifyNode): ItemSelectionState {
     selected: env.isSelected(node),
     multiple: env.multiple,
     disabledReason: env.disabledReason,
-  };
-}
-
-/** A variant row: locked, else sold out or the selection is full. */
-function variantState(
-  env: ItemEnv,
-  variant: VariantSummary,
-): ItemSelectionState {
-  const state = selectionState(env, variant);
-  if (state.locked) return state;
-  return {
-    ...state,
-    disabledReason: variantDisabledReason(
-      variant,
-      env.soldOutReason,
-      env.disabledReason,
-    ),
+    stale: env.stale,
   };
 }
 
 const panelIdFor = (prefix: string, product: ProductSummary) =>
   `shopify-picker-${prefix}-variants-${product.id.replace(/\D/g, '')}`;
 
-function productItemProps(
-  env: ItemEnv,
-  product: ProductSummary,
-  prefix: string,
-) {
-  const isVariantMode = env.kind === 'variant';
-  const variantCount = product.variantsCount?.count ?? 0;
-  const expandable = isVariantMode && variantCount !== 1;
-  const selectedVariants = isVariantMode ? env.selectedVariants(product.id) : 0;
-  const base = selectionState(env, product);
-  return {
-    ...base,
-    selected: isVariantMode
-      ? !expandable && selectedVariants > 0
-      : base.selected,
-    product,
-    view: env.view,
-    rovingKey: `${prefix}:${product.id}`,
-    locale: env.locale,
-    inventory: env.inventory,
-    selectedVariants,
-    busy: env.pendingId === product.id,
-    expandable: expandable
-      ? {
-          expanded: env.expandedId === product.id,
-          panelId: panelIdFor(prefix, product),
-        }
-      : null,
-    chevronColumn: isVariantMode,
-    onActivate: () => env.activateProduct(product),
-  };
-}
-
-function listColumns(kind: ShopifyKind) {
-  return {
-    sku: kind !== 'collection',
-    variants: 'Variants',
-    price: true,
-    availability: kind !== 'collection',
-  };
-}
+// ---------------------------------------------------------------------------
+// Products
+// ---------------------------------------------------------------------------
 
 type ProductListProps = {
   env: ItemEnv;
   products: ProductSummary[];
-  label: string;
-  /** Roving-key prefix, unique per section. */
+  /** Unique per section: the IDs of the variant panels use it. */
   prefix: string;
   /** Per product ID: the code that matched (SKU or barcode). */
   notes?: ReadonlyMap<string, ItemNote>;
 };
 
-/** Products as cards or rows; in variant mode a product opens its variants. */
-export function ProductList({
-  env,
-  products,
-  label,
-  prefix,
-  notes,
-}: ProductListProps) {
+/** Grid view: cards; in variant mode a card opens a panel of variants. */
+function ProductGrid({ env, products, prefix, notes }: ProductListProps) {
+  const variantMode = env.kind === 'variant';
   return (
-    <ItemCollection
+    <ItemGrid
       items={products}
-      view={env.view}
-      label={label}
-      header={
-        <ListHeader
-          columns={listColumns(env.kind)}
-          withCheck={env.multiple}
-          withChevron={env.kind === 'variant'}
-        />
-      }
-      expandedId={env.kind === 'variant' ? env.expandedId : null}
-      renderItem={(product) => (
-        <ProductItem
-          key={product.id}
-          {...productItemProps(env, product, prefix)}
-          note={notes?.get(product.id) ?? null}
-        />
-      )}
+      expandedId={variantMode ? env.expandedId : null}
+      renderItem={(product) => {
+        const variantCount = product.variantsCount?.count ?? 0;
+        const expandable = variantMode && variantCount !== 1;
+        const selectedVariants = variantMode
+          ? env.selectedVariants(product.id)
+          : 0;
+        const base = selectionState(env, product);
+        return (
+          <ProductCard
+            key={product.id}
+            product={product}
+            state={
+              variantMode
+                ? { ...base, selected: !expandable && selectedVariants > 0 }
+                : base
+            }
+            hasSelection={env.hasSelection}
+            locale={env.locale}
+            inventory={env.inventory}
+            selectedVariants={expandable ? selectedVariants : 0}
+            note={notes?.get(product.id) ?? null}
+            expandable={
+              expandable
+                ? {
+                    expanded: env.expandedId === product.id,
+                    panelId: panelIdFor(prefix, product),
+                  }
+                : null
+            }
+            busy={env.pendingId === product.id}
+            onActivate={() => env.activateProduct(product)}
+          />
+        );
+      }}
       renderPanel={(product) => (
         <VariantPanel
           key={`panel:${product.id}`}
-          client={env.client}
-          contextKey={env.contextKey}
+          env={env}
           product={product}
           panelId={panelIdFor(prefix, product)}
-          ownerKey={`${prefix}:${product.id}`}
-          locale={env.locale}
-          inventory={env.inventory}
-          multiple={env.multiple}
-          isSelected={env.isSelected}
-          isUnavailable={env.isUnavailable}
-          disabledReason={env.disabledReason}
-          soldOutReason={env.soldOutReason}
-          onPick={env.pick}
-          onLoaded={env.hydrate}
         />
       )}
     />
+  );
+}
+
+function ProductTableRow({
+  env,
+  product,
+  note,
+}: {
+  env: ItemEnv;
+  product: ProductSummary;
+  note: ItemNote | null;
+}) {
+  const state = selectionState(env, product);
+  return (
+    <Table.Row
+      row={resultRow(product, env, { note, inField: state.locked === true })}
+      {...rowBehavior(state, () => env.pick(product))}
+      wrapperProps={ITEM_PROPS}
+    />
+  );
+}
+
+/**
+ * List view: a table of products. In variant mode it's a tree: a product
+ * with several variants opens them under it.
+ */
+function ProductTable({ env, products, notes }: ProductListProps) {
+  const [layout, setLayout] = useLocalStorageTableLayout(
+    PRODUCT_COLUMNS_STORAGE_KEY,
+    PRODUCT_LAYOUT,
+  );
+  const variantMode = env.kind === 'variant';
+  return (
+    <Table
+      columns={PRODUCT_COLUMNS}
+      layout={layout}
+      onLayoutChange={setLayout}
+      className={styles.table}
+      checkboxes={env.multiple ? ALWAYS_VISIBLE : undefined}
+      tree={variantMode}
+    >
+      <Table.Header />
+      <Table.Body>
+        {products.map((product) =>
+          variantMode ? (
+            <ProductTreeRows
+              key={product.id}
+              env={env}
+              product={product}
+              note={notes?.get(product.id) ?? null}
+            />
+          ) : (
+            <ProductTableRow
+              key={product.id}
+              env={env}
+              product={product}
+              note={notes?.get(product.id) ?? null}
+            />
+          ),
+        )}
+      </Table.Body>
+    </Table>
+  );
+}
+
+/** Products as cards or as a table, as the editor chose. */
+export function ProductList(props: ProductListProps) {
+  return props.env.view === 'list' ? (
+    <ProductTable {...props} />
+  ) : (
+    <ProductGrid {...props} />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Collections
+// ---------------------------------------------------------------------------
+
+function CollectionTable({
+  env,
+  collections,
+}: {
+  env: ItemEnv;
+  collections: CollectionSummary[];
+}) {
+  const [layout, setLayout] = useInMemoryTableLayout(COLLECTION_LAYOUT);
+  return (
+    <Table
+      columns={COLLECTION_COLUMNS}
+      layout={layout}
+      onLayoutChange={setLayout}
+      className={styles.table}
+      checkboxes={env.multiple ? ALWAYS_VISIBLE : undefined}
+    >
+      <Table.Header />
+      <Table.Body>
+        {collections.map((collection) => {
+          const state = selectionState(env, collection);
+          return (
+            <Table.Row
+              key={collection.id}
+              row={resultRow(collection, env, {
+                inField: state.locked === true,
+              })}
+              {...rowBehavior(state, () => env.pick(collection))}
+              wrapperProps={ITEM_PROPS}
+            />
+          );
+        })}
+      </Table.Body>
+    </Table>
   );
 }
 
@@ -187,23 +233,20 @@ export function CollectionList({
   env: ItemEnv;
   collections: CollectionSummary[];
 }) {
+  if (env.view === 'list') {
+    return <CollectionTable env={env} collections={collections} />;
+  }
   const withMedia = collections.some((collection) => collection.image);
   return (
-    <ItemCollection
+    <ItemGrid
       items={collections}
-      view={env.view}
-      label="Collections"
-      header={
-        <ListHeader columns={{}} withCheck={env.multiple} withChevron={false} />
-      }
       renderItem={(collection) => (
-        <CollectionItem
+        <CollectionCard
           key={collection.id}
-          {...selectionState(env, collection)}
           collection={collection}
-          view={env.view}
+          state={selectionState(env, collection)}
+          hasSelection={env.hasSelection}
           withMedia={withMedia}
-          rovingKey={`collection:${collection.id}`}
           onActivate={() => env.pick(collection)}
         />
       )}
@@ -211,7 +254,11 @@ export function CollectionList({
   );
 }
 
-const SKU_TITLE = 'Exact SKU / barcode matches';
+// ---------------------------------------------------------------------------
+// SKU and barcode matches
+// ---------------------------------------------------------------------------
+
+const SKU_TITLE = 'SKU and barcode matches';
 
 /** Per product: the SKU (or barcode) of its first matching variant. */
 function matchedCodes(matches: SkuMatch[]): Map<string, ItemNote> {
@@ -236,42 +283,26 @@ export function SkuMatches({
   matches: SkuMatch[];
 }) {
   if (matches.length === 0) return null;
-  const icon = <Icon icon={faBarcode} />;
+  const icon = <BarcodeIcon />;
   if (env.kind === 'variant') {
+    // The variants themselves, in both views: they are what gets picked.
     const variants: VariantSummary[] = matches.flatMap(
       (match) => match.variants,
     );
     return (
-      <Section title={SKU_TITLE} icon={icon}>
-        <div>
-          <VariantHeader multiple={env.multiple} />
-          <VariantList label={SKU_TITLE}>
-            {variants.map((variant) => (
-              <VariantRow
-                key={variant.id}
-                {...variantState(env, variant)}
-                variant={variant}
-                rovingKey={`sku-variant:${variant.id}`}
-                locale={env.locale}
-                inventory={env.inventory}
-                showProduct
-                onActivate={() => env.pick(variant)}
-              />
-            ))}
-          </VariantList>
-        </div>
-      </Section>
+      <ResultSection title={SKU_TITLE} icon={icon} pinned>
+        <VariantTable env={env} variants={variants} showProduct />
+      </ResultSection>
     );
   }
   return (
-    <Section title={SKU_TITLE} icon={icon}>
+    <ResultSection title={SKU_TITLE} icon={icon} pinned>
       <ProductList
         env={env}
         products={matches.map((match) => match.product)}
-        label={SKU_TITLE}
         prefix="sku"
         notes={matchedCodes(matches)}
       />
-    </Section>
+    </ResultSection>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALREADY_IN_FIELD_MESSAGE,
   applicableFilters,
   canSearchSkus,
   collectionClientCheck,
@@ -20,9 +21,9 @@ import {
   isSkuCandidate,
   languageFallbackNotice,
   languageOptionLabel,
+  MAX_REACHED_MESSAGE,
   matchesClientCheck,
   matchesFilterValue,
-  maxReachedMessage,
   pickerLabels,
   readPickerParameters,
   removeEntry,
@@ -275,11 +276,9 @@ describe('readPickerParameters', () => {
 
 describe('copy helpers', () => {
   it('labels each kind', () => {
-    expect(pickerLabels('product').placeholder).toBe(
-      'Search products, or paste a SKU or barcode…',
-    );
-    expect(pickerLabels('collection').placeholder).toBe('Search collections…');
+    expect(pickerLabels('product').many).toBe('products');
     expect(pickerLabels('variant').many).toBe('variants');
+    expect(pickerLabels('collection').many).toBe('collections');
   });
 
   it('names results apart from what gets selected', () => {
@@ -290,25 +289,37 @@ describe('copy helpers', () => {
     expect(pickerLabels('collection').resultMany).toBe('collections');
   });
 
-  it('explains single variant picks, including direct ones', () => {
-    expect(pickerLabels('variant').singleHint).toBe(
-      'Click a variant to choose it. A product with several variants opens to show them.',
+  it('counts the selection, naming what is selected', () => {
+    expect(selectionCountLabel(3, 'product')).toBe('3 products selected');
+    expect(selectionCountLabel(1, 'variant')).toBe('1 variant selected');
+    expect(selectionCountLabel(0, 'collection')).toBe('0 collections selected');
+    expect(selectionCountLabel(3, 'product', 5)).toBe(
+      '3 of 5 products selected',
+    );
+    expect(selectionCountLabel(0, 'product', 1)).toBe(
+      '0 of 1 product selected',
+    );
+    expect(selectionCountLabel(1, 'product', Number.POSITIVE_INFINITY)).toBe(
+      '1 product selected',
     );
   });
 
-  it('counts the selection', () => {
-    expect(selectionCountLabel(3)).toBe('3 selected');
-    expect(selectionCountLabel(3, 5)).toBe('3 of 5 selected');
-    expect(selectionCountLabel(1, Number.POSITIVE_INFINITY)).toBe('1 selected');
+  it('adds the minimum while below it, in the locale of the editor', () => {
+    expect(selectionCountLabel(1, 'product', 5, { min: 2 })).toBe(
+      '1 of 5 products selected · at least 2',
+    );
+    expect(selectionCountLabel(2, 'product', undefined, { min: 2 })).toBe(
+      '2 products selected',
+    );
+    expect(selectionCountLabel(1200, 'variant', 2500, { locale: 'de' })).toBe(
+      '1.200 of 2.500 variants selected',
+    );
   });
 
-  it('explains the limit', () => {
-    expect(maxReachedMessage(5, 'product')).toBe(
-      'You can select up to 5 products',
-    );
-    expect(maxReachedMessage(1, 'collection')).toBe(
-      'You can select up to 1 collection',
-    );
+  it('explains the limit and items already in the field', () => {
+    // It follows the count, which names the items and gives the maximum.
+    expect(MAX_REACHED_MESSAGE).toBe("You can't select more.");
+    expect(ALREADY_IN_FIELD_MESSAGE).toBe("It's already in this field.");
   });
 
   it('joins tags with "or"', () => {
@@ -581,10 +592,10 @@ describe('client-side checks', () => {
     const locked = effectiveSearch({ availableOnly: true }, EMPTY_FILTERS);
     expect(soldOutReason(undefined, none)).toBeNull();
     expect(soldOutReason(undefined, chip)).toBe(
-      'Sold out: turn off Available for sale to choose it',
+      'Sold out: turn off Available for sale to choose it.',
     );
     expect(soldOutReason({ availableOnly: true }, locked)).toBe(
-      'Sold out: this field only allows variants available for sale',
+      'Sold out: this field only allows variants available for sale.',
     );
 
     const soldOut = {
@@ -625,7 +636,7 @@ describe('markets', () => {
 
   it('explains a language fallback', () => {
     expect(languageFallbackNotice({ language: 'FR' }, { language: 'EN' })).toBe(
-      "FR isn't published for this market, so Shopify answered in EN",
+      "FR isn't published for this market, so Shopify answered in EN.",
     );
     expect(languageFallbackNotice({ language: 'EN' }, { language: 'EN' })).toBe(
       null,

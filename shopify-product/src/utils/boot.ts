@@ -12,7 +12,7 @@ import { removeLegacyCache } from './legacyCache';
 
 export const NOT_CONFIGURED_NOTICE =
   'The Shopify plugin needs a store connection. Open its settings to add one.';
-export const UPGRADED_NOTICE = 'Shopify plugin successfully upgraded!';
+export const UPGRADED_NOTICE = 'Shopify plugin upgraded.';
 /** How long the migration waits for each store's capability probes. */
 export const BOOT_DETECTION_TIMEOUT_MS = 4000;
 
@@ -107,7 +107,9 @@ export async function bootPlugin(ctx: OnBootCtx): Promise<void> {
   if (!isPluginConfigured(parameters)) {
     // A fresh install opens on the settings screen, whose setup guide already
     // says this; only migrated settings that ended up empty need the notice.
-    if (!isFreshInstall(rawParameters)) ctx.notice(NOT_CONFIGURED_NOTICE);
+    if (!isFreshInstall(rawParameters)) {
+      void ctx.customToast({ type: 'warning', message: NOT_CONFIGURED_NOTICE });
+    }
   } else if (someFieldsUpgraded) {
     ctx.notice(UPGRADED_NOTICE);
   }

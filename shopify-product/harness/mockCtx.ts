@@ -433,7 +433,7 @@ function baseProperties(env: MockEnv, store: MockStore, state: ResolvedState) {
     bodyPadding: [padding, padding, padding, padding],
     cssDesignTokens: env.cssDesignTokens,
     colorScheme: env.scheme,
-    // <Canvas> iterates it for the legacy variables; plugin code never reads it.
+    // The SDK hands every ctx a theme; neither the kit nor the plugin reads it.
     theme: {},
     plugin: pluginEntity(store.pluginParameters),
     currentUser: ACCOUNT,

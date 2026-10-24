@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -18,24 +19,8 @@ import {
 import type { ProductSummary, ShopifyNode } from '../src/types';
 
 // Keyboard and focus behaviour with the real datocms-react-ui: its Dropdown
-// portals the menu and renders options as plain buttons, which a mocked kit
-// can't reproduce.
-
-// datocms-react-ui measures with these (some at import time); jsdom has neither.
-vi.hoisted(() => {
-  class ObserverStub {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-    takeRecords() {
-      return [];
-    }
-  }
-  Object.assign(globalThis, {
-    IntersectionObserver: ObserverStub,
-    ResizeObserver: ObserverStub,
-  });
-});
+// portals the menu out of the field, takes focus and moves a highlight, and a
+// pick doesn't give focus back by itself.
 
 vi.mock('../src/lib/shopifyClient', async (importOriginal) => {
   const actual =
@@ -133,8 +118,12 @@ function createCtx(value: unknown, openModalResult: unknown = null) {
     theme: {},
     cssDesignTokens: {},
     bodyPadding: [0, 0, 0, 0],
+    colorScheme: 'light',
+    site: { attributes: { internal_domain: null } },
     startAutoResizer: vi.fn(),
     stopAutoResizer: vi.fn(),
+    notice: vi.fn().mockResolvedValue(undefined),
+    customToast: vi.fn().mockResolvedValue(undefined),
     parameters: {
       paramsVersion: '1',
       kind: 'product',
@@ -178,6 +167,17 @@ function createCtx(value: unknown, openModalResult: unknown = null) {
   return { ctx, setFieldValue };
 }
 
+function picked(nodes: ProductSummary[]) {
+  return {
+    selected: nodes.map((node) => ({
+      key: node.id,
+      id: node.id,
+      node,
+      fallbackLabel: '',
+    })),
+  };
+}
+
 function withValue(ctx: RenderFieldExtensionCtx, value: unknown) {
   return {
     ...ctx,
@@ -185,51 +185,148 @@ function withValue(ctx: RenderFieldExtensionCtx, value: unknown) {
   } as RenderFieldExtensionCtx;
 }
 
-/** The kit portals the menu in an effect; the menu hook decorates it next. */
+/** The kit portals the menu in an effect, and closes it over 100 ms. */
 async function settle() {
   await act(async () => {
     await new Promise((resolve) => window.setTimeout(resolve, 10));
   });
 }
 
-/** The row's first action: where focus lands for that row. */
+/** The row's ⋮: where focus lands for that row. */
 function trigger(title: string) {
-  const group = screen.getByRole('group', { name: `Actions for ${title}` });
-  return within(group).getAllByRole('button')[0] as HTMLElement;
+  return screen.getByRole('button', { name: `Actions for ${title}` });
 }
 
-function rowAction(title: string, name: string) {
-  const group = screen.getByRole('group', { name: `Actions for ${title}` });
-  return within(group).getByRole('button', { name });
+const KEY_CODES = { Enter: 13, Escape: 27, ArrowDown: 40 } as const;
+
+/**
+ * The kit's menus read the key code (`which`), which user-event leaves at 0
+ * in jsdom: this presses a key on the focused element like a browser does.
+ */
+function press(key: keyof typeof KEY_CODES) {
+  const code = KEY_CODES[key];
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key,
+    code: key,
+    keyCode: code,
+    which: code,
+  });
 }
 
-describe('FieldExtension with the real kit: row actions', () => {
-  it('are named buttons in the tab order, with no menu', async () => {
+/**
+ * Opens a row's ⋮ from the keyboard; the menu takes focus (its search field,
+ * when it has more than 5 options).
+ */
+async function openMenuWithKeyboard(title: string) {
+  act(() => trigger(title).focus());
+  press('Enter');
+  await waitFor(() =>
+    expect(screen.getByRole('menu').contains(document.activeElement)).toBe(
+      true,
+    ),
+  );
+}
+
+/** Moves the menu's highlight down to an option. */
+function highlight(option: string) {
+  const menu = screen.getByRole('menu');
+  const target = within(menu).getByRole('menuitem', { name: option });
+  // The menu, or its search field, holds the highlight.
+  const active = document.activeElement;
+  const holder =
+    active instanceof HTMLElement && menu.contains(active) ? active : menu;
+  for (let step = 0; step < 8; step += 1) {
+    if (holder.getAttribute('aria-activedescendant') === target.id) break;
+    press('ArrowDown');
+  }
+  expect(holder).toHaveAttribute('aria-activedescendant', target.id);
+}
+
+/**
+ * Picks an option of a row's ⋮ with the keyboard only. The menu fades out
+ * for 100ms, and a menu reopened meanwhile is the same one, which doesn't
+ * take focus again: wait for it to leave.
+ */
+async function pickWithKeyboard(title: string, option: string) {
+  await openMenuWithKeyboard(title);
+  highlight(option);
+  press('Enter');
+  await settle();
+  await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+}
+
+describe('FieldExtension with the real kit: row menus', () => {
+  it('open from the keyboard, name their row and close back to the trigger', async () => {
     const { ctx } = createCtx(document_([ALPHA, BRAVO]));
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('Bravo board');
-    const user = userEvent.setup();
-    trigger('Alpha board').focus();
-    expect(document.activeElement).toBe(
-      rowAction('Alpha board', 'Open in Shopify admin'),
-    );
-    await user.tab();
-    expect(document.activeElement).toBe(rowAction('Alpha board', 'Replace'));
-    await user.tab();
-    expect(document.activeElement).toBe(rowAction('Alpha board', 'Remove'));
-    expect(screen.queryByRole('menu')).toBeNull();
+    await openMenuWithKeyboard('Alpha board');
     expect(
-      screen.queryByRole('button', { name: /Actions for/ }),
-    ).not.toBeInTheDocument();
+      within(screen.getByRole('menu'))
+        .getAllByRole('menuitem')
+        .map((option) => option.textContent),
+    ).toEqual(['Open in Shopify admin', 'Replace', 'Move down', 'Remove']);
+    // The frame keeps room for the whole menu while it is open.
+    expect(document.documentElement.style.minHeight).not.toBe('');
+    press('Escape');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(trigger('Alpha board')).toHaveFocus();
+    expect(document.documentElement.style.minHeight).toBe('');
+  });
+
+  it('give focus back to the trigger after a link option', async () => {
+    const { ctx } = createCtx(document_([ALPHA, BRAVO]));
+    render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('Bravo board');
+    // The link opens the admin in a new tab; the kit only closes the menu.
+    await pickWithKeyboard('Alpha board', 'Open in Shopify admin');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(trigger('Alpha board')).toHaveFocus();
+  });
+
+  it('give focus back to the trigger after a pick', async () => {
+    const { ctx } = createCtx(document_([ALPHA, BRAVO]));
+    render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('Bravo board');
+    // Replace opens the picker, which the editor cancels.
+    await pickWithKeyboard('Alpha board', 'Replace');
+    await waitFor(() => expect(ctx.openModal).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(trigger('Alpha board')).toHaveFocus();
+  });
+});
+
+describe('FieldExtension with the real kit: reordering from the keyboard', () => {
+  it('keeps focus on the moved row, in its new place', async () => {
+    const value = document_([ALPHA, BRAVO, CHARLIE]);
+    const { ctx, setFieldValue } = createCtx(value);
+    const view = render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('Charlie board');
+    await pickWithKeyboard('Alpha board', 'Move down');
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
+    expect(trigger('Alpha board')).toHaveFocus();
+    const rows = Array.from(document.querySelectorAll('[data-entry-row]'));
+    expect(rows[1]).toContainElement(trigger('Alpha board'));
+    // Screen readers hear where the row went, as dnd-kit used to say.
+    expect(
+      await screen.findByText('Moved Alpha board to position 2 of 3'),
+    ).toHaveAttribute('role', 'status');
+
+    view.rerender(
+      <FieldExtension ctx={withValue(ctx, setFieldValue.mock.calls[0]?.[1])} />,
+    );
+    await settle();
+    expect(trigger('Alpha board')).toHaveFocus();
+    // The first row can now move down only to where it was.
+    await pickWithKeyboard('Alpha board', 'Move up');
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalledTimes(2));
+    expect(trigger('Alpha board')).toHaveFocus();
   });
 });
 
 describe('FieldExtension with the real kit: focus after actions', () => {
   async function removeWithKeyboard(title: string) {
-    const user = userEvent.setup();
-    rowAction(title, 'Remove').focus();
-    await user.keyboard('{Enter}');
-    await settle();
+    await pickWithKeyboard(title, 'Remove');
   }
 
   it('moves to the row that takes the removed one’s place', async () => {
@@ -265,18 +362,10 @@ describe('FieldExtension with the real kit: focus after actions', () => {
     expect(document.activeElement).toBe(trigger('Alpha board'));
   });
 
-  it('moves from "Browse Shopify" to the first picked row', async () => {
-    const picked = {
-      selected: [BRAVO, CHARLIE].map((node) => ({
-        key: node.id,
-        id: node.id,
-        node,
-        fallbackLabel: '',
-      })),
-    };
-    const { ctx, setFieldValue } = createCtx(null, picked);
+  it('moves from the empty slot\'s "Add products" to the first picked row', async () => {
+    const { ctx, setFieldValue } = createCtx(null, picked([BRAVO, CHARLIE]));
     const view = render(<FieldExtension ctx={ctx} />);
-    const browse = screen.getByRole('button', { name: 'Browse Shopify' });
+    const browse = screen.getByRole('button', { name: /Add products/ });
     browse.focus();
     await userEvent.setup().keyboard('{Enter}');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
@@ -296,7 +385,9 @@ describe('FieldExtension with the real kit: focus after actions', () => {
       document_([ALPHA, BRAVO], ['alpha-board', 'bravo-2024']),
     );
     const view = render(<FieldExtension ctx={ctx} />);
-    const update = await screen.findByRole('button', { name: 'Update' });
+    const update = await screen.findByRole('button', {
+      name: 'Update handle',
+    });
     update.focus();
     await userEvent.setup().keyboard('{Enter}');
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
@@ -304,8 +395,28 @@ describe('FieldExtension with the real kit: focus after actions', () => {
       <FieldExtension ctx={withValue(ctx, setFieldValue.mock.calls[0]?.[1])} />,
     );
     await settle();
-    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Update handle' })).toBeNull();
     expect(document.activeElement).toBe(trigger('Bravo board'));
+  });
+
+  it('moves from "Replace" to the row that replaced it', async () => {
+    const { ctx, setFieldValue } = createCtx(
+      document_([ALPHA, BRAVO]),
+      picked([CHARLIE]),
+    );
+    const view = render(<FieldExtension ctx={ctx} />);
+    await screen.findByText('Bravo board');
+    await pickWithKeyboard('Bravo board', 'Replace');
+    await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
+    view.rerender(
+      <FieldExtension ctx={withValue(ctx, setFieldValue.mock.calls[0]?.[1])} />,
+    );
+    await settle();
+    expect(screen.queryByText('Bravo board')).toBeNull();
+    expect(document.activeElement).toBe(trigger('Charlie board'));
+    expect(
+      screen.getByText('Replaced Bravo board with Charlie board'),
+    ).toHaveAttribute('role', 'status');
   });
 
   it('moves from "Try again" to the first row once Shopify answers', async () => {
@@ -322,7 +433,7 @@ describe('FieldExtension with the real kit: focus after actions', () => {
     expect(document.activeElement).toBe(trigger('Alpha board'));
   });
 
-  it('moves from "Clear value" to "Browse Shopify"', async () => {
+  it('moves from "Clear value" to the empty slot\'s "Add products"', async () => {
     const { ctx, setFieldValue } = createCtx('{nope');
     const view = render(<FieldExtension ctx={ctx} />);
     const clear = screen.getByRole('button', { name: 'Clear value' });
@@ -334,7 +445,7 @@ describe('FieldExtension with the real kit: focus after actions', () => {
     view.rerender(<FieldExtension ctx={withValue(ctx, null)} />);
     await settle();
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Browse Shopify' }),
+      screen.getByRole('button', { name: /Add products/ }),
     );
   });
 });

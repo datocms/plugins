@@ -10,7 +10,6 @@ import {
 import userEvent from '@testing-library/user-event';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ADVANCED_TOGGLE_ID } from '../src/components/settings/AdvancedSettings';
 import { DUPLICATE_STORE_ERROR } from '../src/components/settings/draft';
 import ConfigScreen from '../src/entrypoints/ConfigScreen';
 import {
@@ -53,25 +52,12 @@ vi.mock('../src/lib/shopifyClient', async (importOriginal) => {
   };
 });
 
-// datocms-react-ui measures with these (some at import time); jsdom has neither.
-vi.hoisted(() => {
-  class ObserverStub {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-    takeRecords() {
-      return [];
-    }
-  }
-  Object.assign(globalThis, {
-    IntersectionObserver: ObserverStub,
-    ResizeObserver: ObserverStub,
-  });
-});
+// tests/setup.ts stubs matchMedia; one test makes it match.
+const defaultMatchMedia = window.matchMedia;
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
-  Reflect.deleteProperty(window, 'matchMedia');
+  window.matchMedia = defaultMatchMedia;
   client.connectionTest.mockReset();
   client.detectCapabilities.mockReset();
   client.apiVersionListeners.clear();
@@ -167,7 +153,9 @@ function createCtx(parameters: unknown, options: Setup = {}) {
     theme: {},
     cssDesignTokens: {},
     colorScheme: 'light',
-    ui: { locale: 'en-US' },
+    // English dates in a fixed time zone: "Checked on" reads 09/28/2026.
+    ui: { locale: 'en', timezone: 'UTC' },
+    site: { attributes: { internal_domain: null } },
     plugin: { id: 'plugin', attributes: { parameters } },
     currentRole: {
       meta: {
@@ -177,6 +165,7 @@ function createCtx(parameters: unknown, options: Setup = {}) {
     updatePluginParameters,
     notice,
     alert,
+    customToast: vi.fn(async () => undefined),
     openConfirm,
     navigateTo: vi.fn(),
     startAutoResizer: vi.fn(),
@@ -232,14 +221,15 @@ function deferred<T>() {
 
 const domainInputs = () => screen.getAllByLabelText(/^Shop domain/);
 const tokenInputs = () => screen.getAllByLabelText(/^Storefront access token/);
-const saveButton = () =>
-  screen.getByRole('button', { name: /Save settings|Please wait/ });
+const saveButton = () => screen.getByRole('button', { name: 'Save' });
 const advancedToggle = () =>
-  document.getElementById(ADVANCED_TOGGLE_ID) as HTMLElement;
+  screen.getByRole('button', { name: 'Advanced settings' });
 const autoApplyInput = () =>
   screen.getByLabelText('Auto-apply to fields whose API key matches');
-const moreOptionsButtons = () =>
-  screen.getAllByRole('button', { name: 'More options' });
+const tokenlessSwitch = () =>
+  screen.getByRole('checkbox', { name: 'Connect without a token' });
+const demoStoreSwitch = () =>
+  screen.getByRole('checkbox', { name: 'Use the demo store' });
 const howToGetOne = () =>
   screen.queryByRole('link', { name: 'How to get one' });
 const SETUP_DOCS =
@@ -255,22 +245,37 @@ async function openAdvanced(user: User) {
   expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** Opens the "More options" of a store block (tokenless, default market). */
-async function openMoreOptions(user: User, index = 0) {
-  const button = moreOptionsButtons()[index] as HTMLElement;
-  if (button.getAttribute('aria-expanded') !== 'true') {
-    await user.click(button);
-  }
-  expect(moreOptionsButtons()[index]).toHaveAttribute('aria-expanded', 'true');
+/** The settings row (Connection, Tags, Inventory) with this title. */
+function settingsRow(title: string): HTMLElement {
+  return screen.getByText(title).closest('li') as HTMLElement;
+}
+
+/** The group of a store, by the title its heading shows. */
+function storeGroup(title: string): HTMLElement {
+  return screen
+    .getByRole('heading', { name: title })
+    .closest('.Page__group') as HTMLElement;
 }
 
 const DEMO_STORE_NOTICE =
-  'The demo store is on, so editors browse sample products. Switch it off in Advanced settings.';
+  'Editors browse sample products until you switch it off in Advanced settings.';
 
 /**
- * Buttons that can turn unavailable while focused (Save, the connection
- * actions) say so with aria-disabled and stay focusable: never `disabled`.
+ * A default market choice: radios, since the fixtures' stores sell in a few
+ * countries and languages (a longer list is a select).
  */
+function marketGroup(name: string): HTMLElement {
+  return screen.getByRole('radiogroup', { name });
+}
+
+/** The demo store notice, by its title. */
+function demoStoreNote(): HTMLElement {
+  const note = screen.getByRole('note');
+  expect(note).toHaveTextContent('Demo store on');
+  return note;
+}
+
+/** Disabled with a reason: it says so with aria-disabled and keeps focus. */
 function expectUnavailable(button: HTMLElement) {
   expect(button).toHaveAttribute('aria-disabled', 'true');
   expect(button).toBeEnabled();
@@ -278,10 +283,17 @@ function expectUnavailable(button: HTMLElement) {
 
 function expectAvailable(button: HTMLElement) {
   expect(button).not.toHaveAttribute('aria-disabled');
+  expect(button).not.toHaveAttribute('aria-busy');
   expect(button).toBeEnabled();
 }
 
-/** Makes `prefers-reduced-motion: reduce` match (jsdom has no matchMedia). */
+/** Busy: a spinner, and no second click until the work ends. */
+function expectBusy(button: HTMLElement) {
+  expect(button).toHaveAttribute('aria-busy', 'true');
+  expect(button).toBeDisabled();
+}
+
+/** Makes `prefers-reduced-motion: reduce` match. */
 function preferReducedMotion() {
   window.matchMedia = vi.fn((query: string) => ({
     matches: query.includes('prefers-reduced-motion'),
@@ -308,24 +320,77 @@ function savedParameters(
   return calls[calls.length - 1]?.[0] as Record<string, unknown>;
 }
 
+/** The "⋮" of the store at a 1-based position (named after the store). */
+function storeMenu(position: number): HTMLElement {
+  return screen.getAllByRole('button', { name: /^Actions for / })[
+    position - 1
+  ] as HTMLElement;
+}
+
+/** Opens the "⋮" of a store and picks an option with the mouse. */
+async function pickStoreAction(user: User, position: number, option: string) {
+  await user.click(storeMenu(position));
+  await user.click(await screen.findByRole('menuitem', { name: option }));
+}
+
+const KEY_CODES = { Enter: 13, Escape: 27, ArrowDown: 40 } as const;
+
+/**
+ * The kit's menus read the key code (`which`), which user-event leaves at 0
+ * in jsdom: this presses a key on the focused element like a browser does.
+ */
+function press(key: keyof typeof KEY_CODES) {
+  const code = KEY_CODES[key];
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key,
+    code: key,
+    keyCode: code,
+    which: code,
+  });
+}
+
+/** Opens the "⋮" of a store from the keyboard; the menu takes focus. */
+async function openStoreMenuWithKeyboard(position: number) {
+  storeMenu(position).focus();
+  press('Enter');
+  await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
+}
+
+/** Moves the menu's highlight down to an option. */
+function highlight(option: string) {
+  const menu = screen.getByRole('menu');
+  const target = screen.getByRole('menuitem', { name: option });
+  for (let step = 0; step < 4; step += 1) {
+    if (menu.getAttribute('aria-activedescendant') === target.id) break;
+    press('ArrowDown');
+  }
+  expect(menu).toHaveAttribute('aria-activedescendant', target.id);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('ConfigScreen: fresh install', () => {
-  it('shows one empty store, a docs link for the token, and a disabled Save', () => {
+  it('shows one empty store, a docs link for the token, and an unavailable Save', () => {
     setup({});
 
+    expect(
+      screen.getByRole('heading', { name: 'Shopify store' }),
+    ).toBeInTheDocument();
     expect(domainInputs()).toHaveLength(1);
     expect(domainInputs()[0]).toHaveValue('');
     expect(tokenInputs()[0]).toHaveValue('');
     expect(
-      screen.getByText('A Shopify admin URL works too'),
+      screen.getByText('A Shopify admin URL works too.'),
     ).toBeInTheDocument();
     expect(howToGetOne()).toHaveAttribute('href', SETUP_DOCS);
     expect(screen.queryByText(/Create storefront/)).not.toBeInTheDocument();
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/Not checked yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Not checked yet')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Actions for / }),
+    ).not.toBeInTheDocument();
     expectUnavailable(saveButton());
     expect(client.connectionTest).not.toHaveBeenCalled();
   });
@@ -337,6 +402,10 @@ describe('ConfigScreen: fresh install', () => {
 
     expect(screen.getByText('acme.myshopify.com')).toBeInTheDocument();
     expect(screen.getByText(/Connects to/)).toBeInTheDocument();
+    expect(screen.getByText('Not checked yet')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Test connection' }),
+    ).toBeInTheDocument();
   });
 
   it('saves and connects: tests the store, stores its capabilities, saves v3', async () => {
@@ -369,11 +438,11 @@ describe('ConfigScreen: fresh install', () => {
       useDemoStore: false,
       autoApplyToFieldsWithApiKey: '',
     });
-    expect(notice).toHaveBeenCalledWith('Settings successfully saved!');
+    expect(notice).toHaveBeenCalledWith('Settings saved.');
     expect(screen.getByText('DatoCMS Demo')).toBeInTheDocument();
   });
 
-  it('shows "Please wait" while the connection check runs', async () => {
+  it('shows Save as busy while the connection check runs', async () => {
     client.connectionTest.mockReturnValue(new Promise(() => undefined));
     const { user, updatePluginParameters } = setup({});
 
@@ -381,8 +450,7 @@ describe('ConfigScreen: fresh install', () => {
     await user.type(tokenInputs()[0], 'public-token');
     await user.click(saveButton());
 
-    expect(saveButton()).toHaveTextContent('Please wait');
-    expectUnavailable(saveButton());
+    expectBusy(saveButton());
     expect(screen.getByText('Checking the connection…')).toBeInTheDocument();
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
@@ -402,9 +470,10 @@ describe('ConfigScreen: fresh install', () => {
     await user.click(saveButton());
 
     await waitFor(() =>
-      expect(alert).toHaveBeenCalledWith("Couldn't save the settings!"),
+      expect(alert).toHaveBeenCalledWith("Couldn't save the settings."),
     );
-    expect(saveButton()).toHaveTextContent('Save settings');
+    // Still dirty: Save is ready to try again.
+    await waitFor(() => expectAvailable(saveButton()));
   });
 });
 
@@ -429,7 +498,7 @@ describe('ConfigScreen: validation', () => {
     expect(screen.getByText(ADMIN_TOKEN_ERROR)).toBeInTheDocument();
   });
 
-  it('shows every error and a form line on a failed submit, without testing', async () => {
+  it('shows every error and a form message on a failed submit, without testing', async () => {
     const { user, updatePluginParameters } = setup({});
 
     await user.type(domainInputs()[0], 'acme');
@@ -437,7 +506,7 @@ describe('ConfigScreen: validation', () => {
 
     expect(screen.getByText(EMPTY_TOKEN_ERROR)).toBeInTheDocument();
     expect(
-      screen.getByText('Fix the errors above before saving'),
+      screen.getByText('Fix the errors above before saving.'),
     ).toBeInTheDocument();
     expect(client.connectionTest).not.toHaveBeenCalled();
     expect(updatePluginParameters).not.toHaveBeenCalled();
@@ -448,7 +517,7 @@ describe('ConfigScreen: validation', () => {
     await screen.findByText('DatoCMS Demo');
 
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
     await user.type(domainInputs()[1], 'ACME.myshopify.com');
     await user.type(tokenInputs()[1], 'other-token');
     await user.click(saveButton());
@@ -465,13 +534,13 @@ describe('ConfigScreen: validation', () => {
     await user.tab();
 
     expect(
-      screen.getByText('Field must be a valid regular expression'),
+      screen.getByText('Enter a valid regular expression'),
     ).toBeInTheDocument();
   });
 });
 
 describe('ConfigScreen: saved settings', () => {
-  it('migrates v2 settings: bare subdomain, checked on mount, Save enabled', async () => {
+  it('migrates v2 settings: bare subdomain, checked on mount, Save available', async () => {
     const { user, updatePluginParameters } = setup({
       paramsVersion: '2',
       shopifyDomain: 'acme',
@@ -487,8 +556,9 @@ describe('ConfigScreen: saved settings', () => {
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
     // Saved without capabilities: the mount check detects them.
     expect(client.detectCapabilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Tags')).toBeInTheDocument();
     expect(
-      await screen.findByRole('list', { name: 'Capabilities' }),
+      within(settingsRow('Inventory')).getByText('Available'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/to detect tags/)).not.toBeInTheDocument();
 
@@ -508,13 +578,19 @@ describe('ConfigScreen: saved settings', () => {
     setup(v3([SAVED_STORE]));
 
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
-    expect(screen.getByText(/API 2026-10/)).toBeInTheDocument();
-    expect(screen.getByText('Checked on 09/28/2026')).toBeInTheDocument();
-    const list = screen.getByRole('list', { name: 'Capabilities' });
-    expect(within(list).getByText(/Inventory/)).toHaveTextContent(
-      'Inventory: not available',
+    const connection = settingsRow('Connection');
+    expect(connection).toHaveTextContent('Connected to DatoCMS Demo');
+    // The API version the plugin targets shows once the store answered.
+    expect(connection).toHaveTextContent(
+      'Checked on 09/28/2026 with API 2026-10.',
     );
-    expect(within(list).getByText(/Tags/)).toHaveTextContent('Tags: available');
+    expect(connection).not.toHaveTextContent('expired');
+    expect(
+      within(settingsRow('Inventory')).getByText('Not available'),
+    ).toBeInTheDocument();
+    expect(
+      within(settingsRow('Tags')).getByText('Available'),
+    ).toBeInTheDocument();
     expectUnavailable(saveButton());
   });
 
@@ -531,6 +607,7 @@ describe('ConfigScreen: saved settings', () => {
       }),
     ).not.toBeInTheDocument();
   });
+
   it('scrolls without animation when the user prefers reduced motion', async () => {
     preferReducedMotion();
     const { user } = setup({});
@@ -557,8 +634,8 @@ describe('ConfigScreen: saved settings', () => {
       expect(screen.queryByText(/Checked on/)).not.toBeInTheDocument(),
     );
     expect(
-      screen.getByText(
-        'Enable "Read product inventory" in Headless → Storefront API permissions to show stock. If it\'s already on, publish some products to this storefront.',
+      within(settingsRow('Inventory')).getByText(
+        'Enable "Read product inventory" in Headless → Storefront API permissions, or publish some products to this storefront.',
       ),
     ).toBeInTheDocument();
     // Tags changed from the saved settings, so there is something to save.
@@ -578,14 +655,14 @@ describe('ConfigScreen: saved settings', () => {
     await waitFor(() =>
       expect(screen.queryByText(/Checked on/)).not.toBeInTheDocument(),
     );
-    const list = screen.getByRole('list', { name: 'Capabilities' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    const rows = within(settingsRow('Connection').parentElement as HTMLElement);
+    expect(rows.getAllByRole('listitem')).toHaveLength(3);
     expect(screen.queryByText(/metafield/i)).not.toBeInTheDocument();
     // Only metafields changed: nothing worth saving.
     expectUnavailable(saveButton());
   });
 
-  it('shows the network error from the mount check and recovers with Try again', async () => {
+  it('shows the network error from the mount check and recovers with Re-check', async () => {
     client.connectionTest.mockRejectedValueOnce(
       new ShopifyClientError('network', 'Failed to fetch'),
     );
@@ -596,16 +673,21 @@ describe('ConfigScreen: saved settings', () => {
         "Couldn't reach Shopify. Check your connection or ad-blocker.",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't connect to Shopify")).toBeInTheDocument();
+    expect(settingsRow('Connection')).toHaveTextContent('Not connected');
     expect(
       screen.queryByRole('button', { name: 'Save anyway' }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await user.click(screen.getByRole('button', { name: 'Re-check' }));
 
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
+    expect(
+      screen.queryByText("Couldn't connect to Shopify"),
+    ).not.toBeInTheDocument();
   });
 
-  it('shows the API version notice from the connection test', async () => {
+  it('shows the API version problem from the connection test', async () => {
     client.connectionTest.mockResolvedValue(
       connectionResult({ apiVersionOutdated: true, respondedApiVersion: null }),
     );
@@ -616,12 +698,19 @@ describe('ConfigScreen: saved settings', () => {
         'This plugin version targets an expired Shopify API version. Update the plugin to keep it working.',
       ),
     ).toBeInTheDocument();
+    const problem = screen
+      .getByRole('heading', { name: 'Shopify API version' })
+      .closest('.Page__group') as HTMLElement;
+    expect(within(problem).getByText('Expired')).toBeInTheDocument();
     expect(screen.getByText(/\(expired\)/)).toBeInTheDocument();
   });
 
-  it('shows the API version notice when the client warns', async () => {
+  it('shows the API version problem when the client warns', async () => {
     setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');
+    expect(
+      screen.queryByRole('heading', { name: 'Shopify API version' }),
+    ).not.toBeInTheDocument();
 
     act(() => {
       for (const listener of client.apiVersionListeners) listener();
@@ -663,9 +752,11 @@ describe('ConfigScreen: saved settings', () => {
     const { user, updatePluginParameters } = setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');
 
-    await openMoreOptions(user);
-    await user.click(screen.getByRole('combobox', { name: 'Default country' }));
-    await user.click(await screen.findByText('United States (USD)'));
+    await user.click(
+      within(marketGroup('Default country')).getByRole('radio', {
+        name: 'United States (USD)',
+      }),
+    );
     await user.click(saveButton());
 
     await waitFor(() => expect(updatePluginParameters).toHaveBeenCalled());
@@ -674,26 +765,44 @@ describe('ConfigScreen: saved settings', () => {
     });
   });
 
+  it('keeps a saved country that Shopify no longer offers', async () => {
+    setup(v3([{ ...SAVED_STORE, defaultCountry: 'DE' }]));
+    await screen.findByText('DatoCMS Demo');
+
+    const country = within(marketGroup('Default country'));
+    expect(
+      country.getByRole('radio', { name: 'Germany (not available)' }),
+    ).toBeChecked();
+    expect(
+      country.getByRole('radio', { name: 'Shopify default' }),
+    ).toBeInTheDocument();
+  });
+
   it('is read-only for roles that cannot edit the schema', async () => {
     setup(v3([SAVED_STORE]), { canEditSchema: false });
 
     expect(
       screen.getByText(
-        "Your role can view these settings but can't change them",
+        "Your role can view these settings but can't change them.",
       ),
     ).toBeInTheDocument();
-    expect(domainInputs()[0]).toBeDisabled();
-    expectUnavailable(saveButton());
+    // Text stays readable and copyable: read-only, not disabled.
+    expect(domainInputs()[0]).toHaveAttribute('readonly');
+    expect(domainInputs()[0]).toBeEnabled();
+    expect(screen.getByLabelText(/^Storefront access token/)).toHaveAttribute(
+      'readonly',
+    );
+    // Nothing to save for this role: no Save at all.
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     await screen.findByText('DatoCMS Demo');
 
     await openAdvanced(userEvent.setup());
     expect(
-      screen.queryByRole('button', { name: /Add another store/ }),
+      screen.queryByRole('button', { name: 'Add another store' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    ).toBeDisabled();
-    expect(autoApplyInput()).toBeDisabled();
+    expect(demoStoreSwitch()).toBeDisabled();
+    expect(autoApplyInput()).toHaveAttribute('readonly');
+    expect(autoApplyInput()).toBeEnabled();
   });
 });
 
@@ -711,14 +820,8 @@ describe('ConfigScreen: tokenless and failures', () => {
     const { user, updatePluginParameters } = setup({});
 
     await user.type(domainInputs()[0], 'datocms-demo');
-    await openMoreOptions(user);
-    await user.click(
-      screen.getByRole('switch', { name: 'Connect without a token?' }),
-    );
+    await user.click(tokenlessSwitch());
     expect(screen.queryByLabelText(/^Storefront access token/)).toBeNull();
-    // The hidden token needs the switch's explanation: More options stays open.
-    expect(moreOptionsButtons()[0]).toHaveAttribute('aria-expanded', 'true');
-    expect(moreOptionsButtons()[0]).toBeDisabled();
     await user.click(saveButton());
 
     expect(
@@ -727,10 +830,9 @@ describe('ConfigScreen: tokenless and failures', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Couldn't connect to Shopify. Fix the connection above, or save anyway.",
-      ),
+      screen.getByText('Fix the connection above, or save anyway.'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Settings not saved')).toBeInTheDocument();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expectAvailable(saveButton());
 
@@ -759,10 +861,8 @@ describe('ConfigScreen: demo store', () => {
     expect(screen.queryByText(DEMO_STORE_NOTICE)).not.toBeInTheDocument();
 
     await openAdvanced(user);
-    await user.click(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    );
-    expect(screen.getByRole('status')).toHaveTextContent(DEMO_STORE_NOTICE);
+    await user.click(demoStoreSwitch());
+    expect(demoStoreNote()).toHaveTextContent(DEMO_STORE_NOTICE);
     expect(markedRequired(domainInputs()[0])).toBe(false);
     expect(markedRequired(tokenInputs()[0])).toBe(false);
     await user.click(saveButton());
@@ -782,27 +882,23 @@ describe('ConfigScreen: demo store with stores', () => {
   it('says at the top that the demo store is on and where to switch it off', async () => {
     const { user } = setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText(DEMO_STORE_NOTICE)).not.toBeInTheDocument();
 
     await openAdvanced(user);
-    await user.click(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    );
+    await user.click(demoStoreSwitch());
 
-    expect(screen.getByRole('status')).toHaveTextContent(DEMO_STORE_NOTICE);
+    expect(demoStoreNote()).toHaveTextContent(DEMO_STORE_NOTICE);
     expect(screen.queryByText(/stores above/)).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    );
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await user.click(demoStoreSwitch());
+    expect(screen.queryByText(DEMO_STORE_NOTICE)).not.toBeInTheDocument();
   });
 
   it('shows the notice for saved settings with Advanced settings closed', () => {
     setup(v3([SAVED_STORE], { useDemoStore: true }));
 
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('status')).toHaveTextContent(DEMO_STORE_NOTICE);
+    expect(demoStoreNote()).toHaveTextContent(DEMO_STORE_NOTICE);
   });
 });
 
@@ -814,20 +910,21 @@ describe('ConfigScreen: two stores', () => {
     label: 'Europe',
   };
 
-  it('labels each store and makes the second one the default', async () => {
+  it('names each store and makes the second one the default', async () => {
     const { user, updatePluginParameters, openConfirm } = setup(
       v3([SAVED_STORE, SECOND]),
     );
 
-    expect(screen.getByText('Store 1 · default')).toBeInTheDocument();
-    expect(screen.getByText('Store 2')).toBeInTheDocument();
+    expect(
+      within(storeGroup('acme.myshopify.com')).getByText('Default'),
+    ).toBeInTheDocument();
+    expect(
+      within(storeGroup('Europe')).queryByText('Default'),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByLabelText('Label')[1]).toHaveValue('Europe');
     await waitFor(() => expect(client.connectionTest).toHaveBeenCalledTimes(2));
 
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for store 2' }),
-    );
-    await user.click(await screen.findByText('Make default'));
+    await pickStoreAction(user, 2, 'Make default');
 
     expect(openConfirm).toHaveBeenCalledWith({
       title: 'Make this the default store?',
@@ -846,6 +943,7 @@ describe('ConfigScreen: two stores', () => {
       expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com'),
     );
     expect(domainInputs()[1]).toHaveValue('acme.myshopify.com');
+    expect(within(storeGroup('Europe')).getByText('Default')).toBeVisible();
 
     await user.click(saveButton());
     await waitFor(() => expect(updatePluginParameters).toHaveBeenCalled());
@@ -856,13 +954,23 @@ describe('ConfigScreen: two stores', () => {
     ]);
   });
 
+  it('offers only Remove store on the default store', async () => {
+    const { user } = setup(v3([SAVED_STORE, SECOND]));
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for acme.myshopify.com' }),
+    );
+
+    const options = await screen.findAllByRole('menuitem');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Remove store',
+    ]);
+  });
+
   it('removes a store after a destructive confirm', async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
 
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for store 2' }),
-    );
-    await user.click(await screen.findByText('Remove store'));
+    await pickStoreAction(user, 2, 'Remove store');
 
     expect(openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -871,7 +979,10 @@ describe('ConfigScreen: two stores', () => {
       }),
     );
     await waitFor(() => expect(domainInputs()).toHaveLength(1));
-    expect(screen.queryByText('Store 1 · default')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Shopify store' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
     expectAvailable(saveButton());
   });
 
@@ -879,10 +990,7 @@ describe('ConfigScreen: two stores', () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
     openConfirm.mockResolvedValue(false);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for store 2' }),
-    );
-    await user.click(await screen.findByText('Remove store'));
+    await pickStoreAction(user, 2, 'Remove store');
 
     await waitFor(() => expect(openConfirm).toHaveBeenCalled());
     expect(domainInputs()).toHaveLength(2);
@@ -901,23 +1009,22 @@ describe('ConfigScreen: saving edge cases', () => {
     const { user } = hostSetup(v3([], { useDemoStore: true }));
 
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
 
     expect(domainInputs()).toHaveLength(2);
+    expect(screen.getByRole('heading', { name: 'Store 2' })).toBeVisible();
     expectUnavailable(saveButton());
   });
 
   it('starts over after a save even when the host never re-renders', async () => {
     const { user, notice } = setup(v3([], { useDemoStore: true }));
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
     await user.type(autoApplyInput(), '^shop');
 
     await user.click(saveButton());
 
-    await waitFor(() =>
-      expect(notice).toHaveBeenCalledWith('Settings successfully saved!'),
-    );
+    await waitFor(() => expect(notice).toHaveBeenCalledWith('Settings saved.'));
     expectUnavailable(saveButton());
     // The blank block wasn't saved, so it's gone.
     expect(domainInputs()).toHaveLength(1);
@@ -941,8 +1048,9 @@ describe('ConfigScreen: saving edge cases', () => {
 
     await user.dblClick(saveAnyway);
 
-    expectUnavailable(saveAnyway);
-    expectUnavailable(screen.getByRole('button', { name: 'Try again' }));
+    expectBusy(saveAnyway);
+    expectUnavailable(saveButton());
+    expectUnavailable(screen.getByRole('button', { name: 'Re-check' }));
     await act(async () => write.resolve());
     await waitFor(() => expect(notice).toHaveBeenCalledTimes(1));
     expect(updatePluginParameters).toHaveBeenCalledTimes(1);
@@ -970,9 +1078,7 @@ describe('ConfigScreen: saving edge cases', () => {
       for (const resolve of checks) resolve();
     });
 
-    await waitFor(() =>
-      expect(saveButton()).toHaveTextContent('Save settings'),
-    );
+    await waitFor(() => expect(saveButton()).not.toHaveAttribute('aria-busy'));
     expect(saved()).toMatchObject({
       stores: [{ label: 'Main' }, { label: 'Europe' }],
     });
@@ -989,9 +1095,7 @@ describe('ConfigScreen: saving edge cases', () => {
     await screen.findByText('DatoCMS Demo');
 
     await openAdvanced(user);
-    await user.click(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    );
+    await user.click(demoStoreSwitch());
     await user.click(saveButton());
 
     await waitFor(() => expect(updatePluginParameters).toHaveBeenCalled());
@@ -1032,6 +1136,23 @@ describe('ConfigScreen: errors and focus', () => {
     await waitFor(() => expect(tokenInputs()[0]).toHaveFocus());
   });
 
+  it('moves focus to the failed connection after a failed save', async () => {
+    client.connectionTest.mockRejectedValueOnce(
+      new ShopifyClientError('network', 'Failed to fetch'),
+    );
+    const { user } = setup({});
+    await user.type(domainInputs()[0], 'acme');
+    await user.type(tokenInputs()[0], 'public-token');
+
+    await user.click(saveButton());
+
+    const failed = (
+      await screen.findByText("Couldn't connect to Shopify")
+    ).closest('[data-connection-failed="true"]') as HTMLElement;
+    await waitFor(() => expect(failed).toHaveFocus());
+    expect(within(failed).queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('shows no errors on a store added after a failed save', async () => {
     client.connectionTest.mockRejectedValueOnce(
       new ShopifyClientError('network', 'Failed to fetch'),
@@ -1040,12 +1161,13 @@ describe('ConfigScreen: errors and focus', () => {
     await user.type(domainInputs()[0], 'acme');
     await user.type(tokenInputs()[0], 'public-token');
     await user.click(saveButton());
-    await screen.findByText(/Couldn't connect to Shopify\./);
+    await screen.findByText('Fix the connection above, or save anyway.');
 
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
 
     expect(domainInputs()).toHaveLength(2);
+    await waitFor(() => expect(domainInputs()[1]).toHaveFocus());
     expect(
       screen.queryByText('Enter your shop domain'),
     ).not.toBeInTheDocument();
@@ -1064,7 +1186,7 @@ describe('ConfigScreen: errors and focus', () => {
     await act(async () => pending.resolve(connectionResult()));
 
     expect(screen.queryByText(/Connected to/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Not checked yet/)).toBeInTheDocument();
+    expect(screen.getByText('Not checked yet')).toBeInTheDocument();
   });
 
   it('names the expired pinned version and the one that answered', async () => {
@@ -1088,11 +1210,11 @@ describe('ConfigScreen: errors and focus', () => {
     await screen.findByText('DatoCMS Demo');
 
     const recheck = screen.getByRole('button', { name: 'Re-check' });
-    expect(recheck).toBeEnabled();
+    expectAvailable(recheck);
     await user.click(recheck);
 
     await waitFor(() => expect(client.detectCapabilities).toHaveBeenCalled());
-    expectUnavailable(saveButton());
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   });
 });
 
@@ -1104,22 +1226,12 @@ describe('ConfigScreen: removing stores', () => {
     label: 'Europe',
   };
 
-  async function removeStore(
-    user: ReturnType<typeof userEvent.setup>,
-    position: number,
-  ) {
-    await user.click(
-      screen.getByRole('button', { name: `Actions for store ${position}` }),
-    );
-    await user.click(await screen.findByText('Remove store'));
-  }
-
   it('removes a blank block without a confirm', async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE]));
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
 
-    await removeStore(user, 2);
+    await pickStoreAction(user, 2, 'Remove store');
 
     expect(openConfirm).not.toHaveBeenCalled();
     expect(domainInputs()).toHaveLength(1);
@@ -1128,7 +1240,7 @@ describe('ConfigScreen: removing stores', () => {
   it('says which store becomes the default when removing the default one', async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
 
-    await removeStore(user, 1);
+    await pickStoreAction(user, 1, 'Remove store');
 
     expect(openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1144,10 +1256,10 @@ describe('ConfigScreen: removing stores', () => {
   it("doesn't mention fields for a store that was never saved", async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE]));
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
     await user.type(domainInputs()[1], 'beta');
 
-    await removeStore(user, 2);
+    await pickStoreAction(user, 2, 'Remove store');
 
     expect(openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1160,10 +1272,10 @@ describe('ConfigScreen: removing stores', () => {
   it('explains the default store on the first label only', () => {
     setup(v3([SAVED_STORE, SECOND]));
 
-    const hint = "Fields that don't pick a store use this one";
+    const hint = "Fields that don't pick a store use this one.";
     expect(screen.getAllByText(hint)).toHaveLength(1);
-    const first = screen.getByRole('group', { name: 'Store 1 · default' });
-    const second = screen.getByRole('group', { name: 'Store 2' });
+    const first = storeGroup('acme.myshopify.com');
+    const second = storeGroup('Europe');
     expect(within(first).getByText(hint)).toBeInTheDocument();
     expect(within(second).getByLabelText('Label')).toHaveValue('Europe');
     expect(within(second).queryByText(hint)).not.toBeInTheDocument();
@@ -1177,63 +1289,63 @@ describe('ConfigScreen: store menu keyboard', () => {
     tokenless: false,
   };
 
-  it('focuses the first option, moves with arrows and closes on Esc', async () => {
-    const { user } = setup(v3([SAVED_STORE, SECOND]));
-    const trigger = screen.getByRole('button', { name: 'Actions for store 2' });
-
-    trigger.focus();
-    await user.keyboard('{Enter}');
-
-    const makeDefault = await screen.findByRole('menuitem', {
-      name: 'Make default',
+  it('opens from the keyboard, moves with the arrows and closes on Escape', async () => {
+    setup(v3([SAVED_STORE, SECOND]));
+    const trigger = screen.getByRole('button', {
+      name: 'Actions for acme-eu.myshopify.com',
     });
-    await waitFor(() => expect(makeDefault).toHaveFocus());
-    await user.keyboard('{ArrowDown}');
-    expect(
-      screen.getByRole('menuitem', { name: 'Remove store' }),
-    ).toHaveFocus();
-    await user.keyboard('{ArrowDown}');
-    expect(makeDefault).toHaveFocus();
 
-    await user.keyboard('{Escape}');
+    await openStoreMenuWithKeyboard(2);
+    const menu = screen.getByRole('menu');
+    const makeDefault = screen.getByRole('menuitem', { name: 'Make default' });
+    const remove = screen.getByRole('menuitem', { name: 'Remove store' });
 
-    expect(
-      screen.queryByRole('menuitem', { name: 'Make default' }),
-    ).not.toBeInTheDocument();
+    // A menu that a key opens has its first option highlighted.
+    expect(menu).toHaveAttribute('aria-activedescendant', makeDefault.id);
+    press('ArrowDown');
+    expect(menu).toHaveAttribute('aria-activedescendant', remove.id);
+    press('ArrowDown');
+    expect(menu).toHaveAttribute('aria-activedescendant', makeDefault.id);
+
+    press('Escape');
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('menuitem', { name: 'Make default' }),
+      ).not.toBeInTheDocument(),
+    );
     expect(trigger).toHaveFocus();
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('leaves focus on the trigger when opened with the mouse, then Down enters', async () => {
+  it('opens with the mouse, then the arrows move through the options', async () => {
     const { user } = setup(v3([SAVED_STORE, SECOND]));
-    const trigger = screen.getByRole('button', { name: 'Actions for store 2' });
+    const trigger = screen.getByRole('button', {
+      name: 'Actions for acme-eu.myshopify.com',
+    });
 
     await user.click(trigger);
-    const makeDefault = await screen.findByRole('menuitem', {
-      name: 'Make default',
-    });
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 10));
-    });
-    expect(makeDefault).not.toHaveFocus();
+    const menu = await screen.findByRole('menu');
+    await waitFor(() => expect(menu).toHaveFocus());
+    expect(menu).not.toHaveAttribute('aria-activedescendant');
 
-    await user.keyboard('{ArrowDown}');
-    expect(makeDefault).toHaveFocus();
+    press('ArrowDown');
+    expect(menu).toHaveAttribute(
+      'aria-activedescendant',
+      screen.getByRole('menuitem', { name: 'Make default' }).id,
+    );
   });
 
-  it('runs the focused option with Enter', async () => {
-    const { user } = setup(v3([SAVED_STORE, SECOND]));
-    screen.getByRole('button', { name: 'Actions for store 2' }).focus();
-    await user.keyboard('{Enter}');
+  it('runs the highlighted option with Enter', async () => {
+    setup(v3([SAVED_STORE, SECOND]));
+    await openStoreMenuWithKeyboard(2);
+    highlight('Make default');
+
+    press('Enter');
+
     await waitFor(() =>
-      expect(
-        screen.getByRole('menuitem', { name: 'Make default' }),
-      ).toHaveFocus(),
+      expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com'),
     );
-
-    await user.keyboard('{Enter}');
-
-    expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com');
   });
 });
 
@@ -1247,21 +1359,11 @@ describe('ConfigScreen: making a store the default', () => {
     capabilities: capabilities(),
   };
 
-  async function makeDefault(
-    user: ReturnType<typeof userEvent.setup>,
-    position: number,
-  ) {
-    await user.click(
-      screen.getByRole('button', { name: `Actions for store ${position}` }),
-    );
-    await user.click(await screen.findByText('Make default'));
-  }
-
   it('keeps the order when the confirm is cancelled', async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
     openConfirm.mockResolvedValue(false);
 
-    await makeDefault(user, 2);
+    await pickStoreAction(user, 2, 'Make default');
 
     await waitFor(() => expect(openConfirm).toHaveBeenCalled());
     expect(domainInputs()[0]).toHaveValue('acme.myshopify.com');
@@ -1272,7 +1374,7 @@ describe('ConfigScreen: making a store the default', () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
     await user.type(screen.getAllByLabelText('Label')[0], 'Main store');
 
-    await makeDefault(user, 2);
+    await pickStoreAction(user, 2, 'Make default');
 
     expect(openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1285,15 +1387,17 @@ describe('ConfigScreen: making a store the default', () => {
 
   it("doesn't ask when moving the saved default back to the top", async () => {
     const { user, openConfirm } = setup(v3([SAVED_STORE, SECOND]));
-    await makeDefault(user, 2);
+    await pickStoreAction(user, 2, 'Make default');
     await waitFor(() =>
       expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com'),
     );
     openConfirm.mockClear();
 
-    await makeDefault(user, 2);
+    await pickStoreAction(user, 2, 'Make default');
 
-    expect(domainInputs()[0]).toHaveValue('acme.myshopify.com');
+    await waitFor(() =>
+      expect(domainInputs()[0]).toHaveValue('acme.myshopify.com'),
+    );
     expect(openConfirm).not.toHaveBeenCalled();
     expectUnavailable(saveButton());
   });
@@ -1303,12 +1407,12 @@ describe('ConfigScreen: making a store the default', () => {
     await user.type(domainInputs()[0], 'acme');
     await user.type(tokenInputs()[0], 'public-token');
     await openAdvanced(user);
-    await user.click(screen.getByRole('button', { name: /Add another store/ }));
+    await user.click(screen.getByRole('button', { name: 'Add another store' }));
     await user.type(domainInputs()[1], 'beta');
 
-    await makeDefault(user, 2);
+    await pickStoreAction(user, 2, 'Make default');
 
-    expect(domainInputs()[0]).toHaveValue('beta');
+    await waitFor(() => expect(domainInputs()[0]).toHaveValue('beta'));
     expect(openConfirm).not.toHaveBeenCalled();
   });
 });
@@ -1327,19 +1431,10 @@ describe('ConfigScreen: keeping keyboard focus', () => {
     label: 'United States',
   };
 
-  async function removeWithKeyboard(
-    user: ReturnType<typeof userEvent.setup>,
-    position: number,
-  ) {
-    screen
-      .getByRole('button', { name: `Actions for store ${position}` })
-      .focus();
-    await user.keyboard('{Enter}');
-    await waitFor(() =>
-      expect(screen.getAllByRole('menuitem')[0]).toHaveFocus(),
-    );
-    // Remove store is always last.
-    await user.keyboard('{End}{Enter}');
+  async function removeWithKeyboard(position: number) {
+    await openStoreMenuWithKeyboard(position);
+    highlight('Remove store');
+    press('Enter');
   }
 
   it('keeps focus on Save while saving and once there is nothing left to save', async () => {
@@ -1354,14 +1449,12 @@ describe('ConfigScreen: keeping keyboard focus', () => {
 
     await user.keyboard('{Enter}');
 
-    await waitFor(() => expect(saveButton()).toHaveTextContent('Please wait'));
-    expect(saveButton()).toHaveFocus();
-    expectUnavailable(saveButton());
+    await waitFor(() => expectBusy(saveButton()));
+    // A browser drops the focus of a disabled button: jsdom doesn't.
+    act(() => saveButton().blur());
     await act(async () => write.resolve());
-    await waitFor(() =>
-      expect(notice).toHaveBeenCalledWith('Settings successfully saved!'),
-    );
-    expect(saveButton()).toHaveTextContent('Save settings');
+    await waitFor(() => expect(notice).toHaveBeenCalledWith('Settings saved.'));
+    expect(saveButton()).not.toHaveAttribute('aria-busy');
     expect(saveButton()).toHaveFocus();
     expectUnavailable(saveButton());
   });
@@ -1380,9 +1473,9 @@ describe('ConfigScreen: keeping keyboard focus', () => {
   });
 
   it('moves focus to the previous store after removing one', async () => {
-    const { user } = setup(v3([SAVED_STORE, SECOND, THIRD]));
+    setup(v3([SAVED_STORE, SECOND, THIRD]));
 
-    await removeWithKeyboard(user, 2);
+    await removeWithKeyboard(2);
 
     await waitFor(() => expect(domainInputs()).toHaveLength(2));
     await waitFor(() => expect(domainInputs()[0]).toHaveFocus());
@@ -1390,33 +1483,42 @@ describe('ConfigScreen: keeping keyboard focus', () => {
   });
 
   it('moves focus to the next store after removing the first one', async () => {
-    const { user } = setup(v3([SAVED_STORE, SECOND]));
+    setup(v3([SAVED_STORE, SECOND]));
 
-    await removeWithKeyboard(user, 1);
+    await removeWithKeyboard(1);
 
     await waitFor(() => expect(domainInputs()).toHaveLength(1));
     await waitFor(() => expect(domainInputs()[0]).toHaveFocus());
     expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com');
   });
 
-  it('keeps focus on the trigger of the store made default', async () => {
-    const { user } = setup(v3([SAVED_STORE, SECOND]));
-    screen.getByRole('button', { name: 'Actions for store 2' }).focus();
-    await user.keyboard('{Enter}');
+  it('gives focus back to the trigger after a cancelled remove', async () => {
+    const { openConfirm } = setup(v3([SAVED_STORE, SECOND]));
+    openConfirm.mockResolvedValue(false);
+
+    await removeWithKeyboard(2);
+
     await waitFor(() =>
       expect(
-        screen.getByRole('menuitem', { name: 'Make default' }),
+        screen.getByRole('button', { name: 'Actions for Europe' }),
       ).toHaveFocus(),
     );
+    expect(domainInputs()).toHaveLength(2);
+  });
 
-    await user.keyboard('{Enter}');
+  it('keeps focus on the trigger of the store made default', async () => {
+    setup(v3([SAVED_STORE, SECOND]));
+    await openStoreMenuWithKeyboard(2);
+    highlight('Make default');
+
+    press('Enter');
 
     await waitFor(() =>
       expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com'),
     );
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Actions for store 1' }),
+        screen.getByRole('button', { name: 'Actions for Europe' }),
       ).toHaveFocus(),
     );
   });
@@ -1432,41 +1534,43 @@ describe('ConfigScreen: keeping keyboard focus', () => {
     await user.keyboard('{Enter}');
 
     expect(screen.getByText('Checking the connection…')).toBeInTheDocument();
-    expect(recheck).toHaveFocus();
-    expectUnavailable(recheck);
+    expectBusy(recheck);
+    // A browser drops the focus of a disabled button: jsdom doesn't.
+    act(() => recheck.blur());
     await act(async () => pending.resolve(capabilities()));
     expect(recheck).toHaveFocus();
     expectAvailable(recheck);
   });
 
-  it('follows Try again to Re-check, and back when the check fails again', async () => {
+  it('keeps focus on Re-check through a failed check and a new one', async () => {
     client.connectionTest.mockRejectedValueOnce(
       new ShopifyClientError('network', 'Failed to fetch'),
     );
     const { user } = setup(v3([SAVED_STORE]));
-    (await screen.findByRole('button', { name: 'Try again' })).focus();
+    await screen.findByText("Couldn't connect to Shopify");
+    const recheck = screen.getByRole('button', { name: 'Re-check' });
+    recheck.focus();
     const pending = deferred<ConnectionTestResult>();
     client.connectionTest.mockReturnValueOnce(pending.promise);
 
     await user.keyboard('{Enter}');
 
-    const recheck = screen.getByRole('button', { name: 'Re-check' });
-    expect(recheck).toHaveFocus();
-    expectUnavailable(recheck);
+    expectBusy(recheck);
     await act(async () => pending.resolve(connectionResult()));
-    expect(screen.getByRole('button', { name: 'Re-check' })).toHaveFocus();
+    expect(recheck).toHaveFocus();
+    expect(screen.getByText('DatoCMS Demo')).toBeInTheDocument();
 
     client.connectionTest.mockRejectedValueOnce(
       new ShopifyClientError('network', 'Failed to fetch'),
     );
     await user.keyboard('{Enter}');
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus(),
-    );
+    await screen.findByText("Couldn't connect to Shopify");
+    expect(recheck).toHaveFocus();
+    expectAvailable(recheck);
   });
 
-  it('moves focus to Try again once Save anyway has saved', async () => {
+  it('moves focus to Save once Save anyway has saved', async () => {
     client.connectionTest.mockRejectedValue(
       new ShopifyClientError('network', 'Failed to fetch'),
     );
@@ -1487,7 +1591,7 @@ describe('ConfigScreen: keeping keyboard focus', () => {
         screen.queryByRole('button', { name: 'Save anyway' }),
       ).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus();
+    expect(saveButton()).toHaveFocus();
   });
 });
 
@@ -1513,10 +1617,10 @@ describe('ConfigScreen: connection copy', () => {
     );
     const { user, updatePluginParameters } = setup(v3([withoutCapabilities]));
 
-    const list = await screen.findByRole('list', { name: 'Capabilities' });
-    expect(within(list).getByText(/Inventory/)).toHaveTextContent(
-      'Inventory: not available',
-    );
+    await screen.findByText('Inventory');
+    expect(
+      within(settingsRow('Inventory')).getByText('Not available'),
+    ).toBeInTheDocument();
     expect(client.connectionTest).toHaveBeenCalledTimes(1);
     expectAvailable(saveButton());
 
@@ -1528,23 +1632,45 @@ describe('ConfigScreen: connection copy', () => {
     });
   });
 
+  it('asks to re-check when the store answered but its capabilities are unknown', async () => {
+    const pending = deferred<ConnectionTestResult>();
+    client.connectionTest.mockReturnValueOnce(pending.promise);
+    const { user } = setup({});
+    await user.type(domainInputs()[0], 'acme');
+    await user.type(tokenInputs()[0], 'token-a');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    // The answer lands for another token, so the draft doesn't take it.
+    await user.type(tokenInputs()[0], 'b');
+    await act(async () => pending.resolve(connectionResult()));
+
+    await user.type(tokenInputs()[0], '{Backspace}');
+
+    expect(settingsRow('Connection')).toHaveTextContent(
+      'Connected to DatoCMS Demo',
+    );
+    expect(
+      screen.getByText(
+        'Connected with API 2026-10: re-check to detect tags and inventory.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Tags')).not.toBeInTheDocument();
+  });
+
   it('says what a tokenless store is missing', async () => {
     client.detectCapabilities.mockResolvedValue(
       capabilities({ tags: false, inventory: false, metafields: false }),
     );
     const { user } = setup({});
     await user.type(domainInputs()[0], 'acme');
-    await openMoreOptions(user);
-    await user.click(
-      screen.getByRole('switch', { name: 'Connect without a token?' }),
-    );
+    await user.click(tokenlessSwitch());
 
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
 
     expect(
-      await screen.findByText(
-        'Tags and inventory need a Storefront access token',
-      ),
+      await screen.findByText('Tags need a Storefront access token.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Inventory needs a Storefront access token.'),
     ).toBeInTheDocument();
   });
 });
@@ -1563,7 +1689,7 @@ describe('ConfigScreen: automatic setup', () => {
     expect(input).toHaveValue('(\\w+_?)+product$');
     expect(
       screen.getByText(
-        'Field cannot contain nested repeats like (a+)+, which can freeze record forms',
+        'Remove nested repeats like (a+)+: they can freeze record forms',
       ),
     ).toBeInTheDocument();
     expect(input).toHaveAttribute('aria-invalid', 'true');
@@ -1571,17 +1697,17 @@ describe('ConfigScreen: automatic setup', () => {
   });
 });
 
-describe('ConfigScreen: collapsed sections', () => {
+describe('ConfigScreen: collapsed groups', () => {
   it('keeps Advanced settings closed until opened', async () => {
     const { user } = setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');
 
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.queryByRole('button', { name: /Add another store/ }),
+      screen.queryByRole('button', { name: 'Add another store' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('switch', { name: 'Use the demo store?' }),
+      screen.queryByRole('checkbox', { name: 'Use the demo store' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText('Auto-apply to fields whose API key matches'),
@@ -1590,16 +1716,13 @@ describe('ConfigScreen: collapsed sections', () => {
     await openAdvanced(user);
 
     expect(
-      screen.getByRole('button', { name: /Add another store/ }),
-    ).toBeInTheDocument();
+      screen.getByRole('button', { name: 'Add another store' }),
+    ).toHaveAccessibleDescription(
+      'Each field can then pick which store it uses.',
+    );
+    expect(demoStoreSwitch()).toBeInTheDocument();
     expect(
-      screen.getByText('Each field can then pick which store it uses'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: 'Use the demo store?' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Browse sample products without a Shopify account'),
+      screen.getByText('Browse sample products without a Shopify account.'),
     ).toBeInTheDocument();
     expect(autoApplyInput()).toHaveValue('');
 
@@ -1607,7 +1730,7 @@ describe('ConfigScreen: collapsed sections', () => {
 
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.queryByRole('button', { name: /Add another store/ }),
+      screen.queryByRole('button', { name: 'Add another store' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1618,9 +1741,11 @@ describe('ConfigScreen: collapsed sections', () => {
     await user.type(autoApplyInput(), 'shopify_(');
     await user.tab();
     expect(
-      screen.getByText('Field must be a valid regular expression'),
+      screen.getByText('Enter a valid regular expression'),
     ).toBeInTheDocument();
 
+    // It can't close while the error shows.
+    expect(advancedToggle()).toBeDisabled();
     await user.click(advancedToggle());
 
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
@@ -1629,7 +1754,7 @@ describe('ConfigScreen: collapsed sections', () => {
     // Fixed, it stays open until closed.
     await user.type(autoApplyInput(), ')');
     expect(
-      screen.queryByText('Field must be a valid regular expression'),
+      screen.queryByText('Enter a valid regular expression'),
     ).not.toBeInTheDocument();
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
     await user.click(advancedToggle());
@@ -1642,16 +1767,18 @@ describe('ConfigScreen: collapsed sections', () => {
     );
     await screen.findByText('DatoCMS Demo');
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'false');
-    await openMoreOptions(user);
-    await user.click(screen.getByRole('combobox', { name: 'Default country' }));
-    await user.click(await screen.findByText('United States (USD)'));
+    await user.click(
+      within(marketGroup('Default country')).getByRole('radio', {
+        name: 'United States (USD)',
+      }),
+    );
 
     await user.click(saveButton());
 
     expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByText(
-        'Field cannot contain nested repeats like (a+)+, which can freeze record forms',
+        'Remove nested repeats like (a+)+: they can freeze record forms',
       ),
     ).toBeInTheDocument();
     await waitFor(() => expect(autoApplyInput()).toHaveFocus());
@@ -1663,9 +1790,11 @@ describe('ConfigScreen: collapsed sections', () => {
       v3([SAVED_STORE], { autoApplyToFieldsWithApiKey: '(\\w+_?)+product$' }),
     );
     await screen.findByText('DatoCMS Demo');
-    await openMoreOptions(user);
-    await user.click(screen.getByRole('combobox', { name: 'Default country' }));
-    await user.click(await screen.findByText('United States (USD)'));
+    await user.click(
+      within(marketGroup('Default country')).getByRole('radio', {
+        name: 'United States (USD)',
+      }),
+    );
     await user.click(saveButton());
     await waitFor(() => expect(autoApplyInput()).toHaveFocus());
 
@@ -1677,41 +1806,28 @@ describe('ConfigScreen: collapsed sections', () => {
     expect(autoApplyInput()).toHaveFocus();
   });
 
-  it('starts each store with More options closed', async () => {
-    const { user } = setup(v3([SAVED_STORE]));
+  it('shows the token switch and the default market in the store itself', async () => {
+    setup(v3([SAVED_STORE]));
+
+    expect(
+      screen.queryByRole('button', { name: 'More options' }),
+    ).not.toBeInTheDocument();
+    expect(tokenlessSwitch()).not.toBeChecked();
+    expect(
+      screen.getByText('Public stores only, without tags or inventory.'),
+    ).toBeInTheDocument();
+    // The market comes from the connection: it shows once connected.
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Default country' }),
+    ).not.toBeInTheDocument();
+
     await screen.findByText('DatoCMS Demo');
 
-    const [button] = moreOptionsButtons();
-    expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toBeEnabled();
-    expect(
-      screen.queryByRole('switch', { name: 'Connect without a token?' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('combobox', { name: 'Default country' }),
-    ).not.toBeInTheDocument();
-
-    await openMoreOptions(user);
-
-    expect(
-      screen.getByRole('switch', { name: 'Connect without a token?' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Public stores only, without tags or inventory'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('combobox', { name: 'Default country' }),
-    ).toBeInTheDocument();
-
-    await user.click(moreOptionsButtons()[0] as HTMLElement);
-
-    expect(moreOptionsButtons()[0]).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.queryByRole('switch', { name: 'Connect without a token?' }),
-    ).not.toBeInTheDocument();
+    expect(marketGroup('Default country')).toBeInTheDocument();
+    expect(marketGroup('Default language')).toBeInTheDocument();
   });
 
-  it('keeps More options open for a tokenless store', () => {
+  it('hides the token of a saved tokenless store', () => {
     setup(
       v3([
         {
@@ -1722,12 +1838,7 @@ describe('ConfigScreen: collapsed sections', () => {
       ]),
     );
 
-    const [button] = moreOptionsButtons();
-    expect(button).toHaveAttribute('aria-expanded', 'true');
-    expect(button).toBeDisabled();
-    expect(
-      screen.getByRole('switch', { name: 'Connect without a token?' }),
-    ).toBeChecked();
+    expect(tokenlessSwitch()).toBeChecked();
     expect(screen.queryByLabelText(/^Storefront access token/)).toBeNull();
   });
 
@@ -1737,9 +1848,10 @@ describe('ConfigScreen: collapsed sections', () => {
     await user.type(tokenInputs()[0], 'public-token');
     expect(howToGetOne()).toBeInTheDocument();
     expect(
-      screen.getByText(/From your Headless storefront in Shopify/),
+      screen.getByText('From your Headless storefront in Shopify.'),
     ).toBeInTheDocument();
   });
+
   it('shows "How to get one" for a saved store with a token', async () => {
     setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');

@@ -1,10 +1,9 @@
-import { faCaretRight } from '@fortawesome/free-solid-svg-icons';
-import {
-  FieldError,
-  FieldHint,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
+import CardList from 'datocms-react-ui/CardList';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import StringInput from 'datocms-react-ui/StringInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useState } from 'react';
 import { isStoreUsable } from '../../lib/parameters';
 import {
@@ -18,12 +17,10 @@ import type {
   StoreCapabilities,
   StoreConnection,
 } from '../../types';
-import { Button } from '../../ui/Button';
-import { Icon } from '../../ui/Icon';
-import Callout from '../shared/Callout';
 import type { AsyncValue } from '../shared/useAsyncValue';
-import { describe } from './describe';
 import { scopeSummary } from './draft';
+import styles from './FieldSettings.module.css';
+import { CalloutWithAction } from './notices';
 import {
   CollectionField,
   ProductTypeField,
@@ -31,7 +28,6 @@ import {
   type TagsAccess,
   TagsField,
 } from './ScopeSelects';
-import styles from './ScopeSection.module.css';
 import {
   type CollectionCheck,
   useCapabilityCheck,
@@ -51,18 +47,17 @@ type Props = {
   onChange: ScopeChange;
 };
 
-const BODY_ID = 'limit-choices-fields';
-
 function sectionHint(kind: ShopifyKind): string {
   return kind === 'variant'
-    ? 'Editors only see variants of matching products, with these limits shown as locked filters in the picker'
-    : 'Editors only see matching products, with these limits shown as locked filters in the picker';
+    ? 'Editors only see variants of matching products, with these limits shown as locked filters in the picker.'
+    : 'Editors only see matching products, with these limits shown as locked filters in the picker.';
 }
 
 /**
- * 5. "Limit choices": a collapsible group (open when limits are set). The
- * collection, product type and tag lists load from the field's store only
- * once the group is open.
+ * 5. "Limit choices": one item of a card that opens on its fields (open when
+ * limits are set). While the host flags the limits, the item stays open so
+ * the error can't hide. The collection, product type and tag lists load from
+ * the field's store only once the item is open.
  */
 export default function ScopeSection({
   kind,
@@ -78,33 +73,36 @@ export default function ScopeSection({
     if (error) setOpen(true);
   }
   const summary = scopeSummary(scope);
-  const described = describe('limit-choices', sectionHint(kind), error);
-
+  const row = {
+    summary: (
+      <EntityRow layout="row" title="Limit choices">
+        {summary.length > 0 ? summary.join(' · ') : 'No limits'}
+      </EntityRow>
+    ),
+  };
+  const body = (
+    <>
+      <p className={styles.block}>{sectionHint(kind)}</p>
+      {error && <Callout tone="danger">{error}</Callout>}
+      <ScopeFields store={store} scope={scope} onChange={onChange} />
+    </>
+  );
   return (
-    <div>
-      <button
-        type="button"
-        className={styles.toggle}
-        aria-expanded={open}
-        aria-controls={open ? BODY_ID : undefined}
-        aria-describedby={described.ids}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <Icon icon={faCaretRight} className={styles.caret} />
-        <span className={error ? styles.titleError : styles.title}>
-          Limit choices
-        </span>
-        <span className={styles.summary}>
-          {summary.length > 0 ? summary.join(' · ') : 'No limits'}
-        </span>
-      </button>
-      {described.error && <FieldError>{described.error}</FieldError>}
-      <FieldHint>{described.hint}</FieldHint>
-      {open && (
-        <div id={BODY_ID} className={styles.body}>
-          <ScopeFields store={store} scope={scope} onChange={onChange} />
-        </div>
-      )}
+    <div className={styles.block}>
+      <CardList>
+        {error ? (
+          <CardList.Item row={row} body={body} />
+        ) : (
+          <CardList.Item
+            row={row}
+            expandable={{
+              open,
+              onToggle: () => setOpen((value) => !value),
+              body,
+            }}
+          />
+        )}
+      </CardList>
     </div>
   );
 }
@@ -129,7 +127,7 @@ function ScopeFields({
           onChange={onChange}
         />
       ) : (
-        <Callout tone="neutral">
+        <Callout>
           Connect a Shopify store in the plugin settings to limit choices by
           collection, product type or tag.
         </Callout>
@@ -150,29 +148,20 @@ function AvailableOnlyField({
   value: boolean;
   onChange: ScopeChange;
 }) {
-  const described = describe(
-    'scope-available',
-    'If enabled, sold-out products are hidden from the picker',
-    undefined,
-  );
   return (
-    <div>
-      <SwitchField
-        id="scope-available"
+    <FieldWrapper
+      id="scope-available"
+      hint="The picker hides sold-out products."
+    >
+      <SwitchInput
         name="scope-available"
-        label="Only show products available for sale?"
-        hint={described.hint}
+        label="Only show products available for sale"
         value={value}
         onChange={(availableOnly) =>
           onChange({ availableOnly: availableOnly || undefined })
         }
-        switchInputProps={{
-          name: 'scope-available',
-          value,
-          'aria-describedby': described.ids,
-        }}
       />
-    </div>
+    </FieldWrapper>
   );
 }
 
@@ -215,8 +204,8 @@ function tagFilterSupport(
 }
 
 /**
- * The lists that come from the store; one error (with a retry) for every
- * lookup, including the background check of a store saved without
+ * The lists that come from the store; one error (with a retry under it) for
+ * every lookup, including the background check of a store saved without
  * capabilities.
  */
 function StoreScopeFields({
@@ -249,18 +238,13 @@ function StoreScopeFields({
   return (
     <>
       {error && (
-        <Callout
+        <CalloutWithAction
           tone="danger"
-          role="alert"
           title="Couldn't load the lists from Shopify"
-          actions={
-            <Button buttonSize="xxs" onClick={retry}>
-              Try again
-            </Button>
-          }
+          action={{ label: 'Try again', onClick: retry }}
         >
           {error}
-        </Callout>
+        </CalloutWithAction>
       )}
       <CollectionField
         collections={collections}
@@ -308,24 +292,19 @@ function VendorField({
     setSyncedWith(saved);
     if (saved !== text.trim()) setText(saved);
   }
-  const described = describe('scope-vendor', VENDOR_HINT, undefined);
   return (
-    <div>
-      <TextField
-        id="scope-vendor"
+    <FieldWrapper id="scope-vendor" label="Vendor" hint={VENDOR_HINT}>
+      <StringInput
         name="scope-vendor"
-        label="Vendor"
-        hint={described.hint}
+        placeholder="Acme"
+        autoComplete="off"
         value={text}
         onChange={(next) => {
-          setText(next);
-          onChange({ vendor: next.trim() || undefined });
-        }}
-        textInputProps={{
-          autoComplete: 'off',
-          'aria-describedby': described.ids,
+          const typed = next ?? '';
+          setText(typed);
+          onChange({ vendor: typed.trim() || undefined });
         }}
       />
-    </div>
+    </FieldWrapper>
   );
 }

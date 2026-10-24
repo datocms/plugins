@@ -1,13 +1,34 @@
-/* One column at the field rhythm (forms §2): 24px between fields. */
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-l);
+/* Placement only: the kit components draw themselves. */
+
+/* A callout whose action sits right under it, outside the callout. */
+.calloutWithAction {
+  margin-bottom: var(--spacing-s);
 }
 
-/* A field and the notice that belongs to it. */
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m);
+/* The action under such a callout: the space of the fields after it. */
+.action {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* A warning that follows the hint of its field, inside the field. */
+.fieldNotice {
+  margin-top: var(--spacing-m);
+}
+
+/* A block of the form that isn't a field: the space of the fields. */
+.block {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* The text above the box of the stored value example, spaced as a label. */
+.caption {
+  margin-bottom: var(--spacing-s);
+}
+
+/* The readable view in the code box: the box's own padding, room for the copy
+   button on the first line, and the indentation kept. */
+.readable {
+  margin: 0;
+  padding: var(--spacing-m) var(--spacing-xl) var(--spacing-m) var(--spacing-m);
+  white-space: pre;
 }

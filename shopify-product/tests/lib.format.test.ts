@@ -662,6 +662,14 @@ describe('pluralize', () => {
     expect(pluralize(2, 'match', 'matches')).toBe('2 matches');
     expect(pluralize(1, 'match', 'matches')).toBe('1 match');
   });
+
+  it("writes the number in the editor's locale", () => {
+    expect(pluralize(2048, 'variant', 'variants', 'en')).toBe('2,048 variants');
+    expect(pluralize(2048, 'variant', 'variants', 'de')).toBe('2.048 variants');
+    expect(pluralize(2048, 'variant', 'variants', 'not a locale')).toBe(
+      '2,048 variants',
+    );
+  });
 });
 
 describe('truncateMiddle', () => {

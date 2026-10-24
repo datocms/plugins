@@ -1,9 +1,13 @@
-import { TextField } from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import StringInput from 'datocms-react-ui/StringInput';
 
 type Props = {
   value: string;
   error: string | undefined;
+  /** Locked after a second of saving. */
   disabled: boolean;
+  /** A role that can't edit the schema: the pattern stays copyable. */
+  readOnly: boolean;
   onChange: (value: string) => void;
   onBlur: () => void;
 };
@@ -15,35 +19,29 @@ export default function AutoApplySection({
   value,
   error,
   disabled,
+  readOnly,
   onChange,
   onBlur,
 }: Props) {
   return (
-    <div>
-      <TextField
-        id={ID}
+    <FieldWrapper
+      id={ID}
+      label="Auto-apply to fields whose API key matches"
+      hint="A regular expression. Matching string and JSON fields use the plugin with its 1.x defaults."
+      error={error}
+    >
+      <StringInput
         name={ID}
-        label="Auto-apply to fields whose API key matches"
+        code
         placeholder="^shopify_"
-        hint={
-          <span id={`${ID}-hint`}>
-            A regular expression. Matching string and JSON fields use the plugin
-            with its 1.x defaults
-          </span>
-        }
-        error={error ? <span id={`${ID}-error`}>{error}</span> : undefined}
+        autoComplete="off"
+        spellCheck={false}
         value={value}
-        onChange={onChange}
-        textInputProps={{
-          monospaced: true,
-          autoComplete: 'off',
-          spellCheck: false,
-          disabled,
-          onBlur,
-          'aria-invalid': error ? true : undefined,
-          'aria-describedby': error ? `${ID}-error ${ID}-hint` : `${ID}-hint`,
-        }}
+        disabled={disabled}
+        readOnly={readOnly}
+        onChange={(pattern) => onChange(pattern ?? '')}
+        onBlur={onBlur}
       />
-    </div>
+    </FieldWrapper>
   );
 }

@@ -17,6 +17,11 @@ type State<T, M> = {
   error: unknown;
   loadingMore: boolean;
   loadMoreError: unknown;
+  /**
+   * The key changed and its first page loads, while the previous key's
+   * results still show (`keepPrevious`). Loading more waits for the page.
+   */
+  reloading: boolean;
 };
 
 export type PagedQuery<T, M> = Omit<State<T, M>, 'key'> & {
@@ -36,6 +41,29 @@ function initialState<T, M>(key: string | null): State<T, M> {
     error: null,
     loadingMore: false,
     loadMoreError: null,
+    reloading: false,
+  };
+}
+
+/**
+ * The state while a new key's first page loads: the last results stay, so a
+ * new search, filter, sort or market doesn't empty the list. Only results
+ * that loaded can stay; anything else starts over.
+ */
+function nextState<T, M>(
+  previous: State<T, M>,
+  key: string | null,
+  keepPrevious: boolean,
+): State<T, M> {
+  if (!keepPrevious || key === null || previous.status !== 'ready') {
+    return initialState(key);
+  }
+  return {
+    ...previous,
+    key,
+    loadingMore: false,
+    loadMoreError: null,
+    reloading: true,
   };
 }
 
@@ -48,10 +76,13 @@ function appendUnique<T extends { id: string }>(current: T[], next: T[]): T[] {
  * Cursor pagination for one query. `key` identifies the query (every input
  * that changes the results); a new key aborts the previous requests and
  * starts over, `null` disables it. Aborted requests never surface as errors.
+ * With `keepPrevious`, loaded results stay (`reloading`) until the new key's
+ * first page replaces them.
  */
 export function usePagedQuery<T extends { id: string }, M = never>(
   key: string | null,
   fetchPage: FetchPage<T, M>,
+  { keepPrevious = false }: { keepPrevious?: boolean } = {},
 ): PagedQuery<T, M> {
   const [state, setState] = useState<State<T, M>>(() => initialState(key));
   const [attempt, setAttempt] = useState(0);
@@ -64,7 +95,7 @@ export function usePagedQuery<T extends { id: string }, M = never>(
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the first page on retry.
   useEffect(() => {
     moreController.current?.abort();
-    setState(initialState(key));
+    setState((previous) => nextState(previous, key, keepPrevious));
     if (key === null) return undefined;
     const controller = new AbortController();
     fetchRef
@@ -88,12 +119,13 @@ export function usePagedQuery<T extends { id: string }, M = never>(
       controller.abort();
       moreController.current?.abort();
     };
-  }, [key, attempt]);
+  }, [key, attempt, keepPrevious]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
     if (
       current.status !== 'ready' ||
+      current.reloading ||
       current.loadingMore ||
       !current.hasNextPage
     ) {
@@ -141,9 +173,10 @@ export function usePagedQuery<T extends { id: string }, M = never>(
     }
   }, [loadMore]);
 
-  // A render with a new key shows the loading state right away, before the
-  // effect resets the state, so stale results never flash under new filters.
-  const visible = state.key === key ? state : initialState<T, M>(key);
+  // A render with a new key shows its state right away, before the effect
+  // sets it: the loading state, or the last results while they reload.
+  const visible =
+    state.key === key ? state : nextState(state, key, keepPrevious);
   return {
     items: visible.items,
     meta: visible.meta,
@@ -153,6 +186,7 @@ export function usePagedQuery<T extends { id: string }, M = never>(
     error: visible.error,
     loadingMore: visible.loadingMore,
     loadMoreError: visible.loadMoreError,
+    reloading: visible.reloading,
     loadMore,
     retry,
   };

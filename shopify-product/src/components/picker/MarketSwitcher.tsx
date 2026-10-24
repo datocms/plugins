@@ -1,35 +1,23 @@
-import { faGlobe } from '@fortawesome/free-solid-svg-icons';
-import {
-  CaretDownIcon,
-  CaretUpIcon,
-  DropdownGroup,
-  DropdownOption,
-  DropdownText,
-} from 'datocms-react-ui';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import { GlobeIcon } from '../../icons';
 import {
   contextLabel,
-  languageFallbackNotice,
   languageOptionLabel,
   sortedCountries,
 } from '../../lib/pickerSearch';
 import type { LocalizationInfo, ShopifyContext } from '../../types';
-import { Icon } from '../../ui/Icon';
-import { Menu } from '../../ui/Menu';
-import Tip from '../shared/Tip';
 import type { AsyncValue } from '../shared/useAsyncValue';
-import styles from './MarketSwitcher.module.css';
+import { useTriggerFocus } from './useTriggerFocus';
 
 type Props = {
   localization: AsyncValue<LocalizationInfo>;
-  /** What the editor asked for (undefined: the store default). */
-  requested: ShopifyContext | undefined;
-  /** What Shopify applied to the last priced request, when known. */
-  applied: ShopifyContext | null;
   /** The editor's UI locale, for sorting countries by name. */
   locale: string;
   onChange: (context: ShopifyContext) => void;
 };
 
+/** Two menus of choices in one: the country, then the language. */
 function MarketOptions({
   info,
   locale,
@@ -43,28 +31,30 @@ function MarketOptions({
   const language = info.language.isoCode;
   return (
     <>
-      <DropdownGroup name="Country">
+      <Dropdown.Group name="Country">
         {sortedCountries(info.availableCountries, locale).map((candidate) => (
-          <DropdownOption
+          <Dropdown.Option
             key={candidate.isoCode}
             active={candidate.isoCode === country}
-            onClick={() => onPick({ country: candidate.isoCode, language })}
+            keywords={[candidate.isoCode, candidate.currency.isoCode]}
+            onPick={() => onPick({ country: candidate.isoCode, language })}
           >
             {candidate.name} ({candidate.currency.isoCode})
-          </DropdownOption>
+          </Dropdown.Option>
         ))}
-      </DropdownGroup>
-      <DropdownGroup name="Language">
+      </Dropdown.Group>
+      <Dropdown.Group name="Language">
         {info.availableLanguages.map((candidate) => (
-          <DropdownOption
+          <Dropdown.Option
             key={candidate.isoCode}
             active={candidate.isoCode === language}
-            onClick={() => onPick({ country, language: candidate.isoCode })}
+            keywords={[candidate.isoCode]}
+            onPick={() => onPick({ country, language: candidate.isoCode })}
           >
             {languageOptionLabel(info, candidate.isoCode)}
-          </DropdownOption>
+          </Dropdown.Option>
         ))}
-      </DropdownGroup>
+      </Dropdown.Group>
     </>
   );
 }
@@ -77,70 +67,47 @@ function triggerLabel(localization: AsyncValue<LocalizationInfo>): string {
 /**
  * The market prices and titles are shown in (`@inContext`). The trigger
  * shows what Shopify applied, which can differ from what was asked for:
- * languages a market doesn't publish fall back silently.
+ * languages a market doesn't publish fall back silently (the results explain
+ * it with a notice).
  */
 export default function MarketSwitcher({
   localization,
-  requested,
-  applied,
   locale,
   onChange,
 }: Props) {
-  const label = triggerLabel(localization);
-  const fallback = languageFallbackNotice(
-    requested ?? {},
-    applied ??
-      (localization.value
-        ? {
-            country: localization.value.country.isoCode,
-            language: localization.value.language.isoCode,
-          }
-        : null),
-  );
-  const tooltip = fallback ?? 'Market for prices and translations';
+  const { ref, refocus } = useTriggerFocus();
+  const pick = (context: ShopifyContext) => {
+    refocus();
+    onChange(context);
+  };
 
   return (
-    <div className={styles.market}>
-      <Menu
-        alignment="right"
-        selection="single"
-        renderTrigger={({ open, triggerProps }) => (
-          <Tip tip={tooltip} placement="bottom">
-            <button
-              {...triggerProps}
-              type="button"
-              className={styles.trigger}
-              aria-label={`Market: ${label}`}
-            >
-              <Icon icon={faGlobe} />
-              <span className={styles.label}>{label}</span>
-              {fallback && (
-                <span className={styles.fallbackDot} aria-hidden="true" />
-              )}
-              {open ? <CaretUpIcon /> : <CaretDownIcon />}
-            </button>
-          </Tip>
-        )}
+    <div ref={ref}>
+      <Dropdown
+        triggerComponent={ButtonTrigger}
+        tone="ghost"
+        icon={GlobeIcon}
+        label={triggerLabel(localization)}
+        tooltip="Market for prices and translations"
       >
-        {localization.value ? (
-          <MarketOptions
-            info={localization.value}
-            locale={locale}
-            onPick={onChange}
-          />
-        ) : (
-          <DropdownText>
-            {localization.status === 'error'
-              ? "Couldn't load the markets"
-              : 'Loading…'}
-          </DropdownText>
+        {() => (
+          <Dropdown.Menu placement="bottom-end" minWidth={240}>
+            {localization.value ? (
+              <MarketOptions
+                info={localization.value}
+                locale={locale}
+                onPick={pick}
+              />
+            ) : (
+              <Dropdown.Text>
+                {localization.status === 'error'
+                  ? "Couldn't load the markets."
+                  : 'Loading the markets…'}
+              </Dropdown.Text>
+            )}
+          </Dropdown.Menu>
         )}
-      </Menu>
-      {fallback && (
-        <span className="dl-sr-only" role="status">
-          {fallback}
-        </span>
-      )}
+      </Dropdown>
     </div>
   );
 }

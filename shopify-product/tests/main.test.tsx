@@ -110,6 +110,7 @@ function bootCtx({
     updateFieldAppearance: vi.fn(async () => {}),
     updatePluginParameters: vi.fn(async () => {}),
     notice: vi.fn(async () => {}),
+    customToast: vi.fn(async () => null),
   };
   return { ctx, boot: () => bootPlugin(ctx as unknown as OnBootCtx) };
 }
@@ -233,6 +234,7 @@ describe('onBoot', () => {
       autoApplyToFieldsWithApiKey: '',
     });
     expect(ctx.notice).not.toHaveBeenCalled();
+    expect(ctx.customToast).not.toHaveBeenCalled();
   });
 
   it('asks for a store when migrated settings end up empty', async () => {
@@ -240,7 +242,11 @@ describe('onBoot', () => {
       parameters: { ...V2, shopifyDomain: '', storefrontAccessToken: '' },
     });
     await boot();
-    expect(ctx.notice).toHaveBeenCalledWith(NOT_CONFIGURED_NOTICE);
+    expect(ctx.customToast).toHaveBeenCalledWith({
+      type: 'warning',
+      message: NOT_CONFIGURED_NOTICE,
+    });
+    expect(ctx.notice).not.toHaveBeenCalled();
     expect(getShopifyClient).not.toHaveBeenCalled();
   });
 });

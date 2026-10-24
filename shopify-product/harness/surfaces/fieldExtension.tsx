@@ -211,19 +211,19 @@ const states: Record<string, SurfaceState> = {
   'at-max': {
     fieldParameters: fieldParameters({ max: 3 }),
     value: THREE_PRODUCTS,
-    description: 'Max 3: the counter reads "3 of 3" and Add is disabled.',
+    description:
+      'Max 3: the counter reads "3 of 3 products", with the reason Add is gone.',
   },
   'below-min': {
     fieldParameters: fieldParameters({ min: 2, max: 10 }),
     value: referenceDocument('product', [P_HYDROGEN]),
-    description:
-      'Min 2 with one product: a warning under the list, the handle drawn disabled.',
+    description: 'Min 2 with one product: a warning under the list.',
   },
   'min-only': {
     fieldParameters: fieldParameters({ min: 2 }),
     value: THREE_PRODUCTS,
     description:
-      'Min 2 and no max: the counter reads "3 selected · at least 2".',
+      'Min 2 and no max: the counter reads "3 products · at least 2".',
   },
   'above-max': {
     fieldParameters: fieldParameters({ max: 2 }),
@@ -284,7 +284,8 @@ const states: Record<string, SurfaceState> = {
   'invalid-long': {
     fieldParameters: MULTIPLE,
     value: LONG_INVALID_VALUE,
-    description: 'A long malformed value, truncated with "Show full value".',
+    description:
+      'A long malformed value, in a code snippet that scrolls past 200px.',
   },
   'shop-mismatch': {
     fieldParameters: MULTIPLE,
@@ -371,7 +372,7 @@ const states: Record<string, SurfaceState> = {
     fieldParameters: fieldParameters({ min: 2 }),
     value: referenceDocument('product', [P_HYDROGEN]),
     disabled: true,
-    description: 'ctx.disabled below the minimum: no hint, no handle.',
+    description: 'ctx.disabled below the minimum: no hint, no drag handle.',
   },
   'disabled-empty': {
     fieldParameters: MULTIPLE,

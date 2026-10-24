@@ -1,11 +1,15 @@
-import { FieldWrapper, SelectInput } from 'datocms-react-ui';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import { storeLabel } from '../../lib/parameters';
 import type { StoreConnection } from '../../types';
-import { describe, useInputDescription } from './describe';
-import styles from './ScopeSection.module.css';
+import { MAX_RADIO_OPTIONS } from '../shared/choices';
+import { STORE_CHANGE_TITLE } from './copy';
+import { fieldNotice } from './notices';
 
-/** `named`: the store has a label of its own, so the menu adds its domain. */
-type Option = { value: string; label: string; domain: string; named: boolean };
+/** `domain`: the store has a label of its own, so the menu adds its domain. */
+type Option = { value: string; label: string; domain?: string };
 
 type Props = {
   stores: StoreConnection[];
@@ -13,7 +17,15 @@ type Props = {
   store: StoreConnection | null;
   /** The field's saved `shopDomain`, if any. */
   shopDomain: string | undefined;
+  /**
+   * A store the field points to, or pointed to when it was saved, that the
+   * plugin settings no longer have: it stays in the list, disabled, so the
+   * saved choice shows (like a market Shopify no longer offers).
+   */
+  removedDomain: string | null;
   error?: string;
+  /** The warning about saved values that point to the previous store. */
+  notice: string | null;
   onChange: (shopDomain: string) => void;
 };
 
@@ -23,66 +35,98 @@ function toOption(store: StoreConnection, index: number): Option {
   return {
     value: store.shopDomain,
     label: index === 0 ? `${label} (default)` : label,
-    domain: store.shopDomain,
-    named: label !== store.shopDomain,
+    domain: label === store.shopDomain ? undefined : store.shopDomain,
   };
 }
 
-function OptionLabel(option: Option, meta: { context: 'menu' | 'value' }) {
-  if (meta.context === 'value' || !option.named) {
-    return option.label;
-  }
+function formatOptionLabel(
+  option: Option,
+  meta: { context: 'menu' | 'value' },
+) {
+  if (meta.context === 'value' || !option.domain) return option.label;
   return (
-    <span className={styles.option}>
-      <span>{option.label}</span>
-      <span className={styles.optionHint}>{option.domain}</span>
-    </span>
+    <EntityRow layout="row" title={option.label}>
+      {option.domain}
+    </EntityRow>
   );
 }
 
-/** 6. Which store editors browse. Only rendered with more than one store. */
+const REMOVED_REASON = "This store isn't in the plugin settings anymore.";
+
+function removedLabel(domain: string): string {
+  return `${domain} (removed)`;
+}
+
+/**
+ * 6. Which store editors browse: with several stores, or a store to fix.
+ * A few stores show as radios (a labelled store has its domain as the
+ * hint, a removed one is disabled); more go in a select.
+ */
 export default function StoreField({
   stores,
   store,
   shopDomain,
+  removedDomain,
   error,
+  notice,
   onChange,
 }: Props) {
-  const options = stores.map(toOption);
-  const value = store
-    ? (options.find((option) => option.value === store.shopDomain) ?? null)
-    : null;
   const missing =
     shopDomain && !store
-      ? `${shopDomain} isn't in the plugin settings anymore: choose another store`
+      ? `${shopDomain} isn't in the plugin settings anymore. Choose another store.`
       : undefined;
-  const described = describe(
-    'store',
-    'Editors browse this store. The default is the first store in the plugin settings.',
-    error ?? missing,
-  );
-  useInputDescription('store', described.ids);
+  const options = stores.map(toOption);
+  // A field whose store was removed keeps showing it as its value.
+  const value = store?.shopDomain ?? shopDomain ?? null;
+  const change = (domain: string | null) => {
+    if (domain) onChange(domain);
+  };
   return (
-    <div>
-      <FieldWrapper
-        id="store"
-        label="Store"
-        error={described.error}
-        hint={described.hint}
-      >
-        <SelectInput<Option, false>
-          inputId="store"
+    <FieldWrapper
+      id="store"
+      label="Store"
+      hint="Editors browse this store. The default is the first store in the plugin settings."
+      error={error ?? missing}
+      container={fieldNotice(notice, STORE_CHANGE_TITLE)}
+    >
+      {options.length <= MAX_RADIO_OPTIONS ? (
+        <RadioGroupInput
+          name="store"
+          value={value}
+          options={[
+            ...options.map((option) => ({
+              value: option.value,
+              label: option.label,
+              hint: option.domain,
+            })),
+            ...(removedDomain
+              ? [
+                  {
+                    value: removedDomain,
+                    label: removedLabel(removedDomain),
+                    disabled: true,
+                    tooltip: REMOVED_REASON,
+                  },
+                ]
+              : []),
+          ]}
+          onChange={change}
+        />
+      ) : (
+        <SelectInput
+          name="store"
           value={value}
           options={options}
-          error={Boolean(described.invalid)}
-          aria-invalid={described.invalid}
-          placeholder="Select a store…"
-          formatOptionLabel={OptionLabel}
-          onChange={(option) => {
-            if (option) onChange(option.value);
-          }}
+          clearable={false}
+          placeholder="Select a store"
+          acceptValueNotIncludedInOptions={(domain: string) => ({
+            value: domain,
+            label: removedLabel(domain),
+          })}
+          formatOptionLabel={formatOptionLabel}
+          onChange={change}
         />
-      </FieldWrapper>
-    </div>
+      )}
+    </FieldWrapper>
   );
 }

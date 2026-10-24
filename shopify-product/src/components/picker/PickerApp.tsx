@@ -1,17 +1,12 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import {
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import Pane from 'datocms-react-ui/Pane';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   entryForNode,
   isNodeUnavailable,
-  maxReachedMessage,
+  languageFallbackNotice,
+  MAX_REACHED_MESSAGE,
   pickerLabels,
   selectedVariantsOf,
   skuMatchesSearch,
@@ -19,18 +14,20 @@ import {
 } from '../../lib/pickerSearch';
 import { isAbortError, type ShopifyClient } from '../../lib/shopifyClient';
 import type {
+  LocalizationInfo,
   PickerModalParameters,
   PickerModalResult,
   PickerSelectedEntry,
   PickerUnavailableEntry,
   ProductSummary,
+  ShopifyContext,
   ShopifyNode,
   StoreConnection,
 } from '../../types';
 import { useCapabilities } from '../shared/useCapabilities';
-import FilterBar from './FilterBar';
+import FilterBar, { type FilterBarProps, notAppliedNotice } from './FilterBar';
 import MarketSwitcher from './MarketSwitcher';
-import { Header, HeaderRow, SearchField, ViewToggle } from './PickerHeader';
+import PickerHeader, { focusSearch } from './PickerHeader';
 import {
   CollectionList,
   type ItemEnv,
@@ -49,7 +46,7 @@ import {
   usePickerResults,
   useSkuMatches,
 } from './usePickerData';
-import { type PickerSearch, usePickerSearch } from './usePickerSearch';
+import { usePickerSearch } from './usePickerSearch';
 import { usePickerView } from './usePickerView';
 import { type Selection, useSelection } from './useSelection';
 
@@ -60,9 +57,14 @@ type Props = {
 };
 
 const ALREADY_IN_FIELD_ALERT =
-  "Couldn't choose the variant, as it's already in this field!";
+  "Couldn't choose the variant: it's already in this field.";
+
+const VARIANT_FAILED_ALERT = "Couldn't load the product variant.";
 
 const NOTHING_UNAVAILABLE: readonly PickerUnavailableEntry[] = [];
+
+/** What a pick does while the results reload: nothing. */
+const ignore = () => {};
 
 /**
  * Variant mode: open products, and pick single-variant products directly.
@@ -96,7 +98,7 @@ function useProductActivation(
         .then((result) => {
           const variant = result?.page.nodes[0];
           if (!variant) {
-            void ctx.alert("Couldn't load the product variant!");
+            void ctx.alert(VARIANT_FAILED_ALERT);
           } else if (isUnavailable(variant)) {
             // Its card can't tell before the variant loads (Replace).
             void ctx.alert(ALREADY_IN_FIELD_ALERT);
@@ -106,7 +108,7 @@ function useProductActivation(
         })
         .catch((error: unknown) => {
           if (!isAbortError(error)) {
-            void ctx.alert("Couldn't load the product variant!");
+            void ctx.alert(VARIANT_FAILED_ALERT);
           }
         })
         .finally(() => setPendingId(null));
@@ -141,6 +143,7 @@ function resultsState(
     hasNextPage: query.hasNextPage,
     loadingMore: query.loadingMore,
     loadMoreError: query.loadMoreError,
+    reloading: query.reloading,
     loadMore: query.loadMore,
     retry: query.retry,
     loadedCount: query.items.length,
@@ -184,6 +187,14 @@ function isProduct(item: ResultItem): item is ProductSummary {
   return item.__typename === 'Product';
 }
 
+function localizationContext(
+  info: LocalizationInfo | null,
+): ShopifyContext | null {
+  return info
+    ? { country: info.country.isoCode, language: info.language.isoCode }
+    : null;
+}
+
 /** The product, variant or collection picker. */
 export default function PickerApp({ ctx, params, store }: Props) {
   const { fieldParameters } = params;
@@ -197,8 +208,6 @@ export default function PickerApp({ ctx, params, store }: Props) {
 
   // Controls that leave or turn disabled once used (Clear, Clear filters)
   // hand focus to the search, the picker's starting point.
-  const searchRef = useRef<HTMLInputElement>(null);
-  const focusSearch = useCallback(() => searchRef.current?.focus(), []);
   const clearFilters = () => {
     focusSearch();
     search.clearFilters();
@@ -226,6 +235,12 @@ export default function PickerApp({ ctx, params, store }: Props) {
     search.skuText !== null,
   );
   const localization = useLocalization(market.client, market.contextKey);
+  // Shopify answers in another language when the market doesn't publish the
+  // one asked for: the results explain it.
+  const marketNotice = languageFallbackNotice(
+    market.context ?? {},
+    market.client.appliedContext() ?? localizationContext(localization.value),
+  );
   const browsesProducts = kind !== 'collection';
   // One request, once detection says whether it can include the tags.
   const filterValues = useFilterValues(
@@ -307,17 +322,20 @@ export default function PickerApp({ ctx, params, store }: Props) {
     return results.items.filter((item) => !pinned.has(item.id));
   }, [kind, results.items, skuMatches]);
 
-  const env: ItemEnv = {
+  // Why the rest can't be picked once the selection is full: the footer says
+  // it after the count, and it disables the items that aren't selected.
+  const atMaxReason = selection.atMax ? MAX_REACHED_MESSAGE : null;
+  const liveEnv: ItemEnv = {
     kind,
     view,
     locale: ctx.ui.locale,
     inventory: capabilities.inventory,
     multiple: selection.multiple,
+    hasSelection: selection.entries.length > 0,
+    stale: false,
     client: market.client,
     contextKey: market.contextKey,
-    disabledReason: selection.atMax
-      ? maxReachedMessage(selection.max, kind)
-      : null,
+    disabledReason: atMaxReason,
     isSelected: selection.isSelected,
     isUnavailable,
     selectedVariants: (productId) =>
@@ -329,50 +347,97 @@ export default function PickerApp({ ctx, params, store }: Props) {
     hydrate,
     activateProduct: activation.activateProduct,
   };
+  // While a new search, filter, sort or market loads its first page, the
+  // last results stay on screen but can't be picked or opened: they belong
+  // to the previous query (another market's titles and prices, or items the
+  // new filters leave out). They show as unavailable, and an open product
+  // can still close. The SKU matches are their own lookup, which a new
+  // search or market restarts, so they never show stale items.
+  const { expandedId, activateProduct } = activation;
+  const closeOnly = useCallback(
+    (product: ProductSummary) => {
+      if (product.id === expandedId) activateProduct(product);
+    },
+    [expandedId, activateProduct],
+  );
+  const env: ItemEnv = results.query.reloading
+    ? { ...liveEnv, stale: true, pick: ignore, activateProduct: closeOnly }
+    : liveEnv;
+
+  const filterBarProps: FilterBarProps = {
+    scope,
+    lockedCollectionTitle,
+    filters: search.filters,
+    setFilters: search.setFilters,
+    clearFilters,
+    filtersActive: search.filtersActive,
+    controls: search.controls,
+    inCollection: search.inCollection,
+    support: search.support,
+    tagsCapability: capabilities.tags,
+    tagsPending: capabilities.pending,
+    filterValues,
+    collectionOptions,
+    sort: search.sort,
+    sortContext: search.sortContext,
+  };
 
   return (
-    <>
-      <PickerHeader
-        labels={labels}
-        search={search}
-        searchRef={searchRef}
-        view={view}
-        onViewChange={setView}
-        market={market}
-        localization={localization}
-        locale={ctx.ui.locale}
-        filterBar={
-          browsesProducts ? (
-            <FilterBar
-              scope={scope}
-              lockedCollectionTitle={lockedCollectionTitle}
-              filters={search.filters}
-              setFilters={search.setFilters}
-              clearFilters={clearFilters}
-              filtersActive={search.filtersActive}
-              controls={search.controls}
-              inCollection={search.inCollection}
-              support={search.support}
-              tagsCapability={capabilities.tags}
-              tagsPending={capabilities.pending}
-              filterValues={filterValues}
-              collectionOptions={collectionOptions}
-              sort={search.sort}
-              sortContext={search.sortContext}
+    <Pane
+      ariaLabel={kind === 'collection' ? 'Collections' : 'Products'}
+      header={
+        <PickerHeader
+          text={search.text}
+          onTextChange={search.setText}
+          view={view}
+          onViewChange={setView}
+          reloading={results.query.reloading}
+          market={
+            <MarketSwitcher
+              localization={localization}
+              locale={ctx.ui.locale}
+              onChange={market.setContext}
             />
-          ) : null
-        }
-      />
+          }
+          filterBar={browsesProducts ? <FilterBar {...filterBarProps} /> : null}
+        />
+      }
+      // A single field resolves on the first pick: the footer says so.
+      footer={
+        selection.multiple ? (
+          <SelectionFooter
+            selection={selection}
+            labels={labels}
+            kind={kind}
+            min={fieldParameters.min}
+            atMaxReason={atMaxReason}
+            locale={ctx.ui.locale}
+            onClear={clearSelection}
+            onApply={() => resolve(selection.entries)}
+          />
+        ) : (
+          <Toolbar>
+            <Toolbar.Note>{labels.singleHint}</Toolbar.Note>
+          </Toolbar>
+        )
+      }
+    >
       <ResultsPane
         labels={labels}
+        locale={ctx.ui.locale}
         state={resultsState(results.query)}
         isEmpty={mainItems.length === 0}
         visibleCount={mainItems.length}
         filtersActive={search.filtersActive}
+        scoped={browsesProducts && scope !== undefined}
         searching={search.debouncedText !== ''}
         onClearFilters={clearFilters}
         onFocusLost={focusSearch}
-        pinned={<SkuMatches env={env} matches={skuMatches} />}
+        marketNotice={marketNotice}
+        filtersNotice={
+          browsesProducts ? notAppliedNotice(filterBarProps) : null
+        }
+        pinned={<SkuMatches env={liveEnv} matches={skuMatches} />}
         pinnedCount={skuMatches.length}
         mainTitle={`All ${labels.resultMany}`}
       >
@@ -387,64 +452,10 @@ export default function PickerApp({ ctx, params, store }: Props) {
           <ProductList
             env={env}
             products={mainItems.filter(isProduct)}
-            label={`All ${labels.resultMany}`}
             prefix="main"
           />
         )}
       </ResultsPane>
-      <SelectionFooter
-        selection={selection}
-        labels={labels}
-        kind={kind}
-        min={fieldParameters.min}
-        onClear={clearSelection}
-        onApply={() => resolve(selection.entries)}
-      />
-    </>
-  );
-}
-
-function PickerHeader({
-  labels,
-  search,
-  searchRef,
-  view,
-  onViewChange,
-  market,
-  localization,
-  locale,
-  filterBar,
-}: {
-  labels: ReturnType<typeof pickerLabels>;
-  search: PickerSearch;
-  searchRef: RefObject<HTMLInputElement | null>;
-  view: ReturnType<typeof usePickerView>[0];
-  onViewChange: ReturnType<typeof usePickerView>[1];
-  market: Market;
-  localization: ReturnType<typeof useLocalization>;
-  locale: string;
-  filterBar: ReactNode;
-}) {
-  return (
-    <Header>
-      <HeaderRow>
-        <SearchField
-          value={search.text}
-          label={labels.searchLabel}
-          placeholder={labels.placeholder}
-          onChange={search.setText}
-          inputRef={searchRef}
-        />
-        <ViewToggle view={view} onChange={onViewChange} />
-        <MarketSwitcher
-          localization={localization}
-          requested={market.context}
-          applied={market.client.appliedContext()}
-          locale={locale}
-          onChange={market.setContext}
-        />
-      </HeaderRow>
-      {filterBar}
-    </Header>
+    </Pane>
   );
 }

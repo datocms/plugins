@@ -53,8 +53,9 @@ export function usePickerSearch(
 ): PickerSearch {
   const [text, setText] = useState('');
   const debouncedText = useDebouncedValue(text.trim(), SEARCH_DEBOUNCE_MS);
+  // The vendor changes only when its menu's form is applied, so it isn't
+  // debounced like the typed search.
   const [filters, setFilterState] = useState<PickerFilters>(EMPTY_FILTERS);
-  const debouncedVendor = useDebouncedValue(filters.vendor, SEARCH_DEBOUNCE_MS);
   const { supportById, remember } = useCollectionSupport();
 
   const collectionId = scope?.collectionId ?? filters.collection?.id ?? null;
@@ -66,12 +67,8 @@ export function usePickerSearch(
   );
 
   const search = useMemo(
-    () =>
-      effectiveSearch(
-        scope,
-        applicableFilters({ ...filters, vendor: debouncedVendor }, controls),
-      ),
-    [scope, filters, debouncedVendor, controls],
+    () => effectiveSearch(scope, applicableFilters(filters, controls)),
+    [scope, filters, controls],
   );
 
   const sortContext = useMemo<SortContext>(

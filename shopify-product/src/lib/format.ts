@@ -462,13 +462,44 @@ export function toShopifyLanguageCode(
 // Text
 // ---------------------------------------------------------------------------
 
-/** `1 variant`, `3 variants`, `0 variants`. */
+const countFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * A count with the separators of the editor's locale (`ctx.ui.locale`):
+ * `2,048` in English, `2.048` in German. An invalid locale falls back to
+ * English.
+ *
+ * The kit formats the counts of its `Message` props itself (ICU `#` plurals,
+ * see `src/texts.ts`). This is for the counts in plain text: the slots that
+ * take a node (a pill, a toolbar note, a details line) and the live
+ * announcements.
+ */
+export function formatCount(value: number, locale = FALLBACK_LOCALE): string {
+  const key = normalizeLocale(locale) || FALLBACK_LOCALE;
+  let format = countFormats.get(key);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat(key);
+    } catch {
+      format = new Intl.NumberFormat(FALLBACK_LOCALE);
+    }
+    countFormats.set(key, format);
+  }
+  return format.format(value);
+}
+
+/**
+ * `1 variant`, `2,048 variants`, `0 variants`: the number in the locale's
+ * format, then the English noun (the texts are English).
+ */
 export function pluralize(
   count: number,
   singular: string,
   plural?: string,
+  locale?: string,
 ): string {
-  return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`;
+  const noun = count === 1 ? singular : (plural ?? `${singular}s`);
+  return `${formatCount(count, locale)} ${noun}`;
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   adminSearchUrl,
   arrangeByKeys,
   buildRowModel,
+  connectionProblemCause,
   convertProblem,
   countKept,
   emptyLabel,
@@ -29,23 +30,22 @@ import {
   notVisibleMessage,
   pickerTitle,
   pluginSettingsPath,
-  previewText,
   rawValueText,
   readPickerResult,
-  reorderUnavailableReason,
   replaceEntryAt,
   rowMeta,
   selectionChangeMessage,
   selectionWithPrimaryHandles,
   serializeEntries,
+  settingsStep,
   storedDocumentShop,
   toPickerSelected,
   UNRESOLVED_COLLECTION_MESSAGE,
   UNRESOLVED_MESSAGE,
   unresolvedMessage,
+  type WriteTarget,
   withEntryHandle,
   withPrimaryHandle,
-  type WriteTarget,
 } from '../src/lib/fieldValue';
 import {
   buildLegacyProductJson,
@@ -226,58 +226,69 @@ describe('limitsSummary', () => {
     });
   });
 
+  // The field editor words the counter through its ICU texts (the
+  // FieldExtension tests check the line): here, only its numbers and nouns.
   it('counts against the maximum and explains why Add is disabled', () => {
-    expect(limitsSummary(params({ max: 10 }), 3).counter).toBe('3 of 10');
+    expect(limitsSummary(params({ max: 10 }), 3).counter).toEqual({
+      count: 3,
+      max: 10,
+      min: null,
+      one: 'product',
+      many: 'products',
+    });
+    expect(
+      limitsSummary(params({ max: 1, kind: 'variant' }), 1).counter,
+    ).toMatchObject({ count: 1, max: 1, one: 'variant', many: 'variants' });
     const full = limitsSummary(params({ max: 3 }), 3);
     expect(full.atMax).toBe(true);
     expect(full.atMaxReason).toBe(
-      'You cannot add more products, as this field holds up to 3',
+      "You can't add more products: this field holds up to 3.",
     );
   });
 
   it('asks for the minimum while below it', () => {
     expect(limitsSummary(params({ min: 2 }), 1).belowMin).toBe(
-      'Add at least 2 products',
+      'Add at least 2 products.',
     );
     expect(limitsSummary(params({ min: 1, kind: 'variant' }), 0).belowMin).toBe(
-      'Add at least 1 variant',
+      'Add at least 1 variant.',
     );
     expect(limitsSummary(params({ min: 2 }), 2).belowMin).toBeNull();
     expect(limitsSummary(params(), 0).counter).toBeNull();
   });
 
   it('counts against the minimum when the field sets no maximum', () => {
-    expect(limitsSummary(params({ min: 2 }), 1).counter).toBe(
-      '1 selected · at least 2',
+    expect(limitsSummary(params({ min: 2 }), 1).counter).toMatchObject({
+      count: 1,
+      max: null,
+      min: 2,
+    });
+    expect(limitsSummary(params({ min: 2, max: 5 }), 4).counter).toMatchObject({
+      count: 4,
+      max: 5,
+      min: null,
+    });
+  });
+
+  it("writes the numbers of the sentences in the editor's locale", () => {
+    const over = limitsSummary(params({ max: 1000 }), 1002, 'de');
+    expect(over.aboveMax).toBe(
+      'Remove 2 products: this field holds up to 1.000.',
     );
-    expect(limitsSummary(params({ min: 2 }), 4).counter).toBe(
-      '4 selected · at least 2',
+    expect(limitsSummary(params({ min: 1500 }), 1, 'en').belowMin).toBe(
+      'Add at least 1,500 products.',
     );
-    expect(limitsSummary(params({ min: 2, max: 5 }), 4).counter).toBe('4 of 5');
   });
 
   it('asks to remove the extra items above the maximum', () => {
     const over = limitsSummary(params({ max: 3 }), 5);
-    expect(over.counter).toBe('5 of 3');
-    expect(over.aboveMax).toBe(
-      'Remove 2 products, as this field holds up to 3',
-    );
+    expect(over.counter).toMatchObject({ count: 5, max: 3 });
+    expect(over.aboveMax).toBe('Remove 2 products: this field holds up to 3.');
     expect(over.atMax).toBe(true);
     expect(
       limitsSummary(params({ max: 2, kind: 'collection' }), 3).aboveMax,
-    ).toBe('Remove 1 collection, as this field holds up to 2');
+    ).toBe('Remove 1 collection: this field holds up to 2.');
     expect(limitsSummary(params({ max: 3 }), 3).aboveMax).toBeNull();
-  });
-});
-
-describe('reorderUnavailableReason', () => {
-  it('names the kind', () => {
-    expect(reorderUnavailableReason('product')).toBe(
-      'Add another product to reorder',
-    );
-    expect(reorderUnavailableReason('variant')).toBe(
-      'Add another variant to reorder',
-    );
   });
 });
 
@@ -711,10 +722,10 @@ describe('convertProblem', () => {
       'This field holds one product, but the value has 2.',
     );
     expect(convertProblem(single, [unresolved])).toBe(
-      "You cannot convert the value while a product isn't visible to the storefront",
+      "You can't convert the value while a product isn't visible to the storefront.",
     );
     expect(convertProblem(single, [pending])).toBe(
-      'You cannot convert the value until the Shopify data has loaded',
+      "You can't convert the value until the Shopify data has loaded.",
     );
   });
 });
@@ -795,19 +806,6 @@ describe('invalid values', () => {
     expect(rawValueText('{"broken"')).toBe('{"broken"');
     expect(rawValueText({ a: 1 })).toBe('{\n  "a": 1\n}');
     expect(rawValueText(42)).toBe('42');
-  });
-
-  it('previews long values by length and by lines', () => {
-    expect(previewText('short')).toEqual({ text: 'short', truncated: false });
-    const long = 'x'.repeat(300);
-    expect(previewText(long).truncated).toBe(true);
-    expect(previewText(long).text).toHaveLength(241);
-    const tall = Array.from({ length: 10 }, (_, line) => `line ${line}`).join(
-      '\n',
-    );
-    const preview = previewText(tall);
-    expect(preview.truncated).toBe(true);
-    expect(preview.text.split('\n')).toHaveLength(6);
   });
 
   it('reads the shop of a saved document', () => {
@@ -983,6 +981,21 @@ describe('editor feedback', () => {
     );
   });
 
+  it('splits a connection problem into its cause and the step in the settings', () => {
+    const rejected = new ShopifyClientError('unauthorized', 'HTTP 401');
+    expect(connectionProblemCause(rejected)).toBe(
+      'Shopify rejected the Storefront access token.',
+    );
+    expect(settingsStep(rejected)).toBe('to update it');
+    const missing = new ShopifyClientError('shop-not-found', 'HTTP 404', {
+      shop: 'acme.myshopify.com',
+    });
+    expect(connectionProblemCause(missing)).toBe(
+      'No Shopify store found at acme.myshopify.com.',
+    );
+    expect(settingsStep(missing)).toBe('to check the address');
+  });
+
   it('says what a pick changed', () => {
     expect(selectionChangeMessage('product', 2, 0)).toBe('Added 2 products');
     expect(selectionChangeMessage('variant', 0, 1)).toBe('Removed 1 variant');
@@ -990,6 +1003,9 @@ describe('editor feedback', () => {
       'Added 1 collection and removed 2 collections',
     );
     expect(selectionChangeMessage('product', 0, 0)).toBeNull();
+    expect(selectionChangeMessage('product', 1200, 0, 'en')).toBe(
+      'Added 1,200 products',
+    );
     const a = entry();
     const b = entry({ key: PRODUCT_2_ID, id: PRODUCT_2_ID });
     expect(countKept([b], [a, b])).toBe(1);

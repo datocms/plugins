@@ -1,20 +1,15 @@
-import {
-  faBell,
-  faStar,
-  faTrashCan,
-} from '@fortawesome/free-regular-svg-icons';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import type { CSSProperties } from 'react';
-import { Button } from '../../src/ui/Button';
-import { Icon } from '../../src/ui/Icon';
+import { StarIcon, TrashIcon, XmarkIcon } from '../../src/icons';
 import { getPath } from '../mockCtx';
 import { defineSurface } from '../surface';
 import { EXAMPLE_MODAL_ID } from './example-modal';
 
 /**
  * Proves the harness end to end without the real entrypoints: a small field
- * editor built from src/ui/Button and src/ui/Icon that reads and writes
+ * editor built from the kit's Button and the plugin's icons that reads and writes
  * `ctx.formValues`, opens the example modal, asks for a confirm and shows a
  * notice. The swatches show the resolved tokens in the current scheme.
  */
@@ -92,7 +87,7 @@ function ExampleField({ ctx }: { ctx: RenderFieldExtensionCtx }) {
     <Canvas ctx={ctx}>
       <div style={styles.stack}>
         <div style={styles.value}>
-          <Icon icon={faStar} />
+          <StarIcon />
           {current ? (
             <span>{current}</span>
           ) : (
@@ -101,29 +96,23 @@ function ExampleField({ ctx }: { ctx: RenderFieldExtensionCtx }) {
         </div>
         <div style={styles.actions}>
           <Button
-            buttonType="primary"
-            buttonSize="s"
-            leftIcon={<Icon icon={faStar} />}
+            tone="primary"
+            icon={StarIcon}
+            label="Pick an option"
             onClick={pick}
             disabled={ctx.disabled}
-          >
-            Pick an option
-          </Button>
+          />
           <Button
-            buttonSize="s"
-            leftIcon={<Icon icon={faTrashCan} />}
+            icon={TrashIcon}
+            label="Clear"
             onClick={clear}
             disabled={ctx.disabled || current === null}
-          >
-            Clear
-          </Button>
+          />
           <Button
-            buttonSize="s"
-            leftIcon={<Icon icon={faBell} />}
+            icon={XmarkIcon}
+            label="Show a notice"
             onClick={() => ctx.notice('Hello from the harness')}
-          >
-            Show a notice
-          </Button>
+          />
         </div>
         <ul style={styles.swatches}>
           {SWATCHES.map((token) => (
@@ -143,7 +132,7 @@ export default defineSurface({
   title: 'Example: field editor',
   kind: 'field',
   description:
-    'Harness self-test: Canvas, Button and Icon with mock setFieldValue, openModal, openConfirm and notice.',
+    "Harness self-test: the kit's Canvas and Button with the plugin's icons, and mock setFieldValue, openModal, openConfirm and notice.",
   states: {
     empty: { description: 'No value yet.' },
     'with-value': { value: 'Option B', description: 'A stored string.' },

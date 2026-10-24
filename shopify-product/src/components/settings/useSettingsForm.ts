@@ -509,13 +509,13 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx): SettingsForm {
         await ctx.updatePluginParameters(params);
       } catch {
         expected.undo();
-        void ctx.alert("Couldn't save the settings!");
+        void ctx.alert("Couldn't save the settings.");
         return;
       }
       expected.commit();
       setMigrationSaved(true);
       setSaveAnywaySignatures(new Set());
-      void ctx.notice('Settings successfully saved!');
+      void ctx.notice('Settings saved.');
     },
     [ctx, expectSaved],
   );

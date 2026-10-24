@@ -1,7 +1,7 @@
 import {
+  formatMoney,
   formatPriceRange,
   hasCompareAtPrice,
-  formatMoney,
 } from '../../lib/format';
 import type { Money, ShopifyNode } from '../../types';
 import styles from './PriceTag.module.css';
@@ -37,6 +37,7 @@ type Props = {
   price: NodePrice;
   /** `ctx.ui.locale`. */
   locale: string;
+  /** Which side the price and compare-at price gather on when they wrap. */
   align?: 'start' | 'end';
   className?: string;
 };
@@ -64,7 +65,7 @@ export default function PriceTag({
       </span>
       {showCompareAt && price.compareAt && (
         <s className={styles.compareAt}>
-          <span className="dl-sr-only">Compare at </span>
+          <span className="visually-hidden">Compare at </span>
           {formatMoney(price.compareAt, locale)}
         </s>
       )}

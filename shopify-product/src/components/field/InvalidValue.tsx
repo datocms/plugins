@@ -1,17 +1,23 @@
-import { Spinner } from 'datocms-react-ui';
-import { useId, useState } from 'react';
-import { previewText, rawValueText } from '../../lib/fieldValue';
-import { Button } from '../../ui/Button';
-import Callout from '../shared/Callout';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
+import { rawValueText } from '../../lib/fieldValue';
 import styles from './FieldParts.module.css';
 
 type Props = {
   /** A short title (`invalidValueTitle`). */
   title: string;
-  /** What's wrong, in plain words (`describeStoredValueError`). */
+  /**
+   * What's wrong, in plain words: `describeStoredValueError`, or a more
+   * precise sentence such as the two shops of a shop mismatch.
+   */
   message: string;
-  /** An extra sentence, such as the two shops of a shop mismatch. */
-  detail?: string | null;
+  /**
+   * Add that the value is kept as saved. Off when the message already says
+   * what to do (a value from a newer plugin version), so the callout stays
+   * at two sentences.
+   */
+  keptNote?: boolean;
   rawValue: unknown;
   readOnly: boolean;
   onClear: () => void;
@@ -24,60 +30,6 @@ type Props = {
   picking?: boolean;
 };
 
-type ActionsProps = Pick<
-  Props,
-  'readOnly' | 'onClear' | 'onPickAgain' | 'picking'
->;
-
-function RawValue({
-  value,
-  readOnly,
-  onClear,
-  onPickAgain,
-  picking = false,
-}: ActionsProps & { value: unknown }) {
-  const [expanded, setExpanded] = useState(false);
-  const id = useId();
-  const text = rawValueText(value);
-  const preview = previewText(text);
-  return (
-    <>
-      <pre id={id} className={styles.raw} aria-label="Saved value">
-        {expanded ? text : preview.text}
-      </pre>
-      {(!readOnly || preview.truncated) && (
-        <div className={styles.calloutActions}>
-          {!readOnly && onPickAgain && (
-            <Button
-              buttonSize="xxs"
-              onClick={picking ? undefined : onPickAgain}
-            >
-              Pick again
-              {picking && <Spinner size={16} />}
-            </Button>
-          )}
-          {!readOnly && (
-            <Button buttonSize="xxs" disabled={picking} onClick={onClear}>
-              Clear value
-            </Button>
-          )}
-          {preview.truncated && (
-            <button
-              type="button"
-              className={styles.linkButton}
-              aria-expanded={expanded}
-              aria-controls={id}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              {expanded ? 'Show less' : 'Show full value'}
-            </button>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
 function keptSentence(readOnly: boolean, canPickAgain: boolean): string {
   if (readOnly) return "It's kept exactly as saved.";
   return canPickAgain
@@ -87,34 +39,49 @@ function keptSentence(readOnly: boolean, canPickAgain: boolean): string {
 
 /**
  * A value this field can't read: a short title, the reason, the raw value
- * exactly as saved, and "Clear value" behind a confirmation ("Pick again"
- * too, for a value saved for another store). Nothing changes until an
- * editor acts.
+ * exactly as saved (with its copy button), and "Clear value" behind a
+ * confirmation ("Pick again" too, for a value saved for another store).
+ * Nothing changes until an editor acts.
  */
 export default function InvalidValue({
   title,
   message,
-  detail,
+  keptNote = true,
   rawValue,
   readOnly,
   onClear,
   onPickAgain,
-  picking,
+  picking = false,
 }: Props) {
   return (
-    <Callout tone="danger" role="alert" title={title}>
-      <p className={styles.calloutText}>
-        {[message, detail, keptSentence(readOnly, Boolean(onPickAgain))]
-          .filter(Boolean)
-          .join(' ')}
-      </p>
-      <RawValue
-        value={rawValue}
-        readOnly={readOnly}
-        onClear={onClear}
-        onPickAgain={onPickAgain}
-        picking={picking}
+    <>
+      <Callout tone="danger" title={title} className={styles.calloutWithAction}>
+        {keptNote
+          ? `${message} ${keptSentence(readOnly, Boolean(onPickAgain))}`
+          : message}
+      </Callout>
+      <CodeSnippet
+        ariaLabel="Saved value"
+        code={rawValueText(rawValue)}
+        maxHeight={200}
       />
-    </Callout>
+      {!readOnly && (
+        <div className={`${styles.actions} ${styles.afterValue}`}>
+          {onPickAgain && (
+            <Button label="Pick again" busy={picking} onClick={onPickAgain} />
+          )}
+          <Button
+            tone="ghost-alert"
+            label="Clear value"
+            disabled={
+              picking
+                ? { reason: 'Wait until the new pick is saved.' }
+                : undefined
+            }
+            onClick={onClear}
+          />
+        </div>
+      )}
+    </>
   );
 }

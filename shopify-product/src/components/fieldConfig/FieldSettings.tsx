@@ -1,5 +1,5 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import type { ReactNode } from 'react';
+import Callout from 'datocms-react-ui/Callout';
 import {
   getActiveStores,
   normalizePluginParameters,
@@ -10,17 +10,17 @@ import type {
   PluginParametersV3,
   StoreConnection,
 } from '../../types';
-import { Button } from '../../ui/Button';
-import Callout from '../shared/Callout';
 import { changesSinceSaved, NO_CHANGES, type SavedChanges } from './changes';
 import {
   CARDINALITY_CHANGE_NOTICE,
   EXAMPLE_SHOP_PLACEHOLDER,
   FORMAT_CHANGE_NOTICE,
   LEGACY_NOTICE,
+  LEGACY_NOTICE_TITLE,
   REPAIR_NOTICE,
   storeChangeNotice,
   UNSUPPORTED_NOTICE,
+  UNSUPPORTED_NOTICE_TITLE,
 } from './copy';
 import {
   withCardinality,
@@ -30,7 +30,6 @@ import {
   withSnapshot,
   withStore,
 } from './draft';
-import styles from './FieldSettings.module.css';
 import {
   controlErrors,
   type ErrorPlacement,
@@ -40,6 +39,7 @@ import {
   type VisibleControls,
   visibleControls,
 } from './errors';
+import { CalloutWithAction } from './notices';
 import ScopeSection from './ScopeSection';
 import StoredValueExample from './StoredValueExample';
 import StoreField from './StoreField';
@@ -56,7 +56,10 @@ type Ctx = RenderManualFieldExtensionConfigScreenCtx;
 
 type Props = { ctx: Ctx; fieldType: FieldType };
 
-/** The per-field settings for a string or JSON field. */
+/**
+ * The per-field settings for a string or JSON field: a plain stack of fields
+ * inside the host's box, which draws the title and Save.
+ */
 export default function FieldSettings({ ctx, fieldType }: Props) {
   const config = useFieldConfig(ctx, fieldType);
   const { params } = config.draft;
@@ -79,7 +82,7 @@ export default function FieldSettings({ ctx, fieldType }: Props) {
   const errors = controlErrors(allErrors, placement);
 
   return (
-    <div className={styles.form}>
+    <>
       <Notices
         config={config}
         fieldType={fieldType}
@@ -109,30 +112,7 @@ export default function FieldSettings({ ctx, fieldType }: Props) {
           store?.shopDomain ?? params.shopDomain ?? EXAMPLE_SHOP_PLACEHOLDER
         }
       />
-    </div>
-  );
-}
-
-/**
- * A control and the warning that belongs to it. The wrapper is always there,
- * so the control keeps its focus when the warning appears.
- */
-function WithNotice({
-  notice,
-  children,
-}: {
-  notice: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <div className={styles.group}>
-      {children}
-      {notice && (
-        <Callout tone="warning" role="status">
-          {notice}
-        </Callout>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -149,30 +129,30 @@ function Notices({
   return (
     <>
       {config.isUnsupported && (
-        <Callout tone="warning" role="status">
+        <Callout tone="warning" title={UNSUPPORTED_NOTICE_TITLE}>
           {UNSUPPORTED_NOTICE}
         </Callout>
       )}
       {config.isLegacy && (
-        <Callout tone="neutral">{LEGACY_NOTICE[fieldType]}</Callout>
+        <Callout title={LEGACY_NOTICE_TITLE}>
+          {LEGACY_NOTICE[fieldType]}
+        </Callout>
       )}
       {stray.length > 0 && (
-        <Callout
+        <CalloutWithAction
           tone="danger"
-          role="alert"
-          actions={
-            config.needsRepair ? (
-              <Button buttonSize="xxs" onClick={config.repair}>
-                Use these settings
-              </Button>
-            ) : undefined
+          title="These settings aren't valid"
+          action={
+            config.needsRepair
+              ? { label: 'Use these settings', onClick: config.repair }
+              : undefined
           }
         >
           {stray.map((message) => (
             <p key={message}>{message}</p>
           ))}
           {config.needsRepair && <p>{REPAIR_NOTICE}</p>}
-        </Callout>
+        </CalloutWithAction>
       )}
     </>
   );
@@ -194,7 +174,7 @@ function ValueSettings({
   errors,
   changes,
 }: SectionProps) {
-  const { params } = config.draft;
+  const { params, limits } = config.draft;
   const { update } = config;
   return (
     <>
@@ -203,49 +183,23 @@ function ValueSettings({
         error={errors.kind}
         onChange={(kind) => update((p) => withKind(p, kind, fieldType))}
       />
-      <WithNotice notice={changes.format ? FORMAT_CHANGE_NOTICE : null}>
-        <FormatField
-          fieldType={fieldType}
-          format={params.format}
-          error={errors.format}
-          onChange={(format) => update((p) => withFormat(p, format, fieldType))}
-        />
-      </WithNotice>
+      <FormatField
+        fieldType={fieldType}
+        format={params.format}
+        error={errors.format}
+        notice={changes.format ? FORMAT_CHANGE_NOTICE : null}
+        onChange={(format) => update((p) => withFormat(p, format, fieldType))}
+      />
       {visible.cardinality && (
-        <ReferenceOptions
-          config={config}
-          fieldType={fieldType}
-          visible={visible}
-          errors={errors}
-          changes={changes}
-        />
-      )}
-    </>
-  );
-}
-
-/** 3–4: how many items and the display snapshot (reference documents only). */
-function ReferenceOptions({
-  config,
-  fieldType,
-  visible,
-  errors,
-  changes,
-}: SectionProps) {
-  const { params, limits } = config.draft;
-  return (
-    <>
-      <WithNotice
-        notice={changes.cardinality ? CARDINALITY_CHANGE_NOTICE : null}
-      >
         <CardinalityField
           params={params}
           error={errors.cardinality}
+          notice={changes.cardinality ? CARDINALITY_CHANGE_NOTICE : null}
           onChange={(cardinality) =>
-            config.update((p) => withCardinality(p, cardinality, fieldType))
+            update((p) => withCardinality(p, cardinality, fieldType))
           }
         />
-      </WithNotice>
+      )}
       {visible.limits && (
         <LimitsFields
           limits={limits}
@@ -258,12 +212,27 @@ function ReferenceOptions({
           value={params.snapshot}
           error={errors.snapshot}
           onChange={(snapshot) =>
-            config.update((p) => withSnapshot(p, snapshot, fieldType))
+            update((p) => withSnapshot(p, snapshot, fieldType))
           }
         />
       )}
     </>
   );
+}
+
+/**
+ * The store the field points to, or pointed to when it was saved, when the
+ * plugin settings no longer have it; else null.
+ */
+function removedStoreDomain(
+  plugin: PluginParametersV3,
+  current: string | undefined,
+  saved: string | undefined,
+): string | null {
+  for (const domain of [current, saved]) {
+    if (domain && !resolveFieldStore(plugin, domain)) return domain;
+  }
+  return null;
 }
 
 /** 5–6: the store (with several) and the limits on what editors see. */
@@ -283,30 +252,35 @@ function StoreSettings({
 }) {
   const { params } = config.draft;
   const { update } = config;
-  const notice = changes.previousStore
-    ? storeChangeNotice(changes.previousStore)
-    : null;
   return (
     <>
       {visible.store && (
-        <WithNotice notice={notice}>
-          <StoreField
-            stores={stores}
-            store={store}
-            shopDomain={params.shopDomain}
-            error={errors.shopDomain}
-            onChange={(domain) =>
-              update((p) =>
-                withStore(
-                  p,
-                  domain,
-                  fieldType,
-                  resolveFieldStore(plugin, p.shopDomain)?.shopDomain,
-                ),
-              )
-            }
-          />
-        </WithNotice>
+        <StoreField
+          stores={stores}
+          store={store}
+          shopDomain={params.shopDomain}
+          removedDomain={removedStoreDomain(
+            plugin,
+            params.shopDomain,
+            config.saved?.shopDomain,
+          )}
+          error={errors.shopDomain}
+          notice={
+            changes.previousStore
+              ? storeChangeNotice(changes.previousStore)
+              : null
+          }
+          onChange={(domain) =>
+            update((p) =>
+              withStore(
+                p,
+                domain,
+                fieldType,
+                resolveFieldStore(plugin, p.shopDomain)?.shopDomain,
+              ),
+            )
+          }
+        />
       )}
       {visible.scope && (
         <ScopeSection
