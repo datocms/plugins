@@ -27,7 +27,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 13 | centra | 3619 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 14 | asset-optimization | 3050 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 15 | locale-duplicate | 2841 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 16 | ai-asset-source | 2203 | ^19.2.4 | Pending | |
+| 16 | ai-asset-source | 2203 | ^19.2.4 | Needs attention | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 blocker or major and 1 minor issue open. |
 | 17 | record-bin | 2048 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |
 | 18 | automatic-environment-backups | 1785 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests pass. 1 minor issue open. |
 | 19 | block-to-links | 1422 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests pass. No open issues. |

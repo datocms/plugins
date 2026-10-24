@@ -3,7 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import AssetBrowser from '../src/entrypoints/AssetBrowser';
-import { setTestContext } from './uiMocks';
+import { MediaCard, setTestContext } from './uiMocks';
 
 const png =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
@@ -13,10 +13,12 @@ let pending: Array<{
   resolve: (response: Response) => void;
 }>;
 let selections: unknown[];
+let toasts: Array<{ type: string; message: string }>;
 
 beforeEach(() => {
   pending = [];
   selections = [];
+  toasts = [];
   Object.assign(globalThis, {
     IS_REACT_ACT_ENVIRONMENT: true,
     window: globalThis,
@@ -55,6 +57,10 @@ beforeEach(() => {
     select(upload: unknown) {
       selections.push(upload);
     },
+    async customToast(toast: { type: string; message: string }) {
+      toasts.push(toast);
+      return null;
+    },
   } as unknown as RenderAssetSourceCtx);
 });
 
@@ -82,6 +88,18 @@ function complete(index = 0) {
     ),
   );
 }
+
+test('an empty prompt shows its error on the field and starts no request', async () => {
+  await act(async () => {
+    renderer = create(<AssetBrowser />);
+  });
+  await act(async () => {
+    await renderer.root.findByType('form').props.onSubmit();
+  });
+  assert.equal(pending.length, 0);
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('Enter a prompt'));
+  assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 0);
+});
 
 test('double submission before React rerender starts only one billable request', async () => {
   await renderPrompt();
@@ -130,6 +148,8 @@ test('cancel settles despite a provider ignoring the signal and unlocks the next
     await first;
   });
   assert.equal(pending[0].signal.aborted, true);
+  assert.equal(toasts.length, 1);
+  assert.equal(toasts[0].type, 'warning');
   let second: Promise<void> = Promise.resolve();
   await act(async () => {
     second = renderer.root.findByType('form').props.onSubmit();
@@ -158,7 +178,7 @@ test('preview failure removes a selected image before import', async () => {
   });
   const image = renderer.root.findByType('img');
   await act(async () => {
-    image.parent?.props.onClick();
+    renderer.root.findByType(MediaCard).props.selection.onSelect();
   });
   assert.ok(
     renderer.root
@@ -188,7 +208,7 @@ test('repeated upload callback hands each image off only once', async () => {
     await operation;
   });
   await act(async () => {
-    renderer.root.findByType('img').parent?.props.onClick();
+    renderer.root.findByType(MediaCard).props.selection.onSelect();
   });
   const upload = renderer.root
     .findAllByType('button')

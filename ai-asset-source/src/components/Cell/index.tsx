@@ -1,13 +1,14 @@
-import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
-import { useCtx } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import MediaCard from 'datocms-react-ui/MediaCard';
 import { useState } from 'react';
+import { CircleExclamationIcon } from '../../icons';
 import type { NormalizedGenerationImage } from '../../utils/imageService/types';
-import s from './styles.module.css';
 
 type Props = {
   image: NormalizedGenerationImage;
   selected: boolean;
   sent: boolean;
+  hasSelection: boolean;
   onPreviewFailed: () => void;
   onToggleSelected: () => void;
 };
@@ -16,76 +17,65 @@ export default function Cell({
   image,
   selected,
   sent,
+  hasSelection,
   onPreviewFailed,
   onToggleSelected,
 }: Props) {
-  const ctx = useCtx<RenderAssetSourceCtx>();
   const [previewFailed, setPreviewFailed] = useState(false);
 
-  const isSelectable = image.kind === 'success' && !previewFailed && !sent;
-  const hasInlineError = image.kind === 'error' || previewFailed;
-  const cellClassName = [
-    s.cell,
-    selected && isSelectable ? s.cellSelected : '',
-    hasInlineError ? s.cellError : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const selectionMarkClassName = selected
-    ? `${s.selectionMark} ${s.selectionMarkSelected}`
-    : s.selectionMark;
-  const inlineErrorTitle =
-    image.kind === 'error'
-      ? `Image ${image.position} unavailable`
-      : 'Preview unavailable';
-  const inlineErrorMessage =
-    image.kind === 'error'
-      ? image.errorMessage
-      : 'The preview could not be displayed for this generated image.';
-
-  if (hasInlineError) {
+  if (image.kind === 'error' || previewFailed) {
     return (
-      <div
-        aria-label={`${inlineErrorTitle}. ${inlineErrorMessage}`}
-        className={cellClassName}
-        role="img"
-      >
-        <div className={s.errorState}>
-          <div className={s.errorPosition}>Image {image.position}</div>
-          <div className={s.errorTitle}>{inlineErrorTitle}</div>
-          <div className={s.errorMessage}>{inlineErrorMessage}</div>
-        </div>
-      </div>
+      <MediaCard caption={`Image ${image.position}`}>
+        <BlankSlate
+          placement="inline"
+          small
+          error
+          icon={<CircleExclamationIcon />}
+          title={
+            image.kind === 'error' ? 'Image unavailable' : 'Preview unavailable'
+          }
+          description={
+            image.kind === 'error'
+              ? image.errorMessage
+              : 'The preview could not be displayed for this generated image.'
+          }
+        />
+      </MediaCard>
+    );
+  }
+
+  const preview = (
+    <img
+      src={image.previewSrc}
+      alt="Generated preview"
+      loading="lazy"
+      decoding="async"
+      style={{ display: 'block', width: '100%', height: 'auto' }}
+      onError={() => {
+        setPreviewFailed(true);
+        onPreviewFailed();
+      }}
+    />
+  );
+
+  if (sent) {
+    return (
+      <MediaCard caption="Sent to the Media Area" captionDisabled>
+        {preview}
+      </MediaCard>
     );
   }
 
   return (
-    <button
-      aria-pressed={selected}
-      title={sent ? 'Sent to the Media Area' : undefined}
-      className={cellClassName}
-      disabled={!isSelectable}
-      onClick={onToggleSelected}
-      type="button"
+    <MediaCard
+      caption={`Image ${image.position}`}
+      selection={{
+        selected,
+        onSelect: onToggleSelected,
+        checkbox: hasSelection ? 'always' : 'hover',
+      }}
     >
-      <span aria-hidden="true" className={selectionMarkClassName}>
-        <span className={s.selectionIcon} />
-      </span>
-      <img
-        alt="Generated preview"
-        className={s.image}
-        loading="lazy"
-        decoding="async"
-        src={image.previewSrc}
-        onError={() => {
-          setPreviewFailed(true);
-          onPreviewFailed();
-          ctx.updateHeight();
-        }}
-        onLoad={() => {
-          ctx.updateHeight();
-        }}
-      />
-    </button>
+      {preview}
+    </MediaCard>
   );
 }

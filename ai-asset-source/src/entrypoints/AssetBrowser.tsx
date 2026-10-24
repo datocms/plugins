@@ -1,8 +1,12 @@
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
-import { Button, Spinner, useCtx } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import StringInput from 'datocms-react-ui/StringInput';
 import {
-  type ChangeEvent,
-  type CSSProperties,
   type FormEvent,
   useCallback,
   useEffect,
@@ -12,6 +16,7 @@ import {
   useState,
 } from 'react';
 import Cell from '../components/Cell';
+import { ImageIcon } from '../icons';
 import type { ConfigParameters } from '../types';
 import {
   getDefaultModelForProvider,
@@ -62,24 +67,21 @@ const REQUEST_TIMEOUT_MESSAGE = `The request timed out after ${REQUEST_TIMEOUT_M
 const GENERATION_DURATION_WARNING = 'Images can take 5-10 minutes to generate.';
 const REQUEST_CANCELLED_MESSAGE =
   'Request cancelled. The provider may still complete processing and charge for it.';
-const GENERATING_LABEL = 'Generating…';
 const SENDING_REQUEST_LABEL = 'Sending request…';
 const WAITING_FOR_IMAGES_LABEL = 'Waiting for images…';
 const STILL_WAITING_LABEL =
   'Still waiting. Large requests can take several minutes.';
-const INLINE_SPINNER_STYLE: CSSProperties = {
-  marginLeft: 0,
-  transform: 'none',
-};
-
-const shapePreviewClassNames: Record<AspectRatio, string> = {
-  '1:1': s.shapePreviewSquare,
-  '2:3': s.shapePreviewPortrait,
-  '3:2': s.shapePreviewLandscape,
-};
+const aspectRatioRadioOptions = aspectRatioOptions.map(
+  ({ value, label, description }) => ({ value, label, hint: description }),
+);
+const variationRadioOptions = variationOptions.map(({ value, label }) => ({
+  value: String(value),
+  label,
+}));
 
 type UserFeedback = {
   kind: 'error' | 'notice';
+  title?: string;
   message: string;
 };
 
@@ -112,7 +114,6 @@ const AssetBrowser = () => {
   const mountedRef = useRef(true);
   const handoffLockRef = useRef(false);
   const sentIdsRef = useRef(new Set<string>());
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const activeControllerRef = useRef<AbortController | null>(null);
   const abortReasonRef = useRef<AbortReason | null>(null);
   const activeRequestLogContextRef = useRef<RequestLogContext | null>(null);
@@ -136,6 +137,7 @@ const AssetBrowser = () => {
   }, [parameters]);
 
   const [prompt, setPrompt] = useState('');
+  const [promptError, setPromptError] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [variationCount, setVariationCount] = useState<VariationCount>(1);
   const [browserState, dispatch] = useReducer(
@@ -182,35 +184,16 @@ const AssetBrowser = () => {
   const historyId = requests[0]?.id;
   useEffect(() => {
     if (historyId && browserState.evictedSelectedCount > 0) {
+      const count = browserState.evictedSelectedCount;
       setFeedbackMessage({
         kind: 'notice',
-        message: `${browserState.evictedSelectedCount} selected images left the recent history. Upload selected images before generating more.`,
+        title: 'Selected images removed',
+        message: `${count} selected ${count === 1 ? 'image' : 'images'} left the recent history. Upload selected images before generating more.`,
       });
     }
   }, [historyId, browserState.evictedSelectedCount]);
 
   const totalSelectedCount = selectedImages.length;
-
-  // Keep the modal height aligned with async content such as generated images.
-  useEffect(() => {
-    if (!rootRef.current) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      ctx.updateHeight();
-    });
-
-    observer.observe(rootRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [ctx]);
-
-  useEffect(() => {
-    ctx.updateHeight();
-  }, [ctx]);
 
   const activeRequestId = activeRequest?.requestId;
   useEffect(() => {
@@ -311,22 +294,10 @@ const AssetBrowser = () => {
       ),
     [normalizedRequest.model, normalizedRequest.prompt, providerApiKey],
   );
-  const canSubmit = !submitValidationError && !isSubmitting;
-
-  const handlePromptChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      setPrompt(event.target.value);
-      setFeedbackMessage(null);
-    },
-    [],
-  );
-
-  const handleAspectRatioChange = useCallback((nextValue: AspectRatio) => {
-    setAspectRatio(nextValue);
-  }, []);
-
-  const handleVariationChange = useCallback((nextValue: VariationCount) => {
-    setVariationCount(nextValue);
+  const handlePromptChange = useCallback((next: string | null) => {
+    setPrompt(next ?? '');
+    setPromptError(null);
+    setFeedbackMessage(null);
   }, []);
 
   const toggleImageSelected = useCallback((imageId: string) => {
@@ -353,6 +324,7 @@ const AssetBrowser = () => {
           dispatch({ type: 'rejected', id });
           setFeedbackMessage({
             kind: 'error',
+            title: 'Upload failed',
             message:
               'An image could not be sent to the Media Area. Check its upload queue before retrying.',
           });
@@ -360,14 +332,17 @@ const AssetBrowser = () => {
       );
       dispatch({ type: 'sent', ids: result.sent });
       if (result.failed.length) {
+        const count = result.failed.length;
         setFeedbackMessage({
           kind: 'error',
-          message: `${result.failed.length} images could not be sent to the Media Area. They remain selected.`,
+          title: 'Upload failed',
+          message: `${count} ${count === 1 ? 'image' : 'images'} could not be sent to the Media Area. They remain selected.`,
         });
       }
     } catch {
       setFeedbackMessage({
         kind: 'error',
+        title: 'Selection too large',
         message:
           'This selection exceeds the asset source memory limit. Select fewer images before uploading.',
       });
@@ -408,15 +383,17 @@ const AssetBrowser = () => {
           });
           setFeedbackMessage({
             kind: 'error',
+            title: 'Request timed out',
             message: REQUEST_TIMEOUT_MESSAGE,
           });
           setStatus('error');
           return;
         }
 
-        setFeedbackMessage({
-          kind: 'notice',
+        ctx.customToast({
+          type: 'warning',
           message: REQUEST_CANCELLED_MESSAGE,
+          dismissAfterTimeout: true,
         });
         setStatus('idle');
         return;
@@ -447,7 +424,7 @@ const AssetBrowser = () => {
       });
       setStatus('error');
     },
-    [normalizedRequest, provider],
+    [ctx, normalizedRequest, provider],
   );
 
   const createRequestTimeout = useCallback(
@@ -491,6 +468,17 @@ const AssetBrowser = () => {
     [],
   );
 
+  // A missing prompt is the error of the prompt field. A missing key or model
+  // is a problem of the plugin settings, so it shows in the callout.
+  const showValidationError = useCallback((message: string) => {
+    if (message === MISSING_PROMPT_MESSAGE) {
+      setPromptError(message);
+    } else {
+      setFeedbackMessage({ kind: 'error', message });
+    }
+    setStatus('error');
+  }, []);
+
   const handleSubmit = useCallback(
     async (event?: FormEvent) => {
       event?.preventDefault();
@@ -503,11 +491,7 @@ const AssetBrowser = () => {
       );
 
       if (validationError) {
-        setFeedbackMessage({
-          kind: 'error',
-          message: validationError,
-        });
-        setStatus('error');
+        showValidationError(validationError);
         return;
       }
 
@@ -576,6 +560,7 @@ const AssetBrowser = () => {
     [
       normalizedRequest,
       providerApiKey,
+      showValidationError,
       handleRequestFailure,
       createRequestTimeout,
       finishRequest,
@@ -584,212 +569,145 @@ const AssetBrowser = () => {
   );
 
   return (
-    <div className={`image-generator-theme ${s.page}`} ref={rootRef}>
+    <div className={s.page}>
       {!hasProviderApiKey && (
-        <div className={s.message} role="status">
+        <Callout className={s.callout} tone="warning">
           {MISSING_PROVIDER_KEY_MESSAGE}
-        </div>
+        </Callout>
       )}
 
       {hasProviderApiKey && !hasProviderModel && (
-        <div className={s.message} role="status">
+        <Callout className={s.callout} tone="warning">
           {MISSING_PROVIDER_MODEL_MESSAGE}
+        </Callout>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <FieldWrapper
+          label="Prompt"
+          hint="Start with a detailed description."
+          error={promptError ?? undefined}
+        >
+          <StringInput
+            value={prompt}
+            onChange={handlePromptChange}
+            placeholder="High-quality photo of a monkey astronaut"
+          />
+        </FieldWrapper>
+
+        <div className="form__field form__row">
+          <div className="form__row__cell">
+            <FieldWrapper label="Image ratio">
+              <RadioGroupInput
+                options={aspectRatioRadioOptions}
+                value={aspectRatio}
+                onChange={(next) => next && setAspectRatio(next)}
+              />
+            </FieldWrapper>
+          </div>
+          <div className="form__row__cell">
+            <FieldWrapper
+              label="Variations"
+              hint={
+                capabilities.supportsVariationCount
+                  ? undefined
+                  : 'This model generates one image per request.'
+              }
+            >
+              <RadioGroupInput
+                options={variationRadioOptions}
+                value={String(variationCount)}
+                onChange={(next) =>
+                  next && setVariationCount(Number(next) as VariationCount)
+                }
+                disabled={!capabilities.supportsVariationCount}
+              />
+            </FieldWrapper>
+          </div>
+        </div>
+
+        <Button
+          submit
+          tone="primary"
+          label="Generate"
+          expand={false}
+          busy={isSubmitting}
+          disabled={
+            submitValidationError
+              ? { reason: submitValidationError }
+              : undefined
+          }
+        />
+      </form>
+
+      {activeRequest && (
+        <BlankSlate
+          placement="section"
+          loading
+          title={getActiveRequestLabel(activeRequest.elapsedSeconds)}
+          description={GENERATION_DURATION_WARNING}
+          caption={`Elapsed ${formatDuration(activeRequest.elapsedSeconds)}`}
+          actions={
+            <Button tone="ghost" label="Cancel" onClick={handleCancelRequest} />
+          }
+        />
+      )}
+
+      {feedbackMessage && (
+        <Callout
+          className={s.callout}
+          tone={feedbackMessage.kind === 'error' ? 'danger' : 'warning'}
+          title={feedbackMessage.title}
+        >
+          {feedbackMessage.message}
+        </Callout>
+      )}
+
+      {!hasRequests && !isSubmitting && (
+        <BlankSlate
+          placement="section"
+          icon={<ImageIcon />}
+          title="No images yet"
+          description="Describe what you'd like to see, then click Generate."
+        />
+      )}
+
+      {totalSelectedCount > 0 && (
+        <div className={s.selection}>
+          <span>
+            {totalSelectedCount} {totalSelectedCount === 1 ? 'image' : 'images'}{' '}
+            selected
+          </span>
+          <Button
+            tone="primary"
+            label="Upload selected"
+            onClick={handleUploadSelected}
+          />
         </div>
       )}
 
-      <div className={s.panel}>
-        <form className={s.generatorForm} onSubmit={handleSubmit}>
-          <div className={s.promptRow}>
-            <input
-              id="prompt"
-              name="prompt"
-              type="text"
-              aria-label="Prompt"
-              className={s.promptInput}
-              placeholder="Start with a detailed description, like &quot;High-quality photo of a monkey astronaut...&quot;"
-              value={prompt}
-              onChange={handlePromptChange}
+      {requests.map((request) => (
+        <div key={request.id} className={s.grid}>
+          {request.images.map((image) => (
+            <Cell
+              key={image.id}
+              image={image}
+              selected={selectedImageIdSet.has(image.id)}
+              sent={browserState.sentIds.has(image.id)}
+              hasSelection={totalSelectedCount > 0}
+              onPreviewFailed={() =>
+                dispatch({ type: 'unavailable', id: image.id })
+              }
+              onToggleSelected={() => toggleImageSelected(image.id)}
             />
-
-            <Button
-              buttonType="primary"
-              type="submit"
-              className={s.generateButton}
-              disabled={!canSubmit}
-            >
-              {isSubmitting ? (
-                <span className={s.buttonContent}>
-                  <Spinner size={16} style={INLINE_SPINNER_STYLE} />
-                  <span>{GENERATING_LABEL}</span>
-                </span>
-              ) : (
-                'Generate'
-              )}
-            </Button>
-          </div>
-
-          <div className={s.controlsRow}>
-            <div className={s.inlineControl}>
-              <div className={s.groupLabel}>Image ratio</div>
-              <div className={`${s.choiceRow} ${s.choiceRowNoWrap}`}>
-                {aspectRatioOptions.map((option) => {
-                  const checked = option.value === aspectRatio;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-label={`${option.label} (${option.description})`}
-                      title={`${option.label} (${option.description})`}
-                      className={getChoiceClassName(
-                        `${s.compactChoice} ${s.iconChoice}`,
-                        s.choiceButtonActive,
-                        checked,
-                      )}
-                      onClick={() => handleAspectRatioChange(option.value)}
-                    >
-                      <span
-                        className={`${s.shapePreview} ${shapePreviewClassNames[option.value]}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className={s.inlineControl}>
-              <div className={s.groupLabel}>Variations</div>
-              <div className={`${s.choiceRow} ${s.choiceRowNoWrap}`}>
-                {(capabilities.supportsVariationCount
-                  ? variationOptions
-                  : variationOptions.filter((option) => option.value === 1)
-                ).map((option) => {
-                  const checked = option.value === variationCount;
-                  const locked = !capabilities.supportsVariationCount;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={[
-                        getChoiceClassName(
-                          `${s.compactChoice} ${s.squareChoice}`,
-                          s.choiceButtonActive,
-                          checked,
-                        ),
-                        locked ? s.choiceButtonLocked : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      disabled={locked}
-                      onClick={() => handleVariationChange(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </form>
-
-        {activeRequest && (
-          <div className={s.requestStatus} role="status" aria-live="polite">
-            <div className={s.requestStatusBody}>
-              <div className={s.requestStatusText}>
-                <span className={s.requestStatusTitle}>
-                  {getActiveRequestLabel(activeRequest.elapsedSeconds)}
-                </span>
-                <span className={s.requestStatusWarning}>
-                  {GENERATION_DURATION_WARNING}
-                </span>
-                <span className={s.requestStatusMeta}>
-                  <Spinner size={13} style={INLINE_SPINNER_STYLE} />
-                  <span>
-                    Elapsed {formatDuration(activeRequest.elapsedSeconds)}
-                  </span>
-                </span>
-              </div>
-              <button
-                type="button"
-                className={s.cancelButton}
-                onClick={handleCancelRequest}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {feedbackMessage && (
-          <div
-            className={
-              feedbackMessage.kind === 'error'
-                ? s.errorMessage
-                : s.noticeMessage
-            }
-            role={feedbackMessage.kind === 'error' ? 'alert' : 'status'}
-          >
-            {feedbackMessage.message}
-          </div>
-        )}
-      </div>
-
-      <div className={s.results}>
-        {!hasRequests && !isSubmitting ? (
-          <div className={s.emptyState}>
-            <span className={s.emptyStateTitle}>No images yet</span>
-            <span className={s.emptyStateSubtitle}>
-              Describe what you&apos;d like to see, then click Generate.
-            </span>
-          </div>
-        ) : hasRequests ? (
-          requests.map((request, index) => (
-            <section className={s.resultGroup} key={request.id}>
-              {index === 0 && totalSelectedCount > 0 && (
-                <div className={s.resultHeader}>
-                  <div className={s.resultActions}>
-                    <span className={s.selectionSummary}>
-                      {totalSelectedCount} selected
-                    </span>
-                    <Button buttonType="primary" onClick={handleUploadSelected}>
-                      Upload selected
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <div className={s.resultGrid}>
-                {request.images.map((image) => (
-                  <Cell
-                    key={image.id}
-                    image={image}
-                    selected={selectedImageIdSet.has(image.id)}
-                    sent={browserState.sentIds.has(image.id)}
-                    onPreviewFailed={() =>
-                      dispatch({ type: 'unavailable', id: image.id })
-                    }
-                    onToggleSelected={() => toggleImageSelected(image.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
-        ) : null}
-      </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 };
 
 export default AssetBrowser;
-
-function getChoiceClassName(
-  baseClassName: string,
-  activeClassName: string,
-  active: boolean,
-): string {
-  return active ? `${baseClassName} ${activeClassName}` : baseClassName;
-}
 
 function getSubmitValidationError(
   providerApiKey: string,

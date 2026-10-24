@@ -1,6 +1,5 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import './styles/theme.css';
 import AssetBrowser from './entrypoints/AssetBrowser';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import { renderWithCanvas } from './utils/render';

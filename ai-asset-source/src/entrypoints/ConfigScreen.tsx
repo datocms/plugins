@@ -1,13 +1,22 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Button, SelectField, TextField } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NumberInput from 'datocms-react-ui/NumberInput';
+import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import {
   type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { GoogleIcon, OpenAiIcon } from '../icons';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
 import {
   normalizeConfigParameters,
@@ -29,11 +38,21 @@ import type {
   ProviderId,
   SelectOption,
 } from '../utils/imageService/types';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
+
+const providerDetails: Record<ProviderId, { hint: string; icon: ReactNode }> = {
+  openai: { hint: 'Needs an OpenAI API key.', icon: <OpenAiIcon /> },
+  google: { hint: 'Needs a Google AI Studio API key.', icon: <GoogleIcon /> },
+};
+
+const providerRadioOptions = providerOptions.map(({ value, label }) => ({
+  value,
+  label,
+  ...providerDetails[value],
+}));
 
 type ModelOptionsState = {
   status: 'idle' | 'loading' | 'loaded' | 'error';
@@ -69,6 +88,7 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
   const activeProviderValues = values.providers[activeProvider];
   const activeProviderApiKey = activeProviderValues.apiKey.trim();
@@ -85,6 +105,11 @@ export default function ConfigScreen({ ctx }: Props) {
       withSelectedModelOption(modelOptionsState.options, activeProviderModel),
     [activeProviderModel, modelOptionsState.options],
   );
+  const model = getModelStatus(
+    activeProviderApiKey,
+    modelOptionsState,
+    activeProviderModel,
+  );
   const hasAnyKey = Boolean(
     values.providers.openai.apiKey.trim() ||
       values.providers.google.apiKey.trim(),
@@ -92,8 +117,9 @@ export default function ConfigScreen({ ctx }: Props) {
   const isDirty =
     serializeConfigParameters(values) !==
     serializeConfigParameters(savedValues);
-  const canSave =
-    !saving && isDirty && hasAnyKey && activeProviderHasSelectedModel;
+  const saveReason = saving
+    ? null
+    : getSaveReason(hasAnyKey, activeProviderHasSelectedModel, isDirty);
 
   useEffect(() => {
     if (!activeProviderApiKey) {
@@ -152,15 +178,10 @@ export default function ConfigScreen({ ctx }: Props) {
     };
   }, [activeProvider, activeProviderApiKey]);
 
-  const handleProviderChange = useCallback((selectedOption: unknown) => {
-    const nextProvider = getSelectOptionValue<ProviderId>(selectedOption);
-
-    if (!nextProvider) {
-      return;
-    }
-
+  const handleProviderChange = useCallback((nextProvider: ProviderId) => {
     setActiveProvider(nextProvider);
     setErrorMessage(null);
+    setApiKeyError(null);
     setValues((current) => ({
       ...current,
       defaultProvider: nextProvider,
@@ -170,6 +191,7 @@ export default function ConfigScreen({ ctx }: Props) {
   const handleApiKeyChange = useCallback(
     (nextValue: string) => {
       setErrorMessage(null);
+      setApiKeyError(null);
       setValues((current) =>
         updateProviderSettings(current, activeProvider, {
           apiKey: nextValue.trim(),
@@ -180,13 +202,7 @@ export default function ConfigScreen({ ctx }: Props) {
   );
 
   const handleModelChange = useCallback(
-    (selectedOption: unknown) => {
-      const nextModel = getSelectOptionValue<string>(selectedOption);
-
-      if (!nextModel) {
-        return;
-      }
-
+    (nextModel: string) => {
       setErrorMessage(null);
       setValues((current) =>
         updateProviderSettings(current, activeProvider, {
@@ -197,13 +213,7 @@ export default function ConfigScreen({ ctx }: Props) {
     [activeProvider],
   );
 
-  const handleQualityChange = useCallback((selectedOption: unknown) => {
-    const nextQuality = getSelectOptionValue<ImageQuality>(selectedOption);
-
-    if (!nextQuality) {
-      return;
-    }
-
+  const handleQualityChange = useCallback((nextQuality: ImageQuality) => {
     setValues((current) =>
       updateProviderSettings(current, 'openai', {
         defaultQuality: nextQuality,
@@ -211,25 +221,20 @@ export default function ConfigScreen({ ctx }: Props) {
     );
   }, []);
 
-  const handleOutputFormatChange = useCallback((selectedOption: unknown) => {
-    const nextFormat = getSelectOptionValue<ImageOutputFormat>(selectedOption);
+  const handleOutputFormatChange = useCallback(
+    (nextFormat: ImageOutputFormat) => {
+      setValues((current) =>
+        updateProviderSettings(current, 'openai', {
+          defaultOutputFormat: nextFormat,
+        }),
+      );
+    },
+    [],
+  );
 
-    if (!nextFormat) {
-      return;
-    }
-
+  const handleCompressionChange = useCallback((defaultCompression: number) => {
     setValues((current) =>
-      updateProviderSettings(current, 'openai', {
-        defaultOutputFormat: nextFormat,
-      }),
-    );
-  }, []);
-
-  const handleCompressionChange = useCallback((nextValue: string) => {
-    setValues((current) =>
-      updateProviderSettings(current, 'openai', {
-        defaultCompression: normalizeCompression(nextValue),
-      }),
+      updateProviderSettings(current, 'openai', { defaultCompression }),
     );
   }, []);
 
@@ -242,12 +247,12 @@ export default function ConfigScreen({ ctx }: Props) {
         nextValues.providers[nextValues.defaultProvider];
 
       if (!hasAnyKey) {
-        setErrorMessage('Add at least one provider key before saving.');
+        setApiKeyError('Add at least one provider key before saving.');
         return;
       }
 
       if (!selectedProviderValues.apiKey) {
-        setErrorMessage(
+        setApiKeyError(
           'Add an API key for the selected provider before saving.',
         );
         return;
@@ -277,140 +282,111 @@ export default function ConfigScreen({ ctx }: Props) {
   );
 
   return (
-    <div className={`image-generator-theme ${s.settings}`}>
-      <form className={s.settingsForm} onSubmit={handleSubmit}>
-        <div className={s.settingsSection}>
-          <div className={s.settingsGrid}>
-            <div className={s.fieldBlock} style={{ marginTop: 0 }}>
-              <SelectField
-                id="provider"
-                name="provider"
-                label="Provider"
-                value={findSelectedOption(providerOptions, activeProvider)}
-                onChange={handleProviderChange}
-                selectInputProps={{
-                  options: providerOptions,
-                  getOptionLabel: (option) => option.label,
-                  getOptionValue: (option) => option.value,
-                }}
+    <Page>
+      <Page.Content>
+        <form onSubmit={handleSubmit}>
+          <Page.Group
+            title="Image provider"
+            footer={
+              <Button
+                submit
+                tone="primary"
+                label="Save"
+                expand={false}
+                busy={saving}
+                disabled={saveReason ? { reason: saveReason } : undefined}
               />
-            </div>
+            }
+          >
+            <FieldWrapper label="Provider">
+              <RadioGroupInput
+                value={activeProvider}
+                onChange={(next) => next && handleProviderChange(next)}
+                options={providerRadioOptions}
+              />
+            </FieldWrapper>
 
-            <div className={s.fieldBlock}>
-              <TextField
-                id={`${activeProvider}ApiKey`}
-                name={`${activeProvider}ApiKey`}
-                label="API key"
-                placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
+            <FieldWrapper
+              label="API key"
+              required
+              error={apiKeyError ?? undefined}
+            >
+              <PasswordInput
                 value={activeProviderValues.apiKey}
-                onChange={handleApiKeyChange}
-                textInputProps={{ type: 'password', autoComplete: 'off' }}
+                onChange={(next) => handleApiKeyChange(next ?? '')}
+                placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
+                autoComplete="off"
+                spellCheck={false}
               />
-            </div>
+            </FieldWrapper>
 
-            <div className={s.fieldBlock}>
-              <SelectField
-                id={`${activeProvider}DefaultModel`}
-                name={`${activeProvider}DefaultModel`}
-                label="Model"
-                hint={getModelHint(
-                  activeProviderApiKey,
-                  modelOptionsState,
-                  activeProviderModel,
-                )}
-                value={findSelectedOption(modelOptions, activeProviderModel)}
-                onChange={handleModelChange}
-                selectInputProps={{
-                  options: modelOptions,
-                  getOptionLabel: (option) => option.label,
-                  getOptionValue: (option) => option.value,
-                  isDisabled:
-                    !activeProviderApiKey ||
-                    modelOptionsState.status === 'loading' ||
-                    modelOptions.length === 0,
-                  isOptionDisabled: (option) => Boolean(option.unavailable),
-                }}
+            <FieldWrapper
+              label="Model"
+              required
+              hint={model.hint}
+              error={model.error}
+            >
+              <SelectInput
+                value={activeProviderModel || null}
+                onChange={(next) => next && handleModelChange(next)}
+                options={modelOptions}
+                placeholder="Pick a model"
+                clearable={false}
+                loading={modelOptionsState.status === 'loading'}
+                disabled={
+                  !activeProviderApiKey ||
+                  modelOptionsState.status === 'loading' ||
+                  modelOptions.length === 0
+                }
+                isOptionDisabled={(option) => Boolean(option.unavailable)}
               />
-            </div>
+            </FieldWrapper>
 
             {showOutputControls && (
-              <>
-                <div className={s.fieldBlock}>
-                  <SelectField
-                    id="openaiDefaultQuality"
-                    name="openaiDefaultQuality"
-                    label="Quality"
-                    value={findSelectedOption(
-                      imageQualityOptions,
-                      values.providers.openai.defaultQuality,
-                    )}
-                    onChange={handleQualityChange}
-                    selectInputProps={{
-                      options: imageQualityOptions,
-                      getOptionLabel: (option) => option.label,
-                      getOptionValue: (option) => option.value,
-                    }}
-                  />
-                </div>
-
-                <div className={s.fieldBlock}>
-                  <SelectField
-                    id="openaiDefaultOutputFormat"
-                    name="openaiDefaultOutputFormat"
-                    label="Output format"
-                    value={findSelectedOption(
-                      imageOutputFormatOptions,
-                      values.providers.openai.defaultOutputFormat,
-                    )}
-                    onChange={handleOutputFormatChange}
-                    selectInputProps={{
-                      options: imageOutputFormatOptions,
-                      getOptionLabel: (option) => option.label,
-                      getOptionValue: (option) => option.value,
-                    }}
-                  />
-                </div>
-
-                {showCompressionControl && (
-                  <div className={s.fieldBlock}>
-                    <TextField
-                      id="openaiDefaultCompression"
-                      name="openaiDefaultCompression"
-                      label="Compression"
-                      value={String(values.providers.openai.defaultCompression)}
-                      onChange={handleCompressionChange}
-                      textInputProps={{
-                        min: 0,
-                        max: 100,
-                        step: 1,
-                        type: 'number',
-                      }}
+              <div className="form__field form__row">
+                <div className="form__row__cell">
+                  <FieldWrapper label="Quality">
+                    <RadioGroupInput
+                      value={values.providers.openai.defaultQuality}
+                      onChange={(next) => next && handleQualityChange(next)}
+                      options={imageQualityOptions}
                     />
-                  </div>
-                )}
-              </>
+                  </FieldWrapper>
+                </div>
+                <div className="form__row__cell">
+                  <FieldWrapper label="Output format">
+                    <RadioGroupInput
+                      value={values.providers.openai.defaultOutputFormat}
+                      onChange={(next) =>
+                        next && handleOutputFormatChange(next)
+                      }
+                      options={imageOutputFormatOptions}
+                    />
+                  </FieldWrapper>
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {errorMessage && (
-          <div className={s.errorMessage} role="alert">
-            {errorMessage}
-          </div>
-        )}
+            {showCompressionControl && (
+              <FieldWrapper label="Compression" hint="From 0 to 100.">
+                <NumberInput
+                  value={values.providers.openai.defaultCompression}
+                  onChange={(next) => handleCompressionChange(next ?? 100)}
+                  onBlur={(next) =>
+                    handleCompressionChange(normalizeCompression(next))
+                  }
+                  placeholder="100"
+                  inputMode="numeric"
+                  autoComplete="off"
+                />
+              </FieldWrapper>
+            )}
 
-        <div className={s.actions}>
-          <Button
-            buttonType="primary"
-            fullWidth
-            type="submit"
-            disabled={!canSave}
-          >
-            {saving ? 'Saving…' : 'Save settings'}
-          </Button>
-        </div>
-      </form>
-    </div>
+            {errorMessage && <Callout tone="danger">{errorMessage}</Callout>}
+          </Page.Group>
+        </form>
+      </Page.Content>
+    </Page>
   );
 }
 
@@ -431,25 +407,25 @@ function withSelectedModelOption(
   ];
 }
 
-function getModelHint(
+function getModelStatus(
   apiKey: string,
   state: ModelOptionsState,
   selectedModel: string,
-): string | undefined {
+): { hint?: string; error?: string } {
   if (!apiKey) {
-    return 'Add an API key to load available models.';
+    return { hint: 'Add an API key to load available models.' };
   }
 
   if (state.status === 'loading') {
-    return 'Loading available models…';
+    return { hint: 'Loading available models…' };
   }
 
   if (state.status === 'error') {
-    return state.errorMessage || 'Unable to load models.';
+    return { error: state.errorMessage || 'Unable to load models.' };
   }
 
   if (state.status === 'loaded' && state.options.length === 0) {
-    return 'No compatible image models were returned for this key.';
+    return { error: 'No compatible image models were returned for this key.' };
   }
 
   if (
@@ -458,37 +434,38 @@ function getModelHint(
       (option) => option.value === selectedModel && option.unavailable,
     )
   ) {
-    return 'This saved model was not returned by the provider.';
+    return { error: 'This saved model was not returned by the provider.' };
   }
 
-  return undefined;
+  return {};
 }
 
-function findSelectedOption<T extends string>(
-  options: Array<SelectOption<T>>,
-  value: T | string,
-): SelectOption<T> | null {
-  return options.find((option) => option.value === value) || null;
-}
-
-function getSelectOptionValue<T extends string>(option: unknown): T | null {
-  if (!option || typeof option !== 'object') {
-    return null;
+function getSaveReason(
+  hasAnyKey: boolean,
+  hasSelectedModel: boolean,
+  isDirty: boolean,
+): string | null {
+  if (!hasAnyKey) {
+    return 'Add at least one provider key before saving.';
   }
 
-  const value = (option as { value?: unknown }).value;
+  if (!hasSelectedModel) {
+    return 'Select a model before saving.';
+  }
 
-  return typeof value === 'string' ? (value as T) : null;
+  if (!isDirty) {
+    return 'There are no changes to save.';
+  }
+
+  return null;
 }
 
-function normalizeCompression(value: string): number {
-  const parsedValue = Number.parseInt(value, 10);
-
-  if (!Number.isFinite(parsedValue)) {
+function normalizeCompression(value: number | null): number {
+  if (value === null || !Number.isFinite(value)) {
     return 100;
   }
 
-  return Math.min(100, Math.max(0, parsedValue));
+  return Math.min(100, Math.max(0, Math.trunc(value)));
 }
 
 function isAbortError(error: unknown): boolean {

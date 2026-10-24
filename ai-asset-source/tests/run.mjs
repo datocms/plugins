@@ -23,9 +23,23 @@ try {
       {
         name: 'mock-datocms-frame',
         setup(builder) {
-          builder.onResolve({ filter: /^datocms-react-ui$/ }, () => ({
-            path: path.join(root, 'tests', 'uiMocks.tsx'),
-          }));
+          const mocks = JSON.stringify(path.join(root, 'tests', 'uiMocks.tsx'));
+          builder.onResolve(
+            { filter: /^datocms-react-ui(\/.*)?$/ },
+            (args) => ({
+              path: args.path.split('/').pop(),
+              namespace: 'datocms-ui-mock',
+            }),
+          );
+          builder.onLoad(
+            { filter: /.*/, namespace: 'datocms-ui-mock' },
+            (args) => ({
+              contents: args.path.endsWith('.css')
+                ? ''
+                : `export * from ${mocks}; export { ${args.path} as default } from ${mocks};`,
+              resolveDir: path.join(root, 'tests'),
+            }),
+          );
         },
       },
     ],

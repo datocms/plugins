@@ -2,7 +2,7 @@ import type {
   RenderAssetSourceCtx,
   RenderConfigScreenCtx,
 } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
 import type React from 'react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
