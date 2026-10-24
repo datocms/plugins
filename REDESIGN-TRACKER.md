@@ -42,7 +42,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 28 | unsplash | 633 | ^19.2.4 | Pending | |
 | 29 | zoned-datetime-picker | 565 | ^19.2.7 | Pending | |
 | 30 | star-rating-editor | 511 | ^19.2.4 | Pending | |
-| 31 | tag-editor | 510 | ^19.2.4 | Done | Pilot. Field editor is a creatable multiple SelectInput (paste splits into tags). Config is a Page.Group with a TableList of rules and regex validation. react-tag-input, final-form, react-dnd and Font Awesome removed. |
+| 31 | tag-editor | 510 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. 1 minor issue open. |
 | 32 | delete-asset-from-other-environments | 467 | ^18.3.1 | Pending | |
 | 33 | character-counter | 448 | ^19.2.4 | Pending | |
 | 34 | yandex-translate | 424 | ^19.2.4 | Pending | |

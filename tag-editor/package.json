@@ -24,23 +24,13 @@
     "tags"
   ],
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.2.0",
-    "@fortawesome/free-solid-svg-icons": "^7.2.0",
-    "@fortawesome/react-fontawesome": "^3.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/react-tag-input": "6.6.6",
-    "datocms-plugin-sdk": "^2.3.0",
-    "datocms-react-ui": "^2.2.7",
-    "final-form-arrays": "^4.0.0",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.1",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
-    "react-dnd": "^16.0.1",
-    "react-dnd-html5-backend": "^16.0.1",
-    "react-dom": "^19.2.4",
-    "react-final-form": "^7.0.0",
-    "react-final-form-arrays": "^4.0.0",
-    "react-tag-input": "6.10.6"
+    "react-dom": "^19.2.4"
   },
   "scripts": {
     "build": "tsc -b && vite build",
@@ -59,9 +49,7 @@
   "type": "module",
   "overrides": {
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     }
   },
   "allowScripts": {

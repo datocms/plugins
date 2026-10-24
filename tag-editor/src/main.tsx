@@ -1,9 +1,10 @@
 import { connect } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
+import 'datocms-react-ui/styles.css';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import { type Config, isValidParams, normalizeParams } from './types';
 import { render } from './utils/render';
-import 'datocms-react-ui/styles.css';
-import ConfigScreen from './entrypoints/ConfigScreen';
 
 connect({
   async onBoot(ctx) {
@@ -40,14 +41,14 @@ connect({
     );
 
     if (someUpgraded) {
-      ctx.notice('Plugin upgraded successfully!');
+      ctx.notice('Plugin upgraded.');
     }
   },
   manualFieldExtensions() {
     return [
       {
         id: 'tagEditor',
-        name: 'Tag Editor',
+        name: 'Tag editor',
         type: 'editor',
         fieldTypes: ['json', 'string'],
       },
@@ -73,9 +74,17 @@ connect({
     };
   },
   renderFieldExtension(_id, ctx) {
-    render(<FieldExtension ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx}>
+        <FieldExtension ctx={ctx} />
+      </Canvas>,
+    );
   },
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx}>
+        <ConfigScreen ctx={ctx} />
+      </Canvas>,
+    );
   },
 });
