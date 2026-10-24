@@ -2,14 +2,16 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
+import { dropFocus } from '../test/dropFocus';
+import { makeCtx, renderWithCanvas } from '../test/renderWithCanvas';
 import type { bulkPublishTranslatedRecords } from '../utils/translation/BulkPublishUtils';
 import type {
   loadRecordBatches,
@@ -152,6 +154,7 @@ function renderModal(
     notice: vi.fn().mockResolvedValue(undefined),
     alert: vi.fn().mockResolvedValue(undefined),
   };
+  const modalCtx = makeCtx<RenderModalCtx>(ctx);
   const parameters = {
     totalRecords: itemIds.length,
     fromLocale: 'en',
@@ -162,13 +165,53 @@ function renderModal(
     selectedFieldsByModel: { article: ['title'] },
   };
   const modal = (
-    <TranslationProgressModal
-      ctx={ctx as unknown as RenderModalCtx}
-      parameters={parameters}
-    />
+    <TranslationProgressModal ctx={modalCtx} parameters={parameters} />
   );
-  const view = render(strictMode ? <StrictMode>{modal}</StrictMode> : modal);
-  return { ctx, parameters, ...view };
+  const view = renderWithCanvas(
+    strictMode ? <StrictMode>{modal}</StrictMode> : modal,
+    modalCtx,
+  );
+  return { ctx, modalCtx, parameters, ...view };
+}
+
+function closeButton() {
+  return screen.getByRole('button', { name: 'Close' });
+}
+
+/**
+ * Waits until the run is over and Close works. A button disabled with a
+ * reason sits in the kit's tooltip trigger, so the element changes when the
+ * reason goes: query it again each time.
+ */
+async function waitForClose() {
+  return waitFor(() => {
+    const close = closeButton();
+    expect(close).not.toHaveAttribute('aria-disabled');
+    return close;
+  });
+}
+
+/** Close is disabled with a reason (it keeps the focus, for the tooltip). */
+function expectCloseBlocked() {
+  expect(closeButton()).toHaveAttribute('aria-disabled', 'true');
+}
+
+/** The cancellation signal that the modal gave the record loader. */
+function loadingAbortSignal() {
+  return mocks.loadRecordBatches.mock.calls[0]?.[2]?.abortSignal;
+}
+
+/** The value of an InfoList row, found by its title. */
+function rowValue(title: string) {
+  const term = screen
+    .getAllByRole('term')
+    .find((element) => element.textContent === title);
+  return term?.nextElementSibling?.textContent;
+}
+
+/** The Translated and Failed counts of the InfoList. */
+function counts() {
+  return { translated: rowValue('Translated'), failed: rowValue('Failed') };
 }
 
 describe('TranslationProgressModal', () => {
@@ -229,14 +272,17 @@ describe('TranslationProgressModal', () => {
   it('starts a single uncancelled job inside the host StrictMode wrapper', async () => {
     renderModal(['r1'], { strictMode: true });
 
-    await screen.findByRole('button', { name: 'Close' });
+    await waitForClose();
 
     expect(mocks.loadRecordBatches).toHaveBeenCalledTimes(1);
     expect(mocks.translateAndUpdateRecords).toHaveBeenCalledTimes(1);
     const options = mocks.loadRecordBatches.mock.calls[0][2];
     expect(options?.abortSignal?.aborted).toBe(false);
     expect(options?.checkCancellation?.()).toBe(false);
-    expect(screen.getByText('1 successful, 0 failed')).toBeTruthy();
+    expect(counts()).toEqual({ translated: '1', failed: '0' });
+    expect(screen.getByText('Translation finished')).toBeTruthy();
+    expect(rowValue('From')).toBe('English [en]');
+    expect(rowValue('To')).toBe('Italian [it]');
   });
 
   it('continues the running job when the host supplies new context and parameter objects', async () => {
@@ -260,14 +306,15 @@ describe('TranslationProgressModal', () => {
         reportCompleted(records, options);
       },
     );
-    const { ctx, parameters, rerender } = renderModal(['r1']);
+    const { modalCtx, parameters, rerender } = renderModal(['r1']);
     await waitFor(() => {
       expect(translationOptions?.abortSignal).toBeInstanceOf(AbortSignal);
     });
 
+    const nextCtx = { ...modalCtx };
     rerender(
       <TranslationProgressModal
-        ctx={{ ...ctx } as unknown as RenderModalCtx}
+        ctx={nextCtx}
         parameters={{
           ...parameters,
           itemIds: [...parameters.itemIds],
@@ -275,18 +322,17 @@ describe('TranslationProgressModal', () => {
           pluginParams: { ...parameters.pluginParams },
         }}
       />,
+      nextCtx,
     );
 
     expect(translationOptions?.abortSignal?.aborted).toBe(false);
     expect(translationOptions?.checkCancellation?.()).toBe(false);
+    expectCloseBlocked();
     await act(async () => translation.resolve());
-    expect(await screen.findByRole('button', { name: 'Close' })).toHaveProperty(
-      'disabled',
-      false,
-    );
+    await waitForClose();
     expect(mocks.loadRecordBatches).toHaveBeenCalledTimes(1);
     expect(mocks.translateAndUpdateRecords).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('1 successful, 0 failed')).toBeTruthy();
+    expect(counts()).toEqual({ translated: '1', failed: '0' });
   });
 
   it('translates the first batch before fetching the next and reports loading progress', async () => {
@@ -323,30 +369,35 @@ describe('TranslationProgressModal', () => {
 
     renderModal();
 
-    expect(await screen.findByText('Records loaded: 1 of 2')).toBeTruthy();
+    expect(
+      await screen.findByText('0 of 2 records processed (0%) · 1 loaded'),
+    ).toBeTruthy();
     await waitFor(() => {
       expect(events).toEqual(['fetch first', 'translate r1']);
     });
+    expect(screen.getByText('Translating 2 records…')).toBeTruthy();
+    // The bar has the name of the status line next to it.
     expect(
-      screen.getByRole('button', { name: 'Please wait...' }),
-    ).toHaveProperty('disabled', true);
+      screen.getByRole('progressbar', { name: 'Translating 2 records…' }),
+    ).toBeTruthy();
+    expectCloseBlocked();
 
     await act(async () => translation.resolve());
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
-        'disabled',
-        false,
-      );
-    });
+    await waitForClose();
     expect(events).toEqual([
       'fetch first',
       'translate r1',
       'fetch second',
       'translate r2',
     ]);
-    expect(screen.getByText(/Progress: 2 of 2 records processed/)).toBeTruthy();
-    expect(screen.getByText('2 successful, 0 failed')).toBeTruthy();
+    expect(
+      screen.getByText('2 of 2 records processed (100%) · 2 loaded'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('progressbar', { name: 'Translation finished' }),
+    ).toHaveAttribute('aria-valuenow', '100');
+    expect(counts()).toEqual({ translated: '2', failed: '0' });
   });
 
   it('keeps Close disabled until loading and translation finish, even when every record reports completion', async () => {
@@ -356,22 +407,113 @@ describe('TranslationProgressModal', () => {
       await loading.promise;
     });
 
-    renderModal(['r1']);
+    const { ctx } = renderModal(['r1']);
 
-    expect(await screen.findByText('1 successful, 0 failed')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Please wait...' }),
-    ).toHaveProperty('disabled', true);
-    expect(screen.queryByRole('button', { name: /Publish all/ })).toBeNull();
+    await waitFor(() => {
+      expect(counts()).toEqual({ translated: '1', failed: '0' });
+    });
+    expectCloseBlocked();
+    act(() => closeButton().focus());
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'The translation is still running. Wait for it to finish, or cancel it.',
+    );
+    fireEvent.click(closeButton());
+    expect(ctx.resolve).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Publish/ })).toBeNull();
 
     await act(async () => loading.resolve());
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
-        'disabled',
-        false,
-      );
+    await waitForClose();
+  });
+
+  describe('the focus when the run ends', () => {
+    /** A run whose loading goes on until the test ends it. */
+    function renderOpenRun() {
+      const loading = deferred();
+      mocks.loadRecordBatches.mockImplementation(async function* () {
+        yield batch([record('r1')]);
+        await loading.promise;
+      });
+      const view = renderModal(['r1']);
+      return { ...view, endRun: () => act(async () => loading.resolve()) };
+    }
+
+    // jsdom drops `hasFocus()` with the focused element; a browser keeps
+    // it while the focus is in the frame.
+    beforeEach(() => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     });
+
+    it('gives a focus on Close back to the enabled Close', async () => {
+      const { endRun } = renderOpenRun();
+      await screen.findByRole('button', { name: 'Cancel' });
+      act(() => closeButton().focus());
+
+      await endRun();
+
+      const close = await waitForClose();
+      expect(document.activeElement).toBe(close);
+    });
+
+    it('moves a focus on Cancel, which goes, to Close', async () => {
+      const { endRun } = renderOpenRun();
+      const cancel = await screen.findByRole('button', { name: 'Cancel' });
+      act(() => cancel.focus());
+
+      await endRun();
+
+      const close = await waitForClose();
+      expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+      expect(document.activeElement).toBe(close);
+    });
+
+    it('leaves the focus where it is when the frame does not have it', async () => {
+      vi.mocked(document.hasFocus).mockReturnValue(false);
+      const { endRun } = renderOpenRun();
+      await screen.findByRole('button', { name: 'Cancel' });
+
+      await endRun();
+
+      await waitForClose();
+      expect(document.activeElement).toBe(document.body);
+    });
+  });
+
+  it('closes on Escape once the run ends, and only says why while it runs', async () => {
+    const loading = deferred();
+    mocks.loadRecordBatches.mockImplementation(async function* () {
+      yield batch([record('r1')]);
+      await loading.promise;
+    });
+    const { ctx, modalCtx } = renderModal(['r1']);
+    await screen.findByRole('button', { name: 'Cancel' });
+    const pressEscape = () =>
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+
+    // Escape never stops the run: it shows why Close is disabled.
+    pressEscape();
+    expect(ctx.resolve).not.toHaveBeenCalled();
+    expect(modalCtx.customToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'warning',
+        message:
+          'The translation is still running. Wait for it to finish, or cancel it.',
+      }),
+    );
+    expect(loadingAbortSignal()?.aborted).toBe(false);
+
+    await act(async () => loading.resolve());
+    await waitForClose();
+
+    pressEscape();
+    expect(ctx.resolve).toHaveBeenCalledTimes(1);
+    expect(ctx.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: true,
+        canceled: false,
+        summary: expect.objectContaining({ successfulCount: 1 }),
+      }),
+    );
   });
 
   it('assigns stable indexes by selected record ID across unordered batches', async () => {
@@ -381,7 +523,7 @@ describe('TranslationProgressModal', () => {
     });
     const { ctx } = renderModal(['r1', 'r2', 'r3']);
 
-    const close = await screen.findByRole('button', { name: 'Close' });
+    const close = await waitForClose();
     fireEvent.click(close);
 
     const result = ctx.resolve.mock.calls[0][0] as {
@@ -399,7 +541,7 @@ describe('TranslationProgressModal', () => {
       ['r2', 1],
       ['r3', 2],
     ]);
-    expect(screen.getByText('3 successful, 0 failed')).toBeTruthy();
+    expect(counts()).toEqual({ translated: '3', failed: '0' });
   });
 
   it('finishes with a failed record when a selected record was deleted', async () => {
@@ -408,10 +550,11 @@ describe('TranslationProgressModal', () => {
     });
     const { ctx } = renderModal();
 
-    const close = await screen.findByRole('button', { name: 'Close' });
+    const close = await waitForClose();
+    expect(screen.getByText('Record r1')).toBeTruthy();
     expect(screen.getByText(/Record is no longer available/)).toBeTruthy();
-    expect(screen.getByText('1 successful, 1 failed')).toBeTruthy();
-    expect(screen.getByText(/Progress: 2 of 2 records processed/)).toBeTruthy();
+    expect(counts()).toEqual({ translated: '1', failed: '1' });
+    expect(screen.getByText(/^2 of 2 records processed/)).toBeTruthy();
     fireEvent.click(close);
 
     expect(ctx.resolve).toHaveBeenCalledWith(
@@ -441,21 +584,46 @@ describe('TranslationProgressModal', () => {
     });
     const { ctx } = renderModal();
 
-    const close = await screen.findByRole('button', { name: 'Close' });
-    expect(screen.getByText(/DatoCMS error:/)).toBeTruthy();
-    expect(screen.queryByText(/Translation provider error/)).toBeNull();
-    expect(screen.getByText('1 successful, 0 failed')).toBeTruthy();
+    await waitForClose();
+    expect(screen.getAllByRole('status')[0]).toHaveTextContent(
+      'Translation failed',
+    );
+    // A screen reader hears the progress from a line that changes only with
+    // the percentage.
+    expect(screen.getByText(/% of the records processed$/)).toHaveAttribute(
+      'role',
+      'status',
+    );
     expect(
-      screen.getByText(/Progress: 1 of 2 records processed \(50%\)/),
+      screen.getByRole('progressbar', { name: 'Translation failed' }),
     ).toBeTruthy();
-    const publish = screen.getByRole('button', {
-      name: 'Publish all translated records (1)',
-    });
-    fireEvent.click(publish);
+    // The Callout titles the error and shows its cause once.
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Translation stopped')).toBeTruthy();
+    expect(within(alert).getByText(/^DatoCMS error:/)).toBeTruthy();
+    expect(alert.textContent).not.toContain('Translation failed:');
+    expect(screen.queryByText(/Translation provider error/)).toBeNull();
+    // The fatal error is a message of the run, not a row of a record.
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(counts()).toEqual({ translated: '1', failed: '0' });
+    expect(screen.getByText(/^1 of 2 records processed \(50%\)/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 1 record' }));
     await waitFor(() => {
       expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.');
     });
-    fireEvent.click(close);
+    // Once done, the button says so, and its disabled reason tells why.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Published 1 record' }),
+      ).toHaveAttribute('aria-disabled', 'true');
+    });
+    act(() =>
+      screen.getByRole('button', { name: 'Published 1 record' }).focus(),
+    );
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'All translated records are published.',
+    );
+    fireEvent.click(closeButton());
     expect(ctx.resolve).toHaveBeenCalledWith(
       expect.objectContaining({
         completed: false,
@@ -484,15 +652,16 @@ describe('TranslationProgressModal', () => {
     );
     const { ctx } = renderModal();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    const cancel = await screen.findByRole('button', { name: 'Cancel' });
+    expect(screen.getByText('Loading the first batch of records')).toBeTruthy();
+    fireEvent.click(cancel);
 
     expect(loadingOptions?.abortSignal?.aborted).toBe(true);
     expect(loadingOptions?.checkCancellation?.()).toBe(true);
     expect(ctx.resolve).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Cancelling…' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    const cancelling = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancelling).toHaveProperty('disabled', true);
+    expect(cancelling).toHaveAttribute('aria-busy', 'true');
     await act(async () => loading.resolve());
     expect(ctx.resolve).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -621,15 +790,12 @@ describe('TranslationProgressModal', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
     await act(async () => vi.advanceTimersByTime(100));
     expect(snapshot).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('1 successful, 0 failed')).toBeTruthy();
+    expect(counts()).toEqual({ translated: '1', failed: '0' });
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
 
     await act(async () => translation.resolve());
     expect(snapshot).toHaveBeenCalledTimes(3);
-    expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty(
-      'disabled',
-      false,
-    );
+    expect(closeButton()).not.toHaveAttribute('aria-disabled');
   });
 
   it('retries only IDs not confirmed by a partially successful publication', async () => {
@@ -644,21 +810,38 @@ describe('TranslationProgressModal', () => {
         publicationRecord('r1'),
         publicationRecord('r2', 'draft'),
       ]);
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Publish all translated records (2)',
-      }),
-    );
+    const publish = await screen.findByRole('button', {
+      name: 'Publish 2 records',
+    });
+    act(() => publish.focus());
+    fireEvent.click(publish);
+    dropFocus();
     await waitFor(() => expect(ctx.alert).toHaveBeenCalledTimes(1));
-    expect(ctx.notice).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Retry publishing remaining (1)' }),
+    // The verb agrees with a count of one.
+    expect(ctx.alert).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Could not publish all translated records. 1 record was published before the operation stopped.',
+      ),
     );
+    expect(ctx.notice).not.toHaveBeenCalled();
+    // The publishing ended with records left: the button takes the focus
+    // back.
+    const publishOther = await screen.findByRole('button', {
+      name: 'Publish the other 1 record',
+    });
+    expect(document.activeElement).toBe(publishOther);
+    fireEvent.click(publishOther);
+    dropFocus();
     await waitFor(() =>
       expect(ctx.notice).toHaveBeenCalledWith(
         'Published 2 translated records.',
       ),
     );
+    expect(
+      await screen.findByRole('button', { name: 'Published 2 records' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    // Every record is published: Close, the next action, takes the focus.
+    expect(document.activeElement).toBe(closeButton());
     expect(
       mocks.bulkPublish.mock.calls[1][0].data.relationships.items.data,
     ).toEqual([{ type: 'item', id: 'r2' }]);
@@ -674,9 +857,7 @@ describe('TranslationProgressModal', () => {
     });
     const { ctx } = renderModal();
     fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Publish all translated records (2)',
-      }),
+      await screen.findByRole('button', { name: 'Publish 2 records' }),
     );
     await waitFor(() =>
       expect(ctx.notice).toHaveBeenCalledWith(
@@ -698,9 +879,7 @@ describe('TranslationProgressModal', () => {
       publicationRecord('r2', 'updated', 'newer-editor-version'),
     ]);
     fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Publish all translated records (2)',
-      }),
+      await screen.findByRole('button', { name: 'Publish 2 records' }),
     );
 
     await waitFor(() => expect(ctx.alert).toHaveBeenCalledTimes(1));
@@ -710,26 +889,76 @@ describe('TranslationProgressModal', () => {
     ).toEqual([{ type: 'item', id: 'r1' }]);
     expect(ctx.notice).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('button', { name: 'Retry publishing remaining (1)' }),
+      await screen.findByRole('button', {
+        name: 'Publish the other 1 record',
+      }),
     ).toBeTruthy();
   });
 
+  it('shows the latest 100 records, newest first, and counts the warnings', async () => {
+    const itemIds = Array.from({ length: 101 }, (_, index) => `r${index + 1}`);
+    mocks.translateAndUpdateRecords.mockImplementation(
+      async (
+        records,
+        _client,
+        _provider,
+        _from,
+        _to,
+        _fields,
+        _params,
+        _ctx,
+        _token,
+        options = {},
+      ) => {
+        reportCompleted(records, options);
+        options.onProgress?.({
+          recordIndex: 0,
+          recordId: 'r1',
+          itemTypeId: 'article',
+          recordLabel: 'Article r1',
+          status: 'completed',
+          statusText: 'Translated',
+          warnings: ['Copied linked records in "related".'],
+        });
+      },
+    );
+    renderModal(itemIds);
+
+    await waitForClose();
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(100);
+    expect(within(rows[0]).getByText('Article r1')).toBeTruthy();
+    expect(within(rows[99]).getByText('Article r3')).toBeTruthy();
+    expect(
+      screen.getByText('Showing the latest 100 of 101 updates'),
+    ).toBeTruthy();
+    expect(rowValue('Translated')).toBe('1011 with warnings');
+    expect(screen.getByText('1 with warnings')).toBeTruthy();
+    // A link to a page of the CMS (`to`): the Canvas gives it the absolute
+    // URL on the internal domain, and it opens in a new tab.
+    const link = within(rows[0]).getByRole('link', { name: 'Open the record' });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://example/editor/item_types/article/items/r1/edit',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
   it('publishes in the job environment even if the host replaces context and parameters', async () => {
-    const { ctx, parameters, rerender } = renderModal(['r1']);
-    await screen.findByRole('button', {
-      name: 'Publish all translated records (1)',
+    const { ctx, modalCtx, parameters, rerender } = renderModal(['r1']);
+    await screen.findByRole('button', { name: 'Publish 1 record' });
+    const nextCtx = makeCtx<RenderModalCtx>({
+      ...modalCtx,
+      environment: 'other',
     });
     rerender(
       <TranslationProgressModal
-        ctx={{ ...ctx, environment: 'other' } as unknown as RenderModalCtx}
+        ctx={nextCtx}
         parameters={{ ...parameters, accessToken: 'other-token' }}
       />,
+      nextCtx,
     );
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Publish all translated records (1)',
-      }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 1 record' }));
 
     await waitFor(() =>
       expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.'),
@@ -738,6 +967,36 @@ describe('TranslationProgressModal', () => {
       'cma-token',
       'main',
       'https://cma.example.test',
+    );
+  });
+
+  it('offers no cancel for a small publishing, which is a single request, and closes once it ends', async () => {
+    const pending = deferred();
+    mocks.bulkPublish.mockImplementation(async ({ data }) => {
+      await pending.promise;
+      return {
+        data: [],
+        meta: { successful: data.relationships.items.data.length, failed: 0 },
+      };
+    });
+    const { ctx } = renderModal(['r1']);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Publish 1 record' }),
+    );
+
+    await screen.findByRole('button', { name: 'Publishing 0 of 1…' });
+    expectCloseBlocked();
+    expect(
+      screen.queryByRole('button', { name: 'Cancel publishing' }),
+    ).toBeNull();
+    pending.resolve();
+
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.'),
+    );
+    fireEvent.click(await waitForClose());
+    expect(ctx.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ canceled: false }),
     );
   });
 });

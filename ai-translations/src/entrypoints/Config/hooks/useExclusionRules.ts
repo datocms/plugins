@@ -42,7 +42,13 @@ export function useExclusionRules(
     pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
   );
 
-  const [showExclusionRules, setShowExclusionRules] = useState<boolean>(false);
+  // The group of the exclusions starts open when some exclusion is saved.
+  const [showExclusionRules, setShowExclusionRules] = useState<boolean>(
+    () =>
+      (pluginParams.modelsToBeExcludedFromThisPlugin?.length ?? 0) > 0 ||
+      (pluginParams.rolesToBeExcludedFromThisPlugin?.length ?? 0) > 0 ||
+      (pluginParams.apiKeysToBeExcludedFromThisPlugin?.length ?? 0) > 0,
+  );
 
   // Calculate if any exclusion rules are set
   const hasExclusionRules = useMemo(() => {
@@ -53,7 +59,7 @@ export function useExclusionRules(
     );
   }, [modelsToBeExcluded, rolesToBeExcluded, apiKeysToBeExcluded]);
 
-  // Force show exclusion rules if any are set
+  // Opens the group again when an exclusion appears while it is closed.
   useEffect(() => {
     if (hasExclusionRules) {
       setShowExclusionRules(true);

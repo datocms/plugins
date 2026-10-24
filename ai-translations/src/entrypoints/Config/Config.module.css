@@ -1,0 +1,29 @@
+/* Placement only: the kit components draw themselves. */
+
+/*
+ * The page in its frame. The frame sizes itself to the page (the SDK's
+ * auto-resizer), so the page can't also take a share of the frame's height
+ * (the kit's 60vh minimum, meant for a full-height area): the frame would
+ * keep part of its old height after a group closes.
+ */
+.page {
+  min-height: 0;
+}
+
+/*
+ * A block in a group body that isn't a field (a "Test" button): the space
+ * between two fields (Forms, "Space between fields"), unless it ends the
+ * group.
+ */
+.block:not(:last-child) {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* Restore defaults and Save, after the last group. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: flex-end;
+}

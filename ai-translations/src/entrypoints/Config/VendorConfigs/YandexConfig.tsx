@@ -1,24 +1,59 @@
 /**
  * YandexConfig.tsx
- * Configuration component for Yandex Translate vendor settings.
+ * Configuration component for Yandex Translate vendor settings: the settings
+ * group with the API key, the optional folder ID and a credentials test. A
+ * passed test is a toast (a finished action); a failed one stays as a danger
+ * callout under the button until the key or the folder changes.
  */
 
-import { Button, FieldGroup, TextField } from 'datocms-react-ui';
-import { useState } from 'react';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import IdText from 'datocms-react-ui/IdText';
+import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import { useId, useState } from 'react';
+import { useBusyFocus } from '../../../utils/retryFocus';
 import {
   formatErrorForUser,
   normalizeProviderError,
 } from '../../../utils/translation/ProviderErrors';
 import YandexProvider from '../../../utils/translation/providers/YandexProvider';
-import s from '../../styles.module.css';
+import styles from '../Config.module.css';
+import { vendorSettingsTitle } from '../configConstants';
 
-type CredentialTestStatus = 'idle' | 'success' | 'error';
+const SETUP_GUIDE_URL =
+  'https://aistudio.yandex.ru/docs/en/translate/quickstart.html';
+
+/** The longest folder ID that Yandex Cloud accepts. */
+const FOLDER_ID_MAX_LENGTH = 50;
+
+type CredentialTestFailure = {
+  /** The problem in a few words. */
+  title: string;
+  message: string;
+};
+
+const API_KEY_HINT = (
+  <>
+    Use a service-account API key with the <IdText id="ai.translate.user" />{' '}
+    role and the <IdText id="yc.ai.translate.execute" /> scope.
+  </>
+);
+
+const SETUP_GUIDE_DOCS = {
+  label: 'Yandex Translate setup guide',
+  to: SETUP_GUIDE_URL,
+};
 
 export interface YandexConfigProps {
   yandexApiKey: string;
   setYandexApiKey: (value: string) => void;
   yandexFolderId: string;
   setYandexFolderId: (value: string) => void;
+  /** Shows a toast (`ctx.notice`): the result of a passed test. */
+  notice: (message: string) => unknown;
 }
 
 export default function YandexConfig({
@@ -26,36 +61,47 @@ export default function YandexConfig({
   setYandexApiKey,
   yandexFolderId,
   setYandexFolderId,
+  notice,
 }: YandexConfigProps) {
-  const [isTestingCredentials, setIsTestingCredentials] = useState(false);
-  const [testStatus, setTestStatus] = useState<CredentialTestStatus>('idle');
-  const [testMessage, setTestMessage] = useState('');
+  const [testFailure, setTestFailure] = useState<CredentialTestFailure | null>(
+    null,
+  );
+  const [isTesting, setIsTesting] = useState(false);
 
-  const resetTestResult = () => {
-    setTestStatus('idle');
-    setTestMessage('');
+  const handleApiKeyChange = (value: string | null) => {
+    setYandexApiKey(value ?? '');
+    setTestFailure(null);
   };
 
-  const handleApiKeyChange = (value: string) => {
-    setYandexApiKey(value);
-    resetTestResult();
+  const handleFolderIdChange = (value: string | null) => {
+    setYandexFolderId(value ?? '');
+    setTestFailure(null);
   };
 
-  const handleFolderIdChange = (value: string) => {
-    setYandexFolderId(value);
-    resetTestResult();
-  };
+  const apiKey = yandexApiKey.trim();
+  // "Test credentials" is found by its id, not a ref: while it is disabled
+  // with a reason, the kit's tooltip clones it and reads `element.ref`,
+  // which React 19 warns about.
+  const testId = useId();
+  const testDisabled = apiKey
+    ? undefined
+    : { reason: 'Enter a Yandex API key first.' };
+  // The busy button is disabled, which drops its focus: once the test ends,
+  // the button takes it back, just above the callout of a failure.
+  const followTest = useBusyFocus(
+    isTesting,
+    () => document.getElementById(testId),
+    testDisabled?.reason,
+  );
 
+  // The button is busy while the test runs. The state is the component's,
+  // not the kit's (an `onClick` that returns a promise), so the focus comes
+  // back in the commit that turns the button on again.
   const handleTestCredentials = async () => {
-    const apiKey = yandexApiKey.trim();
-    if (!apiKey) {
-      setTestStatus('error');
-      setTestMessage('Enter a Yandex API key first.');
-      return;
-    }
-
-    setIsTestingCredentials(true);
-    resetTestResult();
+    if (!apiKey || isTesting) return;
+    setTestFailure(null);
+    followTest();
+    setIsTesting(true);
 
     try {
       const provider = new YandexProvider({
@@ -63,77 +109,68 @@ export default function YandexConfig({
         folderId: yandexFolderId.trim() || undefined,
       });
       const languages = await provider.listLanguages();
-      setTestStatus('success');
-      setTestMessage(
+      notice(
         `Credentials verified. Yandex returned ${languages.length} supported ${languages.length === 1 ? 'language' : 'languages'}.`,
       );
     } catch (error) {
       const normalized = normalizeProviderError(error, 'yandex');
-      setTestStatus('error');
-      setTestMessage(formatErrorForUser(normalized));
+      setTestFailure({
+        title: "Couldn't verify the credentials",
+        message: formatErrorForUser(normalized),
+      });
     } finally {
-      setIsTestingCredentials(false);
+      setIsTesting(false);
     }
   };
 
   return (
-    <FieldGroup>
-      <TextField
+    <Page.Group title={vendorSettingsTitle('yandex')}>
+      <FieldWrapper
+        label="API key"
         required
-        name="yandexApiKey"
-        id="yandexApiKey"
-        label="Yandex API Key"
-        value={yandexApiKey}
-        onChange={handleApiKeyChange}
-        placeholder="AQVN..."
-        textInputProps={{ type: 'password' }}
-      />
-      <TextField
-        name="yandexFolderId"
-        id="yandexFolderId"
-        label="Yandex Folder ID"
-        hint="Optional. When omitted, Yandex infers the service account's home folder where supported."
-        value={yandexFolderId}
-        onChange={handleFolderIdChange}
-        placeholder="b1g..."
-        textInputProps={{ maxLength: 50 }}
-      />
-      <p className={s.hint}>
-        Use a service-account API key with the{' '}
-        <code>ai.translate.user</code> role and the{' '}
-        <code>yc.ai.translate.execute</code> API-key scope. See the{' '}
-        <a
-          href="https://aistudio.yandex.ru/docs/en/translate/quickstart.html"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          Yandex Translate setup guide
-        </a>
-        .
-      </p>
-      <div className={s.buttonRow}>
+        hint={API_KEY_HINT}
+        docs={SETUP_GUIDE_DOCS}
+      >
+        <PasswordInput
+          name="yandexApiKey"
+          value={yandexApiKey}
+          onChange={handleApiKeyChange}
+          placeholder="AQVN…"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
+      <FieldWrapper
+        label="Folder ID"
+        hint="Optional. Without it, Yandex uses the home folder of the service account."
+      >
+        <StringInput
+          code
+          name="yandexFolderId"
+          value={yandexFolderId}
+          onChange={handleFolderIdChange}
+          placeholder="b1g…"
+          maxLength={FOLDER_ID_MAX_LENGTH}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
+      <div className={styles.block}>
         <Button
-          buttonType="muted"
-          disabled={isTestingCredentials}
-          onClick={handleTestCredentials}
-        >
-          {isTestingCredentials ? 'Testing…' : 'Test credentials'}
-        </Button>
-      </div>
-      {testStatus !== 'idle' && testMessage && (
-        <div
-          className={s.inlineStatus}
-          role={testStatus === 'error' ? 'alert' : 'status'}
-          style={{
-            color:
-              testStatus === 'error'
-                ? 'var(--color--ink-danger)'
-                : 'var(--color--ink-success)',
+          id={testId}
+          label="Test credentials"
+          busy={isTesting}
+          disabled={testDisabled}
+          onClick={() => {
+            void handleTestCredentials();
           }}
-        >
-          {testMessage}
-        </div>
+        />
+      </div>
+      {testFailure && (
+        <Callout tone="danger" title={testFailure.title}>
+          {testFailure.message}
+        </Callout>
       )}
-    </FieldGroup>
+    </Page.Group>
   );
 }

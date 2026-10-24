@@ -5,10 +5,11 @@ import { SiClaude, SiDeepl, SiGooglegemini } from 'react-icons/si';
 import type { VendorId } from '../../../utils/translation/types';
 
 /**
- * Returns the icon shown in the sidebar progress bubbles for the configured
- * translation vendor. An unset vendor resolves to OpenAI, matching
- * `getProvider`. Vendors without a brand icon in react-icons (Yandex
- * Translate) and unknown values get a neutral translation glyph.
+ * Returns the logo of a translation vendor, used in the config screen's
+ * vendor choice and, for the configured vendor, in the rows of the sidebar
+ * panel. An unset vendor resolves to OpenAI, matching `getProvider`. Vendors
+ * without a brand icon in react-icons (Yandex Translate) and unknown values
+ * get a neutral translation glyph.
  *
  * @param vendor - The `vendor` plugin parameter.
  * @returns The icon component to render.

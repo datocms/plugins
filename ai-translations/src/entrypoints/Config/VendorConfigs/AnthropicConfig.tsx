@@ -1,17 +1,21 @@
 /**
  * AnthropicConfig.tsx
- * Configuration component for Anthropic Claude vendor settings.
+ * Configuration component for Anthropic Claude vendor settings: the settings
+ * group with the API key and the model.
  */
 
-import { FieldGroup, TextField } from 'datocms-react-ui';
-import ModelSelectField from './ModelSelectField';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import StringInput from 'datocms-react-ui/StringInput';
+import { vendorSettingsTitle } from '../configConstants';
+import ModelSelectField, { type ModelList } from './ModelSelectField';
 
 export interface AnthropicConfigProps {
   anthropicApiKey: string;
   setAnthropicApiKey: (value: string) => void;
   anthropicModel: string;
   setAnthropicModel: (value: string) => void;
-  listOfAnthropicModels: string[];
+  modelList: ModelList;
 }
 
 export default function AnthropicConfig({
@@ -19,26 +23,26 @@ export default function AnthropicConfig({
   setAnthropicApiKey,
   anthropicModel,
   setAnthropicModel,
-  listOfAnthropicModels,
+  modelList,
 }: AnthropicConfigProps) {
   return (
-    <FieldGroup>
-      <TextField
-        required
-        name="anthropicApiKey"
-        id="anthropicApiKey"
-        label="Anthropic API Key"
-        value={anthropicApiKey}
-        onChange={(v) => setAnthropicApiKey(v)}
-        placeholder="sk-ant-..."
-      />
+    <Page.Group title={vendorSettingsTitle('anthropic')}>
+      <FieldWrapper label="API key" required>
+        <StringInput
+          code
+          name="anthropicApiKey"
+          value={anthropicApiKey}
+          onChange={(value) => setAnthropicApiKey(value ?? '')}
+          placeholder="sk-ant-…"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
       <ModelSelectField
-        id="anthropicModel"
-        label="Claude Model"
         value={anthropicModel}
         onChange={setAnthropicModel}
-        models={listOfAnthropicModels}
+        modelList={modelList}
       />
-    </FieldGroup>
+    </Page.Group>
   );
 }

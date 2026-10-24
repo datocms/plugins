@@ -2,7 +2,7 @@
  * DeepLSettings.ts
  * ------------------------------------------------------
  * Defaults and parsers that turn the DeepL plugin settings (formality and the
- * tag lists under "Tag Settings") into DeepL `/v2/translate` request values.
+ * tag lists under "Tag handling") into DeepL `/v2/translate` request values.
  * The config screen and the translation layer share these so the saved
  * defaults and the values sent to DeepL can't drift apart.
  */
@@ -10,14 +10,14 @@
 /** Formality values the plugin settings can store. */
 export type DeepLFormalitySetting = 'default' | 'more' | 'less';
 
-/** Default for the "Ignore tags (CSV)" setting. */
+/** Default for the "Ignored tags" setting. */
 export const DEEPL_DEFAULT_IGNORE_TAGS = 'notranslate,ph';
 
-/** Default for the "Non-splitting tags (CSV)" setting. */
+/** Default for the "Non-splitting tags" setting. */
 export const DEEPL_DEFAULT_NON_SPLITTING_TAGS =
   'a,code,pre,strong,em,ph,notranslate';
 
-/** Default for the "Splitting tags (CSV)" setting. */
+/** Default for the "Splitting tags" setting. */
 export const DEEPL_DEFAULT_SPLITTING_TAGS = '';
 
 /**

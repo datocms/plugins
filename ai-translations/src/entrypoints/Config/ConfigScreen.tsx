@@ -1,29 +1,40 @@
 // ConfigScreen.tsx
 // ------------------------------------------------------
-// This component defines the plugin's configuration screen inside DatoCMS.
-// It allows the user to set the OpenAI API Key, select a GPT model, and choose
-// which field types can be translated.
+// The plugin's configuration screen inside DatoCMS: one form with the AI
+// vendor, its credentials and model (or its own options), the translation
+// prompt and field types, the features, and the exclusions, then Save.
+// It renders inside the Canvas that main.tsx puts around every frame hook.
 //
 // PERF-003: State has been refactored into custom hooks to reduce re-renders:
 // - useVendorConfig: Vendor credentials and settings
 // - useFeatureToggles: Translation fields and feature flags
 // - useExclusionRules: Model/role/field exclusions
 
-import { buildClient} from '@datocms/cma-client-browser';
-import type {ApiTypes} from '@datocms/cma-client-browser';
+import type { ApiTypes } from '@datocms/cma-client-browser';
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import Button from 'datocms-react-ui/Button';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
+import TextareaInput from 'datocms-react-ui/TextareaInput';
 import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Section,
-  SelectField,
-  Spinner,
-  SwitchField,
-} from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactTextareaAutosize from 'react-textarea-autosize';
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { keepEnterInSelects } from '../../components/BulkTranslations/keepEnterInSelects';
 import { defaultPrompt } from '../../prompts/DefaultPrompt';
+import { useBusyFocus } from '../../utils/retryFocus';
 import { listRelevantAnthropicModels } from '../../utils/translation/AnthropicModels';
 import {
   DEEPL_DEFAULT_IGNORE_TAGS,
@@ -32,16 +43,38 @@ import {
 } from '../../utils/translation/DeepLSettings';
 import { listRelevantGeminiModels } from '../../utils/translation/GeminiModels';
 import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
-import s from '../styles.module.css';
-import { translateFieldTypes } from './configConstants';
-import ExclusionRulesSection, { type Field } from './ExclusionRulesSection';
+import { getVendorIcon } from '../Sidebar/Components/vendorIcon';
+import styles from './Config.module.css';
+import {
+  getVendorLabel,
+  translateFieldTypes,
+  VENDORS,
+} from './configConstants';
+import ExclusionRulesSection, {
+  type Field,
+  type Role,
+  type RolesStatus,
+} from './ExclusionRulesSection';
 import { useExclusionRules } from './hooks/useExclusionRules';
 import { useFeatureToggles } from './hooks/useFeatureToggles';
 // PERF-003: Custom hooks for grouped state management
-import { type VendorType, useVendorConfig } from './hooks/useVendorConfig';
+import {
+  useVendorConfig,
+  type VendorConfigActions,
+  type VendorConfigState,
+  type VendorType,
+} from './hooks/useVendorConfig';
 import AnthropicConfig from './VendorConfigs/AnthropicConfig';
 import DeepLConfig from './VendorConfigs/DeepLConfig';
 import GeminiConfig from './VendorConfigs/GeminiConfig';
+import {
+  FAILED_MODEL_LIST,
+  IDLE_MODEL_LIST,
+  LOADING_MODEL_LIST,
+  type ModelList,
+  type ModelListStatus,
+  modelListFrom,
+} from './VendorConfigs/ModelSelectField';
 // Vendor configuration components
 import OpenAIConfig from './VendorConfigs/OpenAIConfig';
 import YandexConfig from './VendorConfigs/YandexConfig';
@@ -143,29 +176,29 @@ export function isValidCtxParams(obj: unknown): obj is ctxParamsType {
 
 /**
  * Fetches the list of available models from OpenAI using the provided API key.
- * It sets the list of model IDs or an error message in the local component state.
+ * It sets the state of the model list (the models, none, or a failure).
  *
  * @param apiKey - Your OpenAI API key
- * @param setOptions - Callback to set the retrieved models in state
+ * @param setModelList - Callback to set the state of the model list
  * @param setGptModel - Callback to set the selected model (auto-selects first if none set)
  * @param currentModel - The currently selected model
  */
 async function fetchAvailableModels(
   apiKey: string,
-  setOptions: (models: string[]) => void,
+  setModelList: (list: ModelList) => void,
   setGptModel: (model: string) => void,
   currentModel: string,
 ) {
   try {
     const models = await listRelevantOpenAIModels(apiKey);
-    setOptions(models.length > 0 ? models : ['No compatible models found']);
+    setModelList(modelListFrom(models));
     // Auto-select first model if none currently selected
     if (models.length > 0 && (currentModel === 'None' || !currentModel)) {
       setGptModel(models[0]);
     }
   } catch (error) {
     console.error('Error fetching OpenAI models:', error);
-    setOptions(['Invalid API Key']);
+    setModelList(FAILED_MODEL_LIST);
     setGptModel('None');
   }
 }
@@ -175,34 +208,33 @@ async function fetchAvailableModels(
  * Extracted from the component's useEffect to reduce cognitive complexity of the callback.
  *
  * @param vendor - Currently selected vendor (returns early if not 'google').
- * @param googleApiKey - Google API key; if empty, shows a placeholder message.
- * @param setListOfGeminiModels - State setter for the Gemini model list.
+ * @param googleApiKey - Google API key; if empty, the list is idle.
+ * @param setGeminiModelList - State setter for the Gemini model list.
  * @param setGeminiModel - State setter to auto-select the first model when none is set.
  * @param savedGeminiModel - The geminiModel value saved in pluginParams (used to detect auto-select).
  */
 async function loadGeminiModels(
   vendor: string,
   googleApiKey: string,
-  setListOfGeminiModels: (models: string[]) => void,
+  setGeminiModelList: (list: ModelList) => void,
   setGeminiModel: (model: string) => void,
   savedGeminiModel: string | undefined,
 ): Promise<void> {
   if (vendor !== 'google') return;
   if (!googleApiKey) {
-    setListOfGeminiModels(['Insert a valid Google API Key']);
+    setGeminiModelList(IDLE_MODEL_LIST);
     return;
   }
+  setGeminiModelList(LOADING_MODEL_LIST);
   try {
     const models = await listRelevantGeminiModels(googleApiKey);
-    setListOfGeminiModels(
-      models.length > 0 ? models : ['No compatible models found'],
-    );
+    setGeminiModelList(modelListFrom(models));
     if (models.length > 0 && !savedGeminiModel) {
       setGeminiModel(models[0]);
     }
   } catch (e) {
     console.error('Error fetching Gemini models:', e);
-    setListOfGeminiModels(['Invalid API Key']);
+    setGeminiModelList(FAILED_MODEL_LIST);
   }
 }
 
@@ -211,34 +243,33 @@ async function loadGeminiModels(
  * Extracted from the component's useEffect to reduce cognitive complexity of the callback.
  *
  * @param vendor - Currently selected vendor (returns early if not 'anthropic').
- * @param anthropicApiKey - Anthropic API key; if empty, shows a placeholder message.
- * @param setListOfAnthropicModels - State setter for the Anthropic model list.
+ * @param anthropicApiKey - Anthropic API key; if empty, the list is idle.
+ * @param setAnthropicModelList - State setter for the Anthropic model list.
  * @param setAnthropicModel - State setter to auto-select the first model when none is set.
  * @param savedAnthropicModel - The anthropicModel value saved in pluginParams (used to detect auto-select).
  */
 async function loadClaudeModels(
   vendor: string,
   anthropicApiKey: string,
-  setListOfAnthropicModels: (models: string[]) => void,
+  setAnthropicModelList: (list: ModelList) => void,
   setAnthropicModel: (model: string) => void,
   savedAnthropicModel: string | undefined,
 ): Promise<void> {
   if (vendor !== 'anthropic') return;
   if (!anthropicApiKey) {
-    setListOfAnthropicModels(['Insert a valid Anthropic API Key']);
+    setAnthropicModelList(IDLE_MODEL_LIST);
     return;
   }
+  setAnthropicModelList(LOADING_MODEL_LIST);
   try {
     const models = await listRelevantAnthropicModels(anthropicApiKey);
-    setListOfAnthropicModels(
-      models.length > 0 ? models : ['No compatible models found'],
-    );
+    setAnthropicModelList(modelListFrom(models));
     if (models.length > 0 && !savedAnthropicModel) {
       setAnthropicModel(models[0]);
     }
   } catch (e) {
     console.error('Error fetching Claude models:', e);
-    setListOfAnthropicModels(['Invalid API Key']);
+    setAnthropicModelList(FAILED_MODEL_LIST);
   }
 }
 
@@ -251,10 +282,7 @@ async function loadClaudeModels(
  * @param newFields - Newly fetched fields to merge in.
  * @returns The merged field list with no duplicate IDs.
  */
-function mergeUniqueFields(
-  prevFields: Field[],
-  newFields: Field[],
-): Field[] {
+function mergeUniqueFields(prevFields: Field[], newFields: Field[]): Field[] {
   const existingIds = new Set(prevFields.map((field) => field.id));
   const uniqueNewFields = newFields.filter(
     (field) => !existingIds.has(field.id),
@@ -268,29 +296,29 @@ function mergeUniqueFields(
 type UpdatePluginParamsArgs = {
   ctx: RenderConfigScreenCtx;
   params: Partial<ctxParamsType>;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 /**
  * Persists the updated plugin parameters to DatoCMS.
  * If successful, displays a success message; otherwise, alerts the user of an error.
  *
- * @param args - Object containing ctx, params, and setIsLoading
+ * @param args - Object containing ctx, params, and setIsSaving
  */
 const updatePluginParams = async ({
   ctx,
   params,
-  setIsLoading,
+  setIsSaving,
 }: UpdatePluginParamsArgs) => {
-  setIsLoading(true);
+  setIsSaving(true);
   try {
     await ctx.updatePluginParameters(params);
-    ctx.notice('Plugin options updated successfully!').then();
+    ctx.notice('Settings saved.');
   } catch (error) {
     console.error('Error updating plugin parameters:', error);
-    ctx.alert('Failed to update plugin options. Please try again.');
+    ctx.alert("Couldn't save the settings. Try again.");
   } finally {
-    setIsLoading(false);
+    setIsSaving(false);
   }
 };
 
@@ -339,7 +367,7 @@ export function isNativeTranslationVendor(vendor: VendorType): boolean {
 
 /**
  * Determines whether the form is in the default (all-defaults) configuration.
- * Used to disable the Save button when no changes have been made from defaults.
+ * Used to disable "Restore defaults" when the settings already use them.
  *
  * @param translationFields - Currently selected translation field types.
  * @param translateWholeRecord - Whether whole-record translation is enabled.
@@ -371,44 +399,65 @@ function isDefaultConfiguration(
   );
 }
 
+type VendorCredentials = Parameters<typeof isVendorCredentialsMissing>[0];
+
+const API_KEY_REASONS: Record<VendorType, string> = {
+  openai: 'Enter the OpenAI API key.',
+  google: 'Enter the Google API key.',
+  anthropic: 'Enter the Anthropic API key.',
+  deepl: 'Enter the DeepL API key.',
+  yandex: 'Enter the Yandex API key.',
+};
+
 /**
- * Returns the display label for a given vendor identifier.
- *
- * @param vendor - The vendor identifier string.
- * @returns The human-readable vendor label.
+ * Why no model can be picked when the list of models has none: the same
+ * problem that the model field shows, said as what to do.
  */
-function getVendorLabel(vendor: VendorType): string {
-  if (vendor === 'openai') return 'OpenAI (ChatGPT)';
-  if (vendor === 'google') return 'Google (Gemini)';
-  if (vendor === 'anthropic') return 'Anthropic (Claude)';
-  if (vendor === 'deepl') return 'DeepL';
-  return 'Yandex Translate';
+const NO_MODEL_REASONS: Partial<Record<ModelListStatus, string>> = {
+  error: "Check the API key: the models couldn't be loaded.",
+  empty: 'Use an API key that has compatible models.',
+};
+
+/**
+ * Why the selected vendor can't be saved yet: its API key, or else its model.
+ * It gives a reason exactly when `isVendorCredentialsMissing` is true. The
+ * model reason follows the state of the vendor's model list: "Pick a model"
+ * only when there are models (or they are loading), since a failed or empty
+ * list has nothing to pick.
+ *
+ * @param credentials - Currently selected vendor and its credential fields.
+ * @param modelListStatus - The state of the selected vendor's model list,
+ *   for the vendors that have one.
+ * @returns The reason, as a full sentence, or undefined.
+ */
+function missingCredentialReason(
+  credentials: VendorCredentials,
+  modelListStatus?: ModelListStatus,
+): string | undefined {
+  if (!isVendorCredentialsMissing(credentials)) return undefined;
+  const apiKeys: Record<VendorType, string> = {
+    openai: credentials.apiKey,
+    google: credentials.googleApiKey,
+    anthropic: credentials.anthropicApiKey,
+    deepl: credentials.deeplApiKey,
+    yandex: credentials.yandexApiKey.trim(),
+  };
+  if (!apiKeys[credentials.vendor]) return API_KEY_REASONS[credentials.vendor];
+  return (
+    (modelListStatus && NO_MODEL_REASONS[modelListStatus]) ?? 'Pick a model.'
+  );
 }
 
 /**
- * Parses a vendor identifier from a DatoCMS SelectField onChange option value.
- * Returns the vendor string if the option is valid, or undefined if not.
- *
- * @param opt - The raw option value passed to the SelectField onChange handler.
- * @returns A vendor identifier string, or undefined.
+ * Why Save is off: a missing credential first (it says what to do), then no
+ * change. Nothing while it saves (the button is busy instead).
  */
-function parseVendorFromSelectOption(
-  opt: unknown,
-): VendorType | undefined {
-  const selected = Array.isArray(opt) ? opt[0] : opt;
-  if (!selected || typeof selected !== 'object' || !('value' in selected)) {
-    return undefined;
-  }
-  const v = (selected as { value: unknown }).value;
-  if (
-    v === 'openai' ||
-    v === 'google' ||
-    v === 'anthropic' ||
-    v === 'deepl' ||
-    v === 'yandex'
-  ) {
-    return v;
-  }
+function saveDisabledReason(
+  credentialReason: string | undefined,
+  isFormDirty: boolean,
+): { reason: string } | undefined {
+  if (credentialReason) return { reason: credentialReason };
+  if (!isFormDirty) return { reason: 'There are no changes to save.' };
   return undefined;
 }
 
@@ -597,9 +646,147 @@ function checkDeepLConfigDirty(
   );
 }
 
+/** What each vendor is and needs, under its name in the vendor choice. */
+const VENDOR_HINTS: Record<VendorType, string> = {
+  openai: 'GPT models with an editable prompt. Needs an OpenAI API key.',
+  google: 'Gemini models with an editable prompt. Needs a Google API key.',
+  anthropic:
+    'Claude models with an editable prompt. Needs an Anthropic API key.',
+  deepl:
+    'Machine translation with formality and glossaries. Needs a DeepL API key.',
+  yandex: 'Machine translation. Needs a Yandex Cloud API key.',
+};
+
+/** The logo of a vendor, at the end of its option. */
+function VendorLogo({ vendor }: { vendor: VendorType }) {
+  const Logo = getVendorIcon(vendor);
+  return <Logo />;
+}
+
+const VENDOR_OPTIONS: RadioGroupOption<VendorType>[] = VENDORS.map(
+  (vendor) => ({
+    value: vendor,
+    label: getVendorLabel(vendor),
+    hint: VENDOR_HINTS[vendor],
+    icon: <VendorLogo vendor={vendor} />,
+  }),
+);
+
+const FIELD_TYPE_OPTIONS = Object.entries(translateFieldTypes).map(
+  ([value, label]) => ({ value, label }),
+);
+
+/** A saved field type that the plugin no longer lists shows as its key. */
+function savedFieldTypeOption(value: string) {
+  return { value, label: value };
+}
+
+const noFieldTypes = () => 'No field types';
+
+/** The default prompt is long: past this height, the prompt scrolls. */
+const PROMPT_MAX_ROWS = 20;
+
 /**
- * Main config screen component. Users interact with these fields
- * to adjust plugin behavior and integration with OpenAI.
+ * The prompt isn't required: an empty prompt translates with the default one
+ * (translateArray falls back to it, and onBoot fills it in again), so the
+ * hint says so instead of the field claiming a rule it never reports.
+ */
+const PROMPT_HINT =
+  'Use {fieldValue}, {fromLocale} and {toLocale} for the content and the languages, or leave it empty for the default prompt. A change can break translations, so edit it with care.';
+
+type VendorSettingsProps = {
+  vendorConfig: VendorConfigState;
+  vendorActions: VendorConfigActions;
+  modelLists: Record<'openai' | 'google' | 'anthropic', ModelList>;
+  siteLocales: ApiTypes.Site['locales'];
+  openConfirm: RenderConfigScreenCtx['openConfirm'];
+  /** The toast of a finished action, such as a passed credentials test. */
+  notice: RenderConfigScreenCtx['notice'];
+};
+
+/** The settings group of the selected vendor. */
+function VendorSettings({
+  vendorConfig,
+  vendorActions,
+  modelLists,
+  siteLocales,
+  openConfirm,
+  notice,
+}: VendorSettingsProps) {
+  switch (vendorConfig.vendor) {
+    case 'openai':
+      return (
+        <OpenAIConfig
+          apiKey={vendorConfig.apiKey}
+          setApiKey={vendorActions.setApiKey}
+          gptModel={vendorConfig.gptModel}
+          setGptModel={vendorActions.setGptModel}
+          modelList={modelLists.openai}
+        />
+      );
+    case 'google':
+      return (
+        <GeminiConfig
+          googleApiKey={vendorConfig.googleApiKey}
+          setGoogleApiKey={vendorActions.setGoogleApiKey}
+          geminiModel={vendorConfig.geminiModel}
+          setGeminiModel={vendorActions.setGeminiModel}
+          modelList={modelLists.google}
+        />
+      );
+    case 'anthropic':
+      return (
+        <AnthropicConfig
+          anthropicApiKey={vendorConfig.anthropicApiKey}
+          setAnthropicApiKey={vendorActions.setAnthropicApiKey}
+          anthropicModel={vendorConfig.anthropicModel}
+          setAnthropicModel={vendorActions.setAnthropicModel}
+          modelList={modelLists.anthropic}
+        />
+      );
+    case 'deepl':
+      return (
+        <DeepLConfig
+          deeplApiKey={vendorConfig.deeplApiKey}
+          setDeeplApiKey={vendorActions.setDeeplApiKey}
+          deeplUseFree={vendorConfig.deeplUseFree}
+          setDeeplUseFree={vendorActions.setDeeplUseFree}
+          deeplFormality={vendorConfig.deeplFormality}
+          setDeeplFormality={vendorActions.setDeeplFormality}
+          deeplPreserveFormatting={vendorConfig.deeplPreserveFormatting}
+          setDeeplPreserveFormatting={vendorActions.setDeeplPreserveFormatting}
+          deeplIgnoreTags={vendorConfig.deeplIgnoreTags}
+          setDeeplIgnoreTags={vendorActions.setDeeplIgnoreTags}
+          deeplNonSplittingTags={vendorConfig.deeplNonSplittingTags}
+          setDeeplNonSplittingTags={vendorActions.setDeeplNonSplittingTags}
+          deeplSplittingTags={vendorConfig.deeplSplittingTags}
+          setDeeplSplittingTags={vendorActions.setDeeplSplittingTags}
+          deeplGlossaryId={vendorConfig.deeplGlossaryId}
+          setDeeplGlossaryId={vendorActions.setDeeplGlossaryId}
+          deeplGlossaryPairs={vendorConfig.deeplGlossaryPairs}
+          setDeeplGlossaryPairs={vendorActions.setDeeplGlossaryPairs}
+          siteLocales={siteLocales}
+          openConfirm={openConfirm}
+          notice={notice}
+        />
+      );
+    default:
+      return (
+        <YandexConfig
+          yandexApiKey={vendorConfig.yandexApiKey}
+          setYandexApiKey={vendorActions.setYandexApiKey}
+          yandexFolderId={vendorConfig.yandexFolderId}
+          setYandexFolderId={vendorActions.setYandexFolderId}
+          notice={notice}
+        />
+      );
+  }
+}
+
+/**
+ * Main config screen component: one form whose groups are the vendor, its
+ * settings, the translation, the features and the exclusions, with Save
+ * after the last group.
  *
  * @param props - Contains the RenderConfigScreenCtx from DatoCMS
  */
@@ -636,26 +823,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     yandexApiKey,
     yandexFolderId,
   } = vendorConfig;
-  const {
-    setVendor,
-    setApiKey,
-    setGptModel,
-    setGoogleApiKey,
-    setGeminiModel,
-    setAnthropicApiKey,
-    setAnthropicModel,
-    setDeeplApiKey,
-    setDeeplUseFree,
-    setDeeplFormality,
-    setDeeplPreserveFormatting,
-    setDeeplIgnoreTags,
-    setDeeplNonSplittingTags,
-    setDeeplSplittingTags,
-    setDeeplGlossaryId,
-    setDeeplGlossaryPairs,
-    setYandexApiKey,
-    setYandexFolderId,
-  } = vendorActions;
+  const { setVendor, setGptModel, setGeminiModel, setAnthropicModel } =
+    vendorActions;
 
   const {
     translationFields,
@@ -689,31 +858,26 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   // Performance concurrency is now fully automatic; no user setting.
 
   // Save operation state
-  const [isLoading, setIsLoading] = useState(false);
-  // Model option fetch state
-  const [isModelListLoading, setIsModelListLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  // Save is found by its id, not a ref: while it is disabled with a reason,
+  // the kit's tooltip clones it and reads `element.ref`, which React 19
+  // warns about.
+  const saveId = useId();
+  // OpenAI model requests: only the latest one updates the state
   const modelListRequestId = useRef(0);
   const latestGptModel = useRef(gptModel);
 
-  // Holds all possible GPT models fetched from the OpenAI API
-  const [listOfModels, setListOfModels] = useState<string[]>([
-    'Insert a valid OpenAI API Key',
-  ]);
-
-  const [listOfGeminiModels, setListOfGeminiModels] = useState<string[]>([
-    'Insert a valid Google API Key',
-  ]);
-  const [listOfAnthropicModels, setListOfAnthropicModels] = useState<string[]>([
-    'Insert a valid Anthropic API Key',
-  ]);
+  // The models of each LLM vendor, loaded with its API key
+  const [openAIModels, setOpenAIModels] = useState<ModelList>(IDLE_MODEL_LIST);
+  const [geminiModels, setGeminiModels] = useState<ModelList>(IDLE_MODEL_LIST);
+  const [anthropicModels, setAnthropicModels] =
+    useState<ModelList>(IDLE_MODEL_LIST);
 
   const [listOfFields, setListOfFields] = useState<Field[]>([]);
+  // True while the field loads of the current schema are in flight, so the
+  // "Excluded fields" select shows that its labels are still coming.
+  const [fieldsLoading, setFieldsLoading] = useState(false);
   const { itemTypes, loadItemTypeFields } = ctx;
-
-  /**
-   * When the user updates or removes the API key, we refetch the model list.
-   * If there's no API key provided, we show a placeholder message.
-   */
 
   useEffect(() => {
     latestGptModel.current = gptModel;
@@ -723,7 +887,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     let active = true;
     setListOfFields([]);
 
-    for (const [itemTypeID, itemType] of Object.entries(itemTypes)) {
+    const loads = Object.entries(itemTypes).filter(([, itemType]) =>
+      Boolean(itemType),
+    );
+    let pendingLoads = loads.length;
+    setFieldsLoading(pendingLoads > 0);
+    const settleLoad = () => {
+      if (!active) return;
+      pendingLoads -= 1;
+      if (pendingLoads === 0) setFieldsLoading(false);
+    };
+
+    for (const [itemTypeID, itemType] of loads) {
       if (!itemType) continue;
 
       loadItemTypeFields(itemTypeID)
@@ -747,7 +922,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             `Failed to load fields for item type ${itemTypeID}:`,
             error,
           );
-        });
+        })
+        .finally(settleLoad);
     }
 
     return () => {
@@ -755,67 +931,79 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     };
   }, [itemTypes, loadItemTypeFields]);
 
+  /**
+   * When the user updates or removes the API key, we refetch the model list.
+   * Without an API key, the list is idle and no model is selected.
+   */
   useEffect(() => {
     modelListRequestId.current += 1;
     const requestId = modelListRequestId.current;
+    const isLatest = () => modelListRequestId.current === requestId;
 
     if (vendor !== 'openai') {
-      setIsModelListLoading(false);
+      // A request that the vendor change abandoned leaves no spinner behind.
+      setOpenAIModels((list) =>
+        list.status === 'loading' ? IDLE_MODEL_LIST : list,
+      );
       return;
     }
 
     if (!apiKey) {
-      setIsModelListLoading(false);
-      setListOfModels(['Insert a valid OpenAI API Key']);
+      setOpenAIModels(IDLE_MODEL_LIST);
       setGptModel('None');
       return;
     }
 
-    setIsModelListLoading(true);
-    setListOfModels(['Loading models...']);
+    setOpenAIModels(LOADING_MODEL_LIST);
 
     fetchAvailableModels(
       apiKey,
-      (models) => {
-        if (modelListRequestId.current === requestId) {
-          setListOfModels(models);
-        }
+      (list) => {
+        if (isLatest()) setOpenAIModels(list);
       },
       (model) => {
-        if (modelListRequestId.current === requestId) {
-          setGptModel(model);
-        }
+        if (isLatest()) setGptModel(model);
       },
       latestGptModel.current,
-    )
-      .catch(console.error)
-      .finally(() => {
-        if (modelListRequestId.current === requestId) {
-          setIsModelListLoading(false);
-        }
-      });
+    ).catch(console.error);
   }, [apiKey, vendor, setGptModel]);
 
   // Load Gemini models dynamically when Google vendor + key
   useEffect(() => {
+    let active = true;
     loadGeminiModels(
       vendor,
       googleApiKey,
-      setListOfGeminiModels,
-      setGeminiModel,
+      (list) => {
+        if (active) setGeminiModels(list);
+      },
+      (model) => {
+        if (active) setGeminiModel(model);
+      },
       pluginParams.geminiModel,
     ).catch(console.error);
+    return () => {
+      active = false;
+    };
   }, [vendor, googleApiKey, pluginParams.geminiModel, setGeminiModel]);
 
   // Load Anthropic models dynamically when Anthropic vendor + key
   useEffect(() => {
+    let active = true;
     loadClaudeModels(
       vendor,
       anthropicApiKey,
-      setListOfAnthropicModels,
-      setAnthropicModel,
+      (list) => {
+        if (active) setAnthropicModels(list);
+      },
+      (model) => {
+        if (active) setAnthropicModel(model);
+      },
       pluginParams.anthropicModel,
     ).catch(console.error);
+    return () => {
+      active = false;
+    };
   }, [vendor, anthropicApiKey, pluginParams.anthropicModel, setAnthropicModel]);
 
   const normalizeList = useCallback((list?: string[]) => {
@@ -914,21 +1102,44 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       .filter((item) => !item.isBlock);
   }, [ctx.itemTypes]);
 
-  const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
-  const [siteLocales] = useState<ApiTypes.Site['locales']>(ctx.site.attributes.locales);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [rolesStatus, setRolesStatus] = useState<RolesStatus>('loading');
+  const [siteLocales] = useState<ApiTypes.Site['locales']>(
+    ctx.site.attributes.locales,
+  );
 
   useEffect(() => {
+    let active = true;
+    setRolesStatus('loading');
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken as string,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
     });
-    client.roles.list().then((roles) => {
-      setRoles(roles.map((role) => ({ id: role.id, name: role.name })));
-    });
+    client.roles
+      .list()
+      .then((roles) => {
+        if (!active) return;
+        setRoles(roles.map((role) => ({ id: role.id, name: role.name })));
+        setRolesStatus('ready');
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error('Failed to load the roles:', error);
+        setRolesStatus('error');
+      });
+    return () => {
+      active = false;
+    };
   }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
-  const vendorCredentialsMissing = isVendorCredentialsMissing({
+  const modelListStatuses: Partial<Record<VendorType, ModelListStatus>> = {
+    openai: openAIModels.status,
+    google: geminiModels.status,
+    anthropic: anthropicModels.status,
+  };
+  const credentialReason = missingCredentialReason(
+    {
       vendor,
       apiKey,
       gptModel,
@@ -938,7 +1149,21 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       anthropicModel,
       deeplApiKey,
       yandexApiKey,
-    });
+    },
+    modelListStatuses[vendor],
+  );
+  const saveDisabled = saveDisabledReason(credentialReason, isFormDirty);
+  // While Save is busy it is disabled, which drops its focus: once the save
+  // ends, Save takes it back. After a failure (the host's alert) it is
+  // enabled again; after a success it is disabled with a reason, which keeps
+  // the focus and tells why. A save never fails on a field (the errors of
+  // the fields don't block it), so no field takes the focus instead. Enter
+  // in a field submits too, and leaves the focus in that field.
+  const followSave = useBusyFocus(
+    isSaving,
+    () => document.getElementById(saveId),
+    saveDisabled?.reason,
+  );
   const isRestoreDefaultsButtonDisabled = isDefaultConfiguration(
     translationFields,
     translateWholeRecord,
@@ -949,213 +1174,156 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     apiKeysToBeExcluded,
   );
 
-  return (
-    // Canvas is a Datocms React UI wrapper for consistent styling
-    <Canvas ctx={ctx}>
-      <div>
-        {/* Vendor selection */}
-        <SelectField
-            name="vendor"
-            id="vendor"
-            label="AI Vendor"
-            value={{ label: getVendorLabel(vendor), value: vendor }}
-            selectInputProps={{
-              options: [
-                { label: 'OpenAI (ChatGPT)', value: 'openai' },
-                { label: 'Google (Gemini)', value: 'google' },
-                { label: 'Anthropic (Claude)', value: 'anthropic' },
-                { label: 'DeepL', value: 'deepl' },
-                { label: 'Yandex Translate', value: 'yandex' },
-              ],
-            }}
-            onChange={(opt) => {
-              const newVendor = parseVendorFromSelectOption(opt);
-              if (newVendor) setVendor(newVendor);
-            }}
-          />
+  // Changes the form only: Save applies the defaults.
+  const restoreDefaults = () => {
+    setVendor('openai');
+    // The first loaded OpenAI model, or no model
+    setGptModel(
+      openAIModels.status === 'ready'
+        ? (openAIModels.models[0] ?? 'None')
+        : 'None',
+    );
+    setTranslationFields(Object.keys(translateFieldTypes));
+    setTranslateWholeRecord(true);
+    setTranslateBulkRecords(true);
+    setPrompt(defaultPrompt);
+    setModelsToBeExcluded([]);
+    setRolesToBeExcluded([]);
+    setApiKeysToBeExcluded([]);
+    ctx.notice('Defaults restored. Save to apply them.');
+  };
 
-        <div className={s.sectionSpacing}>
-        <Section title={`Vendor-specific settings for ${getVendorLabel(vendor)}`}>
-        {vendor === 'openai' ? (
-          <OpenAIConfig
-            apiKey={apiKey}
-            setApiKey={setApiKey}
-            gptModel={gptModel}
-            setGptModel={setGptModel}
-            listOfModels={listOfModels}
-            isModelListLoading={isModelListLoading}
-          />
-        ) : vendor === 'google' ? (
-          <GeminiConfig
-            googleApiKey={googleApiKey}
-            setGoogleApiKey={setGoogleApiKey}
-            geminiModel={geminiModel}
-            setGeminiModel={setGeminiModel}
-            listOfGeminiModels={listOfGeminiModels}
-          />
-        ) : vendor === 'anthropic' ? (
-          <AnthropicConfig
-            anthropicApiKey={anthropicApiKey}
-            setAnthropicApiKey={setAnthropicApiKey}
-            anthropicModel={anthropicModel}
-            setAnthropicModel={setAnthropicModel}
-            listOfAnthropicModels={listOfAnthropicModels}
-          />
-        ) : vendor === 'deepl' ? (
-          <DeepLConfig
-            deeplApiKey={deeplApiKey}
-            setDeeplApiKey={setDeeplApiKey}
-            deeplUseFree={deeplUseFree}
-            setDeeplUseFree={setDeeplUseFree}
-            deeplFormality={deeplFormality}
-            setDeeplFormality={setDeeplFormality}
-            deeplPreserveFormatting={deeplPreserveFormatting}
-            setDeeplPreserveFormatting={setDeeplPreserveFormatting}
-            deeplIgnoreTags={deeplIgnoreTags}
-            setDeeplIgnoreTags={setDeeplIgnoreTags}
-            deeplNonSplittingTags={deeplNonSplittingTags}
-            setDeeplNonSplittingTags={setDeeplNonSplittingTags}
-            deeplSplittingTags={deeplSplittingTags}
-            setDeeplSplittingTags={setDeeplSplittingTags}
-            deeplGlossaryId={deeplGlossaryId}
-            setDeeplGlossaryId={setDeeplGlossaryId}
-            deeplGlossaryPairs={deeplGlossaryPairs}
-            setDeeplGlossaryPairs={setDeeplGlossaryPairs}
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Enter in a field submits the form too.
+    if (saveDisabled || isSaving) return;
+    followSave();
+    updatePluginParams({
+      ctx,
+      params: {
+        vendor,
+        apiKey,
+        gptModel,
+        googleApiKey,
+        geminiModel,
+        anthropicApiKey,
+        anthropicModel,
+        deeplApiKey,
+        deeplEndpoint: pluginParams.deeplEndpoint ?? 'auto',
+        deeplUseFree,
+        deeplFormality,
+        deeplPreserveFormatting,
+        deeplIgnoreTags,
+        deeplNonSplittingTags,
+        deeplSplittingTags,
+        deeplGlossaryId,
+        deeplGlossaryPairs,
+        yandexApiKey,
+        yandexFolderId: yandexFolderId.trim(),
+        translationFields,
+        translateWholeRecord,
+        translateBulkRecords,
+        prompt,
+        modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
+        rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
+        apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,
+        enableDebugging,
+      },
+      setIsSaving,
+    });
+  };
+
+  return (
+    <Page className={styles.page}>
+      <Page.Content>
+        {/* One form spans every group, so Save follows the last one. Enter
+            in a select never saves it. */}
+        <form onSubmit={handleSubmit} onKeyDown={keepEnterInSelects} noValidate>
+          <Page.Group title="AI vendor">
+            <FieldWrapper label="AI vendor" labelExtras={{ hidden: true }}>
+              <RadioGroupInput
+                name="vendor"
+                value={vendor}
+                onChange={(next) => {
+                  if (next) setVendor(next);
+                }}
+                options={VENDOR_OPTIONS}
+              />
+            </FieldWrapper>
+          </Page.Group>
+
+          <VendorSettings
+            vendorConfig={vendorConfig}
+            vendorActions={vendorActions}
+            modelLists={{
+              openai: openAIModels,
+              google: geminiModels,
+              anthropic: anthropicModels,
+            }}
             siteLocales={siteLocales}
             openConfirm={ctx.openConfirm}
+            notice={ctx.notice}
           />
-        ) : (
-          <YandexConfig
-            yandexApiKey={yandexApiKey}
-            setYandexApiKey={setYandexApiKey}
-            yandexFolderId={yandexFolderId}
-            setYandexFolderId={setYandexFolderId}
-          />
-        )}
-      </Section>
-      </div>
 
-      <div className={s.sectionSpacing}>
-      <Section title="General translation settings">
-        {/* Prompt input is not applicable to native translation providers. */}
-        {!isNativeTranslationVendor(vendor) && (
-            <div className={s.promptContainer}>
-              <label
-                  className={s.label}
-                  style={{ display: 'flex', alignItems: 'center' }}
-                  htmlFor="translation-prompt"
-              >
-                Translation prompt*
-                <div className={s.tooltipContainer}>
-                  ⓘ
-                  <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-                    Use &#123;fieldValue&#125;, &#123;fromLocale&#125;, and
-                    &#123;toLocale&#125; in your prompt to reference the content
-                    and source/target languages. Changing the prompt can break the
-                    plugin, so proceed with caution.
-                  </div>
-                </div>
-              </label>
-              <ReactTextareaAutosize
-                required
-                className={s.textarea}
-                placeholder="Enter your prompt here"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                id="translation-prompt"
-                aria-labelledby="translation-prompt"
+          <Page.Group title="Translation">
+            {/* Prompt input is not applicable to native translation providers. */}
+            {!isNativeTranslationVendor(vendor) && (
+              <FieldWrapper label="Translation prompt" hint={PROMPT_HINT}>
+                <TextareaInput
+                  name="prompt"
+                  value={prompt}
+                  onChange={(next) => setPrompt(next ?? '')}
+                  maxRows={PROMPT_MAX_ROWS}
+                />
+              </FieldWrapper>
+            )}
+            <FieldWrapper
+              label="Translatable field types"
+              hint="The plugin translates the fields of these types."
+            >
+              <SelectInput
+                multiple
+                name="translationFields"
+                value={translationFields}
+                onChange={(next) => setTranslationFields(next ?? [])}
+                options={FIELD_TYPE_OPTIONS}
+                acceptValueNotIncludedInOptions={savedFieldTypeOption}
+                noOptionsMessage={noFieldTypes}
+                placeholder="Pick field types"
               />
-            </div>
-        )}
+            </FieldWrapper>
+          </Page.Group>
 
-        {/* A multi-select component that lets users choose which field types can be translated */}
-        <SelectField
-            name="fieldsWithTranslationOption"
-            id="fieldsWithTranslationOption"
-            label="Fields that can be translated"
-            value={translationFields.map((field) => ({
-              label:
-                  translateFieldTypes[field as keyof typeof translateFieldTypes],
-              value: field,
-            }))}
-            selectInputProps={{
-              isMulti: true,
-              options: Object.entries(translateFieldTypes).map(
-                  ([value, label]) => ({
-                    label,
-                    value,
-                  }),
-              ),
-            }}
-            onChange={(newValue) => {
-              const selectedFields = newValue.map((v) => v.value);
-              setTranslationFields(selectedFields);
-            }}
-        />
-        <FieldGroup>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <SwitchField
-                name="translateWholeRecord"
-                id="translateWholeRecord"
-                label="Allow translation of the whole record from the sidebar"
-                value={translateWholeRecord}
-                onChange={(newValue) => setTranslateWholeRecord(newValue)}
-            />
-            <div className={s.tooltipContainer}>
-              <span role="img" aria-label="Information about sidebar translation">ⓘ</span>
-              <div className={`${s.tooltipText} ${s.imageTooltip}`}>
-                <img
-                    src="/public/assets/sidebar-translation-example.png"
-                    alt="Screenshot showing the sidebar translation feature with locale selection and translate button"
-                    style={{ width: '100%', maxWidth: '420px' }}
+          <Page.Group title="Features">
+            <SwitchList>
+              <FieldWrapper hint="Adds the AI Translations panel to the record sidebar.">
+                <SwitchInput
+                  name="translateWholeRecord"
+                  label="Whole-record translation in the sidebar"
+                  value={translateWholeRecord}
+                  onChange={(next) => setTranslateWholeRecord(next === true)}
                 />
-                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Sidebar Translation</div>
-                <div style={{ fontSize: '12px' }}>Translate an entire record from the sidebar panel</div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <SwitchField
-                name="translateBulkRecords"
-                id="translateBulkRecords"
-                label="Allow bulk records translation in tabular view"
-                value={translateBulkRecords}
-                onChange={(newValue) => setTranslateBulkRecords(newValue)}
-            />
-            <div className={s.tooltipContainer}>
-              <span role="img" aria-label="Information about bulk translation">ⓘ</span>
-              <div className={`${s.tooltipText} ${s.imageTooltip}`}>
-                <img
-                    src="/public/assets/bulk-translation-example.png"
-                    alt="Screenshot showing bulk translation of multiple records in tabular view"
-                    style={{ width: '100%', maxWidth: '420px' }}
+              </FieldWrapper>
+              <FieldWrapper hint="Adds “AI Translate these records” to the actions of the records selected in a table.">
+                <SwitchInput
+                  name="translateBulkRecords"
+                  label="Bulk translation of selected records"
+                  value={translateBulkRecords}
+                  onChange={(next) => setTranslateBulkRecords(next === true)}
                 />
-                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Bulk Translation</div>
-                <div style={{ fontSize: '12px' }}>Translate multiple records at once in the tabular view</div>
-              </div>
-            </div>
-          </div>
+              </FieldWrapper>
+              <FieldWrapper hint="Logs translation requests and responses in the browser console.">
+                <SwitchInput
+                  name="enableDebugging"
+                  label="Debug logging"
+                  value={enableDebugging}
+                  onChange={(next) => setEnableDebugging(next === true)}
+                />
+              </FieldWrapper>
+            </SwitchList>
+          </Page.Group>
 
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <SwitchField
-                name="enableDebugging"
-                id="enableDebugging"
-                label="Enable debug logging"
-                value={enableDebugging}
-                onChange={(newValue) => setEnableDebugging(newValue)}
-            />
-            <div className={s.tooltipContainer}>
-              ⓘ
-              <div className={s.tooltipText}>
-                When enabled, detailed logs of translation requests and responses will be displayed in the browser console. This helps with troubleshooting and understanding how the plugin processes content.
-              </div>
-            </div>
-          </div>
-        </FieldGroup>
-
-        {/* Exclusion rules section */}
-        <ExclusionRulesSection
+          <ExclusionRulesSection
             showExclusionRules={showExclusionRules}
             setShowExclusionRules={setShowExclusionRules}
             hasExclusionRules={hasExclusionRules}
@@ -1167,91 +1335,32 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             setApiKeysToBeExcluded={setApiKeysToBeExcluded}
             availableModels={availableModels}
             roles={roles}
+            rolesStatus={rolesStatus}
             listOfFields={listOfFields}
-        />
-      </Section>
-      </div>
+            fieldsLoading={fieldsLoading}
+          />
 
-
-      {/* A button to save the configuration updates. It is disabled if nothing changed or if saving is in progress. */}
-        <div className={s.buttons}>
-          <Button
-              fullWidth
-              disabled={isRestoreDefaultsButtonDisabled}
-              buttonType="muted"
-              onClick={() => {
-                setVendor('openai');
-                // Use first available model if list is loaded, otherwise fallback
-                const firstModel = listOfModels[0];
-                setGptModel(
-                    firstModel &&
-                    firstModel !== 'Insert a valid OpenAI API Key' &&
-                    firstModel !== 'Invalid API Key'
-                        ? firstModel
-                        : 'None',
-                );
-                setTranslationFields(Object.keys(translateFieldTypes));
-                setTranslateWholeRecord(true);
-                setTranslateBulkRecords(true);
-                setPrompt(defaultPrompt);
-                setModelsToBeExcluded([]);
-                setRolesToBeExcluded([]);
-                setApiKeysToBeExcluded([]);
-                ctx.notice(
-                    '<h1>Plugin options restored to defaults</h1>\n<p>Save to apply changes</p>',
-                );
-              }}
-          >
-            Restore to defaults
-          </Button>
-          <Button
+          <div className={styles.actions}>
+            <Button
+              label="Restore defaults"
               disabled={
-                vendorCredentialsMissing || !isFormDirty || isLoading
+                isRestoreDefaultsButtonDisabled
+                  ? { reason: 'The settings already use the defaults.' }
+                  : undefined
               }
-              fullWidth
-              buttonType="primary"
-              onClick={() =>
-                  updatePluginParams({
-                    ctx,
-                    params: {
-                      vendor,
-                      apiKey,
-                      gptModel,
-                      googleApiKey,
-                      geminiModel,
-                      anthropicApiKey,
-                      anthropicModel,
-                      deeplApiKey,
-                      deeplEndpoint: pluginParams.deeplEndpoint ?? 'auto',
-                      deeplUseFree,
-                      deeplFormality,
-                      deeplPreserveFormatting,
-                      deeplIgnoreTags,
-                      deeplNonSplittingTags,
-                      deeplSplittingTags,
-                      deeplGlossaryId,
-                      deeplGlossaryPairs,
-                      yandexApiKey,
-                      yandexFolderId: yandexFolderId.trim(),
-                      translationFields,
-                      translateWholeRecord,
-                      translateBulkRecords,
-                      prompt,
-                      modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
-                      rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
-                      apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,
-                      enableDebugging,
-                    },
-                    setIsLoading,
-                  })
-              }
-          >
-            {isLoading ? 'Saving...' : 'Save'}
-            {isLoading && <Spinner size={24} />}
-          </Button>
-
-        </div>
-      </div>
-    </Canvas>
+              onClick={restoreDefaults}
+            />
+            <Button
+              id={saveId}
+              submit
+              tone="primary"
+              label="Save"
+              busy={isSaving}
+              disabled={saveDisabled}
+            />
+          </div>
+        </form>
+      </Page.Content>
+    </Page>
   );
 }

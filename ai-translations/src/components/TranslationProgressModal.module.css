@@ -1,0 +1,104 @@
+/*
+ * Layout of the translation progress modal. The host draws the title bar and
+ * the body padding; the kit components draw everything else. These rules
+ * only stack the parts, give the list of records its scroll box, and set the
+ * quiet lines.
+ */
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+
+/* The stack's gap spaces the callout: its own bottom margin would add to
+   it. */
+.callout {
+  margin-bottom: 0;
+}
+
+/* The cause of a fatal error can carry a request URL with no spaces (an API
+   path with a list of ids): it breaks anywhere, so the callout keeps the
+   width of the frame. */
+.fatalCause {
+  overflow-wrap: anywhere;
+}
+
+/* The status line, the bar and the counts behind it. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.status {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  margin: 0;
+  font-weight: var(--font-weight-strong);
+}
+
+/* The percentage for screen readers: in the accessibility tree, out of
+   view. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Quiet lines: the counts under the bar and the caption of a capped list.
+   Tabular figures keep the counts from jumping while they change. */
+.meta,
+.caption {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color--ink-subtle);
+}
+
+/* A short note under the value of an InfoList row. */
+.valueNote {
+  display: block;
+  margin-top: var(--spacing-s);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The latest records scroll inside the modal, about five rows tall, so the
+   status and the actions stay in view. The box itself goes out into the
+   dialog padding (InsetRowList), so its overflow never clips a row. */
+.updates {
+  max-height: calc(3 * var(--spacing-xxxl));
+  overflow-y: auto;
+}
+
+/* Like a dialog footer: the Cancel of the dialog at the left, the other
+   actions and the main one at the right. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Cancel moves left into the frame padding by as much as its own side
+   padding (a small button's is --spacing-m), so its text, not its hover
+   surface, lines up with the content. */
+.cancel {
+  margin-left: var(--negative-spacing-m);
+}
+
+/* The right group stays at the right also when Cancel is not shown. Its
+   buttons are as close as the actions of a dialog footer. */
+.mainActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}

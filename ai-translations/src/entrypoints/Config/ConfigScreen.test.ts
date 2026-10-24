@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   isNativeTranslationVendor,
   isVendorCredentialsMissing,
 } from './ConfigScreen';
+
+// These tests cover the pure helpers of the config screen: the DeepL settings
+// (a UI of their own, with its own requests) don't need to load.
+vi.mock('./VendorConfigs/DeepLConfig', () => ({ default: () => null }));
 
 const configuredCredentials = {
   vendor: 'openai' as const,

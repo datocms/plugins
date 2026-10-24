@@ -1,21 +1,30 @@
 /**
  * TranslationConfirmModal.tsx
  * ---------------------------
- * Styled replacement for the native `ctx.openConfirm` gate shown before a
- * bulk translation starts. The native confirm only renders plain-text
- * content; this modal shows the record count and the source/target locales as
- * chips (via {@link LocaleChip}), matching the picker and progress surfaces.
+ * The review shown before a bulk translation starts: how many records, from
+ * which locale into which locales, and which fields of each model. It is a
+ * modal opened with `ctx.openModal` rather than `ctx.openConfirm`, because
+ * the native confirm shows plain text only and can't hold the breakdown.
  *
- * Resolves `true` when the user confirms, `false` when they cancel. Opened
- * from the items-dropdown handler (a non-modal context), so it doesn't nest
- * inside another modal.
+ * Resolves `true` when the user starts the run, `false` when they cancel.
+ * Its footer has Cancel at the left, so it opens with no host cross
+ * (`closeDisabled`) and registers Escape as that Cancel, as a dialog with a
+ * footer does. Opened from non-modal contexts (the items-dropdown handler
+ * and the bulk page), so it never nests inside another modal.
  */
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
-import { Fragment } from 'react';
-import { renderChipOption } from './BulkTranslations/chipOption';
-import { LocaleChip } from './BulkTranslations/LocaleChip';
-import { ModelLabel } from './BulkTranslations/ModelLabel';
+import { useRegisterActions } from 'datocms-react-ui/Actions';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import InfoList from 'datocms-react-ui/InfoList';
+import { formatLocaleWithCode } from '../utils/localeUtils';
+import {
+  localeCount,
+  modelCount,
+  recordCount,
+  translateRecordsLabel,
+} from './BulkTranslations/bulkCopy';
 import s from './TranslationConfirmModal.module.css';
 
 /** One model's translation summary: its name, api_key, and selected fields. */
@@ -31,7 +40,7 @@ export interface TranslationConfirmModalParams {
   toLocales: string[];
   /**
    * Optional per-model breakdown of exactly which fields will be translated.
-   * When present, the modal renders a "Models & fields" section so the user
+   * When present, the modal lists the models and their fields so the user
    * can review arbitrary model/field combinations before starting.
    */
   models?: ConfirmModelSummary[];
@@ -53,108 +62,98 @@ export function isTranslationConfirmModalParams(
   );
 }
 
+/**
+ * From this many record × target locale translations on, the modal warns
+ * about the provider usage and asks to keep the progress window open.
+ */
+const LARGE_RUN_THRESHOLD = 10_000;
+
+/** The Escape of the dialog: the Cancel of its footer. */
+const CANCEL_ACTION_ID = 'translationConfirm.cancel';
+
 interface Props {
   ctx: RenderModalCtx;
   parameters: TranslationConfirmModalParams;
 }
 
 export default function TranslationConfirmModal({ ctx, parameters }: Props) {
-  const { recordCount, fromLocale, toLocales, models } = parameters;
-  const recordLabel = `${recordCount} record${recordCount === 1 ? '' : 's'}`;
-  const localeLabel = `${toLocales.length} locale${
-    toLocales.length === 1 ? '' : 's'
-  }`;
+  const { recordCount: count, fromLocale, toLocales, models } = parameters;
   const hasModels = !!models && models.length > 0;
-  const modelLabel = `${models?.length ?? 0} model${
-    models?.length === 1 ? '' : 's'
-  }`;
+  // Counts get the separators of the language that the Canvas gives the kit.
+  const locale = ctx.ui.locale;
+  const across = hasModels
+    ? ` across ${modelCount(models.length, locale)}`
+    : '';
+  const isLargeRun = count * toLocales.length >= LARGE_RUN_THRESHOLD;
+  const cancel = () => ctx.resolve(false);
+
+  // The host draws no cross on this dialog, so Escape is the Cancel of the
+  // footer, as in the kit's dialogs. Its key only makes sense as a key.
+  useRegisterActions([
+    {
+      id: CANCEL_ACTION_ID,
+      name: 'Cancel',
+      shortcut: { key: 'escape' },
+      palette: 'hidden',
+      run: cancel,
+    },
+  ]);
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.modal}>
-        <p className={s.lead}>
-          This will translate <strong>{recordLabel}</strong>
-          {hasModels ? (
-            <>
-              {' '}
-              across <strong>{modelLabel}</strong>
-            </>
-          ) : null}{' '}
-          into <strong>{localeLabel}</strong>.
-        </p>
+    <>
+      <p className={s.lead}>
+        This translates {recordCount(count, locale)}
+        {across} into {localeCount(toLocales.length, locale)}.
+      </p>
 
-        {recordCount * toLocales.length >= 10000 ? (
-          <p role="note">
-            Each selected field is translated into every target locale. Provider
-            usage depends on the content size and can be substantial for this
-            selection. Keep this window open until the run finishes.
-          </p>
-        ) : null}
+      {isLargeRun && (
+        <Callout tone="warning" title="Large translation">
+          Each selected field is translated into every target locale, so
+          provider usage can be large. Keep the progress window open until the
+          run finishes.
+        </Callout>
+      )}
 
-        <div className={s.summary}>
-          <div className={s.row}>
-            <span className={s.label}>From</span>
-            <LocaleChip locale={fromLocale} />
-          </div>
-          <div className={s.row}>
-            <span className={s.label}>To</span>
-            <div className={s.chips}>
-              {toLocales.map((loc) => (
-                <LocaleChip key={loc} locale={loc} />
-              ))}
-            </div>
-          </div>
-        </div>
+      <InfoList>
+        <InfoList.Row title="From">
+          {formatLocaleWithCode(fromLocale)}
+        </InfoList.Row>
+        <InfoList.Row title="To">
+          {toLocales.map(formatLocaleWithCode).join(', ')}
+        </InfoList.Row>
+        {hasModels && (
+          <InfoList.Group title="Models and fields">
+            {models.map((model) => (
+              <InfoList.Row
+                key={model.code}
+                title={
+                  <>
+                    {model.label} <ApiKey>{model.code}</ApiKey>
+                  </>
+                }
+              >
+                {model.fields.length > 0
+                  ? model.fields.map((field) => field.label).join(', ')
+                  : 'No fields selected'}
+              </InfoList.Row>
+            ))}
+          </InfoList.Group>
+        )}
+      </InfoList>
 
-        {hasModels ? (
-          <div className={s.modelsSection}>
-            <div className={s.sectionLabel}>Models &amp; fields</div>
-            <ul className={s.modelList}>
-              {models?.map((model) => (
-                <li key={model.code} className={s.modelItem}>
-                  <div className={s.modelName}>
-                    <ModelLabel label={model.label} code={model.code} />
-                  </div>
-                  {model.fields.length > 0 ? (
-                    <div className={s.fieldChips}>
-                      {model.fields.map((field) => (
-                        <Fragment key={field.apiKey}>
-                          {renderChipOption({
-                            label: field.label,
-                            value: field.apiKey,
-                            code: field.apiKey,
-                          })}
-                        </Fragment>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className={s.noFields}>No fields selected</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className={s.footer}>
-          <Button
-            type="button"
-            buttonType="muted"
-            buttonSize="s"
-            onClick={() => ctx.resolve(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            buttonType="primary"
-            buttonSize="s"
-            onClick={() => ctx.resolve(true)}
-          >
-            Translate {recordLabel}
-          </Button>
-        </div>
+      <div className={s.actions}>
+        <Button
+          tone="ghost"
+          label="Cancel"
+          className={s.cancel}
+          onClick={cancel}
+        />
+        <Button
+          tone="primary"
+          label={translateRecordsLabel(count, locale)}
+          onClick={() => ctx.resolve(true)}
+        />
       </div>
-    </Canvas>
+    </>
   );
 }

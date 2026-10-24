@@ -1,12 +1,42 @@
 /*
- * Local tweaks for the records-action picker modal. The host draws the title
- * bar, ✕ and body padding; layout comes from the kit Form and the global dl-*
- * recipes (src/dl-recipes.css).
+ * Layout of the records-action picker modal. The host draws the title bar
+ * and the body padding; the kit components draw everything else. These rules
+ * only space the parts, place the actions and give the group titles their
+ * quiet look.
  */
 .intro {
-  margin: 0;
+  margin: 0 0 var(--spacing-l);
 }
 
-.intro strong {
-  font-weight: var(--font-weight-bold);
+.group {
+  margin-bottom: var(--spacing-xl);
+}
+
+/* The title of a group of fields: small and subtle, above the fields. */
+.groupTitle {
+  margin: 0 0 var(--spacing-m);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
+  line-height: 1.4;
+  color: var(--color--ink-subtle);
+}
+
+.pagination {
+  margin-bottom: var(--spacing-m);
+}
+
+/* Cancel at the left, the main action at the right, like a dialog footer.
+   The host draws no cross: Cancel and Escape dismiss the dialog. */
+.actions {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Cancel moves left into the frame padding by as much as its own side
+   padding (a small button's is --spacing-m), so its text, not its hover
+   surface, lines up with the content. */
+.cancel {
+  margin-left: var(--negative-spacing-m);
 }

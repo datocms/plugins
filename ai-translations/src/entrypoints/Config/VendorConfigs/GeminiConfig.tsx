@@ -1,17 +1,21 @@
 /**
  * GeminiConfig.tsx
- * Configuration component for Google Gemini vendor settings.
+ * Configuration component for Google Gemini vendor settings: the settings
+ * group with the API key and the model.
  */
 
-import { FieldGroup, TextField } from 'datocms-react-ui';
-import ModelSelectField from './ModelSelectField';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import StringInput from 'datocms-react-ui/StringInput';
+import { vendorSettingsTitle } from '../configConstants';
+import ModelSelectField, { type ModelList } from './ModelSelectField';
 
 export interface GeminiConfigProps {
   googleApiKey: string;
   setGoogleApiKey: (value: string) => void;
   geminiModel: string;
   setGeminiModel: (value: string) => void;
-  listOfGeminiModels: string[];
+  modelList: ModelList;
 }
 
 export default function GeminiConfig({
@@ -19,26 +23,26 @@ export default function GeminiConfig({
   setGoogleApiKey,
   geminiModel,
   setGeminiModel,
-  listOfGeminiModels,
+  modelList,
 }: GeminiConfigProps) {
   return (
-    <FieldGroup>
-      <TextField
-        required
-        name="googleApiKey"
-        id="googleApiKey"
-        label="Google API Key"
-        value={googleApiKey}
-        onChange={(newValue) => setGoogleApiKey(newValue)}
-        placeholder="AIza..."
-      />
+    <Page.Group title={vendorSettingsTitle('google')}>
+      <FieldWrapper label="API key" required>
+        <StringInput
+          code
+          name="googleApiKey"
+          value={googleApiKey}
+          onChange={(value) => setGoogleApiKey(value ?? '')}
+          placeholder="AIza…"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
       <ModelSelectField
-        id="geminiModel"
-        label="Gemini Model"
         value={geminiModel}
         onChange={setGeminiModel}
-        models={listOfGeminiModels}
+        modelList={modelList}
       />
-    </FieldGroup>
+    </Page.Group>
   );
 }

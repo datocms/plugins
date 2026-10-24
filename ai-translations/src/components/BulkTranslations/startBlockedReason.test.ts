@@ -60,7 +60,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('You cannot translate records as no AI vendor is set up');
+    ).toBe('Set up an AI vendor in the plugin settings first.');
   });
 
   it('explains a missing source locale before missing targets', () => {
@@ -73,7 +73,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('You cannot translate records as no source locale is selected');
+    ).toBe('Pick a source locale first.');
   });
 
   it('explains missing target locales before missing models', () => {
@@ -86,7 +86,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('You cannot translate records as no target locale is selected');
+    ).toBe('Pick at least one target locale first.');
   });
 
   it('explains missing models when they are required', () => {
@@ -98,7 +98,7 @@ describe('getStartBlockedReason', () => {
           readiness: notReady({ missingModels: true }),
         }),
       ),
-    ).toBe('You cannot translate records as no model is selected');
+    ).toBe('Pick at least one model first.');
   });
 
   it('skips the models reason in priority order when models are not required', () => {
@@ -107,10 +107,10 @@ describe('getStartBlockedReason', () => {
       readiness: notReady({ missingModels: true }),
     });
     expect(getStartBlockedReason(blocked)).toBe(
-      'You cannot translate records as no model is selected',
+      'Pick at least one model first.',
     );
     expect(getStartBlockedReason({ ...blocked, requireModels: false })).toBe(
-      "You cannot translate records as the fields of Pages couldn't be loaded",
+      "The fields of Pages couldn't be loaded. Try loading them again.",
     );
   });
 
@@ -137,9 +137,7 @@ describe('getStartBlockedReason', () => {
           readiness: notReady({ modelsMissingFields: ['article', 'page'] }),
         }),
       ),
-    ).toBe(
-      'You cannot translate records while the fields of Articles are loading',
-    );
+    ).toBe('Wait for the fields of Articles to load.');
   });
 
   it('explains a failed field load before a dead end', () => {
@@ -151,9 +149,7 @@ describe('getStartBlockedReason', () => {
           readiness: notReady({ modelsMissingFields: ['article', 'page'] }),
         }),
       ),
-    ).toBe(
-      "You cannot translate records as the fields of Pages couldn't be loaded",
-    );
+    ).toBe("The fields of Pages couldn't be loaded. Try loading them again.");
   });
 
   it('explains a model with no translatable fields before an empty selection', () => {
@@ -164,7 +160,7 @@ describe('getStartBlockedReason', () => {
           readiness: notReady({ modelsMissingFields: ['article', 'page'] }),
         }),
       ),
-    ).toBe('You cannot translate records as Pages has no translatable fields');
+    ).toBe('Pages has no fields the plugin can translate.');
   });
 
   it('explains the first model with no field selected', () => {
@@ -174,6 +170,6 @@ describe('getStartBlockedReason', () => {
           readiness: notReady({ modelsMissingFields: ['page'] }),
         }),
       ),
-    ).toBe('You cannot translate records as no field of Pages is selected');
+    ).toBe('Pick at least one field of Pages first.');
   });
 });

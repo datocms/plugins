@@ -1,111 +1,64 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dropFocus } from '../../test/dropFocus';
+import { makeCtx, renderWithCanvas } from '../../test/renderWithCanvas';
 import ConfigScreen from './ConfigScreen';
 
-type Option = { label: string; value: string };
+type StubOption = { label: ReactNode; value: string };
+type StubGroup = { label: string; options: StubOption[] };
 
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Section: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Spinner: () => <div role="status">Loading</div>,
-  Button: ({
-    children,
-    disabled,
-    onClick,
-  }: {
-    children: ReactNode;
-    disabled?: boolean;
-    onClick?: () => void;
-  }) => (
-    <button type="button" disabled={disabled} onClick={onClick}>
-      {children}
-    </button>
-  ),
-  SwitchField: ({
-    id,
-    label,
-    value,
-    onChange,
-  }: {
-    id: string;
-    label: string;
-    value: boolean;
-    onChange: (value: boolean) => void;
-  }) => (
-    <label htmlFor={id}>
-      {label}
-      <input
-        id={id}
-        type="checkbox"
-        checked={value}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-    </label>
-  ),
-  SelectField: ({
-    id,
-    label,
-    value,
-    selectInputProps,
-    onChange,
-  }: {
-    id: string;
-    label: string;
-    value: Option | Option[];
-    selectInputProps: { options: Option[]; isMulti?: boolean };
-    onChange: (value: Option | Option[]) => void;
-  }) => {
-    const selected = Array.isArray(value) ? value : [value];
-    return (
-      <div>
-        <label htmlFor={id}>{label}</label>
-        <div data-testid={`${id}-selected`}>
-          {selected.map((option) => (
-            <span key={option.value}>{option.label}</span>
-          ))}
-        </div>
+const { listRoles } = vi.hoisted(() => ({
+  listRoles: vi.fn<() => Promise<{ id: string; name: string }[]>>(),
+}));
+
+// The selects of the screen as native selects: the options are in the DOM,
+// so a test can count them. The stub takes the field's id, so the label of
+// its FieldWrapper names it, and the combobox role of the kit's select
+// input, which the form's Enter guard looks for.
+vi.mock('datocms-react-ui/SelectInput', async () => {
+  const { useFieldInput } = await import('datocms-react-ui/FieldWrapper');
+  return {
+    default: function SelectInputStub(props: {
+      id?: string;
+      value: string | string[] | null;
+      multiple?: boolean;
+      options?: readonly (StubOption | StubGroup)[];
+      onChange?: (value: string | string[] | null) => void;
+    }) {
+      const field = useFieldInput(props);
+      const options = (props.options ?? []).flatMap((entry) =>
+        'options' in entry ? entry.options : [entry],
+      );
+      return (
         <select
-          id={id}
-          multiple={selectInputProps.isMulti}
-          value={
-            selectInputProps.isMulti
-              ? selected.map((option) => option.value)
-              : selected[0]?.value
-          }
+          id={field.id}
+          role="combobox"
+          aria-labelledby={field['aria-labelledby']}
+          multiple={props.multiple}
+          value={props.value ?? (props.multiple ? [] : '')}
           onChange={(event) => {
-            const options = Array.from(
+            const picked = Array.from(
               event.target.selectedOptions,
-              (option) => ({
-                label: option.textContent ?? '',
-                value: option.value,
-              }),
+              (option) => option.value,
             );
-            onChange(selectInputProps.isMulti ? options : options[0]);
+            props.onChange?.(props.multiple ? picked : (picked[0] ?? null));
           }}
         >
-          {selectInputProps.options.map((option) => (
+          {options.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {typeof option.label === 'string' ? option.label : option.value}
             </option>
           ))}
         </select>
-      </div>
-    );
-  },
-}));
+      );
+    },
+  };
+});
 
 vi.mock('@datocms/cma-client-browser', () => ({
-  buildClient: () => ({ roles: { list: async () => [] } }),
+  buildClient: () => ({ roles: { list: listRoles } }),
 }));
 vi.mock('../../utils/translation/OpenAIModels', () => ({
   listRelevantOpenAIModels: vi.fn().mockResolvedValue(['test-model']),
@@ -126,7 +79,10 @@ type ItemTypes = RenderConfigScreenCtx['itemTypes'];
 type ContextOverrides = Partial<
   Pick<
     RenderConfigScreenCtx,
-    'itemTypes' | 'loadItemTypeFields' | 'colorScheme'
+    | 'itemTypes'
+    | 'loadItemTypeFields'
+    | 'colorScheme'
+    | 'updatePluginParameters'
   >
 >;
 type LoadedFields = Awaited<
@@ -159,7 +115,7 @@ function deferred<T>() {
 }
 
 function context(overrides: ContextOverrides = {}): RenderConfigScreenCtx {
-  return {
+  return makeCtx<RenderConfigScreenCtx>({
     plugin: {
       attributes: {
         parameters: {
@@ -182,7 +138,7 @@ function context(overrides: ContextOverrides = {}): RenderConfigScreenCtx {
           ? fields('title-id', 'Title')
           : fields('season-id', 'Season type'),
       ),
-    site: { attributes: { locales: ['en', 'it'] } },
+    site: { attributes: { locales: ['en', 'it'], internal_domain: null } },
     currentUserAccessToken: 'test-token',
     environment: 'main',
     cmaBaseUrl: 'https://site-api.datocms.com',
@@ -190,11 +146,31 @@ function context(overrides: ContextOverrides = {}): RenderConfigScreenCtx {
     notice: vi.fn().mockResolvedValue(undefined),
     alert: vi.fn().mockResolvedValue(undefined),
     ...overrides,
-  } as unknown as RenderConfigScreenCtx;
+  });
+}
+
+function renderScreen(ctx: RenderConfigScreenCtx) {
+  const view = renderWithCanvas(<ConfigScreen ctx={ctx} />, ctx);
+  return {
+    ...view,
+    rerenderWith: (nextCtx: RenderConfigScreenCtx) =>
+      view.rerender(<ConfigScreen ctx={nextCtx} />, nextCtx),
+  };
 }
 
 function options() {
-  return screen.getByLabelText('Fields to be excluded from translation');
+  return screen.getByLabelText('Excluded fields');
+}
+
+function saveButton() {
+  return screen.getByRole('button', { name: 'Save' });
+}
+
+/** The text of the tooltip of a button disabled with a reason. */
+async function disabledReason(button: HTMLElement) {
+  expect(button.getAttribute('aria-disabled')).toBe('true');
+  act(() => button.focus());
+  return (await screen.findByRole('tooltip')).textContent;
 }
 
 function updatedContext(
@@ -205,17 +181,18 @@ function updatedContext(
 }
 
 afterEach(() => {
-  cleanup();
   vi.restoreAllMocks();
+  listRoles.mockReset();
 });
 
 describe('config field exclusions', () => {
   it.each(['openai', 'google', 'anthropic', 'deepl', 'yandex'])(
     'loads model and block fields for %s without an OpenAI key',
     async (vendor) => {
+      listRoles.mockResolvedValue([]);
       const ctx = context();
       ctx.plugin.attributes.parameters.vendor = vendor;
-      render(<ConfigScreen ctx={ctx} />);
+      renderScreen(ctx);
 
       await waitFor(() =>
         expect(options().querySelectorAll('option')).toHaveLength(2),
@@ -228,16 +205,15 @@ describe('config field exclusions', () => {
   );
 
   it('loads fields when the SDK supplies item types after the first render', async () => {
+    listRoles.mockResolvedValue([]);
     const ctx = context({ itemTypes: {} });
-    const view = render(<ConfigScreen ctx={ctx} />);
+    const view = renderScreen(ctx);
     expect(ctx.loadItemTypeFields).not.toHaveBeenCalled();
 
-    view.rerender(
-      <ConfigScreen
-        ctx={updatedContext(ctx, {
-          itemTypes: { article: itemType('Article'), absent: undefined },
-        })}
-      />,
+    view.rerenderWith(
+      updatedContext(ctx, {
+        itemTypes: { article: itemType('Article'), absent: undefined },
+      }),
     );
 
     await waitFor(() => expect(options().textContent).toBe('Title (Article)'));
@@ -245,24 +221,22 @@ describe('config field exclusions', () => {
   });
 
   it('retains options without refetching when the vendor or unrelated context changes', async () => {
+    listRoles.mockResolvedValue([]);
     const ctx = context();
-    const view = render(<ConfigScreen ctx={ctx} />);
+    const view = renderScreen(ctx);
     await waitFor(() =>
       expect(options().querySelectorAll('option')).toHaveLength(2),
     );
 
-    fireEvent.change(screen.getByLabelText('AI Vendor'), {
-      target: { value: 'yandex' },
-    });
-    view.rerender(
-      <ConfigScreen ctx={updatedContext(ctx, { colorScheme: 'dark' })} />,
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /^Yandex Translate/ }));
+    view.rerenderWith(updatedContext(ctx, { colorScheme: 'dark' }));
 
     expect(options().querySelectorAll('option')).toHaveLength(2);
     expect(ctx.loadItemTypeFields).toHaveBeenCalledTimes(2);
   });
 
   it('keeps successful model fields when another model cannot be loaded', async () => {
+    listRoles.mockResolvedValue([]);
     const error = new Error('Fields unavailable');
     const reportError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const loadItemTypeFields = vi
@@ -271,7 +245,7 @@ describe('config field exclusions', () => {
         if (id === 'season') throw error;
         return fields('title-id', 'Title');
       });
-    render(<ConfigScreen ctx={context({ loadItemTypeFields })} />);
+    renderScreen(context({ loadItemTypeFields }));
 
     await waitFor(() => expect(options().textContent).toBe('Title (Article)'));
     expect(reportError).toHaveBeenCalledWith(
@@ -281,6 +255,7 @@ describe('config field exclusions', () => {
   });
 
   it('replaces old schema options and ignores obsolete asynchronous responses', async () => {
+    listRoles.mockResolvedValue([]);
     const oldFields = deferred<LoadedFields>();
     const loadItemTypeFields = vi
       .fn<RenderConfigScreenCtx['loadItemTypeFields']>()
@@ -293,14 +268,12 @@ describe('config field exclusions', () => {
       itemTypes: { article: itemType('Old model') },
       loadItemTypeFields,
     });
-    const view = render(<ConfigScreen ctx={ctx} />);
+    const view = renderScreen(ctx);
 
-    view.rerender(
-      <ConfigScreen
-        ctx={updatedContext(ctx, {
-          itemTypes: { newModel: itemType('New model') },
-        })}
-      />,
+    view.rerenderWith(
+      updatedContext(ctx, {
+        itemTypes: { newModel: itemType('New model') },
+      }),
     );
     await waitFor(() =>
       expect(options().textContent).toBe('New field (New model)'),
@@ -311,33 +284,31 @@ describe('config field exclusions', () => {
   });
 
   it('refreshes renamed models and removes deleted fields from options', async () => {
+    listRoles.mockResolvedValue([]);
     const ctx = context({ itemTypes: { article: itemType('Article') } });
-    const view = render(<ConfigScreen ctx={ctx} />);
+    const view = renderScreen(ctx);
     await waitFor(() => expect(options().textContent).toBe('Title (Article)'));
-    view.rerender(
-      <ConfigScreen
-        ctx={updatedContext(ctx, {
-          itemTypes: { article: itemType('Renamed model') },
-        })}
-      />,
+    view.rerenderWith(
+      updatedContext(ctx, {
+        itemTypes: { article: itemType('Renamed model') },
+      }),
     );
     await waitFor(() =>
       expect(options().textContent).toBe('Title (Renamed model)'),
     );
 
-    view.rerender(
-      <ConfigScreen ctx={updatedContext(ctx, { itemTypes: {} })} />,
-    );
+    view.rerenderWith(updatedContext(ctx, { itemTypes: {} }));
     await waitFor(() =>
       expect(options().querySelectorAll('option')).toHaveLength(0),
     );
   });
 
   it('deduplicates field IDs returned by schema loading', async () => {
+    listRoles.mockResolvedValue([]);
     const loadItemTypeFields = vi
       .fn<RenderConfigScreenCtx['loadItemTypeFields']>()
       .mockResolvedValue(fields('shared-id', 'Shared field'));
-    render(<ConfigScreen ctx={context({ loadItemTypeFields })} />);
+    renderScreen(context({ loadItemTypeFields }));
 
     await waitFor(() =>
       expect(options().querySelectorAll('option')).toHaveLength(1),
@@ -345,6 +316,7 @@ describe('config field exclusions', () => {
   });
 
   it('saves existing ID, API-key and path exclusions unchanged after loading fields', async () => {
+    listRoles.mockResolvedValue([]);
     const excluded = [
       'title-id',
       'season_type',
@@ -354,12 +326,12 @@ describe('config field exclusions', () => {
     const ctx = context();
     ctx.plugin.attributes.parameters.apiKeysToBeExcludedFromThisPlugin =
       excluded;
-    render(<ConfigScreen ctx={ctx} />);
+    renderScreen(ctx);
     await waitFor(() =>
       expect(options().querySelectorAll('option')).toHaveLength(2),
     );
-    fireEvent.click(screen.getByLabelText('Enable debug logging'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByLabelText('Debug logging'));
+    fireEvent.click(saveButton());
 
     await waitFor(() =>
       expect(ctx.updatePluginParameters).toHaveBeenCalledWith(
@@ -368,9 +340,184 @@ describe('config field exclusions', () => {
         }),
       ),
     );
-    expect(ctx.notice).toHaveBeenCalledWith(
-      'Plugin options updated successfully!',
-    );
+    expect(ctx.notice).toHaveBeenCalledWith('Settings saved.');
     expect(ctx.alert).not.toHaveBeenCalled();
+  });
+});
+
+describe('config screen form', () => {
+  it('starts with the exclusions open and Save off until something changes', async () => {
+    listRoles.mockResolvedValue([]);
+    renderScreen(context());
+
+    expect(screen.getByText(/doesn't show everywhere/)).toBeInTheDocument();
+    expect(await disabledReason(saveButton())).toBe(
+      'There are no changes to save.',
+    );
+  });
+
+  it('explains the missing credential of the selected vendor', async () => {
+    listRoles.mockResolvedValue([]);
+    const ctx = context();
+    ctx.plugin.attributes.parameters.vendor = 'openai';
+    renderScreen(ctx);
+
+    expect(await disabledReason(saveButton())).toBe(
+      'Enter the OpenAI API key.',
+    );
+  });
+
+  it('shows the prompt only for the vendors that use one', async () => {
+    listRoles.mockResolvedValue([]);
+    renderScreen(context());
+    expect(screen.queryByLabelText(/^Translation prompt/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: /^OpenAI/ }));
+
+    expect(screen.getByLabelText(/^Translation prompt/)).toBeInTheDocument();
+    // Let the roles and the field loads of the screen settle inside act
+    await waitFor(() =>
+      expect(options().querySelectorAll('option')).toHaveLength(2),
+    );
+    await waitFor(() => expect(listRoles).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  });
+
+  it('never saves on Enter in a closed select', async () => {
+    listRoles.mockResolvedValue([]);
+    const ctx = context();
+    renderScreen(ctx);
+    await waitFor(() =>
+      expect(options().querySelectorAll('option')).toHaveLength(2),
+    );
+    await waitFor(() => expect(listRoles).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText('Debug logging'));
+    expect(saveButton()).not.toHaveAttribute('aria-disabled');
+
+    // The form's guard prevents the implicit submission of the browser.
+    for (const select of screen.getAllByRole('combobox')) {
+      expect(fireEvent.keyDown(select, { key: 'Enter' })).toBe(false);
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it('alerts when the settings cannot be saved', async () => {
+    listRoles.mockResolvedValue([]);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ctx = context({
+      updatePluginParameters: vi.fn().mockRejectedValue(new Error('Offline')),
+    });
+    renderScreen(ctx);
+
+    fireEvent.click(screen.getByLabelText('Debug logging'));
+    fireEvent.click(saveButton());
+
+    await waitFor(() =>
+      expect(ctx.alert).toHaveBeenCalledWith(
+        "Couldn't save the settings. Try again.",
+      ),
+    );
+    expect(ctx.notice).not.toHaveBeenCalled();
+  });
+
+  it('gives the focus back to Save once a failed save ends', async () => {
+    listRoles.mockResolvedValue([]);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let fail: (error: unknown) => void = () => {};
+    const ctx = context({
+      updatePluginParameters: vi.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            fail = reject;
+          }),
+      ),
+    });
+    renderScreen(ctx);
+
+    fireEvent.click(screen.getByLabelText('Debug logging'));
+    act(() => saveButton().focus());
+    fireEvent.click(saveButton());
+    expect(saveButton()).toHaveAttribute('aria-busy', 'true');
+    dropFocus();
+
+    await act(async () => fail(new Error('Offline')));
+    expect(ctx.alert).toHaveBeenCalledWith(
+      "Couldn't save the settings. Try again.",
+    );
+    expect(saveButton()).not.toHaveAttribute('aria-busy');
+    expect(saveButton()).not.toHaveAttribute('aria-disabled');
+    expect(document.activeElement).toBe(saveButton());
+  });
+
+  it('keeps the focus on Save when the saved settings arrive after the save', async () => {
+    listRoles.mockResolvedValue([]);
+    const ctx = context();
+    const { rerenderWith } = renderScreen(ctx);
+
+    fireEvent.click(screen.getByLabelText('Debug logging'));
+    act(() => saveButton().focus());
+    fireEvent.click(saveButton());
+    dropFocus();
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('Settings saved.'),
+    );
+    expect(document.activeElement).toBe(saveButton());
+
+    // The host's update turns Save off with a reason, which renders a new
+    // button: the focus follows it.
+    const saved = {
+      ...ctx,
+      plugin: {
+        ...ctx.plugin,
+        attributes: {
+          ...ctx.plugin.attributes,
+          parameters: {
+            ...ctx.plugin.attributes.parameters,
+            ...vi.mocked(ctx.updatePluginParameters).mock.calls[0][0],
+          },
+        },
+      },
+    } as RenderConfigScreenCtx;
+    rerenderWith(saved);
+    expect(saveButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(saveButton());
+  });
+
+  it('restores the defaults in the form only, with a notice', async () => {
+    listRoles.mockResolvedValue([]);
+    const ctx = context();
+    renderScreen(ctx);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore defaults' }));
+
+    expect(ctx.notice).toHaveBeenCalledWith(
+      'Defaults restored. Save to apply them.',
+    );
+    expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+    expect(screen.queryByText(/doesn't show everywhere/)).toBeNull();
+    expect(
+      (screen.getByRole('radio', { name: /^OpenAI/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      await disabledReason(
+        screen.getByRole('button', { name: 'Restore defaults' }),
+      ),
+    ).toBe('The settings already use the defaults.');
+  });
+
+  it('shows the failure of the roles request on the roles field', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    listRoles.mockRejectedValue(new Error('Forbidden'));
+    renderScreen(context());
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      "Couldn't load the roles.",
+    );
   });
 });

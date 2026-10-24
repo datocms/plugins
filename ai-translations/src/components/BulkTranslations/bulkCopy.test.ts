@@ -3,13 +3,17 @@ import {
   confirmTranslationTitle,
   discoveryStatus,
   fieldCountHint,
+  formatCount,
+  localeCount,
   modelCount,
+  PICK_FIELD_ERROR,
+  PICK_LOCALE_ERROR,
+  PICK_MODEL_ERROR,
   recordCount,
+  recordCountWas,
   reportTranslationOutcome,
-  runSummary,
   TRANSLATION_CANCELED_NOTICE,
   TRANSLATION_FAILED_ALERT,
-  targetLocaleCount,
   translatedRecordsNotice,
   translateRecordsLabel,
 } from './bulkCopy';
@@ -22,8 +26,8 @@ describe('bulkCopy counts', () => {
     expect(recordCount(0)).toBe('0 records');
     expect(modelCount(1)).toBe('1 model');
     expect(modelCount(2)).toBe('2 models');
-    expect(targetLocaleCount(1)).toBe('1 target locale');
-    expect(targetLocaleCount(3)).toBe('3 target locales');
+    expect(localeCount(1)).toBe('1 locale');
+    expect(localeCount(3)).toBe('3 locales');
   });
 
   it('formats large counts with toLocaleString', () => {
@@ -32,11 +36,29 @@ describe('bulkCopy counts', () => {
     expect(confirmTranslationTitle(2882)).toBe(`Translate ${n(2882)} records?`);
   });
 
-  it('builds titles, labels and the toolbar summary', () => {
+  it('formats counts in the given UI locale, like the kit', () => {
+    expect(formatCount(2882, 'de')).toBe('2.882');
+    expect(recordCount(2882, 'de')).toBe('2.882 records');
+    expect(translateRecordsLabel(1200, 'de')).toBe('Translate 1.200 records');
+    expect(modelCount(1200, 'de')).toBe('1.200 models');
+    expect(fieldCountHint(1200, 1500, 'de')).toBe(
+      '1.200 of 1.500 translatable fields selected',
+    );
+    expect(discoveryStatus({ loaded: 1200, total: 1500 }, 'de')).toBe(
+      '1.200 of 1.500 records found',
+    );
+    // The texts are English: the singular is for exactly one.
+    expect(recordCount(1, 'fr')).toBe('1 record');
+    expect(recordCount(0, 'fr')).toBe('0 records');
+  });
+
+  it('falls back to the default locale for an invalid language tag', () => {
+    expect(formatCount(2882, 'not a locale')).toBe(n(2882));
+  });
+
+  it('builds titles and labels', () => {
     expect(translateRecordsLabel(1)).toBe('Translate 1 record');
     expect(confirmTranslationTitle(1)).toBe('Translate 1 record?');
-    expect(runSummary(2, 4)).toBe('2 models · 4 target locales');
-    expect(runSummary(1, 1)).toBe('1 model · 1 target locale');
   });
 
   it('phrases the completion notice', () => {
@@ -46,6 +68,15 @@ describe('bulkCopy counts', () => {
     expect(translatedRecordsNotice(2882)).toBe(
       `${n(2882)} records successfully translated!`,
     );
+    expect(translatedRecordsNotice(2882, 'de')).toBe(
+      '2.882 records successfully translated!',
+    );
+  });
+
+  it('agrees the verb with a count of records', () => {
+    expect(recordCountWas(1)).toBe('1 record was');
+    expect(recordCountWas(0)).toBe('0 records were');
+    expect(recordCountWas(1500, 'de')).toBe('1.500 records were');
   });
 
   it('builds the field count hint', () => {
@@ -55,6 +86,12 @@ describe('bulkCopy counts', () => {
     expect(fieldCountHint(1200, 1500)).toBe(
       `${n(1200)} of ${n(1500)} translatable fields selected`,
     );
+  });
+
+  it('names what to pick in the validation errors', () => {
+    expect(PICK_LOCALE_ERROR).toBe('Pick at least one locale');
+    expect(PICK_MODEL_ERROR).toBe('Pick at least one model');
+    expect(PICK_FIELD_ERROR).toBe('Pick at least one field');
   });
 });
 
@@ -103,6 +140,71 @@ describe('reportTranslationOutcome', () => {
       `${n(2882)} records successfully translated!`,
     );
     expect(ctx.alert).not.toHaveBeenCalled();
+  });
+
+  it('formats the counts in the given UI locale', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(ctx, { completed: true }, 2882, 'de');
+    expect(ctx.notice).toHaveBeenCalledWith(
+      '2.882 records successfully translated!',
+    );
+    reportTranslationOutcome(
+      ctx,
+      {
+        summary: {
+          totalRecords: 200000,
+          processedCount: 1500,
+          successfulCount: 1499,
+          failedCount: 1,
+          warningCount: 0,
+          loadedCount: 1500,
+        },
+      },
+      200000,
+      'de',
+    );
+    expect(ctx.alert).toHaveBeenCalledWith(
+      '1.499 records completed; 1 record failed; 198.500 records were not processed.',
+    );
+  });
+
+  it('agrees the verbs at a count of one', () => {
+    const ctx = makeCtx();
+    reportTranslationOutcome(
+      ctx,
+      {
+        summary: {
+          totalRecords: 3,
+          processedCount: 2,
+          successfulCount: 2,
+          failedCount: 0,
+          warningCount: 0,
+          loadedCount: 3,
+        },
+      },
+      3,
+    );
+    expect(ctx.alert).toHaveBeenCalledWith(
+      '2 records completed; 0 records failed; 1 record was not processed.',
+    );
+    reportTranslationOutcome(
+      ctx,
+      {
+        completed: true,
+        summary: {
+          totalRecords: 3,
+          processedCount: 3,
+          successfulCount: 3,
+          failedCount: 0,
+          warningCount: 1,
+          loadedCount: 3,
+        },
+      },
+      3,
+    );
+    expect(ctx.notice).toHaveBeenCalledWith(
+      '3 records completed; 1 record needs review.',
+    );
   });
 
   it('reports partial failures and unprocessed records from cumulative counts', () => {

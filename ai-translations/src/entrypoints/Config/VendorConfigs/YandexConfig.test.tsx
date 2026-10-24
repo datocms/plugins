@@ -1,62 +1,29 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProviderError } from '../../../utils/translation/types';
+import { dropFocus } from '../../../test/dropFocus';
+import { renderWithCanvas } from '../../../test/renderWithCanvas';
 import YandexProvider from '../../../utils/translation/providers/YandexProvider';
+import { ProviderError } from '../../../utils/translation/types';
 import YandexConfig from './YandexConfig';
 
-vi.mock('datocms-react-ui', () => ({
-  Button: ({
-    children,
-    disabled,
-    onClick,
-  }: {
-    children: ReactNode;
-    disabled?: boolean;
-    onClick?: () => void;
-  }) => (
-    <button type="button" disabled={disabled} onClick={onClick}>
-      {children}
-    </button>
-  ),
-  FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  TextField: ({
-    id,
-    label,
-    value,
-    onChange,
-    hint,
-    textInputProps,
-  }: {
-    id: string;
-    label: ReactNode;
-    value: string;
-    onChange: (value: string) => void;
-    hint?: ReactNode;
-    textInputProps?: React.InputHTMLAttributes<HTMLInputElement>;
-  }) => (
-    <label htmlFor={id}>
-      {label}
-      <input
-        {...textInputProps}
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {hint}
-    </label>
-  ),
-}));
-
 function renderConfig(apiKey = 'api-key', folderId = '') {
-  return render(
+  const setYandexApiKey = vi.fn();
+  const setYandexFolderId = vi.fn();
+  const notice = vi.fn();
+  const view = renderWithCanvas(
     <YandexConfig
       yandexApiKey={apiKey}
-      setYandexApiKey={vi.fn()}
+      setYandexApiKey={setYandexApiKey}
       yandexFolderId={folderId}
-      setYandexFolderId={vi.fn()}
+      setYandexFolderId={setYandexFolderId}
+      notice={notice}
     />,
   );
+  return { ...view, setYandexApiKey, setYandexFolderId, notice };
+}
+
+function testButton() {
+  return screen.getByRole('button', { name: 'Test credentials' });
 }
 
 afterEach(() => {
@@ -67,11 +34,19 @@ describe('YandexConfig', () => {
   it('masks the API key and limits the optional Folder ID', () => {
     renderConfig();
 
-    expect(screen.getByLabelText('Yandex API Key').getAttribute('type')).toBe(
+    const guide = screen.getByRole('link', {
+      name: 'Yandex Translate setup guide',
+    });
+    expect(guide.getAttribute('href')).toBe(
+      'https://aistudio.yandex.ru/docs/en/translate/quickstart.html',
+    );
+    expect(guide.getAttribute('target')).toBe('_blank');
+
+    expect(screen.getByLabelText(/^API key/).getAttribute('type')).toBe(
       'password',
     );
     const folderInput = screen.getByRole('textbox', {
-      name: /^Yandex Folder ID/,
+      name: /^Folder ID/,
     }) as HTMLInputElement;
     expect(folderInput.maxLength).toBe(50);
   });
@@ -80,14 +55,41 @@ describe('YandexConfig', () => {
     const listLanguages = vi
       .spyOn(YandexProvider.prototype, 'listLanguages')
       .mockResolvedValue([{ code: 'en' }, { code: 'it' }]);
-    renderConfig('api-key', ' folder-id ');
+    const { notice } = renderConfig('api-key', ' folder-id ');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Test credentials' }));
+    fireEvent.click(testButton());
 
-    expect((await screen.findByRole('status')).textContent).toContain(
-      'Credentials verified. Yandex returned 2 supported languages.',
+    // A passed test is a finished action: a toast, not a callout.
+    await waitFor(() =>
+      expect(notice).toHaveBeenCalledWith(
+        'Credentials verified. Yandex returned 2 supported languages.',
+      ),
     );
+    expect(screen.queryByText(/Credentials verified/)).not.toBeInTheDocument();
     expect(listLanguages).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the focus back to the button once the test ends', async () => {
+    let fail: (error: unknown) => void = () => {};
+    vi.spyOn(YandexProvider.prototype, 'listLanguages').mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    renderConfig();
+
+    act(() => testButton().focus());
+    fireEvent.click(testButton());
+    expect(testButton()).toHaveAttribute('aria-busy', 'true');
+    dropFocus();
+    expect(document.activeElement).toBe(document.body);
+
+    await act(async () =>
+      fail(new ProviderError('Permission denied', 403, 'yandex')),
+    );
+    await screen.findByRole('alert');
+    expect(testButton()).not.toHaveAttribute('aria-busy');
+    expect(document.activeElement).toBe(testButton());
   });
 
   it('shows normalized Yandex permission guidance', async () => {
@@ -96,7 +98,7 @@ describe('YandexConfig', () => {
     );
     renderConfig();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Test credentials' }));
+    fireEvent.click(testButton());
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain(
@@ -105,18 +107,34 @@ describe('YandexConfig', () => {
     expect(alert.textContent).toContain('ai.translate.user');
   });
 
-  it('requires an API key before testing', async () => {
-    const listLanguages = vi.spyOn(
-      YandexProvider.prototype,
-      'listLanguages',
+  it('clears a failed result when the API key changes', async () => {
+    vi.spyOn(YandexProvider.prototype, 'listLanguages').mockRejectedValue(
+      new ProviderError('Permission denied', 403, 'yandex'),
     );
+    const { setYandexApiKey } = renderConfig();
+
+    fireEvent.click(testButton());
+    await screen.findByRole('alert');
+    fireEvent.change(screen.getByLabelText(/^API key/), {
+      target: { value: 'other-key' },
+    });
+
+    expect(setYandexApiKey).toHaveBeenCalledWith('other-key');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('requires an API key before testing', async () => {
+    const listLanguages = vi.spyOn(YandexProvider.prototype, 'listLanguages');
     renderConfig('   ');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Test credentials' }));
+    const button = testButton();
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(button);
+    act(() => button.focus());
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
       'Enter a Yandex API key first.',
     );
-    expect(listLanguages).not.toHaveBeenCalled();
+    await waitFor(() => expect(listLanguages).not.toHaveBeenCalled());
   });
 });

@@ -1,25 +1,56 @@
 /**
  * DeepLConfig.tsx
- * Configuration component for DeepL vendor settings.
+ * Configuration component for DeepL vendor settings: the settings group with
+ * the API key, its test, the endpoint and the formality, then the groups that
+ * open and close for the tag handling and the glossaries. A passed key test
+ * is a toast (a finished action); a failed one is the error of the key
+ * field until the key or the endpoint changes.
  */
 
-import {Button, FieldGroup, Section, SelectField, SwitchField, TextField} from 'datocms-react-ui';
-import {useMemo, useState} from 'react';
-import type {ApiTypes} from '@datocms/cma-client-browser';
-import {RESPONSE_PREVIEW_MAX_LENGTH} from '../../../utils/constants';
-import type {DeepLFormalitySetting} from '../../../utils/translation/DeepLSettings';
-import s from '../../styles.module.css';
-import GlossaryPairEditor from './GlossaryPairEditor';
-import {useDeepLGlossaries} from './useDeepLGlossaries';
+import type { ApiTypes } from '@datocms/cma-client-browser';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { RESPONSE_PREVIEW_MAX_LENGTH } from '../../../utils/constants';
+import { useBusyFocus } from '../../../utils/retryFocus';
+import {
+  DEEPL_DEFAULT_IGNORE_TAGS,
+  DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+  type DeepLFormalitySetting,
+} from '../../../utils/translation/DeepLSettings';
+import styles from '../Config.module.css';
+import { vendorSettingsTitle } from '../configConstants';
+import GlossaryPairEditor, {
+  glossaryNoOptionsMessage,
+  glossaryOptionsFrom,
+  glossaryPairErrors,
+  parseRows,
+  rawOption,
+} from './GlossaryPairEditor';
+import { useDeepLGlossaries } from './useDeepLGlossaries';
 
-type SelectOption = { label: string; value: string };
-type FormalityOption = { label: string; value: DeepLFormalitySetting };
-
-const FORMALITY_OPTIONS: FormalityOption[] = [
+const FORMALITY_OPTIONS: RadioGroupOption<DeepLFormalitySetting>[] = [
   { label: 'Default', value: 'default' },
   { label: 'More formal', value: 'more' },
   { label: 'Less formal', value: 'less' },
 ];
+
+/**
+ * A default tag list for a hint: "notranslate, ph". The hint names the
+ * default, since an emptied list is saved empty and then sends no tags.
+ */
+function tagListHint(tags: string): string {
+  return tags.split(',').join(', ');
+}
+
 type ApiKeyTestStatus = 'success' | 'error';
 
 interface ApiKeyTestResult {
@@ -87,11 +118,11 @@ function getDeepLErrorMessage(
   const errorMessage = body.message.toLowerCase();
 
   if (errorMessage.includes('wrong endpoint')) {
-    return 'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.';
+    return 'This key needs the DeepL Free endpoint. Turn on “Use DeepL Free endpoint”, then test the key again.';
   }
 
   if (errorMessage.includes('forbidden')) {
-    return 'The DeepL API key is invalid. Please check that you entered the correct key.';
+    return "DeepL rejected the API key. Check that it's the right key.";
   }
 
   return `DeepL error: ${body.message}`;
@@ -112,10 +143,13 @@ function getTranslationSample(
   return (translations[0] as Record<string, unknown>).text as string;
 }
 
-function getSuccessMessage(sample: string): string {
-  if (!sample) return 'API Key OK. DeepL responded (empty body).';
+/** The start of the toast of a passed test; the message follows it. */
+const API_KEY_OK = 'API key OK.';
 
-  return `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`;
+function getSuccessMessage(sample: string): string {
+  if (!sample) return 'DeepL responded with an empty text.';
+
+  return `DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`;
 }
 
 function validateDeepLTestResponse(
@@ -134,8 +168,7 @@ function validateDeepLTestResponse(
   if (!response.ok) {
     return {
       status: 'error',
-      message:
-        `DeepL returned an error (HTTP ${response.status}). Verify your API key and endpoint settings.`,
+      message: `DeepL returned an error (HTTP ${response.status}). Check the API key and the endpoint.`,
     };
   }
 
@@ -144,7 +177,7 @@ function validateDeepLTestResponse(
     return {
       status: 'error',
       message:
-        'DeepL returned an unexpected response. The API key or endpoint may be misconfigured.',
+        'DeepL returned an unexpected response. Check the API key and the endpoint.',
     };
   }
 
@@ -190,7 +223,15 @@ export interface DeepLConfigProps {
     }[];
     cancel: { label: string; value: unknown };
   }) => Promise<unknown>;
+  /** Shows a toast (`ctx.notice`): the result of a passed test. */
+  notice: (message: string) => unknown;
 }
+
+/** The kit's text inputs give null for an empty value: the settings keep ''. */
+const toText =
+  (setter: (value: string) => void) =>
+  (value: string | null): void =>
+    setter(value ?? '');
 
 export default function DeepLConfig({
   deeplApiKey,
@@ -213,51 +254,85 @@ export default function DeepLConfig({
   setDeeplGlossaryPairs,
   siteLocales,
   openConfirm,
+  notice,
 }: DeepLConfigProps) {
   const [showTags, setShowTags] = useState(false);
-  const [showGlossary, setShowGlossary] = useState(false);
-  const [isTestingApiKey, setIsTestingApiKey] = useState(false);
-  const [testApiKeyMessage, setTestApiKeyMessage] = useState('');
-  const [testApiKeyStatus, setTestApiKeyStatus] = useState<
-    'idle' | 'success' | 'error'
-  >('idle');
+  const [showGlossaries, setShowGlossaries] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
   const [autoToggledFree, setAutoToggledFree] = useState(false);
-
-  // Shared glossary data for both the default glossary dropdown and per-pair editor
-  const { glossaries, fetchStatus, fetchError } =
-    useDeepLGlossaries(deeplApiKey, deeplUseFree);
-
-  const glossaryOptions: SelectOption[] = useMemo(
-    () =>
-      glossaries.map((g) => ({
-        label: `${g.name} (${g.source_lang}\u2192${g.target_lang}, ${g.entry_count} entries)`,
-        value: g.glossary_id,
-      })),
-    [glossaries],
+  // "Test API key" is found by its id, not a ref: while it is disabled with
+  // a reason, the kit's tooltip clones it and reads `element.ref`, which
+  // React 19 warns about.
+  const testId = useId();
+  const testDisabled = deeplApiKey
+    ? undefined
+    : { reason: 'Enter a DeepL API key first.' };
+  // The busy button is disabled, which drops its focus: once the test ends,
+  // the button takes it back (a failure is the error of the key field, which
+  // the field announces).
+  const followTest = useBusyFocus(
+    isTesting,
+    () => document.getElementById(testId),
+    testDisabled?.reason,
   );
 
-  // Build value for the default glossary dropdown
-  const defaultGlossaryValue = deeplGlossaryId
-    ? glossaryOptions.find((o) => o.value === deeplGlossaryId) ?? {
-        label: deeplGlossaryId,
-        value: deeplGlossaryId,
-      }
-    : null;
+  // Shared glossary data for both the default glossary dropdown and per-pair editor
+  const { glossaries, fetchStatus, fetchError } = useDeepLGlossaries(
+    deeplApiKey,
+    deeplUseFree,
+  );
 
-  // Validate the current default glossary ID against fetched list
-  const defaultGlossaryError =
-    deeplGlossaryId &&
+  // Glossary sizes get the separators of the language of the Canvas.
+  const { locale } = useCtx().ui;
+  const glossaryOptions = useMemo(
+    () => glossaryOptionsFrom(glossaries, locale),
+    [glossaries, locale],
+  );
+
+  // The saved default glossary, checked against the loaded list
+  const isDefaultGlossaryUnknown =
+    Boolean(deeplGlossaryId) &&
     fetchStatus === 'success' &&
-    !glossaries.some((g) => g.glossary_id === deeplGlossaryId)
-      ? `"${deeplGlossaryId}" is not a valid glossary in your DeepL account`
-      : undefined;
+    !glossaries.some((g) => g.glossary_id === deeplGlossaryId);
 
-  const handleApiKeyChange = (value: string) => {
+  // The fetch error shows once, on the default glossary
+  const defaultGlossaryError =
+    fetchStatus === 'error' && fetchError
+      ? fetchError
+      : isDefaultGlossaryUnknown
+        ? "This glossary isn't in your DeepL account."
+        : undefined;
+
+  // A saved glossary or language pair that is no longer valid keeps the
+  // glossaries open, so the error shows.
+  const hasInvalidGlossaries = useMemo(
+    () =>
+      isDefaultGlossaryUnknown ||
+      glossaryPairErrors(
+        parseRows(deeplGlossaryPairs),
+        siteLocales,
+        glossaries,
+        fetchStatus,
+      ).some(Boolean),
+    [
+      isDefaultGlossaryUnknown,
+      deeplGlossaryPairs,
+      siteLocales,
+      glossaries,
+      fetchStatus,
+    ],
+  );
+
+  // Once fixed, the group stays open where the user is working
+  useEffect(() => {
+    if (hasInvalidGlossaries) setShowGlossaries(true);
+  }, [hasInvalidGlossaries]);
+
+  const handleApiKeyChange = (input: string | null) => {
+    const value = input ?? '';
     setDeeplApiKey(value);
-    if (testApiKeyStatus === 'error') {
-      setTestApiKeyStatus('idle');
-      setTestApiKeyMessage('');
-    }
+    setTestError(null);
     if (value.endsWith(':fx') && !deeplUseFree) {
       setDeeplUseFree(true);
       setAutoToggledFree(true);
@@ -266,176 +341,182 @@ export default function DeepLConfig({
     }
   };
 
+  const handleUseFreeChange = (value: boolean | null) => {
+    setDeeplUseFree(value === true);
+    // The test result was for the other endpoint
+    setTestError(null);
+  };
+
+  // The button is busy while the test runs. The state is the component's,
+  // not the kit's (an `onClick` that returns a promise), so the focus comes
+  // back in the commit that turns the button on again.
   const handleTestApiKey = async () => {
-    if (!deeplApiKey) {
-      setTestApiKeyStatus('error');
-      setTestApiKeyMessage('Enter a DeepL API Key first.');
-      return;
-    }
-    setTestApiKeyMessage('');
-    setTestApiKeyStatus('idle');
-    setIsTestingApiKey(true);
+    if (!deeplApiKey || isTesting) return;
+    setTestError(null);
+    followTest();
+    setIsTesting(true);
+    let result: ApiKeyTestResult;
     try {
-      const result = await testDeepLApiKey(deeplApiKey, deeplUseFree);
-      setTestApiKeyStatus(result.status);
-      setTestApiKeyMessage(result.message);
+      result = await testDeepLApiKey(deeplApiKey, deeplUseFree);
     } catch (err) {
-      setTestApiKeyStatus('error');
-      setTestApiKeyMessage(
-        err instanceof Error
-          ? err.message
-          : 'An unexpected error occurred while testing the API key.',
-      );
+      result = {
+        status: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'An unexpected error occurred while testing the API key.',
+      };
     } finally {
-      setIsTestingApiKey(false);
+      setIsTesting(false);
+    }
+    if (result.status === 'success') {
+      notice(`${API_KEY_OK} ${result.message}`);
+    } else {
+      setTestError(result.message);
     }
   };
 
   return (
     <>
-      <FieldGroup>
-        <TextField
-          required
-          name="deeplApiKey"
-          id="deeplApiKey"
-          label="DeepL API Key"
-          value={deeplApiKey}
-          onChange={handleApiKeyChange}
-          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
-          error={testApiKeyStatus === 'error' ? testApiKeyMessage : undefined}
-        />
-        <div className={s.buttonRow}>
+      <Page.Group title={vendorSettingsTitle('deepl')}>
+        <FieldWrapper label="API key" required error={testError ?? undefined}>
+          <StringInput
+            code
+            name="deeplApiKey"
+            value={deeplApiKey}
+            onChange={handleApiKeyChange}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </FieldWrapper>
+        <div className={styles.block}>
           <Button
-            buttonType="muted"
-            disabled={isTestingApiKey}
-            onClick={handleTestApiKey}
-          >
-            {isTestingApiKey ? 'Testing…' : 'Test API Key'}
-          </Button>
+            id={testId}
+            label="Test API key"
+            busy={isTesting}
+            disabled={testDisabled}
+            onClick={() => {
+              void handleTestApiKey();
+            }}
+          />
         </div>
-        {testApiKeyStatus === 'success' && testApiKeyMessage && (
-          <div className={s.inlineStatus} style={{ color: 'var(--color--ink-success)' }}>
-            {testApiKeyMessage}
-          </div>
-        )}
-        <SwitchField
-          name="deeplUseFree"
-          id="deeplUseFree"
-          label="Use DeepL Free endpoint (api-free.deepl.com)"
+        <FieldWrapper
           hint={
-            autoToggledFree
-              ? "We toggled this on automatically for you because it looks like you're using a free key ending in :fx"
-              : "You must use this if you're on the DeepL free plan"
+            autoToggledFree && deeplUseFree
+              ? 'Turned on because the key ends in :fx, like the keys of the Free plan.'
+              : 'Needed for the keys of the DeepL Free plan (api-free.deepl.com).'
           }
-          value={deeplUseFree}
-          onChange={(val) => setDeeplUseFree(val)}
-        />
-        <SelectField
-          name="deeplFormality"
-          id="deeplFormality"
+        >
+          <SwitchInput
+            name="deeplUseFree"
+            label="Use DeepL Free endpoint"
+            value={deeplUseFree}
+            onChange={handleUseFreeChange}
+          />
+        </FieldWrapper>
+        <FieldWrapper
           label="Formality"
-          hint="Target languages without formality support keep DeepL's default tone"
-          value={
-            FORMALITY_OPTIONS.find((o) => o.value === deeplFormality) ??
-            FORMALITY_OPTIONS[0]
-          }
-          selectInputProps={{
-            options: FORMALITY_OPTIONS,
-          }}
-          onChange={(nv) => {
-            if (!Array.isArray(nv)) {
-              const selected = nv as FormalityOption | null;
-              if (selected?.value) setDeeplFormality(selected.value);
-            }
-          }}
+          hint="Target languages without formality support keep DeepL's default tone."
+        >
+          <RadioGroupInput
+            name="deeplFormality"
+            value={deeplFormality}
+            onChange={(next) => {
+              if (next) setDeeplFormality(next);
+            }}
+            options={FORMALITY_OPTIONS}
+          />
+        </FieldWrapper>
+      </Page.Group>
+
+      <Page.Group
+        title="Tag handling"
+        collapse={{ open: showTags, onToggle: () => setShowTags((v) => !v) }}
+      >
+        <FieldWrapper hint="DeepL keeps the punctuation and the casing of the source text, where it would otherwise correct them.">
+          <SwitchInput
+            name="deeplPreserveFormatting"
+            label="Preserve formatting"
+            value={deeplPreserveFormatting}
+            onChange={(next) => setDeeplPreserveFormatting(next === true)}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Ignored tags"
+          hint={`Comma-separated tag names. The content of these tags isn't translated. Default: ${tagListHint(DEEPL_DEFAULT_IGNORE_TAGS)}.`}
+        >
+          <StringInput
+            code
+            name="deeplIgnoreTags"
+            value={deeplIgnoreTags}
+            onChange={toText(setDeeplIgnoreTags)}
+            spellCheck={false}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Non-splitting tags"
+          hint={`Comma-separated tag names. These tags never split a sentence. Default: ${tagListHint(DEEPL_DEFAULT_NON_SPLITTING_TAGS)}.`}
+        >
+          <StringInput
+            code
+            name="deeplNonSplittingTags"
+            value={deeplNonSplittingTags}
+            onChange={toText(setDeeplNonSplittingTags)}
+            spellCheck={false}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Splitting tags"
+          hint="Comma-separated tag names. These tags always start a new sentence."
+        >
+          <StringInput
+            code
+            name="deeplSplittingTags"
+            value={deeplSplittingTags}
+            onChange={toText(setDeeplSplittingTags)}
+            placeholder="p,li"
+            spellCheck={false}
+          />
+        </FieldWrapper>
+      </Page.Group>
+
+      <Page.Group
+        title="Glossaries"
+        collapse={{
+          open: showGlossaries || hasInvalidGlossaries,
+          // An invalid saved glossary keeps the group open
+          onToggle: hasInvalidGlossaries
+            ? undefined
+            : () => setShowGlossaries((v) => !v),
+        }}
+      >
+        <FieldWrapper
+          label="Default glossary"
+          hint="DeepL uses it when no language pair below matches the translation."
+          error={defaultGlossaryError}
+        >
+          <SelectInput
+            name="deeplGlossaryId"
+            value={deeplGlossaryId || null}
+            onChange={(next) => setDeeplGlossaryId(next ?? '')}
+            options={glossaryOptions}
+            acceptValueNotIncludedInOptions={rawOption}
+            loading={fetchStatus === 'loading'}
+            noOptionsMessage={glossaryNoOptionsMessage(fetchStatus)}
+            clearable
+            placeholder="Pick a glossary"
+          />
+        </FieldWrapper>
+        <GlossaryPairEditor
+          value={deeplGlossaryPairs}
+          onChange={setDeeplGlossaryPairs}
+          siteLocales={siteLocales}
+          glossaries={glossaries}
+          fetchStatus={fetchStatus}
+          openConfirm={openConfirm}
         />
-      </FieldGroup>
-
-      <div className={s.sectionSpacing}>
-        <Section title="Tag Settings" collapsible={{isOpen: showTags, onToggle: () => setShowTags((v) => !v)}}>
-          <FieldGroup>
-            <SwitchField
-              name="deeplPreserveFormatting"
-              id="deeplPreserveFormatting"
-              label="Preserve formatting"
-              value={deeplPreserveFormatting}
-              onChange={setDeeplPreserveFormatting}
-            />
-            <TextField
-              name="deeplIgnoreTags"
-              id="deeplIgnoreTags"
-              label="Ignore tags (CSV)"
-              hint="Content inside these tags is left untranslated"
-              value={deeplIgnoreTags}
-              onChange={setDeeplIgnoreTags}
-            />
-            <TextField
-              name="deeplNonSplittingTags"
-              id="deeplNonSplittingTags"
-              label="Non-splitting tags (CSV)"
-              hint="These tags never split a sentence"
-              value={deeplNonSplittingTags}
-              onChange={setDeeplNonSplittingTags}
-            />
-            <TextField
-              name="deeplSplittingTags"
-              id="deeplSplittingTags"
-              label="Splitting tags (CSV)"
-              hint="These tags always start a new sentence"
-              value={deeplSplittingTags}
-              onChange={setDeeplSplittingTags}
-            />
-          </FieldGroup>
-        </Section>
-      </div>
-
-      <div className={s.sectionSpacing}>
-        <Section title="Glossary Settings" collapsible={{isOpen: showGlossary, onToggle: () => setShowGlossary((v) => !v)}}>
-          <FieldGroup>
-            <SelectField
-              name="deeplGlossaryId"
-              id="deeplGlossaryId"
-              label="Default glossary"
-              hint="Used for translations in the glossary's languages when no language pair below matches"
-              placeholder={
-                fetchStatus === 'loading'
-                  ? 'Loading glossaries...'
-                  : 'None (no default glossary)'
-              }
-              value={defaultGlossaryValue}
-              error={defaultGlossaryError}
-              selectInputProps={{
-                options: glossaryOptions,
-                isClearable: true,
-                isLoading: fetchStatus === 'loading',
-              }}
-              onChange={(nv) => {
-                if (!Array.isArray(nv)) {
-                  const sel = nv as SelectOption | null;
-                  setDeeplGlossaryId(sel?.value ?? '');
-                }
-              }}
-            />
-            {fetchStatus === 'error' && fetchError && (
-              <div
-                className={s.inlineStatus}
-                style={{ color: 'var(--color--ink-danger)' }}
-              >
-                {fetchError}
-              </div>
-            )}
-            <GlossaryPairEditor
-              value={deeplGlossaryPairs}
-              onChange={setDeeplGlossaryPairs}
-              siteLocales={siteLocales}
-              glossaries={glossaries}
-              fetchStatus={fetchStatus}
-              fetchError={fetchError}
-              openConfirm={openConfirm}
-            />
-          </FieldGroup>
-        </Section>
-      </div>
+      </Page.Group>
     </>
   );
 }

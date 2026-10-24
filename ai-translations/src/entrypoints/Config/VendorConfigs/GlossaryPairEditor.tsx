@@ -1,17 +1,27 @@
 /**
  * GlossaryPairEditor.tsx
- * Structured editor for DeepL glossary-by-language-pair mappings.
- * Replaces the free-text textarea with validated dropdowns.
+ * The DeepL glossaries by language pair: a list whose rows each pick a source
+ * locale, a target locale and a glossary. The rows are stored in the
+ * `deeplGlossaryPairs` parameter, one `src->tgt=glossaryId` line per row.
  */
 
-import { Button, SelectField } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiTypes } from '@datocms/cma-client-browser';
-import s from '../../styles.module.css';
-import type {
-  DeepLGlossary,
-  GlossaryFetchStatus,
-} from './useDeepLGlossaries';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import TableList, {
+  type TableListColumn,
+  type TableListErrorId,
+  type TableListRowErrors,
+} from 'datocms-react-ui/TableList';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatCount } from '../../../components/BulkTranslations/bulkCopy';
+import { formatLocaleWithCode } from '../../../utils/localeUtils';
+import {
+  GLOSSARY_ERROR_ID,
+  GLOSSARY_LOCALE_ERROR_ID,
+} from '../../../utils/texts';
+import type { DeepLGlossary, GlossaryFetchStatus } from './useDeepLGlossaries';
 
 /** A single row in the editor. */
 export interface GlossaryPairRow {
@@ -20,17 +30,31 @@ export interface GlossaryPairRow {
   glossaryId: string;
 }
 
-interface EditableGlossaryPairRow extends GlossaryPairRow {
-  rowId: string;
-}
-
 type SelectOption = { label: string; value: string };
-let nextGlossaryRowId = 0;
+
+/** The locale value that matches any locale. */
+const ANY_LOCALE = '*';
+const ANY_LOCALE_LABEL = 'All (*)';
+
+/**
+ * One error per kind: the list shows each one once. They are ids of the
+ * plugin's texts, not strings: the list builds the DOM id of each message
+ * from its error, and a text with spaces would make an id that the cells'
+ * `aria-describedby` can't point to.
+ */
+const LOCALE_ERROR: TableListErrorId = { id: GLOSSARY_LOCALE_ERROR_ID };
+const GLOSSARY_ERROR: TableListErrorId = { id: GLOSSARY_ERROR_ID };
+
+const newRow = (): GlossaryPairRow => ({
+  source: '',
+  target: '',
+  glossaryId: '',
+});
 
 // ── Serialization helpers ──────────────────────────────────────────────
 
 /** Parse the persisted `deeplGlossaryPairs` string into structured rows. */
-function parseRows(raw: string): GlossaryPairRow[] {
+export function parseRows(raw: string): GlossaryPairRow[] {
   if (!raw.trim()) return [];
   const lines = raw
     .split(/\r?\n|[;,]+/)
@@ -51,20 +75,94 @@ function parseRows(raw: string): GlossaryPairRow[] {
 }
 
 /** Serialize structured rows back to the persisted string format. */
-function serializeRows(rows: GlossaryPairRow[]): string {
+export function serializeRows(rows: GlossaryPairRow[]): string {
   return rows
     .filter((r) => r.source && r.target && r.glossaryId)
     .map((r) => `${r.source}->${r.target}=${r.glossaryId}`)
     .join('\n');
 }
 
-function createEditableRow(row: GlossaryPairRow): EditableGlossaryPairRow {
-  nextGlossaryRowId += 1;
-  return { ...row, rowId: `glossary-row-${nextGlossaryRowId}` };
+// ── Options and validation, shared with the default glossary ──────────
+
+/**
+ * The option label of a glossary: its name, languages and size, with the
+ * separators of `locale` (the user's language, `ctx.ui.locale`).
+ */
+function glossaryLabel(glossary: DeepLGlossary, locale?: string): string {
+  const entries = `${formatCount(glossary.entry_count, locale)} ${glossary.entry_count === 1 ? 'entry' : 'entries'}`;
+  return `${glossary.name} (${glossary.source_lang}→${glossary.target_lang}, ${entries})`;
 }
 
-function parseEditableRows(raw: string): EditableGlossaryPairRow[] {
-  return parseRows(raw).map(createEditableRow);
+/** The select options of the glossaries of the DeepL account. */
+export function glossaryOptionsFrom(
+  glossaries: DeepLGlossary[],
+  locale?: string,
+) {
+  return glossaries.map((glossary) => ({
+    label: glossaryLabel(glossary, locale),
+    value: glossary.glossary_id,
+  }));
+}
+
+/** A saved value that no option has (a locale code, a glossary ID) shows as it is. */
+export function rawOption(value: string): SelectOption {
+  return { value, label: value };
+}
+
+/**
+ * The text of an open glossary menu with no option to show: why the list is
+ * empty, since the glossaries come from the DeepL account of the key.
+ */
+export function glossaryNoOptionsMessage(fetchStatus: GlossaryFetchStatus) {
+  return ({ inputValue }: { inputValue: string }) => {
+    if (fetchStatus === 'idle') {
+      return 'Enter the API key to load the glossaries.';
+    }
+    if (fetchStatus === 'error') return "Couldn't load the glossaries.";
+    return inputValue
+      ? 'No glossaries found'
+      : 'No glossaries in this DeepL account';
+  };
+}
+
+/**
+ * The errors of each row: a locale that the project doesn't have, or a
+ * glossary that the DeepL account doesn't have (checked once the list loaded).
+ * Empty cells are not errors: an incomplete row is only left out of the save.
+ */
+export function glossaryPairErrors(
+  rows: GlossaryPairRow[],
+  siteLocales: string[],
+  glossaries: DeepLGlossary[],
+  fetchStatus: GlossaryFetchStatus,
+): (TableListRowErrors | undefined)[] {
+  const locales = new Set(siteLocales);
+  const glossaryIds = new Set(glossaries.map((g) => g.glossary_id));
+
+  const localeError = (code: string) =>
+    code && code !== ANY_LOCALE && siteLocales.length > 0 && !locales.has(code)
+      ? LOCALE_ERROR
+      : undefined;
+  const glossaryError = (glossaryId: string) =>
+    glossaryId && fetchStatus === 'success' && !glossaryIds.has(glossaryId)
+      ? GLOSSARY_ERROR
+      : undefined;
+
+  return rows.map((row) => {
+    const errors = {
+      source: localeError(row.source),
+      target: localeError(row.target),
+      glossaryId: glossaryError(row.glossaryId),
+    };
+    return errors.source || errors.target || errors.glossaryId
+      ? errors
+      : undefined;
+  });
+}
+
+/** The value of a select cell: the string, or null for an empty cell. */
+function cellValue(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
 }
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -75,7 +173,6 @@ export interface GlossaryPairEditorProps {
   siteLocales: ApiTypes.Site['locales'];
   glossaries: DeepLGlossary[];
   fetchStatus: GlossaryFetchStatus;
-  fetchError: string;
   openConfirm: (options: {
     title: string;
     content: string;
@@ -96,25 +193,26 @@ export default function GlossaryPairEditor({
   siteLocales,
   glossaries,
   fetchStatus,
-  fetchError,
   openConfirm,
 }: GlossaryPairEditorProps) {
-  const [rows, setRows] = useState<EditableGlossaryPairRow[]>(() =>
-    parseEditableRows(value),
-  );
+  // Glossary sizes get the separators of the language of the Canvas.
+  const uiLocale = useCtx().ui.locale;
+  // The rows of the editor, incomplete ones included: only complete rows
+  // reach the stored string.
+  const [rows, setRows] = useState<GlossaryPairRow[]>(() => parseRows(value));
 
   // Re-parse rows when the external value changes (e.g. reset / load)
   const externalValue = useRef(value);
   useEffect(() => {
     if (value !== externalValue.current) {
       externalValue.current = value;
-      setRows(parseEditableRows(value));
+      setRows(parseRows(value));
     }
   }, [value]);
 
   // Propagate row changes upstream
   const commitRows = useCallback(
-    (nextRows: EditableGlossaryPairRow[]) => {
+    (nextRows: GlossaryPairRow[]) => {
       setRows(nextRows);
       const serialized = serializeRows(nextRows);
       externalValue.current = serialized;
@@ -123,253 +221,164 @@ export default function GlossaryPairEditor({
     [onChange],
   );
 
-  // ── Option builders ────────────────────────────────────────────────
+  // ── Options ────────────────────────────────────────────────────────
 
   const localeOptions: SelectOption[] = useMemo(
     () => [
-      { label: 'All (*)', value: '*' },
-      ...siteLocales.map((l) => ({ label: l, value: l })),
+      { label: ANY_LOCALE_LABEL, value: ANY_LOCALE },
+      ...siteLocales.map((locale) => ({
+        label: formatLocaleWithCode(locale),
+        value: locale,
+      })),
     ],
     [siteLocales],
   );
 
-  const glossaryOptions: SelectOption[] = useMemo(
-    () =>
-      glossaries.map((g) => ({
-        label: `${g.name} (${g.source_lang}\u2192${g.target_lang}, ${g.entry_count} entries)`,
-        value: g.glossary_id,
-      })),
+  const glossaryOptions = useMemo(
+    () => glossaryOptionsFrom(glossaries, uiLocale),
+    [glossaries, uiLocale],
+  );
+
+  // A cell is narrow: it shows the name of the glossary, and the menu its
+  // languages and size too.
+  const glossaryNames = useMemo(
+    () => new Map(glossaries.map((g) => [g.glossary_id, g.name])),
     [glossaries],
   );
 
-  const validGlossaryIds = useMemo(
-    () => new Set(glossaries.map((g) => g.glossary_id)),
-    [glossaries],
+  // The menus of the cells open upward. A focused cell is a layer under the
+  // "add" gap at the bottom of the list, which would catch the clicks on the
+  // options of the last row that cover it.
+  const columns = useMemo<TableListColumn<GlossaryPairRow>[]>(() => {
+    const localeColumn = (
+      id: 'source' | 'target',
+      label: string,
+    ): TableListColumn<GlossaryPairRow> => ({
+      id,
+      field: id,
+      label,
+      grow: 1,
+      // The class of the cell input is for a text input: the select doesn't
+      // take it.
+      render: ({
+        index,
+        value: cell,
+        onChange: onCellChange,
+        onBlur,
+        inputProps: { className: _className, ...inputProps },
+      }) => (
+        <SelectInput
+          {...inputProps}
+          name={`glossary-${id}-${index}`}
+          value={cellValue(cell)}
+          onChange={(next) => onCellChange(next ?? '')}
+          onBlur={onBlur}
+          options={localeOptions}
+          acceptValueNotIncludedInOptions={rawOption}
+          clearable={false}
+          placeholder="Pick a locale"
+          variant="embedded"
+          classNamePrefix="TableList__select"
+          menuPlacement="top"
+        />
+      ),
+    });
+
+    return [
+      localeColumn('source', 'From'),
+      localeColumn('target', 'To'),
+      {
+        id: 'glossaryId',
+        field: 'glossaryId',
+        label: 'Glossary',
+        grow: 1,
+        render: ({
+          index,
+          value: cell,
+          onChange: onCellChange,
+          onBlur,
+          inputProps: { className: _className, ...inputProps },
+        }) => (
+          <SelectInput
+            {...inputProps}
+            name={`glossary-id-${index}`}
+            value={cellValue(cell)}
+            onChange={(next) => onCellChange(next ?? '')}
+            onBlur={onBlur}
+            options={glossaryOptions}
+            acceptValueNotIncludedInOptions={rawOption}
+            loading={fetchStatus === 'loading'}
+            noOptionsMessage={glossaryNoOptionsMessage(fetchStatus)}
+            formatOptionLabel={(
+              option: SelectOption,
+              { context }: { context: 'menu' | 'value' },
+            ) =>
+              context === 'value'
+                ? (glossaryNames.get(option.value) ?? option.label)
+                : option.label
+            }
+            clearable={false}
+            placeholder="Pick a glossary"
+            variant="embedded"
+            classNamePrefix="TableList__select"
+            menuPlacement="top"
+          />
+        ),
+      },
+    ];
+  }, [localeOptions, glossaryOptions, glossaryNames, fetchStatus]);
+
+  const errors = useMemo(
+    () => glossaryPairErrors(rows, siteLocales, glossaries, fetchStatus),
+    [rows, siteLocales, glossaries, fetchStatus],
   );
 
-  const validLocales = useMemo(() => new Set(siteLocales), [siteLocales]);
+  // ── Removal ────────────────────────────────────────────────────────
 
-  // ── Per-row validation ─────────────────────────────────────────────
-
-  function getLocaleError(code: string): string | undefined {
-    if (!code || code === '*') return undefined;
-    if (siteLocales.length > 0 && !validLocales.has(code)) {
-      return `"${code}" is not a locale in this project`;
-    }
-    return undefined;
-  }
-
-  function getGlossaryError(glossaryId: string): string | undefined {
-    if (!glossaryId) return undefined;
-    if (fetchStatus === 'success' && !validGlossaryIds.has(glossaryId)) {
-      return `"${glossaryId}" is not a valid glossary in your DeepL account`;
-    }
-    return undefined;
-  }
-
-  // ── Row CRUD ───────────────────────────────────────────────────────
-
-  const updateRow = (index: number, patch: Partial<GlossaryPairRow>) => {
-    const next = rows.map((r, i) => (i === index ? { ...r, ...patch } : r));
-    commitRows(next);
+  const localeName = (code: string) => {
+    if (!code) return 'no locale';
+    if (code === ANY_LOCALE) return ANY_LOCALE_LABEL;
+    return siteLocales.includes(code) ? formatLocaleWithCode(code) : code;
   };
 
-  const removeRow = (index: number) => {
-    commitRows(rows.filter((_, i) => i !== index));
-  };
-
-  const confirmRemoveRow = async (index: number) => {
-    const row = rows[index];
-    const hasContent = row.source || row.target || row.glossaryId;
-    if (!hasContent) {
-      removeRow(index);
+  const confirmRemove = async (row: GlossaryPairRow, remove: () => void) => {
+    // An empty row goes at once: there is nothing to lose.
+    if (!row.source && !row.target && !row.glossaryId) {
+      remove();
       return;
     }
-    const from = row.source || '?';
-    const to = row.target || '?';
-    const glossaryMatch = glossaries.find(
-      (g) => g.glossary_id === row.glossaryId,
-    );
-    const glossaryLabel = glossaryMatch
-      ? glossaryMatch.name
-      : row.glossaryId || '?';
+    const glossaryName =
+      glossaries.find((g) => g.glossary_id === row.glossaryId)?.name ??
+      row.glossaryId;
     const confirmed = await openConfirm({
-      title: 'Remove glossary?',
-      content: `Are you sure you wish to remove the glossary from ${from} to ${to} using the glossary "${glossaryLabel}"?`,
+      title: 'Remove this language pair?',
+      content: glossaryName
+        ? `From ${localeName(row.source)} to ${localeName(row.target)}, with the glossary “${glossaryName}”.`
+        : `From ${localeName(row.source)} to ${localeName(row.target)}, with no glossary.`,
       choices: [{ label: 'Remove', value: true, intent: 'negative' }],
       cancel: { label: 'Cancel', value: false },
     });
-    if (confirmed) {
-      removeRow(index);
-    }
+    if (confirmed) remove();
   };
-
-  const addRow = () => {
-    commitRows([
-      ...rows,
-      createEditableRow({ source: '', target: '', glossaryId: '' }),
-    ]);
-  };
-
-  // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <label
-          className={s.label}
-          style={{ display: 'flex', alignItems: 'center', margin: 0 }}
-        >
-          Glossaries by language pair
-          <div className={s.tooltipContainer}>
-            &#9432;
-            <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-              Map specific language pairs to DeepL glossaries. Use &quot;All
-              (*)&quot; as a wildcard to match any source or target locale.
-            </div>
-          </div>
-        </label>
-      </div>
-
-      {fetchStatus === 'error' && fetchError && (
-        <div
-          className={s.inlineStatus}
-          style={{ color: 'var(--color--ink-danger)', marginBottom: 8 }}
-        >
-          {fetchError}
-        </div>
-      )}
-
-      {rows.map((row, i) => {
-        const sourceError = getLocaleError(row.source);
-        const targetError = getLocaleError(row.target);
-        const glossaryError = getGlossaryError(row.glossaryId);
-
-        const glossaryValue = row.glossaryId
-          ? glossaryOptions.find((o) => o.value === row.glossaryId) ?? {
-              label: row.glossaryId,
-              value: row.glossaryId,
-            }
-          : null;
-
-        const sourceValue = row.source
-          ? localeOptions.find((o) => o.value === row.source) ?? {
-              label: row.source,
-              value: row.source,
-            }
-          : null;
-
-        const targetValue = row.target
-          ? localeOptions.find((o) => o.value === row.target) ?? {
-              label: row.target,
-              value: row.target,
-            }
-          : null;
-
-        return (
-          <div
-            key={row.rowId}
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'start',
-              marginBottom: 8,
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                minWidth: 0,
-                border: '1px solid var(--color--border)',
-                borderRadius: 4,
-                padding: '10px 12px',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <SelectField
-                    id={`glossarySource-${i}`}
-                    name={`glossarySource-${i}`}
-                    label="From"
-                    placeholder="Source"
-                    value={sourceValue}
-                    error={sourceError}
-                    selectInputProps={{ options: localeOptions }}
-                    onChange={(nv) => {
-                      if (!Array.isArray(nv)) {
-                        const sel = nv as SelectOption | null;
-                        updateRow(i, { source: sel?.value ?? '' });
-                      }
-                    }}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <SelectField
-                    id={`glossaryTarget-${i}`}
-                    name={`glossaryTarget-${i}`}
-                    label="To"
-                    placeholder="Target"
-                    value={targetValue}
-                    error={targetError}
-                    selectInputProps={{ options: localeOptions }}
-                    onChange={(nv) => {
-                      if (!Array.isArray(nv)) {
-                        const sel = nv as SelectOption | null;
-                        updateRow(i, { target: sel?.value ?? '' });
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <SelectField
-                  id={`glossaryId-${i}`}
-                  name={`glossaryId-${i}`}
-                  label="Glossary"
-                  placeholder={
-                    fetchStatus === 'loading'
-                      ? 'Loading glossaries...'
-                      : 'Select glossary'
-                  }
-                  value={glossaryValue}
-                  error={glossaryError}
-                  selectInputProps={{
-                    options: glossaryOptions,
-                    isLoading: fetchStatus === 'loading',
-                  }}
-                  onChange={(nv) => {
-                    if (!Array.isArray(nv)) {
-                      const sel = nv as SelectOption | null;
-                      updateRow(i, { glossaryId: sel?.value ?? '' });
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <div style={{ paddingTop: 24, flexShrink: 0 }}>
-              <Button
-                type="button"
-                buttonType="negative"
-                buttonSize="xxs"
-                onClick={() => confirmRemoveRow(i)}
-              >
-                &times;
-              </Button>
-            </div>
-          </div>
-        );
-      })}
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <Button
-          type="button"
-          buttonType="muted"
-          buttonSize="xs"
-          onClick={addRow}
-        >
-          + Add language pair
-        </Button>
-      </div>
-    </div>
+    <FieldWrapper
+      label="Glossaries by language pair"
+      hint="Each row picks the glossary for a pair of locales. “All (*)” matches any locale."
+    >
+      <TableList<GlossaryPairRow>
+        value={rows}
+        onChange={commitRows}
+        columns={columns}
+        errors={errors}
+        // Errors come from saved values, so they show at once.
+        touched={true}
+        emptyMessage="No language pairs"
+        add={{ label: 'Add language pair', newItem: newRow }}
+        onRemove={(_index, row, remove) => {
+          confirmRemove(row, remove);
+        }}
+      />
+    </FieldWrapper>
   );
 }

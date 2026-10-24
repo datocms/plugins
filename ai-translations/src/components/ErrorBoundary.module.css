@@ -1,0 +1,8 @@
+/* The fallback of a full-height page fills the frame, as the page's own
+   layout box does: the positioned parent with a height that an `area` blank
+   slate centers in, painted with the page surface. */
+.page {
+  position: absolute;
+  inset: 0;
+  background-color: var(--color--surface);
+}

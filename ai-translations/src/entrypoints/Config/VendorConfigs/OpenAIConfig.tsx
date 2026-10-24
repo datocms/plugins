@@ -1,6 +1,7 @@
 /**
  * OpenAIConfig.tsx
- * Configuration component for OpenAI vendor settings.
+ * Configuration component for OpenAI vendor settings: the settings group with
+ * the API key and the model.
  *
  * DESIGN DECISION: OpenAI, Gemini, and Anthropic configs are kept as separate
  * components despite their structural similarity. This approach was chosen because:
@@ -15,16 +16,18 @@
  * If significant shared behavior emerges, consider extracting a generic component.
  */
 
-import { FieldGroup, TextField } from 'datocms-react-ui';
-import ModelSelectField from './ModelSelectField';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import StringInput from 'datocms-react-ui/StringInput';
+import { vendorSettingsTitle } from '../configConstants';
+import ModelSelectField, { type ModelList } from './ModelSelectField';
 
 export interface OpenAIConfigProps {
   apiKey: string;
   setApiKey: (value: string) => void;
   gptModel: string;
   setGptModel: (value: string) => void;
-  listOfModels: string[];
-  isModelListLoading: boolean;
+  modelList: ModelList;
 }
 
 export default function OpenAIConfig({
@@ -32,28 +35,26 @@ export default function OpenAIConfig({
   setApiKey,
   gptModel,
   setGptModel,
-  listOfModels,
-  isModelListLoading,
+  modelList,
 }: OpenAIConfigProps) {
   return (
-    <FieldGroup>
-      <TextField
-        required
-        name="openAIAPIKey"
-        id="openAIAPIKey"
-        label="OpenAI API Key"
-        value={apiKey}
-        onChange={(newValue) => setApiKey(newValue)}
-        placeholder="sk-..."
-      />
+    <Page.Group title={vendorSettingsTitle('openai')}>
+      <FieldWrapper label="API key" required>
+        <StringInput
+          code
+          name="openAIAPIKey"
+          value={apiKey}
+          onChange={(value) => setApiKey(value ?? '')}
+          placeholder="sk-…"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
       <ModelSelectField
-        id="gptModel"
-        label="GPT Model"
         value={gptModel}
         onChange={setGptModel}
-        models={listOfModels}
-        isLoading={isModelListLoading}
+        modelList={modelList}
       />
-    </FieldGroup>
+    </Page.Group>
   );
 }

@@ -6,6 +6,9 @@
  * the translation logic when actions are invoked.
  */
 
+// The kit stylesheet loads first, thus the CSS modules of the plugin come
+// after it and win at the same specificity
+import 'datocms-react-ui/styles.css';
 import type {
   DropdownAction,
   DropdownActionGroup,
@@ -23,15 +26,10 @@ import type {
   SettingsAreaSidebarItemGroupsCtx,
 } from 'datocms-plugin-sdk';
 import { connect } from 'datocms-plugin-sdk';
-
-import { Button, Canvas } from 'datocms-react-ui';
-
-import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
-import './dl-recipes.css';
 import AITranslationsPickerModal, {
   type AITranslationsPickerModalParams,
   type AITranslationsPickerModalResult,
+  PICKER_DISMISSED,
 } from './components/AITranslationsPickerModal';
 import {
   confirmTranslationTitle,
@@ -39,10 +37,10 @@ import {
   PROGRESS_MODAL_TITLE,
   reportTranslationOutcome,
 } from './components/BulkTranslations/bulkCopy';
-import ErrorBoundary from './components/ErrorBoundary';
+import InvalidModalParameters from './components/InvalidModalParameters';
 import TranslationConfirmModal, {
-  type TranslationConfirmModalParams,
   isTranslationConfirmModalParams,
+  type TranslationConfirmModalParams,
 } from './components/TranslationConfirmModal';
 import TranslationProgressModal from './components/TranslationProgressModal';
 import ConfigScreen, {
@@ -61,9 +59,9 @@ import {
   buildLocaleSettingsPath,
   buildPluginSettingsPath,
 } from './utils/dashboardPaths';
-import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
-import { render } from './utils/render';
+import { createLogger } from './utils/logging/Logger';
+import { renderFrame } from './utils/render';
 // Import refactored utility functions and types
 import {
   formatErrorForUser,
@@ -200,7 +198,6 @@ function preflightItemsTranslation(
   return true;
 }
 
-
 /**
  * Helper function to get nested values by dot/bracket notation
  * @param obj - object to traverse
@@ -335,15 +332,10 @@ connect({
     if (Object.keys(defaults).length > 0) {
       ctx.updatePluginParameters({ ...pluginParams, ...defaults });
     }
-
   },
 
   renderConfigScreen(ctx) {
-    return render(
-      <ErrorBoundary>
-        <ConfigScreen ctx={ctx} />
-      </ErrorBoundary>,
-    );
+    return renderFrame(ctx, <ConfigScreen ctx={ctx} />);
   },
 
   // New hook to add a custom section in the Settings area
@@ -373,15 +365,12 @@ connect({
   renderPage(pageId: string, ctx: RenderPageCtx) {
     switch (pageId) {
       case 'ai-bulk-translations':
-        return render(
-          <ErrorBoundary
-            onNavigateToSettings={() =>
-              ctx.navigateTo(buildPluginSettingsPath(ctx))
-            }
-          >
-            <AIBulkTranslationsPage ctx={ctx} />
-          </ErrorBoundary>,
-        );
+        // A full-height page: the frame keeps the size the host gives it
+        return renderFrame(ctx, <AIBulkTranslationsPage ctx={ctx} />, {
+          noAutoResizer: true,
+          page: true,
+          settingsPath: buildPluginSettingsPath(ctx),
+        });
       default:
         return null;
     }
@@ -479,16 +468,20 @@ connect({
         accessToken,
       };
 
+      // The picker ends with a footer (Cancel at the left), so the host
+      // draws no cross (`closeDisabled`): its Cancel, and the Escape it
+      // registers, dismiss it.
       const result = (await ctx.openModal({
         id: 'aiTranslationsPickerModal',
         title: PICKER_MODAL_TITLE,
         width: 'm',
         initialHeight: 480,
+        closeDisabled: true,
         parameters: pickerParams as unknown as Record<string, unknown>,
       })) as AITranslationsPickerModalResult | undefined;
 
       // The picker resolves with `config` only when the user clicked
-      // "Translate"; anything else (dismissed/cancelled) bails out here.
+      // "Translate"; a dismissal resolves without it and bails out here.
       if (!result?.config) return;
 
       const {
@@ -498,10 +491,14 @@ connect({
         models: modelsBreakdown,
       } = result.config;
 
-      // Styled confirm modal (record count + locale chips + per-model field
-      // breakdown) instead of the native text-only openConfirm. Opened here in
+      // Review modal (record count + locales + per-model field breakdown)
+      // instead of the native text-only openConfirm. Opened here in
       // the dropdown handler's non-modal context — NOT inside the picker modal,
       // which would nest modal-on-modal and hang behind the current modal.
+      // Both dialogs draw a footer with Cancel at the left, so the host
+      // draws no cross (`closeDisabled`): their own buttons, and the Escape
+      // they register, are the ways out. A cross on the progress dialog
+      // would close it mid-run and abort the job without its summary.
       const confirmParams: TranslationConfirmModalParams = {
         recordCount: itemIds.length,
         fromLocale,
@@ -510,8 +507,9 @@ connect({
       };
       const confirmed = await ctx.openModal({
         id: 'translationConfirmModal',
-        title: confirmTranslationTitle(itemIds.length),
+        title: confirmTranslationTitle(itemIds.length, ctx.ui.locale),
         width: 'm',
+        closeDisabled: true,
         parameters: confirmParams as unknown as Record<string, unknown>,
       });
 
@@ -531,10 +529,16 @@ connect({
         id: 'translationProgressModal',
         title: PROGRESS_MODAL_TITLE,
         width: 'l',
+        closeDisabled: true,
         parameters: progressParams as unknown as Record<string, unknown>,
       })) as { completed?: boolean; canceled?: boolean } | undefined;
 
-      reportTranslationOutcome(ctx, progressResult, itemIds.length);
+      reportTranslationOutcome(
+        ctx,
+        progressResult,
+        itemIds.length,
+        ctx.ui.locale,
+      );
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     }
@@ -573,53 +577,23 @@ connect({
   },
 
   /**
-   * Render the actual sidebar panel if more than one locale is available.
+   * Renders the sidebar panel. TranslateSidebar shows its own states for a
+   * vendor that isn't set up and for a record with a single locale. The
+   * error fallback links the plugin settings only for the roles that can
+   * open them.
    */
   renderItemFormSidebarPanel(
     sidebarPanelId,
     ctx: RenderItemFormSidebarPanelCtx,
   ) {
-    const pluginParams = getPluginParams(ctx);
-    if (!isProviderConfigured(pluginParams)) {
-      return render(
-        <Canvas ctx={ctx}>
-          <p style={{ marginBottom: 'var(--spacing-m)', textAlign: 'center' }}>
-            Please configure valid credentials in plugin settings.
-          </p>
-          <Button
-            fullWidth
-            onClick={() =>
-              ctx.navigateTo(buildPluginSettingsPath(ctx))
-            }
-          >
-            Open Settings
-          </Button>
-        </Canvas>,
-      );
-    }
     if (sidebarPanelId === 'datoGptTranslateSidebar') {
-      if (
-        Array.isArray(ctx.formValues.internalLocales) &&
-        ctx.formValues.internalLocales.length > 1
-      ) {
-        return render(
-          <ErrorBoundary
-            onNavigateToSettings={() =>
-              ctx.navigateTo(buildPluginSettingsPath(ctx))
-            }
-          >
-            <TranslateSidebar ctx={ctx} />
-          </ErrorBoundary>,
-        );
-      }
-      return render(
-        <Canvas ctx={ctx}>
-          <p>
-            For the translate feature to work, you need to have more than one
-            locale in this record.
-          </p>
-        </Canvas>,
-      );
+      const canOpenSettings =
+        ctx.currentRole.meta.final_permissions.can_edit_schema;
+      return renderFrame(ctx, <TranslateSidebar ctx={ctx} />, {
+        settingsPath: canOpenSettings
+          ? buildPluginSettingsPath(ctx)
+          : undefined,
+      });
     }
     return null;
   },
@@ -635,7 +609,7 @@ connect({
       return [
         {
           id: 'not-configured',
-          label: 'Please configure valid AI vendor credentials',
+          label: 'Set up an AI vendor',
           icon: 'language',
         } as DropdownAction,
       ];
@@ -710,11 +684,7 @@ connect({
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     switch (fieldExtensionId) {
       case 'loadingAddon':
-        return render(
-          <ErrorBoundary>
-            <LoadingAddon ctx={ctx} />
-          </ErrorBoundary>,
-        );
+        return renderFrame(ctx, <LoadingAddon />);
       default:
         // Unknown field extension; return null to let SDK handle gracefully
         return null;
@@ -742,9 +712,7 @@ connect({
         fieldValue as Record<string, unknown>
       )?.[locale];
       if (!fieldValueInSourceLocale) {
-        ctx.alert(
-          `The field on the ${formatLocaleWithCode(locale)} locale is empty`,
-        );
+        ctx.alert(`The field is empty in ${formatLocaleWithCode(locale)}.`);
         return;
       }
 
@@ -962,44 +930,47 @@ connect({
    * Renders modal components.
    */
   renderModal(modalId: string, ctx: RenderModalCtx) {
+    // The error fallback and the invalid-parameters state close these
+    // dialogs with the value that a dismissal means to their caller. None of
+    // the three has a host cross (`closeDisabled`), so their Close, and the
+    // Escape they register, are the ways out.
     switch (modalId) {
-      case 'translationProgressModal':
+      case 'translationProgressModal': {
+        const close = () => ctx.resolve(null);
         if (!isTranslationProgressModalParams(ctx.parameters)) {
-          return render(
-            <Canvas ctx={ctx}>
-              <p>Invalid modal parameters</p>
-            </Canvas>,
-          );
+          return renderFrame(ctx, <InvalidModalParameters onClose={close} />);
         }
-        return render(
-          <ErrorBoundary>
-            <TranslationProgressModal ctx={ctx} parameters={ctx.parameters} />
-          </ErrorBoundary>,
+        // The modal sizes its frame itself (useFrameHeight): its list of
+        // records scrolls, and the auto-resizer would grow the frame to fit
+        // the rows clipped by that box.
+        return renderFrame(
+          ctx,
+          <TranslationProgressModal ctx={ctx} parameters={ctx.parameters} />,
+          { noAutoResizer: true, onClose: close },
         );
+      }
       case 'aiTranslationsPickerModal':
-        return render(
-          <ErrorBoundary>
-            <AITranslationsPickerModal
-              ctx={ctx}
-              parameters={
-                ctx.parameters as unknown as AITranslationsPickerModalParams
-              }
-            />
-          </ErrorBoundary>,
+        return renderFrame(
+          ctx,
+          <AITranslationsPickerModal
+            ctx={ctx}
+            parameters={
+              ctx.parameters as unknown as AITranslationsPickerModalParams
+            }
+          />,
+          { onClose: () => ctx.resolve(PICKER_DISMISSED) },
         );
-      case 'translationConfirmModal':
+      case 'translationConfirmModal': {
+        const close = () => ctx.resolve(false);
         if (!isTranslationConfirmModalParams(ctx.parameters)) {
-          return render(
-            <Canvas ctx={ctx}>
-              <p>Invalid modal parameters</p>
-            </Canvas>,
-          );
+          return renderFrame(ctx, <InvalidModalParameters onClose={close} />);
         }
-        return render(
-          <ErrorBoundary>
-            <TranslationConfirmModal ctx={ctx} parameters={ctx.parameters} />
-          </ErrorBoundary>,
+        return renderFrame(
+          ctx,
+          <TranslationConfirmModal ctx={ctx} parameters={ctx.parameters} />,
+          { onClose: close },
         );
+      }
       default:
         return null;
     }

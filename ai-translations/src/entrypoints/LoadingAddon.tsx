@@ -1,20 +1,16 @@
-import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-
-type PropTypes = {
-  ctx: RenderFieldExtensionCtx;
-};
-
 /**
- * Renders a small loading placeholder in a DatoCMS Canvas.
+ * LoadingAddon.tsx
+ * Legacy placeholder field extension ('loadingAddon') that shows a loading
+ * state. It renders inside the Canvas that main.tsx puts around the hook.
+ *
+ * Nothing names what loads here, so it is a spinner alone: a small
+ * Spinner.Area keeps the place of a line, and a screen reader tells
+ * "Loading" (a BlankSlate is for an area that tells what it loads).
  */
-function LoadingAddon({ ctx }: PropTypes) {
-  return <Canvas ctx={ctx}>Loading...</Canvas>;
+import Spinner from 'datocms-react-ui/Spinner';
+
+function LoadingAddon() {
+  return <Spinner.Area size="small" />;
 }
 
 export default LoadingAddon;
-/**
- * LoadingAddon.tsx
- * Minimal field extension that renders a lightweight loading state within Canvas.
- * Used as a placeholder when an extension needs time to initialize.
- */

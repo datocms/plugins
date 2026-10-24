@@ -6,8 +6,13 @@
  * records-action dropdown. The form mirrors the standalone bulk-translations
  * page, minus the model multi-select (models are derived from the selected
  * records), and reuses the same locale rules, per-model field picker and
- * disabled-reason tooltip. It ends with one full-width submit and has no
- * Cancel: the host's ✕ and Esc dismiss it (resolving `undefined`).
+ * disabled reasons. It ends with a footer: Cancel at the left, the submit at
+ * the right. A dialog with a footer has no cross, so it opens with no host
+ * cross (`closeDisabled`) and registers Escape as that Cancel. Both resolve
+ * {@link PICKER_DISMISSED}.
+ *
+ * The content flows inside the host-drawn dialog (the host draws the title),
+ * in the Canvas that main.tsx gives every frame.
  *
  * Flow:
  *   1. User picks source locale, target locales, and which fields to
@@ -20,18 +25,27 @@
  *      and leaves hanging forever on "Working…".
  */
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { useRegisterActions } from 'datocms-react-ui/Actions';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Heading from 'datocms-react-ui/Heading';
+import Link from 'datocms-react-ui/Link';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import {
-  Canvas,
-  FieldGroup,
-  Form,
-  SelectField,
-  Spinner,
-} from 'datocms-react-ui';
-import { useEffect, useMemo, useState } from 'react';
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from 'react';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
-import { Button } from '../ui/Button';
-import { DisabledReason } from '../ui/DisabledReason';
-import { formatLocaleLabel } from '../utils/localeUtils';
+import {
+  buildLocaleSettingsPath,
+  buildPluginSettingsPath,
+} from '../utils/dashboardPaths';
+import { formatLocaleWithCode } from '../utils/localeUtils';
 import {
   getTranslationReadiness,
   resolveTargetLocales,
@@ -39,16 +53,14 @@ import {
 import { isProviderConfigured } from '../utils/translation/ProviderFactory';
 import s from './AITranslationsPickerModal.module.css';
 import {
-  FIELD_REQUIRED,
   modelCount,
+  PICK_FIELD_ERROR,
+  PICK_LOCALE_ERROR,
   recordCount,
   translateRecordsLabel,
 } from './BulkTranslations/bulkCopy';
-import {
-  type ChipOption,
-  formatCodeMultiOption,
-  formatCodeOption,
-} from './BulkTranslations/chipOption';
+import type { ChipOption } from './BulkTranslations/chipOption';
+import { keepEnterInSelects } from './BulkTranslations/keepEnterInSelects';
 import {
   ALL_LOCALES_OPTION,
   nextTargetSelection,
@@ -64,14 +76,12 @@ import { useModelFields } from './BulkTranslations/useModelFields';
 import { useModelPickerPage } from './BulkTranslations/useModelPickerPage';
 import type { ConfirmModelSummary } from './TranslationConfirmModal';
 
-type SingleValue<T> = T | null;
-type MultiValue<T> = readonly T[];
-
 type LocaleOption = ChipOption;
 
 /**
- * Outcome the picker modal resolves with. Dismissing the modal (✕ or Esc)
- * resolves `undefined` instead.
+ * Outcome the picker modal resolves with. A dismissal resolves it without
+ * `config` ({@link PICKER_DISMISSED}, from the Cancel, Escape or the Close of
+ * the error fallback).
  */
 export interface AITranslationsPickerModalResult {
   /**
@@ -90,6 +100,12 @@ export interface AITranslationsPickerModalResult {
   };
 }
 
+/**
+ * What a dismissal resolves (the Cancel, Escape, the Close of the error
+ * fallback): no config, so the dropdown handler stops there.
+ */
+export const PICKER_DISMISSED: AITranslationsPickerModalResult = {};
+
 export interface AITranslationsPickerModalParams {
   itemIds: string[];
   /**
@@ -106,11 +122,42 @@ interface Props {
   parameters: AITranslationsPickerModalParams;
 }
 
-const PROVIDER_MISSING_LINE =
-  'No AI vendor is set up yet. Add its credentials in the plugin settings to start translating.';
+const EXCLUDED_MODELS_LINE =
+  'Records of models excluded in the plugin settings will be skipped.';
+const PROVIDER_MISSING_TITLE = 'No AI vendor set up';
+const SINGLE_LOCALE_TITLE = 'Only one locale';
+
+/** The Escape of the dialog: the Cancel (or Close) of its footer. */
+const CANCEL_ACTION_ID = 'aiTranslationsPicker.cancel';
+
+/**
+ * The page that fixes a problem, named in the text of its Callout: a link
+ * when the role can open it, plain text otherwise. The link opens a new tab,
+ * so the dialog stays open.
+ */
+function SettingsPageLink({
+  to,
+  allowed,
+  children,
+}: {
+  to: string;
+  allowed: boolean;
+  children: string;
+}): ReactNode {
+  if (!allowed) return children;
+  return (
+    <Link to={to} target="_blank">
+      {children}
+    </Link>
+  );
+}
+
+const noLocalesFound = () => 'No locales found';
 
 export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const { itemIds, pluginParams } = parameters;
+  const localesHeadingId = useId();
+  const fieldsHeadingId = useId();
   const excludedModelCodes = useMemo(
     () => new Set(pluginParams.modelsToBeExcludedFromThisPlugin ?? []),
     [pluginParams.modelsToBeExcludedFromThisPlugin],
@@ -124,16 +171,20 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const locales = useMemo<LocaleOption[]>(
     () =>
       ctx.site.attributes.locales.map((locale: string) => ({
-        label: formatLocaleLabel(locale),
+        label: formatLocaleWithCode(locale),
         value: locale,
-        code: locale,
       })),
     [ctx.site.attributes.locales],
   );
   const isSingleLocale = ctx.site.attributes.locales.length < 2;
   const providerConfigured = isProviderConfigured(pluginParams);
-  const { visibleModels, controls: modelPageControls } =
-    useModelPickerPage(models);
+  const permissions = ctx.currentRole.meta.final_permissions;
+  // Counts get the separators of the language that the Canvas gives the kit.
+  const locale = ctx.ui.locale;
+  // The dialog is narrow: the pagination shows fewer page numbers.
+  const { visibleModels, pagination } = useModelPickerPage(models, {
+    compact: true,
+  });
 
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
     locales[0] ?? null,
@@ -229,8 +280,8 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   });
 
   /**
-   * "Field is required" under a model's field select: only once its fields
-   * loaded and there is something to pick.
+   * "Pick at least one field" under a model's field select: only once its
+   * fields loaded and there is something to pick.
    */
   const needsFieldError = (modelId: string) =>
     readiness.modelsMissingFields.includes(modelId) &&
@@ -243,17 +294,24 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
     ],
     [locales, sourceLocale],
   );
-
-  const sourceSelect = useBoundedChipSelect(
-    locales,
-    sourceLocale ? [sourceLocale] : [],
-    'locales',
-    false,
+  const sourceValues = useMemo(
+    () => (sourceLocale ? [sourceLocale.value] : []),
+    [sourceLocale],
   );
+  const targetValues = useMemo(
+    () => targetLocaleOptions.map((option) => option.value),
+    [targetLocaleOptions],
+  );
+
+  const sourceSelect = useBoundedChipSelect(locales, sourceValues, 'locales', {
+    multi: false,
+    locale,
+  });
   const targetSelect = useBoundedChipSelect(
     targetOptions,
-    targetLocaleOptions,
+    targetValues,
     'locales',
+    { locale },
   );
 
   /**
@@ -261,25 +319,20 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
    * `nextTargetSelection` ("All other locales" vs specific picks).
    */
   const handleTargetLocalesChange = (
-    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+    _values: string[] | null,
+    options: LocaleOption[],
   ) => {
-    const next: LocaleOption[] = Array.isArray(newValue)
-      ? [...newValue]
-      : newValue
-        ? [newValue]
-        : [];
-    setTargetLocaleOptions(nextTargetSelection(targetLocaleOptions, next));
+    setTargetLocaleOptions(nextTargetSelection(targetLocaleOptions, options));
   };
 
   /** Picks the source and drops it from the specific target picks. */
   const handleSourceLocaleChange = (
-    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+    _value: string | null,
+    option: LocaleOption | null,
   ) => {
-    if (newValue && !Array.isArray(newValue)) {
-      const source = newValue as LocaleOption;
-      setSourceLocale(source);
-      setTargetLocaleOptions((prev) => targetsForNewSource(prev, source.value));
-    }
+    if (!option) return;
+    setSourceLocale(option);
+    setTargetLocaleOptions((prev) => targetsForNewSource(prev, option.value));
   };
 
   /**
@@ -324,146 +377,170 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
     } satisfies AITranslationsPickerModalResult);
   };
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    handleStart();
+  };
+
+  // With a single locale there's nothing to start, so the way out is a
+  // Close; otherwise it cancels the translation before it starts.
+  const dismissLabel = isSingleLocale ? 'Close' : 'Cancel';
+  const dismiss = () => ctx.resolve(PICKER_DISMISSED);
+
+  // The host draws no cross on this dialog, so Escape is the Cancel of the
+  // footer, as in the kit's dialogs. Its key only makes sense as a key.
+  useRegisterActions([
+    {
+      id: CANCEL_ACTION_ID,
+      name: dismissLabel,
+      shortcut: { key: 'escape' },
+      palette: 'hidden',
+      run: dismiss,
+    },
+  ]);
+
   const intro =
     models.length === 1 ? (
       <>
-        You selected <strong>{recordCount(itemIds.length)}</strong> of the{' '}
-        <strong>{models[0].label}</strong> model.
+        You selected <strong>{recordCount(itemIds.length, locale)}</strong> of
+        the <strong>{models[0].label}</strong> model.
       </>
     ) : (
       <>
-        You selected <strong>{recordCount(itemIds.length)}</strong> from{' '}
-        <strong>{modelCount(models.length)}</strong>.
+        You selected <strong>{recordCount(itemIds.length, locale)}</strong> from{' '}
+        <strong>{modelCount(models.length, locale)}</strong>.
       </>
     );
 
   return (
-    <Canvas ctx={ctx}>
-      <Form onSubmit={handleStart}>
-        {models.length < parameters.models.length && (
-          <div className="dl-callout dl-callout--warning dl-callout--flush">
-            Records of models excluded in the plugin settings will be skipped.
-          </div>
-        )}
-        {!providerConfigured && (
-          <div className="dl-callout dl-callout--warning dl-callout--flush">
-            {PROVIDER_MISSING_LINE}
-          </div>
-        )}
-        {isSingleLocale && (
-          <div className="dl-callout dl-callout--warning dl-callout--flush">
-            This environment has only one locale, so there's nothing to
-            translate these records into. Add another locale in the Locales
-            &amp; Timezone settings first.
-          </div>
-        )}
-        <p className={s.intro}>{intro}</p>
-        {!isSingleLocale && (
-          <div role="group" aria-labelledby="picker-locales">
-            <h2
-              id="picker-locales"
-              className="dl-micro-label"
-              style={{ marginBottom: 'var(--spacing-m)' }}
-            >
-              Locales
-            </h2>
-            <FieldGroup>
-              <SelectField
-                id="sourceLocale"
-                name="sourceLocale"
-                label="Source locale"
-                required
-                hint={boundedSelectHint(
-                  sourceSelect.hint,
-                  'Content in this locale is translated into the target locales',
-                )}
-                value={sourceLocale}
-                onChange={handleSourceLocaleChange}
-                selectInputProps={{
-                  ...sourceSelect.selectProps,
-                  formatOptionLabel: formatCodeOption,
-                  isClearable: false,
-                }}
-              />
-              <SelectField
-                id="targetLocales"
-                name="targetLocales"
-                label="Target locales"
-                required
-                hint={boundedSelectHint(
-                  targetSelect.hint,
-                  '"All other locales" includes every locale except the source one',
-                )}
-                placeholder={targetSelect.placeholder('Select locales…')}
-                error={
-                  targetLocaleOptions.length === 0 ? FIELD_REQUIRED : undefined
-                }
-                value={targetLocaleOptions}
-                onChange={handleTargetLocalesChange}
-                selectInputProps={{
-                  isMulti: true,
-                  ...targetSelect.selectProps,
-                  formatOptionLabel: formatCodeMultiOption,
-                  noOptionsMessage: () => 'No locales found',
-                }}
-              />
-            </FieldGroup>
-          </div>
-        )}
-        {!isSingleLocale && (
-          <div role="group" aria-labelledby="picker-fields">
-            <h2
-              id="picker-fields"
-              className="dl-micro-label"
-              style={{ marginBottom: 'var(--spacing-m)' }}
-            >
-              Fields
-            </h2>
-            <FieldGroup>
-              {modelPageControls}
-              {visibleModels.map((model) => (
-                <ModelFieldPicker
-                  key={model.value}
-                  model={model}
-                  fields={fieldsByModel[model.value]}
-                  isLoading={loadingFieldsForModel.has(model.value)}
-                  loadFailed={failedFieldModels.has(model.value)}
-                  selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
-                  onChange={(apiKeys) => setModelFields(model.value, apiKeys)}
-                  onRetry={() => retryFields(model.value)}
-                  validationMessage={
-                    needsFieldError(model.value) ? FIELD_REQUIRED : undefined
-                  }
-                />
-              ))}
-            </FieldGroup>
-          </div>
-        )}
-        {!isSingleLocale && (
-          <DisabledReason
-            reason={isSubmitting ? null : blockedReason}
-            placement="top"
-            block
+    <form onSubmit={handleSubmit} onKeyDown={keepEnterInSelects} noValidate>
+      {models.length < parameters.models.length && (
+        <Callout tone="warning">{EXCLUDED_MODELS_LINE}</Callout>
+      )}
+      {!providerConfigured && (
+        <Callout tone="warning" title={PROVIDER_MISSING_TITLE}>
+          These records can't be translated yet. Add the credentials of an AI
+          vendor in the{' '}
+          <SettingsPageLink
+            to={buildPluginSettingsPath(ctx)}
+            allowed={permissions.can_edit_schema}
           >
-            <Button
-              type="submit"
-              buttonType="primary"
-              buttonSize="xl"
-              fullWidth
-              disabled={isSubmitting || blockedReason !== null}
-            >
-              {isSubmitting ? (
-                <>
-                  Please wait&nbsp;
-                  <Spinner size={20} />
-                </>
-              ) : (
-                translateRecordsLabel(itemIds.length)
+            plugin settings
+          </SettingsPageLink>
+          .
+        </Callout>
+      )}
+      {isSingleLocale && (
+        <Callout tone="warning" title={SINGLE_LOCALE_TITLE}>
+          There's nothing to translate these records into. Add another locale in
+          the{' '}
+          <SettingsPageLink
+            to={buildLocaleSettingsPath(ctx)}
+            allowed={permissions.can_edit_environment}
+          >
+            Locales & Timezone settings
+          </SettingsPageLink>{' '}
+          first.
+        </Callout>
+      )}
+      <p className={s.intro}>{intro}</p>
+      {!isSingleLocale && (
+        <>
+          <div
+            role="group"
+            aria-labelledby={localesHeadingId}
+            className={s.group}
+          >
+            <Heading level={2} id={localesHeadingId} className={s.groupTitle}>
+              Locales
+            </Heading>
+            <FieldWrapper
+              label="Source locale"
+              required
+              hint={boundedSelectHint(
+                sourceSelect.hint,
+                'Content in this locale is translated into the target locales',
               )}
-            </Button>
-          </DisabledReason>
+            >
+              <SelectInput
+                name="sourceLocale"
+                {...sourceSelect.selectProps}
+                value={sourceLocale?.value ?? null}
+                onChange={handleSourceLocaleChange}
+                clearable={false}
+                noOptionsMessage={noLocalesFound}
+              />
+            </FieldWrapper>
+            <FieldWrapper
+              label="Target locales"
+              required
+              hint={boundedSelectHint(
+                targetSelect.hint,
+                '“All other locales” includes every locale except the source one',
+              )}
+              error={targetValues.length === 0 ? PICK_LOCALE_ERROR : undefined}
+            >
+              <SelectInput
+                multiple
+                name="targetLocales"
+                {...targetSelect.selectProps}
+                value={targetValues}
+                onChange={handleTargetLocalesChange}
+                placeholder={targetSelect.placeholder('Pick locales')}
+                noOptionsMessage={noLocalesFound}
+              />
+            </FieldWrapper>
+          </div>
+          <div
+            role="group"
+            aria-labelledby={fieldsHeadingId}
+            className={s.group}
+          >
+            <Heading level={2} id={fieldsHeadingId} className={s.groupTitle}>
+              Fields
+            </Heading>
+            {pagination && <div className={s.pagination}>{pagination}</div>}
+            {visibleModels.map((model) => (
+              <ModelFieldPicker
+                key={model.value}
+                model={model}
+                fields={fieldsByModel[model.value]}
+                isLoading={loadingFieldsForModel.has(model.value)}
+                loadFailed={failedFieldModels.has(model.value)}
+                selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
+                onChange={(apiKeys) => setModelFields(model.value, apiKeys)}
+                onRetry={() => retryFields(model.value)}
+                validationMessage={
+                  needsFieldError(model.value) ? PICK_FIELD_ERROR : undefined
+                }
+              />
+            ))}
+          </div>
+        </>
+      )}
+      {/* Cancel at the left, the main action at the right. With a single
+          locale there's nothing to start: Close alone is the way out. */}
+      <div className={s.actions}>
+        <Button
+          tone="ghost"
+          label={dismissLabel}
+          className={s.cancel}
+          onClick={dismiss}
+        />
+        {!isSingleLocale && (
+          <Button
+            submit
+            tone="primary"
+            label={translateRecordsLabel(itemIds.length, locale)}
+            busy={isSubmitting}
+            disabled={
+              !isSubmitting && blockedReason !== null
+                ? { reason: blockedReason }
+                : undefined
+            }
+          />
         )}
-      </Form>
-    </Canvas>
+      </div>
+    </form>
   );
 }

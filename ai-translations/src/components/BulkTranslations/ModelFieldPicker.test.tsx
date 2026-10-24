@@ -1,83 +1,12 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { makeCtx, renderWithCanvas } from '../../test/renderWithCanvas';
 import type { TranslatableField } from '../../utils/translation/BulkTranslationHelpers';
-import type { ChipOption } from './chipOption';
 import {
   ModelFieldPicker,
   type ModelFieldPickerProps,
 } from './ModelFieldPicker';
-
-type MockSelectFieldProps = {
-  name: string;
-  label: ReactNode;
-  hint?: ReactNode;
-  error?: ReactNode;
-  placeholder?: string;
-  value: ChipOption[];
-  onChange: (value: ChipOption[]) => void;
-  selectInputProps: {
-    options: ChipOption[];
-    isLoading?: boolean;
-    isDisabled?: boolean;
-  };
-};
-
-vi.mock('datocms-react-ui', () => ({
-  Button: ({
-    children,
-    onClick,
-    disabled,
-  }: ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type="button" onClick={onClick} disabled={disabled}>
-      {children}
-    </button>
-  ),
-  FieldWrapper: ({
-    label,
-    children,
-  }: {
-    label: ReactNode;
-    children: ReactNode;
-  }) => (
-    <div>
-      <div data-testid="label">{label}</div>
-      {children}
-    </div>
-  ),
-  SelectField: ({
-    name,
-    label,
-    hint,
-    error,
-    placeholder,
-    value,
-    onChange,
-    selectInputProps,
-  }: MockSelectFieldProps) => (
-    <div data-testid={`select-${name}`}>
-      <div data-testid="label">{label}</div>
-      <div data-testid="placeholder">{placeholder}</div>
-      <div data-testid="value">{value.map((o) => o.label).join(', ')}</div>
-      {hint && <div data-testid="hint">{hint}</div>}
-      {error && <div data-testid="error">{error}</div>}
-      {selectInputProps.isLoading && <div data-testid="loading" />}
-      {selectInputProps.isDisabled && <div data-testid="disabled" />}
-      {selectInputProps.options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange([...value, option])}
-        >
-          {`pick ${option.label}`}
-        </button>
-      ))}
-      <button type="button" onClick={() => onChange(value.slice(1))}>
-        remove first
-      </button>
-    </div>
-  ),
-}));
 
 const fields: TranslatableField[] = [
   { id: 'f1', apiKey: 'title', label: 'Title', editor: 'single_line' },
@@ -95,128 +24,259 @@ function renderPicker(overrides: Partial<ModelFieldPickerProps> = {}) {
     onChange: vi.fn(),
     ...overrides,
   };
-  render(<ModelFieldPicker {...props} />);
-  return props;
+  const ctx = makeCtx<RenderItemFormSidebarPanelCtx>();
+  const result = renderWithCanvas(<ModelFieldPicker {...props} />, ctx);
+  return { props, ctx, ...result };
+}
+
+const fieldSelect = () =>
+  screen.getByRole('combobox', { name: 'Articles article' });
+
+// react-select hides the input of a disabled select (visibility: hidden), so
+// it has no accessible role: find it through its label.
+const disabledFieldSelect = () => screen.getByLabelText('Articles article');
+
+/** Opens the menu of the field select and picks the option with `name`. */
+function pick(name: string) {
+  fireEvent.keyDown(fieldSelect(), { key: 'ArrowDown' });
+  fireEvent.click(screen.getByRole('option', { name }));
 }
 
 describe('ModelFieldPicker', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it('labels the field with the model name and its api_key', () => {
     renderPicker();
-    expect(screen.getByTestId('label').textContent).toBe('Articles article');
+    expect(fieldSelect()).toBeTruthy();
   });
 
   it('treats not-yet-loaded fields as pending, not as the dead end', () => {
-    renderPicker({ fields: undefined });
-    expect(screen.getByTestId('placeholder').textContent).toBe(
-      'Loading fields…',
-    );
-    expect(screen.getByTestId('loading')).toBeTruthy();
-    expect(screen.getByTestId('disabled')).toBeTruthy();
-    expect(screen.queryByTestId('hint')).toBeNull();
-    expect(
-      screen.queryByText(/This model has no fields the plugin can translate/),
-    ).toBeNull();
+    const { container } = renderPicker({ fields: undefined });
+    expect(screen.getByText('Pick fields')).toBeTruthy();
+    expect(container.querySelector('.SelectInput__loading')).not.toBeNull();
+    expect(disabledFieldSelect()).toBeDisabled();
+    expect(screen.queryByText(/translatable field/)).toBeNull();
+    expect(screen.queryByText('No translatable fields')).toBeNull();
   });
 
   it('shows the pending select while loading', () => {
     renderPicker({ isLoading: true });
-    expect(screen.getByTestId('placeholder').textContent).toBe(
-      'Loading fields…',
-    );
+    expect(screen.getByText('Pick fields')).toBeTruthy();
+    expect(disabledFieldSelect()).toBeDisabled();
   });
 
-  it('shows a failure row whose "Try again" calls onRetry', () => {
+  it('shows the failed state whose "Try again" calls onRetry', () => {
     const onRetry = vi.fn();
-    renderPicker({ fields: undefined, loadFailed: true, onRetry });
-    expect(
-      screen.getByText("Couldn't load the fields of this model"),
-    ).toBeTruthy();
+    const { container } = renderPicker({
+      fields: undefined,
+      loadFailed: true,
+      onRetry,
+    });
+    expect(screen.getByText('Articles')).toBeTruthy();
+    // No select without fields: the field holds an error blank slate, in a
+    // group that the label names, with "Try again" in view (not revealed on
+    // hover like the actions of an empty slot).
+    const group = screen.getByRole('group', { name: 'Articles article' });
+    expect(group).toHaveTextContent("Couldn't load the fields of this model");
+    expect(group.querySelector('.blank-slate--section')).not.toBeNull();
+    expect(container.querySelector('.EmptySlot')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    // The title says what failed: no field error repeats it.
+    expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('locks "Try again" while disabled', () => {
-    renderPicker({
+  it('keeps the focus through "Try again", then gives it to what loaded', () => {
+    const onRetry = vi.fn();
+    const { props, rerender } = renderPicker({
+      fields: undefined,
+      loadFailed: true,
+      onRetry,
+    });
+    const loading = (
+      <ModelFieldPicker {...props} isLoading loadFailed={false} />
+    );
+
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    act(() => retry.focus());
+    fireEvent.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    // While the fields load, the box of the field holds the focus.
+    rerender(loading);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toContainElement(disabledFieldSelect());
+
+    // The load fails again: the new "Try again" takes the focus.
+    rerender(<ModelFieldPicker {...props} />);
+    const again = screen.getByRole('button', { name: 'Try again' });
+    expect(document.activeElement).toBe(again);
+
+    // The next retry loads the fields: the field select takes the focus.
+    fireEvent.click(again);
+    rerender(loading);
+    const holder = document.activeElement;
+    expect(holder).toHaveAttribute('tabindex', '-1');
+    rerender(
+      <ModelFieldPicker {...props} fields={fields} loadFailed={false} />,
+    );
+    expect(document.activeElement).toBe(fieldSelect());
+    // The box is no stop of the tab order once it lets the focus go.
+    expect(holder).not.toHaveAttribute('tabindex');
+  });
+
+  it('gives the focus to "Remove model" when a retry finds no fields', () => {
+    const { props, rerender } = renderPicker({
       fields: undefined,
       loadFailed: true,
       onRetry: vi.fn(),
+      onRemove: vi.fn(),
+    });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    act(() => retry.focus());
+    fireEvent.click(retry);
+    rerender(<ModelFieldPicker {...props} isLoading loadFailed={false} />);
+    rerender(<ModelFieldPicker {...props} fields={[]} loadFailed={false} />);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Remove model' }),
+    );
+  });
+
+  it('shows no "Try again" without onRetry', () => {
+    renderPicker({ fields: undefined, loadFailed: true });
+    expect(
+      screen.getByText("Couldn't load the fields of this model"),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('locks "Try again" while disabled', async () => {
+    const consoleError = vi.spyOn(console, 'error');
+    const onRetry = vi.fn();
+    renderPicker({
+      fields: undefined,
+      loadFailed: true,
+      onRetry,
       isDisabled: true,
     });
-    expect(screen.getByRole('button', { name: 'Try again' })).toHaveProperty(
-      'disabled',
-      true,
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(retry);
+    expect(onRetry).not.toHaveBeenCalled();
+    act(() => retry.focus());
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'Wait for the translation to start.',
+    );
+    // The tooltip of the reason clones the button: it takes no ref, which
+    // React 19 would warn about.
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('element.ref'),
     );
   });
 
   it('shows "Remove model" in the dead end only with onRemove', () => {
     const onRemove = vi.fn();
     renderPicker({ fields: [], onRemove });
+    expect(screen.getByText('No translatable fields')).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText(/Allow more field types in the/).textContent).toBe(
+      'Allow more field types in the plugin settings, or remove the model.',
+    );
     expect(
-      screen.getByText(/This model has no fields the plugin can translate/)
-        .textContent,
-    ).toContain('or remove the model.');
+      screen.getByRole('group', { name: 'Articles article' }),
+    ).toHaveAccessibleDescription(
+      'Allow more field types in the plugin settings, or remove the model.',
+    );
+    // The way out is in view, not an action revealed by the slot on hover.
+    expect(
+      screen.getByText('No translatable fields').closest('.form__field')
+        ?.lastElementChild,
+    ).toBe(screen.getByRole('button', { name: 'Remove model' }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove model' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
 
     cleanup();
     renderPicker({ fields: [] });
+    expect(screen.getByText('No translatable fields')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Remove model' })).toBeNull();
-    expect(
-      screen.getByText(/This model has no fields the plugin can translate/)
-        .textContent,
-    ).toBe(
-      'This model has no fields the plugin can translate. Allow more field types in the plugin settings, or leave its records out of the selection.',
+    expect(screen.getByText(/Allow more field types in the/).textContent).toBe(
+      'Allow more field types in the plugin settings, or leave its records out of the selection.',
     );
   });
 
-  it('links "plugin settings" in the dead end only with onOpenPluginSettings', () => {
-    const onOpenPluginSettings = vi.fn();
-    renderPicker({ fields: [], onOpenPluginSettings });
-    fireEvent.click(screen.getByRole('button', { name: 'plugin settings' }));
-    expect(onOpenPluginSettings).toHaveBeenCalledTimes(1);
+  it('locks "Remove model" while disabled', () => {
+    const consoleError = vi.spyOn(console, 'error');
+    const onRemove = vi.fn();
+    renderPicker({ fields: [], onRemove, isDisabled: true });
+    const remove = screen.getByRole('button', { name: 'Remove model' });
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(remove);
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('element.ref'),
+    );
+  });
+
+  it('links "plugin settings" in the dead end only with pluginSettingsPath', () => {
+    const { ctx } = renderPicker({
+      fields: [],
+      pluginSettingsPath: '/configuration/plugins/plugin-id/edit',
+    });
+    fireEvent.click(screen.getByRole('link', { name: 'plugin settings' }));
+    expect(ctx.navigateTo).toHaveBeenCalledWith(
+      '/configuration/plugins/plugin-id/edit',
+    );
 
     cleanup();
     renderPicker({ fields: [] });
-    expect(
-      screen.queryByRole('button', { name: 'plugin settings' }),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'plugin settings' })).toBeNull();
   });
 
   it('collapses a full selection to the "All fields" sentinel', () => {
     renderPicker();
-    expect(screen.getByTestId('value').textContent).toBe('All fields');
-    expect(screen.getByTestId('hint').textContent).toBe(
-      '2 of 2 translatable fields selected',
-    );
+    expect(screen.getByText('All fields')).toBeTruthy();
+    expect(screen.queryByText('Title')).toBeNull();
+    expect(
+      screen.getByText('2 of 2 translatable fields selected'),
+    ).toBeTruthy();
   });
 
   it('narrows to the concrete picks when the sentinel is dropped', () => {
-    const props = renderPicker({ selectedApiKeys: ['title'] });
-    expect(screen.getByTestId('value').textContent).toBe('Title');
-    fireEvent.click(screen.getByRole('button', { name: 'pick Body' }));
+    const { props } = renderPicker({ selectedApiKeys: ['title'] });
+    expect(screen.getByText('Title')).toBeTruthy();
+    expect(screen.queryByText('All fields')).toBeNull();
+    expect(
+      screen.getByText('1 of 2 translatable fields selected'),
+    ).toBeTruthy();
+    pick('Body body');
     expect(props.onChange).toHaveBeenLastCalledWith(['title', 'body']);
   });
 
   it('expands the sentinel to every field when picked', () => {
-    const props = renderPicker({ selectedApiKeys: ['title'] });
-    fireEvent.click(screen.getByRole('button', { name: 'pick All fields' }));
+    const { props } = renderPicker({ selectedApiKeys: ['title'] });
+    pick('All fields');
     expect(props.onChange).toHaveBeenLastCalledWith(['title', 'body']);
   });
 
   it('narrows to a single field picked while "All fields" is active', () => {
-    const props = renderPicker();
-    fireEvent.click(screen.getByRole('button', { name: 'pick Title' }));
+    const { props } = renderPicker();
+    pick('Title title');
     expect(props.onChange).toHaveBeenLastCalledWith(['title']);
   });
 
   it('hides the hint while a validation message shows', () => {
     renderPicker({
       selectedApiKeys: [],
-      validationMessage: 'Field is required',
+      validationMessage: 'Pick at least one field',
     });
-    expect(screen.getByTestId('error').textContent).toBe('Field is required');
-    expect(screen.queryByTestId('hint')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Pick at least one field',
+    );
+    expect(fieldSelect()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText(/translatable field/)).toBeNull();
   });
 });
