@@ -1,10 +1,7 @@
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  SelectionAction as BarAction,
-  SelectionActionId,
-} from '../components/types';
+import type { RecordRow } from '../lib/records';
 import {
   availableMoveDestinationIds,
   evaluateSelection,
@@ -22,7 +19,6 @@ import type {
   SelectionEvaluation,
   SelectionInput,
 } from '../operations/types';
-import type { RecordRow } from '../lib/records';
 import type { ModelSummary, RawItem, WorkflowStageOption } from '../types';
 import {
   confirmSelectionAction,
@@ -34,6 +30,9 @@ import {
 import { invertPageSelection, setPageSelection } from './selection';
 
 type Selection = ReadonlyMap<string, RawItem>;
+
+/** The bulk action that runs now */
+export type BusyAction = SelectionAction | 'move';
 
 /** The selected records and whether only they are listed. Owned by the page. */
 export function useSelectionState() {
@@ -84,12 +83,12 @@ function syncSelection(current: Selection, rows: readonly RecordRow[]) {
   return next;
 }
 
-function barAction(
+/** The action, when at least one selected record allows it */
+function whenEligible(
   evaluation: SelectionEvaluation,
-  onClick: () => void,
-): BarAction | undefined {
-  if (evaluation.eligibleCount === 0) return undefined;
-  return { disabledReason: evaluation.disabledReason ?? undefined, onClick };
+  run: () => Promise<void>,
+): (() => Promise<void>) | undefined {
+  return evaluation.eligibleCount > 0 ? run : undefined;
 }
 
 function progressLabel(progress: BulkOperationProgress | null) {
@@ -111,7 +110,7 @@ export function useBulkActions(args: Args) {
     showingSelected,
     setShowingSelected,
   } = args.selection;
-  const [busyAction, setBusyAction] = useState<SelectionActionId | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [progress, setProgress] = useState<BulkOperationProgress | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -183,7 +182,7 @@ export function useBulkActions(args: Args) {
     [selectionInput, args.stages, permissions],
   );
 
-  function begin(action: SelectionActionId): AbortController | null {
+  function begin(action: BusyAction): AbortController | null {
     if (controllerRef.current) return null;
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -289,7 +288,7 @@ export function useBulkActions(args: Args) {
   }
 
   async function run(
-    action: SelectionActionId,
+    action: BusyAction,
     prepare: Prepare,
     operation: SelectionAction | 'move_to_stage',
   ) {
@@ -314,8 +313,9 @@ export function useBulkActions(args: Args) {
     }
   }
 
+  // The promise ends with the action: the button of the bar shows a spinner
   function runSelectionAction(action: SelectionAction) {
-    void run(
+    return run(
       action,
       async (selection) => {
         const evaluation = evaluateSelection({ ...selection, action });
@@ -332,8 +332,9 @@ export function useBulkActions(args: Args) {
     );
   }
 
-  function runMoveToStage() {
-    void run(
+  /** Moves the selection to the stage picked in the menu of the bar. */
+  function moveToStage(destination: WorkflowStageOption) {
+    return run(
       'move',
       async (selection, client, signal) => {
         const context = getMoveSelectionContext(selection);
@@ -346,24 +347,25 @@ export function useBulkActions(args: Args) {
         if (signal.aborted) return null;
         return prepareMoveOperation({
           ctx,
+          destination,
           stages: workflow.stages.map(({ id, name }) => ({ id, name })),
           selectionInput: selection,
-          signal,
         });
       },
       'move_to_stage',
     );
   }
 
-  const actions: Partial<Record<SelectionActionId, BarAction>> = {
-    delete: barAction(evaluations.delete, () => runSelectionAction('delete')),
-    publish: barAction(evaluations.publish, () =>
+  const actions: Partial<Record<SelectionAction, () => Promise<void>>> = {
+    delete: whenEligible(evaluations.delete, () =>
+      runSelectionAction('delete'),
+    ),
+    publish: whenEligible(evaluations.publish, () =>
       runSelectionAction('publish'),
     ),
-    unpublish: barAction(evaluations.unpublish, () =>
+    unpublish: whenEligible(evaluations.unpublish, () =>
       runSelectionAction('unpublish'),
     ),
-    move: evaluations.move ? { onClick: runMoveToStage } : undefined,
   };
 
   // The selection is exactly the matching records already.
@@ -378,8 +380,14 @@ export function useBulkActions(args: Args) {
     showingSelected,
     busyAction,
     actions,
+    /** Move to stage applies: the selection may go to another stage. */
+    canMove: evaluations.move,
+    /** The selection, for the stages that the move menu offers */
+    selectionInput,
+    moveToStage,
     progressText: progressLabel(progress),
-    onCancel: progress ? () => controllerRef.current?.abort() : undefined,
+    /** Stops the jobs that did not start yet */
+    onCancel: () => controllerRef.current?.abort(),
     toggleRow: (row: RecordRow) =>
       setSelectedById((current) => {
         const next = new Map(current);

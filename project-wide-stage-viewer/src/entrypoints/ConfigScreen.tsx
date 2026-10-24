@@ -1,19 +1,31 @@
-import { faTrashCan } from '@fortawesome/free-regular-svg-icons';
-import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import TableList, {
+  type TableListColumn,
+  type TableListErrors,
+  type TableListTouched,
+} from 'datocms-react-ui/TableList';
 import {
-  Canvas,
-  FieldError,
-  Form,
-  FormLabel,
-  SelectInput,
-  Spinner,
-  TextInput,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from 'datocms-react-ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  CircleExclamationIcon,
+  iconComponent,
+  ListCheckIcon,
+  RefreshIcon,
+} from '../icons';
 import { buildCmaClient, describeError, fetchWorkflows } from '../lib/cma';
 import { ICON_OPTIONS, iconByName } from '../lib/icons';
 import {
@@ -22,15 +34,14 @@ import {
   readMenuItems,
   serializeMenuItems,
 } from '../lib/parameters';
+import { TEXTS } from '../texts';
 import type { StageMenuItem, Workflow } from '../types';
-import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
+import { useFrameSizedToContent } from '../utils/frame';
 import s from './ConfigScreen.module.css';
 
 type Props = { ctx: RenderConfigScreenCtx };
 
 type EntryDraft = {
-  key: string;
   /** The stage's page ID, or null until one is picked. */
   pageId: string | null;
   label: string;
@@ -48,21 +59,20 @@ type WorkflowsState =
   | { status: 'error'; error: unknown }
   | { status: 'ready'; workflows: Workflow[] };
 
-let nextKey = 0;
-function newKey(): string {
-  nextKey += 1;
-  return `entry-${nextKey}`;
-}
-
 function draftFromItem(item: StageMenuItem): EntryDraft {
   return {
-    key: newKey(),
     pageId: item.id,
     label: item.label ?? '',
     icon: item.icon ?? DEFAULT_ICON,
     saved: item,
   };
 }
+
+const newDraft = (): EntryDraft => ({
+  pageId: null,
+  label: '',
+  icon: DEFAULT_ICON,
+});
 
 function findStage(workflows: Workflow[], pageId: string | null) {
   for (const workflow of workflows) {
@@ -101,7 +111,7 @@ function draftError(
   draft: EntryDraft,
   workflows: Workflow[],
 ): string | undefined {
-  if (!draft.pageId) return 'Field is required';
+  if (!draft.pageId) return 'Pick a stage';
   if (!findStage(workflows, draft.pageId)) return 'This stage no longer exists';
   return undefined;
 }
@@ -117,55 +127,31 @@ function stageGroups(workflows: Workflow[]): StageGroup[] {
   }));
 }
 
-function stageOption(
-  draft: EntryDraft,
-  groups: StageGroup[],
-): StageOption | null {
-  if (!draft.pageId) return null;
-  for (const group of groups) {
-    const option = group.options.find(({ value }) => value === draft.pageId);
-    if (option) return option;
-  }
-  // A stage that was deleted since the settings were saved.
+/** The option of a saved stage that was deleted since the settings were saved */
+function savedStageOption(draft: EntryDraft, pageId: string): StageOption {
   return {
-    value: draft.pageId,
-    label: draft.saved?.stageName ?? draft.pageId,
+    value: pageId,
+    label: draft.saved?.stageName ?? pageId,
     workflowName: draft.saved?.workflowName ?? '',
   };
 }
 
-/**
- * The config frame grows to fit open menus, but react-select sizes a menu to
- * the room left in the frame when it opens. Asking for the full height up
- * front opens it at full size, and the frame grows around it.
- */
-const FULL_HEIGHT_MENU = { minMenuHeight: 300, maxMenuHeight: 300 };
+/** The name of the stage of a row: the live one, else the saved one */
+function stageName(draft: EntryDraft, workflows: Workflow[]): string | null {
+  if (!draft.pageId) return null;
+  const match = findStage(workflows, draft.pageId);
+  return match?.stage.name ?? draft.saved?.stageName ?? draft.pageId;
+}
 
 const ICON_SELECT_OPTIONS: IconOption[] = ICON_OPTIONS.map(({ value }) => ({
   value,
   label: value,
 }));
 
-function iconOption(name: string): IconOption {
-  return (
-    ICON_SELECT_OPTIONS.find(({ value }) => value === name) ?? {
-      value: name,
-      label: name,
-    }
-  );
-}
-
-function IconOptionLabel({ option }: { option: IconOption }) {
-  const icon = iconByName(option.value);
-  return (
-    <span className={s.iconOption}>
-      <span className={s.iconPreview} aria-hidden="true">
-        {icon ? <Icon icon={icon} /> : null}
-      </span>
-      <span className={s.iconName}>{option.label}</span>
-    </span>
-  );
-}
+const unknownIconOption = (value: string): IconOption => ({
+  value,
+  label: value,
+});
 
 /** The parts people edit here; names are refreshed on every save anyway. */
 function editableParts(items: StageMenuItem[]): string {
@@ -206,190 +192,204 @@ function useWorkflows(ctx: RenderConfigScreenCtx) {
   return { state, retry };
 }
 
-type EntryRowProps = {
-  draft: EntryDraft;
-  index: number;
-  groups: StageGroup[];
-  takenPageIds: Set<string>;
-  error: string | undefined;
-  disabled: boolean;
-  onChange: (patch: Partial<EntryDraft>) => void;
-  onRemove: () => void;
-};
-
-function EntryRow({
-  draft,
-  index,
-  groups,
-  takenPageIds,
-  error,
-  disabled,
-  onChange,
-  onRemove,
-}: EntryRowProps) {
-  const option = stageOption(draft, groups);
-  const name = option?.label ?? `entry ${index + 1}`;
-
+function StageOptionLabel({
+  option,
+  context,
+  taken,
+}: {
+  option: StageOption;
+  context: 'menu' | 'value';
+  taken: boolean;
+}) {
+  // The menu groups the stages by workflow: the value names the workflow
+  if (context === 'value') {
+    return (
+      <span className={s.optionLabel}>
+        <span className={s.optionText}>{option.label}</span>
+        {option.workflowName ? (
+          <span className={s.optionNote}>{option.workflowName}</span>
+        ) : null}
+      </span>
+    );
+  }
   return (
-    <li className={s.entry}>
-      <div className={s.entryFields}>
-        <SelectInput<StageOption, false, StageGroup>
-          inputId={`stage-${index}`}
-          aria-label={
-            index === 0 ? undefined : `Workflow stage of entry ${index + 1}`
-          }
-          options={groups}
-          value={option}
-          placeholder="Select a stage…"
-          {...FULL_HEIGHT_MENU}
-          isDisabled={disabled}
-          error={Boolean(error)}
-          isOptionDisabled={(candidate) =>
-            candidate.value !== draft.pageId &&
-            takenPageIds.has(candidate.value)
-          }
-          formatOptionLabel={(candidate, { context }) => {
-            if (context === 'value') {
-              return (
-                <span className={s.stageValue}>
-                  {candidate.label}
-                  <span className={s.stageWorkflow}>
-                    {candidate.workflowName}
-                  </span>
-                </span>
-              );
-            }
-            const taken =
-              candidate.value !== draft.pageId &&
-              takenPageIds.has(candidate.value);
-            return taken ? (
-              <span className={s.stageTaken}>
-                {candidate.label} (already added)
-              </span>
-            ) : (
-              candidate.label
-            );
-          }}
-          onChange={(selected) => onChange({ pageId: selected?.value ?? null })}
-        />
-        <TextInput
-          id={`label-${index}`}
-          labelText={
-            index === 0 ? undefined : `Sidebar label of entry ${index + 1}`
-          }
-          value={draft.label}
-          placeholder={option?.label ?? 'Stage name'}
-          disabled={disabled}
-          onChange={(label) => onChange({ label })}
-        />
-        <SelectInput<IconOption, false>
-          inputId={`icon-${index}`}
-          aria-label={index === 0 ? undefined : `Icon of entry ${index + 1}`}
-          options={ICON_SELECT_OPTIONS}
-          {...FULL_HEIGHT_MENU}
-          value={iconOption(draft.icon)}
-          isDisabled={disabled}
-          isSearchable
-          formatOptionLabel={(candidate) => (
-            <IconOptionLabel option={candidate} />
-          )}
-          onChange={(selected) =>
-            onChange({ icon: selected?.value ?? DEFAULT_ICON })
-          }
-        />
-        {disabled ? null : (
-          <Tooltip>
-            <TooltipTrigger>
-              <button
-                type="button"
-                className={`dl-icon-button ${s.remove}`}
-                aria-label={`Remove ${name}`}
-                onClick={onRemove}
-              >
-                <Icon icon={faTrashCan} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="dl-tooltip-text">Remove</div>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      {error ? (
-        <div className={s.entryError}>
-          <FieldError>{error}</FieldError>
-        </div>
-      ) : null}
-    </li>
+    <span className={s.optionLabel}>
+      <span className={s.optionText}>{option.label}</span>
+      {taken ? <span className={s.optionNote}>Already added</span> : null}
+    </span>
   );
 }
 
-export default function ConfigScreen({ ctx }: Props) {
-  const savedItems = readMenuItems(ctx.plugin.attributes.parameters);
+function IconOptionLabel({ name }: { name: string }) {
+  const definition = iconByName(name);
+  const Glyph = definition ? iconComponent(definition) : null;
+  return (
+    <span className={s.optionLabel}>
+      {Glyph ? (
+        <Glyph className={s.glyph} />
+      ) : (
+        <span className={s.glyph} aria-hidden="true" />
+      )}
+      <span className={s.optionText}>{name}</span>
+    </span>
+  );
+}
+
+function useColumns(
+  workflows: Workflow[],
+  drafts: EntryDraft[],
+): TableListColumn<EntryDraft>[] {
+  const groups = useMemo(() => stageGroups(workflows), [workflows]);
+  // A stage can be in one row only. The key keeps the columns the same while
+  // the user types a label.
+  const takenKey = drafts.map(({ pageId }) => pageId ?? '').join('\n');
+  const taken = useMemo(
+    () => new Set(takenKey.split('\n').filter(Boolean)),
+    [takenKey],
+  );
+
+  return useMemo<TableListColumn<EntryDraft>[]>(
+    () => [
+      {
+        id: 'stage',
+        field: 'pageId',
+        label: 'Workflow stage',
+        grow: 5,
+        // The class of the cell input is for a text input: the select does
+        // not take it
+        render: ({
+          item,
+          index,
+          value,
+          onChange,
+          onBlur,
+          inputProps: { className: _, ...inputProps },
+        }) => {
+          const takenByOther = (pageId: string) =>
+            pageId !== item.pageId && taken.has(pageId);
+          return (
+            <SelectInput<StageOption, StageGroup>
+              {...inputProps}
+              name={`stage-${index}`}
+              value={typeof value === 'string' ? value : null}
+              onChange={(pageId) => onChange(pageId)}
+              onBlur={() => onBlur()}
+              options={groups}
+              placeholder="Pick a stage"
+              clearable={false}
+              variant="embedded"
+              classNamePrefix="TableList__select"
+              isOptionDisabled={(option) => takenByOther(option.value)}
+              formatOptionLabel={(option, { context }) => (
+                <StageOptionLabel
+                  option={option}
+                  context={context}
+                  taken={takenByOther(option.value)}
+                />
+              )}
+              acceptValueNotIncludedInOptions={(pageId) =>
+                savedStageOption(item, pageId)
+              }
+            />
+          );
+        },
+      },
+      {
+        id: 'label',
+        field: 'label',
+        label: 'Sidebar label',
+        grow: 4,
+        render: ({ item, value, onChange, onBlur, inputProps }) => (
+          <StringInput
+            {...inputProps}
+            value={typeof value === 'string' ? value : null}
+            onChange={(label) => onChange(label ?? '')}
+            onBlur={() => onBlur()}
+            // An empty label shows the name of the stage
+            placeholder={stageName(item, workflows)}
+          />
+        ),
+      },
+      {
+        id: 'icon',
+        field: 'icon',
+        label: 'Icon',
+        grow: 4,
+        render: ({
+          index,
+          value,
+          onChange,
+          onBlur,
+          inputProps: { className: _, ...inputProps },
+        }) => (
+          <SelectInput<IconOption, { label: string; options: IconOption[] }>
+            {...inputProps}
+            name={`icon-${index}`}
+            value={typeof value === 'string' ? value : DEFAULT_ICON}
+            onChange={(icon) => onChange(icon ?? DEFAULT_ICON)}
+            onBlur={() => onBlur()}
+            options={ICON_SELECT_OPTIONS}
+            clearable={false}
+            isSearchable
+            variant="embedded"
+            classNamePrefix="TableList__select"
+            formatOptionLabel={(option) => (
+              <IconOptionLabel name={option.value} />
+            )}
+            acceptValueNotIncludedInOptions={unknownIconOption}
+          />
+        ),
+      },
+    ],
+    [groups, taken, workflows],
+  );
+}
+
+function StagePagesForm({
+  ctx,
+  workflows,
+  savedItems,
+}: {
+  ctx: RenderConfigScreenCtx;
+  workflows: Workflow[];
+  savedItems: StageMenuItem[];
+}) {
   const canEdit = ctx.currentRole.meta.final_permissions.can_edit_schema;
-  const { state, retry } = useWorkflows(ctx);
   const [drafts, setDrafts] = useState<EntryDraft[]>(() =>
     savedItems.map(draftFromItem),
   );
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const columns = useColumns(workflows, drafts);
 
-  if (state.status === 'loading') {
-    return (
-      <Canvas ctx={ctx}>
-        <div className={s.loading}>
-          <Spinner size={40} placement="centered" />
-        </div>
-      </Canvas>
-    );
-  }
-
-  if (state.status === 'error') {
-    const reason = describeError(state.error);
-    return (
-      <Canvas ctx={ctx}>
-        <div className={s.callout} role="alert">
-          <div className={s.calloutText}>
-            <strong>Couldn't load the workflows.</strong>{' '}
-            {reason ?? 'Check your connection and try again.'}
-          </div>
-          <Button buttonSize="s" onClick={retry}>
-            Try again
-          </Button>
-        </div>
-      </Canvas>
-    );
-  }
-
-  const { workflows } = state;
-  const groups = stageGroups(workflows);
-  const errors = drafts.map((draft) => draftError(draft, workflows));
-  const hasErrors = errors.some(Boolean);
+  const errors: TableListErrors = drafts.map((draft) => ({
+    pageId: draftError(draft, workflows),
+  }));
+  const hasErrors = drafts.some((draft) => draftError(draft, workflows));
+  // A saved stage that no longer exists shows its error at once; a row with
+  // no stage yet only after a save attempt
+  const touched: TableListTouched = submitted
+    ? true
+    : drafts.map((draft) =>
+        draft.pageId && !findStage(workflows, draft.pageId)
+          ? { pageId: true }
+          : undefined,
+      );
   const nextItems = buildMenuItems(drafts, workflows);
   const dirty =
     drafts.length !== savedItems.length ||
     editableParts(nextItems) !== editableParts(savedItems);
-  const takenPageIds = new Set(
-    drafts.flatMap((draft) => (draft.pageId ? [draft.pageId] : [])),
+  const takenPageIds = new Set(drafts.map(({ pageId }) => pageId));
+  const someStageFree = workflows.some((workflow) =>
+    workflow.stages.some(
+      (stage) => !takenPageIds.has(buildPageId(workflow.id, stage.id)),
+    ),
   );
-  const allStagesTaken = groups.every((group) =>
-    group.options.every((option) => takenPageIds.has(option.value)),
-  );
 
-  const updateDraft = (key: string, patch: Partial<EntryDraft>) =>
-    setDrafts((current) =>
-      current.map((draft) =>
-        draft.key === key ? { ...draft, ...patch } : draft,
-      ),
-    );
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canEdit || !dirty || saving) return;
 
-  const addDraft = () =>
-    setDrafts((current) => [
-      ...current,
-      { key: newKey(), pageId: null, label: '', icon: DEFAULT_ICON },
-    ]);
-
-  const handleSubmit = async () => {
     setSubmitted(true);
     if (hasErrors) return;
 
@@ -401,115 +401,123 @@ export default function ConfigScreen({ ctx }: Props) {
       });
       setDrafts(nextItems.map(draftFromItem));
       setSubmitted(false);
-      ctx.notice('Settings successfully saved!');
+      ctx.notice('Settings saved.');
     } catch {
-      ctx.alert("Couldn't save the settings!");
+      ctx.alert("Couldn't save the settings.");
     } finally {
       setSaving(false);
     }
   };
 
-  if (workflows.length === 0 && drafts.length === 0) {
+  return (
+    <>
+      {canEdit ? null : (
+        <Callout>
+          You need permission to edit the schema to change these settings.
+        </Callout>
+      )}
+      <form onSubmit={handleSubmit}>
+        <Page.Group
+          title="Stage pages"
+          footer={
+            canEdit ? (
+              <Button
+                submit
+                tone="primary"
+                expand={false}
+                label="Save"
+                busy={saving}
+                disabled={
+                  dirty
+                    ? undefined
+                    : { reason: 'There are no changes to save.' }
+                }
+              />
+            ) : undefined
+          }
+        >
+          <FieldWrapper
+            label="Stage pages"
+            labelExtras={{ hidden: true }}
+            hint="Each stage gets its own page in the content sidebar, listing every record in that stage across all the models that use its workflow."
+          >
+            <TableList<EntryDraft>
+              value={drafts}
+              onChange={(nextDrafts) => setDrafts(nextDrafts)}
+              errors={errors}
+              touched={touched}
+              columns={columns}
+              emptyMessage="No stages yet"
+              add={
+                canEdit && !saving && someStageFree
+                  ? { label: 'Add stage', newItem: newDraft }
+                  : undefined
+              }
+              disabled={!canEdit || saving}
+            />
+          </FieldWrapper>
+        </Page.Group>
+      </form>
+    </>
+  );
+}
+
+function ConfigContent({ ctx }: Props) {
+  const savedItems = readMenuItems(ctx.plugin.attributes.parameters);
+  const { state, retry } = useWorkflows(ctx);
+
+  if (state.status === 'loading') {
     return (
-      <Canvas ctx={ctx}>
-        <div className="dl-kit-form-parity">
-          <p className={s.intro}>
-            This plugin gives workflow stages their own page in the content
-            sidebar, listing every record in the stage across all models.
-          </p>
-          <p className={s.empty}>
-            This project has no workflows yet. Create one in Settings, under
-            Workflows, then come back here to pick its stages.
-          </p>
-        </div>
-      </Canvas>
+      <BlankSlate placement="inline" loading title="Loading the workflows" />
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <BlankSlate
+        placement="inline"
+        error
+        icon={<CircleExclamationIcon />}
+        title="Couldn't load the workflows"
+        code={describeError(state.error) ?? undefined}
+        description="Check your connection, then try again."
+        actions={
+          <Button icon={RefreshIcon} label="Try again" onClick={retry} />
+        }
+      />
+    );
+  }
+
+  if (state.workflows.length === 0 && savedItems.length === 0) {
+    return (
+      <BlankSlate
+        placement="inline"
+        icon={<ListCheckIcon />}
+        title="No workflows yet"
+        description="Each workflow stage you pick here gets its own page in the content sidebar, listing every record in that stage across all models. Create a workflow in Settings, under Workflows, then come back to pick its stages."
+      />
     );
   }
 
   return (
-    <Canvas ctx={ctx}>
-      <Form className="dl-kit-form-parity" onSubmit={handleSubmit}>
-        <p className={s.intro}>
-          Each stage you add gets its own page in the content sidebar, listing
-          every record in that stage across all the models that use its
-          workflow.
-        </p>
+    <StagePagesForm
+      ctx={ctx}
+      workflows={state.workflows}
+      savedItems={savedItems}
+    />
+  );
+}
 
-        {canEdit ? null : (
-          <div className={s.callout} role="status">
-            <div className={s.calloutText}>
-              You need permission to edit the schema to change these settings.
-            </div>
-          </div>
-        )}
+export default function ConfigScreen({ ctx }: Props) {
+  useFrameSizedToContent();
 
-        {drafts.length > 0 ? (
-          <div>
-            <div className={s.entryFields}>
-              <FormLabel htmlFor="stage-0" required>
-                Workflow stage
-              </FormLabel>
-              <FormLabel htmlFor="label-0">Sidebar label</FormLabel>
-              <FormLabel htmlFor="icon-0">Icon</FormLabel>
-            </div>
-            <ul className={s.entries}>
-              {drafts.map((draft, index) => (
-                <EntryRow
-                  key={draft.key}
-                  draft={draft}
-                  index={index}
-                  groups={groups}
-                  takenPageIds={takenPageIds}
-                  error={submitted ? errors[index] : undefined}
-                  disabled={!canEdit || saving}
-                  onChange={(patch) => updateDraft(draft.key, patch)}
-                  onRemove={() =>
-                    setDrafts((current) =>
-                      current.filter(({ key }) => key !== draft.key),
-                    )
-                  }
-                />
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <p className={s.empty}>
-            No stages in the sidebar yet. Add the first one below.
-          </p>
-        )}
-
-        {canEdit ? (
-          <div className={s.add}>
-            <Button
-              buttonSize="xs"
-              leftIcon={<Icon icon={faPlus} />}
-              disabled={saving || allStagesTaken}
-              onClick={addDraft}
-            >
-              Add new stage
-            </Button>
-          </div>
-        ) : null}
-
-        {canEdit ? (
-          <Button
-            type="submit"
-            buttonType="primary"
-            buttonSize="xl"
-            fullWidth
-            disabled={!dirty || saving}
-          >
-            {saving ? (
-              <>
-                Please wait&nbsp;
-                <Spinner size={20} />
-              </>
-            ) : (
-              'Save settings'
-            )}
-          </Button>
-        ) : null}
-      </Form>
+  return (
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <Page>
+        <Page.Content>
+          <ConfigContent ctx={ctx} />
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

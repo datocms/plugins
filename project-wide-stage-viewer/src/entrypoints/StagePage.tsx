@@ -1,22 +1,33 @@
-import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
+import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import ListArea from 'datocms-react-ui/ListArea';
+import Main from 'datocms-react-ui/Main';
+import MultipleSelectionActionBar, {
+  type MaybeAction,
+} from 'datocms-react-ui/MultipleSelectionActionBar';
+import Pane from 'datocms-react-ui/Pane';
+import Toolbar, { useFilterToolbar } from 'datocms-react-ui/Toolbar';
 import {
-  Canvas,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from 'datocms-react-ui';
-import { type ReactNode, useCallback, useMemo, useRef } from 'react';
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import { columnSettingsStorageKey } from '../components/columnSettings';
 import { FilterDropdown } from '../components/FilterDropdown';
-import { Pagination } from '../components/Pagination';
+import { MoveToStageMenu } from '../components/MoveToStageMenu';
 import { RecordsTable } from '../components/RecordsTable';
-import { SelectionActionBar } from '../components/SelectionActionBar';
 import type { TableRecord } from '../components/types';
 import { useColumnSettings } from '../components/useColumnSettings';
+import { DEFAULT_PER_PAGE, PER_PAGE_OPTIONS } from '../constants';
 import type { StageData } from '../data/loadStage';
 import {
   type BulkActions,
+  type BusyAction,
   useBulkActions,
   useSelectionState,
 } from '../data/useBulkActions';
@@ -24,17 +35,27 @@ import { type StageDataState, useStageData } from '../data/useStageData';
 import { type TableState, useTableState } from '../data/useTableState';
 import { type ThumbnailMap, useThumbnails } from '../data/useThumbnails';
 import {
+  CircleExclamationIcon,
+  EntryIcon,
+  ListCheckIcon,
+  RefreshIcon,
+} from '../icons';
+import {
   buildCmaClient,
   describeError,
   MissingAccessTokenError,
 } from '../lib/cma';
-import { formatDateTime } from '../lib/dates';
 import { modelSummary, type RecordRow } from '../lib/records';
 import { pluginSettingsPath, recordEditorPath } from '../lib/routes';
-import type { PublicationStatus, StageMenuItem } from '../types';
-import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
-import styles from './StagePage.module.css';
+import type { SelectionAction } from '../operations/types';
+import { TEXTS } from '../texts';
+import type {
+  ColumnSetting,
+  ModelSummary,
+  PublicationStatus,
+  StageMenuItem,
+} from '../types';
+import s from './StagePage.module.css';
 
 type Props = {
   ctx: RenderPageCtx;
@@ -54,106 +75,49 @@ const STATUS_FILTER_OPTIONS = [
   { label: 'Published', value: 'published' },
 ] as const;
 
+const PER_PAGE_SELECT_OPTIONS = [...PER_PAGE_OPTIONS];
+
+const ACTION_RUNNING = { reason: 'Wait for the current action to finish.' };
+const RECORDS_LOADING = { reason: 'Wait for the records to load.' };
+
 const NO_ROWS: RecordRow[] = [];
 
-function recordsLabel(count: number): string {
-  return `${count} ${count === 1 ? 'record' : 'records'}`;
+function ignore(): void {}
+
+// The count of the title bar ("1,234 records"), with the separators and the
+// plural rules of the locale of the user, as the ICU texts of Canvas
+function formatRecordCount(locale: string, count: number): string {
+  const number = new Intl.NumberFormat(locale).format(count);
+  return new Intl.PluralRules(locale).select(count) === 'one'
+    ? `${number} record`
+    : `${number} records`;
 }
 
-function canEditSchema(ctx: RenderPageCtx): boolean {
-  return ctx.currentRole.meta.final_permissions.can_edit_schema;
-}
-
-function SettingsButton({ ctx }: { ctx: RenderPageCtx }) {
-  if (!canEditSchema(ctx)) return null;
+/** The link to the settings of the plugin, for the roles that can open them */
+function settingsButton(ctx: RenderPageCtx): ReactNode {
   return (
-    <Button
-      onClick={() =>
-        void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
-      }
-    >
-      Open plugin settings
-    </Button>
-  );
-}
-
-function ReloadButton({
-  onClick,
-  disabled,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <Tooltip placement="bottom">
-      <TooltipTrigger>
-        <button
-          type="button"
-          className={`dl-icon-button ${styles.reload}`}
-          aria-label="Reload records"
-          disabled={disabled}
-          onClick={onClick}
-        >
-          <Icon icon={faArrowsRotate} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div className="dl-tooltip-text">Reload records</div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function Toolbar({
-  title,
-  context,
-  children,
-}: {
-  title: string;
-  context?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <header className={styles.toolbar}>
-      <h1 className={styles.title}>{title}</h1>
-      {context ? <span className={styles.context}>{context}</span> : null}
-      <div className={styles.spacer} />
-      {children}
-    </header>
-  );
-}
-
-function StateMessage({
-  title,
-  children,
-  action,
-}: {
-  title: string;
-  children: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <div className={styles.state}>
-      <h2>{title}</h2>
-      <p>{children}</p>
-      {action ? <div className={styles.stateActions}>{action}</div> : null}
-    </div>
+    ctx.currentRole.meta.final_permissions.can_edit_schema && (
+      <Button
+        label="Open plugin settings"
+        to={pluginSettingsPath(ctx, ctx.plugin.id)}
+      />
+    )
   );
 }
 
 /** A page whose ID doesn't match any saved entry (it was removed in the settings). */
 function UnknownStagePage({ ctx }: { ctx: RenderPageCtx }) {
   return (
-    <div className={styles.page}>
-      <Toolbar title="Page not found" />
-      <StateMessage
+    <Main className={s.layout}>
+      <BlankSlate
+        placement="area"
+        titleLevel={1}
+        icon={<ListCheckIcon />}
         title="This page is no longer available"
-        action={<SettingsButton ctx={ctx} />}
-      >
-        Its workflow stage was removed from the plugin settings. Pick the stages
-        to show in the content sidebar there.
-      </StateMessage>
-    </div>
+        description="Its workflow stage was removed from the plugin settings, where you pick the stages that get a page in the content sidebar."
+        actions={settingsButton(ctx)}
+      />
+    </Main>
   );
 }
 
@@ -169,15 +133,10 @@ function stageNames(menuItem: StageMenuItem, data: StageData | null): Names {
   };
 }
 
-/** The toolbar title (the sidebar label) and the workflow context after it. */
+/** The title (the sidebar label) and the live names of the stage. */
 function stageHeading(menuItem: StageMenuItem, data: StageData | null) {
   const names = stageNames(menuItem, data);
-  const title = menuItem.label ?? names.stage;
-  const context =
-    title === names.stage
-      ? `${names.workflow} workflow`
-      : `${names.stage} stage, ${names.workflow} workflow`;
-  return { names, title, context };
+  return { names, title: menuItem.label ?? names.stage };
 }
 
 function needsApiAccess(ctx: RenderPageCtx, state: StageDataState): boolean {
@@ -187,144 +146,491 @@ function needsApiAccess(ctx: RenderPageCtx, state: StageDataState): boolean {
   );
 }
 
-/** States where the stage can't list records at all; null when it can. */
-function configurationState(
-  ctx: RenderPageCtx,
-  data: StageData | null,
-  names: Names,
-): ReactNode {
-  if (data?.stageMissing) {
+/** What the page is for: the "?" after the title */
+function stageHelp(names: Names): ReactNode {
+  return (
+    <Toolbar.Help>
+      The records in the {names.stage} stage of the {names.workflow} workflow,
+      from every model that uses it. Select records to publish, unpublish,
+      delete or move them to another stage.
+    </Toolbar.Help>
+  );
+}
+
+/**
+ * The states where the stage lists no records, in their order: the whole
+ * page, with no title bar. Null when the page shows its pane.
+ */
+function stageBlankSlate(args: {
+  ctx: RenderPageCtx;
+  state: StageDataState;
+  menuItem: StageMenuItem;
+  names: Names;
+  title: string;
+  onReload: () => void;
+}): ReactNode {
+  const { ctx, state, names } = args;
+  if (needsApiAccess(ctx, state)) {
     return (
-      <StateMessage
-        title="This stage no longer exists"
-        action={<SettingsButton ctx={ctx} />}
-      >
-        The {names.stage} stage was removed from the {names.workflow} workflow,
-        or the workflow itself was deleted. Remove this page in the plugin
-        settings.
-      </StateMessage>
+      <BlankSlate
+        placement="area"
+        titleLevel={1}
+        error
+        icon={<CircleExclamationIcon />}
+        title="No access to your API token"
+        description="This page needs the “Current user access token” permission. Turn it on in the plugin settings, then reload the page."
+        actions={settingsButton(ctx)}
+      />
     );
   }
-  if (data && data.models.length === 0) {
+  if (state.status === 'loading') {
+    return <BlankSlate placement="area" loading title="Loading the records" />;
+  }
+  if (state.status !== 'ready') return null;
+
+  const reload = (
+    <Button
+      icon={RefreshIcon}
+      label="Reload"
+      onClick={args.onReload}
+      busy={state.refreshing}
+    />
+  );
+  if (state.data.stageMissing) {
     return (
-      <StateMessage title="No models use this workflow">
-        Assign the {names.workflow} workflow to a model in its settings, and its
-        records in the {names.stage} stage will show up here.
-      </StateMessage>
+      <BlankSlate
+        placement="area"
+        titleLevel={1}
+        error
+        icon={<CircleExclamationIcon />}
+        title="This stage no longer exists"
+        description={`The ${names.stage} stage was removed from the ${names.workflow} workflow, or the workflow was deleted. Remove this page in the plugin settings.`}
+        actions={
+          <>
+            {settingsButton(ctx)}
+            {reload}
+          </>
+        }
+      />
+    );
+  }
+  if (state.data.models.length === 0) {
+    return (
+      <BlankSlate
+        placement="area"
+        titleLevel={1}
+        icon={<EntryIcon name={args.menuItem.icon} />}
+        title="No models use this workflow"
+        description={`Assign the ${names.workflow} workflow to a model in its settings, and its records in the ${names.stage} stage show up here.`}
+        actions={reload}
+      />
+    );
+  }
+  if (state.data.rows.length === 0) {
+    return (
+      <BlankSlate
+        placement="area"
+        titleLevel={1}
+        icon={<EntryIcon name={args.menuItem.icon} />}
+        title={args.title}
+        description={`No records are in this stage right now. Records show here when they move to the ${names.stage} stage of the ${names.workflow} workflow.`}
+        actions={reload}
+      />
     );
   }
   return null;
 }
 
-function FilterBar({
-  table,
-  models,
-  disabled,
+/** A failed load: the title bar stays, with the error in the list area */
+function ErrorPane({
+  title,
+  names,
+  error,
+  onRetry,
 }: {
-  table: TableState;
-  models: readonly { id: string; name: string }[];
-  disabled: boolean;
+  title: string;
+  names: Names;
+  error: unknown;
+  onRetry: () => void;
 }) {
   return (
-    <div className={styles.filterBar}>
-      <div className={styles.searchWrap}>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 512 512"
-          className={styles.searchIcon}
-        >
-          <path
-            fill="currentColor"
-            d="M416 208a208 208 0 1 1-416 0 208 208 0 0 1 416 0Zm-48 0a160 160 0 1 0-320 0 160 160 0 0 0 320 0Zm9.4 203.4 96 96a24 24 0 0 0 33.9-33.9l-96-96a24 24 0 0 0-33.9 33.9Z"
-          />
-        </svg>
-        <input
-          type="text"
-          className={styles.search}
-          aria-label="Search records"
-          placeholder="Search records"
-          value={table.query}
-          disabled={disabled}
-          onChange={(event) => table.setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && table.query) {
-              event.preventDefault();
-              table.setQuery('');
-            }
-          }}
+    <Pane
+      ariaLabel="Records"
+      header={
+        <Toolbar>
+          <Toolbar.Title level={1} help={stageHelp(names)}>
+            {title}
+          </Toolbar.Title>
+        </Toolbar>
+      }
+    >
+      <ListArea>
+        <BlankSlate
+          placement="area"
+          error
+          icon={<CircleExclamationIcon />}
+          title="Couldn't load the records"
+          code={
+            describeError(error) ??
+            (error instanceof Error ? error.message : undefined)
+          }
+          description="Check your connection, then try again."
+          actions={
+            <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+          }
         />
-        {table.query && (
-          <button
-            type="button"
-            className={styles.clearSearch}
-            disabled={disabled}
-            aria-label="Clear search"
-            onClick={() => table.setQuery('')}
-          >
-            ×
-          </button>
-        )}
-      </div>
-
-      <FilterDropdown
-        ariaLabel="Filter by model"
-        value={table.modelId ?? ''}
-        options={[
-          { label: 'All models', value: '' },
-          ...models.map((model) => ({ label: model.name, value: model.id })),
-        ]}
-        disabled={disabled}
-        onChange={(value) => table.setModelId(value || null)}
-      />
-
-      <FilterDropdown
-        ariaLabel="Filter by publication status"
-        value={table.status ?? ''}
-        options={STATUS_FILTER_OPTIONS}
-        alignment="right"
-        disabled={disabled}
-        onChange={(value) =>
-          table.setStatus((value as PublicationStatus) || null)
-        }
-      />
-    </div>
+      </ListArea>
+    </Pane>
   );
 }
 
+// The title bar, and the search row under it while the filter is open
+function RecordsTitleBar({
+  title,
+  names,
+  count,
+  spinning,
+  models,
+  table,
+  filter,
+  busy,
+  refreshing,
+  onReload,
+  progressText,
+  onCancel,
+}: {
+  title: string;
+  names: Names;
+  count: string;
+  spinning: boolean;
+  models: readonly ModelSummary[];
+  table: TableState;
+  filter: ReturnType<typeof useFilterToolbar>;
+  /** A bulk action runs */
+  busy: boolean;
+  refreshing: boolean;
+  onReload: () => void;
+  /** The progress of an action of more than one job */
+  progressText: string | undefined;
+  /** Stops the jobs of the action that did not start yet */
+  onCancel: () => void;
+}) {
+  const filtersDisabled = busy ? ACTION_RUNNING : undefined;
+  return (
+    <>
+      <Toolbar>
+        <Toolbar.Title level={1} help={stageHelp(names)}>
+          {title}
+        </Toolbar.Title>
+        <Toolbar.Subtitle>{count}</Toolbar.Subtitle>
+        <Toolbar.Spinner show={spinning} />
+        <Toolbar.Space />
+        <Toolbar.Group>
+          {models.length > 1 && (
+            <FilterDropdown
+              tooltip="Filter by model"
+              value={table.modelId ?? ''}
+              options={[
+                { label: 'All models', value: '' },
+                ...models.map((model) => ({
+                  label: model.name,
+                  value: model.id,
+                })),
+              ]}
+              disabled={filtersDisabled}
+              onChange={(value) => table.setModelId(value || null)}
+            />
+          )}
+          <FilterDropdown
+            tooltip="Filter by status"
+            value={table.status ?? ''}
+            options={STATUS_FILTER_OPTIONS}
+            disabled={filtersDisabled}
+            onChange={(value) =>
+              table.setStatus((value as PublicationStatus) || null)
+            }
+          />
+          <Toolbar.FilterToggle
+            pressed={filter.open}
+            // Closing the filter clears the search: not while an action runs
+            onClick={filter.open && busy ? ignore : filter.onToggle}
+            onOpen={filter.onOpen}
+          />
+        </Toolbar.Group>
+        {progressText && (
+          <>
+            <Toolbar.Note>
+              <span role="status">{progressText}</span>
+            </Toolbar.Note>
+            <Toolbar.Button label="Cancel remaining" onClick={onCancel} />
+          </>
+        )}
+        <Toolbar.Button
+          iconOnly
+          icon={RefreshIcon}
+          label="Reload records"
+          onClick={onReload}
+          disabled={
+            busy
+              ? ACTION_RUNNING
+              : refreshing
+                ? { reason: 'The records are loading.' }
+                : undefined
+          }
+        />
+      </Toolbar>
+      {filter.open && (
+        <Toolbar fields onClose={filter.onClose}>
+          <Toolbar.FilterInput
+            value={table.query}
+            onChange={table.setQuery}
+            autoFocus={filter.autoFocus}
+            onClose={filter.onClose}
+            disabled={busy}
+          />
+        </Toolbar>
+      )}
+    </>
+  );
+}
+
+// The buttons of the selection bar. The plain actions change the selection;
+// the main actions on it are primary, with Delete last. An action that does
+// not apply to any selected record does not show. While an action runs, its
+// own button shows a spinner and the others say why they wait.
+function selectionBarActions(args: {
+  bulk: BulkActions;
+  table: TableState;
+  refreshing: boolean;
+  moveMenu: ReactElement | null;
+}): (MaybeAction | MaybeAction[])[] {
+  const { bulk, table } = args;
+  const waitReason = bulk.busyAction
+    ? ACTION_RUNNING
+    : args.refreshing
+      ? RECORDS_LOADING
+      : undefined;
+  const disabled = (id: BusyAction) =>
+    bulk.busyAction === id ? undefined : waitReason;
+  const mainAction = (id: SelectionAction, label: string): MaybeAction => {
+    const run = bulk.actions[id];
+    return (
+      run && {
+        id,
+        tone: 'primary',
+        label,
+        disabled: disabled(id),
+        onClick: run,
+      }
+    );
+  };
+
+  return [
+    [
+      bulk.selectAllMatching && {
+        id: 'selectAllMatching',
+        label: {
+          id: 'stageViewer.selectAllMatching',
+          values: { count: table.matchingRows.length },
+        },
+        disabled: waitReason,
+        onClick: bulk.selectAllMatching,
+      },
+      {
+        id: 'toggleSelection',
+        label: bulk.showingSelected ? 'Hide selection' : 'Show selection',
+        disabled: waitReason,
+        onClick: () => {
+          table.resetSelectionPage();
+          bulk.toggleShowingSelected();
+        },
+      },
+      {
+        id: 'invert',
+        label: 'Invert selection',
+        disabled: waitReason,
+        onClick: bulk.invertPage,
+      },
+    ],
+    mainAction('publish', 'Publish'),
+    mainAction('unpublish', 'Unpublish'),
+    // The menu shows no spinner of its own: it waits like the others
+    args.moveMenu !== null && {
+      id: 'move',
+      tone: 'primary',
+      label: 'Move to stage',
+      disabled: waitReason,
+      menu: args.moveMenu,
+    },
+    mainAction('delete', 'Delete'),
+  ];
+}
+
 function toTableRecord(
+  ctx: RenderPageCtx,
   row: RecordRow,
   thumbnails: ThumbnailMap,
-  locale: string,
-  timeZone: string | undefined,
 ): TableRecord {
   return {
     id: row.id,
     title: row.title,
     imageUrl: row.imageUploadId ? thumbnails.get(row.imageUploadId) : null,
-    imageAlt: '',
     model: row.modelName,
     status: row.status,
     statusLabel: STATUS_LABELS[row.status],
-    updatedAt: formatDateTime(row.updatedAt, locale, timeZone),
-    createdAt: formatDateTime(row.createdAt, locale, timeZone),
+    updatedAt: row.updatedAt || null,
+    createdAt: row.createdAt || null,
     publishedValid: row.publishedValid,
     currentValid: row.currentValid,
     draftModeActive: row.draftModeActive,
+    url: recordEditorPath(ctx, row.modelId, row.id),
   };
 }
 
-function errorState(error: unknown, onRetry: () => void): ReactNode {
+// Move to stage, while the selection may go to another stage: a menu of the
+// stages, which it loads when it opens
+function moveMenuOf(
+  bulk: BulkActions,
+  client: Client | null,
+  workflowId: string,
+): ReactElement | null {
+  if (!bulk.canMove || !client) return null;
   return (
-    <StateMessage
-      title="Could not load records"
-      action={
-        <button type="button" className={styles.retry} onClick={onRetry}>
-          Retry
-        </button>
+    <MoveToStageMenu
+      client={client}
+      workflowId={workflowId}
+      selectionInput={bulk.selectionInput}
+      onPick={(stage) => {
+        void bulk.moveToStage(stage);
+      }}
+    />
+  );
+}
+
+/** The records of the stage: the title bar, the table, its pages and the selection bar */
+function RecordsPane({
+  ctx,
+  menuItem,
+  title,
+  names,
+  models,
+  table,
+  bulk,
+  client,
+  columns,
+  onColumnsChange,
+  rows,
+  refreshing,
+  onReload,
+}: {
+  ctx: RenderPageCtx;
+  menuItem: StageMenuItem;
+  title: string;
+  names: Names;
+  models: readonly ModelSummary[];
+  table: TableState;
+  bulk: BulkActions;
+  client: Client | null;
+  columns: readonly ColumnSetting[];
+  onColumnsChange: (columns: readonly ColumnSetting[]) => void;
+  /** The rows of the current page */
+  rows: readonly TableRecord[];
+  refreshing: boolean;
+  onReload: () => void;
+}) {
+  const filter = useFilterToolbar({
+    isFiltering: table.query !== '',
+    onClear: () => table.setQuery(''),
+  });
+  const busy = bulk.busyAction !== null;
+  // Sorting, pages and selection wait while the records reload or an action runs
+  const enabled = !(refreshing || busy);
+
+  return (
+    <Pane
+      ariaLabel="Records"
+      header={
+        <RecordsTitleBar
+          title={title}
+          names={names}
+          count={formatRecordCount(ctx.ui.locale, table.matchingRows.length)}
+          spinning={refreshing || busy}
+          models={models}
+          table={table}
+          filter={filter}
+          busy={busy}
+          refreshing={refreshing}
+          onReload={onReload}
+          progressText={bulk.progressText}
+          onCancel={bulk.onCancel}
+        />
+      }
+      footer={
+        // Hidden while everything fits on one default-sized page. A larger
+        // page size keeps it, so its select can switch back.
+        table.displayedRows.length >
+          Math.min(table.perPage, DEFAULT_PER_PAGE) && (
+          <Toolbar>
+            <Toolbar.Pagination
+              currentPage={table.page}
+              perPage={table.perPage}
+              totalEntries={table.displayedRows.length}
+              disabled={!enabled}
+              onChange={table.goToPage}
+              perPageSelect={{
+                options: PER_PAGE_SELECT_OPTIONS,
+                onChange: table.setPerPage,
+              }}
+            />
+          </Toolbar>
+        )
+      }
+      slideUpToolbar={
+        <MultipleSelectionActionBar
+          open={bulk.selectedCount > 0}
+          status={{
+            id: 'stageViewer.selected',
+            values: { count: bulk.selectedCount },
+          }}
+          onDeselectAll={() => {
+            if (!busy) bulk.clear();
+          }}
+          actions={selectionBarActions({
+            bulk,
+            table,
+            refreshing,
+            moveMenu: moveMenuOf(bulk, client, menuItem.workflowId),
+          })}
+        />
       }
     >
-      {describeError(error) ?? 'Could not load records. Please try again.'}
-    </StateMessage>
+      <ListArea>
+        {table.filtering &&
+        !bulk.showingSelected &&
+        table.matchingRows.length === 0 ? (
+          <Pane.FilterBlankSlate />
+        ) : (
+          <RecordsTable
+            columns={columns}
+            onColumnsChange={onColumnsChange}
+            rows={rows}
+            selectedIds={bulk.selectedIds}
+            orderBy={table.orderBy}
+            sortableColumnIds={table.sortableColumnIds}
+            sortingEnabled={enabled}
+            onOrderByChange={table.setOrderBy}
+            selectionEnabled={enabled}
+            onToggleRow={(id) => {
+              const row = table.pageRows.find(
+                (candidate) => candidate.id === id,
+              );
+              if (row) bulk.toggleRow(row);
+            }}
+            onTogglePage={bulk.togglePage}
+          />
+        )}
+      </ListArea>
+    </Pane>
   );
 }
 
@@ -362,6 +668,18 @@ function StageView({
         : null,
     [],
   );
+  // The client of the move menu, which loads the stages when it opens
+  const client = useMemo(
+    () =>
+      ctx.currentUserAccessToken
+        ? buildCmaClient({
+            currentUserAccessToken: ctx.currentUserAccessToken,
+            environment: ctx.environment,
+            cmaBaseUrl: ctx.cmaBaseUrl,
+          })
+        : null,
+    [ctx.cmaBaseUrl, ctx.currentUserAccessToken, ctx.environment],
+  );
   const bulk = useBulkActions({
     ctx,
     selection,
@@ -389,161 +707,63 @@ function StageView({
       userId: ctx.currentUser.id,
     }),
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pageRows is a new slice of displayedRows on each render
+  const tableRows = useMemo(
+    () => table.pageRows.map((row) => toTableRecord(ctx, row, thumbnails)),
+    [
+      table.displayedRows,
+      table.page,
+      table.perPage,
+      thumbnails,
+      ctx.environment,
+      ctx.isEnvironmentPrimary,
+    ],
+  );
 
-  const { names, title, context } = stageHeading(menuItem, data);
-  const loading = state.status === 'loading';
-  const refreshing = state.status === 'ready' && state.refreshing;
-  const busy = bulk.busyAction !== null;
-
-  if (needsApiAccess(ctx, state)) {
-    return (
-      <div className={styles.page}>
-        <Toolbar title={title} context={context} />
-        <StateMessage title="API access required">
-          Grant the Current user access token permission to this plugin, then
-          reload the page.
-        </StateMessage>
-      </div>
-    );
-  }
-
-  const configuration = configurationState(ctx, data, names);
-  if (configuration) {
-    return (
-      <div className={styles.page}>
-        <Toolbar title={title} context={context}>
-          <ReloadButton onClick={reload} disabled={refreshing} />
-        </Toolbar>
-        {configuration}
-      </div>
-    );
-  }
+  const { names, title } = stageHeading(menuItem, data);
+  const blankSlate = stageBlankSlate({
+    ctx,
+    state,
+    menuItem,
+    names,
+    title,
+    onReload: reload,
+  });
 
   return (
-    <div className={styles.page}>
-      <Toolbar title={title} context={context}>
-        {data ? (
-          <div className={styles.total}>
-            {recordsLabel(table.matchingRows.length)}
-          </div>
-        ) : null}
-        <ReloadButton
-          onClick={reload}
-          disabled={loading || refreshing || busy}
-        />
-      </Toolbar>
-
-      <FilterBar table={table} models={models} disabled={busy} />
-
-      <main className={styles.content} ref={table.bodyRef}>
-        {state.status === 'error' ? (
-          errorState(state.error, reload)
+    <Main className={s.layout} ref={table.bodyRef}>
+      {blankSlate ??
+        (state.status === 'error' ? (
+          <ErrorPane
+            title={title}
+            names={names}
+            error={state.error}
+            onRetry={reload}
+          />
         ) : (
-          <StageTable
+          <RecordsPane
             ctx={ctx}
+            menuItem={menuItem}
+            title={title}
+            names={names}
+            models={models}
             table={table}
             bulk={bulk}
-            rows={rows}
+            client={client}
             columns={columns}
             onColumnsChange={setColumns}
-            thumbnails={thumbnails}
-            loading={loading || refreshing}
-            disabled={busy || loading}
+            rows={tableRows}
+            refreshing={state.status === 'ready' && state.refreshing}
+            onReload={reload}
           />
-        )}
-      </main>
-
-      <div className={styles.slideUpToolbar}>
-        <SelectionActionBar
-          selectedCount={bulk.selectedCount}
-          showingSelected={bulk.showingSelected}
-          onToggleShowingSelected={() => {
-            table.resetSelectionPage();
-            bulk.toggleShowingSelected();
-          }}
-          onInvertSelection={bulk.invertPage}
-          onClearSelection={bulk.clear}
-          disabled={loading || refreshing}
-          busyAction={bulk.busyAction}
-          onSelectAllMatching={bulk.selectAllMatching}
-          progressText={bulk.progressText}
-          onCancel={bulk.onCancel}
-          actions={bulk.actions}
-        />
-      </div>
-
-      <Pagination
-        currentPage={table.page}
-        perPage={table.perPage}
-        totalEntries={table.displayedRows.length}
-        disabled={loading || refreshing || busy}
-        onPageChange={table.goToPage}
-        onPerPageChange={table.setPerPage}
-      />
-    </div>
-  );
-}
-
-function StageTable({
-  ctx,
-  table,
-  bulk,
-  rows,
-  columns,
-  onColumnsChange,
-  thumbnails,
-  loading,
-  disabled,
-}: {
-  ctx: RenderPageCtx;
-  table: TableState;
-  bulk: BulkActions;
-  rows: readonly RecordRow[];
-  columns: Parameters<typeof RecordsTable>[0]['columns'];
-  onColumnsChange: Parameters<typeof RecordsTable>[0]['onColumnsChange'];
-  thumbnails: ThumbnailMap;
-  loading: boolean;
-  disabled: boolean;
-}) {
-  const timeZone = ctx.site.attributes.timezone ?? undefined;
-  const byId = new Map(table.pageRows.map((row) => [row.id, row]));
-
-  return (
-    <RecordsTable
-      columns={columns}
-      sortableColumnIds={table.sortableColumnIds}
-      rows={table.pageRows.map((row) =>
-        toTableRecord(row, thumbnails, ctx.ui.locale, timeZone),
-      )}
-      selectedIds={bulk.selectedIds}
-      orderBy={table.orderBy}
-      onColumnsChange={onColumnsChange}
-      onOrderByChange={table.setOrderBy}
-      onToggleRow={(id) => {
-        const row = byId.get(id);
-        if (row) bulk.toggleRow(row);
-      }}
-      onTogglePage={bulk.togglePage}
-      onOpenRow={(record) => {
-        const row = byId.get(record.id);
-        if (row) {
-          void ctx.navigateTo(recordEditorPath(ctx, row.modelId, row.id));
-        }
-      }}
-      loading={loading}
-      disabled={disabled}
-      emptyState={
-        rows.length > 0 && table.filtering
-          ? 'No records match the current filters.'
-          : 'No records in this stage.'
-      }
-    />
+        ))}
+    </Main>
   );
 }
 
 export default function StagePage({ ctx, menuItem }: Props) {
   return (
-    <Canvas ctx={ctx} noAutoResizer>
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       {menuItem ? (
         <StageView key={menuItem.id} ctx={ctx} menuItem={menuItem} />
       ) : (

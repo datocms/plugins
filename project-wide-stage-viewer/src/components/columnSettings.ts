@@ -1,7 +1,7 @@
+import type { TableLayout } from 'datocms-react-ui/Table';
 import type { ColumnId, ColumnSetting } from '../types';
 
 export const MIN_COLUMN_WIDTH = 0.05;
-export const ADDED_COLUMN_WIDTH = 0.15;
 
 export const ALL_COLUMN_IDS: readonly ColumnId[] = [
   '_preview',
@@ -81,83 +81,82 @@ export function normalizeColumnSettings(value: unknown): ColumnSetting[] {
   return normalized;
 }
 
-export function toggleColumn(
-  columns: readonly ColumnSetting[],
-  columnId: ColumnId,
-): ColumnSetting[] {
-  const current = normalizeColumnSettings(columns);
-  const existingIndex = current.findIndex((column) => column.id === columnId);
+// The kit's Table keeps its layout as { columns: [{ name, width }] }; the
+// stored setting stays an array of { id, width }. The two adapters below
+// convert between them in memory only.
 
-  if (existingIndex >= 0) {
-    if (current.length === 1) return current;
-    const removedWidth = current[existingIndex].width;
-    const share = removedWidth / (current.length - 1);
-    return current
-      .filter((_, index) => index !== existingIndex)
-      .map((column) => ({ ...column, width: column.width + share }));
-  }
-
-  const totalShrinkCapacity = current.reduce(
-    (total, column) => total + (column.width - MIN_COLUMN_WIDTH),
-    0,
-  );
-  return [
-    ...current.map((column) => ({
-      ...column,
-      width:
-        column.width -
-        (ADDED_COLUMN_WIDTH * (column.width - MIN_COLUMN_WIDTH)) /
-          totalShrinkCapacity,
+export function toTableLayout(columns: readonly ColumnSetting[]): TableLayout {
+  return {
+    columns: columns.map((column) => ({
+      name: column.id,
+      width: column.width,
     })),
-    { id: columnId, width: ADDED_COLUMN_WIDTH },
-  ];
+  };
 }
 
-export function reorderColumn(
-  columns: readonly ColumnSetting[],
-  sourceId: ColumnId,
-  targetId: ColumnId,
-): ColumnSetting[] {
-  const current = normalizeColumnSettings(columns);
-  const sourceIndex = current.findIndex((column) => column.id === sourceId);
-  const targetIndex = current.findIndex((column) => column.id === targetId);
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
-    return current;
+// A hair above the minimum, so that the division by a total of 1 ± rounding
+// in normalizeColumnSettings never puts a column under MIN_COLUMN_WIDTH (which
+// would reset the whole layout to the defaults).
+const MIN_LAYOUT_WIDTH = MIN_COLUMN_WIDTH + 1e-6;
+
+// Widths that sum to 1 with none under the minimum: the columns under it get
+// the minimum, and the others share the rest in their own proportions.
+function widthsWithMinimum(widths: readonly number[]): number[] {
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    return widths.map(() => 1 / widths.length);
   }
 
-  const reordered = [...current];
-  const [source] = reordered.splice(sourceIndex, 1);
-  reordered.splice(targetIndex, 0, source);
-  return reordered;
+  const pinned = new Set<number>();
+  let result = widths.map((width) => width / total);
+  while (pinned.size < widths.length) {
+    const freeTotal = widths.reduce(
+      (sum, width, index) => (pinned.has(index) ? sum : sum + width),
+      0,
+    );
+    const budget = 1 - pinned.size * MIN_LAYOUT_WIDTH;
+    result = widths.map((width, index) =>
+      pinned.has(index) || freeTotal <= 0
+        ? MIN_LAYOUT_WIDTH
+        : (width / freeTotal) * budget,
+    );
+    const under = result.flatMap((width, index) =>
+      !pinned.has(index) && width < MIN_LAYOUT_WIDTH ? [index] : [],
+    );
+    if (under.length === 0) break;
+    for (const index of under) pinned.add(index);
+  }
+
+  return result;
 }
 
-export function resizeAdjacentColumns(
-  columns: readonly ColumnSetting[],
-  leftIndex: number,
-  delta: number,
-): ColumnSetting[] {
-  const current = normalizeColumnSettings(columns);
-  const rightIndex = leftIndex + 1;
-  if (
-    leftIndex < 0 ||
-    rightIndex >= current.length ||
-    !Number.isFinite(delta)
-  ) {
-    return current;
+/**
+ * The stored setting of a layout that the table changed (a column shown,
+ * hidden, moved or resized): unknown and repeated columns are dropped, and
+ * the widths sum to 1 with none under the minimum. The defaults come back only
+ * when no known column remains.
+ */
+export function fromTableLayout(layout: TableLayout): ColumnSetting[] {
+  const seen = new Set<ColumnId>();
+  const columns: ColumnSetting[] = [];
+  for (const { name, width } of layout.columns) {
+    if (!isColumnId(name) || seen.has(name)) continue;
+    seen.add(name);
+    columns.push({
+      id: name,
+      width: Number.isFinite(width) && width > 0 ? width : 0,
+    });
   }
 
-  const clampedDelta = Math.max(
-    MIN_COLUMN_WIDTH - current[leftIndex].width,
-    Math.min(current[rightIndex].width - MIN_COLUMN_WIDTH, delta),
-  );
-  const left = current[leftIndex].width + clampedDelta;
-  const right = current[rightIndex].width - clampedDelta;
+  if (columns.length === 0) {
+    return DEFAULT_COLUMN_SETTINGS.map((column) => ({ ...column }));
+  }
 
-  return current.map((column, index) => {
-    if (index === leftIndex) return { ...column, width: left };
-    if (index === rightIndex) return { ...column, width: right };
-    return column;
-  });
+  const widths = widthsWithMinimum(columns.map((column) => column.width));
+  return columns.map((column, index) => ({
+    id: column.id,
+    width: widths[index],
+  }));
 }
 
 export function columnSettingsStorageKey({

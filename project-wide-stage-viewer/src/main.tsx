@@ -1,6 +1,5 @@
-import { type ContentAreaSidebarItem, connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
+import { type ContentAreaSidebarItem, connect } from 'datocms-plugin-sdk';
 import { WORKFLOW_STAGE_MODAL_ID } from './constants';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import StagePage from './entrypoints/StagePage';

@@ -38,8 +38,8 @@
     "@datocms/cma-client-browser": "^6.1.0",
     "@fortawesome/free-regular-svg-icons": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
-    "datocms-plugin-sdk": "^2.5.0",
-    "datocms-react-ui": "^2.5.1",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
@@ -60,9 +60,7 @@
   "packageManager": "npm@11.11.0",
   "overrides": {
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     }
   },
   "allowScripts": {

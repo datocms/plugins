@@ -1,5 +1,4 @@
 import 'datocms-react-ui/styles.css';
-import '../src/kit-fixes.css';
 import type { RenderConfigScreenCtx, RenderPageCtx } from 'datocms-plugin-sdk';
 import { createRoot } from 'react-dom/client';
 import ConfigScreen from '../src/entrypoints/ConfigScreen';
@@ -104,11 +103,9 @@ function baseCtx() {
     notice: async (message: string) => toast('notice', message),
     alert: async (message: string) => toast('alert', message),
     navigateTo: log,
-    // Confirms say yes, and the stage picker takes the first stage offered.
+    // Confirms say yes.
     openConfirm: async (options: { choices: { value: unknown }[] }) =>
       options.choices[0]?.value,
-    openModal: async (modal: { parameters: { stages: { id: string }[] } }) =>
-      modal.parameters.stages[0]?.id ?? null,
   };
 }
 

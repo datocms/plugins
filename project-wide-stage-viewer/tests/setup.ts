@@ -63,3 +63,8 @@ if (!globalThis.IntersectionObserver) {
     }
   } as unknown as typeof IntersectionObserver;
 }
+
+// jsdom doesn't scroll elements into view; the kit's menus and lists call it.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {};
+}

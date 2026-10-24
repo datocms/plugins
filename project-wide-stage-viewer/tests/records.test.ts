@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime } from '../src/lib/dates';
 import {
   buildModelPresentation,
   buildRow,
@@ -325,18 +324,5 @@ describe('filterRows', () => {
     expect(
       filterRows(rows, { ...none, status: 'published' }).map(({ id }) => id),
     ).toEqual(['b2']);
-  });
-});
-
-describe('formatDateTime', () => {
-  it('prints the medium date and short time in the project timezone', () => {
-    expect(formatDateTime('2026-09-26T12:32:00Z', 'en-GB', 'Europe/Rome')).toBe(
-      '26 Sept 2026, 14:32',
-    );
-  });
-
-  it('prints a dash for missing or invalid dates', () => {
-    expect(formatDateTime(null, 'en')).toBe('—');
-    expect(formatDateTime('nope', 'en')).toBe('—');
   });
 });

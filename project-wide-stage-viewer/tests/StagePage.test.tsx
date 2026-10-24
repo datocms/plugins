@@ -1,6 +1,13 @@
 import type { RawApiTypes } from '@datocms/cma-client-browser';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import StagePage from '../src/entrypoints/StagePage';
 import { readMenuItems } from '../src/lib/parameters';
@@ -176,36 +183,106 @@ function renderPage(
   return ctx;
 }
 
-function rowTitles() {
+// Each row checkbox is named by the first cell of its row: the title
+function rowCheckboxes(): HTMLElement[] {
   return screen
-    .getAllByRole('link')
-    .map((row) => within(row).getAllByRole('cell')[0].textContent);
+    .queryAllByRole('checkbox')
+    .filter((box) => box.hasAttribute('aria-labelledby'));
+}
+
+function rowTitles(): string[] {
+  return rowCheckboxes().map(
+    (box) =>
+      document.getElementById(box.getAttribute('aria-labelledby') ?? '')
+        ?.textContent ?? '',
+  );
 }
 
 function selectRow(title: string) {
-  const row = screen.getByText(title).closest('[role="row"]') as HTMLElement;
-  return userEvent.click(within(row).getByRole('checkbox'));
+  return userEvent.click(screen.getByRole('checkbox', { name: title }));
 }
 
-describe('StagePage', () => {
-  beforeEach(() => {
-    seed();
-    client.workflows.find.mockResolvedValue({
-      id: 'wf1',
-      name: 'Editorial',
-      stages: [
-        { id: 'draft', name: 'Draft' },
-        { id: 'review', name: 'In review' },
-        { id: 'ready', name: 'Ready' },
-      ],
-    });
-  });
+// The search row opens with the magnifier of the title bar
+async function search(text: string) {
+  if (!screen.queryByRole('search', { name: 'Records' })) {
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Filter Records' }),
+    );
+  }
+  const input = within(
+    screen.getByRole('search', { name: 'Records' }),
+  ).getByRole('textbox');
+  await userEvent.clear(input);
+  if (text) await userEvent.paste(text);
+}
 
+// The menus of the kit open, and pick, on mouse down
+async function openMenu(trigger: string) {
+  fireEvent.mouseDown(screen.getByRole('button', { name: trigger }));
+}
+
+// The pick closes the menu, which leaves the page after its transition
+async function pick(option: string) {
+  fireEvent.mouseDown(await screen.findByRole('menuitem', { name: option }));
+  await waitFor(() =>
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument(),
+  );
+}
+
+// A filter trigger is named by its current value
+async function filterBy(current: string, option: string) {
+  await openMenu(current);
+  await pick(option);
+}
+
+// The sortable headers are links named by their label
+function sortHeader(label: string) {
+  return screen.queryByRole('link', { name: label });
+}
+
+// The bar slides out: it leaves the page once its transition ends
+async function expectNoSelectionBar() {
+  await waitFor(() =>
+    expect(screen.queryByText(/records? selected$/)).not.toBeInTheDocument(),
+  );
+}
+
+const STAGES = {
+  id: 'wf1',
+  name: 'Editorial',
+  stages: [
+    { id: 'draft', name: 'Draft' },
+    { id: 'review', name: 'In review' },
+    { id: 'ready', name: 'Ready' },
+  ],
+};
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function manyArticles(count: number, prefix = 'Article') {
+  return Array.from({ length: count }, (_, index) =>
+    record(`r${index}`, 'm1', { title: `${prefix} ${index}` }),
+  );
+}
+
+beforeEach(() => {
+  seed();
+  vi.clearAllMocks();
+  client.workflows.find.mockResolvedValue(STAGES);
+});
+
+describe('StagePage', () => {
   it('lists the stage’s records across models, newest first', async () => {
     renderPage();
 
     expect(
-      await screen.findByRole('heading', { name: 'In review' }),
+      await screen.findByRole('heading', { level: 1, name: 'In review' }),
     ).toBeInTheDocument();
     await screen.findByText('Newest article');
     expect(rowTitles()).toEqual([
@@ -214,14 +291,17 @@ describe('StagePage', () => {
       'Older article',
     ]);
     expect(screen.getByText('3 records')).toBeInTheDocument();
-    expect(screen.getByText('Editorial workflow')).toBeInTheDocument();
     expect(screen.getByText('Unpublished changes')).toBeInTheDocument();
+    // The help of the title names the stage and its workflow
+    await userEvent.click(
+      screen.getByRole('button', { name: 'About this page' }),
+    );
     expect(
-      screen.getByRole('columnheader', { name: /Last update/ }),
-    ).toHaveAttribute('aria-sort', 'descending');
+      await screen.findByText(/In review stage of the Editorial workflow/),
+    ).toBeInTheDocument();
     // Pagination stays hidden while everything fits on one page.
     expect(
-      screen.queryByRole('navigation', { name: 'Pagination' }),
+      screen.queryByRole('button', { name: 'Go to page 1' }),
     ).not.toBeInTheDocument();
   });
 
@@ -250,40 +330,45 @@ describe('StagePage', () => {
 
   it('filters by search and by status', async () => {
     renderPage();
-    const search = await screen.findByRole('textbox', {
-      name: 'Search records',
-    });
     await screen.findByText('Newest article');
 
-    await userEvent.type(search, 'jane');
+    await search('jane');
     expect(rowTitles()).toEqual(['Jane Doe']);
     expect(screen.getByText('1 record')).toBeInTheDocument();
 
-    await userEvent.clear(search);
-    await userEvent.type(search, 'zzz');
+    await search('zzz');
     expect(
-      screen.getByText('No records match the current filters.'),
+      screen.getByText(
+        'No records match the filters. Try other filters, or clear some of them.',
+      ),
     ).toBeInTheDocument();
+    expect(screen.getByText('0 records')).toBeInTheDocument();
 
-    await userEvent.clear(search);
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Filter by publication status' }),
-    );
-    await userEvent.click(
-      screen.getByText('Unpublished changes', { selector: 'button *, button' }),
-    );
+    await search('');
+    await filterBy('All statuses', 'Unpublished changes');
     expect(rowTitles()).toEqual(['Newest article']);
+  });
+
+  it('clears the search with Escape', async () => {
+    renderPage();
+    await screen.findByText('Newest article');
+
+    await search('jane');
+    expect(rowTitles()).toEqual(['Jane Doe']);
+
+    await userEvent.keyboard('{Escape}');
+    expect(rowTitles()).toHaveLength(3);
+    expect(
+      screen.queryByRole('search', { name: 'Records' }),
+    ).not.toBeInTheDocument();
   });
 
   it('sorts by a column when its header is clicked', async () => {
     renderPage();
     await screen.findByText('Newest article');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await userEvent.click(sortHeader('Preview') as HTMLElement);
 
-    expect(
-      screen.getByRole('columnheader', { name: /Preview/ }),
-    ).toHaveAttribute('aria-sort', 'ascending');
     expect(rowTitles()).toEqual([
       'Jane Doe',
       'Newest article',
@@ -292,14 +377,12 @@ describe('StagePage', () => {
   });
 
   it('paginates long stages', async () => {
-    store = Array.from({ length: 60 }, (_, index) =>
-      record(`r${index}`, 'm1', { title: `Article ${index}` }),
-    );
+    store = manyArticles(60);
     renderPage();
     await screen.findByText('60 records');
 
     expect(rowTitles()).toHaveLength(50);
-    await userEvent.click(screen.getByRole('button', { name: '2' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Go to page 2' }));
     expect(rowTitles()).toHaveLength(10);
   });
 
@@ -308,24 +391,30 @@ describe('StagePage', () => {
     renderPage();
 
     expect(
-      await screen.findByText('No records in this stage.'),
+      await screen.findByText(/No records are in this stage right now/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'In review' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
   });
 
   it('explains a stage that was deleted', async () => {
     client.workflows.find.mockResolvedValue({
-      id: 'wf1',
-      name: 'Editorial',
+      ...STAGES,
       stages: [{ id: 'draft', name: 'Draft' }],
     });
     renderPage();
 
     expect(
-      await screen.findByText('This stage no longer exists'),
+      await screen.findByRole('heading', {
+        name: 'This stage no longer exists',
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Open plugin settings' }),
-    ).toBeInTheDocument();
+      screen.getByRole('link', { name: 'Open plugin settings' }),
+    ).toHaveAttribute('href', '/configuration/plugins/plugin-1/edit');
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
   });
 
   it('offers a retry when the records can’t be loaded', async () => {
@@ -333,9 +422,14 @@ describe('StagePage', () => {
     renderPage();
 
     expect(
-      await screen.findByText('Could not load records'),
+      await screen.findByText("Couldn't load the records"),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(screen.getByText('Network down')).toBeInTheDocument();
+    // The title bar stays
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'In review' }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Newest article')).toBeInTheDocument();
   });
 
@@ -348,51 +442,47 @@ describe('StagePage', () => {
     );
 
     expect(
-      screen.getByText('This page is no longer available'),
+      screen.getByRole('heading', { name: 'This page is no longer available' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Open plugin settings' }),
+      screen.queryByRole('link', { name: 'Open plugin settings' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('asks for the API token permission without calling the API', () => {
+    const ctx = {
+      ...buildPageCtx({ parameters, itemTypes, fields }),
+      currentUserAccessToken: undefined,
+    } as unknown as RenderPageCtx;
+    render(<StagePage ctx={ctx} menuItem={menuItem} />);
+
+    expect(
+      screen.getByRole('heading', { name: 'No access to your API token' }),
+    ).toBeInTheDocument();
+    expect(client.items.rawList).not.toHaveBeenCalled();
   });
 });
 
 describe('selection and bulk actions', () => {
-  beforeEach(() => {
-    seed();
-    vi.clearAllMocks();
-    client.workflows.find.mockResolvedValue({
-      id: 'wf1',
-      name: 'Editorial',
-      stages: [
-        { id: 'draft', name: 'Draft' },
-        { id: 'review', name: 'In review' },
-        { id: 'ready', name: 'Ready' },
-      ],
-    });
-  });
-
   it('shows the selection bar once records are selected', async () => {
     renderPage();
     await screen.findByText('Newest article');
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
 
     await selectRow('Newest article');
     await selectRow('Jane Doe');
 
-    const bar = screen.getByRole('region', { name: 'Selection actions' });
-    expect(within(bar).getByText('2 records selected')).toBeInTheDocument();
+    expect(screen.getByText('2 records selected')).toBeInTheDocument();
     for (const label of ['Delete', 'Publish', 'Unpublish', 'Move to stage']) {
-      expect(within(bar).getByRole('button', { name: label })).toBeEnabled();
+      const button = screen.getByRole('button', { name: label });
+      expect(button).toBeEnabled();
+      expect(button).not.toHaveAttribute('aria-disabled', 'true');
     }
 
     await userEvent.click(
-      within(bar).getByRole('button', { name: 'Deselect all records' }),
+      screen.getByRole('button', { name: 'Clear selection' }),
     );
-    expect(
-      screen.queryByRole('region', { name: 'Selection actions' }),
-    ).not.toBeInTheDocument();
+    await expectNoSelectionBar();
   });
 
   it('publishes the selected records after confirming', async () => {
@@ -430,25 +520,24 @@ describe('selection and bulk actions', () => {
     await selectRow('Jane Doe');
     await selectRow('Older article');
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Move to stage' }),
-    );
+    await openMenu('Move to stage');
+    await screen.findByRole('menuitem', { name: 'Draft' });
+    // The page's own stage isn't offered as a destination.
+    expect(
+      screen.getAllByRole('menuitem').map((option) => option.textContent),
+    ).toEqual(['Draft', 'Ready']);
+    await pick('Draft');
 
     await waitFor(() =>
       expect(ctx.notice).toHaveBeenCalledWith('3 records moved.'),
     );
-    // The page's own stage isn't offered as a destination.
-    expect(ctx.openModal).toHaveBeenCalledWith(
+    expect(ctx.openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        parameters: {
-          count: 3,
-          stages: [
-            { id: 'draft', name: 'Draft' },
-            { id: 'ready', name: 'Ready' },
-          ],
-        },
+        title: 'Move selected records to Draft',
+        content: '3 records will be affected. Destination: Draft.',
       }),
     );
+    expect(ctx.openModal).not.toHaveBeenCalled();
     const batches = client.items.rawBulkMoveToStage.mock.calls.map(
       ([payload]) =>
         (payload as BulkPayload).data.relationships.items.data
@@ -458,7 +547,7 @@ describe('selection and bulk actions', () => {
     expect(batches).toEqual([['r1', 'r2'], ['r3']]);
     // Moved records leave the stage.
     expect(
-      await screen.findByText('No records in this stage.'),
+      await screen.findByText(/No records are in this stage right now/),
     ).toBeInTheDocument();
   });
 
@@ -489,13 +578,12 @@ describe('selection and bulk actions', () => {
     await screen.findByText('Newest article');
     await selectRow('Newest article');
 
-    const bar = screen.getByRole('region', { name: 'Selection actions' });
-    expect(within(bar).getByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
     expect(
-      within(bar).queryByRole('button', { name: 'Delete' }),
+      screen.queryByRole('button', { name: 'Delete' }),
     ).not.toBeInTheDocument();
     expect(
-      within(bar).queryByRole('button', { name: 'Move to stage' }),
+      screen.queryByRole('button', { name: 'Move to stage' }),
     ).not.toBeInTheDocument();
   });
 
@@ -521,55 +609,30 @@ describe('selection and bulk actions', () => {
   });
 
   it('selects every matching record across pages', async () => {
-    store = Array.from({ length: 60 }, (_, index) =>
-      record(`r${index}`, 'm1', { title: `Article ${index}` }),
-    );
+    store = manyArticles(60);
     renderPage();
     await screen.findByText('60 records');
 
     await userEvent.click(
       screen.getByRole('checkbox', { name: 'Select all records on this page' }),
     );
-    const bar = screen.getByRole('region', { name: 'Selection actions' });
-    expect(within(bar).getByText('50 records selected')).toBeInTheDocument();
+    expect(screen.getByText('50 records selected')).toBeInTheDocument();
 
     await userEvent.click(
-      within(bar).getByRole('button', { name: 'Select all matching records' }),
+      screen.getByRole('button', { name: 'Select all 60 matching records' }),
     );
-    expect(within(bar).getByText('60 records selected')).toBeInTheDocument();
+    expect(screen.getByText('60 records selected')).toBeInTheDocument();
 
     await userEvent.click(
-      within(bar).getByRole('button', { name: 'Show selection' }),
+      screen.getByRole('button', { name: 'Show selection' }),
     );
     expect(
-      within(bar).getByRole('button', { name: 'Hide selection' }),
+      screen.getByRole('button', { name: 'Hide selection' }),
     ).toBeInTheDocument();
   });
 });
 
 describe('review regressions', () => {
-  beforeEach(() => {
-    seed();
-    vi.clearAllMocks();
-    client.workflows.find.mockResolvedValue({
-      id: 'wf1',
-      name: 'Editorial',
-      stages: [
-        { id: 'draft', name: 'Draft' },
-        { id: 'review', name: 'In review' },
-        { id: 'ready', name: 'Ready' },
-      ],
-    });
-  });
-
-  function deferred<T>() {
-    let resolve: (value: T) => void = () => {};
-    const promise = new Promise<T>((done) => {
-      resolve = done;
-    });
-    return { promise, resolve };
-  }
-
   it('leaves "Show selection" when the search changes', async () => {
     renderPage();
     await screen.findByText('Newest article');
@@ -580,10 +643,7 @@ describe('review regressions', () => {
     );
     expect(rowTitles()).toHaveLength(2);
 
-    await userEvent.type(
-      screen.getByRole('textbox', { name: 'Search records' }),
-      'Older',
-    );
+    await search('Older');
 
     expect(rowTitles()).toEqual(['Older article']);
     expect(
@@ -593,33 +653,27 @@ describe('review regressions', () => {
 
   it('replaces the selection with every matching record', async () => {
     store = [
-      ...Array.from({ length: 60 }, (_, i) =>
-        record(`p${i}`, 'm1', { title: `Post ${i}` }),
-      ),
+      ...manyArticles(60, 'Post'),
       record('a0', 'm2', { name: 'Author zero' }),
     ];
     renderPage();
     await screen.findByText('61 records');
-    const search = screen.getByRole('textbox', { name: 'Search records' });
 
-    await userEvent.type(search, 'Author zero');
+    await search('Author zero');
     await selectRow('Author zero');
-    await userEvent.clear(search);
-    await userEvent.type(search, 'Post');
+    await search('Post');
     await userEvent.click(
-      screen.getByRole('button', { name: 'Select all matching records' }),
+      screen.getByRole('button', { name: 'Select all 60 matching records' }),
     );
 
     expect(screen.getByText('60 records selected')).toBeInTheDocument();
   });
 
   it('returns to the list page after hiding the selection', async () => {
-    store = Array.from({ length: 60 }, (_, i) =>
-      record(`r${i}`, 'm1', { title: `Article ${i}` }),
-    );
+    store = manyArticles(60);
     renderPage();
     await screen.findByText('60 records');
-    await userEvent.click(screen.getByRole('button', { name: '2' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Go to page 2' }));
     await selectRow(rowTitles()[0] ?? '');
 
     await userEvent.click(
@@ -636,24 +690,12 @@ describe('review regressions', () => {
   it('does not offer a Status sort while filtering by status', async () => {
     renderPage();
     await screen.findByText('Newest article');
+    expect(sortHeader('Status')).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Filter by publication status' }),
-    );
-    await userEvent.click(
-      screen.getByText('Draft', { selector: 'button *, button' }),
-    );
+    await filterBy('All statuses', 'Draft');
 
-    const header = screen.getByRole('columnheader', { name: /Status/ });
-    expect(
-      within(header).queryByRole('button', { name: 'Status' }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(screen.getByRole('columnheader', { name: /Model/ })).getByRole(
-        'button',
-        { name: 'Model' },
-      ),
-    ).toBeInTheDocument();
+    expect(sortHeader('Status')).not.toBeInTheDocument();
+    expect(sortHeader('Model')).toBeInTheDocument();
   });
 
   it('shows no record count until the stage has loaded', async () => {
@@ -663,20 +705,18 @@ describe('review regressions', () => {
   });
 
   it('keeps the page-size selector after choosing a larger size', async () => {
-    store = Array.from({ length: 60 }, (_, i) =>
-      record(`r${i}`, 'm1', { title: `Article ${i}` }),
-    );
+    store = manyArticles(60);
     renderPage();
     await screen.findByText('60 records');
 
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Records per page' }),
+      screen.getByRole('combobox', { name: 'Items per page' }),
       '100',
     );
 
     expect(rowTitles()).toHaveLength(60);
     expect(
-      screen.getByRole('combobox', { name: 'Records per page' }),
+      screen.getByRole('combobox', { name: 'Items per page' }),
     ).toBeInTheDocument();
   });
 
@@ -693,14 +733,18 @@ describe('review regressions', () => {
     await selectRow('Newest article');
     await selectRow('Jane Doe');
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Move to stage' }),
-    );
+    await openMenu('Move to stage');
+    await pick('Ready');
 
     expect(
       await screen.findByRole('button', { name: 'Cancel remaining' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/0 of 2 processed/)).toBeInTheDocument();
+    // The other actions wait, and say why
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     firstJob.resolve(undefined);
     await waitFor(() =>
       expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument(),
@@ -732,69 +776,36 @@ describe('review regressions', () => {
 });
 
 describe('second review round', () => {
-  beforeEach(() => {
-    seed();
-    vi.clearAllMocks();
-    client.workflows.find.mockResolvedValue({
-      id: 'wf1',
-      name: 'Editorial',
-      stages: [
-        { id: 'draft', name: 'Draft' },
-        { id: 'review', name: 'In review' },
-        { id: 'ready', name: 'Ready' },
-      ],
-    });
-  });
-
-  async function pickStatus(label: string) {
-    const trigger = screen.getByRole('button', {
-      name: 'Filter by publication status',
-    });
-    await userEvent.click(trigger);
-    // The trigger can show the same label; pick the menu option.
-    const option = screen
-      .getAllByText(label, { selector: 'button *, button' })
-      .find((element) => !trigger.contains(element));
-    if (!option) throw new Error(`No "${label}" option`);
-    await userEvent.click(option);
-  }
-
   it('drops a Status sort when filtering by status, for good', async () => {
     renderPage();
     await screen.findByText('Newest article');
-    await userEvent.click(screen.getByRole('button', { name: 'Status' }));
-    expect(
-      screen.getByRole('columnheader', { name: /Status/ }),
-    ).toHaveAttribute('aria-sort', 'ascending');
+    await userEvent.click(sortHeader('Status') as HTMLElement);
+    // Draft, then Published, then Unpublished changes
+    expect(rowTitles()).toEqual([
+      'Jane Doe',
+      'Older article',
+      'Newest article',
+    ]);
 
-    await pickStatus('Draft');
-    await pickStatus('All statuses');
+    await filterBy('All statuses', 'Draft');
+    await filterBy('Draft', 'All statuses');
 
-    expect(
-      screen.getByRole('columnheader', { name: /Last update/ }),
-    ).toHaveAttribute('aria-sort', 'descending');
-    expect(
-      screen.getByRole('columnheader', { name: /Status/ }),
-    ).toHaveAttribute('aria-sort', 'none');
+    // Back to the default order: the most recent update first
+    expect(rowTitles()).toEqual([
+      'Newest article',
+      'Jane Doe',
+      'Older article',
+    ]);
   });
 
   it('does not offer a Model sort while filtering by model', async () => {
     renderPage();
     await screen.findByText('Newest article');
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Filter by model' }),
-    );
-    await userEvent.click(
-      screen.getByText('Author', { selector: 'button *, button' }),
-    );
+    await filterBy('All models', 'Author');
 
-    expect(
-      within(screen.getByRole('columnheader', { name: /Model/ })).queryByRole(
-        'button',
-        { name: 'Model' },
-      ),
-    ).not.toBeInTheDocument();
+    expect(sortHeader('Model')).not.toBeInTheDocument();
+    expect(rowTitles()).toEqual(['Jane Doe']);
   });
 
   it('keeps the selection view when the active filter is picked again', async () => {
@@ -805,7 +816,7 @@ describe('second review round', () => {
       screen.getByRole('button', { name: 'Show selection' }),
     );
 
-    await pickStatus('All statuses');
+    await filterBy('All statuses', 'All statuses');
 
     expect(
       screen.getByRole('button', { name: 'Hide selection' }),

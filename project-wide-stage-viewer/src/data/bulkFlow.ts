@@ -2,7 +2,6 @@
 // page. They take everything they need as arguments so the hook stays small.
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { WORKFLOW_STAGE_MODAL_ID } from '../constants';
 import {
   availableMoveDestinationIds,
   evaluateMoveSelection,
@@ -98,14 +97,15 @@ export function reportBulkResult(
 }
 
 /**
- * Asks for the destination stage, then confirms the move. Only stages that at
- * least one selected record may move to are offered.
+ * Checks the stage picked in the menu against the stages read again, then
+ * confirms the move. Only stages that at least one selected record may move
+ * to are allowed.
  */
 export async function prepareMoveOperation(args: {
   ctx: RenderPageCtx;
+  destination: WorkflowStageOption;
   stages: readonly WorkflowStageOption[];
   selectionInput: SelectionInput;
-  signal?: AbortSignal;
 }): Promise<BulkOperationRequest | null> {
   const allowedIds = new Set(
     availableMoveDestinationIds({
@@ -121,18 +121,7 @@ export async function prepareMoveOperation(args: {
     return null;
   }
 
-  const stageId = await args.ctx.openModal({
-    id: WORKFLOW_STAGE_MODAL_ID,
-    title: 'Move to stage',
-    width: 's',
-    initialHeight: 260,
-    parameters: {
-      count: args.selectionInput.items.length,
-      stages: stages.map(({ id, name }) => ({ id, name })),
-    },
-  });
-  const destination = stages.find((stage) => stage.id === stageId);
-  if (typeof stageId !== 'string' || args.signal?.aborted) return null;
+  const destination = stages.find((stage) => stage.id === args.destination.id);
   if (!destination) {
     void args.ctx.alert('The selected workflow stage is no longer available.');
     return null;

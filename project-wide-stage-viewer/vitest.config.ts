@@ -9,5 +9,8 @@ export default defineConfig({
     restoreMocks: true,
     include: ['tests/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
     css: { modules: { classNameStrategy: 'non-scoped' } },
+    // react-ui imports directories of its dependencies, which only a bundler
+    // resolves: let Vite transform it instead of Node.
+    server: { deps: { inline: ['datocms-react-ui'] } },
   },
 });

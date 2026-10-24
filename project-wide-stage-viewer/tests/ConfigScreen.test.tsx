@@ -38,6 +38,16 @@ const saved = {
   ],
 };
 
+// A button disabled with a reason keeps the focus: it has aria-disabled
+function isDisabled(element: HTMLElement): boolean {
+  return (
+    element.hasAttribute('disabled') ||
+    element.getAttribute('aria-disabled') === 'true'
+  );
+}
+
+const saveButton = () => screen.getByRole('button', { name: 'Save' });
+
 describe('ConfigScreen', () => {
   beforeEach(() => {
     client.workflows.list.mockResolvedValue(workflows);
@@ -50,12 +60,13 @@ describe('ConfigScreen', () => {
     expect(label).toHaveValue('Reviews');
     // The stage shows its live name, with the workflow beside it.
     expect(screen.getByText('In review')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Save settings' }),
-    ).toBeDisabled();
+    expect(screen.getByText('Editorial')).toBeInTheDocument();
+    // The old Font Awesome 5 name shows as its Font Awesome 6 name.
+    expect(screen.getByText('list-check')).toBeInTheDocument();
+    expect(isDisabled(saveButton())).toBe(true);
 
     await userEvent.type(label, '!');
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
+    expect(isDisabled(saveButton())).toBe(false);
   });
 
   it('saves the entries, keeping other parameters and refreshing names', async () => {
@@ -64,9 +75,9 @@ describe('ConfigScreen', () => {
 
     const label = await screen.findByLabelText('Sidebar label');
     await userEvent.clear(label);
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save settings' }),
-    );
+    // An empty label shows the name of the stage.
+    expect(label).toHaveAttribute('placeholder', 'In review');
+    await userEvent.click(saveButton());
 
     await waitFor(() =>
       expect(ctx.updatePluginParameters).toHaveBeenCalledWith({
@@ -82,7 +93,73 @@ describe('ConfigScreen', () => {
         ],
       }),
     );
-    expect(ctx.notice).toHaveBeenCalledWith('Settings successfully saved!');
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('Settings saved.'),
+    );
+  });
+
+  it('alerts when the settings cannot be saved', async () => {
+    const ctx = buildConfigCtx({
+      parameters: saved,
+      updatePluginParameters: async () => {
+        throw new Error('Offline');
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+
+    await userEvent.type(await screen.findByLabelText('Sidebar label'), '!');
+    await userEvent.click(saveButton());
+
+    await waitFor(() =>
+      expect(ctx.alert).toHaveBeenCalledWith("Couldn't save the settings."),
+    );
+    expect(ctx.notice).not.toHaveBeenCalled();
+  });
+
+  it('adds a stage that no other entry uses, with its icon', async () => {
+    const ctx = buildConfigCtx({ parameters: saved });
+    render(<ConfigScreen ctx={ctx} />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add stage' }),
+    );
+    const [, stage] = screen.getAllByLabelText('Workflow stage');
+    await userEvent.click(stage);
+    await userEvent.keyboard('{ArrowDown}');
+
+    // The stage of the first entry can't be picked twice
+    const taken = await screen.findByRole('option', { name: /In review/ });
+    expect(taken).toHaveAttribute('aria-disabled', 'true');
+    expect(taken).toHaveTextContent('Already added');
+    await userEvent.click(screen.getByRole('option', { name: 'Draft' }));
+
+    const [, icon] = screen.getAllByLabelText('Icon');
+    await userEvent.click(icon);
+    await userEvent.keyboard('{ArrowDown}');
+    await userEvent.click(await screen.findByRole('option', { name: 'flag' }));
+    // Every stage is used: no more rows to add
+    expect(
+      screen.queryByRole('button', { name: 'Add stage' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(saveButton());
+
+    await waitFor(() =>
+      expect(ctx.updatePluginParameters).toHaveBeenCalledWith({
+        otherSetting: true,
+        menuItems: [
+          expect.objectContaining({ id: 'wf.wf1.st.review', label: 'Reviews' }),
+          {
+            id: 'wf.wf1.st.draft',
+            workflowId: 'wf1',
+            workflowName: 'Editorial',
+            stageId: 'draft',
+            stageName: 'Draft',
+            icon: 'flag',
+          },
+        ],
+      }),
+    );
   });
 
   it('asks for a stage before saving a new entry', async () => {
@@ -90,13 +167,15 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Add new stage' }),
+      await screen.findByRole('button', { name: 'Add stage' }),
     );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save settings' }),
-    );
+    expect(screen.getAllByLabelText('Sidebar label')).toHaveLength(2);
+    // The error shows only after a save attempt.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    expect(screen.getByText('Field is required')).toBeInTheDocument();
+    await userEvent.click(saveButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pick a stage');
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
   });
 
@@ -105,16 +184,10 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Remove In review' }),
+      await screen.findByRole('button', { name: 'Remove row' }),
     );
-    expect(
-      screen.getByText(
-        'No stages in the sidebar yet. Add the first one below.',
-      ),
-    ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save settings' }),
-    );
+    expect(screen.getByText('No stages yet')).toBeInTheDocument();
+    await userEvent.click(saveButton());
 
     await waitFor(() =>
       expect(ctx.updatePluginParameters).toHaveBeenCalledWith({
@@ -124,17 +197,21 @@ describe('ConfigScreen', () => {
     );
   });
 
-  it('flags entries whose stage was deleted', async () => {
+  it('flags entries whose stage was deleted, and does not save them', async () => {
     client.workflows.list.mockResolvedValue([
       { ...workflows[0], stages: [{ id: 'draft', name: 'Draft' }] },
     ]);
     const ctx = buildConfigCtx({ parameters: saved });
     render(<ConfigScreen ctx={ctx} />);
 
-    const save = await screen.findByRole('button', { name: 'Save settings' });
-    await userEvent.click(save);
+    // The saved stage keeps its saved name, and its error shows at once.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This stage no longer exists',
+    );
+    expect(screen.getByText('Review (old name)')).toBeInTheDocument();
 
-    expect(screen.getByText('This stage no longer exists')).toBeInTheDocument();
+    await userEvent.click(saveButton());
+
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
   });
 
@@ -152,10 +229,13 @@ describe('ConfigScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Sidebar label')).toBeDisabled();
     expect(
-      screen.queryByRole('button', { name: 'Save settings' }),
+      screen.queryByRole('button', { name: 'Save' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Add new stage' }),
+      screen.queryByRole('button', { name: 'Add stage' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Remove row' }),
     ).not.toBeInTheDocument();
   });
 
@@ -163,18 +243,26 @@ describe('ConfigScreen', () => {
     client.workflows.list.mockResolvedValue([]);
     render(<ConfigScreen ctx={buildConfigCtx()} />);
 
+    expect(await screen.findByText('No workflows yet')).toBeInTheDocument();
     expect(
-      await screen.findByText(/This project has no workflows yet/),
+      screen.getByText(/Create a workflow in Settings, under Workflows/),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Save' }),
+    ).not.toBeInTheDocument();
   });
 
   it('offers a retry when the workflows can’t be loaded', async () => {
     client.workflows.list.mockRejectedValueOnce(new Error('Offline'));
     render(<ConfigScreen ctx={buildConfigCtx({ parameters: saved })} />);
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Try again' }),
-    );
+    expect(
+      await screen.findByText("Couldn't load the workflows"),
+    ).toBeInTheDocument();
+    const calls = client.workflows.list.mock.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByLabelText('Sidebar label')).toBeInTheDocument();
+    // It loads again, without a reload of the plugin
+    expect(client.workflows.list).toHaveBeenCalledTimes(calls + 1);
   });
 });

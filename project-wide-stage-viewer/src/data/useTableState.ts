@@ -18,6 +18,19 @@ const SORTABLE_COLUMNS: readonly ColumnId[] = [
   'id',
 ];
 
+const SCROLLING = new Set(['auto', 'scroll', 'overlay']);
+
+// The first element under the root that scrolls: the content of the Pane,
+// which has no ref of its own
+function scrollContainerIn(root: HTMLElement | null): Element | null {
+  const queue = root ? [...root.children] : [];
+  for (const element of queue) {
+    if (SCROLLING.has(getComputedStyle(element).overflowY)) return element;
+    queue.push(...element.children);
+  }
+  return null;
+}
+
 type SelectionView = {
   ids: ReadonlySet<string>;
   showing: boolean;
@@ -43,7 +56,10 @@ export function useTableState(
   const [listPage, setListPage] = useState(0);
   const [selectionPage, setSelectionPage] = useState(0);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
+  // The element around the list (Main): the list scrolls in it
   const bodyRef = useRef<HTMLElement>(null);
+  const scrollToTop = () =>
+    scrollContainerIn(bodyRef.current)?.scrollTo({ top: 0 });
 
   // A model filter that no longer applies (the model left the workflow) is dropped.
   const activeModelId = modelId && modelIds.includes(modelId) ? modelId : null;
@@ -97,7 +113,7 @@ export function useTableState(
 
   const goToPage = (next: number) => {
     setPage(next);
-    bodyRef.current?.scrollTo({ top: 0 });
+    scrollToTop();
   };
 
   function resetting<T>(setter: (value: T) => void, current: T) {
@@ -108,7 +124,7 @@ export function useTableState(
       selection.hide();
       setListPage(0);
       setSelectionPage(0);
-      bodyRef.current?.scrollTo({ top: 0 });
+      scrollToTop();
     };
   }
 
