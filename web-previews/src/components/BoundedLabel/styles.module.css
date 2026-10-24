@@ -1,0 +1,15 @@
+/* The text of the label, as the trigger's own label would show it, up to
+   about nine characters ("Production" fits): a longer name ends with an
+   ellipsis. Then the menu of the links keeps about 125px in a 560px
+   sidebar, and the address of the Visual tab about 145px at 800px, with
+   long names in both triggers. Under 800px only the frontend keeps its
+   name, and the address keeps about 75px at 560px. The box clips its text,
+   so it sits at the top of the line, where the text of the button starts. */
+.label {
+  display: inline-block;
+  max-width: 9ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}

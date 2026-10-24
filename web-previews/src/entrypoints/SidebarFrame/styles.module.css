@@ -1,0 +1,20 @@
+/* The frame has the size of the sidebar: a state with no toolbar fills it,
+   and its blank slate stays in the center */
+.state {
+  position: absolute;
+  inset: 0;
+}
+
+/* The part of the toolbar with the menu of the links can get narrower than
+   the link, thus the trigger cuts its text */
+.fill {
+  min-width: 0;
+}
+
+/* The buttons of the actions keep their width: the menu of the links gets
+   narrower first */
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+}

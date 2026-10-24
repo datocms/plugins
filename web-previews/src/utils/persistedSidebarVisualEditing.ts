@@ -1,17 +1,36 @@
 import type { Site } from 'datocms-plugin-sdk';
 import { useCallback, useState } from 'react';
 
+// Every marketplace plugin shares the origin of the plugins CDN, so the key
+// starts with the name of the plugin. Older versions wrote the key without
+// it: it is still read, until the next change writes the new one.
 function keyForSidebarVisualEditing(site: Site) {
+  return `web-previews.site.${site.id}.sidebarVisualEditing`;
+}
+
+function legacyKeyForSidebarVisualEditing(site: Site) {
   return `site.${site.id}.sidebarVisualEditing`;
 }
 
 export function readSidebarVisualEditing(site: Site): boolean {
   // Per-user preference, disabled by default (opt-in).
-  return localStorage.getItem(keyForSidebarVisualEditing(site)) === 'true';
+  try {
+    const value =
+      localStorage.getItem(keyForSidebarVisualEditing(site)) ??
+      localStorage.getItem(legacyKeyForSidebarVisualEditing(site));
+
+    return value === 'true';
+  } catch {
+    return false;
+  }
 }
 
 function saveSidebarVisualEditing(site: Site, enabled: boolean) {
-  localStorage.setItem(keyForSidebarVisualEditing(site), String(enabled));
+  try {
+    localStorage.setItem(keyForSidebarVisualEditing(site), String(enabled));
+  } catch {
+    // Storage is unavailable (blocked or full): the choice lasts this session
+  }
 }
 
 /**

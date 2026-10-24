@@ -1,33 +1,20 @@
-.button {
-  margin: 0;
-  display: flex;
+/* The glyph of an icon before its name, in the cell and in the options of
+   the menu. The name ends with an ellipsis in a narrow cell. */
+.option {
+  display: inline-flex;
+  gap: var(--spacing-s);
   align-items: center;
-  justify-content: flex-start;
-  background: transparent;
-  cursor: pointer;
-  border: 1px solid var(--color--border);
-  color: var(--color--ink);
-  width: 100%;
-  font-size: var(--font-size-s);
-  font-family: var(--monospaced-font-family);
-  padding: 10px;
-  gap: 10px;
-  transition: border 0.2s var(--material-ease);
+  max-width: 100%;
+  vertical-align: middle;
 }
 
-.button svg {
-  color: var(--color--ink-subtle);
+.option svg {
+  flex-shrink: 0;
 }
 
-.button:hover {
-  border-color: var(--color--border-hover);
-}
-
-.error {
-  border-color: var(--color--danger-soft--border);
-}
-
-.iconName {
-  font-family: var(--monospaced-font-family);
-  font-size: var(--font-size-s);
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

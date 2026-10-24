@@ -1,19 +1,67 @@
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import BlankSlate, {
+  type BlankSlateDocsLink,
+} from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Heading from 'datocms-react-ui/Heading';
+import Main from 'datocms-react-ui/Main';
 import { useEffect } from 'react';
+import { GlobeIcon } from '../../icons';
 import {
   getVisualEditingFrontends,
   normalizeParameters,
   type Parameters,
 } from '../../types';
-import { inspectorUrl } from '../../utils/urls';
+import {
+  inspectorUrl,
+  pluginSettingsUrl,
+  SETUP_GUIDE_URL,
+} from '../../utils/urls';
 import { ContentLinkContextProvider } from './ContentLinkContext';
+import styles from './styles.module.css';
 import UI from './UI';
 
 type PropTypes = {
   ctx: RenderInspectorCtx;
 };
 
+const DOCS: BlankSlateDocsLink[] = [
+  { label: 'Setup guide', href: SETUP_GUIDE_URL },
+];
+
+/**
+ * The Visual tab opened from its URL while no frontend has visual editing
+ * (the tab itself shows only when one has it): where to read how to set it
+ * up and, for the roles that can change it, the way to the plugin settings.
+ */
+function NoVisualEditingFrontend({ ctx }: PropTypes) {
+  const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
+
+  return (
+    <BlankSlate
+      placement="area"
+      titleLevel={1}
+      icon={<GlobeIcon />}
+      title="No frontend offers visual editing"
+      description="Turn on visual editing for a frontend in the plugin settings."
+      docs={DOCS}
+      actions={
+        canEditSchema ? (
+          <Button
+            tone="primary"
+            label="Open plugin settings"
+            to={pluginSettingsUrl(ctx)}
+          />
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * The Visual tab: the website of a frontend in draft mode, with the overlays
+ * that open the records of the page in the inspector panel.
+ */
 const Inspector = ({ ctx }: PropTypes) => {
   const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
@@ -45,19 +93,35 @@ const Inspector = ({ ctx }: PropTypes) => {
     }
   }, [frontendName, selectedFrontend, visualEditingFrontends, ctx]);
 
+  if (visualEditingFrontends.length === 0) {
+    return (
+      <Main className={styles.screen}>
+        <NoVisualEditingFrontend ctx={ctx} />
+      </Main>
+    );
+  }
+
   if (!selectedFrontend) {
-    // Return null during redirect, or if there are truly no frontends configured
+    // The redirect to the first frontend runs: nothing shows meanwhile
     return null;
   }
 
   return (
-    <div>
-      <Canvas ctx={ctx}>
-        <ContentLinkContextProvider frontend={selectedFrontend}>
-          <UI />
-        </ContentLinkContextProvider>
-      </Canvas>
-    </div>
+    <Main className={styles.screen}>
+      {/* The toolbar has no title: the heading names the page for the
+          readers that move from heading to heading */}
+      <Heading level={1} className="visually-hidden">
+        Visual editing
+      </Heading>
+      {/* The URL gives the first frontend only: the provider keeps the
+          frontend of the preview from then on */}
+      <ContentLinkContextProvider
+        frontends={visualEditingFrontends}
+        initialFrontend={selectedFrontend}
+      >
+        <UI />
+      </ContentLinkContextProvider>
+    </Main>
   );
 };
 

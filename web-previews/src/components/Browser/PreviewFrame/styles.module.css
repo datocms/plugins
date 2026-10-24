@@ -1,0 +1,63 @@
+/* The preview fills the content of the pane: a positioned box that does not
+   scroll. A fixed size gets a margin of the muted surface around it. */
+.frame {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: var(--color--surface-muted);
+}
+
+.fixed {
+  padding: var(--spacing-l);
+}
+
+/* The free space for the iframe, measured to scale a fixed size */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.iframe {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* The canvas of the website, not a surface of the plugin, thus no token
+     has this role. The SDK sets the CSS color-scheme of the frame's html
+     from ctx.colorScheme and the iframe inherits it, so this system color
+     is the dark canvas in the dark scheme and the white one in the light
+     scheme: a website that supports dark mode and leaves its background to
+     the browser shows on it as a visitor in dark mode sees it. A website
+     whose scheme differs from the frame's (one with only a light scheme)
+     gets its own opaque canvas from the browser, white. */
+  background-color: Canvas;
+  /* The easing of the components around it */
+  transition:
+    width 0.3s var(--material-ease),
+    height 0.3s var(--material-ease),
+    transform 0.3s var(--material-ease);
+}
+
+/* The size and the scale come from the style of the iframe. A fixed size is
+   a page that rests on the muted surface, as a card on the page: it takes
+   the shadow of a card at rest (the lifted one is for a dialog) with the
+   border of a card. The border is an outline, drawn out of the box, thus
+   the website keeps every pixel of its viewport. */
+.fixed .iframe {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  transform-origin: center center;
+  outline: 1px solid var(--color--border);
+  box-shadow: var(--shadow--resting);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iframe {
+    transition: none;
+  }
+}

@@ -1,23 +1,23 @@
-import { connect } from 'datocms-plugin-sdk';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import SidebarFrame from './entrypoints/SidebarFrame';
-import SidebarPanel from './entrypoints/SidebarPanel';
-import { render } from './utils/render';
+// The kit stylesheet loads first, thus the CSS modules of the plugin come
+// after it and win at the same specificity
 import 'datocms-react-ui/styles.css';
-import { library } from '@fortawesome/fontawesome-svg-core';
-import { fas } from '@fortawesome/free-solid-svg-icons';
+import { connect } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
+import SidebarFrame from './entrypoints/SidebarFrame';
+import SidebarPanel from './entrypoints/SidebarPanel';
 import WrongEnvironmentPanel from './entrypoints/WrongEnvironmentPanel';
+import { TEXTS } from './texts';
 import {
   getVisualEditingFrontends,
   normalizeParameters,
   type Parameters,
 } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
-
-library.add(fas);
+import { render } from './utils/render';
 
 connect({
   mainNavigationTabs(ctx) {
@@ -45,7 +45,11 @@ connect({
       : [];
   },
   renderConfigScreen(ctx) {
-    render(<ConfigScreen ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx} texts={TEXTS}>
+        <ConfigScreen ctx={ctx} />
+      </Canvas>,
+    );
   },
   itemFormSidebarPanels(_itemType, ctx) {
     const { previewLinksSidebarPanel } = normalizeParameters(
@@ -67,7 +71,11 @@ connect({
     ];
   },
   renderItemFormSidebarPanel(_sidebarPanelId, ctx) {
-    render(<SidebarPanel ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx} texts={TEXTS}>
+        <SidebarPanel ctx={ctx} />
+      </Canvas>,
+    );
   },
   itemFormSidebars(_itemType, ctx) {
     const { previewLinksSidebar } = normalizeParameters(
@@ -88,24 +96,46 @@ connect({
       },
     ];
   },
+  // The preview sidebar, the Visual tab and the panels of the inspector get
+  // the size of their frame from the host: no auto-resizer
   renderItemFormSidebar(_sidebarId, ctx) {
-    render(<SidebarFrame ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
+        <SidebarFrame ctx={ctx} />
+      </Canvas>,
+    );
   },
   renderInspector(_inspectorId, ctx) {
-    render(<Inspector ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
+        <Inspector ctx={ctx} />
+      </Canvas>,
+    );
   },
   renderInspectorPanel(panelId, ctx) {
     switch (panelId) {
       case 'CONTENT_COMING_FROM_WRONG_ENVIRONMENT':
-        return render(<WrongEnvironmentPanel ctx={ctx} />);
+        return render(
+          <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
+            <WrongEnvironmentPanel ctx={ctx} />
+          </Canvas>,
+        );
       default:
-        return render(<InspectorLoading ctx={ctx} />);
+        return render(
+          <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
+            <InspectorLoading />
+          </Canvas>,
+        );
     }
   },
   renderModal(modalId, ctx) {
     switch (modalId) {
       case 'iconPicker':
-        return render(<IconPickerModal ctx={ctx} />);
+        return render(
+          <Canvas ctx={ctx} texts={TEXTS}>
+            <IconPickerModal ctx={ctx} />
+          </Canvas>,
+        );
     }
   },
 });

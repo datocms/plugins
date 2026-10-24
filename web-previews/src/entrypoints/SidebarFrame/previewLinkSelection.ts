@@ -198,20 +198,13 @@ export function reconcilePreviewLinkSelection({
   const frontend = frontends.find(
     (candidate) => candidate.name === selectedPreviewLink.frontendName,
   );
-  const selectedInfo = sidebarVisualEditingInfo(
-    selectedPreviewLink,
-    frontend,
-  );
+  const selectedInfo = sidebarVisualEditingInfo(selectedPreviewLink, frontend);
   const selectedWasEditablePublishedOnly = Boolean(
     editModeEnabled &&
       previousPreviewLinks.length > 0 &&
       selectedInfo &&
       !selectedInfo.alreadyInDraftMode &&
-      !hasDraftPreviewLink(
-        selectedPreviewLink,
-        previousPreviewLinks,
-        frontend,
-      ),
+      !hasDraftPreviewLink(selectedPreviewLink, previousPreviewLinks, frontend),
   );
 
   const updatedSelectedPreviewLink = findUpdatedPreviewLink(

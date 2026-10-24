@@ -1,329 +1,164 @@
-import {
-  faArrowsRotate,
-  faCopy,
-  faExternalLinkAlt,
-  faEye,
-} from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BrowserWrapper } from '../../components/Browser/BrowserWrapper';
-import styles from '../../components/Browser/BrowserWrapper/styles.module.css';
-import { IframeContainer } from '../../components/Browser/IframeContainer';
-import { Toolbar } from '../../components/Browser/Toolbar';
-import { EditModeToggle } from '../../components/Browser/Toolbar/EditModeToggle';
-import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
-import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
-import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
-import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
-import { ViewportSelector } from '../../components/Browser/ViewportSelector';
-import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import type { ReactNode } from 'react';
+import { useViewport } from '../../components/Browser/viewport';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
-import {
-  normalizeParameters,
-  type Parameters,
-  type PreviewLinkWithFrontend,
-  type Viewport,
-} from '../../types';
+import { ErrorIcon, GlobeIcon } from '../../icons';
+import type { Frontend } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
+import {
+  errorMessage,
+  failedLinksNextStep,
+  type StatusByFrontend,
+  useLogFailures,
+} from '../../utils/failures';
 import { usePersistedSidebarVisualEditing } from '../../utils/persistedSidebarVisualEditing';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
-import { inspectorUrl } from '../../utils/urls';
-import { PreviewLinkSelector } from './PreviewLinkSelector';
-import {
-  hasDraftPreviewLink,
-  reconcilePreviewLinkSelection,
-  sidebarVisualEditingInfo,
-} from './previewLinkSelection';
-import { useSidebarContentLink } from './useSidebarContentLink';
+import styles from './styles.module.css';
+import { usePreviewLinkSelection } from './usePreviewLinkSelection';
+import { WebsitePreview } from './WebsitePreview';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
 };
 
-type PreviewLinkSelection = {
-  previewLinks: PreviewLinkWithFrontend[];
-  selectedPreviewLink: PreviewLinkWithFrontend | undefined;
-};
+/**
+ * A state with no toolbar: it fills the frame. The frame is a sidebar (300px
+ * wide at least), so its blank slates have the small size at every width.
+ */
+function State({ children }: { children: ReactNode }) {
+  return <div className={styles.state}>{children}</div>;
+}
 
-const SidebarFrame = ({ ctx }: PropTypes) => {
-  const { iframeAllowAttribute } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters,
-  );
+/** The frontends whose request failed, with their error */
+function failuresOf(frontends: Frontend[], statusByFrontend: StatusByFrontend) {
+  return frontends.flatMap((frontend) => {
+    const status = statusByFrontend[frontend.name];
 
-  const [reloadCounter, setReloadCounter] = useState(0);
-  const [iframeLoading, setIframeLoading] = useState(true);
-
-  const forceReload = useCallback(() => {
-    setReloadCounter((old) => old + 1);
-    setIframeLoading(true);
-  }, []);
-
-  const [customViewportSize, setCustomViewportSize] = useState<ViewportSize>({
-    width: 800,
-    height: 600,
+    return status && 'error' in status
+      ? [{ frontend: frontend.name, error: status.error }]
+      : [];
   });
+}
 
-  const [currentViewport, setCurrentViewport] = useState<
-    Viewport | 'responsive' | 'custom'
-  >('responsive');
+/**
+ * The frontends returned no link: they failed, or the record has no page. A
+ * record that isn't saved yet asks no frontend.
+ */
+function NoPreviewLinks({
+  frontends,
+  statusByFrontend,
+  saved,
+}: {
+  frontends: Frontend[];
+  statusByFrontend: StatusByFrontend;
+  saved: boolean;
+}) {
+  const failures = failuresOf(frontends, statusByFrontend);
 
-  const handleViewportChange = useCallback(
-    (viewport: Viewport | 'responsive' | 'custom') => {
-      setCurrentViewport(viewport);
-    },
-    [],
+  if (failures.length > 0) {
+    return (
+      <BlankSlate
+        placement="area"
+        small
+        error
+        icon={<ErrorIcon />}
+        title="The preview links didn't load"
+        // One line for each frontend that failed
+        code={
+          <div>
+            {failures.map(({ frontend, error }) => (
+              <div key={frontend}>{`${frontend}: ${errorMessage(error)}`}</div>
+            ))}
+          </div>
+        }
+        description={failedLinksNextStep(failures.length)}
+      />
+    );
+  }
+
+  return (
+    <BlankSlate
+      placement="area"
+      small
+      icon={<GlobeIcon />}
+      title="No preview links for this record"
+      description={
+        !saved
+          ? 'Save the record to load its preview links.'
+          : frontends.length === 1
+            ? 'The frontend returned no pages for this record.'
+            : 'The frontends returned no pages for this record.'
+      }
+    />
   );
+}
 
-  const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
-
+/**
+ * The “Website preview” sidebar of the record: the page of the record on the
+ * website, next to the form.
+ */
+const SidebarFrame = ({ ctx }: PropTypes) => {
   usePersistedSidebarWidth(ctx.site);
 
+  const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
+  useLogFailures(statusByFrontend);
+
+  // The viewport and edit mode stay while the response changes
+  const viewport = useViewport();
   const [editModeEnabled, setEditModeEnabled] =
     usePersistedSidebarVisualEditing(ctx.site);
 
-  const allPreviewLinksWithFrontend = useMemo(() => {
-    if (!statusByFrontend) return [];
+  const { previewLinks, selectedPreviewLink, selectPreviewLink } =
+    usePreviewLinkSelection({ statusByFrontend, frontends, editModeEnabled });
 
-    return Object.entries(statusByFrontend).flatMap(
-      ([frontendName, status]) => {
-        if (status && 'previewLinks' in status) {
-          return status.previewLinks.map((link) => ({
-            ...link,
-            frontendName,
-          }));
-        }
-        return [];
-      },
+  if (frontends.length === 0) {
+    return (
+      <State>
+        <PreviewSetupGuide placement="area" small />
+      </State>
     );
-  }, [statusByFrontend]);
-
-  const [previewLinkSelection, setPreviewLinkSelection] =
-    useState<PreviewLinkSelection>({
-      previewLinks: [],
-      selectedPreviewLink: undefined,
-    });
-
-  let synchronizedPreviewLinkSelection = previewLinkSelection;
-
-  if (previewLinkSelection.previewLinks !== allPreviewLinksWithFrontend) {
-    synchronizedPreviewLinkSelection = {
-      previewLinks: allPreviewLinksWithFrontend,
-      selectedPreviewLink: reconcilePreviewLinkSelection({
-        selectedPreviewLink: previewLinkSelection.selectedPreviewLink,
-        previousPreviewLinks: previewLinkSelection.previewLinks,
-        previewLinks: allPreviewLinksWithFrontend,
-        frontends,
-        editModeEnabled,
-      }),
-    };
-
-    // Guarded render-time synchronization makes React rerender this component
-    // before committing its children. The iframe therefore never sees the
-    // stale Published selection after a real Draft link appears.
-    setPreviewLinkSelection(synchronizedPreviewLinkSelection);
   }
 
-  const currentPreviewLink =
-    synchronizedPreviewLinkSelection.selectedPreviewLink;
+  // The spinner shows only before the first response: a refresh keeps the
+  // preview on screen
+  if (!statusByFrontend) {
+    return (
+      <State>
+        <BlankSlate
+          placement="area"
+          small
+          loading
+          title="Loading the preview links"
+        />
+      </State>
+    );
+  }
 
-  const handlePreviewLinkChange = useCallback(
-    (selectedPreviewLink: PreviewLinkWithFrontend) => {
-      // Remember which response the manual selection came from. If Published
-      // is chosen while Draft already exists, later refreshes must preserve it.
-      setPreviewLinkSelection({
-        previewLinks: allPreviewLinksWithFrontend,
-        selectedPreviewLink,
-      });
-    },
-    [allPreviewLinksWithFrontend],
-  );
-
-  const currentFrontend = currentPreviewLink
-    ? frontends.find((f) => f.name === currentPreviewLink.frontendName)
-    : undefined;
-
-  const currentSidebarVisualEditing = sidebarVisualEditingInfo(
-    currentPreviewLink,
-    currentFrontend,
-  );
-  const currentLinkHasDraftAlternative = hasDraftPreviewLink(
-    currentPreviewLink,
-    allPreviewLinksWithFrontend,
-    currentFrontend,
-  );
-  const currentLinkSupportsVisualEditing = Boolean(
-    currentSidebarVisualEditing && !currentLinkHasDraftAlternative,
-  );
-
-  const editModeActive = Boolean(
-    editModeEnabled && currentLinkSupportsVisualEditing,
-  );
-
-  // Keep the API-provided link selected in the menu, but show the URL that the
-  // iframe actually loads while a non-draft preview is made editable.
-  const effectivePreviewLink =
-    currentPreviewLink &&
-    editModeActive &&
-    currentSidebarVisualEditing &&
-    !currentSidebarVisualEditing.alreadyInDraftMode
-      ? {
-          ...currentPreviewLink,
-          label: `Editable preview (from ${currentPreviewLink.label})`,
-          url: currentSidebarVisualEditing.iframeUrl,
-        }
-      : currentPreviewLink;
-
-  const connectContentLink = Boolean(
-    currentSidebarVisualEditing &&
-      (editModeActive || currentSidebarVisualEditing.alreadyInDraftMode),
-  );
-
-  const { iframeRef } = useSidebarContentLink(
-    ctx,
-    connectContentLink ? editModeActive : undefined,
-  );
-
-  const editModeTooltip = currentLinkHasDraftAlternative
-    ? 'Switch to the draft version to enter edit mode'
-    : currentLinkSupportsVisualEditing
-      ? 'Click elements in the preview to open their record editor'
-      : "This preview link's frontend doesn't support visual editing";
-
-  useEffect(() => {
-    const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
-
-    if (!reloadSettings) {
-      return;
-    }
-
-    const delayInMs = reloadSettings === true ? 100 : reloadSettings.delayInMs;
-
-    setTimeout(forceReload, delayInMs);
-  }, [
-    forceReload,
-    currentPreviewLink,
-    currentPreviewLink?.reloadPreviewOnRecordUpdate,
-  ]);
+  if (!selectedPreviewLink) {
+    return (
+      <State>
+        <NoPreviewLinks
+          frontends={frontends}
+          statusByFrontend={statusByFrontend}
+          saved={Boolean(ctx.item)}
+        />
+      </State>
+    );
+  }
 
   return (
-    <Canvas ctx={ctx} noAutoResizer={true}>
-      {!statusByFrontend ? (
-        <div className={styles.spinnerWrapper}>
-          <Spinner placement="centered" size={48} />
-        </div>
-      ) : (
-        <BrowserWrapper>
-          <Toolbar>
-            <ViewportSelector
-              menuAlignment="left"
-              currentViewport={currentViewport}
-              onChange={handleViewportChange}
-            />
-            <ToolbarSlot flex withLeftBorder>
-              <PreviewLinkSelector
-                frontends={frontends}
-                statusByFrontend={statusByFrontend}
-                currentPreviewLink={currentPreviewLink}
-                effectivePreviewLink={effectivePreviewLink}
-                onChange={handlePreviewLinkChange}
-              />
-            </ToolbarSlot>
-            {currentPreviewLink && effectivePreviewLink && (
-              <>
-                <ToolbarButton
-                  icon={faArrowsRotate}
-                  tooltip="Refresh the preview"
-                  onClick={forceReload}
-                />
-                <ToolbarSlot withLeftBorder withPadding={8}>
-                  <ButtonGroup>
-                    {(() => {
-                      if (!currentPreviewLink) return null;
-
-                      if (!currentSidebarVisualEditing) return null;
-
-                      return (
-                        <ButtonGroupButton
-                          tooltip="Open in Visual"
-                          onClick={() => {
-                            ctx.navigateTo(
-                              inspectorUrl(ctx, {
-                                path: currentSidebarVisualEditing.path,
-                                frontend: currentPreviewLink.frontendName,
-                              }),
-                            );
-                          }}
-                        >
-                          <FontAwesomeIcon icon={faEye} />
-                        </ButtonGroupButton>
-                      );
-                    })()}
-                    <ButtonGroupButton
-                      tooltip="Copy URL to clipboard"
-                      onClick={() => {
-                        navigator.clipboard.writeText(
-                          effectivePreviewLink.url,
-                        );
-                        ctx.notice('URL saved in clipboard!');
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faCopy} />
-                    </ButtonGroupButton>
-                    <ButtonGroupButton
-                      tooltip="Visit URL"
-                      onClick={() => {
-                        window.open(effectivePreviewLink.url, '_blank');
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faExternalLinkAlt} />
-                    </ButtonGroupButton>
-                  </ButtonGroup>
-                </ToolbarSlot>
-                <ToolbarSlot withLeftBorder>
-                  <EditModeToggle
-                    value={editModeActive}
-                    disabled={!currentLinkSupportsVisualEditing}
-                    tooltip={editModeTooltip}
-                    onChange={setEditModeEnabled}
-                  />
-                </ToolbarSlot>
-              </>
-            )}
-          </Toolbar>
-
-          {frontends.length === 0 && <PreviewSetupGuide />}
-
-          {currentPreviewLink && effectivePreviewLink && (
-            <>
-              {currentViewport === 'custom' && (
-                <ViewportCustomizer
-                  size={customViewportSize}
-                  onChange={setCustomViewportSize}
-                />
-              )}
-
-              <IframeContainer
-                key={`${effectivePreviewLink.url}-${reloadCounter}`}
-                src={effectivePreviewLink.url}
-                iframeRef={connectContentLink ? iframeRef : undefined}
-                allow={iframeAllowAttribute}
-                sizing={
-                  currentViewport === 'responsive'
-                    ? 'responsive'
-                    : currentViewport === 'custom'
-                      ? customViewportSize
-                      : currentViewport
-                }
-                loading={iframeLoading}
-                onLoad={() => setIframeLoading(false)}
-              />
-            </>
-          )}
-        </BrowserWrapper>
-      )}
-    </Canvas>
+    <WebsitePreview
+      ctx={ctx}
+      frontends={frontends}
+      statusByFrontend={statusByFrontend}
+      previewLinks={previewLinks}
+      selectedPreviewLink={selectedPreviewLink}
+      onSelectPreviewLink={selectPreviewLink}
+      viewport={viewport}
+      editModeEnabled={editModeEnabled}
+      onEditModeChange={setEditModeEnabled}
+    />
   );
 };
 

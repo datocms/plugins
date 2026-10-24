@@ -1,0 +1,6 @@
+/* The panel frame gets its size from the host: the box fills it, so that the
+   spinner stays in its center */
+.box {
+  position: absolute;
+  inset: 0;
+}

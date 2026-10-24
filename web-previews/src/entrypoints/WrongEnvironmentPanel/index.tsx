@@ -1,8 +1,11 @@
-import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderInspectorPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import { WarningIcon } from '../../icons';
 import styles from './styles.module.css';
+
+/** How the Visual tab names the primary environment in the parameters */
+const PRIMARY_ENVIRONMENT = '__PRIMARY__';
+const PRIMARY_NAME = 'the primary environment';
 
 type Props = {
   ctx: RenderInspectorPanelCtx;
@@ -12,59 +15,54 @@ type Parameters = {
   environments: string[];
 };
 
+function sandboxName(environment: string) {
+  return `the sandbox environment “${environment}”`;
+}
+
+function environmentName(environment: string) {
+  return environment === PRIMARY_ENVIRONMENT
+    ? PRIMARY_NAME
+    : sandboxName(environment);
+}
+
+/** “a”, “a and b”, “a, b and c” */
+function joinNames(names: string[]) {
+  return names
+    .map((name, index) => {
+      if (index === 0) {
+        return name;
+      }
+      return `${index === names.length - 1 ? ' and ' : ', '}${name}`;
+    })
+    .join('');
+}
+
+/**
+ * The inspector panel of a page whose records belong to other environments
+ * than the one of the editor: click-to-edit finds them, but they are not the
+ * records that the editor changes.
+ */
 export default function WrongEnvironmentPanel({ ctx }: Props) {
   const { environments } = ctx.parameters as Parameters;
 
-  const formatEnvironmentName = (env: string) => {
-    return env === '__PRIMARY__'
-      ? 'primary environment'
-      : `sandbox environment ${env}`;
-  };
+  const pageEnvironments = joinNames(
+    (Array.isArray(environments) ? environments : []).map(environmentName),
+  );
 
   const currentEnvironment = ctx.isEnvironmentPrimary
-    ? 'primary environment'
-    : `sandbox environment ${ctx.environment}`;
+    ? PRIMARY_NAME
+    : sandboxName(ctx.environment);
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={styles.wrapper}>
-        <div className={styles.container}>
-          <div className={styles.iconWrapper}>
-            <FontAwesomeIcon
-              icon={faExclamationTriangle}
-              className={styles.icon}
-            />
-          </div>
-          <h3 className={styles.title}>Environment Mismatch Detected</h3>
-          <p className={styles.paragraph}>
-            <span className={styles.goodNews}>Good news:</span> Visual Editing
-            is working! The click-to-edit overlays are detecting records on this
-            page.
-          </p>
-          <p className={styles.paragraph}>
-            <span className={styles.however}>However,</span> the records found
-            belong to the{' '}
-            <span className={styles.environmentList}>
-              {environments.map((env, i) => (
-                <span key={env}>
-                  {i > 0 && (i === environments.length - 1 ? ' and ' : ', ')}
-                  <span className={styles.strong}>
-                    {formatEnvironmentName(env)}
-                  </span>
-                </span>
-              ))}
-            </span>
-            , but you're currently viewing from the{' '}
-            <span className={styles.strong}>{currentEnvironment}</span>.
-          </p>
-          <p className={styles.paragraph}>
-            This usually happens when your website is displaying content from
-            one environment while you're editing in another. To fix this, make
-            sure your website's draft mode is loading content from the{' '}
-            <span className={styles.strong}>{currentEnvironment}</span>.
-          </p>
-        </div>
-      </div>
-    </Canvas>
+    <div className={styles.box}>
+      <BlankSlate
+        placement="area"
+        small
+        error
+        icon={<WarningIcon />}
+        title="Records from another environment"
+        description={`Click-to-edit works, but the page shows records from ${pageEnvironments}, and you're working in ${currentEnvironment}. Set the draft mode of the website to load content from ${currentEnvironment}.`}
+      />
+    </div>
   );
 }

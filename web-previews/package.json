@@ -24,24 +24,19 @@
     "entryPoint": "dist/index.html"
   },
   "dependencies": {
-    "@floating-ui/react": "^0.27.19",
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
-    "@fortawesome/react-fontawesome": "^3.3.1",
     "@paralleldrive/cuid2": "^2.3.1",
     "@types/lodash-es": "^4.17.12",
-    "datocms-plugin-sdk": "^2.5.0",
-    "datocms-react-ui": "^2.5.1",
-    "final-form": "^4.20.10",
-    "final-form-arrays": "^3.1.0",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.1",
     "lodash-es": "^4.17.23",
     "penpal": "^4.1.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-final-form": "^6.5.9",
-    "react-final-form-arrays": "^3.1.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-merge-refs": "^3.0.2",
     "use-deep-compare": "1.1.0",
-    "usehooks-ts": "^2.16.0"
+    "usehooks-ts": "^3.1.1"
   },
   "scripts": {
     "build": "tsc -b && vite build",
@@ -52,8 +47,8 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@types/react": "^18.3.28",
-    "@types/react-dom": "^18.3.7",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "cross-env": "^7.0.3",
     "globals": "^15.15.0",
@@ -61,6 +56,11 @@
     "vite": "^7.3.1"
   },
   "type": "module",
+  "overrides": {
+    "datocms-react-ui": {
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
+    }
+  },
   "allowScripts": {
     "esbuild": true,
     "fsevents": true

@@ -1,0 +1,101 @@
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import {
+  CustomSizeIcon,
+  DisplayIcon,
+  FitIcon,
+  iconByName,
+} from '../../../icons';
+import { normalizeParameters, type Parameters } from '../../../types';
+import { BoundedLabel } from '../../BoundedLabel';
+import { isSameChoice, type ViewportChoice } from '../viewport';
+
+type Props = {
+  value: ViewportChoice;
+  onChange: (choice: ViewportChoice) => void;
+  /** The option that fits the page to the free space: "Fit to sidebar" */
+  fitLabel: string;
+  /**
+   * The trigger shows only the icon of the choice, in a narrow frame: the
+   * name of the choice is then its tooltip
+   */
+  iconOnly: boolean;
+};
+
+/**
+ * The icon and the short name of a choice, for the trigger. A preset has the
+ * name that the settings give it, which can be long.
+ */
+function describe(choice: ViewportChoice) {
+  if (choice === 'responsive') {
+    return { icon: FitIcon, label: 'Fit', named: false };
+  }
+
+  if (choice === 'custom') {
+    return { icon: CustomSizeIcon, label: 'Custom size', named: false };
+  }
+
+  return {
+    icon: iconByName(choice.icon) ?? DisplayIcon,
+    label: choice.name,
+    named: true,
+  };
+}
+
+/**
+ * The menu of the sizes of the preview: fit to the free space, the presets
+ * of the plugin settings, or a size that the user types.
+ */
+export function ViewportMenu({ value, onChange, fitLabel, iconOnly }: Props) {
+  const ctx = useCtx();
+  const { defaultViewports } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
+  const { icon, label, named } = describe(value);
+
+  return (
+    <Dropdown
+      triggerComponent={ButtonTrigger}
+      tone="ghost"
+      icon={icon}
+      // Icon-only, the name is the accessible name and the tooltip. With
+      // its label, the name of a preset stops at a short width, so the main
+      // control of the bar keeps its width
+      label={iconOnly || !named ? label : <BoundedLabel>{label}</BoundedLabel>}
+      iconOnly={iconOnly}
+    >
+      {/* The trigger is near the right end of its bar, so the menu opens
+          from its right edge: the kit flips a menu that has no space, but
+          doesn't shift it */}
+      <Dropdown.Menu placement="bottom-end">
+        <Dropdown.Option
+          active={value === 'responsive'}
+          onPick={() => onChange('responsive')}
+        >
+          {fitLabel}
+        </Dropdown.Option>
+        {defaultViewports.map((viewport) => (
+          <Dropdown.Option
+            key={`${viewport.name} ${viewport.width}×${viewport.height} ${viewport.icon}`}
+            active={isSameChoice(value, viewport)}
+            onPick={() => onChange(viewport)}
+          >
+            <EntityRow
+              layout="row"
+              title={viewport.name}
+              aside={`${viewport.width} × ${viewport.height}`}
+            />
+          </Dropdown.Option>
+        ))}
+        <Dropdown.Option
+          active={value === 'custom'}
+          onPick={() => onChange('custom')}
+        >
+          Custom size
+        </Dropdown.Option>
+      </Dropdown.Menu>
+    </Dropdown>
+  );
+}

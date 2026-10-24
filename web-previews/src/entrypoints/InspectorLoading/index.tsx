@@ -1,14 +1,19 @@
-import type { RenderInspectorPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import styles from './styles.module.css';
 
-type Props = {
-  ctx: RenderInspectorPanelCtx;
-};
-
-export default function InspectorLoading({ ctx }: Props) {
+/**
+ * The inspector panel while the Visual tab has nothing else to show in it:
+ * the page reports its records once it connects
+ */
+export default function InspectorLoading() {
   return (
-    <Canvas ctx={ctx}>
-      <Spinner placement="centered" />
-    </Canvas>
+    <div className={styles.box}>
+      <BlankSlate
+        placement="area"
+        small
+        loading
+        title="Loading the records of the page"
+      />
+    </div>
   );
 }

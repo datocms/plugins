@@ -1,0 +1,25 @@
+/* The parts of the bar of the Visual tab, in one row. When the address shows
+   its error under the field, the bar grows, and the other parts stay at the
+   top, in line with the field (as the filter form of the Toolbar page does).
+   The padding keeps the space above the field that the bar has without the
+   error: a field is a little lower than the bar. */
+.row {
+  display: flex;
+  flex: 1;
+  gap: var(--spacing-m);
+  align-items: flex-start;
+  min-width: 0;
+  padding-block: max(
+    0px,
+    calc((var(--Toolbar-height) - var(--control-height)) / 2)
+  );
+}
+
+/* A part that isn't the address: the height of a field of one line, with
+   its control in the middle */
+.cell {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--control-height);
+}

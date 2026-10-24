@@ -1,91 +1,102 @@
-import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { fas, type IconName } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas, TextInput } from 'datocms-react-ui';
-import { snakeCase } from 'lodash-es';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RawButton from 'datocms-react-ui/RawButton';
+import StringInput from 'datocms-react-ui/StringInput';
 import { useMemo, useState } from 'react';
+import {
+  ICON_RESULTS_LIMIT,
+  iconByName,
+  SearchIcon,
+  searchIconNames,
+} from '../../../icons';
+import { useFrameSizedToContent } from '../../../utils/frame';
 import s from './modal-styles.module.css';
 
-export function IconPickerModal({ ctx }: { ctx: RenderModalCtx }) {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Get all icon names
-  const allIcons = useMemo(
-    () =>
-      Object.keys(fas)
-        .map((iconName) =>
-          snakeCase(iconName.replace(/^fa/, '')).replace(/_/g, '-'),
-        )
-        .sort(),
-    [],
-  );
-
-  // Filter icons based on search query
-  const allFilteredIcons = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allIcons;
-    }
-    const query = searchQuery.toLowerCase();
-    return allIcons.filter((iconName) => iconName.includes(query));
-  }, [allIcons, searchQuery]);
-
-  const filteredIcons = allFilteredIcons.slice(0, 36);
-  const hasMoreResults = allFilteredIcons.length > 36;
-
-  const handleIconClick = (iconName: string) => {
-    ctx.resolve(iconName);
-  };
+function IconTile({
+  name,
+  current,
+  onPick,
+}: {
+  name: string;
+  current: boolean;
+  onPick: (name: string) => void;
+}) {
+  const Glyph = iconByName(name);
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.container}>
-        <div className={s.searchWrapper}>
-          <TextInput
-            id="icon-search"
-            name="icon-search"
-            placeholder="Search icons..."
-            value={searchQuery}
-            onChange={(newValue) => setSearchQuery(newValue)}
-          />
+    <RawButton
+      className={s.tile}
+      current={current ? 'true' : undefined}
+      onClick={() => onPick(name)}
+    >
+      {Glyph && <Glyph />}
+      <span className={s.name}>{name}</span>
+    </RawButton>
+  );
+}
 
-          <div className={s.resultsInfo}>
-            Showing {filteredIcons.length} of {allFilteredIcons.length} icon
-            {allFilteredIcons.length !== 1 ? 's' : ''}
-            {hasMoreResults && ' (refine your search to see more)'}
-          </div>
-        </div>
+/**
+ * The modal that picks the icon of a viewport, by its name. The settings
+ * now pick the icon in its cell of the list; the modal id 'iconPicker' stays
+ * registered, so a caller that opens it still gets a name back.
+ */
+export function IconPickerModal({ ctx }: { ctx: RenderModalCtx }) {
+  useFrameSizedToContent();
+  const [query, setQuery] = useState<string | null>('');
+  const searchQuery = query ?? '';
+  const currentValue =
+    typeof ctx.parameters.currentValue === 'string'
+      ? ctx.parameters.currentValue
+      : '';
 
+  const matches = useMemo(() => searchIconNames(searchQuery), [searchQuery]);
+
+  const shownIcons = matches.slice(0, ICON_RESULTS_LIMIT);
+  const count = matches.length;
+
+  return (
+    <>
+      <FieldWrapper
+        label="Search icons"
+        labelExtras={{ hidden: true }}
+        hint={
+          count > ICON_RESULTS_LIMIT
+            ? {
+                id: 'webPreviews.iconCountCapped',
+                values: { count, limit: ICON_RESULTS_LIMIT },
+              }
+            : { id: 'webPreviews.iconCount', values: { count } }
+        }
+      >
+        <StringInput
+          // The modal opens to search: its only input takes the focus
+          autoFocus
+          placeholder="mobile"
+          value={query}
+          onChange={setQuery}
+        />
+      </FieldWrapper>
+      {shownIcons.length > 0 ? (
         <div className={s.grid}>
-          {filteredIcons.map((iconName) => {
-            const definition = findIconDefinition({
-              prefix: 'fas',
-              iconName: iconName as IconName,
-            });
-
-            return (
-              <button
-                key={iconName}
-                type="button"
-                className={s.iconButton}
-                onClick={() => handleIconClick(iconName)}
-                title={iconName}
-              >
-                {definition && (
-                  <FontAwesomeIcon icon={definition} className={s.icon} />
-                )}
-                <span className={s.iconLabel}>{iconName}</span>
-              </button>
-            );
-          })}
+          {shownIcons.map((iconName) => (
+            <IconTile
+              key={iconName}
+              name={iconName}
+              current={iconName === currentValue}
+              onPick={(name) => ctx.resolve(name)}
+            />
+          ))}
         </div>
-
-        {filteredIcons.length === 0 && (
-          <div className={s.noResults}>
-            No icons found matching "{searchQuery}"
-          </div>
-        )}
-      </div>
-    </Canvas>
+      ) : (
+        // The search field is above it: a frame sets it apart (section)
+        <BlankSlate
+          placement="section"
+          small
+          icon={<SearchIcon />}
+          title={`No icons match “${searchQuery}”`}
+        />
+      )}
+    </>
   );
 }

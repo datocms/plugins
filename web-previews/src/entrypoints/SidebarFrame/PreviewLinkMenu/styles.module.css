@@ -1,0 +1,38 @@
+/* The menu fills its part of the toolbar, and gets narrower than the link:
+   the text of the trigger then ends with an ellipsis */
+.dropdown {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The layout of the trigger (a DropdownTriggerButton with the kit's
+   "button--ghost-inline", which draws its surface). The text takes the free
+   width and the chevron stays at the right end. The text clips, not the
+   button: the surface is out of the box of the button. The trigger keeps the
+   height of its line, as the textual triggers of the kit: the toolbar
+   centers it next to its buttons, and it pins no height of its own. */
+.trigger {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  text-align: start;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label {
+  font-weight: var(--font-weight-strong);
+}
+
+.url {
+  font-weight: var(--font-weight-regular);
+  color: var(--color--ink-subtle);
+}

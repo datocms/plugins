@@ -1,62 +1,11 @@
-.group {
-  border: 1px solid var(--color--border);
-  padding: var(--spacing-l);
-  border-radius: 4px;
-  transition: all 0.3s cubic-bezier(0.55, 0, 0.1, 1);
-}
+/* Placement only: the kit components draw themselves. */
 
-.group:hover {
-  border-color: var(--color--border-hover);
-}
-
-.deletableItemAction {
-  padding-top: var(--spacing-l);
-  display: flex;
-  justify-content: flex-end;
-}
-
-.headerGrid {
-  display: flex;
-  gap: var(--spacing-m);
-}
-
-.headerGrid > div {
-  flex: 1;
-}
-
-.headerGrid label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
-.error {
-  color: var(--color--danger-soft--ink);
-  margin-bottom: var(--spacing-m);
-}
-
-.viewportGrid {
-  display: grid;
-  align-items: flex-start;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--spacing-m);
-}
-
-.featureSection {
-  margin-top: var(--spacing-l);
-  padding: var(--spacing-l);
-  border-radius: 3px;
-  border: 1px solid var(--color--border);
-}
-
-.indentFields {
-  padding-left: var(--spacing-xl);
-  margin-left: var(--spacing-m);
-  border-left: 4px solid var(--color--border);
+/*
+ * The page in its frame. The frame sizes itself to the page (the SDK's
+ * auto-resizer), so the page can't also take a share of the frame's height
+ * (the kit's 60vh minimum, meant for a full-height area): the frame would
+ * keep part of its old height after an item or a section closes.
+ */
+.page {
+  min-height: 0;
 }

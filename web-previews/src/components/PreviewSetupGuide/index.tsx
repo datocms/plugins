@@ -1,57 +1,52 @@
-import { Button, ButtonLink, useCtx } from 'datocms-react-ui';
-import styles from './styles.module.css';
+import BlankSlate, {
+  type BlankSlateDocsLink,
+} from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { GlobeIcon } from '../../icons';
+import { pluginSettingsUrl, SETUP_GUIDE_URL } from '../../utils/urls';
 
-const setupGuideUrl =
-  'https://github.com/datocms/plugins/tree/master/web-previews#installation-and-configuration';
+const DOCS: BlankSlateDocsLink[] = [
+  { label: 'Setup guide', href: SETUP_GUIDE_URL },
+];
+
 type Props = {
-  compact?: boolean;
+  /**
+   * `area` fills a positioned parent that has a height (the preview
+   * sidebar). `inline` is the only content of a frame that sizes itself (the
+   * record sidebar panel).
+   */
+  placement: 'area' | 'inline';
+  /** The small size, for a narrow frame */
+  small?: boolean;
 };
 
-export function PreviewSetupGuide({ compact = false }: Props) {
+/**
+ * What the record sidebar panel and the preview sidebar show while no
+ * frontend returns preview links: where to read how to set one up and, for
+ * the roles that can change it, the way to the plugin settings.
+ */
+export function PreviewSetupGuide({ placement, small }: Props) {
   const ctx = useCtx();
+  const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
 
   return (
-    <div className={compact ? styles.compact : styles.wrapper}>
-      <div className={styles.content}>
-        <h2 className={styles.title}>No preview available</h2>
-        <p>
-          Web Previews is installed, but no website is currently available to
-          preview
-        </p>
-        <p>
-          Your web developer can set up the endpoint that returns preview URLs
-          for your records
-          <br />
-          The setup guide below explains how
-        </p>
-
-        <div className={styles.actions}>
-          <ButtonLink
-            href={setupGuideUrl}
-            target="_blank"
-            buttonType="muted"
-            buttonSize="s"
-          >
-            Setup guide
-          </ButtonLink>
-          {ctx.currentRole.meta.final_permissions.can_edit_schema && (
-            <Button
-              buttonType="primary"
-              buttonSize="s"
-              onClick={() => {
-                const environmentPrefix = ctx.isEnvironmentPrimary
-                  ? ''
-                  : `/environments/${ctx.environment}`;
-                ctx.navigateTo(
-                  `${environmentPrefix}/configuration/plugins/${ctx.plugin.id}/edit`,
-                );
-              }}
-            >
-              Plugin settings
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    <BlankSlate
+      placement={placement}
+      small={small}
+      icon={<GlobeIcon />}
+      title="No website to preview"
+      description="Web Previews is installed, but no frontend returns preview links yet. A developer can add one in the plugin settings."
+      docs={DOCS}
+      actions={
+        canEditSchema ? (
+          <Button
+            tone="primary"
+            label="Open plugin settings"
+            to={pluginSettingsUrl(ctx)}
+          />
+        ) : undefined
+      }
+    />
   );
 }

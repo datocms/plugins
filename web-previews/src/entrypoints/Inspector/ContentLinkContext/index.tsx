@@ -1,6 +1,6 @@
 import { createId } from '@paralleldrive/cuid2';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { useCtx } from 'datocms-react-ui';
+import { useCtx } from 'datocms-react-ui/Canvas';
 import type { AsyncMethodReturns } from 'penpal';
 import {
   createContext,
@@ -46,6 +46,11 @@ interface ContextValue {
       }
     | { type: 'error'; reason: 'no-ping' | 'failed-connection' };
 
+  /** The frontend whose website the preview shows */
+  frontend: Frontend;
+  /** Opens the website of another frontend, at its initial path */
+  changeFrontend: (frontend: Frontend) => void;
+
   iframeRef: (element: HTMLIFrameElement | null) => void;
   iframeState: IframeState;
   setIframeState: (state: IframeState) => void;
@@ -68,7 +73,10 @@ export const useContentLink = () => {
 
 type Props = {
   children: ReactNode;
-  frontend: Frontend;
+  /** The frontends with visual editing, in the order of the settings */
+  frontends: Frontend[];
+  /** The frontend that the URL of the Visual tab names when the tab opens */
+  initialFrontend: Frontend;
 };
 
 const editUrlRegExp =
@@ -76,8 +84,26 @@ const editUrlRegExp =
 
 const PING_TIMEOUT_MS = 25_000;
 
-export function ContentLinkContextProvider({ children, frontend }: Props) {
+export function ContentLinkContextProvider({
+  children,
+  frontends,
+  initialFrontend,
+}: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
+
+  // The frontend of the preview lives here, and the URL only records it. The
+  // website, the frontend menu and every URL that the panel sync writes thus
+  // name the same frontend, also while the host is still applying a
+  // navigation: a frontend read back from the URL would flip under the
+  // website when a navigation lands late, and each flip would write the
+  // other name, without end.
+  const [frontendName, setFrontendName] = useState(initialFrontend.name);
+  // A frontend removed from the settings while the tab is open gives way to
+  // the first one
+  const frontend =
+    frontends.find((f) => f.name === frontendName) ??
+    frontends[0] ??
+    initialFrontend;
 
   if (!frontend.visualEditing) {
     throw new Error(
@@ -94,6 +120,10 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     InspectorPanelSyncState | undefined
   >(undefined);
   const lastSyncedInspectorPanelKeyRef = useRef<string | undefined>(undefined);
+  // The last URL that the Visual tab asked the host for, which the panel sync
+  // doesn't push again: after a frontend change, the first page that the new
+  // website reports is that URL already
+  const lastNavigatedUrlRef = useRef<string | undefined>(undefined);
   const lastFlashStateRef = useRef<{
     clickToEditEnabled: boolean;
     connectionReady: boolean;
@@ -269,12 +299,15 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       );
     }
 
-    ctx.navigateTo(
-      inspectorUrl(ctx, {
-        path: inspectorPanelSyncState.path,
-        frontend: frontend.name,
-      }),
-    );
+    const url = inspectorUrl(ctx, {
+      path: inspectorPanelSyncState.path,
+      frontend: frontend.name,
+    });
+
+    if (lastNavigatedUrlRef.current !== url) {
+      lastNavigatedUrlRef.current = url;
+      ctx.navigateTo(url);
+    }
   }, [frontend.name, inspectorPanelSyncState, ctx]);
 
   useEffect(() => {
@@ -316,7 +349,36 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     setIframeState({ path: lastVisitedPathRef.current, key: createId() });
   }, []);
 
+  // Another frontend starts over: its website opens at its initial path, and
+  // the panel sync waits for that website to report its first page. Thus no
+  // URL pairs the page of the old website with the name of the new frontend.
+  const changeFrontend = (nextFrontend: Frontend) => {
+    const nextVisualEditing = nextFrontend.visualEditing ?? {
+      enableDraftModeUrl: '',
+      initialPath: '/',
+    };
+    const path = normalizePathForVisualEditing({
+      path: nextVisualEditing.initialPath,
+      draftModeUrl: nextVisualEditing.enableDraftModeUrl,
+      fallbackPath: '/',
+    });
+    const url = inspectorUrl(ctx, { path, frontend: nextFrontend.name });
+
+    setFrontendName(nextFrontend.name);
+    setContentLinkState(undefined);
+    setInspectorPanelSyncState(undefined);
+    lastPingTimeRef.current = Date.now();
+    setIsPingActive(true);
+    lastVisitedPathRef.current = path;
+    setIframeState({ path, key: createId() });
+    lastNavigatedUrlRef.current = url;
+    ctx.navigateTo(url);
+  };
+
   const value: ContextValue = {
+    frontend,
+    changeFrontend,
+
     iframeRef,
 
     iframeState,

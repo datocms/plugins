@@ -1,12 +1,16 @@
-import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import classNames from 'classnames';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
-import type React from 'react';
-import { useEffect, useState } from 'react';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import InputGroup from 'datocms-react-ui/InputGroup';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import {
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { Frontend } from '../../../../types';
 import { useContentLink } from '../../ContentLinkContext';
-import { FrontendSelector } from './FrontendSelector';
 import styles from './styles.module.css';
 
 export function toCompletePath(urlOrPath: string) {
@@ -31,19 +35,37 @@ function isRelativeUrl(str: string) {
   }
 }
 
-interface AddressBarProps {
-  onRefresh: () => void;
-  frontend: Frontend;
-  frontends: Frontend[];
-  onFrontendChange?: (frontend: Frontend) => void;
+/**
+ * The page that the website opens for the text of the field: a relative path
+ * as it is, the path of a full URL of the website, or nothing for a URL of
+ * another origin or a text that is not a URL.
+ */
+function pathToOpen(text: string, origin: string): string | undefined {
+  if (isRelativeUrl(text)) {
+    return text;
+  }
+
+  try {
+    return new URL(text).origin === origin ? toCompletePath(text) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-function AddressBar({
-  onRefresh,
-  frontend,
-  frontends,
-  onFrontendChange,
-}: AddressBarProps) {
+/** The path of a full URL of the website, for a paste in the field */
+function pathOfWebsiteUrl(text: string, origin: string): string | undefined {
+  return isRelativeUrl(text) ? undefined : pathToOpen(text, origin);
+}
+
+interface AddressBarProps {
+  frontend: Frontend;
+}
+
+/**
+ * The address of the page that the preview shows: the origin of the website
+ * is fixed, and the user types the path of another page. Enter opens it.
+ */
+function AddressBar({ frontend }: AddressBarProps) {
   const enableDraftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
 
   if (!enableDraftModeUrl) {
@@ -56,101 +78,128 @@ function AddressBar({
 
   const { contentLink, iframeState } = useContentLink();
 
+  const connectedPath =
+    contentLink.type === 'connected'
+      ? toCompletePath(contentLink.state.path)
+      : undefined;
+
+  // The last page that the website said it shows, for the page that the
+  // preview asked it to load. The user can navigate in the website, so the
+  // iframe shows that page, not the one that the preview loaded.
+  const lastConnectedRef = useRef<
+    { loadedPath: string; path: string } | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (connectedPath !== undefined) {
+      lastConnectedRef.current = {
+        loadedPath: iframeState.path,
+        path: connectedPath,
+      };
+    }
+  }, [connectedPath, iframeState.path]);
+
+  // While the page isn't connected (it connects again, or it stopped
+  // answering), the field keeps the last page that the website showed. A new
+  // load of another page shows that page until the website answers.
+  const lastConnected = lastConnectedRef.current;
   const currentPath =
-    contentLink.type === 'connecting'
-      ? iframeState.path
-      : contentLink.type === 'connected'
-        ? toCompletePath(contentLink.state.path)
-        : '/';
+    connectedPath ??
+    (lastConnected?.loadedPath === iframeState.path
+      ? lastConnected.path
+      : iframeState.path);
+
+  const disabled = contentLink.type !== 'connected';
 
   const [inputValue, setInputValue] = useState(currentPath);
   const [hasError, setHasError] = useState(false);
 
+  // The field follows the page when the website navigates
   useEffect(() => {
-    setInputValue(new URL(currentPath, visualEditingOrigin).toString());
+    setInputValue(currentPath);
     setHasError(false);
-  }, [visualEditingOrigin, currentPath]);
+  }, [currentPath]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // A field that gets disabled (the page stopped answering) drops what the
+  // user typed, and shows the page again
+  useEffect(() => {
+    if (disabled) {
+      setInputValue(currentPath);
+      setHasError(false);
+    }
+  }, [disabled, currentPath]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
     if (contentLink.type !== 'connected') {
       return;
     }
 
-    // Check if input is a full URL
-    if (!isRelativeUrl(inputValue)) {
-      try {
-        const inputUrl = new URL(inputValue);
-        const domainUrl = new URL(visualEditingOrigin);
+    const path = pathToOpen(inputValue, visualEditingOrigin);
 
-        // Check if the domain matches
-        if (inputUrl.origin === domainUrl.origin) {
-          // Correct domain - extract the path and navigate
-          const path = toCompletePath(inputValue);
-          setHasError(false);
-          await contentLink.methods.navigateTo({ path });
-        } else {
-          // Wrong domain - mark as error
-          setHasError(true);
-        }
-      } catch {
-        // Invalid URL - mark as error
-        setHasError(true);
-      }
-    } else {
-      // Relative path - navigate directly
+    if (path === undefined) {
+      setHasError(true);
+      return;
+    }
+
+    setHasError(false);
+    await contentLink.methods.navigateTo({ path });
+  };
+
+  // Escape is a key of the field itself, as the keys of a text editor: the
+  // field handles it and says so, thus no action of the page or of the host
+  // runs with the same key
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setInputValue(currentPath);
       setHasError(false);
-      await contentLink.methods.navigateTo({ path: inputValue });
+      event.currentTarget.blur();
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setInputValue(new URL(currentPath, visualEditingOrigin).toString());
-      setHasError(false);
-      (e.target as HTMLInputElement).blur();
+  // A pasted URL of the website keeps only its page, since the origin shows
+  // before the field
+  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const path = pathOfWebsiteUrl(
+      event.clipboardData.getData('text').trim(),
+      visualEditingOrigin,
+    );
+
+    if (path !== undefined) {
+      event.preventDefault();
+      setInputValue(path);
     }
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className={classNames(styles.root, hasError && styles.error)}
-    >
-      <div className={styles.controls}>
-        <Tooltip>
-          <TooltipTrigger>
-            <button
-              type="button"
-              onClick={onRefresh}
-              className={styles.refreshButton}
-            >
-              <FontAwesomeIcon icon={faArrowsRotate} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Reload page</TooltipContent>
-        </Tooltip>
-        {frontends.length > 1 && onFrontendChange && (
-          <FrontendSelector
-            frontends={frontends}
-            currentFrontend={frontend}
-            onChange={onFrontendChange}
+    <Toolbar.Fill className={styles.fill}>
+      <form className={styles.form} onSubmit={handleSubmit}>
+        {/* The input names itself, so the field has no label: a hidden one
+            would still take room above the box, and the box would sit lower
+            than the buttons of the bar */}
+        <FieldWrapper
+          error={
+            hasError ? `Enter a page of ${visualEditingOrigin}` : undefined
+          }
+        >
+          <InputGroup
+            aria-label="Page"
+            pre={visualEditingOrigin}
+            code
+            placeholder="/"
+            value={inputValue}
+            onChange={(value) => setInputValue(value ?? '')}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            autoComplete="off"
+            spellCheck={false}
           />
-        )}
-      </div>
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => {
-          setInputValue(e.target.value);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="/"
-        className={styles.input}
-        disabled={contentLink.type !== 'connected'}
-      />
-    </form>
+        </FieldWrapper>
+      </form>
+    </Toolbar.Fill>
   );
 }
 

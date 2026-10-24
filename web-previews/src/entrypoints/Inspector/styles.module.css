@@ -1,0 +1,6 @@
+/* The main content fills the frame of the Visual tab: the pane and the
+   blank slate fill a positioned parent that has a height */
+.screen {
+  position: absolute;
+  inset: 0;
+}
