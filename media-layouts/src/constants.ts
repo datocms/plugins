@@ -6,20 +6,20 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
   { value: '4:3', label: '4:3 (Standard)', ratio: 4 / 3 },
   { value: '1:1', label: '1:1 (Square)', ratio: 1 },
   { value: '3:2', label: '3:2 (Photo)', ratio: 3 / 2 },
-  { value: '2:3', label: '2:3 (Portrait Photo)', ratio: 2 / 3 },
+  { value: '2:3', label: '2:3 (Portrait photo)', ratio: 2 / 3 },
   { value: '21:9', label: '21:9 (Ultrawide)', ratio: 21 / 9 },
-  { value: '9:16', label: '9:16 (Portrait/Mobile)', ratio: 9 / 16 },
-  { value: '3:4', label: '3:4 (Portrait Standard)', ratio: 3 / 4 },
-  { value: 'custom', label: 'Custom...', ratio: null },
+  { value: '9:16', label: '9:16 (Portrait, mobile)', ratio: 9 / 16 },
+  { value: '3:4', label: '3:4 (Portrait)', ratio: 3 / 4 },
+  { value: 'custom', label: 'Custom ratio', ratio: null },
 ];
 
 export const WIDTH_OPTIONS: WidthOption[] = [
-  { value: 'original', label: 'Original (max)' },
-  { value: 320, label: '320px (Mobile small)' },
+  { value: 'original', label: 'Original' },
+  { value: 320, label: '320px (Small mobile)' },
   { value: 640, label: '640px (Mobile)' },
   { value: 768, label: '768px (Tablet)' },
   { value: 1024, label: '1024px (Tablet landscape)' },
-  { value: 1280, label: '1280px (Desktop small)' },
+  { value: 1280, label: '1280px (Small desktop)' },
   { value: 1920, label: '1920px (Full HD)' },
   { value: 2560, label: '2560px (2K)' },
   { value: 3840, label: '3840px (4K)' },
@@ -31,9 +31,21 @@ export const DEFAULT_WIDTH = 1920;
 export const FIELD_EXTENSION_ID = 'mediaLayouts';
 
 export const MODE_OPTIONS = [
-  { value: 'single', label: 'Single asset' },
-  { value: 'multiple', label: 'Multiple assets (gallery)' },
-  { value: 'layout', label: 'Layout (predefined slots)' },
+  {
+    value: 'single',
+    label: 'Single asset',
+    hint: 'One asset, with its own crop and width.',
+  },
+  {
+    value: 'multiple',
+    label: 'Gallery',
+    hint: 'Any number of assets, each with its own crop and width.',
+  },
+  {
+    value: 'layout',
+    label: 'Layout',
+    hint: 'Slots that you define, each with its own crop and width.',
+  },
 ] as const;
 
 export const COLUMN_OPTIONS = [

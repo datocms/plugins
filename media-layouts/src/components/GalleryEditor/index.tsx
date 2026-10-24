@@ -1,13 +1,17 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Button } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import Pill from 'datocms-react-ui/Pill';
 import { useCallback } from 'react';
+import { useCountLabel } from '../../hooks/useCountLabel';
+import { AddIcon } from '../../icons';
 import type {
   MediaLayoutItem,
   MultipleFieldValue,
   WidthOption,
 } from '../../types';
 import { calculateOutputHeight } from '../../utils/aspectRatio';
-import AssetCard from '../AssetCard';
+import AssetItem, { AssetGrid } from '../AssetCard';
 import s from './styles.module.css';
 
 type Props = {
@@ -19,6 +23,16 @@ type Props = {
   enableLazyLoading: boolean;
 };
 
+/** The React key of an item */
+function itemKey(item: MediaLayoutItem, index: number): string {
+  return item._itemId ?? `${item.uploadId}-${index}`;
+}
+
+/**
+ * The assets of a gallery field: a grid of cards, each with its crop, width
+ * and options under it, then "Add assets" and the count. With no assets,
+ * the empty slot shows in the place of the grid.
+ */
 export default function GalleryEditor({
   ctx,
   items,
@@ -27,8 +41,7 @@ export default function GalleryEditor({
   enableCssClass,
   enableLazyLoading,
 }: Props) {
-  const assetCountLabel = `${items.length} asset${items.length === 1 ? '' : 's'}`;
-
+  const formatCount = useCountLabel();
   const handleLayoutChange = useCallback(
     (index: number, newLayout: Partial<MediaLayoutItem>) => {
       const merged = { ...items[index], ...newLayout };
@@ -83,38 +96,43 @@ export default function GalleryEditor({
     [items, ctx],
   );
 
-  return (
-    <div className={s.galleryEditor}>
-      <div className={s.header}>
-        <div className={s.headerInfo}>
-          <span className={s.headerTitle}>Assets</span>
-          <span className={s.headerCount}>{assetCountLabel}</span>
-        </div>
-        <Button
-          onClick={onAddAsset}
-          disabled={ctx.disabled}
-          buttonSize="xs"
-          buttonType="muted"
-        >
-          + Add assets
-        </Button>
-      </div>
+  if (items.length === 0) {
+    return (
+      <EmptySlot
+        message="No assets yet"
+        action={
+          ctx.disabled
+            ? undefined
+            : { label: 'Add assets', onClick: onAddAsset }
+        }
+      />
+    );
+  }
 
-      <div className={s.assetList}>
+  return (
+    <div className={s.editor}>
+      <AssetGrid>
         {items.map((item, index) => (
-          <AssetCard
-            key={item._itemId ?? item.uploadId}
+          <AssetItem
+            key={itemKey(item, index)}
             ctx={ctx}
             item={item}
-            onLayoutChange={(layout) => handleLayoutChange(index, layout)}
-            onRemove={() => handleRemove(index)}
-            onEditMetadata={() => handleEditMetadata(index)}
+            index={index}
             widthOptions={widthOptions}
             enableCssClass={enableCssClass}
             enableLazyLoading={enableLazyLoading}
             disabled={ctx.disabled}
+            onChange={handleLayoutChange}
+            onRemove={handleRemove}
+            onEditMetadata={handleEditMetadata}
           />
         ))}
+      </AssetGrid>
+      <div className={s.footer}>
+        {!ctx.disabled && (
+          <Button icon={AddIcon} label="Add assets" onClick={onAddAsset} />
+        )}
+        <Pill>{formatCount(items.length, 'asset', 'assets')}</Pill>
       </div>
     </div>
   );

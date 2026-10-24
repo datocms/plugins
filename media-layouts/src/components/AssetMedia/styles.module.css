@@ -1,0 +1,37 @@
+/* The media inside a MediaCard: the card draws the frame, the caption and
+   the actions. */
+
+/* The image fills the width of its card, at the crop of the asset (set by
+   the script). The top corners follow the corners of the MediaCard. */
+.media {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+/* A file that is not an image: its icon and its format, at the same ratio */
+.filePlaceholder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  color: var(--color--ink-subtle);
+  background-color: var(--color--surface-muted);
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+}
+
+/* The format, under the icon */
+.formatLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
+}
+
+/* An asset with no ratio (Original, while the size is unknown): the media
+   keeps a minimum height */
+.noRatio {
+  min-height: var(--spacing-xxxl);
+}

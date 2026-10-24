@@ -1,26 +1,22 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Canvas,
-  Form,
-  SelectField,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import InputGroup from 'datocms-react-ui/InputGroup';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LayoutBuilder from '../components/LayoutBuilder';
-import {
-  ASPECT_RATIO_OPTIONS,
-  DEFAULT_WIDTH,
-  MODE_OPTIONS,
-} from '../constants';
+import { DEFAULT_WIDTH, MODE_OPTIONS } from '../constants';
 import type {
   FieldParams,
   FieldParamsLayout,
   FieldParamsLegacy,
   LayoutConfig,
   ValidFieldParams,
-  ValidGlobalParams,
   WidthOption,
+  WidthValue,
 } from '../types';
 import { validateCustomAspectRatio } from '../utils/aspectRatio';
 import {
@@ -29,317 +25,74 @@ import {
   normalizeGlobalParams,
 } from '../utils/fieldParams';
 import {
+  buildAspectRatioSelectOptions,
+  buildWidthSelectOptions,
+  CUSTOM_OPTION_VALUE,
+  getAspectRatioShortLabel,
+  isPresetAspectRatio,
+  optionValueToWidth,
+  PLUGIN_DEFAULT_OPTION_VALUE,
+  type SelectOption,
+  widthToOptionValue,
+} from '../utils/options';
+import {
   buildWidthOptions,
   getWidthLabel,
-  MAX_WIDTH,
-  MIN_WIDTH,
   parseCustomWidth,
   validateCustomWidth,
 } from '../utils/width';
-import styles from './FieldConfigScreen.module.css';
 
 type Props = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
-const modeSelectOptions = MODE_OPTIONS.map((opt) => ({
-  value: opt.value,
-  label: opt.label,
-}));
-
 type LegacyModeValues = ValidFieldParams & { mode: 'single' | 'multiple' };
 
-type SingleSelectValue<Option> = Option | readonly Option[] | null;
+type UpdateLegacyMode = (
+  field: 'mode' | 'aspectRatio' | 'width',
+  value: string | number | null,
+) => void;
 
-type LegacyAspectRatioSectionProps = {
-  legacyValues: LegacyModeValues;
-  globalParams: ValidGlobalParams;
-  aspectRatioOptions: { value: string; label: string }[];
-  selectedAspectRatio: { value: string; label: string } | null | undefined;
-  isCustomAspectRatio: boolean;
-  customAspectRatioValue: string;
-  customAspectRatioError: string | undefined;
-  updateLegacyMode: (
-    field: 'mode' | 'aspectRatio' | 'width',
-    value: string | number | null,
-  ) => void;
-};
+const ASPECT_RATIO_SELECT_OPTIONS = buildAspectRatioSelectOptions({
+  includeOriginal: true,
+});
 
-function LegacyAspectRatioSection({
-  legacyValues,
-  globalParams,
-  aspectRatioOptions,
-  selectedAspectRatio,
-  isCustomAspectRatio,
-  customAspectRatioValue,
-  customAspectRatioError,
-  updateLegacyMode,
-}: LegacyAspectRatioSectionProps) {
-  function handleAspectRatioChange(
-    option: SingleSelectValue<{ value: string; label: string }>,
-  ) {
-    if (!option || Array.isArray(option) || !('value' in option)) return;
-    if (option.value === 'custom') {
-      updateLegacyMode('aspectRatio', customAspectRatioValue || '');
-    } else {
-      updateLegacyMode('aspectRatio', option.value);
-    }
-  }
+const STORED_MODES: unknown[] = ['single', 'multiple', 'layout'];
 
-  return (
-    <>
-      <div className={styles.fieldBlock}>
-        <SwitchField
-          id="useDefaultAspectRatio"
-          name="useDefaultAspectRatio"
-          label="Use global default aspect ratio?"
-          hint={`Global default: ${globalParams.defaultAspectRatio}`}
-          value={legacyValues.aspectRatio === null}
-          onChange={(checked) =>
-            updateLegacyMode(
-              'aspectRatio',
-              checked ? null : globalParams.defaultAspectRatio,
-            )
-          }
-        />
-      </div>
-
-      {legacyValues.aspectRatio !== null && (
-        <div className={styles.fieldBlock}>
-          <SelectField
-            id="aspectRatio"
-            name="aspectRatio"
-            label="Override default aspect ratio"
-            selectInputProps={{
-              isMulti: false,
-              options: aspectRatioOptions,
-            }}
-            value={selectedAspectRatio}
-            onChange={handleAspectRatioChange}
-          />
-        </div>
-      )}
-
-      {isCustomAspectRatio && (
-        <div className={styles.fieldBlock}>
-          <TextField
-            id="customAspectRatio"
-            name="customAspectRatio"
-            label="Custom Aspect Ratio"
-            hint="Use W:H (e.g., 2.35:1)"
-            placeholder="2.35:1"
-            value={customAspectRatioValue}
-            onChange={(value) => updateLegacyMode('aspectRatio', value)}
-            error={customAspectRatioError}
-          />
-        </div>
-      )}
-    </>
-  );
+/** The parameters of a single or gallery field: no key for a plugin default. */
+function toLegacyParameters(values: LegacyModeValues): FieldParamsLegacy {
+  return {
+    paramsVersion: '1',
+    mode: values.mode,
+    ...(values.aspectRatio !== null
+      ? { overrideDefaultAspectRatio: values.aspectRatio }
+      : {}),
+    ...(values.width !== null ? { overrideDefaultWidth: values.width } : {}),
+    enableCssClass: values.enableCssClass,
+    enableLazyLoading: values.enableLazyLoading,
+  };
 }
 
-type LegacyWidthSectionProps = {
-  legacyValues: LegacyModeValues;
-  globalParams: ValidGlobalParams;
-  widthOptions: { value: string | number; label: string }[];
-  selectedWidth: { value: string | number; label: string } | null | undefined;
-  presetWidthOptions: WidthOption[];
-  presetWidthValues: (string | number)[];
-  customWidthActive: boolean;
-  customWidthInput: string;
-  customWidthError: string | undefined;
-  setCustomWidthActive: (value: boolean) => void;
-  setCustomWidthInput: (value: string) => void;
-  updateLegacyMode: (
-    field: 'mode' | 'aspectRatio' | 'width',
-    value: string | number | null,
-  ) => void;
-};
+/**
+ * A new field stores no mode yet, while the screen shows Single asset
+ * checked: a click on it changes nothing, and the field could not be saved.
+ * Thus the screen stores what it shows, once, when it opens.
+ */
+function useStoreShownMode(
+  ctx: Props['ctx'],
+  formValues: ValidFieldParams,
+): void {
+  const checked = useRef(false);
 
-function LegacyWidthSection({
-  legacyValues,
-  globalParams,
-  widthOptions,
-  selectedWidth,
-  presetWidthOptions,
-  presetWidthValues,
-  customWidthActive,
-  customWidthInput,
-  customWidthError,
-  setCustomWidthActive,
-  setCustomWidthInput,
-  updateLegacyMode,
-}: LegacyWidthSectionProps) {
-  function handleWidthSelectChange(
-    option: SingleSelectValue<{ value: string | number; label: string }>,
-  ) {
-    if (!option || Array.isArray(option) || !('value' in option)) return;
-    if (option.value === 'custom') {
-      const fallback =
-        typeof legacyValues.width === 'number'
-          ? legacyValues.width
-          : typeof globalParams.defaultWidth === 'number'
-            ? globalParams.defaultWidth
-            : DEFAULT_WIDTH;
-      setCustomWidthActive(true);
-      setCustomWidthInput(String(fallback));
-      updateLegacyMode('width', fallback);
-    } else {
-      setCustomWidthActive(false);
-      setCustomWidthInput('');
-      updateLegacyMode('width', option.value);
+  useEffect(() => {
+    if (checked.current) return;
+    checked.current = true;
+    const storedMode = (ctx.parameters as Record<string, unknown>).mode;
+    if (STORED_MODES.includes(storedMode) || formValues.mode === 'layout') {
+      return;
     }
-  }
-
-  function handleUseDefaultWidthChange(checked: boolean) {
-    const nextWidth = checked ? null : globalParams.defaultWidth;
-    updateLegacyMode('width', nextWidth);
-    const isPresetValue =
-      typeof nextWidth === 'number' && presetWidthValues.includes(nextWidth);
-    const shouldShowCustom =
-      !checked &&
-      nextWidth !== null &&
-      nextWidth !== 'original' &&
-      !isPresetValue;
-    if (shouldShowCustom && typeof nextWidth === 'number') {
-      setCustomWidthActive(true);
-      setCustomWidthInput(String(nextWidth));
-    } else {
-      setCustomWidthActive(false);
-      setCustomWidthInput('');
-    }
-  }
-
-  function handleCustomWidthChange(value: string) {
-    setCustomWidthInput(value);
-    const parsed = parseCustomWidth(value);
-    if (parsed !== null && !validateCustomWidth(value)) {
-      updateLegacyMode('width', parsed);
-    }
-  }
-
-  return (
-    <>
-      <div className={styles.fieldBlock}>
-        <SwitchField
-          id="useDefaultWidth"
-          name="useDefaultWidth"
-          label="Use global default width?"
-          hint={`Global default: ${getWidthLabel(globalParams.defaultWidth, presetWidthOptions)}`}
-          value={legacyValues.width === null}
-          onChange={handleUseDefaultWidthChange}
-        />
-      </div>
-
-      {legacyValues.width !== null && (
-        <div className={styles.fieldBlock}>
-          <SelectField
-            id="width"
-            name="width"
-            label="Override default width"
-            selectInputProps={{
-              isMulti: false,
-              options: widthOptions,
-            }}
-            value={selectedWidth}
-            onChange={handleWidthSelectChange}
-          />
-        </div>
-      )}
-
-      {legacyValues.width !== null && customWidthActive && (
-        <div className={styles.fieldBlock}>
-          <TextField
-            id="customWidth"
-            name="customWidth"
-            label="Custom Width"
-            hint={`Pixels (${MIN_WIDTH}–${MAX_WIDTH})`}
-            placeholder={String(DEFAULT_WIDTH)}
-            value={customWidthInput}
-            onChange={handleCustomWidthChange}
-            error={customWidthError}
-            textInputProps={{
-              type: 'number',
-              min: MIN_WIDTH,
-              max: MAX_WIDTH,
-            }}
-          />
-        </div>
-      )}
-    </>
-  );
-}
-
-type LegacyModeFieldsProps = {
-  legacyValues: LegacyModeValues;
-  globalParams: ValidGlobalParams;
-  aspectRatioOptions: { value: string; label: string }[];
-  selectedAspectRatio: { value: string; label: string } | null | undefined;
-  isCustomAspectRatio: boolean;
-  customAspectRatioValue: string;
-  customAspectRatioError: string | undefined;
-  widthOptions: { value: string | number; label: string }[];
-  selectedWidth: { value: string | number; label: string } | null | undefined;
-  presetWidthOptions: WidthOption[];
-  presetWidthValues: (string | number)[];
-  customWidthActive: boolean;
-  customWidthInput: string;
-  customWidthError: string | undefined;
-  setCustomWidthActive: (value: boolean) => void;
-  setCustomWidthInput: (value: string) => void;
-  updateLegacyMode: (
-    field: 'mode' | 'aspectRatio' | 'width',
-    value: string | number | null,
-  ) => void;
-};
-
-function LegacyModeFields({
-  legacyValues,
-  globalParams,
-  aspectRatioOptions,
-  selectedAspectRatio,
-  isCustomAspectRatio,
-  customAspectRatioValue,
-  customAspectRatioError,
-  widthOptions,
-  selectedWidth,
-  presetWidthOptions,
-  presetWidthValues,
-  customWidthActive,
-  customWidthInput,
-  customWidthError,
-  setCustomWidthActive,
-  setCustomWidthInput,
-  updateLegacyMode,
-}: LegacyModeFieldsProps) {
-  return (
-    <>
-      <LegacyAspectRatioSection
-        legacyValues={legacyValues}
-        globalParams={globalParams}
-        aspectRatioOptions={aspectRatioOptions}
-        selectedAspectRatio={selectedAspectRatio}
-        isCustomAspectRatio={isCustomAspectRatio}
-        customAspectRatioValue={customAspectRatioValue}
-        customAspectRatioError={customAspectRatioError}
-        updateLegacyMode={updateLegacyMode}
-      />
-      <LegacyWidthSection
-        legacyValues={legacyValues}
-        globalParams={globalParams}
-        widthOptions={widthOptions}
-        selectedWidth={selectedWidth}
-        presetWidthOptions={presetWidthOptions}
-        presetWidthValues={presetWidthValues}
-        customWidthActive={customWidthActive}
-        customWidthInput={customWidthInput}
-        customWidthError={customWidthError}
-        setCustomWidthActive={setCustomWidthActive}
-        setCustomWidthInput={setCustomWidthInput}
-        updateLegacyMode={updateLegacyMode}
-      />
-    </>
-  );
+    ctx.setParameters(toLegacyParameters(formValues));
+  }, [ctx, formValues]);
 }
 
 function useFieldConfigForm(ctx: Props['ctx']) {
@@ -351,6 +104,8 @@ function useFieldConfigForm(ctx: Props['ctx']) {
       ? formValues.layoutConfig
       : createDefaultLayoutConfig(),
   );
+
+  useStoreShownMode(ctx, formValues);
 
   const updateLegacyMode = useCallback(
     (
@@ -366,21 +121,7 @@ function useFieldConfigForm(ctx: Props['ctx']) {
         mode: 'single' | 'multiple';
       };
       setFormValues(newFormValues);
-
-      const newParameters: FieldParamsLegacy = {
-        paramsVersion: '1',
-        mode: newFormValues.mode,
-        ...(newFormValues.aspectRatio !== null
-          ? { overrideDefaultAspectRatio: newFormValues.aspectRatio }
-          : {}),
-        ...(newFormValues.width !== null
-          ? { overrideDefaultWidth: newFormValues.width }
-          : {}),
-        enableCssClass: newFormValues.enableCssClass,
-        enableLazyLoading: newFormValues.enableLazyLoading,
-      };
-
-      ctx.setParameters(newParameters);
+      ctx.setParameters(toLegacyParameters(newFormValues));
     },
     [formValues, ctx],
   );
@@ -431,20 +172,7 @@ function useFieldConfigForm(ctx: Props['ctx']) {
         return;
       }
 
-      const newParameters: FieldParamsLegacy = {
-        paramsVersion: '1',
-        mode: newFormValues.mode,
-        ...(newFormValues.aspectRatio !== null
-          ? { overrideDefaultAspectRatio: newFormValues.aspectRatio }
-          : {}),
-        ...(newFormValues.width !== null
-          ? { overrideDefaultWidth: newFormValues.width }
-          : {}),
-        enableCssClass: newFormValues.enableCssClass,
-        enableLazyLoading: newFormValues.enableLazyLoading,
-      };
-
-      ctx.setParameters(newParameters);
+      ctx.setParameters(toLegacyParameters(newFormValues));
     },
     [formValues, ctx],
   );
@@ -551,18 +279,34 @@ function deriveCustomAspectRatioValue(
   return '';
 }
 
-function deriveSelectedAspectRatio(
-  legacyValues: LegacyModeValues | null,
+/**
+ * The option of the stored override: the plugin default when there is none,
+ * Custom for 'custom' or a ratio that is no preset.
+ */
+function deriveAspectRatioSelectValue(
+  aspectRatio: string | null,
   isCustomAspectRatio: boolean,
-  aspectRatioOptions: { value: string; label: string }[],
-) {
-  if (!legacyValues || legacyValues.aspectRatio === null) return null;
-  const matchValue = isCustomAspectRatio ? 'custom' : legacyValues.aspectRatio;
-  return aspectRatioOptions.find((opt) => opt.value === matchValue) ?? null;
+): string {
+  if (aspectRatio === null) return PLUGIN_DEFAULT_OPTION_VALUE;
+  return isCustomAspectRatio ? CUSTOM_OPTION_VALUE : aspectRatio;
+}
+
+/** The width that picking Custom starts from. */
+function deriveCustomWidthFallback(
+  width: WidthValue | null,
+  globalDefaultWidth: WidthValue,
+): number {
+  if (typeof width === 'number') return width;
+  if (typeof globalDefaultWidth === 'number') return globalDefaultWidth;
+  return DEFAULT_WIDTH;
 }
 
 export default function FieldConfigScreen({ ctx }: Props) {
-  const globalParams = normalizeGlobalParams(ctx.plugin.attributes.parameters);
+  const pluginParameters = ctx.plugin.attributes.parameters;
+  const globalParams = useMemo(
+    () => normalizeGlobalParams(pluginParameters),
+    [pluginParameters],
+  );
 
   const {
     formValues,
@@ -572,64 +316,182 @@ export default function FieldConfigScreen({ ctx }: Props) {
     handleModeChange,
   } = useFieldConfigForm(ctx);
 
-  const presetAspectRatioOptions = ASPECT_RATIO_OPTIONS.filter(
-    (opt) => opt.value !== 'custom',
-  ).map((opt) => ({
-    value: opt.value,
-    label: opt.label,
-  }));
-
-  const aspectRatioOptions = [
-    ...presetAspectRatioOptions,
-    { value: 'custom', label: 'Custom...' },
-  ];
-  const presetAspectRatioValues = presetAspectRatioOptions.map(
-    (opt) => opt.value,
-  );
-
   const presetWidthOptions = useMemo(
     () => buildWidthOptions(globalParams.widthPresets),
     [globalParams.widthPresets],
   );
-  const widthOptions = useMemo(
-    () => [...presetWidthOptions, { value: 'custom', label: 'Custom...' }],
-    [presetWidthOptions],
-  );
-  const presetWidthValues = useMemo(
-    () => presetWidthOptions.map((opt) => opt.value),
-    [presetWidthOptions],
-  );
 
-  const selectedMode = modeSelectOptions.find(
-    (opt) => opt.value === formValues.mode,
+  const legacyValues: LegacyModeValues | null =
+    formValues.mode === 'layout' ? null : formValues;
+
+  const errors = ctx.errors as Partial<Record<string, string>>;
+
+  return (
+    <>
+      <FieldWrapper label="Mode" required error={errors.mode}>
+        <RadioGroupInput
+          options={MODE_OPTIONS}
+          value={formValues.mode}
+          onChange={(next) => {
+            if (next !== null) handleModeChange(next);
+          }}
+        />
+      </FieldWrapper>
+
+      <FieldWrapper hint="Editors can give each asset a CSS class.">
+        <SwitchInput
+          label="CSS class for each asset"
+          value={formValues.enableCssClass}
+          onChange={(checked) =>
+            updateFieldOption('enableCssClass', checked === true)
+          }
+        />
+      </FieldWrapper>
+
+      <FieldWrapper hint="Editors can choose whether each asset loads lazily.">
+        <SwitchInput
+          label="Lazy loading for each asset"
+          value={formValues.enableLazyLoading}
+          onChange={(checked) =>
+            updateFieldOption('enableLazyLoading', checked === true)
+          }
+        />
+      </FieldWrapper>
+
+      {legacyValues && (
+        <>
+          <AspectRatioOverrideFields
+            legacyValues={legacyValues}
+            globalAspectRatio={globalParams.defaultAspectRatio}
+            updateLegacyMode={updateLegacyMode}
+          />
+          <WidthOverrideFields
+            legacyValues={legacyValues}
+            globalDefaultWidth={globalParams.defaultWidth}
+            presetWidthOptions={presetWidthOptions}
+            error={errors.overrideDefaultWidth}
+            updateLegacyMode={updateLegacyMode}
+          />
+        </>
+      )}
+
+      {formValues.mode === 'layout' && (
+        <>
+          {errors.layoutConfig && (
+            <Callout tone="danger">{errors.layoutConfig}</Callout>
+          )}
+          <LayoutBuilder
+            config={formValues.layoutConfig}
+            onChange={updateLayoutConfig}
+            widthOptions={presetWidthOptions}
+            errors={errors}
+          />
+        </>
+      )}
+    </>
   );
+}
 
-  const legacyValues =
-    formValues.mode === 'single' || formValues.mode === 'multiple'
-      ? (formValues as LegacyModeValues)
-      : null;
-  const isLegacyMode = legacyValues !== null;
+type AspectRatioOverrideFieldsProps = {
+  legacyValues: LegacyModeValues;
+  globalAspectRatio: string;
+  updateLegacyMode: UpdateLegacyMode;
+};
 
+/**
+ * The default aspect ratio of the field. The plugin default option stores no
+ * override; Custom stores the typed text, even while it is not valid.
+ */
+function AspectRatioOverrideFields({
+  legacyValues,
+  globalAspectRatio,
+  updateLegacyMode,
+}: AspectRatioOverrideFieldsProps) {
+  const { aspectRatio } = legacyValues;
   const isCustomAspectRatio =
-    isLegacyMode &&
-    legacyValues.aspectRatio !== null &&
-    (legacyValues.aspectRatio === 'custom' ||
-      !presetAspectRatioValues.includes(legacyValues.aspectRatio));
-
+    aspectRatio !== null && !isPresetAspectRatio(aspectRatio);
   const customAspectRatioValue = deriveCustomAspectRatioValue(
     legacyValues,
     isCustomAspectRatio,
   );
-  const customAspectRatioError = isCustomAspectRatio
-    ? validateCustomAspectRatio(customAspectRatioValue)
-    : undefined;
 
-  const selectedAspectRatio = deriveSelectedAspectRatio(
-    legacyValues,
-    isCustomAspectRatio,
-    aspectRatioOptions,
+  const options = useMemo<SelectOption[]>(
+    () => [
+      {
+        value: PLUGIN_DEFAULT_OPTION_VALUE,
+        label: `Plugin default: ${getAspectRatioShortLabel(globalAspectRatio)}`,
+      },
+      ...ASPECT_RATIO_SELECT_OPTIONS,
+    ],
+    [globalAspectRatio],
   );
 
+  const handleSelectChange = (next: string | null) => {
+    if (next === null) return;
+    if (next === PLUGIN_DEFAULT_OPTION_VALUE) {
+      updateLegacyMode('aspectRatio', null);
+      return;
+    }
+    if (next === CUSTOM_OPTION_VALUE) {
+      updateLegacyMode('aspectRatio', customAspectRatioValue || '');
+      return;
+    }
+    updateLegacyMode('aspectRatio', next);
+  };
+
+  return (
+    <>
+      <FieldWrapper
+        label="Default aspect ratio"
+        hint="The crop of a new asset. Editors can change it for each asset."
+      >
+        <SelectInput
+          value={deriveAspectRatioSelectValue(aspectRatio, isCustomAspectRatio)}
+          onChange={handleSelectChange}
+          options={options}
+          clearable={false}
+        />
+      </FieldWrapper>
+      {isCustomAspectRatio && (
+        <FieldWrapper
+          label="Custom aspect ratio"
+          hint="Width and height, separated by a colon."
+          error={validateCustomAspectRatio(customAspectRatioValue)}
+        >
+          <StringInput
+            placeholder="2.35:1"
+            value={customAspectRatioValue}
+            onChange={(next) => updateLegacyMode('aspectRatio', next ?? '')}
+          />
+        </FieldWrapper>
+      )}
+    </>
+  );
+}
+
+type WidthOverrideFieldsProps = {
+  legacyValues: LegacyModeValues;
+  globalDefaultWidth: WidthValue;
+  presetWidthOptions: WidthOption[];
+  error: string | undefined;
+  updateLegacyMode: UpdateLegacyMode;
+};
+
+/**
+ * The default width of the field. The plugin default option stores no
+ * override; a typed custom width saves only when it is valid.
+ */
+function WidthOverrideFields({
+  legacyValues,
+  globalDefaultWidth,
+  presetWidthOptions,
+  error,
+  updateLegacyMode,
+}: WidthOverrideFieldsProps) {
+  const presetWidthValues = useMemo(
+    () => presetWidthOptions.map((opt) => opt.value),
+    [presetWidthOptions],
+  );
   const {
     customWidthActive,
     customWidthInput,
@@ -637,110 +499,85 @@ export default function FieldConfigScreen({ ctx }: Props) {
     setCustomWidthInput,
   } = useLegacyWidthState(legacyValues, presetWidthValues);
 
-  const customWidthError = customWidthActive
+  const options = useMemo<SelectOption[]>(
+    () => [
+      {
+        value: PLUGIN_DEFAULT_OPTION_VALUE,
+        label: `Plugin default: ${getWidthLabel(globalDefaultWidth, presetWidthOptions)}`,
+      },
+      ...buildWidthSelectOptions(presetWidthOptions),
+    ],
+    [globalDefaultWidth, presetWidthOptions],
+  );
+
+  const { width } = legacyValues;
+  const showsCustomWidth = width !== null && customWidthActive;
+  const customWidthError = showsCustomWidth
     ? validateCustomWidth(customWidthInput)
     : undefined;
 
-  const selectedWidth =
-    isLegacyMode && legacyValues.width !== null
-      ? widthOptions.find(
-          (opt) =>
-            opt.value === (customWidthActive ? 'custom' : legacyValues.width),
-        )
-      : null;
+  const handleSelectChange = (next: string | null) => {
+    if (next === null) return;
+    if (next === PLUGIN_DEFAULT_OPTION_VALUE) {
+      setCustomWidthActive(false);
+      setCustomWidthInput('');
+      updateLegacyMode('width', null);
+      return;
+    }
+    if (next === CUSTOM_OPTION_VALUE) {
+      const fallback = deriveCustomWidthFallback(width, globalDefaultWidth);
+      setCustomWidthActive(true);
+      setCustomWidthInput(String(fallback));
+      updateLegacyMode('width', fallback);
+      return;
+    }
+    setCustomWidthActive(false);
+    setCustomWidthInput('');
+    updateLegacyMode('width', optionValueToWidth(next));
+  };
 
-  const errors = ctx.errors as Partial<Record<string, string>>;
+  const handleCustomWidthChange = (next: string | null) => {
+    const text = next ?? '';
+    setCustomWidthInput(text);
+    const parsed = parseCustomWidth(text);
+    if (parsed !== null && !validateCustomWidth(text)) {
+      updateLegacyMode('width', parsed);
+    }
+  };
+
+  let selectValue = PLUGIN_DEFAULT_OPTION_VALUE;
+  if (width !== null) {
+    selectValue = customWidthActive
+      ? CUSTOM_OPTION_VALUE
+      : widthToOptionValue(width);
+  }
 
   return (
-    <Canvas ctx={ctx}>
-      <Form>
-        <div className={styles.fieldBlock}>
-          <SelectField
-            id="mode"
-            name="mode"
-            label="Field Mode"
-            hint="Choose how this field handles assets"
-            required
-            selectInputProps={{
-              isMulti: false,
-              options: modeSelectOptions,
-            }}
-            value={selectedMode}
-            onChange={(option) => {
-              if (option && 'value' in option) {
-                handleModeChange(
-                  option.value as 'single' | 'multiple' | 'layout',
-                );
-              }
-            }}
-            error={errors.mode}
+    <>
+      <FieldWrapper
+        label="Default width"
+        hint="The width of a new asset. Editors can change it for each asset."
+        // The custom width field below already tells what is wrong with it
+        error={customWidthError ? undefined : error}
+      >
+        <SelectInput
+          value={selectValue}
+          onChange={handleSelectChange}
+          options={options}
+          clearable={false}
+        />
+      </FieldWrapper>
+      {showsCustomWidth && (
+        <FieldWrapper label="Custom width" error={customWidthError}>
+          <InputGroup
+            value={customWidthInput}
+            onChange={handleCustomWidthChange}
+            post="px"
+            inputMode="numeric"
+            placeholder={String(DEFAULT_WIDTH)}
           />
-        </div>
-
-        <div className={styles.fieldBlock}>
-          <SwitchField
-            id="enableCssClass"
-            name="enableCssClass"
-            label="Allow CSS class per asset?"
-            hint="Lets editors provide a custom CSS class for each image."
-            value={formValues.enableCssClass}
-            onChange={(checked) => updateFieldOption('enableCssClass', checked)}
-          />
-        </div>
-
-        <div className={styles.fieldBlock}>
-          <SwitchField
-            id="enableLazyLoading"
-            name="enableLazyLoading"
-            label="Allow lazy loading toggle per asset?"
-            hint="Lets editors decide whether each image should lazy load."
-            value={formValues.enableLazyLoading}
-            onChange={(checked) =>
-              updateFieldOption('enableLazyLoading', checked)
-            }
-          />
-        </div>
-
-        {legacyValues && (
-          <LegacyModeFields
-            legacyValues={legacyValues}
-            globalParams={globalParams}
-            aspectRatioOptions={aspectRatioOptions}
-            selectedAspectRatio={selectedAspectRatio}
-            isCustomAspectRatio={isCustomAspectRatio}
-            customAspectRatioValue={customAspectRatioValue}
-            customAspectRatioError={customAspectRatioError}
-            widthOptions={widthOptions}
-            selectedWidth={selectedWidth}
-            presetWidthOptions={presetWidthOptions}
-            presetWidthValues={presetWidthValues}
-            customWidthActive={customWidthActive}
-            customWidthInput={customWidthInput}
-            customWidthError={customWidthError}
-            setCustomWidthActive={setCustomWidthActive}
-            setCustomWidthInput={setCustomWidthInput}
-            updateLegacyMode={updateLegacyMode}
-          />
-        )}
-
-        {formValues.mode === 'layout' && (
-          <div className={styles.fieldBlock}>
-            <LayoutBuilder
-              config={formValues.layoutConfig}
-              onChange={updateLayoutConfig}
-              widthOptions={presetWidthOptions}
-            />
-          </div>
-        )}
-
-        {errors.layoutConfig && (
-          <div className={styles.fieldBlock}>
-            <div style={{ color: 'var(--color--danger-soft--ink)', fontSize: '12px' }}>
-              {errors.layoutConfig}
-            </div>
-          </div>
-        )}
-      </Form>
-    </Canvas>
+        </FieldWrapper>
+      )}
+    </>
   );
 }

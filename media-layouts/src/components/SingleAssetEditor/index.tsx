@@ -1,8 +1,8 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { useCallback } from 'react';
 import type { MediaLayoutItem, WidthOption } from '../../types';
 import { calculateOutputHeight } from '../../utils/aspectRatio';
-import AssetCard from '../AssetCard';
-import s from './styles.module.css';
+import AssetItem, { AssetGrid } from '../AssetCard';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -14,6 +14,10 @@ type Props = {
   enableLazyLoading: boolean;
 };
 
+/**
+ * The asset of a single-asset field: its card in the first column of the
+ * grid of a gallery, with its crop, width and options under it.
+ */
 export default function SingleAssetEditor({
   ctx,
   item,
@@ -23,21 +27,24 @@ export default function SingleAssetEditor({
   enableCssClass,
   enableLazyLoading,
 }: Props) {
-  const handleLayoutChange = (newLayout: Partial<MediaLayoutItem>) => {
-    const merged = { ...item, ...newLayout };
-    const height =
-      calculateOutputHeight(
-        merged.width,
-        merged.aspectRatio,
-        merged.customAspectRatio,
-        merged.originalWidth,
-        merged.originalHeight,
-      ) || merged.height;
-    const updatedItem: MediaLayoutItem = { ...merged, height };
-    ctx.setFieldValue(ctx.fieldPath, JSON.stringify(updatedItem));
-  };
+  const handleLayoutChange = useCallback(
+    (_index: number, newLayout: Partial<MediaLayoutItem>) => {
+      const merged = { ...item, ...newLayout };
+      const height =
+        calculateOutputHeight(
+          merged.width,
+          merged.aspectRatio,
+          merged.customAspectRatio,
+          merged.originalWidth,
+          merged.originalHeight,
+        ) || merged.height;
+      const updatedItem: MediaLayoutItem = { ...merged, height };
+      ctx.setFieldValue(ctx.fieldPath, JSON.stringify(updatedItem));
+    },
+    [ctx, item],
+  );
 
-  const handleEditMetadata = async () => {
+  const handleEditMetadata = useCallback(async () => {
     const result = await ctx.editUploadMetadata(
       {
         upload_id: item.uploadId,
@@ -58,29 +65,23 @@ export default function SingleAssetEditor({
       };
       ctx.setFieldValue(ctx.fieldPath, JSON.stringify(updatedItem));
     }
-  };
+  }, [ctx, item]);
 
   return (
-    <div className={s.singleEditor}>
-      <div className={s.header}>
-        <div className={s.headerInfo}>
-          <span className={s.headerTitle}>Asset</span>
-          <span className={s.headerCount}>1 asset</span>
-        </div>
-      </div>
-
-      <AssetCard
+    <AssetGrid>
+      <AssetItem
         ctx={ctx}
         item={item}
-        onLayoutChange={handleLayoutChange}
-        onRemove={onClear}
-        onEditMetadata={handleEditMetadata}
-        onReplace={onSelectAsset}
+        index={0}
         widthOptions={widthOptions}
         enableCssClass={enableCssClass}
         enableLazyLoading={enableLazyLoading}
         disabled={ctx.disabled}
+        onChange={handleLayoutChange}
+        onRemove={onClear}
+        onEditMetadata={handleEditMetadata}
+        onReplace={onSelectAsset}
       />
-    </div>
+    </AssetGrid>
   );
 }

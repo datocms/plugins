@@ -1,7 +1,6 @@
 import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
 import { useCallback } from 'react';
-import EmptyState from '../components/EmptyState';
 import GalleryEditor from '../components/GalleryEditor';
 import SingleAssetEditor from '../components/SingleAssetEditor';
 import SlotEditor from '../components/SlotEditor';
@@ -20,7 +19,6 @@ import {
   normalizeGlobalParams,
 } from '../utils/fieldParams';
 import { buildWidthOptions } from '../utils/width';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -186,56 +184,55 @@ export default function MediaLayoutsField({ ctx }: Props) {
     const assignments = layoutValue?.assignments ?? [];
 
     return (
-      <Canvas ctx={ctx}>
-        <div className={s.mediaLayoutsField}>
-          <SlotEditor
-            ctx={ctx}
-            layoutConfig={layoutConfig}
-            assignments={assignments}
-            widthOptions={widthOptions}
-            enableCssClass={enableCssClass}
-            enableLazyLoading={enableLazyLoading}
-            onAssignmentsChange={handleLayoutAssignmentsChange}
-          />
-        </div>
-      </Canvas>
+      <SlotEditor
+        ctx={ctx}
+        layoutConfig={layoutConfig}
+        assignments={assignments}
+        widthOptions={widthOptions}
+        enableCssClass={enableCssClass}
+        enableLazyLoading={enableLazyLoading}
+        onAssignmentsChange={handleLayoutAssignmentsChange}
+      />
     );
   }
 
-  const hasAssets = isMultiple
-    ? Array.isArray(currentValue) && currentValue.length > 0
-    : currentValue !== null;
+  // A gallery shows its empty slot in the place of its grid
+  if (isMultiple) {
+    return (
+      <GalleryEditor
+        ctx={ctx}
+        items={Array.isArray(currentValue) ? currentValue : []}
+        onAddAsset={handleSelectAsset}
+        widthOptions={widthOptions}
+        enableCssClass={enableCssClass}
+        enableLazyLoading={enableLazyLoading}
+      />
+    );
+  }
+
+  // A read-only field can't get an asset: the slot shows only its message
+  if (currentValue === null) {
+    return (
+      <EmptySlot
+        message="No asset yet"
+        action={
+          ctx.disabled
+            ? undefined
+            : { label: 'Add asset', onClick: handleSelectAsset }
+        }
+      />
+    );
+  }
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.mediaLayoutsField}>
-        {!hasAssets ? (
-          <EmptyState
-            isGallery={isMultiple}
-            onSelectAsset={handleSelectAsset}
-            disabled={ctx.disabled}
-          />
-        ) : isMultiple ? (
-          <GalleryEditor
-            ctx={ctx}
-            items={currentValue as MultipleFieldValue}
-            onAddAsset={handleSelectAsset}
-            widthOptions={widthOptions}
-            enableCssClass={enableCssClass}
-            enableLazyLoading={enableLazyLoading}
-          />
-        ) : (
-          <SingleAssetEditor
-            ctx={ctx}
-            item={currentValue as MediaLayoutItem}
-            onSelectAsset={handleSelectAsset}
-            onClear={handleClear}
-            widthOptions={widthOptions}
-            enableCssClass={enableCssClass}
-            enableLazyLoading={enableLazyLoading}
-          />
-        )}
-      </div>
-    </Canvas>
+    <SingleAssetEditor
+      ctx={ctx}
+      item={currentValue as MediaLayoutItem}
+      onSelectAsset={handleSelectAsset}
+      onClear={handleClear}
+      widthOptions={widthOptions}
+      enableCssClass={enableCssClass}
+      enableLazyLoading={enableLazyLoading}
+    />
   );
 }

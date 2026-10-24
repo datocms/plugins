@@ -37,12 +37,12 @@ export function formatDimensions(width: number, aspectRatio: number): string {
 
 export function validateCustomAspectRatio(value: string): string | undefined {
   if (!value) {
-    return 'Please enter a custom aspect ratio';
+    return 'Enter an aspect ratio';
   }
 
   const ratio = parseAspectRatio(value);
   if (ratio === null || ratio <= 0) {
-    return 'Invalid format. Use W:H (e.g., 2.35:1)';
+    return 'Enter the ratio as width:height, like 2.35:1';
   }
 
   return undefined;

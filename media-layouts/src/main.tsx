@@ -1,5 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import { ASPECT_RATIO_OPTIONS, FIELD_EXTENSION_ID } from './constants';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldConfigScreen from './entrypoints/FieldConfigScreen';
@@ -10,7 +11,12 @@ import {
   normalizeGlobalParams,
 } from './utils/fieldParams';
 import { render } from './utils/render';
-import { isValidWidthNumber, isWidthValue } from './utils/width';
+import {
+  isValidWidthNumber,
+  isWidthValue,
+  MAX_WIDTH,
+  MIN_WIDTH,
+} from './utils/width';
 
 type LayoutConfigRaw = {
   slots?: unknown[];
@@ -20,6 +26,12 @@ type LayoutConfigRaw = {
   layoutCustomAspectRatio?: unknown;
   layoutWidth?: unknown;
 };
+
+// "Slot 2: enter an aspect ratio.": the message after the colon starts lower
+// case. Only the layout callout shows these, as full sentences.
+function prefixError(prefix: string, message: string): string {
+  return `${prefix}: ${message.charAt(0).toLowerCase()}${message.slice(1)}.`;
+}
 
 function validateSlotSpans(
   slot: Record<string, unknown>,
@@ -31,7 +43,7 @@ function validateSlotSpans(
     (typeof slot.rowSpan !== 'number' || slot.rowSpan < 1)
   ) {
     errors[`slot_${index}_rowSpan`] =
-      `Slot ${index + 1}: Row span must be 1 or more`;
+      `Slot ${index + 1}: the row span must be 1 or more`;
   }
 
   if (
@@ -39,12 +51,12 @@ function validateSlotSpans(
     (typeof slot.colSpan !== 'number' || slot.colSpan < 1)
   ) {
     errors[`slot_${index}_colSpan`] =
-      `Slot ${index + 1}: Column span must be 1 or more`;
+      `Slot ${index + 1}: the column span must be 1 or more`;
   }
 
   if (slot.autoSpan !== undefined && typeof slot.autoSpan !== 'boolean') {
     errors[`slot_${index}_autoSpan`] =
-      `Slot ${index + 1}: Auto size must be true or false`;
+      `Slot ${index + 1}: turn Size from aspect ratio on or off`;
   }
 }
 
@@ -57,12 +69,12 @@ function validateLayoutSlot(
   setLayoutError: (msg: string) => void,
 ) {
   if (!slot.label || typeof slot.label !== 'string' || !slot.label.trim()) {
-    errors[`slot_${index}_label`] = `Slot ${index + 1}: Label is required`;
+    errors[`slot_${index}_label`] = `Slot ${index + 1}: enter a label`;
   }
 
   if (slot.id && typeof slot.id === 'string') {
     if (slotIds.has(slot.id)) {
-      errors.layoutConfig = 'Slot IDs must be unique';
+      errors.layoutConfig = 'Two slots have the same ID.';
     }
     slotIds.add(slot.id);
   }
@@ -71,7 +83,9 @@ function validateLayoutSlot(
   validateSlotAspectRatio(slot, index, presetAspectRatioValues, setLayoutError);
 
   if (slot.width !== undefined && !isWidthValue(slot.width)) {
-    setLayoutError(`Slot ${index + 1}: Width must be a number or original`);
+    setLayoutError(
+      `Slot ${index + 1}: the width must be a number of pixels or Original.`,
+    );
   }
 }
 
@@ -88,7 +102,7 @@ function validateSlotAspectRatio(
       typeof slot.customAspectRatio === 'string' ? slot.customAspectRatio : '';
     const error = validateCustomAspectRatio(customAspectRatio);
     if (error) {
-      setLayoutError(`Slot ${index + 1}: ${error}`);
+      setLayoutError(prefixError(`Slot ${index + 1}`, error));
     }
     return;
   }
@@ -96,7 +110,7 @@ function validateSlotAspectRatio(
   if (!presetAspectRatioValues.has(slot.aspectRatio)) {
     const error = validateCustomAspectRatio(slot.aspectRatio);
     if (error) {
-      setLayoutError(`Slot ${index + 1}: ${error}`);
+      setLayoutError(prefixError(`Slot ${index + 1}`, error));
     }
   }
 }
@@ -109,7 +123,7 @@ function validateLayoutConfigAspectRatio(
     layoutConfig.layoutAspectRatio !== undefined &&
     typeof layoutConfig.layoutAspectRatio !== 'string'
   ) {
-    setLayoutError('Layout aspect ratio must be a string');
+    setLayoutError('The layout aspect ratio is not valid.');
     return;
   }
 
@@ -117,7 +131,7 @@ function validateLayoutConfigAspectRatio(
     layoutConfig.layoutCustomAspectRatio !== undefined &&
     typeof layoutConfig.layoutCustomAspectRatio !== 'string'
   ) {
-    setLayoutError('Layout custom aspect ratio must be a string');
+    setLayoutError('The custom layout aspect ratio is not valid.');
     return;
   }
 
@@ -128,7 +142,7 @@ function validateLayoutConfigAspectRatio(
         : '';
     const error = validateCustomAspectRatio(customAspectRatio);
     if (error) {
-      setLayoutError(`Layout custom aspect ratio: ${error}`);
+      setLayoutError(prefixError('Layout aspect ratio', error));
     }
   }
 }
@@ -140,7 +154,7 @@ function validateLayoutConfigSlots(
   setLayoutError: (msg: string) => void,
 ) {
   if (slots.length === 0) {
-    errors.layoutConfig = 'At least one slot is required';
+    errors.layoutConfig = 'Add at least one slot.';
     return;
   }
 
@@ -172,7 +186,7 @@ function validateLayoutMode(
   const layoutConfig = parameters.layoutConfig as LayoutConfigRaw | undefined;
 
   if (!layoutConfig || !Array.isArray(layoutConfig.slots)) {
-    errors.layoutConfig = 'Layout configuration is required';
+    errors.layoutConfig = 'The layout settings are missing.';
     return;
   }
 
@@ -188,7 +202,7 @@ function validateLayoutMode(
     layoutConfig.layoutStyle !== 'grid' &&
     layoutConfig.layoutStyle !== 'masonry'
   ) {
-    errors.layoutConfig = 'Layout style must be grid or masonry';
+    errors.layoutConfig = 'The layout style must be Grid or Masonry.';
   }
 
   validateLayoutConfigAspectRatio(layoutConfig, setLayoutError);
@@ -196,7 +210,7 @@ function validateLayoutMode(
   if (layoutConfig.layoutWidth !== undefined) {
     const width = Number(layoutConfig.layoutWidth);
     if (!isValidWidthNumber(width)) {
-      setLayoutError('Layout width must be between 1 and 10000');
+      setLayoutError(`Enter a layout width from ${MIN_WIDTH} to ${MAX_WIDTH}.`);
     }
   }
 }
@@ -214,7 +228,7 @@ function validateLegacyMode(
       parameters.overrideDefaultWidth !== 'original' &&
       !isValidWidthNumber(width)
     ) {
-      errors.overrideDefaultWidth = 'Width must be between 1 and 10000';
+      errors.overrideDefaultWidth = `Enter a width from ${MIN_WIDTH} to ${MAX_WIDTH}`;
     }
   }
 }
@@ -229,7 +243,7 @@ function validateFieldExtensionParameters(
 
   const validModes = ['single', 'multiple', 'layout'];
   if (!parameters.mode || !validModes.includes(parameters.mode as string)) {
-    errors.mode = 'Please select a mode';
+    errors.mode = 'Pick a mode';
   }
 
   if (parameters.mode === 'layout') {
@@ -256,14 +270,18 @@ connect({
   },
 
   renderConfigScreen(ctx) {
-    render(<ConfigScreen ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx}>
+        <ConfigScreen ctx={ctx} />
+      </Canvas>,
+    );
   },
 
   manualFieldExtensions() {
     return [
       {
         id: FIELD_EXTENSION_ID,
-        name: 'Media Layouts',
+        name: 'Media layouts',
         type: 'editor',
         fieldTypes: ['json'],
         configurable: true,
@@ -273,7 +291,11 @@ connect({
 
   renderManualFieldExtensionConfigScreen(fieldExtensionId, ctx) {
     if (fieldExtensionId === FIELD_EXTENSION_ID) {
-      render(<FieldConfigScreen ctx={ctx} />);
+      render(
+        <Canvas ctx={ctx}>
+          <FieldConfigScreen ctx={ctx} />
+        </Canvas>,
+      );
     }
   },
 
@@ -288,7 +310,11 @@ connect({
 
   renderFieldExtension(fieldExtensionId, ctx) {
     if (fieldExtensionId === FIELD_EXTENSION_ID) {
-      render(<MediaLayoutsField ctx={ctx} />);
+      render(
+        <Canvas ctx={ctx}>
+          <MediaLayoutsField ctx={ctx} />
+        </Canvas>,
+      );
     }
   },
 });

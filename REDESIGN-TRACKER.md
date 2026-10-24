@@ -17,7 +17,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 3 | record-comments | 9491 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 4 | ai-translations | 9239 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Sidebar panel, config, picker, confirm and progress dialogs, and bulk page rebuilt; checked headless in light and dark. Build, lint and 980 tests pass. 6 minor issues open (2 already on master). |
 | 5 | import-export-schema | 7122 | ^19.2.4 | Done | Export and import flows rebuilt; the graph's Tab-stop issue is fixed. Build, lint and tests pass. On next.0. |
-| 6 | media-layouts | 6900 | ^19.2.4 | Done | Config, field settings (layout builder with kit drag and drop) and field editor rebuilt. Build passes (no lint or tests). 3 minor issues open. |
+| 6 | media-layouts | 6900 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 7 | broken-link-checker | 6569 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 2 minor issues open. |
 | 8 | prompt-dato | 6025 | ^19.2.4 | Done | Sidebar chat and config screen rebuilt on Pane, RowList, Page and SettingsList. Build passes (no lint or tests). 2 minor issues open. On next.0. |
 | 9 | find-and-replace | 5803 | ^19.2.4 | Done | Build, lint and tests pass. On next.0. |

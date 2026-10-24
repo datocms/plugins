@@ -25,14 +25,14 @@ export function parseCustomWidth(value: string): number | null {
 export function validateCustomWidth(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) {
-    return 'Please enter a custom width';
+    return 'Enter a width';
   }
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) {
-    return 'Width must be a number';
+    return 'Enter a number';
   }
   if (!isValidWidthNumber(parsed)) {
-    return `Width must be between ${MIN_WIDTH} and ${MAX_WIDTH}`;
+    return `Enter a width from ${MIN_WIDTH} to ${MAX_WIDTH}`;
   }
   return undefined;
 }

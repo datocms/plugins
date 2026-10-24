@@ -1,3 +1,5 @@
+import type { Upload } from '../types';
+
 export function getFormatFromPath(value?: string | null): string | null {
   if (!value) return null;
   const cleaned = value.split('?')[0]?.split('#')[0];
@@ -47,4 +49,28 @@ export function getFormatLabel(value?: string | null): string | null {
     return subtype || normalized;
   }
   return normalized;
+}
+
+export type AssetLoadState = 'ready' | 'loading' | 'failed';
+
+/**
+ * An asset that misses its URL waits for its upload. Without an upload ID
+ * nothing loads: that is a failure too.
+ */
+export function assetLoadState({
+  needsFetch,
+  url,
+  uploadId,
+  upload,
+  error,
+}: {
+  needsFetch: boolean;
+  url: string | null | undefined;
+  uploadId: string | null | undefined;
+  upload: Upload | null;
+  error: string | null;
+}): AssetLoadState {
+  if (!needsFetch || url) return 'ready';
+  if (error || !uploadId) return 'failed';
+  return upload ? 'ready' : 'loading';
 }

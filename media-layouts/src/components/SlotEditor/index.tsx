@@ -1,5 +1,13 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type {
   LayoutConfig,
   LayoutSlot,
@@ -14,6 +22,45 @@ import SlotCard from './SlotCard';
 import s from './styles.module.css';
 
 const MASONRY_ROW_HEIGHT = 8;
+
+type MasonryCellProps = {
+  colSpan: number;
+  /** The rows that the aspect ratio of the slot spans */
+  ratioRowSpan: number;
+  /** The gap of the grid, in pixels */
+  gap: number;
+  children: ReactNode;
+};
+
+/**
+ * A cell of the masonry: it spans the rows of its aspect ratio, or more when
+ * its content (the name of the slot, the asset and its options) is taller,
+ * thus it never covers the cell below it.
+ */
+function MasonryCell({
+  colSpan,
+  ratioRowSpan,
+  gap,
+  children,
+}: MasonryCellProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const { height } = useElementLayout(ref);
+  const contentRowSpan =
+    height > 0 ? Math.ceil((height + gap) / (MASONRY_ROW_HEIGHT + gap)) : 1;
+
+  return (
+    <div
+      ref={ref}
+      className={s.cell}
+      style={{
+        gridColumn: `span ${colSpan}`,
+        gridRow: `span ${Math.max(ratioRowSpan, contentRowSpan)}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -206,78 +253,94 @@ export default function SlotEditor({
     [gridMetrics.columnWidth, gridMetrics.gap],
   );
 
+  // Each slot keeps its position in the slots of the layout: its fallback
+  // name ('Slot 3') is the one the field validation uses
+  const indexedSlots = layoutConfig.slots.map((slot, index) => ({
+    slot,
+    index,
+  }));
+
   // Sort slots by row and column for display
-  const sortedSlots = [...layoutConfig.slots].sort((a, b) => {
-    if (a.row !== b.row) return a.row - b.row;
-    return a.col - b.col;
+  const sortedSlots = [...indexedSlots].sort((a, b) => {
+    if (a.slot.row !== b.slot.row) return a.slot.row - b.slot.row;
+    return a.slot.col - b.slot.col;
   });
 
-  const displaySlots = isMasonry ? layoutConfig.slots : sortedSlots;
+  const displaySlots = isMasonry ? indexedSlots : sortedSlots;
 
   if (sortedSlots.length === 0) {
     return (
-      <div className={s.emptyGrid}>
-        No slots configured. Please configure slots in the field settings.
-      </div>
+      <EmptySlot message="No slots yet. Add them in the field settings." />
     );
   }
 
   return (
-    <div className={s.container}>
-      <div
-        className={s.grid}
-        data-layout={isMasonry ? 'masonry' : 'grid'}
-        ref={gridRef}
-        style={
-          isMasonry
-            ? {
-                gridTemplateColumns: `repeat(${layoutConfig.columns}, minmax(0, 1fr))`,
-                gridAutoRows: `${MASONRY_ROW_HEIGHT}px`,
-              }
-            : {
-                gridTemplateColumns: `repeat(${layoutConfig.columns}, minmax(0, 1fr))`,
-              }
-        }
-      >
-        {displaySlots.map((slot) => {
-          const { rowSpan, colSpan } = getSlotSpan(slot);
-          const masonryRowSpan = isMasonry ? getMasonryRowSpan(slot) : rowSpan;
+    <div
+      className={s.grid}
+      data-layout={isMasonry ? 'masonry' : 'grid'}
+      ref={gridRef}
+      style={
+        isMasonry
+          ? {
+              gridTemplateColumns: `repeat(${layoutConfig.columns}, minmax(0, 1fr))`,
+              gridAutoRows: `${MASONRY_ROW_HEIGHT}px`,
+            }
+          : {
+              gridTemplateColumns: `repeat(${layoutConfig.columns}, minmax(0, 1fr))`,
+            }
+      }
+    >
+      {displaySlots.map(({ slot, index }) => {
+        const card = (
+          <SlotCard
+            ctx={ctx}
+            slot={slot}
+            index={index}
+            assignment={getAssignmentForSlot(slot.id)}
+            widthOptions={widthOptions}
+            enableCssClass={enableCssClass}
+            enableLazyLoading={enableLazyLoading}
+            disabled={ctx.disabled}
+            onSelectAsset={() => handleSelectAssetForSlot(slot)}
+            onRemoveAsset={() => handleRemoveAssetFromSlot(slot.id)}
+            onEditMetadata={() => handleEditMetadata(slot)}
+            onAssignmentChange={(updates) =>
+              handleAssignmentChange(slot.id, updates)
+            }
+          />
+        );
+
+        if (isMasonry) {
           const masonryColSpan =
             typeof slot.colSpan === 'number' && slot.colSpan > 0
               ? Math.min(slot.colSpan, layoutConfig.columns)
               : 1;
           return (
-            <div
+            <MasonryCell
               key={slot.id}
-              className={s.slotCell}
-              style={{
-                gridColumn: isMasonry
-                  ? `span ${masonryColSpan}`
-                  : `${slot.col + 1} / span ${colSpan}`,
-                gridRow: isMasonry
-                  ? `span ${masonryRowSpan}`
-                  : `${slot.row + 1} / span ${rowSpan}`,
-              }}
+              colSpan={masonryColSpan}
+              ratioRowSpan={getMasonryRowSpan(slot)}
+              gap={gridMetrics.gap}
             >
-              <SlotCard
-                ctx={ctx}
-                slot={slot}
-                assignment={getAssignmentForSlot(slot.id)}
-                widthOptions={widthOptions}
-                enableCssClass={enableCssClass}
-                enableLazyLoading={enableLazyLoading}
-                disabled={ctx.disabled}
-                onSelectAsset={() => handleSelectAssetForSlot(slot)}
-                onRemoveAsset={() => handleRemoveAssetFromSlot(slot.id)}
-                onEditMetadata={() => handleEditMetadata(slot)}
-                onAssignmentChange={(updates) =>
-                  handleAssignmentChange(slot.id, updates)
-                }
-              />
-            </div>
+              {card}
+            </MasonryCell>
           );
-        })}
-      </div>
+        }
+
+        const { rowSpan, colSpan } = getSlotSpan(slot);
+        return (
+          <div
+            key={slot.id}
+            className={s.cell}
+            style={{
+              gridColumn: `${slot.col + 1} / span ${colSpan}`,
+              gridRow: `${slot.row + 1} / span ${rowSpan}`,
+            }}
+          >
+            {card}
+          </div>
+        );
+      })}
     </div>
   );
 }
