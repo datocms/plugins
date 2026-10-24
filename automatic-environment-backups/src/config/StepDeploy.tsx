@@ -1,11 +1,41 @@
-import { Button, Spinner, TextField } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { useCopyToClipboard } from 'datocms-react-ui/hooks/useCopyToClipboard';
+import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import StringInput from 'datocms-react-ui/StringInput';
 import { DEPLOY_PROVIDER_OPTIONS } from '../utils/deployProviders';
-import { StepActionArrow } from './StepActionArrow';
 import styles from './StepContent.module.css';
-import type { BackupsConfig } from './useBackupsConfig';
+import {
+  type BackupsConfig,
+  BUSY_REASON,
+  READ_ONLY_REASON,
+} from './useBackupsConfig';
 
-/** Step 2 — deploy the backup service and save its public URL. */
-export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
+type Props = {
+  config: BackupsConfig;
+  group: Pick<PageGroupProps, 'status' | 'collapse'>;
+};
+
+const getRemoveReason = (config: BackupsConfig) => {
+  if (!config.canEdit) {
+    return READ_ONLY_REASON;
+  }
+  return config.isBusy && !config.isDisconnecting ? BUSY_REASON : undefined;
+};
+
+const getSaveReason = (config: BackupsConfig) => {
+  if (!config.canEdit) {
+    return READ_ONLY_REASON;
+  }
+  if (config.isBusy && !config.isSavingDeployment) {
+    return BUSY_REASON;
+  }
+  return config.urlInput.trim() ? undefined : 'Enter the deployment URL first.';
+};
+
+/** Step 2: deploy the backup service and save its public URL. */
+export const StepDeploy = ({ config, group }: Props) => {
   const {
     canEdit,
     isBusy,
@@ -13,129 +43,111 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
     setUrlInput,
     saveDeploymentUrl,
     removeDeployment,
-    copySavedSecret,
-    onOpenAccessTokens,
     deploymentUrlError,
     isSavingDeployment,
     isDisconnecting,
     savedUrl,
+    savedSecret,
   } = config;
 
-  const hasSavedUrl = savedUrl.trim().length > 0;
-  const trimmedUrl = urlInput.trim();
+  const { copied, copy } = useCopyToClipboard(savedSecret);
+  const readOnly = canEdit ? false : { reason: READ_ONLY_REASON };
+  const removeReason = getRemoveReason(config);
+  const saveReason = getSaveReason(config);
 
   return (
-    <>
-      <p className={styles.savedUrl}>
-        Add the API token and shared secret at your hosting provider before
-        deploying:
-      </p>
-
-      <div className={styles.environmentVariables}>
-        <div className={styles.environmentVariable}>
-          <div>
-            <code>DATOCMS_FULLACCESS_API_TOKEN</code>
-            <p>A DatoCMS API token with full-access permissions.</p>
-          </div>
-          <Button
-            buttonType="muted"
-            buttonSize="xs"
-            onClick={() => {
-              void onOpenAccessTokens();
-            }}
-            disabled={!canEdit}
-          >
-            Open API tokens
-          </Button>
-        </div>
-
-        <div className={styles.environmentVariable}>
-          <div>
-            <strong>Shared secret</strong>
-            <p>
-              Use the saved secret from step 1 as <code>CRON_SECRET</code> on
-              Vercel, or as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on
-              Netlify or Cloudflare.
-            </p>
-          </div>
-          <Button
-            buttonType="muted"
-            buttonSize="xs"
-            onClick={() => {
-              void copySavedSecret();
-            }}
-            disabled={!canEdit}
-          >
-            Copy secret
-          </Button>
-        </div>
-      </div>
-
-      <div className={styles.actions} aria-label="Deployment providers">
-        {DEPLOY_PROVIDER_OPTIONS.map((option) => (
-          <Button
-            key={option.provider}
-            buttonType="muted"
-            buttonSize="s"
-            onClick={() => {
-              window.open(option.url, '_blank', 'noopener,noreferrer');
-            }}
-            disabled={!canEdit}
-          >
-            Deploy to {option.label}
-          </Button>
-        ))}
-      </div>
-
-      <div className={styles.compactField} data-step-interactive>
-        <TextField
-          name="deploymentURL"
-          id="deploymentURL"
-          label="Deployment URL"
-          error={deploymentUrlError || undefined}
-          value={urlInput}
-          placeholder="https://backups.example.com"
-          onChange={setUrlInput}
-          textInputProps={{
-            autoComplete: 'url',
-            disabled: !canEdit || isBusy,
-            spellCheck: false,
-            type: 'url',
-          }}
-        />
-      </div>
-
-      <div className={styles.stepFooter}>
-        <div className={styles.stepFooterSecondary}>
-          {hasSavedUrl && (
+    <Page.Group
+      title="2. Deploy the backup service"
+      {...group}
+      footer={
+        <div className={styles.buttons}>
+          {savedUrl.trim().length > 0 && (
             <Button
-              buttonType="negative"
-              buttonSize="s"
+              tone="ghost-alert"
+              label="Remove saved deployment"
+              busy={isDisconnecting}
               onClick={() => {
                 void removeDeployment();
               }}
-              disabled={!canEdit || isBusy}
-            >
-              {isDisconnecting ? 'Removing…' : 'Remove saved deployment'}
-            </Button>
+              disabled={removeReason ? { reason: removeReason } : false}
+            />
           )}
-        </div>
-
-        <div className={styles.stepFooterPrimary}>
           <Button
-            buttonType="primary"
-            buttonSize="s"
+            tone="primary"
+            label="Save URL & continue"
+            className={styles.end}
+            busy={isSavingDeployment}
             onClick={() => {
               void saveDeploymentUrl();
             }}
-            disabled={!canEdit || isBusy || trimmedUrl.length === 0}
-            leftIcon={isSavingDeployment ? <Spinner size={16} /> : undefined}
-            rightIcon={!isSavingDeployment ? <StepActionArrow /> : undefined}
-          >
-            {isSavingDeployment ? 'Saving…' : 'Save URL & continue'}
-          </Button>
+            disabled={saveReason ? { reason: saveReason } : false}
+          />
         </div>
+      }
+    >
+      <SettingsList className={styles.block}>
+        <SettingsList.Row
+          title="API token"
+          description={
+            <>
+              Add a full-access API token as{' '}
+              <code>DATOCMS_FULLACCESS_API_TOKEN</code>.
+            </>
+          }
+          action={
+            <Button
+              tone="ghost"
+              label="Open API tokens"
+              to="/project_settings/access_tokens"
+              disabled={readOnly}
+            />
+          }
+        />
+        <SettingsList.Row
+          title="Shared secret"
+          description={
+            <>
+              Add the secret from step 1 as <code>CRON_SECRET</code> on Vercel,
+              or as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on Netlify or
+              Cloudflare.
+            </>
+          }
+          action={
+            <Button
+              tone="ghost"
+              label={copied ? 'Copied' : 'Copy secret'}
+              onClick={copy}
+              disabled={readOnly}
+            />
+          }
+        />
+      </SettingsList>
+      <div className={`${styles.buttons} ${styles.block}`}>
+        {DEPLOY_PROVIDER_OPTIONS.map((option) => (
+          <Button
+            key={option.provider}
+            label={`Deploy to ${option.label}`}
+            href={option.url}
+            newTab
+            disabled={readOnly}
+          />
+        ))}
       </div>
-    </>
+      <FieldWrapper
+        label="Deployment URL"
+        error={deploymentUrlError ?? undefined}
+      >
+        <StringInput
+          type="url"
+          code
+          value={urlInput}
+          onChange={(value) => setUrlInput(value ?? '')}
+          placeholder="https://backups.example.com"
+          autoComplete="url"
+          spellCheck={false}
+          disabled={!canEdit || isBusy}
+        />
+      </FieldWrapper>
+    </Page.Group>
   );
 };

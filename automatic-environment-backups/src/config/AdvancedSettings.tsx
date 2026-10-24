@@ -1,14 +1,11 @@
-import { Form, Section, SwitchField } from 'datocms-react-ui';
-import { type CSSProperties, useState } from 'react';
-
-const switchNoHintGapStyle = {
-  '--spacing-s': '0',
-  marginBottom: '0.25rem',
-} as CSSProperties;
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { useState } from 'react';
 
 /**
  * Collapsible advanced settings. The debug toggle persists immediately on
- * change (consistent with the per-step save model — no global Save button).
+ * change (consistent with the per-step save model: no global Save button).
  */
 export const AdvancedSettings = ({
   canEdit,
@@ -17,36 +14,25 @@ export const AdvancedSettings = ({
 }: {
   canEdit: boolean;
   debugEnabled: boolean;
-  onToggleDebug: (enabled: boolean) => void;
+  onToggleDebug: (enabled: boolean) => Promise<void>;
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   return (
-    <Form>
-      <Section
-        title="Advanced settings"
-        collapsible={{
-          isOpen,
-          onToggle: () => setIsOpen((current) => !current),
-        }}
-      >
-        <div style={switchNoHintGapStyle}>
-          <SwitchField
-            name="debug"
-            id="debug"
-            label="Enable debug logs"
-            hint="When enabled, plugin events and requests are logged to the browser console."
-            value={debugEnabled}
-            onChange={onToggleDebug}
-            switchInputProps={{
-              id: 'debug',
-              name: 'debug',
-              value: debugEnabled,
-              disabled: !canEdit,
-            }}
-          />
-        </div>
-      </Section>
-    </Form>
+    <Page.Group
+      title="Advanced settings"
+      collapse={{ open, onToggle: () => setOpen(!open) }}
+    >
+      <FieldWrapper hint="Logs plugin events and requests to the browser console.">
+        <SwitchInput
+          label="Debug logs"
+          value={debugEnabled}
+          onChange={(value) => {
+            void onToggleDebug(Boolean(value));
+          }}
+          disabled={!canEdit}
+        />
+      </FieldWrapper>
+    </Page.Group>
   );
 };

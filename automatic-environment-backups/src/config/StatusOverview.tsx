@@ -1,4 +1,11 @@
-import { Button, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Link from 'datocms-react-ui/Link';
+import { Page } from 'datocms-react-ui/Page';
+import Pill from 'datocms-react-ui/Pill';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import Spinner from 'datocms-react-ui/Spinner';
 import type { BackupOverviewRow } from '../types/types';
 import {
   getCadenceLabel,
@@ -6,11 +13,66 @@ import {
 } from '../utils/backupSchedule';
 import { buildBackupOverviewRows } from '../utils/buildBackupOverviewRows';
 import { hasStoredBackupSchedule } from './pluginParams';
-import { StatusBox } from './StatusBox';
-import styles from './StatusOverview.module.css';
-import type { BackupsConfig } from './useBackupsConfig';
+import styles from './StepContent.module.css';
+import {
+  type BackupsConfig,
+  BUSY_REASON,
+  READ_ONLY_REASON,
+} from './useBackupsConfig';
 
-/** Compact operational view shown once a backup schedule has been saved. */
+const getBackupNowReason = (config: BackupsConfig) => {
+  if (!config.canEdit) {
+    return READ_ONLY_REASON;
+  }
+  return !config.canBackupNow || config.backupNowInFlightCadence !== null
+    ? BUSY_REASON
+    : undefined;
+};
+
+const BackupRow = ({
+  row,
+  config,
+}: {
+  row: BackupOverviewRow;
+  config: BackupsConfig;
+}) => {
+  const isRowBusy = config.backupNowInFlightCadence === row.scope;
+  const reason = isRowBusy ? undefined : getBackupNowReason(config);
+
+  return (
+    <SettingsList.Row
+      title={getCadenceLabel(row.scope)}
+      description={
+        <>
+          <div>
+            Last: {row.lastBackup} · Next: {row.nextBackup}
+          </div>
+          {row.environmentStatusNote && <div>{row.environmentStatusNote}</div>}
+        </>
+      }
+      value={
+        row.environmentLinked ? (
+          <Link to={config.environmentsPath}>{row.environmentName}</Link>
+        ) : (
+          row.environmentName
+        )
+      }
+      action={
+        <Button
+          tone="ghost"
+          label="Back up now"
+          busy={isRowBusy}
+          onClick={() => {
+            void config.backupNow(row.scope);
+          }}
+          disabled={reason ? { reason } : false}
+        />
+      }
+    />
+  );
+};
+
+/** Operational view shown once a backup schedule has been saved. */
 export const StatusOverview = ({
   config,
   isConfiguredAndReady,
@@ -27,10 +89,6 @@ export const StatusOverview = ({
     overviewError,
     isLoadingOverview,
     progressMessage,
-    backupNowInFlightCadence,
-    canBackupNow,
-    backupNow,
-    onOpenEnvironments,
   } = config;
 
   if (!hasStoredBackupSchedule(params)) {
@@ -41,111 +99,57 @@ export const StatusOverview = ({
     value: params?.backupSchedule,
     timezoneFallback: projectTimezone,
   }).config;
-  const overviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
+  const overviewRows = buildBackupOverviewRows({
     scheduleConfig,
     lambdaStatus: lambdaBackupStatus,
     availableEnvironmentIds,
   });
 
   return (
-    <section className={styles.section}>
-      <h2 className={styles.title}>Backup status</h2>
-
-      <StatusBox
-        variant={isConfiguredAndReady ? 'success' : 'warning'}
-        style={{ marginBottom: 'var(--spacing-m)' }}
-      >
-        {isConfiguredAndReady
-          ? 'Automatic backups are active. The service checks the schedule daily at 02:05 UTC.'
-          : 'Setup needs attention. Fix the highlighted step above.'}
-      </StatusBox>
-
-      {isConnected && isLoadingOverview && !progressMessage && (
-        <StatusBox
-          variant="neutral"
-          style={{ marginBottom: 'var(--spacing-m)' }}
-        >
-          <span className={styles.spinnerRow}>
-            <Spinner size={20} />
-            Loading backup status…
-          </span>
-        </StatusBox>
+    <Page.Group
+      title="Backup status"
+      status={
+        isConfiguredAndReady ? (
+          <Pill tone="success">Active</Pill>
+        ) : (
+          <Pill tone="warning">Needs attention</Pill>
+        )
+      }
+      footer={
+        isConfiguredAndReady
+          ? 'The service checks the schedule daily at 02:05 UTC.'
+          : undefined
+      }
+    >
+      {!isConfiguredAndReady && (
+        <Callout tone="warning">Finish the setup steps above.</Callout>
       )}
-
       {isConnected && progressMessage && (
-        <StatusBox
-          variant="neutral"
-          style={{ marginBottom: 'var(--spacing-m)' }}
-        >
-          <span className={styles.spinnerRow}>
-            <Spinner size={20} />
-            {progressMessage}
-          </span>
-        </StatusBox>
-      )}
-
-      {isConnected && overviewError && (
-        <StatusBox variant="error" style={{ marginBottom: 'var(--spacing-m)' }}>
-          {overviewError}
-        </StatusBox>
-      )}
-
-      {isConnected && lambdaBackupStatus && (
-        <div className={styles.rows}>
-          {overviewRows.map((row) => {
-            const isRowLoading = backupNowInFlightCadence === row.scope;
-            const isRowDisabled =
-              !canBackupNow || backupNowInFlightCadence !== null;
-
-            return (
-              <div key={`overview-${row.scope}`} className={styles.row}>
-                <div className={styles.rowInfo}>
-                  <h3>{getCadenceLabel(row.scope)}</h3>
-                  <p>
-                    <strong>Last:</strong> {row.lastBackup}
-                  </p>
-                  <p>
-                    <strong>Next:</strong> {row.nextBackup}
-                  </p>
-                  <p>
-                    <strong>Environment:</strong>{' '}
-                    {row.environmentLinked ? (
-                      <a
-                        href="/project_settings/environments"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          void onOpenEnvironments();
-                        }}
-                      >
-                        {row.environmentName}
-                      </a>
-                    ) : (
-                      row.environmentName
-                    )}
-                  </p>
-                  {row.environmentStatusNote && (
-                    <p>
-                      <strong>Status:</strong> {row.environmentStatusNote}
-                    </p>
-                  )}
-                </div>
-
-                <Button
-                  buttonType="muted"
-                  buttonSize="s"
-                  onClick={() => {
-                    void backupNow(row.scope);
-                  }}
-                  disabled={isRowDisabled}
-                  leftIcon={isRowLoading ? <Spinner size={16} /> : undefined}
-                >
-                  {isRowLoading ? 'Backing up…' : 'Backup now'}
-                </Button>
-              </div>
-            );
-          })}
+        <div className={styles.block}>
+          <Spinner inline label={false} /> {progressMessage}
         </div>
       )}
-    </section>
+      {isConnected && overviewError && (
+        <Callout tone="danger">{overviewError}</Callout>
+      )}
+      {isConnected &&
+        isLoadingOverview &&
+        !progressMessage &&
+        !lambdaBackupStatus && (
+          <BlankSlate
+            placement="inline"
+            small
+            loading
+            title="Loading backup status"
+          />
+        )}
+      {isConnected && lambdaBackupStatus && (
+        <SettingsList>
+          {overviewRows.map((row) => (
+            <BackupRow key={row.scope} row={row} config={config} />
+          ))}
+        </SettingsList>
+      )}
+    </Page.Group>
   );
 };

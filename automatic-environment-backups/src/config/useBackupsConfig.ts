@@ -51,6 +51,12 @@ import {
 const MISSING_AUTH_SECRET_MESSAGE =
   'Save a shared secret before using the backup service.';
 
+/** Why an edit control is disabled for a role that can't edit the schema. */
+export const READ_ONLY_REASON = "Your role can't change the plugin settings.";
+
+/** Why a control is disabled while another action runs. */
+export const BUSY_REASON = 'Wait for the current action to finish.';
+
 /** Extract a human-readable message from an unknown thrown value. */
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unknown error';
@@ -642,22 +648,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     [ctx],
   );
 
-  const copySecret = useCallback(async () => {
-    const value = secretInput.trim();
-    if (!value) {
-      return;
-    }
-    await writeSecretToClipboard(value, 'Shared secret copied.');
-  }, [secretInput, writeSecretToClipboard]);
-
-  const copySavedSecret = useCallback(async () => {
-    const value = savedSecret.trim();
-    if (!value) {
-      return;
-    }
-    await writeSecretToClipboard(value, 'Shared secret copied.');
-  }, [savedSecret, writeSecretToClipboard]);
-
   const saveSecret = useCallback(async () => {
     if (actionInFlightRef.current || backupRunRef.current) {
       return false;
@@ -690,7 +680,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
    * Persist the edited secret and immediately copy it to the clipboard so the
    * user can paste it into their deployment's `DATOCMS_BACKUPS_SHARED_SECRET`
    * env var in one action. Reuses {@link saveSecret} (validates + persists) and
-   * {@link copySecret} (clipboard + notice/alert).
+   * {@link writeSecretToClipboard} (clipboard + notice/alert).
    */
   const saveAndCopySecret = useCallback(async () => {
     const didSave = await saveSecret();
@@ -1051,16 +1041,9 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     [runBackupCadences],
   );
 
-  const onOpenEnvironments = useCallback(async () => {
-    const environmentPrefix = ctx.isEnvironmentPrimary
-      ? ''
-      : `/environments/${ctx.environment}`;
-    await ctx.navigateTo(`${environmentPrefix}/project_settings/environments`);
-  }, [ctx]);
-
-  const onOpenAccessTokens = useCallback(async () => {
-    await ctx.navigateTo('/project_settings/access_tokens');
-  }, [ctx]);
+  const environmentsPath = `${
+    ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`
+  }/project_settings/environments`;
 
   const canBackupNow =
     canEdit &&
@@ -1109,16 +1092,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     saveAndCopySecret,
     regenerateSecret,
     revertSecret,
-    copySecret,
-    copySavedSecret,
     saveDeploymentUrl,
     testConnection,
     removeDeployment,
     saveSchedule,
     saveDebug,
     backupNow,
-    onOpenEnvironments,
-    onOpenAccessTokens,
+    environmentsPath,
     // activity
     isSavingSecret,
     isSavingDeployment,

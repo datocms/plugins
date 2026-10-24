@@ -1,27 +1,40 @@
-import { Button, Spinner, SwitchField } from 'datocms-react-ui';
-import type { CSSProperties } from 'react';
+import Button from 'datocms-react-ui/Button';
+import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
+import Spinner from 'datocms-react-ui/Spinner';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
 import { BACKUP_CADENCES, getCadenceLabel } from '../utils/backupSchedule';
-import { StatusBox } from './StatusBox';
-import { StepActionArrow } from './StepActionArrow';
 import styles from './StepContent.module.css';
-import type { BackupsConfig } from './useBackupsConfig';
+import {
+  type BackupsConfig,
+  BUSY_REASON,
+  READ_ONLY_REASON,
+} from './useBackupsConfig';
 
-const switchNoHintGapStyle = {
-  '--spacing-s': '0',
-} as CSSProperties;
+type Props = {
+  config: BackupsConfig;
+  group: Pick<PageGroupProps, 'status' | 'collapse'>;
+  onFinish: () => void;
+};
+
+const getSaveReason = (config: BackupsConfig) => {
+  if (!config.canEdit) {
+    return READ_ONLY_REASON;
+  }
+  if (config.isBusy && !config.isSavingSchedule) {
+    return BUSY_REASON;
+  }
+  return config.cadenceSelection.length > 0
+    ? undefined
+    : 'Turn on at least one schedule.';
+};
 
 /**
- * Step 4 — choose how often backups run. Saving persists the normalized backup
+ * Step 4: choose how often backups run. Saving persists the normalized backup
  * schedule and then ensures a backup environment exists for each enabled
  * cadence, reporting progress while the initial sandboxes are created.
  */
-export const StepSchedule = ({
-  config,
-  onFinish,
-}: {
-  config: BackupsConfig;
-  onFinish: () => void;
-}) => {
+export const StepSchedule = ({ config, group, onFinish }: Props) => {
   const {
     canEdit,
     isBusy,
@@ -32,7 +45,7 @@ export const StepSchedule = ({
     progressMessage,
   } = config;
 
-  const hasSelection = cadenceSelection.length > 0;
+  const saveReason = getSaveReason(config);
 
   const handleSave = async () => {
     const didSave = await saveSchedule();
@@ -42,62 +55,42 @@ export const StepSchedule = ({
   };
 
   return (
-    <>
-      <div style={{ display: 'grid', gap: 'var(--spacing-s)' }}>
-        {BACKUP_CADENCES.map((cadence) => (
-          <div
-            key={`cadence-${cadence}`}
-            style={switchNoHintGapStyle}
-            data-step-interactive
-          >
-            <SwitchField
-              name={`cadence_${cadence}`}
-              id={`cadence_${cadence}`}
-              label={getCadenceLabel(cadence)}
-              value={cadenceSelection.includes(cadence)}
-              onChange={(newValue) => setCadenceEnabled(cadence, newValue)}
-              switchInputProps={{
-                id: `cadence_${cadence}`,
-                name: `cadence_${cadence}`,
-                value: cadenceSelection.includes(cadence),
-                disabled: !canEdit || isBusy,
-              }}
-            />
-          </div>
-        ))}
-      </div>
-
-      {isSavingSchedule && (
-        <StatusBox variant="neutral">
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 'var(--spacing-s)',
-            }}
-          >
-            <Spinner size={20} />
-            {progressMessage ?? 'Saving schedule and creating initial backups…'}
-          </span>
-        </StatusBox>
-      )}
-
-      <div className={styles.stepFooter}>
-        <div className={styles.stepFooterPrimary}>
+    <Page.Group
+      title="4. Choose a backup schedule"
+      {...group}
+      footer={
+        <div className={styles.buttons}>
+          {isSavingSchedule && (
+            <span>
+              <Spinner inline label={false} />{' '}
+              {progressMessage ??
+                'Saving the schedule and creating the first backups…'}
+            </span>
+          )}
           <Button
-            buttonType="primary"
-            buttonSize="s"
+            tone="primary"
+            label="Save schedule & finish"
+            className={styles.end}
+            busy={isSavingSchedule}
             onClick={() => {
               void handleSave();
             }}
-            disabled={!canEdit || isBusy || !hasSelection}
-            leftIcon={isSavingSchedule ? <Spinner size={16} /> : undefined}
-            rightIcon={!isSavingSchedule ? <StepActionArrow /> : undefined}
-          >
-            {isSavingSchedule ? 'Saving…' : 'Save schedule & finish'}
-          </Button>
+            disabled={saveReason ? { reason: saveReason } : false}
+          />
         </div>
-      </div>
-    </>
+      }
+    >
+      <SwitchList>
+        {BACKUP_CADENCES.map((cadence) => (
+          <SwitchInput
+            key={cadence}
+            label={getCadenceLabel(cadence)}
+            value={cadenceSelection.includes(cadence)}
+            onChange={(value) => setCadenceEnabled(cadence, Boolean(value))}
+            disabled={!canEdit || isBusy}
+          />
+        ))}
+      </SwitchList>
+    </Page.Group>
   );
 };
