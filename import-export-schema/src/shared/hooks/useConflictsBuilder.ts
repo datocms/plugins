@@ -44,7 +44,7 @@ export function useConflictsBuilder({
       try {
         setConflicts(undefined);
         setError(undefined);
-        task.start({ done: 0, total: 1, label: 'Preparing import…' });
+        task.start({ done: 0, total: 1, label: 'Preparing the import…' });
         const result = await buildConflicts(
           exportSchema as ExportSchema,
           projectSchema,

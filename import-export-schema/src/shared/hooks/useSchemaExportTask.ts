@@ -54,7 +54,7 @@ export function useSchemaExportTask({
         task.controller.start({
           done: 0,
           total,
-          label: 'Preparing export…',
+          label: 'Preparing the export…',
         });
 
         const exportBlob = await buildExportBlob(
@@ -80,15 +80,15 @@ export function useSchemaExportTask({
           total,
           label: 'Export completed',
         });
-        ctx.notice('Export completed successfully.');
+        ctx.notice('Schema exported.');
       } catch (error) {
         console.error('Schema export failed', error);
         if (error instanceof Error && error.message === 'Export cancelled') {
           task.controller.complete({ label: 'Export cancelled' });
-          ctx.notice('Export canceled');
+          ctx.notice('Export canceled.');
         } else {
           task.controller.fail(error);
-          ctx.alert('Could not complete the export. Please try again.');
+          ctx.alert('The schema could not be exported. Try again.');
         }
       } finally {
         runningRef.current = false;

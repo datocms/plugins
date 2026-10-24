@@ -3,16 +3,18 @@ import {
   Handle,
   type Node,
   type NodeProps,
-  NodeToolbar,
   Position,
   type ReactFlowState,
   useStore,
 } from '@xyflow/react';
 import classNames from 'classnames';
-import sortBy from 'lodash-es/sortBy';
-import { useState } from 'react';
-import { Schema } from '@/utils/icons';
-import { Field } from '../components/Field';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import HoverCard from 'datocms-react-ui/HoverCard';
+import Pill from 'datocms-react-ui/Pill';
+import type { ReactNode } from 'react';
+import { BlockIcon, ModelIcon } from '@/icons';
+import { FieldList } from './FieldList';
+import s from './graph.module.css';
 
 export type ItemTypeNode = Node<
   {
@@ -23,121 +25,66 @@ export type ItemTypeNode = Node<
   'itemType'
 >;
 
-/**
- * Renders a fieldset summary inside the item-type tooltip, keeping field ordering in sync
- * with their schema positions.
- */
-function Fieldset({
-  fieldset,
-  allFields,
-}: {
-  fieldset: SchemaTypes.Fieldset;
-  allFields: SchemaTypes.Field[];
-}) {
-  return (
-    <div className="fieldset">
-      <div className="fieldset__title">{fieldset.attributes.title}</div>
-      <div className="fieldset__fields">
-        {sortBy(
-          allFields.filter(
-            (f) => f.relationships.fieldset.data?.id === fieldset.id,
-          ),
-          'attributes.position',
-        ).map((field: SchemaTypes.Field) => (
-          <Field key={field.id} field={field} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Show extra metadata once the canvas is sufficiently zoomed in.
-const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
+const zoomSelector = (state: ReactFlowState) => state.transform[2] >= 0.8;
 
 /**
- * Node renderer used by React Flow to display a DatoCMS model/block with a hoverable
- * field list and API key details that show when zoomed in.
+ * Node renderer used by React Flow to display a DatoCMS model/block, with its
+ * fields and fieldsets in a hover card, and the kind and API key once zoomed
+ * in. The overview lists the same fields without a pointer. The state pill
+ * shows at every zoom.
  */
 export function ItemTypeNodeRenderer({
   data: { itemType, fields, fieldsets },
   className,
+  status,
   name,
   apiKey,
 }: NodeProps<ItemTypeNode> & {
   className?: string;
+  /**
+   * The word for the state that `className` paints (a Pill, as the overview
+   * shows it): the paint alone does not tell it.
+   */
+  status?: ReactNode;
   name: string;
   apiKey: string;
 }) {
-  const [isTooltipVisible, setTooltipVisible] = useState(false);
-
   const showDetails = useStore(zoomSelector);
 
-  const TypeIconComponent = itemType.attributes.modular_block
-    ? Schema.BlocksIcon
-    : Schema.ModelsIcon;
+  const isBlock = itemType.attributes.modular_block;
 
   return (
     <>
-      <Handle type="target" position={Position.Top} style={{ opacity: '0' }} />
-      <NodeToolbar
-        position={Position.Right}
-        isVisible={isTooltipVisible}
-        className="tooltip"
+      <Handle type="target" position={Position.Top} className={s.handle} />
+      <HoverCard
+        placement="right"
+        content={
+          <HoverCard.Body>
+            <FieldList fields={fields} fieldsets={fieldsets} />
+          </HoverCard.Body>
+        }
       >
-        {fields.length + fieldsets.length === 0
-          ? 'No fields'
-          : sortBy(
-              [
-                ...fields.filter((e) => !e.relationships.fieldset.data),
-                ...fieldsets,
-              ],
-              'attributes.position',
-            ).map(
-              (fieldOrFieldset: SchemaTypes.Field | SchemaTypes.Fieldset) =>
-                fieldOrFieldset.type === 'field' ? (
-                  <Field key={fieldOrFieldset.id} field={fieldOrFieldset} />
-                ) : (
-                  <Fieldset
-                    key={fieldOrFieldset.id}
-                    fieldset={fieldOrFieldset}
-                    allFields={fields}
-                  />
-                ),
-            )}
-      </NodeToolbar>
-      <div
-        className={classNames(
-          'app-node',
-          itemType.attributes.modular_block
-            ? 'app-node--block'
-            : 'app-node--model',
-          className,
-        )}
-        onMouseEnter={() => setTooltipVisible(true)}
-        onMouseLeave={() => setTooltipVisible(false)}
-      >
-        {showDetails && (
-          <div className="app-node__type">
-            <span className="app-node__icon">
-              <TypeIconComponent />
+        <div className={classNames(s.node, className)}>
+          {showDetails || status ? (
+            <span className={s.pills}>
+              {showDetails ? (
+                <Pill icon={isBlock ? <BlockIcon /> : <ModelIcon />}>
+                  {isBlock ? 'Block' : 'Model'}
+                </Pill>
+              ) : null}
+              {status}
             </span>
-            <span>{itemType.attributes.modular_block ? 'Block' : 'Model'}</span>
-          </div>
-        )}
-        <div className="app-node__body">
-          <div className="app-node__name">{name}</div>
+          ) : null}
+          <div className={s.name}>{name}</div>
           {showDetails && (
-            <div className="app-node__apikey">
-              <code>{apiKey}</code>
+            <div className={s.details}>
+              <ApiKey>{apiKey}</ApiKey>
             </div>
           )}
         </div>
-      </div>
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ opacity: '0' }}
-      />
+      </HoverCard>
+      <Handle type="source" position={Position.Bottom} className={s.handle} />
     </>
   );
 }

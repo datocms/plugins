@@ -1,9 +1,12 @@
-import { connect } from 'datocms-plugin-sdk';
+// The kit stylesheet loads first, then the library CSS of the graph; the CSS
+// modules of the plugin come after both and win at the same specificity.
 import 'datocms-react-ui/styles.css';
 import '@xyflow/react/dist/style.css';
-import './index.css';
-import { Spinner } from 'datocms-react-ui';
-import { lazy, Suspense } from 'react';
+import { connect } from 'datocms-plugin-sdk';
+import Canvas, { type BaseCtx } from 'datocms-react-ui/Canvas';
+import Spinner from 'datocms-react-ui/Spinner';
+import { lazy, type ReactNode, Suspense } from 'react';
+import { TEXTS } from '@/texts';
 import { render } from '@/utils/render';
 
 // Lazy-load entrypoints so the iframe boots with only the shared shell.
@@ -17,12 +20,34 @@ const LazyImportPage = lazy(() =>
   import('./entrypoints/ImportPage').then((m) => ({ default: m.ImportPage })),
 );
 
+/**
+ * The root of every frame: the Canvas of the hook, then the lazy chunk. A
+ * page fills its frame, so its spinner is centered in it. A frame that sizes
+ * itself to its content (the config screen) gets a spinner area instead,
+ * which keeps a height while the chunk loads.
+ */
+function renderFrame(
+  ctx: BaseCtx,
+  content: ReactNode,
+  { selfSizing = false }: { selfSizing?: boolean } = {},
+) {
+  render(
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <Suspense
+        fallback={selfSizing ? <Spinner.Area size="small" /> : <Spinner />}
+      >
+        {content}
+      </Suspense>
+    </Canvas>,
+  );
+}
+
 connect({
   schemaItemTypeDropdownActions() {
     return [
       {
         id: 'import-export',
-        label: 'Export as JSON...',
+        label: 'Export as JSON…',
         icon: 'file-export',
       },
     ];
@@ -62,42 +87,25 @@ connect({
 
     if (pageId === 'import') {
       // Direct navigation to the import page always boots the import screen in import-only mode.
-      return render(
-        <Suspense fallback={<Spinner size={60} placement="centered" />}>
-          <LazyImportPage ctx={ctx} />
-        </Suspense>,
-      );
+      return renderFrame(ctx, <LazyImportPage ctx={ctx} />);
     }
 
     if (pageId === 'export') {
       if (itemTypeId) {
-        // Export triggered from a specific item type skips the landing step and hydrates the export page.
-        return render(
-          <Suspense fallback={<Spinner size={60} placement="centered" />}>
-            <LazyExportPage ctx={ctx} initialItemTypeId={itemTypeId} />
-          </Suspense>,
+        // Export triggered from a specific item type skips the start step and hydrates the export page.
+        return renderFrame(
+          ctx,
+          <LazyExportPage ctx={ctx} initialItemTypeId={itemTypeId} />,
         );
       }
-      // Bare export navigation shows the landing page so the user can choose what to export.
-      return render(
-        <Suspense fallback={<Spinner size={60} placement="centered" />}>
-          <LazyExportHome ctx={ctx} />
-        </Suspense>,
-      );
+      // Bare export navigation shows the start step so the user can choose what to export.
+      return renderFrame(ctx, <LazyExportHome ctx={ctx} />);
     }
 
     // Unknown page IDs fall back to the import screen to preserve legacy deep links.
-    return render(
-      <Suspense fallback={<Spinner size={60} placement="centered" />}>
-        <LazyImportPage ctx={ctx} />
-      </Suspense>,
-    );
+    return renderFrame(ctx, <LazyImportPage ctx={ctx} />);
   },
   renderConfigScreen(ctx) {
-    return render(
-      <Suspense fallback={<Spinner size={60} placement="centered" />}>
-        <LazyConfig ctx={ctx} />
-      </Suspense>,
-    );
+    return renderFrame(ctx, <LazyConfig ctx={ctx} />, { selfSizing: true });
   },
 });

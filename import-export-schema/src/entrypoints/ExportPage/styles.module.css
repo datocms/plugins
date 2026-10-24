@@ -1,0 +1,11 @@
+/* The positioned parent with a height that the panes and the split need */
+.layout {
+  position: absolute;
+  inset: 0;
+}
+
+/* The graph fills the content of its pane */
+.canvas {
+  position: absolute;
+  inset: 0;
+}

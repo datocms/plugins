@@ -1,130 +1,94 @@
-import { Button } from 'datocms-react-ui';
-import type { PropsWithChildren } from 'react';
+import Modal from 'datocms-react-ui/Modal';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import Spinner from 'datocms-react-ui/Spinner';
+import { useFormatters } from '@/texts';
 import ProgressStallNotice from './ProgressStallNotice';
+import s from './progress.module.css';
 
 type CancelProps = {
-  label: string;
-  intent?: 'negative' | 'muted';
-  disabled?: boolean;
-  onCancel: () => void;
-  size?: 's' | 'm';
+  /** Stops the task, or asks first whether to stop it */
+  onCancel: () => void | Promise<void>;
 };
 
 type ProgressData = {
   label?: string;
   done?: number;
   total?: number;
-  percentOverride?: number;
 };
 
 type Props = {
   title: string;
-  subtitle?: string;
+  /** One line under the title, for example the state of a cancel */
+  description?: string;
   progress: ProgressData;
   stallCurrent?: number | undefined;
-  ariaLabel: string;
+  /** The name of the progress bar. The default is the title. */
+  ariaLabel?: string;
+  /**
+   * How the user stops the task: the Cancel button of the footer, and Escape.
+   * Without it (for example once a cancel is requested), the dialog has no
+   * footer and cannot be closed.
+   */
   cancel?: CancelProps;
-  overlayZIndex?: number;
 };
 
-// Ensure the progress bar always renders with a minimal width when progress is unknown.
-function clampPercent(value: number | undefined): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0.1;
-  return Math.min(1, Math.max(0, value));
-}
-
-function resolvePercent(progress: ProgressData): number {
-  if (typeof progress.percentOverride === 'number') {
-    return clampPercent(progress.percentOverride);
-  }
-  if (
-    typeof progress.done === 'number' &&
-    typeof progress.total === 'number' &&
-    progress.total > 0
-  ) {
-    return clampPercent(progress.done / progress.total);
-  }
-  return 0.1;
-}
-
 /**
- * Fullscreen overlay that shows a determinate progress bar, optional stall warning,
- * and cancel affordance while long-running tasks execute.
+ * The dialog of a long task: it blocks the page, shows the progress and lets
+ * the user stop the task with the Cancel of its footer. It has no close
+ * button: it goes away when the task ends.
  */
 export function ProgressOverlay({
   title,
-  subtitle,
+  description,
   progress,
   stallCurrent,
   ariaLabel,
   cancel,
-  overlayZIndex = 9999,
-}: PropsWithChildren<Props>) {
-  const percent = resolvePercent(progress);
-  const totalText =
-    typeof progress.total === 'number' && progress.total > 0
-      ? `${progress.done ?? 0} / ${progress.total}`
-      : '';
+}: Props) {
+  const format = useFormatters();
+  const { label = '', done = 0, total } = progress;
+  const hasShare = typeof total === 'number' && total > 0;
 
   return (
-    <div
-      className="progress-overlay"
-      style={{ zIndex: overlayZIndex }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel}
+    <Modal
+      title={title}
+      freeContent
+      onClose={
+        cancel
+          ? () => {
+              void cancel.onCancel();
+            }
+          : null
+      }
     >
-      <div className="export-overlay__card">
-        <div className="export-overlay__title">{title}</div>
-        {subtitle ? (
-          <div className="export-overlay__subtitle">{subtitle}</div>
-        ) : null}
-
-        <div
-          className="export-overlay__bar"
-          role="progressbar"
-          aria-label={ariaLabel}
-          aria-valuemin={0}
-          aria-valuemax={
-            typeof progress.total === 'number' && progress.total > 0
-              ? progress.total
-              : undefined
-          }
-          aria-valuenow={
-            typeof progress.total === 'number' && progress.total > 0
-              ? progress.done
-              : undefined
-          }
-        >
-          <div
-            className="export-overlay__bar__fill"
-            style={{ width: `${Math.round(percent * 100)}%` }}
-          />
+      <Modal.Body>
+        <div className={s.body}>
+          {description ? <p className={s.description}>{description}</p> : null}
+          {hasShare ? (
+            <div className={s.progress}>
+              <ProgressBar
+                value={done / total}
+                ariaLabel={ariaLabel ?? title}
+              />
+              <div className={s.meta}>
+                <span className={s.label}>{label}</span>
+                <span className={s.count}>
+                  {format.number(done)} of {format.number(total)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className={s.status}>
+              <Spinner inline label={false} />
+              <span className={s.label}>{label}</span>
+            </div>
+          )}
+          <ProgressStallNotice current={stallCurrent} />
         </div>
-        <div className="export-overlay__meta">
-          <div>{progress.label ?? ''}</div>
-          <div>{totalText}</div>
-        </div>
-        <ProgressStallNotice current={stallCurrent} />
-        {cancel ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              marginTop: 12,
-            }}
-          >
-            <Button
-              buttonSize={cancel.size ?? 's'}
-              buttonType={cancel.intent ?? 'negative'}
-              disabled={cancel.disabled}
-              onClick={cancel.onCancel}
-            >
-              {cancel.label}
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </div>
+      </Modal.Body>
+      {/* The footer draws its own Cancel at the left, from onClose. The
+          task has no other action. */}
+      {cancel ? <Modal.Footer>{null}</Modal.Footer> : null}
+    </Modal>
   );
 }

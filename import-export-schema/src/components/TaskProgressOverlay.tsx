@@ -5,73 +5,66 @@ import type {
   UseLongTaskResult,
 } from '@/shared/tasks/useLongTask';
 
-// Adapter that presents a running `useLongTask` instance inside the shared modal overlay UI
-// used throughout the import/export flows.
+// Adapter that presents a running `useLongTask` instance inside the shared
+// progress dialog used throughout the import/export flows.
 
 type CancelOptions = {
-  label: string;
+  /** Stops the task, or asks first whether to stop it */
   onCancel: () => void | Promise<void>;
-  intent?: 'negative' | 'muted';
-  disabled?: boolean;
 };
 
 export type TaskProgressOverlayProps = {
   task: UseLongTaskResult;
   title: string;
-  subtitle: string | ((state: LongTaskState) => string);
-  ariaLabel: string;
-  overlayZIndex?: number;
+  /** One line under the title, or a function of the state of the task */
+  subtitle?: string | ((state: LongTaskState) => string | undefined);
+  /** The name of the progress bar. The default is the title. */
+  ariaLabel?: string;
   progressLabel?: (progress: LongTaskProgress, state: LongTaskState) => string;
-  percentOverride?: number;
+  /**
+   * The cancel for the current state: the Cancel of the dialog. Return
+   * undefined once a cancel is requested, and say so in the subtitle.
+   */
   cancel?: (state: LongTaskState) => CancelOptions | undefined;
 };
 
 /**
- * Convenience wrapper over the shared modal overlay component so long-running imports and
- * exports surface consistent progress UI. Callers pass their `useLongTask` handle plus
- * lightweight callbacks for dynamic subtitles, labels, or cancel behavior.
+ * The progress dialog of a `useLongTask`. It shows only while the task runs
+ * or stops; the callbacks give the line, the label and the cancel for the
+ * current state.
  */
 export function TaskProgressOverlay({
   task,
   title,
   subtitle,
   ariaLabel,
-  overlayZIndex,
   progressLabel,
-  percentOverride,
   cancel,
 }: TaskProgressOverlayProps) {
   if (task.state.status !== 'running' && task.state.status !== 'cancelling') {
-    // The overlay only renders while the task is active; once it resolves the modal
-    // disappears so the page can show completion state instead.
+    // The dialog shows only while the task is active; once it resolves it goes
+    // away so the page can show the result.
     return null;
   }
 
   const state = task.state;
   const progress = state.progress;
-  // Subtitle/label hooks let the overlay speak to the current step (eg "Fetching records")
-  // without duplicating formatting logic where the task is started.
   const resolvedSubtitle =
     typeof subtitle === 'function' ? subtitle(state) : subtitle;
   const label = progressLabel ? progressLabel(progress, state) : progress.label;
-  const cancelProps = cancel?.(state);
 
   return (
     <ProgressOverlay
-      // Renders a blocking modal overlay with title/subtitle and animated progress bar so
-      // users see the live status for long-running exports/imports.
       title={title}
-      subtitle={resolvedSubtitle}
+      description={resolvedSubtitle}
       ariaLabel={ariaLabel}
-      overlayZIndex={overlayZIndex}
       progress={{
         label,
         done: progress.done,
         total: progress.total,
-        percentOverride,
       }}
       stallCurrent={progress.done}
-      cancel={cancelProps}
+      cancel={cancel?.(state)}
     />
   );
 }

@@ -1,0 +1,181 @@
+/* The dependency graph: a diagram that the kit has no component for. It is
+   painted only with the semantic tokens, thus it reads in light and dark. */
+
+/* The React Flow canvas. The library paints itself from its own variables
+   (the light and dark defaults of its stylesheet are hex values): the
+   canvas gives them tokens. The edges are graphic marks, not text, thus
+   they take the graphic ink. The edge stroke also paints the arrowheads,
+   because GraphCanvas gives no inline marker color. */
+.canvas {
+  --xy-background-color: var(--color--surface);
+  --xy-edge-stroke: var(--color--ink-muted);
+  --xy-handle-background-color: var(--color--ink-muted);
+  --xy-handle-border-color: var(--color--surface);
+
+  background-color: var(--color--surface);
+
+  /* The edges end above the kind pill, which sits on the top border */
+  :global(.react-flow__handle-top) {
+    top: var(--negative-spacing-m);
+  }
+}
+
+/* The handles only anchor the edges: the graph is read-only */
+.handle {
+  opacity: 0;
+}
+
+/* A model, a block or a plugin: a card that rests on the canvas. The width
+   stays under the 250px slot that the hierarchy layout gives each node. */
+.node {
+  position: relative;
+  box-sizing: border-box;
+  width: 230px;
+  padding: var(--spacing-l) var(--spacing-m) var(--spacing-m);
+  color: var(--color--ink);
+  text-align: center;
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow--resting);
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+
+  &:hover {
+    border-color: var(--color--border-hover);
+  }
+}
+
+/* The kind pill (zoomed in) and the state pill, centered on the top
+   border */
+.pills {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  gap: var(--spacing-s);
+  max-width: calc(100% - 2 * var(--spacing-m));
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+
+.name {
+  overflow: hidden;
+  font-weight: var(--font-weight-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details {
+  margin-top: var(--spacing-s);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The version of a plugin: plain subtle text, not an API key */
+.version {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The states that the export and import wrappers compose, each with its
+   word in the state pill of the node. Each state uses the tokens of one
+   context only. An excluded node is muted as the kit mutes a row: its text
+   turns subtle but keeps 4.5:1, and only its icons fade. */
+.excluded {
+  color: var(--color--ink-subtle);
+
+  & svg {
+    opacity: var(--disabled-opacity);
+  }
+}
+
+.focused,
+.focused:hover {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+}
+
+.conflict,
+.conflict:hover {
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
+  border-color: var(--color--danger-soft--border);
+}
+
+/* The ring out of the border, from the same context */
+.conflict.focused {
+  outline: 2px solid var(--color--danger-soft--outline);
+}
+
+/* The dot in the middle of an edge: a button whose HoverCard lists the
+   fields behind the link, on hover and on keyboard focus. The focus ring
+   is the kit's own (*:focus-visible). The button has the corners of a
+   button; only the mark it draws is round. */
+.edgeDot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+  padding: 0;
+  pointer-events: all;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-s);
+
+  &::before {
+    display: block;
+    width: var(--spacing-m);
+    height: var(--spacing-m);
+    content: "";
+    background-color: var(--color--ink-muted);
+    border-radius: var(--radius-full);
+  }
+
+  &:hover::before,
+  &:focus-visible::before {
+    background-color: var(--color--ink-subtle);
+  }
+}
+
+/* The fields and fieldsets of a model or block: in a HoverCard of the
+   graph, and in the body of an overview item */
+.fieldList,
+.fieldsetFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.fieldListEmpty {
+  margin: 0;
+  color: var(--color--ink-subtle);
+}
+
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.fieldsetTitle {
+  overflow: hidden;
+  font-weight: var(--font-weight-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fieldsetFields {
+  padding-left: var(--spacing-m);
+  border-left: 1px solid var(--color--border);
+}

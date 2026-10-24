@@ -1,30 +1,46 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { Button, SelectField } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import type { Message } from 'datocms-react-ui/Message';
+import { Page } from 'datocms-react-ui/Page';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import { useMemo, useState } from 'react';
+import { CircleExclamationIcon, ModelIcon, RefreshIcon } from '@/icons';
+import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 
-type MultiOption = { label: string; value: string; searchText?: string };
-type SelectGroup<OptionType> = {
-  label?: string;
-  options: readonly OptionType[];
+type MultiOption = {
+  label: string;
+  value: string;
+  searchText?: string;
+  isBlock?: boolean;
+};
+
+type OptionGroup = {
+  label: string;
+  options: MultiOption[];
 };
 
 type Props = {
-  selectId: string;
+  /** Every item type of the environment, once loaded */
   itemTypes?: SchemaTypes.ItemType[];
+  /** The item types could not be loaded */
+  error?: Error;
+  /** Loads the item types again, after an error */
+  onRetry?: () => void;
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
-  onStart: () => void;
-  onBack: () => void;
-  startDisabled: boolean;
-  title?: string;
-  description?: string;
-  selectLabel?: string;
-  startLabel?: string;
-  backLabel?: string;
+  /** Opens the dependency graph of the picks */
+  onContinue: () => void;
 };
 
 const largeSelectionThreshold = 200;
 const visibleOptionLimit = 100;
+
+const nameCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+  numeric: true,
+});
 
 function normalizeSearch(value: string) {
   return value
@@ -53,108 +69,153 @@ export function getVisibleExportOptions(
   return { options: visible, totalMatches };
 }
 
+/** The menu of the select: the models, then the block models */
+function groupByKind(options: MultiOption[]): OptionGroup[] {
+  const groups: OptionGroup[] = [
+    { label: 'Models', options: options.filter((option) => !option.isBlock) },
+    {
+      label: 'Block models',
+      options: options.filter((option) => option.isBlock),
+    },
+  ];
+  return groups.filter((group) => group.options.length > 0);
+}
+
+/** The search of a short list: name, API key and ID, ignoring accents */
+function matchesSearch(option: { data: MultiOption }, inputValue: string) {
+  const query = normalizeSearch(inputValue.trim());
+  return normalizeSearch(option.data.searchText ?? option.data.label).includes(
+    query,
+  );
+}
+
 /**
- * Secondary step of the export flow that lets editors pick targeted models/blocks
- * before jumping into the dependency graph.
+ * The first group of the start step of the export: the models and blocks the
+ * dependency graph starts from. The first pick is the root of the export.
  */
 export function ExportSelectionPanel({
-  selectId,
   itemTypes,
+  error,
+  onRetry,
   selectedIds,
   onSelectedIdsChange,
-  onStart,
-  onBack,
-  startDisabled,
-  title = 'Select models to export',
-  description = 'Choose the models and blocks you want to inspect. You can refine the selection on the next screen.',
-  selectLabel = 'Starting models/blocks',
-  startLabel = 'Export selection',
-  backLabel = 'Back',
+  onContinue,
 }: Props) {
-  const [inputValue, setInputValue] = useState('');
+  const [query, setQuery] = useState('');
+
   const options = useMemo<MultiOption[]>(
     () =>
-      (itemTypes ?? []).map((itemType) => {
-        const label = `${itemType.attributes.name}${
-          itemType.attributes.modular_block ? ' (Block)' : ''
-        }`;
-        return {
-          value: itemType.id,
-          label,
-          searchText: `${label} ${itemType.attributes.api_key} ${itemType.id}`,
-        };
-      }),
+      (itemTypes ?? [])
+        .map((itemType) => {
+          const { name, api_key: apiKey, modular_block } = itemType.attributes;
+          return {
+            value: itemType.id,
+            label: name,
+            searchText: `${name} ${apiKey} ${itemType.id}`,
+            isBlock: modular_block,
+          };
+        })
+        .sort((a, b) =>
+          nameCollator.compare(
+            getTextWithoutRepresentativeEmojiAndPadding(a.label),
+            getTextWithoutRepresentativeEmojiAndPadding(b.label),
+          ),
+        ),
     [itemTypes],
   );
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  // React-Select expects objects; keep them memoized so the control stays controlled.
-  const value = useMemo(
-    () => options.filter((option) => selectedIdSet.has(option.value)),
-    [options, selectedIdSet],
-  );
+  // Past 200 options the menu shows at most 100 matches. The chosen options
+  // stay in the list (the menu hides them), thus their pills keep a label.
   const isLargeSelection = options.length > largeSelectionThreshold;
   const visibleOptions = useMemo(
-    () => getVisibleExportOptions(options, selectedIdSet, inputValue),
-    [options, selectedIdSet, inputValue],
+    () =>
+      isLargeSelection
+        ? getVisibleExportOptions(options, selectedIdSet, query)
+        : undefined,
+    [isLargeSelection, options, selectedIdSet, query],
   );
+  const menuOptions = useMemo(() => {
+    if (!visibleOptions) {
+      return groupByKind(options);
+    }
+    const chosen = options.filter((option) => selectedIdSet.has(option.value));
+    return groupByKind([...chosen, ...visibleOptions.options]);
+  }, [options, selectedIdSet, visibleOptions]);
+
+  const hint: Message =
+    visibleOptions && visibleOptions.totalMatches > visibleOptionLimit
+      ? {
+          id: 'importExportSchema.exportOptionsCapped',
+          values: { total: visibleOptions.totalMatches },
+        }
+      : 'The next step shows what they depend on, so you can choose what else goes in the file.';
+
+  // The environment has nothing to pick: the group says so, with no select
+  // and no Continue
+  const isEmpty = !error && itemTypes?.length === 0;
 
   return (
-    <div className="blank-slate__body">
-      <div className="blank-slate__body__title">{title}</div>
-      <div className="blank-slate__body__content">
-        <p>{description}</p>
-        <div className="export-selector">
-          <div className="export-selector__field">
-            <SelectField<MultiOption, true, SelectGroup<MultiOption>>
-              id={selectId}
-              name="export-initial-model"
-              label={selectLabel}
-              hint={
-                isLargeSelection &&
-                visibleOptions.totalMatches > visibleOptionLimit
-                  ? `Showing the first ${visibleOptionLimit} of ${visibleOptions.totalMatches} matches. Search by name or API identifier to narrow the list.`
-                  : undefined
-              }
-              selectInputProps={{
-                isMulti: true,
-                isClearable: true,
-                isDisabled: !itemTypes,
-                options: isLargeSelection ? visibleOptions.options : options,
-                isOptionSelected: (option) => selectedIdSet.has(option.value),
-                ...(isLargeSelection
-                  ? {
-                      inputValue,
-                      onInputChange: setInputValue,
-                      filterOption: null,
-                    }
-                  : {}),
-                placeholder: 'Choose models/blocks…',
-              }}
-              value={value}
-              onChange={(multi) =>
-                onSelectedIdsChange(
-                  Array.isArray(multi)
-                    ? multi.map((option) => option.value)
-                    : [],
-                )
-              }
-            />
-          </div>
-          <div className="export-selector__actions">
-            <Button buttonType="muted" buttonSize="s" onClick={onBack}>
-              {backLabel}
-            </Button>
-            <Button
-              buttonType="primary"
-              disabled={startDisabled}
-              onClick={onStart}
-            >
-              {startLabel}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Page.Group
+      title="Models and blocks"
+      footer={
+        error || isEmpty ? undefined : (
+          <Button
+            label="Continue"
+            size="small"
+            tone="primary"
+            expand={false}
+            onClick={onContinue}
+            disabled={
+              selectedIds.length === 0
+                ? { reason: 'Choose at least one model or block.' }
+                : undefined
+            }
+          />
+        )
+      }
+    >
+      {error ? (
+        <BlankSlate
+          placement="inline"
+          small
+          error
+          icon={<CircleExclamationIcon />}
+          title="The models and blocks could not be loaded"
+          code={error.message}
+          description="Check your connection and your permissions, then try again."
+          actions={
+            onRetry ? (
+              <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+            ) : undefined
+          }
+        />
+      ) : isEmpty ? (
+        <BlankSlate
+          placement="inline"
+          small
+          icon={<ModelIcon />}
+          title="No models or blocks yet"
+          description="This environment has no models or blocks to export."
+        />
+      ) : (
+        <FieldWrapper label="Starting models and blocks" hint={hint}>
+          <SelectInput<MultiOption, OptionGroup>
+            multiple
+            clearable
+            name="export-initial-models"
+            placeholder="Blog post, Author"
+            options={menuOptions}
+            value={selectedIds}
+            onChange={(ids) => onSelectedIdsChange(ids ?? [])}
+            loading={!itemTypes}
+            disabled={!itemTypes}
+            {...(isLargeSelection
+              ? { search: { onQueryChange: setQuery } }
+              : { filterOption: matchesSearch })}
+          />
+        </FieldWrapper>
+      )}
+    </Page.Group>
   );
 }

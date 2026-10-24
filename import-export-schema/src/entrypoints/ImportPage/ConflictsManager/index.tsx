@@ -1,33 +1,31 @@
-import type { SchemaTypes } from '@datocms/cma-client';
-import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, SwitchInput } from 'datocms-react-ui';
-import get from 'lodash-es/get';
-import { useCallback, useContext, useId, useMemo, useState } from 'react';
-import { useForm, useFormState } from 'react-final-form';
-import { PaginatedEntries } from '@/components/SchemaOverview/PaginatedEntries';
-import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
-import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
-import { isDefined } from '@/utils/isDefined';
-import type { ProjectSchema } from '@/utils/ProjectSchema';
-import {
-  type FormValues,
-  getPendingIdReplacementKeys,
-  idCollisionFieldPrefix,
-} from '../ResolutionsForm';
+/**
+ * The overview pane of the import review: the models, block models and
+ * plugins of the file, grouped by kind, with the unresolved conflicts first.
+ * Opening an item focuses its node, and its body holds the decisions about
+ * it: how to import it, and the new IDs it needs.
+ */
+import Callout from 'datocms-react-ui/Callout';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ListArea from 'datocms-react-ui/ListArea';
+import Pane, { type ListPreset, useFilteredList } from 'datocms-react-ui/Pane';
+import { useState } from 'react';
+import { useForm } from 'react-final-form';
+import { OverviewGroup } from '@/components/SchemaOverview/OverviewGroup';
 import type {
-  FieldIdCollision,
-  FieldLegacyIdIssue,
-  FieldsetIdCollision,
-  FieldsetLegacyIdIssue,
-  IdCollisionEntityType,
-  ItemTypeIdCollision,
-  ItemTypeLegacyIdIssue,
-  PluginIdCollision,
-  PluginLegacyIdIssue,
-} from './buildConflicts';
-import { ConflictsContext } from './ConflictsContext';
+  OverviewEntity,
+  OverviewKind,
+} from '@/components/SchemaOverview/OverviewItem';
+import { type Formatters, useFormatters } from '@/texts';
+import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
+import type { FormValues } from '../ResolutionsForm';
 import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
+import type {
+  ImportReview,
+  ItemTypeEntry,
+  PluginEntry,
+  SectionKey,
+} from './useImportReview';
 
 // Collator keeps alphabetical/numeric ordering stable regardless of locale accents.
 const localeAwareCollator = new Intl.Collator(undefined, {
@@ -58,579 +56,251 @@ export function sortConflictEntries<T>(
     .map(({ entry }) => entry);
 }
 
-type Props = {
-  exportSchema: ExportSchema;
-  schema: ProjectSchema;
-  // ctx is currently unused; keep for future enhancements
-  ctx?: RenderPageCtx;
+type EntryBase = {
+  /** Unique across kinds: an item type and a plugin can share an ID */
+  key: string;
+  name: string;
+  /** The API key of an item type, the package of a plugin */
+  searchKey: string | null;
+  /** The conflict still needs a decision of the user */
+  unresolved: boolean;
 };
 
-type ItemTypeEntry = {
-  exportItemType: SchemaTypes.ItemType;
-  projectItemType?: SchemaTypes.ItemType;
-  idCollision?: ItemTypeIdCollision;
-  legacyIdIssue?: ItemTypeLegacyIdIssue;
-  fieldIdCollisions: FieldIdCollision[];
-  fieldLegacyIdIssues: FieldLegacyIdIssue[];
-  fieldsetIdCollisions: FieldsetIdCollision[];
-  fieldsetLegacyIdIssues: FieldsetLegacyIdIssue[];
+type OverviewEntry = EntryBase &
+  (
+    | { kind: 'model' | 'block'; item: ItemTypeEntry }
+    | { kind: 'plugin'; item: PluginEntry }
+  );
+
+/** An entry as the lists show it: see `useListOrder` */
+type ListedEntry = OverviewEntry & { listedAsUnresolved: boolean };
+
+const sectionKinds: Record<SectionKey, OverviewKind> = {
+  models: 'model',
+  blocks: 'block',
+  plugins: 'plugin',
 };
 
-type PluginEntry = {
-  exportPlugin: SchemaTypes.Plugin;
-  projectPlugin?: SchemaTypes.Plugin;
-  idCollision?: PluginIdCollision;
-  legacyIdIssue?: PluginLegacyIdIssue;
+const presetOptions: ListPreset<ListedEntry>[] = [
+  {
+    id: 'unresolved',
+    label: 'With unresolved conflicts',
+    shortLabel: 'Unresolved',
+    matches: (entry) => entry.listedAsUnresolved,
+  },
+];
+
+function getEntryEntityId(entry: ListedEntry) {
+  return entry.kind === 'plugin'
+    ? entry.item.exportPlugin.id
+    : entry.item.exportItemType.id;
+}
+
+function getEntrySearchTexts(entry: ListedEntry) {
+  return [entry.name, entry.searchKey];
+}
+
+/** The entries of the review in the order of the overview, sections first */
+function buildEntries(review: ImportReview): OverviewEntry[] {
+  return review.sectionOrder.flatMap((section): OverviewEntry[] => {
+    if (section === 'plugins') {
+      return review.pluginEntries.map((item) => ({
+        key: `plugin-${item.exportPlugin.id}`,
+        kind: 'plugin',
+        name: item.exportPlugin.attributes.name,
+        searchKey: item.exportPlugin.attributes.package_name ?? null,
+        unresolved: review.isPluginConflictUnresolved(item),
+        item,
+      }));
+    }
+
+    return review.itemTypesByCategory[section].map((item) => ({
+      key: `itemType-${item.exportItemType.id}`,
+      kind: sectionKinds[section] === 'block' ? 'block' : 'model',
+      name: item.exportItemType.attributes.name,
+      searchKey: item.exportItemType.attributes.api_key,
+      unresolved: review.isItemTypeConflictUnresolved(item),
+      item,
+    }));
+  });
+}
+
+type ListOrder = {
+  entity: OverviewEntity;
+  positions: Map<string, number>;
+  unresolvedKeys: Set<string>;
+  sectionOrder: SectionKey[];
 };
 
-function itemTypeEntryHasConflict(entry: ItemTypeEntry) {
-  return Boolean(
-    entry.projectItemType ||
-      entry.idCollision ||
-      entry.legacyIdIssue ||
-      entry.fieldIdCollisions.length > 0 ||
-      entry.fieldLegacyIdIssues.length > 0 ||
-      entry.fieldsetIdCollisions.length > 0 ||
-      entry.fieldsetLegacyIdIssues.length > 0,
-  );
+/**
+ * The order of the lists. While an item is open, they keep the order (and the
+ * unresolved preset its members) that they had when it opened: a decision in
+ * its body then never moves it away from under the pointer, or takes the
+ * focus from the field being typed in. The order follows the decisions again
+ * when the item closes, or when another item opens.
+ */
+function useListOrder(
+  focused: OverviewEntity | undefined,
+  entries: OverviewEntry[],
+  sectionOrder: SectionKey[],
+) {
+  const [frozen, setFrozen] = useState<ListOrder | null>(null);
+
+  if (focused && frozen?.entity !== focused) {
+    setFrozen({
+      entity: focused,
+      positions: new Map(entries.map((entry, index) => [entry.key, index])),
+      unresolvedKeys: new Set(
+        entries.filter((entry) => entry.unresolved).map((entry) => entry.key),
+      ),
+      sectionOrder,
+    });
+  } else if (!focused && frozen) {
+    setFrozen(null);
+  }
+
+  return focused && frozen?.entity === focused ? frozen : null;
 }
 
-function pluginEntryHasConflict(entry: PluginEntry) {
-  return Boolean(
-    entry.projectPlugin || entry.idCollision || entry.legacyIdIssue,
-  );
+function listEntries(
+  entries: OverviewEntry[],
+  order: ListOrder | null,
+): ListedEntry[] {
+  if (!order) {
+    return entries.map((entry) => ({
+      ...entry,
+      listedAsUnresolved: entry.unresolved,
+    }));
+  }
+
+  const position = (entry: OverviewEntry) =>
+    order.positions.get(entry.key) ?? Number.MAX_SAFE_INTEGER;
+
+  return entries
+    .map((entry) => ({
+      ...entry,
+      listedAsUnresolved: order.unresolvedKeys.has(entry.key),
+    }))
+    .sort((a, b) => position(a) - position(b));
 }
 
-function sortItemTypesByUnresolvedThenName(
-  items: ItemTypeEntry[],
-  isUnresolved: (entry: ItemTypeEntry) => boolean,
-): ItemTypeEntry[] {
-  return sortConflictEntries(
-    items,
-    isUnresolved,
-    itemTypeEntryHasConflict,
-    (entry) => entry.exportItemType.attributes.name,
-  );
-}
-
-function sortPluginsByUnresolvedThenName(
-  entries: PluginEntry[],
-  isUnresolved: (entry: PluginEntry) => boolean,
-): PluginEntry[] {
-  return sortConflictEntries(
-    entries,
-    isUnresolved,
-    pluginEntryHasConflict,
-    (entry) => entry.exportPlugin.attributes.name,
-  );
+/** The option of the "⋮" that gives a new ID to every pending ID at once */
+function pendingIdsLabel(format: Formatters, count: number) {
+  return count === 1
+    ? 'Use a new ID for the pending ID'
+    : `Use new IDs for all ${format.number(count)} pending IDs`;
 }
 
 /**
- * Organizes detected conflicts by type, wiring them into the resolutions form.
+ * The entries of the overview in the order of its lists, with its text
+ * filter and its preset. The review screen keeps them, because the split
+ * unmounts a closed overview: the filter and the preset then survive a close.
  */
-export default function ConflictsManager({
-  exportSchema,
-  schema: _schema,
-}: Props) {
-  const conflicts = useContext(ConflictsContext);
-  const form = useForm<FormValues>();
-  const [showOnlyConflicts, setShowOnlyConflicts] = useState(false);
-  const toggleId = useId();
-  // Track submission state for enabling/disabling the final CTA.
-  const formState = useFormState({
-    subscription: {
-      submitting: true,
-      valid: true,
-      validating: true,
-      values: true,
-      errors: true,
-    },
-  });
-  const {
-    submitting,
-    valid,
-    validating,
-    values: formValues = {},
-    errors: formErrors = {},
-  } = formState as {
-    submitting: boolean;
-    valid: boolean;
-    validating: boolean;
-    values: Record<string, unknown>;
-    errors: Record<string, unknown>;
+export function useConflictsOverviewList(
+  review: ImportReview,
+  focusedEntity: OverviewEntity | undefined,
+) {
+  // The review changes with every edit of the form: so do the entries
+  const liveEntries = buildEntries(review);
+  const order = useListOrder(focusedEntity, liveEntries, review.sectionOrder);
+  const entries = listEntries(liveEntries, order);
+  const sectionOrder = order?.sectionOrder ?? review.sectionOrder;
+
+  return {
+    ...useFilteredList(entries, getEntrySearchTexts, presetOptions),
+    sectionOrder,
   };
-  const pendingIdReplacementKeys = useMemo(
-    () => getPendingIdReplacementKeys(conflicts, formValues),
-    [conflicts, formValues],
-  );
+}
 
-  const isIdCollisionUnresolved = useCallback(
-    (entityType: IdCollisionEntityType, id: string) => {
-      const fieldPrefix = idCollisionFieldPrefix(entityType, id);
-      const strategy = get(formValues, [fieldPrefix, 'strategy']);
-      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+export type ConflictsOverviewList = ReturnType<typeof useConflictsOverviewList>;
 
-      return strategy !== 'generateReplacement' || hasErrors;
-    },
-    [formValues, formErrors],
-  );
+type Props = {
+  review: ImportReview;
+  /** The entries, the filter and the preset: see `useConflictsOverviewList` */
+  list: ConflictsOverviewList;
+};
 
-  const hasUnresolvedItemTypeIdCollision = useCallback(
-    (entry: ItemTypeEntry) => {
-      const fieldPrefix = `itemType-${entry.exportItemType.id}`;
-      const strategy = get(formValues, [fieldPrefix, 'strategy']);
-      if (strategy === 'reuseExisting') {
-        return false;
-      }
+/**
+ * Organizes the elements of the file by kind, wiring each conflict into the
+ * resolutions form.
+ */
+export default function ConflictsManager({ review, list }: Props) {
+  const form = useForm<FormValues>();
+  const format = useFormatters();
+  const { filter, presets, filteredItems, hasNoResults, sectionOrder } = list;
 
-      const issueGroups = [
-        [entry.idCollision, entry.legacyIdIssue].filter(isDefined),
-        entry.fieldIdCollisions,
-        entry.fieldLegacyIdIssues,
-        entry.fieldsetIdCollisions,
-        entry.fieldsetLegacyIdIssues,
-      ];
-      for (const issues of issueGroups) {
-        if (
-          issues.some((issue) =>
-            isIdCollisionUnresolved(issue.entityType, issue.exportId),
-          )
-        )
-          return true;
-      }
+  const groups = sectionOrder
+    .map((section) => {
+      const kind = sectionKinds[section];
+      return {
+        kind,
+        entries: filteredItems.filter((entry) => entry.kind === kind),
+      };
+    })
+    .filter((group) => group.entries.length > 0);
 
-      return false;
-    },
-    [formValues, isIdCollisionUnresolved],
-  );
-
-  // Returns true while an item-type conflict still needs user input.
-  const isItemTypeConflictUnresolved = useCallback(
-    (entry: ItemTypeEntry) => {
-      const { exportItemType, projectItemType } = entry;
-      const idCollisionUnresolved = hasUnresolvedItemTypeIdCollision(entry);
-
-      if (!projectItemType) {
-        return idCollisionUnresolved;
-      }
-
-      const fieldPrefix = `itemType-${exportItemType.id}`;
-      const strategy = get(formValues, [fieldPrefix, 'strategy']);
-      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
-
-      if (!strategy) {
-        return true;
-      }
-
-      if (hasErrors) {
-        return true;
-      }
-
-      if (strategy === 'rename') {
-        const name = get(formValues, [fieldPrefix, 'name']);
-        const apiKey = get(formValues, [fieldPrefix, 'apiKey']);
-        return !(name && apiKey) || idCollisionUnresolved;
-      }
-
-      if (strategy === 'reuseExisting') {
-        return idCollisionUnresolved;
-      }
-
-      return true;
-    },
-    [formValues, formErrors, hasUnresolvedItemTypeIdCollision],
-  );
-
-  const hasUnresolvedPluginIdCollision = useCallback(
-    (entry: PluginEntry) => {
-      const fieldPrefix = `plugin-${entry.exportPlugin.id}`;
-      const strategy = get(formValues, [fieldPrefix, 'strategy']);
-      if (
-        strategy === 'reuseExisting' ||
-        strategy === 'skip' ||
-        (!entry.idCollision && !entry.legacyIdIssue)
-      ) {
-        return false;
-      }
-
-      if (
-        entry.idCollision &&
-        isIdCollisionUnresolved('plugin', entry.idCollision.exportId)
-      ) {
-        return true;
-      }
-
-      return entry.legacyIdIssue
-        ? isIdCollisionUnresolved('plugin', entry.legacyIdIssue.exportId)
-        : false;
-    },
-    [formValues, isIdCollisionUnresolved],
-  );
-
-  const isPluginConflictUnresolved = useCallback(
-    (entry: PluginEntry) => {
-      const { exportPlugin, projectPlugin } = entry;
-      const idCollisionUnresolved = hasUnresolvedPluginIdCollision(entry);
-
-      if (!projectPlugin) {
-        return idCollisionUnresolved;
-      }
-
-      const fieldPrefix = `plugin-${exportPlugin.id}`;
-      const strategy = get(formValues, [fieldPrefix, 'strategy']);
-      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
-
-      if (!strategy) {
-        return true;
-      }
-
-      if (hasErrors) {
-        return true;
-      }
-
-      return idCollisionUnresolved;
-    },
-    [formValues, formErrors, hasUnresolvedPluginIdCollision],
-  );
-
-  const itemTypeEntriesByCategory = useMemo(() => {
-    const empty: Record<'blocks' | 'models', ItemTypeEntry[]> = {
-      blocks: [],
-      models: [],
-    };
-
-    if (!conflicts) {
-      return empty;
-    }
-
-    const entries: ItemTypeEntry[] = exportSchema.itemTypes.map(
-      (exportItemType) => {
-        const fields = exportSchema.getItemTypeFields(exportItemType);
-        const fieldsets = exportSchema.getItemTypeFieldsets(exportItemType);
-
-        return {
-          exportItemType,
-          projectItemType:
-            conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
-          idCollision:
-            conflicts.ids.itemTypes[String(exportItemType.id)] ?? undefined,
-          legacyIdIssue:
-            conflicts.legacyIds.itemTypes[String(exportItemType.id)] ??
-            undefined,
-          fieldIdCollisions: fields
-            .map((field) => conflicts.ids.fields[String(field.id)])
-            .filter(isDefined),
-          fieldLegacyIdIssues: fields
-            .map((field) => conflicts.legacyIds.fields[String(field.id)])
-            .filter(isDefined),
-          fieldsetIdCollisions: fieldsets
-            .map((fieldset) => conflicts.ids.fieldsets[String(fieldset.id)])
-            .filter(isDefined),
-          fieldsetLegacyIdIssues: fieldsets
-            .map(
-              (fieldset) => conflicts.legacyIds.fieldsets[String(fieldset.id)],
-            )
-            .filter(isDefined),
-        };
-      },
-    );
-
-    const grouped = entries.reduce<
-      Record<'blocks' | 'models', ItemTypeEntry[]>
-    >(
-      (accumulator, entry) => {
-        const key: 'blocks' | 'models' = entry.exportItemType.attributes
-          .modular_block
-          ? 'blocks'
-          : 'models';
-        accumulator[key].push(entry);
-        return accumulator;
-      },
-      { blocks: [], models: [] },
-    );
-
-    return grouped;
-  }, [conflicts, exportSchema]);
-
-  const itemTypesByCategory = useMemo(
-    () => ({
-      blocks: sortItemTypesByUnresolvedThenName(
-        itemTypeEntriesByCategory.blocks,
-        isItemTypeConflictUnresolved,
-      ),
-      models: sortItemTypesByUnresolvedThenName(
-        itemTypeEntriesByCategory.models,
-        isItemTypeConflictUnresolved,
-      ),
-    }),
-    [itemTypeEntriesByCategory, isItemTypeConflictUnresolved],
-  );
-
-  // Deterministic sorting keeps plugin ordering stable between renders.
-  const unsortedPluginEntries = useMemo<PluginEntry[]>(() => {
-    if (!conflicts) {
-      return [];
-    }
-
-    const entries: PluginEntry[] = exportSchema.plugins.map((exportPlugin) => ({
-      exportPlugin,
-      projectPlugin: conflicts.plugins[String(exportPlugin.id)] ?? undefined,
-      idCollision: conflicts.ids.plugins[String(exportPlugin.id)] ?? undefined,
-      legacyIdIssue:
-        conflicts.legacyIds.plugins[String(exportPlugin.id)] ?? undefined,
-    }));
-
-    return entries;
-  }, [conflicts, exportSchema]);
-  const pluginEntries = useMemo(
-    () =>
-      sortPluginsByUnresolvedThenName(
-        unsortedPluginEntries,
-        isPluginConflictUnresolved,
-      ),
-    [unsortedPluginEntries, isPluginConflictUnresolved],
-  );
-
-  // Toggle in place filters the list down to unresolved conflicts when requested.
-  const visibleModels = itemTypesByCategory.models.filter((entry) =>
-    showOnlyConflicts ? isItemTypeConflictUnresolved(entry) : true,
-  );
-
-  const visibleBlocks = itemTypesByCategory.blocks.filter((entry) =>
-    showOnlyConflicts ? isItemTypeConflictUnresolved(entry) : true,
-  );
-
-  const visiblePlugins = pluginEntries.filter((entry) =>
-    showOnlyConflicts ? isPluginConflictUnresolved(entry) : true,
-  );
-
-  if (!conflicts) {
-    return null;
-  }
-
-  // Always count every conflict to show accurate totals even when filtered.
-  const itemTypeConflictCount =
-    itemTypesByCategory.blocks.filter(itemTypeEntryHasConflict).length +
-    itemTypesByCategory.models.filter(itemTypeEntryHasConflict).length;
-  const pluginConflictCount = pluginEntries.filter(
-    pluginEntryHasConflict,
-  ).length;
-
-  const hasConflicts = itemTypeConflictCount > 0 || pluginConflictCount > 0;
-
-  const unresolvedModelConflicts = itemTypesByCategory.models.some((entry) =>
-    isItemTypeConflictUnresolved(entry),
-  );
-
-  const unresolvedBlockConflicts = itemTypesByCategory.blocks.some((entry) =>
-    isItemTypeConflictUnresolved(entry),
-  );
-
-  const unresolvedPluginConflicts = pluginEntries.some((entry) =>
-    isPluginConflictUnresolved(entry),
-  );
-
-  const hasUnresolvedConflicts =
-    unresolvedModelConflicts ||
-    unresolvedBlockConflicts ||
-    unresolvedPluginConflicts;
-
-  // When there are no conflicts at all, do not block the CTA on form
-  // validation state — there is nothing to validate and the button should
-  // be immediately clickable. Only gate on form validity/validation when
-  // actual conflicts exist.
-  const proceedDisabled =
-    submitting ||
-    (hasConflicts && (validating || !valid || hasUnresolvedConflicts));
-  const proceedTooltip =
-    hasConflicts && (hasUnresolvedConflicts || !valid)
-      ? 'Select how to resolve the conflicts before proceeding'
-      : undefined;
+  const { pendingIdReplacementKeys } = review;
 
   return (
-    <div className="page">
-      <div className="conflicts-manager__actions">
-        <div style={{ fontWeight: 700, fontSize: '16px' }}>Schema overview</div>
-        <label
-          htmlFor={toggleId}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginTop: '10px',
-            fontSize: '12px',
-            color: 'var(--color--ink-subtle)',
-            cursor: 'pointer',
-          }}
-        >
-          <SwitchInput
-            id={toggleId}
-            name="schema-overview-only-conflicts"
-            value={showOnlyConflicts}
-            onChange={(nextValue) => setShowOnlyConflicts(nextValue)}
-            aria-label="Show only unresolved conflicts"
-          />
-          <span>Show only unresolved conflicts</span>
-        </label>
-        {pendingIdReplacementKeys.length > 200 && (
-          <div style={{ marginTop: '12px' }}>
-            <Button
-              type="button"
-              buttonType="muted"
-              buttonSize="s"
-              onClick={() =>
-                form.mutators.generateReplacementIds(pendingIdReplacementKeys)
-              }
+    <Pane
+      ariaLabel="Schema overview"
+      header={
+        <Pane.Header filter={filter}>
+          <Pane.Header.Title presets={presets}>
+            Schema overview
+          </Pane.Header.Title>
+          <Pane.Header.Subtitle>
+            {format.count(filteredItems.length, 'element', 'elements')}
+          </Pane.Header.Subtitle>
+          {pendingIdReplacementKeys.length > 0 ? (
+            <Pane.Header.Menu>
+              <Dropdown.Option
+                onPick={() =>
+                  form.mutators.generateReplacementIds(pendingIdReplacementKeys)
+                }
+              >
+                {pendingIdsLabel(format, pendingIdReplacementKeys.length)}
+              </Dropdown.Option>
+            </Pane.Header.Menu>
+          ) : null}
+        </Pane.Header>
+      }
+    >
+      {hasNoResults ? (
+        <Pane.FilterBlankSlate />
+      ) : (
+        <ListArea>
+          {review.hasConflicts ? null : (
+            <Callout tone="success">
+              No model, block or plugin of the file conflicts with the project.
+            </Callout>
+          )}
+          {groups.map((group) => (
+            <OverviewGroup
+              key={group.kind}
+              kind={group.kind}
+              entries={group.entries}
+              getEntityId={getEntryEntityId}
             >
-              Generate replacement IDs for all {pendingIdReplacementKeys.length}{' '}
-              pending IDs
-            </Button>
-          </div>
-        )}
-      </div>
-      <div className="page__content">
-        {!hasConflicts && (
-          <div className="surface" style={{ padding: '24px' }}>
-            <p style={{ margin: 0 }}>
-              All set — no conflicting models, blocks, or plugins were found in
-              this import.
-            </p>
-          </div>
-        )}
-
-        {(() => {
-          type SectionKey = 'models' | 'blocks' | 'plugins';
-          const baseOrder: SectionKey[] = ['models', 'blocks', 'plugins'];
-          const unresolvedByKey: Record<SectionKey, boolean> = {
-            models: unresolvedModelConflicts,
-            blocks: unresolvedBlockConflicts,
-            plugins: unresolvedPluginConflicts,
-          };
-          const sectionOrder = [...baseOrder].sort((a, b) => {
-            if (unresolvedByKey[a] !== unresolvedByKey[b]) {
-              return unresolvedByKey[a] ? -1 : 1;
-            }
-            return baseOrder.indexOf(a) - baseOrder.indexOf(b);
-          });
-
-          return sectionOrder.map((section) => {
-            if (section === 'models' && visibleModels.length > 0) {
-              return (
-                <div className="conflicts-manager__group" key="models">
-                  <div className="conflicts-manager__group__title">
-                    Models ({visibleModels.length})
-                  </div>
-                  <div className="conflicts-manager__group__content">
-                    <PaginatedEntries
-                      entries={visibleModels}
-                      getEntityId={(entry) => entry.exportItemType.id}
-                    >
-                      {(entry) => (
-                        <ItemTypeConflict
-                          key={entry.exportItemType.id}
-                          exportItemType={entry.exportItemType}
-                          projectItemType={entry.projectItemType}
-                          idCollision={entry.idCollision}
-                          legacyIdIssue={entry.legacyIdIssue}
-                          fieldIdCollisions={entry.fieldIdCollisions}
-                          fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
-                          fieldsetIdCollisions={entry.fieldsetIdCollisions}
-                          fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
-                          hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
-                            entry,
-                          )}
-                        />
-                      )}
-                    </PaginatedEntries>
-                  </div>
-                </div>
-              );
-            }
-
-            if (section === 'blocks' && visibleBlocks.length > 0) {
-              return (
-                <div className="conflicts-manager__group" key="blocks">
-                  <div className="conflicts-manager__group__title">
-                    Block models ({visibleBlocks.length})
-                  </div>
-                  <div className="conflicts-manager__group__content">
-                    <PaginatedEntries
-                      entries={visibleBlocks}
-                      getEntityId={(entry) => entry.exportItemType.id}
-                    >
-                      {(entry) => (
-                        <ItemTypeConflict
-                          key={entry.exportItemType.id}
-                          exportItemType={entry.exportItemType}
-                          projectItemType={entry.projectItemType}
-                          idCollision={entry.idCollision}
-                          legacyIdIssue={entry.legacyIdIssue}
-                          fieldIdCollisions={entry.fieldIdCollisions}
-                          fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
-                          fieldsetIdCollisions={entry.fieldsetIdCollisions}
-                          fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
-                          hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
-                            entry,
-                          )}
-                        />
-                      )}
-                    </PaginatedEntries>
-                  </div>
-                </div>
-              );
-            }
-
-            if (section === 'plugins' && visiblePlugins.length > 0) {
-              return (
-                <div className="conflicts-manager__group" key="plugins">
-                  <div className="conflicts-manager__group__title">
-                    Plugins ({visiblePlugins.length})
-                  </div>
-                  <div className="conflicts-manager__group__content">
-                    <PaginatedEntries
-                      entries={visiblePlugins}
-                      getEntityId={(entry) => entry.exportPlugin.id}
-                    >
-                      {(entry) => (
-                        <PluginConflict
-                          key={entry.exportPlugin.id}
-                          exportPlugin={entry.exportPlugin}
-                          projectPlugin={entry.projectPlugin}
-                          idCollision={entry.idCollision}
-                          legacyIdIssue={entry.legacyIdIssue}
-                          hasUnresolvedIdCollision={hasUnresolvedPluginIdCollision(
-                            entry,
-                          )}
-                        />
-                      )}
-                    </PaginatedEntries>
-                  </div>
-                </div>
-              );
-            }
-            return null;
-          });
-        })()}
-      </div>
-      <div className="page__actions">
-        {/* Left slot intentionally empty for layout parity with Export flow */}
-        <div aria-hidden />
-        <div title={proceedTooltip} style={{ width: '100%' }}>
-          <Button
-            type="submit"
-            fullWidth
-            buttonSize="l"
-            buttonType="primary"
-            disabled={proceedDisabled}
-            style={proceedDisabled ? { pointerEvents: 'none' } : undefined}
-          >
-            Proceed with the import
-          </Button>
-        </div>
-        <p className="conflicts-manager__actions__reassurance">
-          The import will never alter any existing elements in the schema.
-        </p>
-      </div>
-    </div>
+              {(entry) =>
+                entry.kind === 'plugin' ? (
+                  <PluginConflict
+                    key={entry.key}
+                    entry={entry.item}
+                    unresolved={entry.unresolved}
+                  />
+                ) : (
+                  <ItemTypeConflict
+                    key={entry.key}
+                    entry={entry.item}
+                    unresolved={entry.unresolved}
+                  />
+                )
+              }
+            </OverviewGroup>
+          ))}
+        </ListArea>
+      )}
+    </Pane>
   );
 }

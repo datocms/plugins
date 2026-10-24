@@ -1,0 +1,45 @@
+/* The parts of the body of the progress dialog, one under the other */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.description {
+  margin: 0;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* Under the bar: the current step at the left, the count at the right */
+.meta {
+  display: flex;
+  gap: var(--spacing-m);
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The status line when the share of the task is not known */
+.status {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  color: var(--color--ink-subtle);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,28 +1,44 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   type NodeMouseHandler,
   type NodeTypes,
   useReactFlow,
 } from '@xyflow/react';
-import type { ProjectSchema } from '@/utils/ProjectSchema';
-import '@xyflow/react/dist/style.css';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Spinner, useCtx } from 'datocms-react-ui';
+import Aside from 'datocms-react-ui/Aside';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import Main from 'datocms-react-ui/Main';
+import Pane from 'datocms-react-ui/Pane';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import SplitPane from 'datocms-react-ui/SplitPane';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import without from 'lodash-es/without';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GraphCanvas } from '@/components/GraphCanvas';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
+import { CircleExclamationIcon, ExportIcon, RefreshIcon } from '@/icons';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
+import { useOverviewSplit } from '@/shared/hooks/useOverviewSplit';
+import { type Formatters, useFormatters } from '@/texts';
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
-import { type AppNode, edgeTypes } from '@/utils/graph/types';
-import { DependencyActionsPanel } from './DependencyActionsPanel';
+import {
+  type AppNode,
+  edgeTypes,
+  type Graph,
+  type SchemaProgressUpdate,
+} from '@/utils/graph/types';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
-import { ExportSchemaOverview } from './ExportSchemaOverview';
+import {
+  ExportSchemaOverview,
+  useExportOverviewList,
+} from './ExportSchemaOverview';
+import s from './styles.module.css';
 import { useExportGraph } from './useExportGraph';
 
 // Map React Flow node types to their respective renderer components.
@@ -31,37 +47,88 @@ const nodeTypes: NodeTypes = {
   plugin: ExportPluginNodeRenderer,
 };
 
+// The flag that the plugin warning was shown in this browser session. The
+// key starts with the name of the plugin, because every plugin shares the
+// origin of the plugins CDN; the old key still counts.
+const pluginIdsWarnedKey = 'import-export-schema.exportPluginIdsWarned';
+const legacyPluginIdsWarnedKey = 'exportPluginIdsWarned';
+const goBackLabel = 'Back to the export options';
+
 type Props = {
   initialItemTypes: SchemaTypes.ItemType[];
   schema: ProjectSchema;
   onExport: (itemTypeIds: string[], pluginIds: string[]) => void;
+  /**
+   * Goes back to the previous step. Without it, the chevron opens the export
+   * page of the environment.
+   */
   onClose?: () => void;
-  onGraphPrepared?: () => void;
-  onPrepareProgress?: (update: {
-    done: number;
-    total: number;
-    label: string;
-    phase?: 'scan' | 'build';
-  }) => void;
   installedPluginIds?: Set<string>;
-  onSelectingDependenciesChange?: (busy: boolean) => void;
 };
 
+type FocusedEntity = SchemaTypes.ItemType | SchemaTypes.Plugin;
+
+/** What the user can do about a failed graph, from the status of the API */
+function describeGraphError(error: Error) {
+  const status = (error as { response?: { status?: number } }).response?.status;
+  if (status === 429) {
+    return 'The API is limiting the requests. Wait a few seconds, then try again.';
+  }
+  if (status === 401 || status === 403) {
+    return "You don't have the permission to read the schema of this environment.";
+  }
+  if (status && status >= 500) {
+    return 'The API is not available right now. Try again in a few moments.';
+  }
+  return 'Something went wrong while preparing the export. Try again.';
+}
+
+/** Why "Export as JSON" does nothing yet, if it does nothing */
+function exportDisabledReason(
+  selectingDependencies: boolean,
+  hasGraph: boolean,
+) {
+  if (selectingDependencies) {
+    return { reason: 'The dependencies are being selected.' };
+  }
+  if (!hasGraph) {
+    return { reason: 'The export is available once the graph loads.' };
+  }
+  return undefined;
+}
+
+/** "3 models or blocks and 1 plugin", or an empty string when both are 0 */
+function describeDependencies(
+  format: Formatters,
+  itemTypeCount: number,
+  pluginCount: number,
+) {
+  const parts: string[] = [];
+  if (itemTypeCount > 0) {
+    parts.push(
+      format.count(itemTypeCount, 'model or block', 'models or blocks'),
+    );
+  }
+  if (pluginCount > 0) {
+    parts.push(format.count(pluginCount, 'plugin', 'plugins'));
+  }
+  return parts.join(' and ');
+}
+
 /**
- * Presents the export graph, wiring selection state, dependency resolution, and
- * export call-outs. For large selections it warns before rendering the full canvas.
+ * The graph step of the export: the dependency graph of the starting models
+ * at the left, the overview of its elements at the right. Clicks on the nodes
+ * (or the switches of the overview) choose what goes in the export.
  */
 export default function Inner({
   initialItemTypes,
   schema,
   onExport,
   onClose,
-  onGraphPrepared,
-  onPrepareProgress,
   installedPluginIds,
-  onSelectingDependenciesChange,
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
+  const format = useFormatters();
   const { fitBounds, fitView } = useReactFlow();
   const initialItemTypeIds = useMemo(
     () => initialItemTypes.map((itemType) => itemType.id),
@@ -78,22 +145,47 @@ export default function Inner({
     itemTypeIds: Set<string>;
     pluginIds: Set<string>;
   }>({ itemTypeIds: new Set(), pluginIds: new Set() });
-  const [focusedEntity, setFocusedEntity] = useState<
-    SchemaTypes.ItemType | SchemaTypes.Plugin | undefined
-  >(undefined);
+  const [focusedEntity, setFocusedEntity] = useState<FocusedEntity | undefined>(
+    undefined,
+  );
   const [forceRenderGraph, setForceRenderGraph] = useState(false);
   const [pendingZoomEntity, setPendingZoomEntity] = useState<
-    SchemaTypes.ItemType | SchemaTypes.Plugin | null | undefined
+    FocusedEntity | null | undefined
   >(undefined);
+
+  // The progress of the first build (the blank slate shows it), and whether a
+  // build runs (after the first graph, the toolbar spinner shows it).
+  const [prepareProgress, setPrepareProgress] = useState<
+    SchemaProgressUpdate | undefined
+  >(undefined);
+  const [building, setBuilding] = useState(true);
+  const hasGraphRef = useRef(false);
+
+  const handlePrepareProgress = useCallback(
+    (progress: SchemaProgressUpdate) => {
+      setBuilding(true);
+      if (!hasGraphRef.current) {
+        setPrepareProgress(progress);
+      }
+    },
+    [],
+  );
+  const handleGraphPrepared = useCallback(() => {
+    setBuilding(false);
+  }, []);
 
   const { graph, error, refresh } = useExportGraph({
     initialItemTypes,
     selectedItemTypeIds,
     schema,
-    onPrepareProgress,
-    onGraphPrepared,
+    onPrepareProgress: handlePrepareProgress,
+    onGraphPrepared: handleGraphPrepared,
     installedPluginIds,
   });
+
+  useEffect(() => {
+    hasGraphRef.current = Boolean(graph);
+  }, [graph]);
 
   const resolvedInstalledPluginIds = useMemo(() => {
     if (installedPluginIds && installedPluginIds.size > 0) {
@@ -108,17 +200,10 @@ export default function Inner({
     return discovered.size > 0 ? discovered : undefined;
   }, [installedPluginIds, graph]);
 
-  const handleClose = useCallback(() => {
-    if (onClose) {
-      onClose();
-      return;
-    }
-    ctx.navigateTo(
-      `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`,
-    );
-  }, [ctx, onClose]);
-
-  // Overlay is controlled by parent; we signal prepared after each build
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+  const exportPagePath = `${environmentPrefix}/configuration/p/${ctx.plugin.id}/pages/export`;
 
   // Keep selection in sync if the parent changes the initial set of item types
   useEffect(() => {
@@ -177,10 +262,7 @@ export default function Inner({
   }, [graph, showGraph]);
 
   const handleSelectEntity = useCallback(
-    (
-      newEntity: SchemaTypes.ItemType | SchemaTypes.Plugin | undefined,
-      zoomIn = false,
-    ) => {
+    (newEntity: FocusedEntity | undefined, zoomIn = false) => {
       setFocusedEntity(newEntity);
 
       if (!zoomIn) {
@@ -219,23 +301,44 @@ export default function Inner({
     [initialItemTypeIds],
   );
 
+  // The switches of the overview: the same toggles as a click on the node,
+  // without the pointer. The initial item types always stay in the export.
+  const handleToggleItemType = useCallback(
+    (itemTypeId: string) => {
+      if (initialItemTypeIds.includes(itemTypeId)) {
+        return;
+      }
+      setSelectedItemTypeIds((old) =>
+        old.includes(itemTypeId)
+          ? without(old, itemTypeId)
+          : [...old, itemTypeId],
+      );
+    },
+    [initialItemTypeIds],
+  );
+
+  const handleTogglePlugin = useCallback((pluginId: string) => {
+    setSelectedPluginIds((old) =>
+      old.includes(pluginId) ? without(old, pluginId) : [...old, pluginId],
+    );
+  }, []);
+
   const handleSelectAllDependencies = useCallback(async () => {
     setSelectingDependencies(true);
-    onSelectingDependenciesChange?.(true);
     try {
-      // Ensure any preparation overlay is hidden during dependency selection
-      onGraphPrepared?.();
-
-      const warnedKey = 'exportPluginIdsWarned';
       if (!resolvedInstalledPluginIds && typeof window !== 'undefined') {
         try {
           const alreadyWarned =
-            window.sessionStorage.getItem(warnedKey) === '1';
+            window.sessionStorage.getItem(pluginIdsWarnedKey) === '1' ||
+            window.sessionStorage.getItem(legacyPluginIdsWarnedKey) === '1';
           if (!alreadyWarned) {
-            void ctx.notice(
-              'Plugin dependency detection may be incomplete (installed plugin list unavailable).',
-            );
-            window.sessionStorage.setItem(warnedKey, '1');
+            void ctx.customToast({
+              type: 'warning',
+              message:
+                'The installed plugins are not known, so some plugin dependencies may be missing.',
+              dismissAfterTimeout: true,
+            });
+            window.sessionStorage.setItem(pluginIdsWarnedKey, '1');
           }
         } catch {}
       }
@@ -270,18 +373,19 @@ export default function Inner({
         samplePluginIds: Array.from(expansion.pluginIds).slice(0, 5),
       });
 
-      void ctx.notice(
-        `Selected dependencies: +${addedItemTypeIds.length} models, +${addedPluginIds.length} plugins`,
+      const added = describeDependencies(
+        format,
+        addedItemTypeIds.length,
+        addedPluginIds.length,
       );
+      void ctx.notice(added ? `Added ${added}.` : 'No dependencies to add.');
     } finally {
       setSelectingDependencies(false);
-      // Do not lift overlay suppression here; let onGraphPrepared re-enable it
     }
   }, [
     ctx,
+    format,
     graph,
-    onGraphPrepared,
-    onSelectingDependenciesChange,
     resolvedInstalledPluginIds,
     selectedItemTypeIds,
     selectedPluginIds,
@@ -294,7 +398,7 @@ export default function Inner({
 
     if (toRemoveItemTypeIds.size === 0 && toRemovePluginIds.size === 0) {
       // No recorded auto-selected deps; nothing to do
-      void ctx.notice('No dependencies to unselect');
+      void ctx.notice('No dependencies to remove.');
       return;
     }
 
@@ -315,10 +419,22 @@ export default function Inner({
       itemTypeIds: new Set(),
       pluginIds: new Set(),
     });
-    void ctx.notice(
-      `Unselected dependencies: -${removedModelsCount} models, -${removedPluginsCount} plugins`,
+
+    const removed = describeDependencies(
+      format,
+      removedModelsCount,
+      removedPluginsCount,
     );
-  }, [autoSelectedDependencies, ctx, selectedItemTypeIds, selectedPluginIds]);
+    void ctx.notice(
+      removed ? `Removed ${removed}.` : 'No dependencies to remove.',
+    );
+  }, [
+    autoSelectedDependencies,
+    ctx,
+    format,
+    selectedItemTypeIds,
+    selectedPluginIds,
+  ]);
 
   // Determine if all dependencies are already selected to flip the CTA label.
   const areAllDependenciesSelected = useMemo(() => {
@@ -343,174 +459,222 @@ export default function Inner({
     selectedPluginIds,
   ]);
 
+  // A failed rebuild keeps the last graph, which lacks what the change asked
+  // for. Until "Try again" builds a new one, the graph area shows the error,
+  // and the dependency actions, the export and the overview wait too.
+  const readyGraph = error ? undefined : graph;
+
+  // The overview: beside the graph, or over it in a narrow frame (closed
+  // there until its rail opens it)
+  const overviewSplit = useOverviewSplit({ openWhenSmall: false });
+  const overviewList = useExportOverviewList({
+    graph: readyGraph,
+    focusedEntity,
+    selectedItemTypeIds,
+    selectedPluginIds,
+  });
+
+  const selectedEntityValue = useMemo(
+    () => ({ entity: focusedEntity, set: handleSelectEntity }),
+    [focusedEntity, handleSelectEntity],
+  );
+  const entitiesToExportValue = useMemo(
+    () => ({ itemTypeIds: selectedItemTypeIds, pluginIds: selectedPluginIds }),
+    [selectedItemTypeIds, selectedPluginIds],
+  );
+
+  const title =
+    initialItemTypes.length === 1
+      ? `Export “${initialItemTypes[0].attributes.name}”`
+      : 'Export the selection';
+  const showUnselect = Boolean(readyGraph) && areAllDependenciesSelected;
+  const selectedCount = selectedItemTypeIds.length + selectedPluginIds.length;
+  const goBack = onClose ? (
+    <Toolbar.GoBack onClick={onClose} ariaLabel={goBackLabel} />
+  ) : (
+    <Toolbar.GoBack to={exportPagePath} ariaLabel={goBackLabel} />
+  );
+  const dependenciesDisabled = readyGraph
+    ? undefined
+    : { reason: 'The dependencies show once the graph loads.' };
+  const exportDisabled = exportDisabledReason(
+    selectingDependencies,
+    Boolean(readyGraph),
+  );
+
   return (
-    <div className="page page--export">
-      <div className="page__content">
-        <SelectedEntityContext.Provider
-          value={{ entity: focusedEntity, set: handleSelectEntity }}
-        >
-          <div className="export-wrapper">
-            {!graph && !error ? (
-              <Spinner size={60} placement="centered" />
-            ) : error ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  flexDirection: 'column',
-                  gap: 12,
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>
-                  Could not load export graph
-                </div>
-                <div
-                  style={{
-                    color: 'var(--color--ink-subtle)',
-                    maxWidth: 540,
-                    textAlign: 'center',
-                  }}
-                >
-                  {(() => {
-                    const anyErr = error as unknown as {
-                      response?: { status?: number };
-                    };
-                    const status = anyErr?.response?.status;
-                    if (status === 429) {
-                      return "You're being rate-limited by the API (429). Please wait a few seconds and try again.";
-                    }
-                    if (status === 401 || status === 403) {
-                      return 'You do not have permission to load the project schema. Please check your credentials and try again.';
-                    }
-                    if (status && status >= 500) {
-                      return 'The API is temporarily unavailable. Please try again shortly.';
-                    }
-                    return 'An unexpected error occurred while preparing the export. Please try again.';
-                  })()}
-                </div>
-                <Button
-                  buttonSize="m"
-                  onClick={() => {
-                    refresh();
-                  }}
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: 'flex',
-                  width: '100%',
-                  height: '100%',
-                }}
-              >
-                <section
-                  style={{
-                    flex: '2 1 0%',
-                    minWidth: 480,
-                    position: 'relative',
-                  }}
-                  aria-label="Export graph panel"
-                >
-                  <div
-                    className="export__graph"
-                    style={{ position: 'relative', height: '100%' }}
-                  >
-                    <div className="export__graph-close">
-                      <Button
-                        type="button"
-                        buttonSize="s"
-                        buttonType="muted"
-                        leftIcon={<FontAwesomeIcon icon={faXmark} />}
-                        onClick={handleClose}
-                      >
-                        Close
-                      </Button>
-                    </div>
-                    <EntitiesToExportContext.Provider
-                      value={{
-                        itemTypeIds: selectedItemTypeIds,
-                        pluginIds: selectedPluginIds,
-                      }}
+    <div className={s.layout}>
+      <SelectedEntityContext.Provider value={selectedEntityValue}>
+        <EntitiesToExportContext.Provider value={entitiesToExportValue}>
+          <SplitPane primaryPane="left" {...overviewSplit}>
+            <Main>
+              <Pane
+                ariaLabel="Dependency graph"
+                header={
+                  <Toolbar>
+                    {goBack}
+                    <Toolbar.Title
+                      level={1}
+                      help={
+                        <Toolbar.Help>
+                          Click a node to add it to the export or remove it. The
+                          models you started from are always included.
+                        </Toolbar.Help>
+                      }
                     >
-                      {showGraph ? (
-                        <GraphCanvas
-                          graph={{ nodes: graphNodes, edges: graph.edges }}
-                          nodeTypes={nodeTypes}
-                          edgeTypes={edgeTypes}
-                          onNodeClick={
-                            onNodeClick as unknown as NodeMouseHandler
-                          }
-                          style={{ width: '100%', height: '100%' }}
-                          fitView
-                        />
-                      ) : graph ? (
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            textAlign: 'center',
-                            height: '100%',
-                            gap: 16,
-                            padding: '0 24px',
-                          }}
-                        >
-                          <div style={{ fontWeight: 600 }}>
-                            This graph has {graph.nodes.length} nodes. Trying to
-                            render it may slow down your browser.
-                          </div>
-                          <Button
-                            type="button"
-                            buttonSize="s"
-                            onClick={() => setForceRenderGraph(true)}
-                          >
-                            Render it anyway
-                          </Button>
-                        </div>
-                      ) : null}
-                      <DependencyActionsPanel
-                        selectingDependencies={selectingDependencies}
-                        areAllDependenciesSelected={areAllDependenciesSelected}
-                        selectedItemCount={
-                          selectedItemTypeIds.length + selectedPluginIds.length
-                        }
-                        onSelectAllDependencies={handleSelectAllDependencies}
-                        onUnselectAllDependencies={
-                          handleUnselectAllDependencies
-                        }
-                        onExport={() =>
-                          onExport(selectedItemTypeIds, selectedPluginIds)
-                        }
-                      />
-                    </EntitiesToExportContext.Provider>
-                  </div>
-                </section>
-                <section
-                  style={{
-                    flex: '1 1 0%',
-                    minWidth: 340,
-                    position: 'relative',
-                  }}
-                  aria-label="Schema overview panel"
-                >
-                  <div className="export__details">
-                    <ExportSchemaOverview
-                      graph={graph}
-                      selectedItemTypeIds={selectedItemTypeIds}
-                      selectedPluginIds={selectedPluginIds}
+                      {title}
+                    </Toolbar.Title>
+                    <Toolbar.Subtitle>
+                      {format.count(
+                        selectedCount,
+                        'element to export',
+                        'elements to export',
+                      )}
+                    </Toolbar.Subtitle>
+                    <Toolbar.Spinner show={building && Boolean(graph)} />
+                    <Toolbar.Space />
+                    <Toolbar.Button
+                      label={
+                        showUnselect
+                          ? 'Unselect all dependencies'
+                          : 'Select all dependencies'
+                      }
+                      onClick={
+                        showUnselect
+                          ? handleUnselectAllDependencies
+                          : handleSelectAllDependencies
+                      }
+                      disabled={dependenciesDisabled}
                     />
-                  </div>
-                </section>
-              </div>
-            )}
-          </div>
-        </SelectedEntityContext.Provider>
-      </div>
+                    <Toolbar.Button
+                      tone="primary"
+                      icon={ExportIcon}
+                      label="Export as JSON"
+                      onClick={() =>
+                        onExport(selectedItemTypeIds, selectedPluginIds)
+                      }
+                      disabled={exportDisabled}
+                    />
+                  </Toolbar>
+                }
+              >
+                <GraphArea
+                  graph={graph}
+                  error={error}
+                  showGraph={showGraph}
+                  graphNodes={graphNodes}
+                  prepareProgress={prepareProgress}
+                  onRetry={refresh}
+                  onShowAnyway={() => setForceRenderGraph(true)}
+                  onNodeClick={onNodeClick}
+                />
+              </Pane>
+            </Main>
+            <Aside ariaLabel="Schema overview">
+              <ExportSchemaOverview
+                graph={readyGraph}
+                failed={Boolean(error)}
+                list={overviewList}
+                initialItemTypeIds={initialItemTypeIds}
+                onToggleItemType={handleToggleItemType}
+                onTogglePlugin={handleTogglePlugin}
+              />
+            </Aside>
+          </SplitPane>
+        </EntitiesToExportContext.Provider>
+      </SelectedEntityContext.Provider>
+    </div>
+  );
+}
+
+type GraphAreaProps = {
+  graph: Graph | undefined;
+  error: Error | undefined;
+  /** The graph is small enough, or the user asked to draw it anyway */
+  showGraph: boolean;
+  graphNodes: AppNode[];
+  /** The progress of the first build */
+  prepareProgress: SchemaProgressUpdate | undefined;
+  onRetry: () => void;
+  onShowAnyway: () => void;
+  onNodeClick: NodeMouseHandler<AppNode>;
+};
+
+/**
+ * The content of the graph pane: the first build, the failed build, the
+ * graph too large to draw, or the read-only canvas. Rebuilds keep the last
+ * graph on screen.
+ */
+function GraphArea({
+  graph,
+  error,
+  showGraph,
+  graphNodes,
+  prepareProgress,
+  onRetry,
+  onShowAnyway,
+  onNodeClick,
+}: GraphAreaProps) {
+  if (error) {
+    return (
+      <BlankSlate
+        placement="area"
+        error
+        icon={<CircleExclamationIcon />}
+        title="The graph could not be loaded"
+        code={error.message}
+        description={describeGraphError(error)}
+        actions={
+          <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+        }
+      />
+    );
+  }
+
+  if (!graph) {
+    return (
+      <BlankSlate
+        placement="area"
+        loading
+        title="Preparing the dependency graph"
+        caption={prepareProgress?.label}
+      >
+        {prepareProgress && prepareProgress.total > 0 ? (
+          <ProgressBar
+            value={prepareProgress.done / prepareProgress.total}
+            ariaLabel="Preparing the dependency graph"
+          />
+        ) : null}
+      </BlankSlate>
+    );
+  }
+
+  if (!showGraph) {
+    return (
+      <BlankSlate
+        placement="area"
+        icon={<ExportIcon />}
+        title="The graph is too large to show"
+        description={{
+          id: 'importExportSchema.graphTooLarge',
+          values: { count: graph.nodes.length },
+        }}
+        actions={
+          <Button label="Show the graph anyway" onClick={onShowAnyway} />
+        }
+      />
+    );
+  }
+
+  return (
+    <div className={s.canvas}>
+      <GraphCanvas
+        graph={{ nodes: graphNodes, edges: graph.edges }}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodeClick={onNodeClick}
+        fitView
+      />
     </div>
   );
 }

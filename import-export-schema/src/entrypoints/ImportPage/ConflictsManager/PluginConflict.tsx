@@ -1,114 +1,123 @@
-import type { SchemaTypes } from '@datocms/cma-client';
-import { SelectField } from 'datocms-react-ui';
-import { useId } from 'react';
+import Callout from 'datocms-react-ui/Callout';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Pill from 'datocms-react-ui/Pill';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
+import { memo, useMemo } from 'react';
 import { Field } from 'react-final-form';
-import Collapsible from '@/components/SchemaOverview/Collapsible';
+import { OverviewItem } from '@/components/SchemaOverview/OverviewItem';
+import { isDefined } from '@/utils/isDefined';
 import { useResolutionStatusForPlugin } from '../ResolutionsForm';
-import type { PluginIdCollision, PluginLegacyIdIssue } from './buildConflicts';
+import s from '../review.module.css';
 import { IdCollisionFallback } from './IdCollisionFallback';
+import type { PluginEntry } from './useImportReview';
 
-type Option = { label: string; value: string };
-type SelectGroup<OptionType> = {
-  label?: string;
-  options: readonly OptionType[];
-};
+type Strategy = 'reuseExisting' | 'skip';
 
-const options: Option[] = [
-  {
-    label: 'Try to reuse the existing plugin',
-    value: 'reuseExisting',
-  },
-  { label: 'Ignore the plugin', value: 'skip' },
+const options: RadioGroupOption<Strategy>[] = [
+  { value: 'reuseExisting', label: 'Use the installed plugin' },
+  { value: 'skip', label: 'Skip the plugin' },
 ];
 
 type Props = {
-  exportPlugin: SchemaTypes.Plugin;
-  projectPlugin?: SchemaTypes.Plugin;
-  idCollision?: PluginIdCollision;
-  legacyIdIssue?: PluginLegacyIdIssue;
-  hasUnresolvedIdCollision: boolean;
+  entry: PluginEntry;
+  /** The conflict still needs a decision of the user */
+  unresolved: boolean;
 };
 
-/** Presents resolution choices for plugin conflicts (reuse vs. skip). */
-export function PluginConflict({
-  exportPlugin,
-  projectPlugin,
-  idCollision,
-  legacyIdIssue,
-  hasUnresolvedIdCollision,
+/** The state at the end of the row: the conflict, or the decision */
+function statusPill(
+  unresolved: boolean,
+  strategy: Strategy | null | undefined,
+) {
+  if (unresolved) {
+    return <Pill tone="danger">Conflict</Pill>;
+  }
+  if (strategy === 'reuseExisting') {
+    return <Pill>Uses installed</Pill>;
+  }
+  if (strategy === 'skip') {
+    return <Pill>Skipped</Pill>;
+  }
+  return null;
+}
+
+/**
+ * A plugin of the file in the overview. Its body tells whether the project
+ * has it installed, and how to import it (reuse the installed one or skip
+ * it), then lists the exported ID that the project can't take.
+ *
+ * Memoized, as CardList asks of the components that make its items: the
+ * overview renders again on every change of the form.
+ */
+export const PluginConflict = memo(function PluginConflict({
+  entry,
+  unresolved,
 }: Props) {
-  const selectId = useId();
+  const { exportPlugin, projectPlugin, idCollision, legacyIdIssue } = entry;
   const fieldPrefix = `plugin-${exportPlugin.id}`;
   const resolution = useResolutionStatusForPlugin(exportPlugin.id);
-
   const strategy = resolution?.values?.strategy;
-  const hasValidResolution = Boolean(
-    !resolution?.invalid &&
-      (strategy === 'reuseExisting' || strategy === 'skip'),
+
+  const ownIssues = useMemo(
+    () => [idCollision, legacyIdIssue].filter(isDefined),
+    [idCollision, legacyIdIssue],
   );
 
-  const hasSemanticConflict = Boolean(projectPlugin) && !hasValidResolution;
+  // A reused or skipped plugin creates nothing: its ID needs no decision
   const pluginWillBeCreated =
     strategy !== 'reuseExisting' && strategy !== 'skip';
-  const hasConflict = hasSemanticConflict || hasUnresolvedIdCollision;
 
   return (
-    <Collapsible
+    <OverviewItem
       entity={exportPlugin}
-      invalid={
-        (hasSemanticConflict && Boolean(resolution?.invalid)) ||
-        hasUnresolvedIdCollision
-      }
-      hasConflict={hasConflict}
-      title={exportPlugin.attributes.name}
+      status={statusPill(unresolved, strategy)}
     >
       {projectPlugin ? (
         <>
-          <p>
-            The project already has the plugin{' '}
-            <strong>{projectPlugin.attributes.name}</strong>.
+          <p className={s.text}>
+            {`The project already has the plugin “${projectPlugin.attributes.name}”.`}
           </p>
-          <Field name={`${fieldPrefix}.strategy`}>
-            {({ input, meta: { error } }) => (
-              <SelectField<Option, false, SelectGroup<Option>>
-                {...input}
-                id={selectId}
-                label="To resolve this conflict:"
-                selectInputProps={{
-                  options,
-                }}
-                value={
-                  options.find((option) => input.value === option.value) ?? null
-                }
-                onChange={(option) =>
-                  input.onChange(option ? option.value : null)
-                }
-                placeholder="Select..."
-                error={error}
-              />
+          <Field
+            name={`${fieldPrefix}.strategy`}
+            subscription={{ value: true, error: true, touched: true }}
+          >
+            {({ input, meta }) => (
+              <FieldWrapper
+                label="How to import it"
+                error={meta.touched ? meta.error : undefined}
+              >
+                <RadioGroupInput<Strategy>
+                  value={input.value || null}
+                  onChange={input.onChange}
+                  onBlur={() => input.onBlur()}
+                  options={options}
+                />
+              </FieldWrapper>
             )}
           </Field>
         </>
-      ) : (idCollision || legacyIdIssue) && pluginWillBeCreated ? (
-        <p>
-          No name or URL conflict was found for this plugin, but its exported ID
-          needs a replacement before import.
-        </p>
+      ) : ownIssues.length > 0 && pluginWillBeCreated ? (
+        <Callout tone="warning" className={s.text}>
+          The plugin isn't installed, but its exported ID is already used.
+        </Callout>
       ) : (
-        <p>No conflicts detected for this name or URL.</p>
+        <p className={s.text}>No installed plugin has the same name or URL.</p>
       )}
-      {idCollision && (
-        <IdCollisionFallback
-          collision={idCollision}
-          active={pluginWillBeCreated}
-        />
-      )}
-      {legacyIdIssue && (
-        <IdCollisionFallback
-          collision={legacyIdIssue}
-          active={pluginWillBeCreated}
-        />
-      )}
-    </Collapsible>
+      {pluginWillBeCreated && ownIssues.length > 0 ? (
+        <div className={s.idGroup}>
+          <SwitchList>
+            {ownIssues.map((collision) => (
+              <IdCollisionFallback
+                key={`${collision.reason}-${collision.exportId}`}
+                collision={collision}
+              />
+            ))}
+          </SwitchList>
+        </div>
+      ) : null}
+    </OverviewItem>
   );
-}
+});

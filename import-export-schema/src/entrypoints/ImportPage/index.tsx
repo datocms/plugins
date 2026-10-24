@@ -1,7 +1,6 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
 import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
@@ -27,8 +26,14 @@ function isImportCancelled(error: unknown) {
 }
 
 function importFailureMessage(error: unknown) {
-  const detail = error instanceof Error ? error.message : '';
-  return `Import could not be completed. Changes already applied remain in the project. ${detail}`;
+  // The detail is the message of the error, without its final period
+  const detail = (error instanceof Error ? error.message : '')
+    .trim()
+    .replace(/\.+$/, '');
+  const failure = detail
+    ? `The import failed: ${detail}.`
+    : 'The import failed.';
+  return `${failure} The changes made so far stay in the project.`;
 }
 
 type ImportModeState = {
@@ -39,6 +44,7 @@ type ImportModeState = {
   loadingRecipe: boolean;
   handleDrop: (filename: string, doc: ExportDoc) => Promise<void>;
   handleImport: (resolutions: Resolutions) => Promise<void>;
+  requestClose: () => void;
   importTask: UseLongTaskResult;
   conflictsTask: UseLongTaskResult;
 };
@@ -84,7 +90,7 @@ function useImportMode({
   const handleRecipeError = useCallback(
     (error: unknown) => {
       console.error('Failed to load shared export recipe', error);
-      ctx.alert('Could not load the shared export recipe.');
+      ctx.alert('The shared export could not be loaded.');
     },
     [ctx],
   );
@@ -101,7 +107,9 @@ function useImportMode({
       } catch (error) {
         console.error(error);
         ctx.alert(
-          error instanceof Error ? error.message : 'Invalid export file!',
+          error instanceof Error
+            ? error.message
+            : 'This file is not a schema export.',
         );
       }
     },
@@ -118,11 +126,9 @@ function useImportMode({
       importingRef.current = true;
 
       try {
-        importTask.controller.start({
-          done: 0,
-          total: 1,
-          label: 'Preparing import…',
-        });
+        // The share is not known until the import counts its steps: the
+        // dialog shows a spinner with the label until then
+        importTask.controller.start({ label: 'Preparing the import…' });
 
         const importDoc = await buildImportDoc(
           exportSchema[1],
@@ -152,7 +158,7 @@ function useImportMode({
         }
 
         importTask.controller.complete({ label: 'Import completed' });
-        ctx.notice('Import completed successfully.');
+        ctx.notice('Schema imported.');
         setExportSchema(undefined);
         setConflicts(undefined);
       } catch (error) {
@@ -160,7 +166,7 @@ function useImportMode({
         if (isImportCancelled(error)) {
           importTask.controller.complete({ label: 'Import cancelled' });
           ctx.notice(
-            'Import canceled. Changes already applied remain in the project.',
+            'Import stopped. The changes made so far stay in the project.',
           );
         } else {
           importTask.controller.fail(error);
@@ -185,41 +191,28 @@ function useImportMode({
     ],
   );
 
-  useEffect(() => {
-    const handleCancelRequest = async () => {
-      if (!exportSchema) return;
-      const result = await ctx.openConfirm({
-        title: 'Cancel the import?',
-        content: `Do you really want to cancel the import process of "${exportSchema[0]}"?`,
-        choices: [
-          {
-            label: 'Yes, cancel the import',
-            value: 'yes',
-            intent: 'negative',
-          },
-        ],
-        cancel: {
-          label: 'Nevermind',
-          value: false,
-          intent: 'positive',
+  // The chevron of the review: the choices go with the file, thus it asks
+  const requestClose = useCallback(async () => {
+    if (!exportSchema) return;
+    const result = await ctx.openConfirm({
+      title: 'Choose another file?',
+      content: `Your choices for “${exportSchema[0]}” will be lost.`,
+      choices: [
+        {
+          label: 'Discard choices',
+          value: 'yes',
+          intent: 'negative',
         },
-      });
+      ],
+      cancel: {
+        label: 'Cancel',
+        value: false,
+      },
+    });
 
-      if (result === 'yes') {
-        setExportSchema(undefined);
-      }
-    };
-
-    window.addEventListener(
-      'import:request-cancel',
-      handleCancelRequest as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'import:request-cancel',
-        handleCancelRequest as unknown as EventListener,
-      );
-    };
+    if (result === 'yes') {
+      setExportSchema(undefined);
+    }
   }, [ctx, exportSchema]);
 
   return {
@@ -230,82 +223,60 @@ function useImportMode({
     loadingRecipe,
     handleDrop,
     handleImport,
+    requestClose,
     importTask,
     conflictsTask,
   };
 }
 
-type OverlayItemsArgs = {
-  ctx: RenderPageCtx;
-  exportSchema: [string, ExportSchema] | undefined;
-  importTask: UseLongTaskResult;
-  conflictsTask: UseLongTaskResult;
-};
+type OverlayConfig = Parameters<typeof TaskOverlayStack>[0]['items'][number];
 
-/**
- * Coalesces the overlay stack configuration used by `TaskOverlayStack`. Keeping the builder
- * in one place clarifies which long tasks participate in the UI at any moment.
- */
-function useOverlayItems({
-  ctx,
-  exportSchema,
-  importTask,
-  conflictsTask,
-}: OverlayItemsArgs) {
-  return useMemo(
-    () => [
-      buildImportOverlay(ctx, importTask, exportSchema),
-      buildConflictsOverlay(conflictsTask),
-    ],
-    [ctx, exportSchema, importTask, conflictsTask],
-  );
+function isTaskActive(task: UseLongTaskResult) {
+  return task.state.status === 'running' || task.state.status === 'cancelling';
 }
 
 /**
- * Unified import entrypoint rendered inside the Schema sidebar page. Handles file drops
- * and conflict resolution for schema imports.
+ * The import page of the Schema settings: the choice of the file, the
+ * comparison with the project, the review of the conflicts and the import.
  */
 export function ImportPage({ ctx }: Props) {
   const projectSchema = useProjectSchema(ctx);
   const importMode = useImportMode({ ctx, projectSchema });
+  const { exportSchema, importTask } = importMode;
 
-  const overlayItems = useOverlayItems({
-    ctx,
-    exportSchema: importMode.exportSchema,
-    importTask: importMode.importTask,
-    conflictsTask: importMode.conflictsTask,
-  });
+  const overlayItems = useMemo(
+    () => [buildImportOverlay(ctx, importTask, exportSchema)],
+    [ctx, exportSchema, importTask],
+  );
 
   return (
-    <Canvas ctx={ctx}>
+    <>
       <ReactFlowProvider>
-        <div className="page">
-          <div className="page__content">
-            <ImportWorkflow
-              ctx={ctx}
-              projectSchema={projectSchema}
-              exportSchema={importMode.exportSchema}
-              loadingRecipe={importMode.loadingRecipe}
-              conflicts={importMode.conflicts}
-              conflictsError={importMode.conflictsError}
-              onRetryConflicts={importMode.refreshConflicts}
-              onDrop={importMode.handleDrop}
-              onImport={importMode.handleImport}
-            />
-          </div>
-        </div>
+        <ImportWorkflow
+          ctx={ctx}
+          projectSchema={projectSchema}
+          exportSchema={exportSchema}
+          loadingRecipe={importMode.loadingRecipe}
+          conflicts={importMode.conflicts}
+          conflictsError={importMode.conflictsError}
+          onRetryConflicts={importMode.refreshConflicts}
+          onDrop={importMode.handleDrop}
+          onImport={importMode.handleImport}
+          dropDisabled={isTaskActive(importTask)}
+          preparingProgress={importMode.conflictsTask.state.progress}
+          onRequestClose={importMode.requestClose}
+        />
       </ReactFlowProvider>
 
+      {/* The dialog of the import: it blocks the page while it runs */}
       <TaskOverlayStack items={overlayItems} />
-    </Canvas>
+    </>
   );
 }
 
-type OverlayConfig = Parameters<typeof TaskOverlayStack>[0]['items'][number];
-
 /**
- * Overlay shown while the CMA import runs. Allows cancelling with a confirmation when an
- * export recipe is currently loaded.
+ * The dialog shown while the CMA import runs. Its cancel asks first, because
+ * a stopped import leaves its changes in the project.
  */
 function buildImportOverlay(
   ctx: RenderPageCtx,
@@ -315,61 +286,40 @@ function buildImportOverlay(
   return {
     id: 'import',
     task: importTask,
-    title: 'Import in progress',
+    title: 'Importing the schema',
     subtitle: (state) =>
-      state.cancelRequested
-        ? 'Cancelling import…'
-        : 'Sit tight, we’re applying models, fields, and plugins…',
-    ariaLabel: 'Import in progress',
+      state.cancelRequested ? 'Stopping the import…' : undefined,
     progressLabel: (progress, state) =>
       state.cancelRequested
-        ? 'Stopping at next safe point…'
+        ? 'Stopping at the next safe step…'
         : (progress.label ?? ''),
-    cancel: () => ({
-      label: 'Cancel import',
-      intent: importTask.state.cancelRequested ? 'muted' : 'negative',
-      disabled: importTask.state.cancelRequested,
-      onCancel: async () => {
-        if (!exportSchema) return;
-        const result = await ctx.openConfirm({
-          title: 'Cancel import in progress?',
-          content:
-            'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. Changes already applied will remain, and conflicts will be refreshed. Are you sure you want to cancel?',
-          choices: [
-            {
-              label: 'Yes, cancel the import',
-              value: 'yes',
-              intent: 'negative',
+    cancel: (state) =>
+      state.cancelRequested
+        ? undefined
+        : {
+            onCancel: async () => {
+              if (!exportSchema) return;
+              const result = await ctx.openConfirm({
+                title: 'Stop the import?',
+                content:
+                  'The changes made so far stay in the project: some models or blocks may lack their relationships, some fields or fieldsets may already exist, and plugins may be only partly set up.',
+                choices: [
+                  {
+                    label: 'Stop the import',
+                    value: 'yes',
+                    intent: 'negative',
+                  },
+                ],
+                cancel: {
+                  label: 'Keep importing',
+                  value: false,
+                },
+              });
+
+              if (result === 'yes') {
+                importTask.controller.requestCancel();
+              }
             },
-          ],
-          cancel: {
-            label: 'Nevermind',
-            value: false,
-            intent: 'positive',
           },
-        });
-
-        if (result === 'yes') {
-          importTask.controller.requestCancel();
-        }
-      },
-    }),
-  };
-}
-
-/**
- * Overlay used while conflicts between project and recipe are resolved.
- */
-function buildConflictsOverlay(
-  conflictsTask: UseLongTaskResult,
-): OverlayConfig {
-  return {
-    id: 'conflicts',
-    task: conflictsTask,
-    title: 'Preparing import',
-    subtitle: 'Sit tight, we’re scanning your export against the project…',
-    ariaLabel: 'Preparing import',
-    progressLabel: (progress) => progress.label ?? 'Preparing import…',
-    overlayZIndex: 9998,
   };
 }

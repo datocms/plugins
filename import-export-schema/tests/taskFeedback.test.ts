@@ -8,18 +8,67 @@ import { ImportWorkflow } from '@/entrypoints/ImportPage/ImportWorkflow';
 import type { UseLongTaskResult } from '@/shared/tasks/useLongTask';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
-vi.mock('@/components/ProgressOverlay', () => ({
-  ProgressOverlay: ({ title, subtitle }: { title: string; subtitle: string }) =>
-    createElement('div', null, title, subtitle),
+// The components of datocms-react-ui need a Canvas: the modules under test
+// get stubs that render their texts and children as plain text.
+const reactUi = vi.hoisted(() => ({
+  async stub(parts: string[] = []) {
+    const { createElement, Fragment } = await import('react');
+    type StubProps = Record<string, unknown> & { children?: ReactNode };
+    type Stub = ((props: StubProps) => ReactNode) & { [part: string]: Stub };
+    const text = (value: unknown) => (typeof value === 'string' ? value : null);
+    const make = (): Stub => {
+      const component = (props: StubProps) =>
+        createElement(
+          Fragment,
+          {},
+          // A loading state says so, thus a test can tell it from the others
+          props.loading ? 'Loading' : null,
+          text(props.title),
+          text(props.label),
+          text(props.description),
+          text(props.caption),
+          text(props.code),
+          props.actions as ReactNode,
+          props.children,
+        );
+      return Object.assign(component, {} as Record<string, Stub>);
+    };
+    const root = make();
+    for (const part of parts) {
+      root[part] = make();
+    }
+    return { default: root };
+  },
 }));
-vi.mock('@/entrypoints/ImportPage/FileDropZone', () => ({
-  default: ({ children }: { children: (button: ReactNode) => ReactNode }) =>
-    children(null),
+
+vi.mock('datocms-react-ui/BlankSlate', () => reactUi.stub());
+vi.mock('datocms-react-ui/Button', () => reactUi.stub());
+vi.mock('datocms-react-ui/Callout', () => reactUi.stub());
+vi.mock('datocms-react-ui/Main', () => reactUi.stub());
+vi.mock('datocms-react-ui/Modal', () => reactUi.stub(['Body', 'Footer']));
+vi.mock('datocms-react-ui/ProgressBar', () => reactUi.stub());
+vi.mock('datocms-react-ui/Spinner', () => reactUi.stub());
+vi.mock('datocms-react-ui/Canvas', () => ({
+  useCtx: () => ({ ui: { locale: 'en' } }),
 }));
-vi.mock('datocms-react-ui', () => ({
-  Button: ({ children }: { children: ReactNode }) =>
-    createElement('button', null, children),
-  Spinner: () => createElement('div', null, 'Loading'),
+// The drop target and the picker do nothing outside a browser
+vi.mock('datocms-react-ui/dnd', async () => {
+  const { createElement } = await import('react');
+  return {
+    dropTargetClassName: () => '',
+    useFileDropTarget: () => ({ ref: () => {}, isOver: false }),
+    useFilePicker: () => ({
+      open: () => {},
+      input: createElement('input', { type: 'file', hidden: true }),
+    }),
+  };
+});
+
+// The review screen is not under test here: its stubs keep its imports out
+// of this file.
+vi.mock('@/entrypoints/ImportPage/Inner', () => ({ Inner: () => null }));
+vi.mock('@/entrypoints/ImportPage/ResolutionsForm', () => ({
+  default: ({ children }: { children?: ReactNode }) => children,
 }));
 
 describe('long task feedback', () => {
@@ -36,15 +85,15 @@ describe('long task feedback', () => {
       const output = renderToStaticMarkup(
         createElement(TaskProgressOverlay, {
           task,
-          title: 'Import in progress',
+          title: 'Importing the schema',
           subtitle: (state) =>
-            state.cancelRequested ? 'Cancelling safely' : 'Applying schema',
+            state.cancelRequested ? 'Stopping the import…' : 'Applying schema',
           ariaLabel: 'Import',
         }),
       );
-      expect(output).toContain('Import in progress');
+      expect(output).toContain('Importing the schema');
       expect(output).toContain(
-        status === 'cancelling' ? 'Cancelling safely' : 'Applying schema',
+        status === 'cancelling' ? 'Stopping the import…' : 'Applying schema',
       );
     },
   );

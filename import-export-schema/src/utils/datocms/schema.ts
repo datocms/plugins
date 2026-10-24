@@ -78,69 +78,41 @@ export const fieldTypeGroups: Array<{
   },
 ];
 
+/**
+ * The color pair of a field group, as the slug of its tokens:
+ * `--color--field-group-<slug>--surface` and `--color--field-group-<slug>--ink`.
+ */
+export type FieldGroupToken =
+  | 'boolean'
+  | 'color'
+  | 'datetime'
+  | 'json'
+  | 'location'
+  | 'media'
+  | 'number'
+  | 'reference'
+  | 'rich-text'
+  | 'seo'
+  | 'text';
+
 export const fieldGroupColors: Record<
   string,
   {
     IconComponent: SvgComponent;
-    fgColor: string;
-    bgColor: string;
+    tokenSlug: FieldGroupToken;
   }
 > = {
-  boolean: {
-    IconComponent: boolean,
-    fgColor: '#c82b1d',
-    bgColor: '#fde5e3',
-  },
-  color: {
-    IconComponent: color,
-    fgColor: '#b02857',
-    bgColor: '#fce2eb',
-  },
-  datetime: {
-    IconComponent: datetime,
-    fgColor: '#d76f0e',
-    bgColor: '#fef0e2',
-  },
-  json: {
-    IconComponent: json,
-    fgColor: '#80a617',
-    bgColor: '#f5fdde',
-  },
-  location: {
-    IconComponent: location,
-    fgColor: '#1d9f2f',
-    bgColor: '#defce2',
-  },
-  media: {
-    IconComponent: media,
-    fgColor: '#38ada3',
-    bgColor: '#e5fbf9',
-  },
-  number: {
-    IconComponent: number,
-    fgColor: '#008499',
-    bgColor: '#d7faff',
-  },
-  reference: {
-    IconComponent: reference,
-    fgColor: '#1b5899',
-    bgColor: '#ddecfc',
-  },
-  rich_text: {
-    IconComponent: richText,
-    fgColor: '#38388d',
-    bgColor: '#e2e2fa',
-  },
-  seo: {
-    IconComponent: seo,
-    fgColor: '#7e2e86',
-    bgColor: '#f8dffa',
-  },
-  text: {
-    IconComponent: structuredText,
-    fgColor: '#998100',
-    bgColor: '#FFF8D6',
-  },
+  boolean: { IconComponent: boolean, tokenSlug: 'boolean' },
+  color: { IconComponent: color, tokenSlug: 'color' },
+  datetime: { IconComponent: datetime, tokenSlug: 'datetime' },
+  json: { IconComponent: json, tokenSlug: 'json' },
+  location: { IconComponent: location, tokenSlug: 'location' },
+  media: { IconComponent: media, tokenSlug: 'media' },
+  number: { IconComponent: number, tokenSlug: 'number' },
+  reference: { IconComponent: reference, tokenSlug: 'reference' },
+  rich_text: { IconComponent: richText, tokenSlug: 'rich-text' },
+  seo: { IconComponent: seo, tokenSlug: 'seo' },
+  text: { IconComponent: structuredText, tokenSlug: 'text' },
 };
 
 export const fieldTypeDescriptions: Record<
@@ -150,23 +122,23 @@ export const fieldTypeDescriptions: Record<
   boolean: 'Boolean',
   color: 'Color',
   date: 'Date',
-  date_time: 'DateTime',
-  file: 'Single Asset',
-  float: 'Floating-point Number',
-  gallery: 'Asset Gallery',
-  integer: 'Integer Number',
+  date_time: 'Date and time',
+  file: 'Single asset',
+  float: 'Floating-point number',
+  gallery: 'Asset gallery',
+  integer: 'Integer number',
   json: 'JSON',
   lat_lon: 'Geolocation',
-  link: 'Single Link',
-  links: 'Multiple Links',
-  seo: 'SEO and Social',
-  single_block: 'Modular Content (Single block)',
-  rich_text: 'Modular Content (Multiple blocks)',
+  link: 'Single link',
+  links: 'Multiple links',
+  seo: 'SEO and social',
+  single_block: 'Modular content (single block)',
+  rich_text: 'Modular content (multiple blocks)',
   slug: 'Slug',
-  string: 'Single-line String',
-  structured_text: 'Structured Text',
-  text: 'Multiple-paragraph Text',
-  video: 'External Video',
+  string: 'Single-line string',
+  structured_text: 'Structured text',
+  text: 'Multiple-paragraph text',
+  video: 'External video',
 };
 
 export const validatorsContainingLinks: Array<{

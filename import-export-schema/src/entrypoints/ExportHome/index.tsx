@@ -1,126 +1,111 @@
 /**
  * Export navigation flow:
  *
- *  ┌──────────┐   onSelectModels    ┌────────────┐   onStart (with selection)    ┌──────────┐
- *  │ Landing  │ ──────────────────▶ │ Selection  │ ─────────────────────────────▶│  Graph   │
- *  └──────────┘   onExportAll runs  └────────────┘   onBack ⟲ Landing            └──────────┘
+ *  ┌────────────┐   Continue (with picks)   ┌──────────┐
+ *  │ Start step │ ─────────────────────────▶│  Graph   │
+ *  └────────────┘   Back ⟲ (picks kept)     └──────────┘
+ *        │
+ *        └── Export everything: confirm, then export the entire schema
  */
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { type ReactNode, useId, useState } from 'react';
-import { ExportLandingPanel } from '@/components/ExportLandingPanel';
+import Button from 'datocms-react-ui/Button';
+import Main from 'datocms-react-ui/Main';
+import { Page } from 'datocms-react-ui/Page';
+import Pane from 'datocms-react-ui/Pane';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useState } from 'react';
 import { ExportSelectionPanel } from '@/components/ExportSelectionPanel';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
+import { ExportIcon } from '@/icons';
 import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
 import { useExportSelection } from '@/shared/hooks/useExportSelection';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
 import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import {
+  type LongTaskState,
   type UseLongTaskResult,
   useLongTask,
 } from '@/shared/tasks/useLongTask';
 import ExportInner from '../ExportPage/Inner';
+import s from '../ExportPage/styles.module.css';
 
 type Props = {
   ctx: RenderPageCtx;
 };
 
-type ExportView = 'landing' | 'selection' | 'graph';
+type ExportView = 'start' | 'graph';
 
 type OverlayItems = Parameters<typeof TaskOverlayStack>[0]['items'];
 
-type BuildOverlayItemsArgs = {
-  exportAllTask: UseLongTaskResult;
-  exportPreparingTask: UseLongTaskResult;
-  exportSelectionTask: UseLongTaskResult;
-  exportPreparingPercent: number;
-};
+function isTaskActive(task: UseLongTaskResult) {
+  return task.state.status === 'running' || task.state.status === 'cancelling';
+}
 
-// Keep overlay wiring centralized so the JSX tree stays readable and we can reuse
-// the same overlay definitions if we ever need them elsewhere (e.g. tests).
-function buildOverlayItems({
-  exportAllTask,
-  exportPreparingTask,
-  exportSelectionTask,
-  exportPreparingPercent,
-}: BuildOverlayItemsArgs): OverlayItems {
+/** The line of the export dialog once its Cancel was used */
+function describeExportCancel(state: LongTaskState) {
+  return state.cancelRequested
+    ? 'Stopping the export after the current step…'
+    : undefined;
+}
+
+// Keep the dialog wiring in one place so the JSX tree stays readable.
+function buildOverlayItems(
+  exportAllTask: UseLongTaskResult,
+  exportSelectionTask: UseLongTaskResult,
+): OverlayItems {
   return [
     {
       id: 'export-all',
       task: exportAllTask,
-      title: 'Exporting entire schema',
-      subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
-      ariaLabel: 'Export in progress',
-      progressLabel: (progress) => progress.label ?? 'Loading project schema…',
-      cancel: () => ({
-        label: 'Cancel export',
-        intent: exportAllTask.state.cancelRequested ? 'muted' : 'negative',
-        disabled: exportAllTask.state.cancelRequested,
-        onCancel: () => exportAllTask.controller.requestCancel(),
-      }),
-    },
-    {
-      id: 'export-preparing',
-      task: exportPreparingTask,
-      title: 'Preparing export',
-      subtitle: 'Sit tight, we’re setting up your models, blocks, and plugins…',
-      ariaLabel: 'Preparing export',
-      progressLabel: (progress) => progress.label ?? 'Preparing export…',
-      percentOverride: exportPreparingPercent,
+      title: 'Exporting the entire schema',
+      subtitle: describeExportCancel,
+      progressLabel: (progress) =>
+        progress.label ?? 'Loading the project schema…',
+      cancel: (state) =>
+        state.cancelRequested
+          ? undefined
+          : { onCancel: () => exportAllTask.controller.requestCancel() },
     },
     {
       id: 'export-selection',
       task: exportSelectionTask,
-      title: 'Exporting selection',
-      subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
-      ariaLabel: 'Export in progress',
-      progressLabel: (progress) => progress.label ?? 'Preparing export…',
-      cancel: () => ({
-        label: 'Cancel export',
-        intent: exportSelectionTask.state.cancelRequested
-          ? 'muted'
-          : 'negative',
-        disabled: exportSelectionTask.state.cancelRequested,
-        onCancel: () => exportSelectionTask.controller.requestCancel(),
-      }),
+      title: 'Exporting the selection',
+      subtitle: describeExportCancel,
+      progressLabel: (progress) => progress.label ?? 'Preparing the export…',
+      cancel: (state) =>
+        state.cancelRequested
+          ? undefined
+          : { onCancel: () => exportSelectionTask.controller.requestCancel() },
     },
   ];
 }
 
 /**
- * Landing page for the export workflow. Guides the user from the initial action
- * choice into the detailed graph view while coordinating the long-running tasks.
+ * The export page opened from the settings sidebar: the start step picks the
+ * models and blocks of the graph, or exports the entire schema at once.
  */
 export default function ExportHome({ ctx }: Props) {
-  // ----- Schema + selection state -----
-  // Seed the selection autocomplete and schema data used by every subview; we
-  // establish this once so each panel can rely on the same shared data.
-  const exportInitialSelectId = useId();
   const projectSchema = useProjectSchema(ctx);
 
   const {
     allItemTypes,
-    selectedIds: exportInitialItemTypeIds,
-    selectedItemTypes: exportInitialItemTypes,
-    setSelectedIds: setExportInitialItemTypeIds,
+    error: itemTypesError,
+    retry: retryItemTypes,
+    selectedIds,
+    selectedItemTypes,
+    setSelectedIds,
   } = useExportSelection({ schema: projectSchema });
 
-  const [view, setView] = useState<ExportView>('landing');
+  const [view, setView] = useState<ExportView>('start');
 
-  // ----- Long-running tasks -----
-  // The export flow manipulates three distinct tasks (export all, prepare graph,
-  // targeted export).
   const exportAllTask = useLongTask();
-  const exportPreparingTask = useLongTask();
   const { task: exportSelectionTask, runExport: runSelectionExport } =
     useSchemaExportTask({
       schema: projectSchema,
       ctx,
     });
-
-  // Smoothed percent for preparing overlay to avoid jitter and changing max
-  const [exportPreparingPercent, setExportPreparingPercent] = useState(0.1);
 
   const runExportAll = useExportAllHandler({
     ctx,
@@ -128,71 +113,14 @@ export default function ExportHome({ ctx }: Props) {
     task: exportAllTask.controller,
   });
 
-  // Determine once whether the user has made a selection and keep the root item
-  // handy so downstream callbacks stay simple.
-  const hasSelection = exportInitialItemTypeIds.length > 0;
-  const rootItemTypeId = hasSelection ? exportInitialItemTypeIds[0] : undefined;
+  // The first pick is the root item type of the export.
+  const rootItemTypeId = selectedIds[0];
 
-  const handleLandingSelect = () => {
-    setView('selection');
-  };
-
-  const handleBackToLanding = () => {
-    setView('landing');
-  };
-
-  const handleStartSelection = () => {
-    if (!hasSelection) {
+  const handleContinue = () => {
+    if (selectedIds.length === 0) {
       return;
     }
-
-    exportPreparingTask.controller.start({
-      label: 'Preparing export…',
-    });
-    setExportPreparingPercent(0.1);
     setView('graph');
-  };
-
-  const handleGraphPrepared = () => {
-    setExportPreparingPercent(1);
-    exportPreparingTask.controller.complete({
-      label: 'Graph prepared',
-    });
-  };
-
-  const handlePrepareProgress = (progress: {
-    done: number;
-    total: number;
-    label: string;
-    phase?: 'scan' | 'build';
-  }) => {
-    if (exportPreparingTask.state.status !== 'running') {
-      exportPreparingTask.controller.start(progress);
-    } else {
-      exportPreparingTask.controller.setProgress(progress);
-    }
-
-    // When the task cannot provide a total, gently advance toward 25% so the
-    // overlay feels alive; otherwise map the true progress into the remaining
-    // 75% so the visual bar always pushes forward. This may seem like a hack,
-    // but it's the best way to keep the overlay feeling alive while the task is running.
-    const hasFixedTotal = (progress.total ?? 0) > 0;
-    const raw = hasFixedTotal ? progress.done / progress.total : 0;
-
-    if (!hasFixedTotal) {
-      setExportPreparingPercent((prev) =>
-        Math.min(0.25, Math.max(prev, prev + 0.02)),
-      );
-    } else {
-      const mapped = 0.25 + raw * 0.75;
-      setExportPreparingPercent((prev) => Math.max(prev, Math.min(1, mapped)));
-    }
-  };
-
-  const handleCloseGraph = () => {
-    setView('selection');
-    setExportPreparingPercent(0.1);
-    exportPreparingTask.controller.reset();
   };
 
   const handleSelectionExport = (
@@ -210,60 +138,78 @@ export default function ExportHome({ ctx }: Props) {
     });
   };
 
-  // The view map condenses our conditional rendering into a single lookup and
-  // keeps each subview’s JSX colocated with the handlers it consumes.
-  const viewContent: Record<ExportView, ReactNode> = {
-    landing: (
-      <ExportLandingPanel
-        onSelectModels={handleLandingSelect}
-        onExportAll={runExportAll}
-        exportAllDisabled={exportAllTask.state.status === 'running'}
-      />
-    ),
-    selection: (
-      <ExportSelectionPanel
-        selectId={exportInitialSelectId}
-        itemTypes={allItemTypes}
-        selectedIds={exportInitialItemTypeIds}
-        onSelectedIdsChange={setExportInitialItemTypeIds}
-        onStart={handleStartSelection}
-        onBack={handleBackToLanding}
-        startDisabled={!hasSelection}
-      />
-    ),
-    graph: (
-      <ExportInner
-        initialItemTypes={exportInitialItemTypes}
-        schema={projectSchema}
-        onGraphPrepared={handleGraphPrepared}
-        onPrepareProgress={handlePrepareProgress}
-        onClose={handleCloseGraph}
-        onExport={handleSelectionExport}
-      />
-    ),
-  };
-
-  // Precompute overlay config outside the JSX so the render tree remains easy to
-  // scan and future overlays only require extending this list.
-  const overlayItems = buildOverlayItems({
-    exportAllTask,
-    exportPreparingTask,
-    exportSelectionTask,
-    exportPreparingPercent,
-  });
-
   return (
-    <Canvas ctx={ctx}>
-      <ReactFlowProvider>
-        <div className="page">
-          <div className="page__content">
-            <div className="blank-slate">{viewContent[view]}</div>
-          </div>
-        </div>
-      </ReactFlowProvider>
+    <ReactFlowProvider>
+      {view === 'graph' ? (
+        <ExportInner
+          initialItemTypes={selectedItemTypes}
+          schema={projectSchema}
+          onClose={() => setView('start')}
+          onExport={handleSelectionExport}
+        />
+      ) : (
+        <Main className={s.layout}>
+          <Pane
+            header={
+              <Pane.Header>
+                <Pane.Header.Title
+                  level={1}
+                  help={
+                    <Toolbar.Help>
+                      Export models, block models and plugins as a JSON file.
+                      Import it in another project or environment with this
+                      plugin.
+                    </Toolbar.Help>
+                  }
+                >
+                  Export schema
+                </Pane.Header.Title>
+              </Pane.Header>
+            }
+          >
+            <Page>
+              <Page.Content>
+                <ExportSelectionPanel
+                  itemTypes={allItemTypes}
+                  error={itemTypesError}
+                  onRetry={retryItemTypes}
+                  selectedIds={selectedIds}
+                  onSelectedIdsChange={setSelectedIds}
+                  onContinue={handleContinue}
+                />
+                <Page.Group title="Entire schema">
+                  <SettingsList>
+                    <SettingsList.Row
+                      title="Export everything"
+                      description="All the models, block models and plugins of this environment, in one JSON file."
+                      action={
+                        <Button
+                          tone="ghost"
+                          icon={ExportIcon}
+                          label="Export"
+                          onClick={() => {
+                            void runExportAll();
+                          }}
+                          disabled={
+                            isTaskActive(exportAllTask)
+                              ? { reason: 'The export is running.' }
+                              : undefined
+                          }
+                        />
+                      }
+                    />
+                  </SettingsList>
+                </Page.Group>
+              </Page.Content>
+            </Page>
+          </Pane>
+        </Main>
+      )}
 
-      {/* Blocking overlay while exporting all */}
-      <TaskOverlayStack items={overlayItems} />
-    </Canvas>
+      {/* The dialogs of the exports: they block the page while they run */}
+      <TaskOverlayStack
+        items={buildOverlayItems(exportAllTask, exportSelectionTask)}
+      />
+    </ReactFlowProvider>
   );
 }

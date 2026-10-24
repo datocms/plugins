@@ -1,16 +1,22 @@
 import type { NodeProps } from '@xyflow/react';
 import classNames from 'classnames';
+import Pill from 'datocms-react-ui/Pill';
 import { useContext } from 'react';
 import {
   type ItemTypeNode,
   ItemTypeNodeRenderer,
 } from '@/components/ItemTypeNodeRenderer';
+import { nodeState } from '@/components/nodeState';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
 import { useResolutionStatusForItemType } from '@/entrypoints/ImportPage/ResolutionsForm';
 
 /**
- * Renders import graph item-type nodes, overlaying conflict and resolution state styling.
+ * An item-type node of the import graph: in the danger colors with a
+ * "Conflict" pill while its conflict is unresolved, faded with a "Uses
+ * existing" pill when the import reuses the existing one, in the selected
+ * colors when it is the focused entity. A rename shows the new name and API
+ * key.
  */
 export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
   const { itemType } = props.data;
@@ -38,10 +44,17 @@ export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
       name={resolutionNewName || itemType.attributes.name}
       apiKey={resolutionNewApiKey || itemType.attributes.api_key}
       className={classNames(
-        unresolvedConflict && 'app-node--conflict',
-        resolutionStrategyIsReuseExisting && 'app-node--excluded',
-        selectedEntityContext.entity === itemType && 'app-node--focused',
+        unresolvedConflict && nodeState.conflict,
+        resolutionStrategyIsReuseExisting && nodeState.excluded,
+        selectedEntityContext.entity === itemType && nodeState.focused,
       )}
+      status={
+        unresolvedConflict ? (
+          <Pill tone="danger">Conflict</Pill>
+        ) : resolutionStrategyIsReuseExisting ? (
+          <Pill>Uses existing</Pill>
+        ) : undefined
+      }
     />
   );
 }

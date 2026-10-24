@@ -1,15 +1,19 @@
 import type { NodeProps } from '@xyflow/react';
 import classNames from 'classnames';
+import Pill from 'datocms-react-ui/Pill';
 import { useContext } from 'react';
 import {
   type ItemTypeNode,
   ItemTypeNodeRenderer,
 } from '@/components/ItemTypeNodeRenderer';
+import { nodeState } from '@/components/nodeState';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
 
 /**
- * Highlights item-type nodes that fall outside the export selection.
+ * An item-type node of the export graph: faded, with a "Not included" pill,
+ * when it is out of the export, in the selected colors when it is the
+ * focused entity.
  */
 export function ExportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
   const { itemType } = props.data;
@@ -26,9 +30,10 @@ export function ExportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
       name={itemType.attributes.name}
       apiKey={itemType.attributes.api_key}
       className={classNames(
-        excluded && 'app-node--excluded',
-        isFocused && 'app-node--focused',
+        excluded && nodeState.excluded,
+        isFocused && nodeState.focused,
       )}
+      status={excluded ? <Pill>Not included</Pill> : undefined}
     />
   );
 }

@@ -1,3 +1,4 @@
+import Callout from 'datocms-react-ui/Callout';
 import { useEffect, useRef, useState } from 'react';
 
 type Props = {
@@ -10,13 +11,13 @@ type Props = {
 };
 
 /**
- * Surface a gentle warning when long-running tasks appear stuck, while avoiding
- * false positives during the initial idle period.
+ * A warning callout when a long task shows no progress for a while, once it
+ * has made some progress (the first idle period is not a stall).
  */
 export default function ProgressStallNotice({
   current,
   thresholdMs = 8000,
-  message = 'We made too many requests in a short time. Progress may look paused and should resume automatically in a few seconds.',
+  message = 'Too many requests in a short time: the progress may pause for a few seconds, then resume by itself.',
 }: Props) {
   const [stalled, setStalled] = useState(false);
   const lastValueRef = useRef<number | undefined>(undefined);
@@ -60,9 +61,5 @@ export default function ProgressStallNotice({
 
   if (!stalled) return null;
 
-  return (
-    <div className="rate-limit-notice" role="note" aria-live="polite">
-      {message}
-    </div>
-  );
+  return <Callout tone="warning">{message}</Callout>;
 }

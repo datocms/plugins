@@ -1,103 +1,86 @@
-import { Button } from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import IdText from 'datocms-react-ui/IdText';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import type { ReactElement } from 'react';
 import { Field } from 'react-final-form';
-import {
-  idCollisionFieldPrefix,
-  useResolutionStatusForIdCollision,
-} from '../ResolutionsForm';
-import type {
-  IdCollision,
-  IdCollisionEntityType,
-  IdReplacementIssue,
-} from './buildConflicts';
+import { idCollisionFieldPrefix } from '../ResolutionsForm';
+import type { IdReplacementIssue } from './buildConflicts';
 
 type Props = {
   collision: IdReplacementIssue;
+  /** The entity will be created: its IDs need a decision */
   active?: boolean;
 };
 
-function entityTypeLabel(entityType: IdCollisionEntityType) {
-  if (entityType === 'itemType') return 'model or block';
-  if (entityType === 'fieldset') return 'fieldset';
-  if (entityType === 'plugin') return 'plugin';
-  return 'field';
+/** The name of the switch: the entity itself, or its field or fieldset */
+function switchLabel(collision: IdReplacementIssue) {
+  if (collision.entityType === 'plugin') {
+    return 'New ID for this plugin';
+  }
+  if (collision.entityType === 'itemType') {
+    return collision.exportEntity.attributes.modular_block
+      ? 'New ID for this block'
+      : 'New ID for this model';
+  }
+  return `New ID for “${collision.exportLabel}”`;
 }
 
-function describeProjectTarget(collision: IdCollision) {
-  if (collision.entityType === 'field' || collision.entityType === 'fieldset') {
-    return `${collision.projectLabel} in ${collision.projectParentItemType.attributes.name}`;
+/** Why the exported ID can't be kept */
+function describeIssue(collision: IdReplacementIssue): ReactElement {
+  if (collision.reason === 'legacy') {
+    return (
+      <>
+        <IdText id={collision.exportId} /> is a legacy ID, which the import
+        can't keep.
+      </>
+    );
   }
 
-  return collision.projectLabel;
-}
+  const user =
+    collision.entityType === 'field' || collision.entityType === 'fieldset'
+      ? `${collision.projectLabel} in ${collision.projectParentItemType.attributes.name}`
+      : collision.projectLabel;
 
-function isOccupiedIssue(
-  collision: IdReplacementIssue,
-): collision is IdCollision {
-  return collision.reason === 'occupied';
-}
-
-export function IdCollisionFallback({ collision, active = true }: Props) {
-  const status = useResolutionStatusForIdCollision(
-    collision.entityType,
-    collision.exportId,
+  return (
+    <>
+      The ID <IdText id={collision.exportId} /> is already used by “{user}”.
+    </>
   );
+}
+
+/**
+ * A row of a SwitchList for an exported ID that the project can't take: the
+ * switch gives the entity a new ID. It shows only while the entity will be
+ * created (not reused or skipped).
+ */
+export function IdCollisionFallback({ collision, active = true }: Props) {
+  if (!active) {
+    return null;
+  }
+
   const fieldPrefix = idCollisionFieldPrefix(
     collision.entityType,
     collision.exportId,
   );
 
-  if (!active) {
-    return null;
-  }
-
-  const confirmed = status?.values.strategy === 'generateReplacement';
-  const hasError = Boolean(status?.invalid);
-
   return (
-    <div
-      className={`id-collision${confirmed ? ' id-collision--resolved' : ''}${
-        hasError ? ' id-collision--invalid' : ''
-      }`}
+    <Field
+      name={`${fieldPrefix}.strategy`}
+      subscription={{ value: true, error: true, touched: true }}
     >
-      <div className="id-collision__body">
-        <div className="id-collision__title">
-          {isOccupiedIssue(collision) ? (
-            <>
-              The exported {entityTypeLabel(collision.entityType)} ID{' '}
-              <code>{collision.exportId}</code> is already used.
-            </>
-          ) : (
-            <>
-              The exported {entityTypeLabel(collision.entityType)} ID{' '}
-              <code>{collision.exportId}</code> is a legacy ID.
-            </>
-          )}
-        </div>
-        <div className="id-collision__text">
-          {isOccupiedIssue(collision) ? (
-            <>
-              It is used by <strong>{describeProjectTarget(collision)}</strong>.
-            </>
-          ) : (
-            <>
-              Legacy IDs cannot be used to import with consistent IDs. This
-              entity will need a new random ID.
-            </>
-          )}
-        </div>
-      </div>
-      <Field name={`${fieldPrefix}.strategy`}>
-        {({ input }) => (
-          <Button
-            type="button"
-            buttonSize="s"
-            buttonType={confirmed ? 'muted' : 'primary'}
-            onClick={() => input.onChange('generateReplacement')}
-          >
-            {confirmed ? 'Replacement ID confirmed' : 'Generate replacement ID'}
-          </Button>
-        )}
-      </Field>
-    </div>
+      {({ input, meta }) => (
+        <FieldWrapper
+          hint={describeIssue(collision)}
+          error={meta.touched ? meta.error : undefined}
+        >
+          <SwitchInput
+            label={switchLabel(collision)}
+            value={input.value === 'generateReplacement'}
+            onChange={(on) => input.onChange(on ? 'generateReplacement' : null)}
+            onBlur={() => input.onBlur()}
+          />
+        </FieldWrapper>
+      )}
+    </Field>
   );
 }

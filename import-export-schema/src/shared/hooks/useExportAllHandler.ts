@@ -28,12 +28,12 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
     runningRef.current = true;
     try {
       const confirmation = await ctx.openConfirm({
-        title: 'Export entire schema?',
+        title: 'Export the entire schema?',
         content:
-          'This will export all models, block models, and plugins in the current environment as a single JSON file.',
+          'All the models, block models and plugins of this environment go in one JSON file.',
         choices: [
           {
-            label: 'Export everything',
+            label: 'Export',
             value: 'export',
             intent: 'positive',
           },
@@ -44,14 +44,14 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         return;
       }
 
-      task.start({ label: 'Preparing export…' });
+      task.start({ label: 'Loading the project schema…' });
       const allTypes = await schema.getAllItemTypes();
       throwIfExportCancelled(task);
       const allPlugins = await schema.getAllPlugins();
       throwIfExportCancelled(task);
       if (!allTypes.length) {
         task.reset();
-        ctx.alert('No item types found in this environment.');
+        ctx.alert('This environment has no models or blocks to export.');
         return;
       }
       // Use the first regular model as root to match older exports; fall back to any.
@@ -61,7 +61,7 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         allTypes.length,
         allPlugins.length,
       );
-      task.setProgress({ done: 0, total, label: 'Preparing export…' });
+      task.setProgress({ done: 0, total, label: 'Preparing the export…' });
       const exportBlob = await buildExportBlob(
         schema,
         preferredRoot.id,
@@ -77,15 +77,15 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         fileName: 'export.json',
       });
       task.complete({ done: total, total, label: 'Export completed' });
-      ctx.notice('Export completed successfully.');
+      ctx.notice('Schema exported.');
     } catch (error) {
       console.error('Export-all failed', error);
       if (error instanceof Error && error.message === 'Export cancelled') {
         task.complete({ label: 'Export cancelled' });
-        ctx.notice('Export canceled');
+        ctx.notice('Export canceled.');
       } else {
         task.fail(error);
-        ctx.alert('Could not export the current schema. Please try again.');
+        ctx.alert('The schema could not be exported. Try again.');
       }
     } finally {
       runningRef.current = false;

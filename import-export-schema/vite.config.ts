@@ -25,22 +25,12 @@ export default defineConfig(({ command }) => {
     build: {
       sourcemap: false,
       cssCodeSplit: true,
+      // No manual chunks: the lazy entrypoints already split the bundle. The
+      // boot chunk holds React, the SDK and the Canvas, and the graph
+      // libraries (@xyflow/react, d3) load only with the export and import
+      // pages. Named vendor chunks put React in the xyflow chunk, so every
+      // page preloaded xyflow.
       chunkSizeWarningLimit: 1024,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-datocms': ['datocms-plugin-sdk', 'datocms-react-ui'],
-            'vendor-xyflow': ['@xyflow/react', 'd3-hierarchy', 'd3-timer'],
-            'vendor-icons': [
-              '@fortawesome/react-fontawesome',
-              '@fortawesome/fontawesome-svg-core',
-              '@fortawesome/free-solid-svg-icons',
-            ],
-            'vendor-lodash': ['lodash-es'],
-          },
-        },
-      },
     },
     // Drop consoles/debuggers in production bundles
     esbuild: isBuild ? { drop: ['console', 'debugger'] } : undefined,

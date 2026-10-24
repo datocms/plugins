@@ -1,5 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isDefined } from '@/utils/isDefined';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
@@ -10,6 +10,10 @@ type UseExportSelectionOptions = {
 
 type UseExportSelectionResult = {
   allItemTypes?: SchemaTypes.ItemType[];
+  /** The item types could not be loaded */
+  error?: Error;
+  /** Loads the item types again, after an error */
+  retry: () => void;
   selectedIds: string[];
   selectedItemTypes: SchemaTypes.ItemType[];
   setSelectedIds: (ids: string[]) => void;
@@ -23,10 +27,33 @@ export function useExportSelection({
   enabled = true,
 }: UseExportSelectionOptions): UseExportSelectionResult {
   const [allItemTypes, setAllItemTypes] = useState<SchemaTypes.ItemType[]>();
+  const [error, setError] = useState<Error>();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedItemTypes, setSelectedItemTypes] = useState<
     SchemaTypes.ItemType[]
   >([]);
+
+  const load = useCallback(
+    async (isCancelled: () => boolean) => {
+      try {
+        setError(undefined);
+        const types = await schema.getAllItemTypes();
+        if (!isCancelled()) {
+          setAllItemTypes(types);
+        }
+      } catch (loadError) {
+        if (!isCancelled()) {
+          console.error('Could not load the item types', loadError);
+          setError(
+            loadError instanceof Error
+              ? loadError
+              : new Error(String(loadError)),
+          );
+        }
+      }
+    },
+    [schema],
+  );
 
   useEffect(() => {
     if (!enabled) {
@@ -34,19 +61,17 @@ export function useExportSelection({
     }
 
     let cancelled = false;
-    async function load() {
-      const types = await schema.getAllItemTypes();
-      if (!cancelled) {
-        setAllItemTypes(types);
-      }
-    }
-
-    void load();
+    void load(() => cancelled);
 
     return () => {
       cancelled = true;
     };
-  }, [schema, enabled]);
+  }, [enabled, load]);
+
+  // ProjectSchema forgets a failed request: the next load asks the API again.
+  const retry = useCallback(() => {
+    void load(() => false);
+  }, [load]);
 
   const itemTypesById = useMemo(() => {
     if (!allItemTypes) {
@@ -71,6 +96,8 @@ export function useExportSelection({
 
   return {
     allItemTypes,
+    error,
+    retry,
     selectedIds,
     selectedItemTypes,
     setSelectedIds,

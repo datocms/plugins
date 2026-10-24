@@ -2,7 +2,16 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { Mutator } from 'final-form';
 import get from 'lodash-es/get';
 import set from 'lodash-es/set';
-import { type ReactNode, useContext, useMemo } from 'react';
+import {
+  createContext,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
@@ -12,6 +21,7 @@ import type {
   IdReplacementIssue,
 } from './ConflictsManager/buildConflicts';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
+import s from './review.module.css';
 
 export type ItemTypeConflictResolutionRename = {
   strategy: 'rename';
@@ -84,6 +94,13 @@ function getIdReplacementIssues(conflicts: Conflicts): IdReplacementIssue[] {
   ];
 }
 
+const invalidApiKeyMessage =
+  'Not a valid API key: use lowercase letters, numbers and single underscores, starting with a letter.';
+const usedInImportMessage = 'Another model or block of this import uses it.';
+const usedInProjectMessage = 'A model or block of the project uses it.';
+const lookupFailedMessage =
+  'The API keys of the project could not be checked. Edit the value to check again.';
+
 // Mirrors the platform validation rules plus common reserved identifiers.
 function isValidApiKey(apiKey: string) {
   if (!apiKey.match(/^[a-z](([a-z0-9]|_(?![_0-9]))*[a-z0-9])$/)) {
@@ -122,7 +139,7 @@ function validatePluginFields(
     const fieldPrefix = `plugin-${pluginId}`;
     const strategy = get(values, [fieldPrefix, 'strategy']);
     if (strategy !== 'reuseExisting' && strategy !== 'skip') {
-      set(errors, [fieldPrefix, 'strategy'], 'Required!');
+      set(errors, [fieldPrefix, 'strategy'], 'Choose how to import it.');
     }
   }
 }
@@ -137,7 +154,7 @@ function validateIdCollisionField(
   const strategy = get(values, [fieldPrefix, 'strategy']);
 
   if (strategy !== 'generateReplacement') {
-    set(errors, [fieldPrefix, 'strategy'], 'Required!');
+    set(errors, [fieldPrefix, 'strategy'], 'A new ID is needed to import it.');
   }
 }
 
@@ -212,11 +229,11 @@ function validateRenameFields(
   fieldPrefix: string,
   errors: Record<string, string>,
 ) {
-  if (!value.name) set(errors, [fieldPrefix, 'name'], 'Required!');
+  if (!value.name) set(errors, [fieldPrefix, 'name'], 'Enter a name.');
   if (!value.apiKey) {
-    set(errors, [fieldPrefix, 'apiKey'], 'Required!');
+    set(errors, [fieldPrefix, 'apiKey'], 'Enter an API key.');
   } else if (!isValidApiKey(value.apiKey)) {
-    set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
+    set(errors, [fieldPrefix, 'apiKey'], invalidApiKeyMessage);
   }
 }
 
@@ -232,7 +249,7 @@ function validateItemTypeFieldsSync(
     if (value?.strategy === 'rename') {
       validateRenameFields(value, fieldPrefix, errors);
     } else {
-      set(errors, [fieldPrefix, 'strategy'], 'Required!');
+      set(errors, [fieldPrefix, 'strategy'], 'Choose how to import it.');
     }
   }
 }
@@ -268,17 +285,9 @@ function validateLocalRenameCollisions(
     ] as const) {
       const previousFieldPrefix = seen.get(value);
       if (reserved.has(value) || previousFieldPrefix) {
-        set(
-          errors,
-          [candidate.fieldPrefix, field],
-          'Already used in this import!',
-        );
+        set(errors, [candidate.fieldPrefix, field], usedInImportMessage);
         if (previousFieldPrefix) {
-          set(
-            errors,
-            [previousFieldPrefix, field],
-            'Already used in this import!',
-          );
+          set(errors, [previousFieldPrefix, field], usedInImportMessage);
         }
       }
       seen.set(value, candidate.fieldPrefix);
@@ -293,14 +302,10 @@ function validateProjectRenameCollisions(
 ) {
   for (const candidate of candidates) {
     if (project.names.has(candidate.name)) {
-      set(errors, [candidate.fieldPrefix, 'name'], 'Already used in project!');
+      set(errors, [candidate.fieldPrefix, 'name'], usedInProjectMessage);
     }
     if (project.apiKeys.has(candidate.apiKey)) {
-      set(
-        errors,
-        [candidate.fieldPrefix, 'apiKey'],
-        'Already used in project!',
-      );
+      set(errors, [candidate.fieldPrefix, 'apiKey'], usedInProjectMessage);
     }
   }
   return errors;
@@ -370,15 +375,49 @@ export function createResolutionValidator(
       )
       .catch(() => {
         for (const candidate of candidates) {
-          set(
-            errors,
-            [candidate.fieldPrefix, 'apiKey'],
-            'Could not verify project identifiers. Edit this value to retry.',
-          );
+          set(errors, [candidate.fieldPrefix, 'apiKey'], lookupFailedMessage);
         }
         return errors;
       });
   };
+}
+
+// Whether the submit of the form must do nothing: the Import button is
+// disabled. A ref, thus a change does not render the whole form again.
+const SubmitGuardContext = createContext<{ current: boolean }>({
+  current: false,
+});
+
+/**
+ * Blocks the submit of the resolutions form while `blocked` is true. The
+ * disabled Import button submits nothing, and this keeps every other way to
+ * submit the form (Enter in a rename field) from importing too.
+ */
+export function useSubmitGuard(blocked: boolean) {
+  const guard = useContext(SubmitGuardContext);
+  useLayoutEffect(() => {
+    guard.current = blocked;
+  }, [guard, blocked]);
+}
+
+// The new name and the new API key of a renamed item type
+const renameFieldName = /^itemType-[^.]+\.(name|apiKey)$/;
+
+/**
+ * The form holds the whole review, the filter of the overview included. As
+ * in any form, Enter in a new name or API key submits it: the submit guard
+ * ignores it while the Import button is disabled. Enter in any other input
+ * (the filter) never starts the import.
+ */
+function preventImplicitSubmit(event: KeyboardEvent<HTMLFormElement>) {
+  if (
+    event.key === 'Enter' &&
+    !event.nativeEvent.isComposing &&
+    event.target instanceof HTMLInputElement &&
+    !renameFieldName.test(event.target.name)
+  ) {
+    event.preventDefault();
+  }
 }
 
 /**
@@ -391,10 +430,17 @@ export default function ResolutionsForm({
   onSubmit,
 }: Props) {
   const conflicts = useContext(ConflictsContext);
-  const validate = useMemo(
-    () => createResolutionValidator(schema, conflicts, exportSchema?.itemTypes),
-    [schema, conflicts, exportSchema],
-  );
+  const submitBlocked = useRef(false);
+  const validate = useMemo(() => {
+    const validateResolutions = createResolutionValidator(
+      schema,
+      conflicts,
+      exportSchema?.itemTypes,
+    );
+    // Always async: Final Form keeps the errors of the last async run and
+    // merges them over every later sync run, so they would never clear.
+    return (values: FormValues) => Promise.resolve(validateResolutions(values));
+  }, [schema, conflicts, exportSchema]);
 
   const initialValues = useMemo<FormValues>(
     () =>
@@ -556,7 +602,27 @@ export default function ResolutionsForm({
       validate={validate}
       onSubmit={handleSubmit}
     >
-      {({ handleSubmit }) => <form onSubmit={handleSubmit}>{children}</form>}
+      {({ handleSubmit }) => {
+        const submit = (event: FormEvent<HTMLFormElement>) => {
+          if (submitBlocked.current) {
+            event.preventDefault();
+            return;
+          }
+          return handleSubmit(event);
+        };
+
+        return (
+          <SubmitGuardContext.Provider value={submitBlocked}>
+            <form
+              className={s.layout}
+              onSubmit={submit}
+              onKeyDown={preventImplicitSubmit}
+            >
+              {children}
+            </form>
+          </SubmitGuardContext.Provider>
+        );
+      }}
     </FormHandler>
   );
 }

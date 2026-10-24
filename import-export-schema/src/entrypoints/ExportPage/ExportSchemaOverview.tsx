@@ -1,16 +1,27 @@
 /**
- * Renders the export-side right sidebar schema overview, grouping selected/unselected
- * models and plugins from the dependency graph so editors can confirm what the
- * bulk export will include. Also drives the "only selected" toggle and per-entity
- * summaries reused across import/export review flows.
+ * The overview pane of the export graph: the models, block models and plugins
+ * of the graph, grouped by kind, with what goes in the export first. Opening
+ * an item focuses its node; its switch adds it to the export or removes it,
+ * as a click on the node does.
  */
 import type { SchemaTypes } from '@datocms/cma-client';
-import classNames from 'classnames';
-import { Spinner, SwitchInput } from 'datocms-react-ui';
-import { type ReactElement, useMemo, useState } from 'react';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import ListArea from 'datocms-react-ui/ListArea';
+import Pane, { type ListPreset, useFilteredList } from 'datocms-react-ui/Pane';
+import Pill from 'datocms-react-ui/Pill';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { memo, useMemo, useState } from 'react';
+import { FieldList } from '@/components/FieldList';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
-import Collapsible from '@/components/SchemaOverview/Collapsible';
+import { OverviewGroup } from '@/components/SchemaOverview/OverviewGroup';
+import {
+  type OverviewEntity,
+  OverviewItem,
+  type OverviewKind,
+} from '@/components/SchemaOverview/OverviewItem';
+import { useFormatters } from '@/texts';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import type { Graph } from '@/utils/graph/types';
 
@@ -20,44 +31,62 @@ const localeAwareCollator = new Intl.Collator(undefined, {
 });
 
 type ItemTypeEntry = {
-  itemType: SchemaTypes.ItemType;
+  kind: 'model' | 'block';
+  entity: SchemaTypes.ItemType;
+  fields: SchemaTypes.Field[];
+  fieldsets: SchemaTypes.Fieldset[];
+  /** It goes in the export */
   selected: boolean;
+  /** Its place in the lists: see `useListOrder` */
+  listedAsSelected: boolean;
 };
 
 type PluginEntry = {
-  plugin: SchemaTypes.Plugin;
+  kind: 'plugin';
+  entity: SchemaTypes.Plugin;
   selected: boolean;
+  listedAsSelected: boolean;
 };
 
-type ItemTypeBuckets = {
-  selected: ItemTypeEntry[];
-  unselected: ItemTypeEntry[];
-};
+type OverviewEntry = ItemTypeEntry | PluginEntry;
 
-type GroupedItemTypes = {
-  models: ItemTypeBuckets;
-  blocks: ItemTypeBuckets;
-};
+const kindOrder: OverviewKind[] = ['model', 'block', 'plugin'];
 
-type PluginBuckets = {
-  selected: PluginEntry[];
-  unselected: PluginEntry[];
-};
+const presetOptions: ListPreset<OverviewEntry>[] = [
+  {
+    id: 'selected',
+    label: 'Selected for export',
+    shortLabel: 'Selected',
+    matches: (entry) => entry.listedAsSelected,
+  },
+  {
+    id: 'unselected',
+    label: 'Not selected',
+    shortLabel: 'Not selected',
+    matches: (entry) => !entry.listedAsSelected,
+  },
+];
 
-type Props = {
-  graph?: Graph;
+type ListOptions = {
+  /** The graph to list: none while it loads, or when it could not be built */
+  graph: Graph | undefined;
+  /** The open item of the overview, which freezes the order of the lists */
+  focusedEntity: OverviewEntity | undefined;
   selectedItemTypeIds: string[];
   selectedPluginIds: string[];
 };
 
-function sortEntriesByDisplayName<T>(
-  entries: T[],
-  getName: (entry: T) => string,
-) {
-  return [...entries].sort((a, b) =>
-    localeAwareCollator.compare(getName(a), getName(b)),
-  );
-}
+type Props = {
+  graph?: Graph;
+  /** The graph could not be built: there is nothing to list */
+  failed?: boolean;
+  /** The entries, the filter and the presets: see `useExportOverviewList` */
+  list: ExportOverviewList;
+  /** The item types the export starts from: always included */
+  initialItemTypeIds: string[];
+  onToggleItemType: (itemTypeId: string) => void;
+  onTogglePlugin: (pluginId: string) => void;
+};
 
 function isItemTypeNode(node: Graph['nodes'][number]): node is ItemTypeNode {
   return node.type === 'itemType';
@@ -67,341 +96,259 @@ function isPluginNode(node: Graph['nodes'][number]): node is PluginNode {
   return node.type === 'plugin';
 }
 
-function renderItemTypeEntry(entry: ItemTypeEntry) {
-  const {
-    itemType: {
-      attributes: { name, modular_block: isBlock },
-    },
-  } = entry;
-
-  const className = entry.selected
-    ? 'schema-overview__item schema-overview__item--selected'
-    : 'schema-overview__item schema-overview__item--unselected';
-
-  return (
-    <Collapsible
-      key={entry.itemType.id}
-      entity={entry.itemType}
-      title={name}
-      className={className}
-    >
-      <p style={{ margin: 0 }}>
-        This {isBlock ? 'block model' : 'model'} is currently{' '}
-        {entry.selected ? 'selected for export.' : 'not part of this export.'}
-      </p>
-      <p style={{ margin: '8px 0 0' }}>
-        {entry.selected
-          ? 'The exported schema JSON will include this '
-          : 'Select it '}
-        {entry.selected ? '.' : ' from the graph to include it.'}
-      </p>
-    </Collapsible>
+function sortName(entry: OverviewEntry) {
+  return getTextWithoutRepresentativeEmojiAndPadding(
+    entry.entity.attributes.name,
   );
 }
 
-function renderPluginEntry(entry: PluginEntry) {
-  const {
-    plugin: {
-      attributes: { name },
-    },
-  } = entry;
-
-  const className = entry.selected
-    ? 'schema-overview__item schema-overview__item--selected'
-    : 'schema-overview__item schema-overview__item--unselected';
-
-  return (
-    <Collapsible
-      key={entry.plugin.id}
-      entity={entry.plugin}
-      title={name}
-      className={className}
-    >
-      <p style={{ margin: 0 }}>
-        <strong>{name}</strong> is{' '}
-        {entry.selected ? 'selected for export.' : 'not selected yet.'}
-      </p>
-      <p style={{ margin: '8px 0 0' }}>
-        {entry.selected
-          ? 'The exported recipe will include this plugin entry.'
-          : 'Choose this plugin in the dependency graph if it should be exported.'}
-      </p>
-    </Collapsible>
-  );
+function getEntryId(entry: OverviewEntry) {
+  return entry.entity.id;
 }
 
-function renderItemTypeGroup(
-  title: string,
-  entries: ItemTypeEntry[],
-  keyPrefix: string,
+function getEntrySearchTexts(entry: OverviewEntry) {
+  return [
+    entry.entity.attributes.name,
+    entry.kind === 'plugin'
+      ? entry.entity.attributes.package_name
+      : entry.entity.attributes.api_key,
+  ];
+}
+
+/**
+ * The selection that orders the lists. While an item is open, the lists keep
+ * the order they had when it opened: its switch then changes the export
+ * without moving the item away from under the pointer. The order follows the
+ * selection again when the item closes, or when another item opens.
+ */
+function useListOrder(
+  focused: OverviewEntity | undefined,
+  selectedItemTypeIds: string[],
+  selectedPluginIds: string[],
 ) {
-  if (entries.length === 0) {
-    return null;
+  const [frozen, setFrozen] = useState<{
+    entity: OverviewEntity;
+    itemTypeIds: string[];
+    pluginIds: string[];
+  } | null>(null);
+
+  if (focused && frozen?.entity !== focused) {
+    setFrozen({
+      entity: focused,
+      itemTypeIds: selectedItemTypeIds,
+      pluginIds: selectedPluginIds,
+    });
+  } else if (!focused && frozen) {
+    setFrozen(null);
   }
 
-  return (
-    <div className="conflicts-manager__group" key={`${keyPrefix}-${title}`}>
-      <div className="conflicts-manager__group__title">
-        {title} ({entries.length})
-      </div>
-      <div className="conflicts-manager__group__content">
-        {entries.map((entry) => renderItemTypeEntry(entry))}
-      </div>
-    </div>
-  );
+  return focused && frozen?.entity === focused
+    ? frozen
+    : { itemTypeIds: selectedItemTypeIds, pluginIds: selectedPluginIds };
 }
 
-function renderPluginGroup(
-  title: string,
-  entries: PluginEntry[],
-  keyPrefix: string,
-) {
-  if (entries.length === 0) {
-    return null;
-  }
+/**
+ * The entries of the overview, with its text filter and its presets. The
+ * graph screen keeps them, because the split unmounts a closed overview: the
+ * filter and the preset then survive a close.
+ */
+export function useExportOverviewList({
+  graph,
+  focusedEntity,
+  selectedItemTypeIds,
+  selectedPluginIds,
+}: ListOptions) {
+  const { itemTypeIds: listedItemTypeIds, pluginIds: listedPluginIds } =
+    useListOrder(focusedEntity, selectedItemTypeIds, selectedPluginIds);
 
-  return (
-    <div className="conflicts-manager__group" key={`${keyPrefix}-${title}`}>
-      <div className="conflicts-manager__group__title">
-        {title} ({entries.length})
-      </div>
-      <div className="conflicts-manager__group__content">
-        {entries.map((entry) => renderPluginEntry(entry))}
-      </div>
-    </div>
-  );
+  const entries = useMemo<OverviewEntry[]>(() => {
+    if (!graph) {
+      return [];
+    }
+
+    const selectedItemTypes = new Set(selectedItemTypeIds);
+    const selectedPlugins = new Set(selectedPluginIds);
+    const listedItemTypes = new Set(listedItemTypeIds);
+    const listedPlugins = new Set(listedPluginIds);
+
+    const itemTypeEntries = graph.nodes.filter(isItemTypeNode).map(
+      ({ data: { itemType, fields, fieldsets } }): ItemTypeEntry => ({
+        kind: itemType.attributes.modular_block ? 'block' : 'model',
+        entity: itemType,
+        fields,
+        fieldsets,
+        selected: selectedItemTypes.has(itemType.id),
+        listedAsSelected: listedItemTypes.has(itemType.id),
+      }),
+    );
+
+    const pluginEntries = graph.nodes.filter(isPluginNode).map(
+      ({ data: { plugin } }): PluginEntry => ({
+        kind: 'plugin',
+        entity: plugin,
+        selected: selectedPlugins.has(plugin.id),
+        listedAsSelected: listedPlugins.has(plugin.id),
+      }),
+    );
+
+    // What goes in the export first, then by name, ignoring a leading emoji
+    const all: OverviewEntry[] = [...itemTypeEntries, ...pluginEntries];
+    return all.sort(
+      (a, b) =>
+        Number(b.listedAsSelected) - Number(a.listedAsSelected) ||
+        localeAwareCollator.compare(sortName(a), sortName(b)),
+    );
+  }, [
+    graph,
+    selectedItemTypeIds,
+    selectedPluginIds,
+    listedItemTypeIds,
+    listedPluginIds,
+  ]);
+
+  return useFilteredList(entries, getEntrySearchTexts, presetOptions);
 }
 
-function SchemaOverviewCategory({
-  title,
-  groups,
-  className,
-}: {
-  title: string;
-  groups: Array<ReactElement | null>;
-  className?: string;
-}) {
-  const filteredGroups = groups.filter((group): group is ReactElement =>
-    Boolean(group),
-  );
-  if (filteredGroups.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className={classNames('schema-overview__category', className)}>
-      <div className="schema-overview__category__title">{title}</div>
-      {filteredGroups}
-    </div>
-  );
-}
+export type ExportOverviewList = ReturnType<typeof useExportOverviewList>;
 
 export function ExportSchemaOverview({
   graph,
-  selectedItemTypeIds,
-  selectedPluginIds,
+  failed,
+  list,
+  initialItemTypeIds,
+  onToggleItemType,
+  onTogglePlugin,
 }: Props) {
-  const [showOnlySelected, setShowOnlySelected] = useState(false);
-  const groupedItemTypes = useMemo<GroupedItemTypes>(() => {
-    const empty: GroupedItemTypes = {
-      models: { selected: [], unselected: [] },
-      blocks: { selected: [], unselected: [] },
-    };
+  const format = useFormatters();
+  const { filter, presets, filteredItems, hasNoResults } = list;
 
-    if (!graph) {
-      return empty;
-    }
+  const groups = useMemo(
+    () =>
+      kindOrder
+        .map((kind) => ({
+          kind,
+          entries: filteredItems.filter((entry) => entry.kind === kind),
+        }))
+        .filter((group) => group.entries.length > 0),
+    [filteredItems],
+  );
 
-    const entries = graph.nodes.filter(isItemTypeNode).map((node) => ({
-      itemType: node.data.itemType,
-      selected: selectedItemTypeIds.includes(node.data.itemType.id),
-    }));
-
-    for (const entry of entries) {
-      // TypeScript work-around to keep strong typing during population.
-      const bucketRef = entry.itemType.attributes.modular_block
-        ? empty.blocks
-        : empty.models;
-
-      if (entry.selected) {
-        bucketRef.selected.push(entry);
-      } else {
-        bucketRef.unselected.push(entry);
-      }
-    }
-
-    const sortItemTypes = (items: ItemTypeEntry[]) =>
-      sortEntriesByDisplayName(items, (entry) =>
-        getTextWithoutRepresentativeEmojiAndPadding(
-          entry.itemType.attributes.name,
-        ),
-      );
-
-    return {
-      models: {
-        selected: sortItemTypes(empty.models.selected),
-        unselected: sortItemTypes(empty.models.unselected),
-      },
-      blocks: {
-        selected: sortItemTypes(empty.blocks.selected),
-        unselected: sortItemTypes(empty.blocks.unselected),
-      },
-    };
-  }, [graph, selectedItemTypeIds]);
-
-  const pluginBuckets = useMemo<PluginBuckets>(() => {
-    const empty: PluginBuckets = { selected: [], unselected: [] };
-
-    if (!graph) {
-      return empty;
-    }
-
-    for (const node of graph.nodes.filter(isPluginNode)) {
-      const entry: PluginEntry = {
-        plugin: node.data.plugin,
-        selected: selectedPluginIds.includes(node.data.plugin.id),
-      };
-
-      if (entry.selected) {
-        empty.selected.push(entry);
-      } else {
-        empty.unselected.push(entry);
-      }
-    }
-
-    const sortPlugins = (items: PluginEntry[]) =>
-      sortEntriesByDisplayName(items, (entry) =>
-        getTextWithoutRepresentativeEmojiAndPadding(
-          entry.plugin.attributes.name,
-        ),
-      );
-
-    return {
-      selected: sortPlugins(empty.selected),
-      unselected: sortPlugins(empty.unselected),
-    };
-  }, [graph, selectedPluginIds]);
-
-  const selectedCount =
-    groupedItemTypes.models.selected.length +
-    groupedItemTypes.blocks.selected.length +
-    pluginBuckets.selected.length;
-  const unselectedCount =
-    groupedItemTypes.models.unselected.length +
-    groupedItemTypes.blocks.unselected.length +
-    pluginBuckets.unselected.length;
-
-  if (!graph) {
-    return (
-      <div className="page">
-        <div className="conflicts-manager__actions">
-          <div style={{ fontWeight: 700, fontSize: '16px' }}>
-            Schema overview
-          </div>
-        </div>
-        <div className="page__content">
-          <div
-            className="surface"
-            style={{
-              padding: '24px',
-              display: 'flex',
-              justifyContent: 'center',
-            }}
-          >
-            <Spinner size={24} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const selectedGroups = [
-    renderItemTypeGroup(
-      'Models',
-      groupedItemTypes.models.selected,
-      'selected-models',
-    ),
-    renderItemTypeGroup(
-      'Block models',
-      groupedItemTypes.blocks.selected,
-      'selected-blocks',
-    ),
-    renderPluginGroup('Plugins', pluginBuckets.selected, 'selected-plugins'),
-  ];
-
-  const unselectedGroups = showOnlySelected
-    ? []
-    : [
-        renderItemTypeGroup(
-          'Models',
-          groupedItemTypes.models.unselected,
-          'unselected-models',
-        ),
-        renderItemTypeGroup(
-          'Block models',
-          groupedItemTypes.blocks.unselected,
-          'unselected-blocks',
-        ),
-        renderPluginGroup(
-          'Plugins',
-          pluginBuckets.unselected,
-          'unselected-plugins',
-        ),
-      ];
+  const initialIds = useMemo(
+    () => new Set(initialItemTypeIds),
+    [initialItemTypeIds],
+  );
 
   return (
-    <div className="page">
-      <div className="conflicts-manager__actions">
-        <div style={{ fontWeight: 700, fontSize: '16px' }}>Schema overview</div>
-        <div className="schema-overview__summary">
-          <span>{selectedCount} selected</span>
-          <span aria-hidden="true">•</span>
-          <span>{unselectedCount} not selected</span>
-        </div>
-      </div>
-      <div className="conflicts-manager__actions" style={{ paddingTop: 0 }}>
-        <label
-          htmlFor="schema-overview-only-selected"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginTop: '10px',
-            fontSize: '12px',
-            color: 'var(--color--ink-subtle)',
-            cursor: 'pointer',
-          }}
-        >
-          <SwitchInput
-            id="schema-overview-only-selected"
-            name="schema-overview-only-selected"
-            value={showOnlySelected}
-            onChange={(nextValue) => setShowOnlySelected(nextValue)}
-            aria-label="Show only selected exports"
+    <Pane
+      ariaLabel="Schema overview"
+      header={
+        <Pane.Header filter={graph ? filter : undefined}>
+          <Pane.Header.Title presets={graph ? presets : undefined}>
+            Schema overview
+          </Pane.Header.Title>
+          {graph ? (
+            <Pane.Header.Subtitle>
+              {format.count(filteredItems.length, 'element', 'elements')}
+            </Pane.Header.Subtitle>
+          ) : null}
+        </Pane.Header>
+      }
+    >
+      {!graph ? (
+        failed ? (
+          // The graph pane next to it shows the error and "Try again"
+          <BlankSlate placement="area" small title="No elements to show" />
+        ) : (
+          <BlankSlate
+            placement="area"
+            small
+            loading
+            title="Loading the elements"
           />
-          <span>Show only selected exports</span>
-        </label>
-      </div>
-      <div className="page__content">
-        {selectedCount === 0 && unselectedCount === 0 ? (
-          <div className="surface" style={{ padding: '24px' }}>
-            <p style={{ margin: 0 }}>
-              Nothing to show yet — pick a model or plugin to build the export
-              graph.
-            </p>
-          </div>
-        ) : null}
-
-        <SchemaOverviewCategory
-          title="Selected exports"
-          className="schema-overview__category--selected"
-          groups={selectedGroups}
-        />
-        <SchemaOverviewCategory
-          title="Unselected exports"
-          groups={unselectedGroups}
-        />
-      </div>
-    </div>
+        )
+      ) : hasNoResults ? (
+        <Pane.FilterBlankSlate />
+      ) : (
+        <ListArea>
+          {groups.map((group) => (
+            <OverviewGroup
+              key={group.kind}
+              kind={group.kind}
+              entries={group.entries}
+              getEntityId={getEntryId}
+            >
+              {(entry) => (
+                <ExportOverviewItem
+                  key={entry.entity.id}
+                  entry={entry}
+                  isInitial={
+                    entry.kind !== 'plugin' && initialIds.has(entry.entity.id)
+                  }
+                  onToggleItemType={onToggleItemType}
+                  onTogglePlugin={onTogglePlugin}
+                />
+              )}
+            </OverviewGroup>
+          ))}
+        </ListArea>
+      )}
+    </Pane>
   );
 }
+
+type ItemProps = {
+  entry: OverviewEntry;
+  isInitial: boolean;
+  onToggleItemType: (itemTypeId: string) => void;
+  onTogglePlugin: (pluginId: string) => void;
+};
+
+/**
+ * An element of the overview. The body is the keyboard way to do what a click
+ * on the node does: add the element to the export or remove it.
+ */
+const ExportOverviewItem = memo(function ExportOverviewItem({
+  entry,
+  isInitial,
+  onToggleItemType,
+  onTogglePlugin,
+}: ItemProps) {
+  const toggle = () => {
+    if (entry.kind === 'plugin') {
+      onTogglePlugin(entry.entity.id);
+    } else {
+      onToggleItemType(entry.entity.id);
+    }
+  };
+
+  const status = isInitial ? (
+    <Pill>Starting point</Pill>
+  ) : entry.selected ? null : (
+    <Pill>Not included</Pill>
+  );
+
+  return (
+    <OverviewItem entity={entry.entity} status={status}>
+      <FieldWrapper>
+        <SwitchInput
+          label="Included in the export"
+          value={isInitial || entry.selected}
+          onChange={toggle}
+          forcedOn={
+            isInitial
+              ? {
+                  reason:
+                    entry.kind === 'block'
+                      ? 'The export starts from this block.'
+                      : 'The export starts from this model.',
+                }
+              : undefined
+          }
+        />
+      </FieldWrapper>
+      {entry.kind === 'plugin' ? null : (
+        <FieldList fields={entry.fields} fieldsets={entry.fieldsets} />
+      )}
+    </OverviewItem>
+  );
+});

@@ -1,29 +1,16 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, useCtx } from 'datocms-react-ui';
-import type { ReactNode } from 'react';
+import Button from 'datocms-react-ui/Button';
+import { Page } from 'datocms-react-ui/Page';
+import SettingsList from 'datocms-react-ui/SettingsList';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-/** Lightweight anchor that uses the plugin navigation API instead of full page loads. */
-function Link({ href, children }: { href: string; children: ReactNode }) {
-  const ctx = useCtx<RenderConfigScreenCtx>();
-
-  return (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault();
-        ctx.navigateTo(href);
-      }}
-    >
-      {children}
-    </a>
-  );
-}
-
-/** Configuration screen shown in Settings → Plugins. */
+/**
+ * Configuration screen shown in Settings → Plugins. The plugin has no
+ * settings: the screen tells where the three flows live and links to each.
+ */
 export function Config({ ctx }: Props) {
   const environmentPath = ctx.isEnvironmentPrimary
     ? ''
@@ -33,35 +20,34 @@ export function Config({ ctx }: Props) {
   const exportUrl = `${environmentPath}/configuration/p/${ctx.plugin.id}/pages/export`;
 
   return (
-    <Canvas ctx={ctx}>
-      <div className="config">
-        <h3>How this plugin works</h3>
-
-        <ul>
-          <li>
-            To create an export, visit one of your models/blocks under the{' '}
-            <Link href={schemaUrl}>
-              <strong>Schema</strong> tab
-            </Link>{' '}
-            and choose the <strong>Export as JSON</strong> option.
-          </li>
-
-          <li>
-            To import models/blocks from an exported JSON, go to the{' '}
-            <Link href={importUrl}>
-              <strong>Schema &gt; Import</strong>
-            </Link>{' '}
-            page in the sidebar.
-          </li>
-          <li>
-            To export a selection or the entire schema, go to the{' '}
-            <Link href={exportUrl}>
-              <strong>Schema &gt; Export</strong>
-            </Link>{' '}
-            page.
-          </li>
-        </ul>
-      </div>
-    </Canvas>
+    <Page>
+      <Page.Content>
+        <Page.Group title="Import and export">
+          <SettingsList>
+            <SettingsList.Row
+              title="Export a model or block"
+              description="In the schema, open the menu of a model or block and pick “Export as JSON”."
+              action={
+                <Button tone="ghost" label="Go to the schema" to={schemaUrl} />
+              }
+            />
+            <SettingsList.Row
+              title="Export several models or the whole schema"
+              description="Pick the models and blocks to export, or export everything at once."
+              action={
+                <Button tone="ghost" label="Go to Export" to={exportUrl} />
+              }
+            />
+            <SettingsList.Row
+              title="Import a schema"
+              description="Load a JSON file exported with this plugin, resolve the conflicts and import it."
+              action={
+                <Button tone="ghost" label="Go to Import" to={importUrl} />
+              }
+            />
+          </SettingsList>
+        </Page.Group>
+      </Page.Content>
+    </Page>
   );
 }

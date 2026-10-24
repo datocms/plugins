@@ -1,0 +1,8 @@
+/* The whole page: the positioned parent with a height that the blank slates
+   and the review need, and the drop target of the file at every step. It
+   comes after the kit stylesheet, thus its position wins over the relative
+   one of the drop target. */
+.layout {
+  position: absolute;
+  inset: 0;
+}
