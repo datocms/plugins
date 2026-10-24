@@ -1,56 +1,40 @@
-.root {
-  max-height: calc(100vh - 106px);
-  overflow: auto;
+/* The inset of the list: the switch list puts its row boxes out into it by
+   --row-inset, thus each box keeps --row-inset from the sides of the pane */
+.list {
+  padding: var(--row-inset) calc(2 * var(--row-inset));
 }
 
-.options {
-  display: flex;
-  padding: var(--spacing-m) var(--spacing-m) var(--spacing-m) 0;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--color--border);
+/* The name of the model, after the swatch of its color: the legend of the
+   colors of the calendar */
+.modelLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  /* The row comes into view with its padding */
+  scroll-margin-block: var(--spacing-m);
 }
 
-.options > * {
-  margin-left: var(--spacing-m);
+.swatch {
+  flex: none;
+  width: 0.75em;
+  height: 0.75em;
+  background: var(--model-color);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-xs);
 }
 
-.model {
-  padding: var(--spacing-s) var(--spacing-l) var(--spacing-s) var(--spacing-m);
-  border-bottom: 1px solid var(--color--border);
-  display: flex;
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.toggler {
-  display: block;
-  cursor: pointer;
-  color: var(--color--ink-subtle);
-  flex: 1;
-}
-
-.togglerActive {
-  color: var(--color--selected--ink);
-}
-
-.toggler input[type="checkbox"] {
-  accent-color: var(--color--selected--border);
-}
-
-.color {
-  width: 20px;
-  height: 20px;
-  border-radius: 100%;
-  background-color: rgba(var(--color-rgb-components), 0.5);
-  outline: 1px solid var(--color--border);
-  border: 2px solid var(--color--surface);
-}
-
-.model:hover .color,
-.modelActive .color {
-  background-color: rgba(var(--color-rgb-components), 0.7);
-}
-
-.modelActive {
-  background: var(--color--selected--surface);
-  color: var(--color--selected--ink);
-  font-weight: bold;
+/* The model of the record under the pointer */
+.highlighted {
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink-primary);
 }

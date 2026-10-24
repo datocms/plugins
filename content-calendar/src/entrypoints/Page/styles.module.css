@@ -1,21 +1,16 @@
+/* The positioned parent with a height that the split needs */
 .layout {
   position: absolute;
   inset: 0;
 }
 
-.layoutCal {
-  flex: 1;
-  position: relative;
+/* The calendar fills the height of the pane, under the callout when it shows */
+.content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
-.filter {
-  all: inherit;
-  margin-right: var(--spacing-l);
-  cursor: pointer;
-}
-
-.filter svg {
-  display: inline-block;
-  vertical-align: middle;
-  fill: var(--color--ink-subtle);
+.callout {
+  margin: var(--spacing-m);
 }

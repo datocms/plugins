@@ -1,54 +1,78 @@
-.calendarGrid {
+/* The month: a row of weekday names, then one row for each week. It fills
+   the height of the pane, and the pane scrolls when the frame is too short
+   for it. The week fits the width of the calendar beside the list of
+   models (or, in a frame of 1024px or less, beside its rail), and the long
+   titles end with an ellipsis; only a phone scrolls the week sideways. */
+.grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  position: absolute;
-  inset: 0;
-  overflow: auto;
+  flex: 1;
+  grid-template-columns: repeat(7, minmax(4rem, 1fr));
+  grid-template-rows: auto repeat(var(--weeks), minmax(6rem, 1fr));
 }
 
-.calendarWeekDay {
-  padding: var(--spacing-m);
+.weekDay {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--spacing-s) var(--spacing-m);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface);
   border-bottom: 1px solid var(--color--border);
-  border-right: 1px solid var(--color--border);
-  font-weight: 500;
+}
+
+/* The records of a busy day scroll inside the cell: the size containment
+   keeps them from making every week of the month taller */
+.day {
   display: flex;
-  align-items: center;
-}
-
-.calendarDayCell {
+  flex-direction: column;
+  gap: var(--row-gap);
+  min-width: 0;
   padding: var(--spacing-s);
-  border-bottom: 1px solid var(--color--border);
-  border-right: 1px solid var(--color--border);
-  position: relative;
   overflow: auto;
+  contain: size;
+  border-right: 1px solid var(--color--border);
+  border-bottom: 1px solid var(--color--border);
 }
 
-.calendarDayCell--inAdjacentMonth {
+/* The 7 weekday names come first, thus the last day of a week is a multiple
+   of 7 too */
+.day:nth-child(7n) {
+  border-right: 0;
+}
+
+/* A day of the month before or after */
+.outside {
   background: var(--color--surface-muted);
 }
 
-.calendarDayCellHeader {
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-  text-align: right;
-  margin-bottom: 5px;
-}
-
-.calendarDayCellHeaderDay {
-  height: 30px;
-  width: 30px;
-  border-radius: 100%;
+.dayNumber {
   display: inline-flex;
+  flex: none;
+  align-self: flex-end;
   align-items: center;
   justify-content: center;
+  min-width: 1.75em;
+  height: 1.75em;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color--ink-subtle);
+  border-radius: var(--radius-s);
 }
 
-.calendarDayCellHeaderDay span {
-  position: relative;
-  top: 1px;
+.today .dayNumber {
+  font-weight: var(--font-weight-strong);
+  color: var(--color--primary--ink);
+  background: var(--color--primary--surface);
 }
 
-.calendarDayCell--isToday .calendarDayCellHeaderDay {
-  background: var(--color--selected--surface);
-  color: var(--color--selected--ink);
+/* One column as wide as the cell: a long title ends with an ellipsis */
+.items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--row-gap);
+  padding: 0;
+  margin: 0;
+  list-style: none;
 }

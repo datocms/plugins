@@ -1,9 +1,17 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import classNames from 'classnames';
-import { Button, useCtx } from 'datocms-react-ui';
-import { type CSSProperties, useCallback, useMemo } from 'react';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import { useDebouncedValue } from 'datocms-react-ui/hooks/useDebouncedValue';
+import Label from 'datocms-react-ui/Label';
+import Pane, { useFilteredList } from 'datocms-react-ui/Pane';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
+import { type CSSProperties, useEffect, useMemo } from 'react';
 import { useHoverModelId } from '../../context/HoverItemContext';
-import useDebouncedEffect from '../../hooks/useDebouncedEffect';
+import { EyeIcon, EyeSlashIcon, ModelIcon } from '../../icons';
 import type { ActiveModels } from '../../types';
 import {
   buildPermissions,
@@ -18,124 +26,178 @@ type ActiveModelsPanelProps = {
   onChange: (newValue: ActiveModels) => void;
 };
 
+function switchId(modelId: string) {
+  return `modelId-${modelId}`;
+}
+
+function nameId(modelId: string) {
+  return `modelId-${modelId}-name`;
+}
+
 export function ActiveModelsPanel({
   activeModels,
   onChange,
 }: ActiveModelsPanelProps) {
-  const ctx = useCtx();
-  const modelId = useHoverModelId();
+  const ctx = useCtx<RenderPageCtx>();
+  const hoverModelId = useHoverModelId();
+  const debouncedModelId = useDebouncedValue(hoverModelId, 250);
 
-  useDebouncedEffect(
-    () => {
-      document.getElementById(`modelId-${modelId}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center',
-      });
-    },
-    250,
-    [modelId],
-  );
+  // The row of the model of the record under the pointer comes into view
+  useEffect(() => {
+    if (!debouncedModelId) {
+      return;
+    }
 
-  const handleDeselectAll = useCallback(() => {
-    onChange([]);
-  }, [onChange]);
-
-  const handleSelectAll = useCallback(() => {
-    onChange('all');
-  }, [onChange]);
+    document.getElementById(nameId(debouncedModelId))?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [debouncedModelId]);
 
   const permissions = useMemo<Permissions>(
     () => buildPermissions(ctx.currentRole, ctx.environment),
     [ctx.currentRole, ctx.environment],
   );
 
-  const allSortedModels = (
-    Object.values(ctx.itemTypes) as SchemaTypes.ItemType[]
-  )
-    .filter((model) => !model.attributes.modular_block)
-    .filter((model) => canReadAtLeastSomeItem(permissions, model))
-    .sort((a, b) => a.attributes.name.localeCompare(b.attributes.name));
+  const allSortedModels = useMemo(
+    () =>
+      (Object.values(ctx.itemTypes) as SchemaTypes.ItemType[])
+        .filter((model) => !model.attributes.modular_block)
+        .filter((model) => canReadAtLeastSomeItem(permissions, model))
+        .sort((a, b) => a.attributes.name.localeCompare(b.attributes.name)),
+    [ctx.itemTypes, permissions],
+  );
+
+  const { filter, filteredItems, hasNoResults } = useFilteredList(
+    allSortedModels,
+    (model) => [model.attributes.name, model.attributes.api_key],
+  );
+
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(ctx.ui.locale),
+    [ctx.ui.locale],
+  );
+
+  const isActive = (model: SchemaTypes.ItemType) =>
+    activeModels === 'all' || activeModels.includes(model.id);
+
+  const toggle = (model: SchemaTypes.ItemType) => {
+    const active = isActive(model);
+
+    if (activeModels === 'all') {
+      onChange(
+        allSortedModels.map((m) => m.id).filter((id) => id !== model.id),
+      );
+    } else if (active) {
+      onChange(activeModels.filter((id) => id !== model.id));
+    } else {
+      const newValue = [...activeModels, model.id];
+      if (
+        allSortedModels
+          .map((m) => m.id)
+          .sort()
+          .join(',') === newValue.sort().join(',')
+      ) {
+        onChange('all');
+      } else {
+        onChange(newValue);
+      }
+    }
+  };
+
+  const hasModels = allSortedModels.length > 0;
+  const modelCount =
+    allSortedModels.length === 1
+      ? '1 model'
+      : `${numberFormat.format(allSortedModels.length)} models`;
 
   return (
-    <div className={s.root}>
-      <div className={s.options}>
-        {activeModels !== 'all' && (
-          <Button
-            type="button"
-            fullWidth
-            buttonSize="xxs"
-            onClick={handleSelectAll}
-          >
-            Select all
-          </Button>
-        )}
-        {(activeModels === 'all' || activeModels.length > 0) && (
-          <Button
-            type="button"
-            fullWidth
-            buttonSize="xxs"
-            onClick={handleDeselectAll}
-          >
-            Deselect all
-          </Button>
-        )}
-      </div>
-      {allSortedModels.map((model) => {
-        const active =
-          activeModels === 'all' || activeModels.includes(model.id);
-
-        return (
-          <div
-            key={model.id}
-            className={classNames(s.model, {
-              [s.modelActive]: modelId === model.id,
-            })}
-            id={`modelId-${model.id}`}
-          >
-            <label
-              className={classNames(s.toggler, { [s.togglerActive]: active })}
-            >
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={() => {
-                  if (activeModels === 'all') {
-                    onChange(
-                      allSortedModels
-                        .map((model) => model.id)
-                        .filter((id) => id !== model.id),
-                    );
-                  } else if (active) {
-                    onChange(activeModels.filter((id) => id !== model.id));
-                  } else {
-                    const newValue = [...activeModels, model.id];
-                    if (
-                      allSortedModels
-                        .map((m) => m.id)
-                        .sort()
-                        .join(',') === newValue.sort().join(',')
-                    ) {
-                      onChange('all');
-                    } else {
-                      onChange(newValue);
+    <Pane
+      ariaLabel="Models"
+      header={
+        <Pane.Header filter={hasModels ? filter : undefined}>
+          <Pane.Header.Title>Models</Pane.Header.Title>
+          {hasModels && (
+            <Pane.Header.Subtitle>{modelCount}</Pane.Header.Subtitle>
+          )}
+          {hasModels && (
+            <Pane.Header.Menu>
+              <Dropdown.Option
+                icon={<EyeIcon />}
+                onPick={() => onChange('all')}
+                disabled={
+                  activeModels === 'all'
+                    ? { reason: 'All the models are already shown.' }
+                    : undefined
+                }
+              >
+                Show all models
+              </Dropdown.Option>
+              <Dropdown.Option
+                icon={<EyeSlashIcon />}
+                onPick={() => onChange([])}
+                disabled={
+                  activeModels !== 'all' && activeModels.length === 0
+                    ? { reason: 'No model is shown.' }
+                    : undefined
+                }
+              >
+                Hide all models
+              </Dropdown.Option>
+            </Pane.Header.Menu>
+          )}
+        </Pane.Header>
+      }
+    >
+      {!hasModels ? (
+        <BlankSlate
+          placement="area"
+          small
+          icon={<ModelIcon />}
+          title="No models"
+          description="Your role can't read the records of any model."
+        />
+      ) : hasNoResults ? (
+        <Pane.FilterBlankSlate />
+      ) : (
+        <div className={s.list}>
+          <SwitchList>
+            {filteredItems.map((model) => (
+              <SwitchInput
+                key={model.id}
+                id={switchId(model.id)}
+                value={isActive(model)}
+                onChange={() => toggle(model)}
+                label={
+                  <Label
+                    htmlFor={switchId(model.id)}
+                    label={
+                      <span
+                        id={nameId(model.id)}
+                        className={classNames(s.modelLabel, {
+                          [s.highlighted]: hoverModelId === model.id,
+                        })}
+                      >
+                        <span
+                          className={s.swatch}
+                          aria-hidden="true"
+                          style={
+                            {
+                              '--model-color': colorForModel(model.id),
+                            } as CSSProperties
+                          }
+                        />
+                        <span className={s.name}>{model.attributes.name}</span>
+                      </span>
                     }
-                  }
-                }}
-              />{' '}
-              {model.attributes.name}
-            </label>
-            <div
-              className={s.color}
-              style={
-                {
-                  '--color-rgb-components': colorForModel(model.id).join(', '),
-                } as CSSProperties
-              }
-            />
-          </div>
-        );
-      })}
-    </div>
+                  />
+                }
+              />
+            ))}
+          </SwitchList>
+        </div>
+      )}
+    </Pane>
   );
 }

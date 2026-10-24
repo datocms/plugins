@@ -37,7 +37,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 23 | tile-picker | 1110 | ^18.3.1 | Pending | |
 | 24 | bulk-change-author | 974 | ^19.2.4 | Pending | |
 | 25 | project-exporter | 797 | ^19.2.4 | Pending | |
-| 26 | content-calendar | 768 | ^19.2.4 | Done | SplitPane with models and calendar; toolbar stays usable on reloads. Build passes (no lint or tests). On next.0. |
+| 26 | content-calendar | 768 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 27 | alt-text-ai | 713 | ^19.2.4 | Pending | |
 | 28 | unsplash | 633 | ^19.2.4 | Pending | |
 | 29 | zoned-datetime-picker | 565 | ^19.2.7 | Pending | |
