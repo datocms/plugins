@@ -43,23 +43,38 @@ afterEach(() => vi.useRealTimers());
 
 describe('localized record titles', () => {
   const arabicTitle = 'كاتب: Westhaven Bridge 005999';
-  const config = { presentationTitleFieldId: null, titleFieldId: 'title-field' };
+  const config = {
+    presentationTitleFieldId: null,
+    titleFieldId: 'title-field',
+  };
   const fields = [{ id: 'title-field', apiKey: 'title' }];
   const extract = (title: unknown, locale = 'en') =>
     extractTitleFromRecordData(
-      'record-ar', { title }, config, fields, 'Authors', locale, false,
+      'record-ar',
+      { title },
+      config,
+      fields,
+      'Authors',
+      locale,
+      false,
     );
 
   it('uses the Arabic title when the preferred locale is empty', () => {
     expect(extract({ en: null, ar: arabicTitle })).toBe(arabicTitle);
   });
 
-  it.each(['', '   ', null, undefined, [], {}, 123, false])(
-    'skips an empty or malformed preferred localized value %j',
-    (preferred) => {
-      expect(extract({ en: preferred, ar: arabicTitle })).toBe(arabicTitle);
-    },
-  );
+  it.each([
+    '',
+    '   ',
+    null,
+    undefined,
+    [],
+    {},
+    123,
+    false,
+  ])('skips an empty or malformed preferred localized value %j', (preferred) => {
+    expect(extract({ en: preferred, ar: arabicTitle })).toBe(arabicTitle);
+  });
 
   it('keeps the preferred locale ahead of other populated locales', () => {
     const title = { ar: arabicTitle, en: 'Author: Westhaven Bridge 005999' };
@@ -68,7 +83,9 @@ describe('localized record titles', () => {
   });
 
   it('uses the first other nonempty localized string', () => {
-    expect(extract({ en: null, fr: ' ', it: 'Autore', ar: arabicTitle })).toBe('Autore');
+    expect(extract({ en: null, fr: ' ', it: 'Autore', ar: arabicTitle })).toBe(
+      'Autore',
+    );
   });
 
   it.each([
@@ -88,16 +105,28 @@ describe('localized record titles', () => {
   it('preserves nonlocalized titles and presentation/singleton priority', () => {
     expect(extract('Plain title')).toBe('Plain title');
     expect(extract(0)).toBe('0');
-    expect(extractTitleFromRecordData(
-      'record-ar',
-      { title: { en: 'Title' }, presentation: { en: null, ar: arabicTitle } },
-      { ...config, presentationTitleFieldId: 'presentation-field' },
-      [...fields, { id: 'presentation-field', apiKey: 'presentation' }],
-      'Authors', 'en', false,
-    )).toBe(arabicTitle);
-    expect(extractTitleFromRecordData(
-      'record-ar', { title: arabicTitle }, config, fields, 'Authors', 'en', true,
-    )).toBe('Authors');
+    expect(
+      extractTitleFromRecordData(
+        'record-ar',
+        { title: { en: 'Title' }, presentation: { en: null, ar: arabicTitle } },
+        { ...config, presentationTitleFieldId: 'presentation-field' },
+        [...fields, { id: 'presentation-field', apiKey: 'presentation' }],
+        'Authors',
+        'en',
+        false,
+      ),
+    ).toBe(arabicTitle);
+    expect(
+      extractTitleFromRecordData(
+        'record-ar',
+        { title: arabicTitle },
+        config,
+        fields,
+        'Authors',
+        'en',
+        true,
+      ),
+    ).toBe('Authors');
   });
 });
 

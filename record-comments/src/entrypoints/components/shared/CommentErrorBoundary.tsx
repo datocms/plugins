@@ -1,10 +1,14 @@
-import styles from '@styles/comment.module.css';
+import Callout from 'datocms-react-ui/Callout';
 import React from 'react';
 import { logError } from '@/utils/errorLogger';
 
 type Props = {
   children: React.ReactNode;
+  /** The problem in a few words, when the message has more than a sentence */
+  fallbackTitle?: string;
   fallbackMessage?: string;
+  /** Places the fallback callout (its margin) in its parent */
+  fallbackClassName?: string;
 };
 
 type State = {
@@ -36,9 +40,13 @@ export class CommentErrorBoundary extends React.Component<Props, State> {
   render(): React.ReactNode {
     if (this.state.hasError) {
       return (
-        <div className={styles.errorFallback}>
-          {this.props.fallbackMessage ?? 'Unable to display comment'}
-        </div>
+        <Callout
+          tone="danger"
+          title={this.props.fallbackTitle}
+          className={this.props.fallbackClassName}
+        >
+          {this.props.fallbackMessage ?? "This comment can't be shown."}
+        </Callout>
       );
     }
 

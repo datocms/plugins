@@ -23,6 +23,7 @@ function getFallbackTitle(recordId: string) {
 }
 
 /** singleton -> presentation/title field -> preferred/populated locale -> fallback */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one ordered chain of title fallbacks, covered by recordTitleUtils.test.ts.
 export function extractTitleFromRecordData(
   recordId: string,
   recordData: Record<string, unknown>,

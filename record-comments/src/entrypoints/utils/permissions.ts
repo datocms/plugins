@@ -135,3 +135,12 @@ export function filterReadableModels(
       !negative.modelIds.has(model.id),
   );
 }
+
+/**
+ * The models of the records a user can mention: the readable ones that are
+ * not blocks (a block is never a record of its own). A record mention applies
+ * only when there is one.
+ */
+export function getRecordMentionModels(models: ModelInfo[]): ModelInfo[] {
+  return models.filter((model) => !model.isBlockModel);
+}

@@ -1,41 +1,40 @@
-import styles from '@styles/comment.module.css';
-import type { MutableRefObject, ReactNode } from 'react';
+import Button from 'datocms-react-ui/Button';
+import type { MutableRefObject, ReactNode, Ref } from 'react';
+import { ChevronLeftIcon } from '../Icons';
+import styles from '../shared/MentionPanel.module.css';
 
 type FieldDropdownHeaderProps = {
+  /** The path of the drill-down, for example "Content · Blocks" */
   title: string;
   onBack: () => void;
   justClickedInsideRef: MutableRefObject<boolean>;
+  /** The title is taller than text: the panel scrolls the options below it */
+  ref?: Ref<HTMLSpanElement>;
 };
 
-const BackIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-    <title>Go back</title>
-    <path
-      fillRule="evenodd"
-      d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"
-    />
-  </svg>
-);
-
+/** The group title of a drill-down: Back, then the path */
 export function FieldDropdownHeader({
   title,
   onBack,
   justClickedInsideRef,
+  ref,
 }: FieldDropdownHeaderProps): ReactNode {
   return (
-    <div className={styles.mentionHeader}>
-      <button
-        type="button"
-        className={styles.mentionBackButton}
-        onMouseDown={(e) => {
-          e.preventDefault();
+    <span ref={ref} className={styles.header}>
+      <Button
+        tone="ghost"
+        size="micro"
+        iconOnly
+        icon={ChevronLeftIcon}
+        label="Back"
+        onMouseDown={(event) => {
+          // The editor keeps the focus and the caret
+          event.preventDefault();
           justClickedInsideRef.current = true;
-          onBack();
         }}
-      >
-        <BackIcon />
-      </button>
-      {title}
-    </div>
+        onClick={onBack}
+      />
+      <span className={styles.headerText}>{title}</span>
+    </span>
   );
 }

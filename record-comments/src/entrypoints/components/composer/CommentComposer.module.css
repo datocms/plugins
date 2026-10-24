@@ -1,0 +1,60 @@
+/* The frame of the composer, a custom composite input: the mention
+   toolbar, the text and the buttons. It is a field: the raised surface, the
+   border and the radius of a control, and the focus ring, with no shadow. */
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+}
+
+.frame:hover {
+  border-color: var(--color--border-hover);
+}
+
+.frame:focus-within {
+  border-color: var(--color--focus--border);
+  box-shadow: var(--focus-ring);
+}
+
+/* The row of the mention toolbar. The inset (the inner radius of the frame)
+   keeps the square toolbar inside the round corners of the frame, without
+   clipping the focus ring of its buttons. Its height comes from the
+   component. */
+.toolbar {
+  padding: calc(var(--radius-s) - 1px) calc(var(--radius-s) - 1px) 0;
+}
+
+/* While the toolbar hides, its row takes no room */
+.toolbarHidden {
+  padding: 0;
+}
+
+/* Positioned: the model panel of a record mention opens under the text, as
+   the other mention panels do */
+.editorArea {
+  position: relative;
+  min-width: 0;
+}
+
+/* The field around the editor: only the name and the description of the
+   editor come from it, not a space under it */
+.field {
+  margin: 0;
+}
+
+/* A new comment gets room for a few lines */
+.frameNew .editorArea :global(.ProseMirror) {
+  min-height: 3em;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  justify-content: flex-end;
+  padding: 0 var(--input-padding) var(--input-padding);
+}

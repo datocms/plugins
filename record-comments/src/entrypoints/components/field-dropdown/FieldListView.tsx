@@ -1,86 +1,122 @@
 import type { FieldInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
-import type { MutableRefObject, ReactNode, Ref } from 'react';
-import { cn } from '@/utils/cn';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import type { CSSProperties, MutableRefObject, ReactNode, Ref } from 'react';
+import { formatCount } from '@/utils/format';
+import { ChevronRightIcon } from '../Icons';
+import { MentionItemMeta, MentionMenuItem } from '../shared/MentionPanel';
+import styles from './FieldListView.module.css';
+
+type FieldMenuItemProps = {
+  field: FieldInfo;
+  /** The text of the option: the label, or the path of a nested field */
+  label: string;
+  selected: boolean;
+  onPick: () => void;
+  onHighlight?: () => void;
+  selectedRef: Ref<HTMLDivElement>;
+  justClickedInsideRef: MutableRefObject<boolean>;
+  /** The depth of a field inside blocks: its content is indented by it */
+  depth?: number;
+  /** The language of the user, for the separators of the numbers */
+  uiLocale?: string;
+};
+
+/**
+ * A field to mention: its label and API key, the number of its locales, and a
+ * chevron when picking it opens a further step (a locale, a block).
+ */
+export function FieldMenuItem({
+  field,
+  label,
+  selected,
+  onPick,
+  onHighlight,
+  selectedRef,
+  justClickedInsideRef,
+  depth = 0,
+  uiLocale,
+}: FieldMenuItemProps): ReactNode {
+  const localeCount = field.availableLocales?.length ?? 0;
+  const hasMultipleLocales = localeCount > 1;
+  // The same rule as the navigation: a block container or a field with
+  // more locales asks for the next step
+  const drillsDown =
+    Boolean(field.isBlockContainer) || (field.localized && hasMultipleLocales);
+
+  return (
+    <MentionMenuItem
+      selected={selected}
+      highlightRef={selectedRef}
+      // The option keeps its own padding: a spacer before the content
+      // indents it, in even steps
+      before={
+        depth > 0 ? (
+          <span
+            aria-hidden="true"
+            className={styles.indent}
+            style={{ '--depth': depth } as CSSProperties}
+          />
+        ) : undefined
+      }
+      onPress={() => {
+        justClickedInsideRef.current = true;
+      }}
+      onPick={onPick}
+      onHighlight={onHighlight}
+      after={
+        hasMultipleLocales || drillsDown ? (
+          <MentionItemMeta>
+            {hasMultipleLocales &&
+              formatCount(localeCount, 'locale', 'locales', uiLocale)}
+            {drillsDown && <ChevronRightIcon />}
+          </MentionItemMeta>
+        ) : undefined
+      }
+    >
+      <EntityRow
+        layout="row"
+        title={label}
+        afterTitle={<ApiKey>{field.apiKey}</ApiKey>}
+      />
+    </MentionMenuItem>
+  );
+}
 
 type FieldListViewProps = {
   fields: FieldInfo[];
   selectedIndex: number;
   onSelect: (field: FieldInfo) => void;
-  selectedRef: Ref<HTMLButtonElement>;
+  /** Moves the highlight to the field below the pointer */
+  onHover?: (index: number) => void;
+  selectedRef: Ref<HTMLDivElement>;
   justClickedInsideRef: MutableRefObject<boolean>;
+  /** The language of the user, for the separators of the numbers */
+  uiLocale?: string;
 };
 
 export function FieldListView({
   fields,
   selectedIndex,
   onSelect,
+  onHover,
   selectedRef,
   justClickedInsideRef,
+  uiLocale,
 }: FieldListViewProps): ReactNode {
-  return (
-    <>
-      <div className={styles.mentionHeader}>Fields</div>
-      <div className={styles.mentionList} role="listbox">
-        {fields.map((field, index) => {
-          const isNested = field.depth > 0;
-          const hasMultipleLocales =
-            field.availableLocales && field.availableLocales.length > 1;
-          const isBlockContainer = field.isBlockContainer;
-
-          return (
-            <button
-              key={field.fieldPath}
-              ref={index === selectedIndex ? selectedRef : null}
-              type="button"
-              role="option"
-              aria-selected={index === selectedIndex}
-              className={cn(
-                styles.mentionOption,
-                index === selectedIndex && styles.mentionOptionSelected,
-              )}
-              style={{ paddingLeft: `${8 + field.depth * 12}px` }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                justClickedInsideRef.current = true;
-                onSelect(field);
-              }}
-            >
-              <span className={styles.mentionFieldLabel}>
-                {isNested ? field.displayLabel : field.label}
-              </span>
-              <span className={styles.mentionFieldMeta}>
-                {isBlockContainer && !hasMultipleLocales && (
-                  <span
-                    className={styles.mentionBlockIndicator}
-                    title="Contains blocks"
-                  >
-                    ▶
-                  </span>
-                )}
-                {hasMultipleLocales && (
-                  <span
-                    className={styles.mentionLocaleIndicator}
-                    title="Localized field"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" />
-                    </svg>
-                  </span>
-                )}
-                <span className={styles.mentionFieldApiKey}>
-                  #{field.apiKey}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </>
-  );
+  return fields.map((field, index) => (
+    <FieldMenuItem
+      key={field.fieldPath}
+      field={field}
+      label={field.depth > 0 ? field.displayLabel : field.label}
+      selected={index === selectedIndex}
+      selectedRef={selectedRef}
+      justClickedInsideRef={justClickedInsideRef}
+      uiLocale={uiLocale}
+      // The fields inside blocks are indented by their depth
+      depth={field.depth}
+      onPick={() => onSelect(field)}
+      onHighlight={onHover ? () => onHover(index) : undefined}
+    />
+  ));
 }

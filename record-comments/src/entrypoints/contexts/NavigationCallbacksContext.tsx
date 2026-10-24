@@ -4,6 +4,8 @@ import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { createContext, type ReactNode, useContext } from 'react';
 
 export type NavigationCallbacks = {
+  /** The CMS path of a field of this record, for a link (see the hook) */
+  getFieldLinkPath?: (fieldPath: string) => string | undefined;
   handleScrollToField?: (
     fieldPath: string,
     localized: boolean,

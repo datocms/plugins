@@ -29,7 +29,9 @@ const localizedContent: FieldInfo = {
 function createCtx() {
   return {
     locale: 'en',
-    site: { attributes: { locales: ['en', 'pt', 'es', 'fr', 'de', 'it', 'nl', 'ja'] } },
+    site: {
+      attributes: { locales: ['en', 'pt', 'es', 'fr', 'de', 'it', 'nl', 'ja'] },
+    },
     itemTypes: {
       'block-1': { id: 'block-1', attributes: { name: 'Hero' } },
     },
@@ -84,7 +86,10 @@ describe('field navigation with a single populated locale', () => {
     if (!field) throw new Error('Missing nested field');
     act(() => result.current?.handleFieldClick(field));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ fieldPath: 'content.pt.0.heading', localized: true }),
+      expect.objectContaining({
+        fieldPath: 'content.pt.0.heading',
+        localized: true,
+      }),
       'pt',
     );
     unmount();
@@ -121,10 +126,12 @@ describe('field navigation with a single populated locale', () => {
     const { result, unmount } = renderHook(() =>
       useFieldNavigation({ ctx, onSelect, selectedIndex: 0 }),
     );
-    act(() => result.current?.handleFieldClick({
-      ...localizedContent,
-      availableLocales: ['en', 'pt'],
-    }));
+    act(() =>
+      result.current?.handleFieldClick({
+        ...localizedContent,
+        availableLocales: ['en', 'pt'],
+      }),
+    );
     expect(result.current?.viewMode).toBe('locales');
     expect(result.current?.selectedLocale).toBeUndefined();
     act(() => result.current?.handleLocaleClick('pt'));

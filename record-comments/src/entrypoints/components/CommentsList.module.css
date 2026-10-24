@@ -1,0 +1,15 @@
+/* The thread and its load-more row, one under the other */
+.root {
+  display: grid;
+  gap: var(--spacing-m);
+  min-width: 0;
+}
+
+.list {
+  display: grid;
+  gap: var(--spacing-l);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}

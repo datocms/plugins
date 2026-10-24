@@ -21,9 +21,6 @@ export default defineConfig({
       '@ctypes': fileURLToPath(
         new URL('./src/entrypoints/types', import.meta.url),
       ),
-      '@styles': fileURLToPath(
-        new URL('./src/entrypoints/styles', import.meta.url),
-      ),
     },
   },
 });

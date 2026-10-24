@@ -1,201 +1,93 @@
 import type { Mention } from '@ctypes/mentions';
 import type { UserInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
 import { areMentionsEqual } from '@utils/comparisonHelpers';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
 import {
   formatFieldType,
   getTruncatedFilename,
 } from '@utils/mentionFormatters';
-import { memo, useId, useMemo, useState } from 'react';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
+import Pill from 'datocms-react-ui/Pill';
+import RawButton from 'datocms-react-ui/RawButton';
+import Tooltip from 'datocms-react-ui/Tooltip';
+import {
+  memo,
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { cn } from '@/utils/cn';
-import { ModelMentionIcon, RecordDocumentIcon } from '../Icons';
+import {
+  AssetMentionIcon,
+  ModelMentionIcon,
+  RecordDocumentIcon,
+} from '../Icons';
+import styles from './MentionDisplay.module.css';
 
 type MentionDisplayProps = {
   mention: Mention;
+  /** A CMS path that the mention opens as a link, in place of onClick */
+  to?: string;
   onClick?: (e: React.MouseEvent) => void;
   isClickable?: boolean;
   isProjectOwner?: boolean;
+  /** The Tab order of the asset preview (a pill is always a tab stop) */
   tabIndex?: number;
-  tooltipId?: string;
   projectUsers?: UserInfo[];
 };
 
-type AssetThumbnailMentionProps = {
-  mention: Extract<Mention, { type: 'asset' }>;
-  tabIndex: number;
-  onClick: (e: React.MouseEvent) => void;
-  tooltipId: string;
+type ClickHandler = (e: React.MouseEvent) => void;
+
+type MentionPillProps = {
+  icon?: ReactNode;
+  tooltip?: string | null;
+  /** A CMS path: the pill is a link */
+  to?: string;
+  /** Without a path or a handler, the pill is a static reference */
+  onClick?: ClickHandler;
+  children: ReactNode;
 };
 
-function AssetThumbnailMention({
-  mention,
-  tabIndex,
+/** A reference to another item in a text: a soft pill */
+function MentionPill({
+  icon,
+  tooltip,
+  to,
   onClick,
-  tooltipId,
-}: AssetThumbnailMentionProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const truncatedName = getTruncatedFilename(mention.filename);
+  children,
+}: MentionPillProps) {
+  const hint = tooltip || undefined;
 
-  // On error, fall back to simple filename display (same as non-visual assets)
-  if (hasError) {
+  if (to) {
     return (
-      <span className={styles.assetMentionWrapper}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-          aria-describedby={tooltipId}
-          onClick={onClick}
-        >
-          <span className={styles.assetMentionName}>{truncatedName}</span>
-        </button>
-        <span
-          id={tooltipId}
-          role="tooltip"
-          className={styles.assetMentionTooltip}
-        >
-          {mention.filename}
-          <span
-            className={styles.assetMentionTooltipArrow}
-            aria-hidden="true"
-          />
-        </span>
-      </span>
+      <Pill tone="soft" icon={icon} tooltip={hint} to={to}>
+        {children}
+      </Pill>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <Pill tone="soft" icon={icon} tooltip={hint} onClick={onClick}>
+        {children}
+      </Pill>
     );
   }
 
   return (
-    <span className={styles.assetMentionBlockWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={styles.assetMentionBlock}
-        onClick={onClick}
-      >
-        {isLoading && (
-          <span
-            className={styles.assetMentionBlockSkeleton}
-            aria-hidden="true"
-          />
-        )}
-        <img
-          src={mention.thumbnailUrl ?? ''}
-          alt={mention.filename}
-          className={cn(
-            styles.assetMentionBlockThumb,
-            isLoading && styles.assetMentionBlockThumbHidden,
-          )}
-          onLoad={() => setIsLoading(false)}
-          onError={() => {
-            setIsLoading(false);
-            setHasError(true);
-          }}
-        />
-        <span className={styles.assetMentionBlockName}>{mention.filename}</span>
-      </button>
-    </span>
+    <Pill tone="soft" icon={icon} tooltip={hint}>
+      {children}
+    </Pill>
   );
 }
 
-type UserMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'user' }>;
-  isClickable: boolean;
-  isProjectOwner: boolean;
-  tabIndex: number;
-  tooltipId: string;
-  resolvedName: string;
-  onClick: (e: React.MouseEvent) => void;
-};
-
-function UserMentionDisplay({
-  mention,
-  isClickable,
-  isProjectOwner,
-  tabIndex,
-  tooltipId,
-  resolvedName,
-  onClick,
-}: UserMentionDisplayProps) {
-  const tooltipText = isProjectOwner
-    ? 'Project Owner'
-    : mention.email || 'Organization';
-
+/** An emoji of the data (the title of a record, the name of a model) */
+function MentionEmoji({ emoji }: { emoji: string }) {
   return (
-    <span className={styles.userMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.userMention,
-          !isClickable && styles.userMentionDisabled,
-        )}
-        aria-describedby={tooltipId}
-        onClick={isClickable ? onClick : undefined}
-        disabled={!isClickable}
-      >
-        @{resolvedName}
-      </button>
-      <span id={tooltipId} role="tooltip" className={styles.userMentionTooltip}>
-        {tooltipText}
-        <span className={styles.userMentionTooltipArrow} aria-hidden="true" />
-      </span>
-    </span>
-  );
-}
-
-type FieldMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'field' }>;
-  isClickable: boolean;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-};
-
-function FieldMentionDisplay({
-  mention,
-  isClickable,
-  tabIndex,
-  tooltipId,
-  onClick,
-}: FieldMentionDisplayProps) {
-  const hasLocale = mention.localized && mention.locale;
-  const formattedFieldType = formatFieldType(mention.fieldType);
-
-  return (
-    <span className={styles.fieldMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.fieldMention,
-          !isClickable && styles.fieldMentionDisabled,
-        )}
-        aria-describedby={formattedFieldType ? tooltipId : undefined}
-        onClick={isClickable ? onClick : undefined}
-        disabled={!isClickable}
-      >
-        #{mention.apiKey}
-        {hasLocale && (
-          <span className={styles.fieldMentionLocaleBadge}>
-            {mention.locale}
-          </span>
-        )}
-      </button>
-      {formattedFieldType && (
-        <span
-          id={tooltipId}
-          role="tooltip"
-          className={styles.fieldMentionTooltip}
-        >
-          {formattedFieldType}
-          <span
-            className={styles.fieldMentionTooltipArrow}
-            aria-hidden="true"
-          />
-        </span>
-      )}
+    <span className={styles.emoji} aria-hidden="true">
+      {emoji}
     </span>
   );
 }
@@ -203,189 +95,211 @@ function FieldMentionDisplay({
 type AssetMentionDisplayProps = {
   mention: Extract<Mention, { type: 'asset' }>;
   tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: ClickHandler;
 };
+
+/** A file that is not an image or a video, or whose preview failed */
+function AssetMentionPill({
+  mention,
+  onClick,
+}: Omit<AssetMentionDisplayProps, 'tabIndex'>) {
+  const truncatedName = getTruncatedFilename(mention.filename);
+
+  return (
+    <MentionPill
+      icon={<AssetMentionIcon />}
+      // The full name, only when the pill cuts it
+      tooltip={truncatedName !== mention.filename ? mention.filename : null}
+      onClick={onClick}
+    >
+      {truncatedName}
+    </MentionPill>
+  );
+}
+
+/** An image or a video: a preview tile with the file name under it */
+function AssetPreviewTile({
+  mention,
+  tabIndex,
+  onClick,
+}: AssetMentionDisplayProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+
+  // The caption ends with an ellipsis when the tile is narrower than the
+  // name: the tooltip then gives the full name, as the pill of a file does.
+  // The width of the caption changes with the image and the frame.
+  const captionRef = useRef<HTMLSpanElement>(null);
+  const { width: captionWidth } = useElementLayout(captionRef);
+  const [isCaptionCut, setIsCaptionCut] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The caption is measured again when its width or its text changes.
+  useLayoutEffect(() => {
+    const caption = captionRef.current;
+    setIsCaptionCut(!!caption && caption.scrollWidth > caption.clientWidth);
+  }, [captionWidth, mention.filename]);
+
+  if (hasError) {
+    return <AssetMentionPill mention={mention} onClick={onClick} />;
+  }
+
+  return (
+    <Tooltip label={isCaptionCut && mention.filename}>
+      <RawButton className={styles.tile} tabIndex={tabIndex} onClick={onClick}>
+        <span
+          className={cn(styles.tileMedia, isLoaded && styles.tileMediaLoaded)}
+        >
+          <img
+            className={styles.tileImage}
+            src={mention.thumbnailUrl ?? ''}
+            // The caption below gives the name
+            alt=""
+            onLoad={() => setIsLoaded(true)}
+            onError={() => setHasError(true)}
+          />
+        </span>
+        <span ref={captionRef} className={styles.tileCaption}>
+          {mention.filename}
+        </span>
+      </RawButton>
+    </Tooltip>
+  );
+}
 
 function AssetMentionDisplay({
   mention,
   tabIndex,
-  tooltipId,
   onClick,
 }: AssetMentionDisplayProps) {
   const isVisualMedia =
     mention.mimeType.startsWith('image/') ||
     mention.mimeType.startsWith('video/');
-  const hasThumb = mention.thumbnailUrl && isVisualMedia;
-  const truncatedName = getTruncatedFilename(mention.filename);
 
-  if (hasThumb) {
+  if (mention.thumbnailUrl && isVisualMedia) {
     return (
-      <AssetThumbnailMention
+      <AssetPreviewTile
         mention={mention}
         tabIndex={tabIndex}
         onClick={onClick}
-        tooltipId={tooltipId}
       />
     );
   }
 
-  return (
-    <span className={styles.assetMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-        aria-describedby={tooltipId}
-        onClick={onClick}
-      >
-        <span className={styles.assetMentionName}>{truncatedName}</span>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.assetMentionTooltip}
-      >
-        {mention.filename}
-        <span className={styles.assetMentionTooltipArrow} aria-hidden="true" />
-      </span>
-    </span>
-  );
+  return <AssetMentionPill mention={mention} onClick={onClick} />;
 }
 
 type RecordMentionDisplayProps = {
   mention: Extract<Mention, { type: 'record' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: ClickHandler;
 };
 
-function RecordMentionDisplay({
-  mention,
-  tabIndex,
-  tooltipId,
-  onClick,
-}: RecordMentionDisplayProps) {
+/**
+ * The picture of a record in its pill: the thumbnail, else the emoji of its
+ * title or model, else the icon of a record
+ */
+function RecordPicture({
+  thumbnailUrl,
+  emoji,
+}: {
+  thumbnailUrl: string | null;
+  emoji: string | null;
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  if (thumbnailUrl) {
+    // A thumbnail that does not load becomes the icon of a record
+    return failedUrl === thumbnailUrl ? (
+      <RecordDocumentIcon />
+    ) : (
+      <img
+        className={styles.recordThumbnail}
+        src={thumbnailUrl}
+        // The title of the record follows it
+        alt=""
+        onError={() => setFailedUrl(thumbnailUrl)}
+      />
+    );
+  }
+
+  return emoji ? <MentionEmoji emoji={emoji} /> : <RecordDocumentIcon />;
+}
+
+function RecordMentionDisplay({ mention, onClick }: RecordMentionDisplayProps) {
   const { emoji: titleEmoji, textWithoutEmoji: cleanTitle } =
     extractLeadingEmoji(mention.title);
-  const displayEmoji = mention.thumbnailUrl
-    ? null
-    : titleEmoji || mention.modelEmoji || (mention.isSingleton ? '📄' : null);
   const displayTitle = titleEmoji ? cleanTitle : mention.title;
-  const tooltipText = mention.isSingleton ? 'Singleton' : mention.modelName;
 
   return (
-    <span className={styles.recordMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.recordMention,
-          !mention.thumbnailUrl && styles.recordMentionNoThumb,
-        )}
-        aria-describedby={tooltipId}
-        onClick={onClick}
-      >
-        {mention.thumbnailUrl ? (
-          <>
-            <img
-              src={mention.thumbnailUrl}
-              alt={`Thumbnail for ${displayTitle}`}
-              className={styles.recordMentionThumb}
-              onError={(e) => {
-                const target = e.currentTarget;
-                target.onerror = null;
-                target.style.display = 'none';
-                const parentButton = target.closest('button');
-                if (parentButton) {
-                  parentButton.setAttribute('data-img-error', 'true');
-                }
-              }}
-            />
-            <span className={styles.recordMentionFallback} aria-hidden="true">
-              <RecordDocumentIcon className={styles.recordMentionIcon} />
-            </span>
-          </>
-        ) : displayEmoji ? (
-          <span className={styles.recordMentionEmoji}>{displayEmoji}</span>
-        ) : (
-          <RecordDocumentIcon className={styles.recordMentionIcon} />
-        )}
-        <span className={styles.recordMentionTitle}>{displayTitle}</span>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.recordMentionTooltip}
-      >
-        {tooltipText}
-        <span className={styles.recordMentionTooltipArrow} aria-hidden="true" />
-      </span>
-    </span>
+    <MentionPill
+      icon={
+        <RecordPicture
+          thumbnailUrl={mention.thumbnailUrl}
+          emoji={titleEmoji || mention.modelEmoji}
+        />
+      }
+      tooltip={mention.isSingleton ? 'Singleton' : mention.modelName}
+      onClick={onClick}
+    >
+      {displayTitle}
+    </MentionPill>
   );
 }
 
-type ModelMentionDisplayProps = {
-  mention: Extract<Mention, { type: 'model' }>;
-  tabIndex: number;
-  tooltipId: string;
-  onClick: (e: React.MouseEvent) => void;
-};
-
 function ModelMentionDisplay({
   mention,
-  tabIndex,
-  tooltipId,
   onClick,
-}: ModelMentionDisplayProps) {
-  const { emoji: modelEmoji, textWithoutEmoji: cleanName } =
-    extractLeadingEmoji(mention.name);
+}: {
+  mention: Extract<Mention, { type: 'model' }>;
+  onClick: ClickHandler;
+}) {
+  const { emoji, textWithoutEmoji } = extractLeadingEmoji(mention.name);
+  const kind = mention.isBlockModel ? 'Block' : 'Model';
 
   return (
-    <span className={styles.modelMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={styles.modelMention}
-        aria-describedby={tooltipId}
-        onClick={onClick}
-      >
-        {modelEmoji ? (
-          <span className={styles.modelMentionEmoji}>{modelEmoji}</span>
-        ) : (
-          <ModelMentionIcon className={styles.modelMentionIcon} />
-        )}
-        {cleanName}
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.modelMentionTooltip}
-      >
-        {mention.isBlockModel ? 'Block' : 'Model'}: {mention.apiKey}
-        <span className={styles.modelMentionTooltipArrow} aria-hidden="true" />
-      </span>
-    </span>
+    <MentionPill
+      icon={emoji ? <MentionEmoji emoji={emoji} /> : <ModelMentionIcon />}
+      tooltip={`${kind} · ${mention.apiKey}`}
+      onClick={onClick}
+    >
+      {textWithoutEmoji}
+    </MentionPill>
   );
+}
+
+function getUserTooltip(
+  mention: Extract<Mention, { type: 'user' }>,
+  isProjectOwner: boolean,
+): string {
+  if (isProjectOwner) return 'Project owner';
+  return mention.email || 'Organization';
+}
+
+function getFieldLabel(mention: Extract<Mention, { type: 'field' }>): string {
+  const locale =
+    mention.localized && mention.locale
+      ? ` · ${mention.locale.toUpperCase()}`
+      : '';
+  return `#${mention.apiKey}${locale}`;
 }
 
 const MentionDisplayComponent = ({
   mention,
+  to,
   onClick,
   isClickable = true,
   isProjectOwner = false,
   tabIndex = 0,
-  tooltipId: externalTooltipId,
   projectUsers,
 }: MentionDisplayProps) => {
-  const generatedId = useId();
-  const tooltipId = externalTooltipId ?? `mention-tooltip-${generatedId}`;
-
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     onClick?.(e);
   };
+
+  // A user or a field that cannot be opened (the owner, a field the sidebar
+  // cannot scroll to) is a static pill
+  const clickHandler = isClickable ? handleClick : undefined;
 
   const resolvedUserName = useMemo(() => {
     if (mention.type !== 'user' || !projectUsers) {
@@ -410,26 +324,23 @@ const MentionDisplayComponent = ({
   switch (mention.type) {
     case 'user':
       return (
-        <UserMentionDisplay
-          mention={mention}
-          isClickable={isClickable}
-          isProjectOwner={isProjectOwner}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          resolvedName={resolvedUserName}
-          onClick={handleClick}
-        />
+        <MentionPill
+          tooltip={getUserTooltip(mention, isProjectOwner)}
+          onClick={clickHandler}
+        >
+          @{resolvedUserName}
+        </MentionPill>
       );
 
     case 'field':
       return (
-        <FieldMentionDisplay
-          mention={mention}
-          isClickable={isClickable}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-        />
+        <MentionPill
+          tooltip={formatFieldType(mention.fieldType)}
+          to={isClickable ? to : undefined}
+          onClick={clickHandler}
+        >
+          {getFieldLabel(mention)}
+        </MentionPill>
       );
 
     case 'asset':
@@ -437,30 +348,15 @@ const MentionDisplayComponent = ({
         <AssetMentionDisplay
           mention={mention}
           tabIndex={tabIndex}
-          tooltipId={tooltipId}
           onClick={handleClick}
         />
       );
 
     case 'record':
-      return (
-        <RecordMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-        />
-      );
+      return <RecordMentionDisplay mention={mention} onClick={handleClick} />;
 
     case 'model':
-      return (
-        <ModelMentionDisplay
-          mention={mention}
-          tabIndex={tabIndex}
-          tooltipId={tooltipId}
-          onClick={handleClick}
-        />
-      );
+      return <ModelMentionDisplay mention={mention} onClick={handleClick} />;
 
     default:
       return null;
@@ -471,9 +367,9 @@ export const MentionDisplay = memo(
   MentionDisplayComponent,
   (prevProps, nextProps) => {
     if (prevProps.isClickable !== nextProps.isClickable) return false;
+    if (prevProps.to !== nextProps.to) return false;
     if (prevProps.isProjectOwner !== nextProps.isProjectOwner) return false;
     if (prevProps.tabIndex !== nextProps.tabIndex) return false;
-    if (prevProps.tooltipId !== nextProps.tooltipId) return false;
     if (prevProps.onClick !== nextProps.onClick) return false;
     if (prevProps.projectUsers !== nextProps.projectUsers) return false;
 

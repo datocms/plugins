@@ -1,7 +1,9 @@
 import type { ModelInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
-import { cn } from '@/utils/cn';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import Pill from 'datocms-react-ui/Pill';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import type { MentionPanelPosition } from './shared/MentionPanel';
 
 type ModelMentionDropdownProps = {
   models: ModelInfo[];
@@ -9,7 +11,9 @@ type ModelMentionDropdownProps = {
   selectedIndex: number;
   onSelect: (model: ModelInfo) => void;
   onClose: () => void;
-  position?: 'above' | 'below';
+  /** Moves the highlight to the model below the pointer */
+  onHover?: (index: number) => void;
+  position?: MentionPanelPosition;
 };
 
 const ModelMentionDropdown = ({
@@ -18,11 +22,10 @@ const ModelMentionDropdown = ({
   selectedIndex,
   onSelect,
   onClose,
+  onHover,
   position = 'below',
 }: ModelMentionDropdownProps) => {
-  const emptyMessage = query
-    ? `No models matching "${query}"`
-    : 'No models available';
+  const emptyMessage = query ? `No models match “${query}”` : 'No models';
 
   return (
     <MentionDropdownBase
@@ -31,31 +34,25 @@ const ModelMentionDropdown = ({
       headerText="Models"
       selectedIndex={selectedIndex}
       onClose={onClose}
+      onHighlight={onHover}
       position={position}
       keyExtractor={(model) => model.id}
-      renderItem={(model, _index, isSelected, selectedRef) => (
-        <button
-          ref={isSelected ? selectedRef : null}
-          type="button"
-          className={cn(
-            styles.mentionOption,
-            isSelected && styles.mentionOptionSelected,
-          )}
-          onMouseDown={(e) => {
-            // Prevent blur on textarea
-            e.preventDefault();
-            onSelect(model);
-          }}
-        >
-          <span className={styles.mentionModelInfo}>
-            <span className={styles.mentionModelName}>{model.name}</span>
-            {model.isBlockModel && (
-              <span className={styles.mentionModelBadge}>Block</span>
-            )}
-          </span>
-          <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
-        </button>
-      )}
+      renderItem={(model) => ({
+        label: (
+          <EntityRow
+            layout="row"
+            title={model.name}
+            // A block is a state of the model: the row places its pill
+            afterTitle={
+              <>
+                <ApiKey>{model.apiKey}</ApiKey>
+                {model.isBlockModel && <Pill>Block</Pill>}
+              </>
+            }
+          />
+        ),
+        onPick: () => onSelect(model),
+      })}
     />
   );
 };

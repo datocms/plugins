@@ -10,8 +10,8 @@ import { isValidCommentArray } from '@utils/typeGuards';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ERROR_MESSAGES, RETRY_LIMITS, TIMING } from '@/constants';
-import { logDebug, logError } from '@/utils/errorLogger';
 import { validateCommentsStorageFields } from '@/utils/commentsStorage';
+import { logDebug, logError } from '@/utils/errorLogger';
 
 type CommentRecord = Awaited<ReturnType<Client['items']['list']>>[number];
 

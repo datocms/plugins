@@ -5,38 +5,49 @@ import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 import { useCommentEditor } from '@hooks/useCommentEditor';
 // Hooks
 import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
-import styles from '@styles/comment.module.css';
-import barStyles from '@styles/commentbar.module.css';
+import { getAvatarImage } from '@utils/avatarImage';
 import {
   areRepliesEqual,
   areSegmentsEqual,
   areStoredSegmentsEqual,
 } from '@utils/comparisonHelpers';
+import { getRecordMentionModels } from '@utils/permissions';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import Avatar, {
+  AVATAR_SIZE_IN_PIXELS,
+  type AvatarSize,
+} from 'datocms-react-ui/Avatar';
+import Button from 'datocms-react-ui/Button';
+import { DisclosureChevron } from 'datocms-react-ui/Chevron';
+import RawButton from 'datocms-react-ui/RawButton';
+import Tooltip from 'datocms-react-ui/Tooltip';
 import {
+  type CSSProperties,
   memo,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import ReactTimeAgo from 'react-time-ago';
 import { TIMING, UI } from '@/constants';
-import { cn } from '@/utils/cn';
-import { getGravatarUrl, normalizeForComparison } from '@/utils/helpers';
+import { formatCount, formatNumber } from '@/utils/format';
+import { normalizeForComparison } from '@/utils/helpers';
+import styles from './Comment.module.css';
 import CommentActions from './CommentActions';
 // Components
 import CommentContentRenderer from './CommentContentRenderer';
-import ComposerBox from './ComposerBox';
-import ComposerToolbar from './ComposerToolbar';
-import { ChevronDownIcon, UpvoteIcon } from './Icons';
-import RecordModelSelectorDropdown from './RecordModelSelectorDropdown';
 import {
-  TipTapComposer,
-  type TipTapComposerRef,
-} from './tiptap/TipTapComposer';
+  CommentComposer,
+  type CommentComposerVariant,
+} from './composer/CommentComposer';
+import { UpvoteIcon } from './Icons';
+import { LoadMoreButton } from './shared/LoadMoreButton';
+import { RelativeTime } from './shared/RelativeTime';
+import type { TipTapComposerRef } from './tiptap/TipTapComposer';
 
 type CommentProps = {
   deleteComment: (id: string, parentCommentId?: string) => boolean;
@@ -57,6 +68,11 @@ type CommentProps = {
   isReply?: boolean;
   modelFields?: FieldInfo[];
   projectUsers: UserInfo[];
+  /** The collaborators did not load yet */
+  usersLoading?: boolean;
+  /** The collaborators did not load */
+  usersLoadFailed?: boolean;
+  onUsersRetry?: () => void;
   projectModels: ModelInfo[];
   ctx: RenderItemFormSidebarCtx;
   canMentionFields?: boolean;
@@ -95,7 +111,10 @@ function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
   if (prevComment.id !== nextComment.id) return false;
   if (!areSegmentsEqual(prevComment.content, nextComment.content)) return false;
   if (
-    !areStoredSegmentsEqual(prevComment.storedContent, nextComment.storedContent)
+    !areStoredSegmentsEqual(
+      prevComment.storedContent,
+      nextComment.storedContent,
+    )
   )
     return false;
   // Compare upvoters arrays (resolved authors)
@@ -128,6 +147,9 @@ function compareRemainingProps(
     prev.dropdownPosition === next.dropdownPosition &&
     prev.modelFields === next.modelFields &&
     prev.projectUsers === next.projectUsers &&
+    prev.usersLoading === next.usersLoading &&
+    prev.usersLoadFailed === next.usersLoadFailed &&
+    prev.onUsersRetry === next.onUsersRetry &&
     prev.projectModels === next.projectModels &&
     prev.readableModels === next.readableModels &&
     prev.deleteComment === next.deleteComment &&
@@ -141,99 +163,167 @@ function compareRemainingProps(
   );
 }
 
+type Replier = {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+};
+
+/** The upvotes of a comment: the count, and who upvoted in the tooltip */
 function CommentUpvoteButton({
   upvoterCount,
   userUpvoted,
   upvoterNames,
   onUpvote,
-  styles: s,
+  locale,
 }: {
   upvoterCount: number;
   userUpvoted: boolean;
   upvoterNames: string;
   onUpvote: () => void;
-  styles: Record<string, string>;
+  locale: string;
 }) {
   if (upvoterCount === 0) return null;
 
   return (
-    <div className={s.reactionWrapper}>
-      <button
-        type="button"
-        className={cn(s.reaction, userUpvoted && s.reactionActive)}
-        onClick={onUpvote}
-        aria-label={
-          userUpvoted
-            ? `Remove upvote from comment. ${upvoterCount} upvote${upvoterCount === 1 ? '' : 's'}`
-            : `Upvote comment. ${upvoterCount} upvote${upvoterCount === 1 ? '' : 's'}`
+    <Tooltip label={upvoterNames}>
+      <Button
+        tone="ghost"
+        size="micro"
+        icon={UpvoteIcon}
+        pressed={userUpvoted}
+        label={
+          <>
+            {formatNumber(upvoterCount, locale)}
+            <span className="visually-hidden">
+              {upvoterCount === 1 ? ' upvote' : ' upvotes'}
+            </span>
+          </>
         }
-      >
-        <UpvoteIcon aria-hidden="true" />
-        <span>{upvoterCount}</span>
-      </button>
-      <div className={s.tooltip}>
-        {upvoterNames}
-        <div className={s.tooltipArrow} />
-      </div>
-    </div>
+        onClick={onUpvote}
+      />
+    </Tooltip>
   );
 }
 
+/** Opens and closes the replies, with the faces of the first repliers */
 function CommentReplyToggle({
   replyCount,
   repliesExpanded,
-  uniqueReplierAvatars,
+  repliesId,
+  uniqueRepliers,
   onToggle,
-  styles: s,
+  locale,
 }: {
   replyCount: number;
   repliesExpanded: boolean;
-  uniqueReplierAvatars: Array<{
-    id: string;
-    avatarUrl: string;
-    name: string;
-    fallbackUrl: string;
-  }>;
+  repliesId: string;
+  uniqueRepliers: Replier[];
   onToggle: () => void;
-  styles: Record<string, string>;
+  locale: string;
 }) {
   if (replyCount === 0) return null;
 
   return (
-    <button
-      type="button"
-      className={s.replyToggle}
+    <RawButton
+      className={styles.repliesToggle}
+      expandable={{ open: repliesExpanded, controls: repliesId }}
       onClick={onToggle}
-      aria-expanded={repliesExpanded}
-      aria-label={`${repliesExpanded ? 'Collapse' : 'Expand'} ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
     >
-      <div className={s.replyAvatars}>
-        {uniqueReplierAvatars.map((replier, idx) => (
-          <img
+      <DisclosureChevron open={repliesExpanded} />
+      <span className={styles.repliers}>
+        {uniqueRepliers.map((replier) => (
+          <Avatar
             key={replier.id}
-            src={replier.avatarUrl}
-            alt={replier.name}
-            className={s.replyAvatar}
-            style={{ zIndex: UI.MAX_VISIBLE_REPLIER_AVATARS - idx }}
-            onError={(e) => {
-              const target = e.currentTarget;
-              target.onerror = null;
-              target.src = replier.fallbackUrl;
-            }}
+            size="small"
+            name={replier.name}
+            email={replier.email || null}
+            {...getAvatarImage(replier)}
           />
         ))}
-      </div>
-      <div className={s.replyMeta}>
-        <span className={s.replyText}>
-          {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-        </span>
-      </div>
-      <ChevronDownIcon
-        className={cn(s.chevron, repliesExpanded && s.chevronExpanded)}
-        aria-hidden="true"
-      />
-    </button>
+      </span>
+      {formatCount(replyCount, 'reply', 'replies', locale)}
+    </RawButton>
   );
+}
+
+/**
+ * Under the text: the upvotes and the replies toggle, only when the comment
+ * has some (a reply has no replies of its own)
+ */
+function CommentFooter({
+  upvoterCount,
+  userUpvoted,
+  upvoterNames,
+  onUpvote,
+  replyCount,
+  repliesExpanded,
+  repliesId,
+  uniqueRepliers,
+  onToggleReplies,
+  locale,
+}: {
+  upvoterCount: number;
+  userUpvoted: boolean;
+  upvoterNames: string;
+  onUpvote: () => void;
+  replyCount: number;
+  repliesExpanded: boolean;
+  repliesId: string;
+  uniqueRepliers: Replier[];
+  onToggleReplies: () => void;
+  /** The language of the user, for the separators of the counts */
+  locale: string;
+}) {
+  if (upvoterCount === 0 && replyCount === 0) return null;
+
+  return (
+    <div className={styles.footer}>
+      <CommentUpvoteButton
+        upvoterCount={upvoterCount}
+        userUpvoted={userUpvoted}
+        upvoterNames={upvoterNames}
+        onUpvote={onUpvote}
+        locale={locale}
+      />
+      <CommentReplyToggle
+        replyCount={replyCount}
+        repliesExpanded={repliesExpanded}
+        repliesId={repliesId}
+        uniqueRepliers={uniqueRepliers}
+        onToggle={onToggleReplies}
+        locale={locale}
+      />
+    </div>
+  );
+}
+
+/** The side of the avatar, for the CSS that lines the replies up with it */
+function avatarSizeStyle(size: AvatarSize): CSSProperties {
+  return {
+    '--comment-avatar-size': `${AVATAR_SIZE_IN_PIXELS[size]}px`,
+  } as CSSProperties;
+}
+
+/**
+ * The composer of the edit mode: a draft reply, or the change of a comment.
+ * The reason tells why it cannot be saved yet (null when it can).
+ */
+function getEditComposer(
+  isNewReply: boolean,
+  isEmpty: boolean,
+): { variant: CommentComposerVariant; disabledReason: string | null } {
+  if (isNewReply) {
+    return {
+      variant: 'reply',
+      disabledReason: isEmpty ? 'Write a reply first.' : null,
+    };
+  }
+  return {
+    variant: 'edit',
+    disabledReason: isEmpty ? 'Write a comment first.' : null,
+  };
 }
 
 function LoadMoreReplies({
@@ -244,14 +334,41 @@ function LoadMoreReplies({
   onLoadMore: () => void;
 }) {
   if (hiddenCount === 0) return null;
+  return <LoadMoreButton label="Load more replies" onClick={onLoadMore} />;
+}
+
+/**
+ * The replies of a comment. The toggle of the comment controls this block,
+ * thus it is always in the page (hidden while closed); the replies render
+ * only while it is open.
+ */
+function CommentReplies({
+  id,
+  open,
+  listRef,
+  hiddenCount,
+  onLoadMore,
+  children,
+}: {
+  id: string;
+  open: boolean;
+  listRef: RefObject<HTMLUListElement | null>;
+  hiddenCount: number;
+  onLoadMore: () => void;
+  /** The replies, one list item each */
+  children: ReactNode;
+}) {
   return (
-    <button
-      type="button"
-      className={barStyles.loadMoreButton}
-      onClick={onLoadMore}
-    >
-      Load more replies
-    </button>
+    <div id={id} className={styles.replies} hidden={!open}>
+      {open && (
+        <>
+          <LoadMoreReplies hiddenCount={hiddenCount} onLoadMore={onLoadMore} />
+          <ul ref={listRef} aria-label="Replies" className={styles.replyList}>
+            {children}
+          </ul>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -265,6 +382,9 @@ const Comment = memo(function Comment({
   isReply = false,
   modelFields = [],
   projectUsers,
+  usersLoading = false,
+  usersLoadFailed = false,
+  onUsersRetry,
   projectModels,
   ctx,
   canMentionFields = true,
@@ -308,13 +428,11 @@ const Comment = memo(function Comment({
     (reply) => !hiddenReplyIdSet.has(reply.id) || isContentEmpty(reply.content),
   );
 
-  const avatarSize = isReply ? UI.AVATAR_SIZE_REPLY : UI.AVATAR_SIZE_COMMENT;
-
-  // Author data is pre-resolved - use directly with fallback for avatar
-  const avatarUrl =
-    commentObject.author.avatarUrl ??
-    getGravatarUrl(commentObject.author.email, avatarSize * 2);
-  const authorName = commentObject.author.name;
+  // Author data is pre-resolved
+  const { author } = commentObject;
+  const avatarSize: AvatarSize = isReply ? 'small' : 'regular';
+  const authorName = author.name;
+  const repliesId = useId();
 
   const [repliesExpanded, setRepliesExpanded] = useState(false);
 
@@ -356,16 +474,11 @@ const Comment = memo(function Comment({
 
   // Extract unique repliers for collapsed reply preview (max 3 avatars)
   // Reply authors are pre-resolved
-  const uniqueReplierAvatars = useMemo(() => {
+  const uniqueRepliers = useMemo(() => {
     if (!isTopLevel || replies.length === 0) return [];
 
     const seenUsers = new Set<string>();
-    const result: Array<{
-      id: string;
-      avatarUrl: string;
-      name: string;
-      fallbackUrl: string;
-    }> = [];
+    const result: Replier[] = [];
 
     for (const reply of replies) {
       const userKey = normalizeForComparison(reply.author.email) || reply.id;
@@ -373,16 +486,11 @@ const Comment = memo(function Comment({
       if (seenUsers.has(userKey)) continue;
       seenUsers.add(userKey);
 
-      const fallbackUrl = getGravatarUrl(
-        reply.author.email,
-        UI.AVATAR_SIZE_THUMBNAIL,
-      );
-
       result.push({
         id: reply.id,
-        avatarUrl: reply.author.avatarUrl ?? fallbackUrl,
         name: reply.author.name,
-        fallbackUrl,
+        email: reply.author.email,
+        avatarUrl: reply.author.avatarUrl,
       });
 
       if (result.length >= UI.MAX_VISIBLE_REPLIER_AVATARS) break;
@@ -414,8 +522,8 @@ const Comment = memo(function Comment({
 
   const handleDelete = async () => {
     const confirmed = await ctx.openConfirm({
-      title: 'Delete comment',
-      content: 'Are you sure you want to delete this comment?',
+      title: 'Delete this comment?',
+      content: 'This cannot be undone.',
       choices: [{ label: 'Delete', value: true, intent: 'negative' }],
       cancel: { label: 'Cancel', value: false },
     });
@@ -429,8 +537,8 @@ const Comment = memo(function Comment({
     upvoteComment(commentObject.id, userUpvotedThisComment, parentId);
   };
 
-  const commentRef = useRef<HTMLDivElement>(null);
-  const repliesRef = useRef<HTMLDivElement>(null);
+  const commentRef = useRef<HTMLElement>(null);
+  const repliesRef = useRef<HTMLUListElement>(null);
   const replyScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -507,6 +615,11 @@ const Comment = memo(function Comment({
     }, TIMING.COMMENT_BLUR_DELAY_MS);
   };
 
+  // A record mention applies only with a model whose records the user can
+  // read: the same rule as the record mention of the toolbar
+  const hasReadableModels = getRecordMentionModels(readableModels).length > 0;
+  const editComposer = getEditComposer(isNewComment, isSegmentsEmpty);
+
   const toggleReplies = () => {
     setRepliesExpanded(!repliesExpanded);
   };
@@ -529,9 +642,12 @@ const Comment = memo(function Comment({
     }
   }, [onPickerRequest, composerRef]);
 
-  const handleRecordToolbarClick = useCallback(() => {
+  // The model panel of /record shows only when the user can read a model:
+  // without one, a record mention does not apply here
+  const handleRecordTrigger = useCallback(() => {
+    if (!hasReadableModels) return;
     setIsRecordSelectorOpen(true);
-  }, []);
+  }, [hasReadableModels]);
 
   const handleRecordModelSelected = useCallback(
     (model: ModelInfo) => {
@@ -549,180 +665,148 @@ const Comment = memo(function Comment({
   }, [composerRef]);
 
   return (
-    <div
+    <article
       ref={commentRef}
-      className={cn(
-        styles.comment,
-        isReply && styles.reply,
-        userIsAuthor && styles.ownComment,
-      )}
+      className={styles.comment}
+      style={avatarSizeStyle(avatarSize)}
       data-comment-id={commentObject.id}
       data-comment-draft={isNewComment ? 'true' : undefined}
     >
-      {!isEditing && (
-        <CommentActions
-          onUpvote={handleUpvote}
-          onReply={isTopLevel ? handleReply : undefined}
-          onEdit={handleStartEditing}
-          onDelete={handleDelete}
-          userUpvoted={userUpvotedThisComment}
-          userIsAuthor={userIsAuthor}
-          isTopLevel={isTopLevel}
-          hasUpvotes={commentObject.upvoters.length > 0}
-        />
-      )}
+      <Avatar
+        size={avatarSize}
+        name={authorName}
+        email={author.email || null}
+        {...getAvatarImage(author)}
+      />
 
-      <div
-        className={styles.commentBody}
-        style={{ gridTemplateColumns: `${avatarSize}px 1fr` }}
-      >
-        <div className={styles.avatarContainer}>
-          <img
-            className={styles.avatar}
-            src={avatarUrl}
-            alt={authorName}
-            style={{ width: avatarSize, height: avatarSize }}
-            onError={(e) => {
-              const target = e.currentTarget;
-              target.onerror = null; // Prevent infinite loop
-              target.src = getGravatarUrl(
-                commentObject.author.email,
-                avatarSize * 2,
-              );
-            }}
-          />
-        </div>
-
-        <div className={styles.content}>
-          <div className={styles.header}>
-            <span className={styles.authorName}>{authorName}</span>
-            <span className={styles.timestamp}>
-              <ReactTimeAgo date={new Date(commentObject.dateISO)} />
-            </span>
-          </div>
-
-          {isEditing ? (
-            <div className={styles.editContainer}>
-              <ComposerBox compact>
-                <TipTapComposer
-                  ref={composerRef}
-                  segments={segments}
-                  onSegmentsChange={setSegments}
-                  onSubmit={handleSave}
-                  onCancel={handleEscape}
-                  onBlur={handleBlur}
-                  placeholder="Write a comment..."
-                  projectUsers={projectUsers}
-                  modelFields={modelFields}
-                  projectModels={projectModels}
-                  canMentionAssets={canMentionAssets}
-                  canMentionModels={canMentionModels}
-                  canMentionFields={canMentionFields}
-                  fieldMentionsLoading={fieldMentionsLoading}
-                  fieldMentionsError={fieldMentionsError}
-                  onFieldMentionIntent={onFieldMentionIntent}
-                  onFieldMentionsRetry={onFieldMentionsRetry}
-                  onAssetTrigger={handleAssetToolbarClick}
-                  onRecordTrigger={handleRecordToolbarClick}
-                  autoFocus
-                  dropdownPosition={dropdownPosition}
-                  ctx={ctx}
-                />
-                {isRecordSelectorOpen && readableModels.length > 0 && (
-                  <RecordModelSelectorDropdown
-                    models={readableModels}
-                    onSelect={handleRecordModelSelected}
-                    onClose={handleRecordSelectorClose}
-                    position={dropdownPosition}
-                  />
-                )}
-                <ComposerToolbar
-                  onUserClick={handleUserToolbarClick}
-                  onFieldClick={handleFieldToolbarClick}
-                  onRecordClick={handleRecordToolbarClick}
-                  onAssetClick={handleAssetToolbarClick}
-                  onModelClick={handleModelToolbarClick}
-                  onSendClick={handleSave}
-                  isSendDisabled={isSegmentsEmpty}
-                  canMentionAssets={canMentionAssets && !!onPickerRequest}
-                  canMentionModels={canMentionModels}
-                  canMentionFields={canMentionFields}
-                />
-              </ComposerBox>
-            </div>
-          ) : (
-            <div className={styles.text}>
-              <CommentContentRenderer segments={commentObject.content} />
+      <div className={styles.main}>
+        <div className={styles.header}>
+          <span className={styles.author}>{authorName}</span>
+          <RelativeTime className={styles.time} value={commentObject.dateISO} />
+          {!isEditing && (
+            <div className={styles.actions}>
+              <CommentActions
+                onUpvote={handleUpvote}
+                onReply={isTopLevel ? handleReply : undefined}
+                onEdit={handleStartEditing}
+                onDelete={handleDelete}
+                userUpvoted={userUpvotedThisComment}
+                userIsAuthor={userIsAuthor}
+                isTopLevel={isTopLevel}
+                hasUpvotes={commentObject.upvoters.length > 0}
+              />
             </div>
           )}
-
-          <div className={styles.footer}>
-            {!isEditing && (
-              <CommentUpvoteButton
-                upvoterCount={commentObject.upvoters.length}
-                userUpvoted={userUpvotedThisComment}
-                upvoterNames={upvoterNames}
-                onUpvote={handleUpvote}
-                styles={styles}
-              />
-            )}
-
-            {isTopLevel && !isEditing && (
-              <CommentReplyToggle
-                replyCount={replyCount}
-                repliesExpanded={repliesExpanded}
-                uniqueReplierAvatars={uniqueReplierAvatars}
-                onToggle={toggleReplies}
-                styles={styles}
-              />
-            )}
-          </div>
         </div>
+
+        {isEditing ? (
+          <CommentComposer
+            variant={editComposer.variant}
+            composerRef={composerRef}
+            segments={segments}
+            onSegmentsChange={setSegments}
+            onSubmit={handleSave}
+            onCancel={handleEscape}
+            onBlur={handleBlur}
+            projectUsers={projectUsers}
+            usersLoading={usersLoading}
+            usersLoadFailed={usersLoadFailed}
+            onUsersRetry={onUsersRetry}
+            modelFields={modelFields}
+            projectModels={projectModels}
+            canMentionAssets={canMentionAssets}
+            canMentionModels={canMentionModels}
+            canMentionFields={canMentionFields}
+            fieldMentionsLoading={fieldMentionsLoading}
+            fieldMentionsError={fieldMentionsError}
+            onFieldMentionIntent={onFieldMentionIntent}
+            onFieldMentionsRetry={onFieldMentionsRetry}
+            onAssetTrigger={handleAssetToolbarClick}
+            onRecordTrigger={handleRecordTrigger}
+            autoFocus
+            dropdownPosition={dropdownPosition}
+            ctx={ctx}
+            onUserClick={handleUserToolbarClick}
+            onFieldClick={handleFieldToolbarClick}
+            // Assets need the picker of the sidebar
+            onAssetClick={onPickerRequest && handleAssetToolbarClick}
+            onModelClick={handleModelToolbarClick}
+            readableModels={readableModels}
+            onRecordModelSelect={handleRecordModelSelected}
+            isRecordModelSelectorOpen={
+              isRecordSelectorOpen && hasReadableModels
+            }
+            onRecordModelSelectorClose={handleRecordSelectorClose}
+            busy={isPickerActive}
+            submitDisabledReason={editComposer.disabledReason}
+          />
+        ) : (
+          <div className={styles.text}>
+            <CommentContentRenderer segments={commentObject.content} />
+          </div>
+        )}
+
+        {!isEditing && (
+          <CommentFooter
+            upvoterCount={commentObject.upvoters.length}
+            userUpvoted={userUpvotedThisComment}
+            upvoterNames={upvoterNames}
+            onUpvote={handleUpvote}
+            replyCount={replyCount}
+            repliesExpanded={repliesExpanded}
+            repliesId={repliesId}
+            uniqueRepliers={uniqueRepliers}
+            onToggleReplies={toggleReplies}
+            locale={ctx.ui.locale}
+          />
+        )}
       </div>
 
-      {isTopLevel && replyCount > 0 && repliesExpanded && (
-        <div ref={repliesRef} className={styles.replies}>
-          <LoadMoreReplies
-            hiddenCount={effectiveHiddenReplyCount}
-            onLoadMore={() =>
-              setHiddenReplyIds(
-                hiddenReplies
-                  .slice(100)
-                  .map((reply) => reply.id),
-              )
-            }
-          />
+      {replyCount > 0 && (
+        <CommentReplies
+          id={repliesId}
+          open={repliesExpanded}
+          listRef={repliesRef}
+          hiddenCount={effectiveHiddenReplyCount}
+          onLoadMore={() =>
+            setHiddenReplyIds(hiddenReplies.slice(100).map((reply) => reply.id))
+          }
+        >
           {visibleReplies.map((reply) => (
-            <Comment
-              key={reply.id}
-              deleteComment={deleteComment}
-              editComment={editComment}
-              upvoteComment={upvoteComment}
-              replyComment={replyComment}
-              commentObject={reply}
-              currentUserId={currentUserId}
-              isReply
-              modelFields={modelFields}
-              projectUsers={projectUsers}
-              projectModels={projectModels}
-              ctx={ctx}
-              canMentionFields={canMentionFields}
-              fieldMentionsLoading={fieldMentionsLoading}
-              fieldMentionsError={fieldMentionsError}
-              onFieldMentionIntent={onFieldMentionIntent}
-              onFieldMentionsRetry={onFieldMentionsRetry}
-              onPickerRequest={onPickerRequest}
-              onRecordModelSelect={onRecordModelSelect}
-              readableModels={readableModels}
-              canMentionAssets={canMentionAssets}
-              canMentionModels={canMentionModels}
-              isPickerActive={isPickerActive}
-              dropdownPosition={dropdownPosition}
-            />
+            <li key={reply.id}>
+              <Comment
+                deleteComment={deleteComment}
+                editComment={editComment}
+                upvoteComment={upvoteComment}
+                replyComment={replyComment}
+                commentObject={reply}
+                currentUserId={currentUserId}
+                isReply
+                modelFields={modelFields}
+                projectUsers={projectUsers}
+                usersLoading={usersLoading}
+                usersLoadFailed={usersLoadFailed}
+                onUsersRetry={onUsersRetry}
+                projectModels={projectModels}
+                ctx={ctx}
+                canMentionFields={canMentionFields}
+                fieldMentionsLoading={fieldMentionsLoading}
+                fieldMentionsError={fieldMentionsError}
+                onFieldMentionIntent={onFieldMentionIntent}
+                onFieldMentionsRetry={onFieldMentionsRetry}
+                onPickerRequest={onPickerRequest}
+                onRecordModelSelect={onRecordModelSelect}
+                readableModels={readableModels}
+                canMentionAssets={canMentionAssets}
+                canMentionModels={canMentionModels}
+                isPickerActive={isPickerActive}
+                dropdownPosition={dropdownPosition}
+              />
+            </li>
           ))}
-        </div>
+        </CommentReplies>
       )}
-    </div>
+    </article>
   );
 }, arePropsEqual);
 

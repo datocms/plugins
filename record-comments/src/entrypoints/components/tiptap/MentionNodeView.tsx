@@ -2,19 +2,12 @@ import type { MentionType } from '@ctypes/mentions';
 import type { ReactNodeViewProps } from '@tiptap/react';
 import { NodeViewWrapper } from '@tiptap/react';
 import { attrsToMention } from '@utils/attrsToMention';
+import Pill from 'datocms-react-ui/Pill';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
 import { MentionChip } from '../MentionChip';
 import { useMentionClick } from './MentionClickContext';
 
 type MentionNodeViewProps = ReactNodeViewProps;
-
-function InvalidMentionFallback() {
-  return (
-    <span style={{ color: 'var(--color--ink-subtle)', fontStyle: 'italic', fontSize: 'inherit' }}>
-      [invalid mention]
-    </span>
-  );
-}
 
 function createMentionNodeView(
   mentionType: MentionType,
@@ -29,7 +22,12 @@ function createMentionNodeView(
     );
 
     return (
-      <NodeViewWrapper as="span" contentEditable={false}>
+      // The stable attribute lets the editor style a mention of any type
+      <NodeViewWrapper
+        as="span"
+        contentEditable={false}
+        data-mention-node={mentionType}
+      >
         {mention ? (
           <MentionChip
             mention={mention}
@@ -38,7 +36,7 @@ function createMentionNodeView(
             {...(needsProjectUsers && { projectUsers })}
           />
         ) : (
-          <InvalidMentionFallback />
+          <Pill>Invalid mention</Pill>
         )}
       </NodeViewWrapper>
     );

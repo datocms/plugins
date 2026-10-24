@@ -1,5 +1,6 @@
 import {
   categorizeGeneralError,
+  type GeneralErrorType,
   normalizeError,
 } from '@utils/errorCategorization';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,6 +9,8 @@ import { logError } from '@/utils/errorLogger';
 type AsyncOperationError = {
   source: string;
   message: string;
+  /** The kind of the failure, for the UI to word it */
+  type: GeneralErrorType;
 };
 
 type UseAsyncOperationOptions<T> = {
@@ -66,6 +69,7 @@ export function useAsyncOperation<T>(
     setRetryCount((c) => c + 1);
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `retryCount` re-runs the operation when retry() is called, and `deps` are the caller's reload keys.
   useEffect(() => {
     if (!enabled) {
       setIsLoading(false);
@@ -117,6 +121,7 @@ export function useAsyncOperation<T>(
         setError({
           source: latestOptions.operationName,
           message: categorized.message,
+          type: categorized.type,
         });
         setIsLoading(false);
 

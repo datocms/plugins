@@ -511,12 +511,14 @@ const FIELD_STRUCTURE_KEYS = new Set([
 
 /** Field mentions depend on locale presence and block structure, not typed text. */
 export function getFieldValuesMetadataKey(formValues: unknown): string {
-  return JSON.stringify(formValues, (key, value: unknown) => {
-    if (FIELD_STRUCTURE_KEYS.has(key)) return value;
-    if (typeof value === 'string') return value.trim().length > 0;
-    if (typeof value === 'number' || typeof value === 'boolean') return true;
-    return value;
-  }) ?? '';
+  return (
+    JSON.stringify(formValues, (key, value: unknown) => {
+      if (FIELD_STRUCTURE_KEYS.has(key)) return value;
+      if (typeof value === 'string') return value.trim().length > 0;
+      if (typeof value === 'number' || typeof value === 'boolean') return true;
+      return value;
+    }) ?? ''
+  );
 }
 
 export async function loadAllFields(

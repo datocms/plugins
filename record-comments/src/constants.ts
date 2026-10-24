@@ -17,9 +17,6 @@ export const COMMENTS_PAGE_SIZE = 30;
 
 export const UI = {
   MENTION_CHIP_MAX_NAME_LENGTH: 8,
-  AVATAR_SIZE_COMMENT: 32,
-  AVATAR_SIZE_REPLY: 24,
-  AVATAR_SIZE_THUMBNAIL: 40, // Used for replier avatars in collapsed view
   MAX_VISIBLE_REPLIER_AVATARS: 3,
 } as const;
 
@@ -34,16 +31,19 @@ export const PLUGIN_IDS = {
 } as const;
 
 export const ERROR_MESSAGES = {
-  SAVE_FAILED: 'Failed to save comment. Please refresh and try again.',
-  SAVE_RECORD_FIRST: 'Please save the record first before adding comments.',
-  ASSET_PICKER_FAILED: 'Failed to open asset picker. Please try again.',
-  RECORD_PICKER_FAILED: 'Failed to open record picker. Please try again.',
-  COMMENTS_LOAD_FAILED: 'Failed to load comments. Please refresh the page.',
-  VERSION_CONFLICT_RETRYING: 'Another user edited comments. Retrying...',
+  SAVE_FAILED: "The comment wasn't saved. Reload the record and try again.",
+  SAVE_RECORD_FIRST: 'Save the record before adding comments.',
+  ASSET_PICKER_FAILED: "The asset picker didn't open. Try again.",
+  RECORD_PICKER_FAILED: "The record picker didn't open. Try again.",
+  COMMENTS_LOAD_FAILED: "The comments didn't load. Reload the record.",
+  // Why a save runs again. The sidebar adds that it retries, and how often.
+  VERSION_CONFLICT_RETRYING:
+    'Someone else saved the comments at the same time.',
   MAX_RETRIES_EXCEEDED:
-    'Unable to save after multiple attempts. Please check your connection and try again.',
-  OPERATION_TIMEOUT: 'Operation timed out after 2 minutes. Please try again.',
-  MISSING_USER_INFO: 'Unable to add comment: user information is missing.',
+    "The comment wasn't saved after several attempts. Check your connection and try again.",
+  OPERATION_TIMEOUT: 'Saving took more than 2 minutes and stopped. Try again.',
+  MISSING_USER_INFO:
+    "The comment wasn't added because your user information is missing.",
 } as const;
 
 // 15 attempts with exponential backoff (~30s) + 2-minute hard timeout

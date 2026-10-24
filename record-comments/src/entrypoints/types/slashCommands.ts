@@ -2,42 +2,16 @@ export type SlashCommandType = 'user' | 'field' | 'record' | 'asset' | 'model';
 
 export type SlashCommandDefinition = {
   name: SlashCommandType;
+  /** What the command inserts, as the slash panel and the toolbar name it */
   label: string;
-  description: string;
-  icon: string;
 };
 
 export const SLASH_COMMANDS: SlashCommandDefinition[] = [
-  {
-    name: 'user',
-    label: 'User',
-    description: 'Mention a team member',
-    icon: '👤',
-  },
-  {
-    name: 'field',
-    label: 'Field',
-    description: 'Reference a field',
-    icon: '#',
-  },
-  {
-    name: 'record',
-    label: 'Record',
-    description: 'Link to a record',
-    icon: '📄',
-  },
-  {
-    name: 'asset',
-    label: 'Asset',
-    description: 'Link to an asset',
-    icon: '📎',
-  },
-  {
-    name: 'model',
-    label: 'Model',
-    description: 'Reference a model',
-    icon: '📦',
-  },
+  { name: 'user', label: 'Mention a collaborator' },
+  { name: 'field', label: 'Mention a field' },
+  { name: 'record', label: 'Mention a record' },
+  { name: 'asset', label: 'Mention an asset' },
+  { name: 'model', label: 'Mention a model' },
 ];
 
 export type ActiveSlashCommand = {

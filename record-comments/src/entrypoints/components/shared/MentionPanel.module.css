@@ -1,0 +1,51 @@
+/* The mention panels open under (or above) the composer: the container
+   follows the nearest positioned parent, which is the frame of the composer.
+   The kit panel reads --maxHeight and scrolls past it. */
+.place {
+  --maxHeight: 280px;
+
+  position: absolute;
+  top: calc(100% + var(--spacing-s));
+  right: 0;
+  left: 0;
+}
+
+.above {
+  top: auto;
+  bottom: calc(100% + var(--spacing-s));
+}
+
+/* What follows an option: the typed command, a count, a pill, the chevron
+   of a drill-down */
+.meta {
+  display: inline-flex;
+  flex: none;
+  gap: var(--spacing-s);
+  align-items: center;
+  margin-inline-start: var(--spacing-m);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+/* The line of a state (loading, error) in place of the options */
+.state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+}
+
+/* The title of a drill-down: the Back button, then the path */
+.header {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+.headerText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

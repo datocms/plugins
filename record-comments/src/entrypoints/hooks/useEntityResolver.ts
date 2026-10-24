@@ -109,7 +109,7 @@ function resolveAuthorById(
   return {
     id: userId,
     email: '',
-    name: 'Unknown User',
+    name: 'Unknown user',
     avatarUrl: null,
   };
 }

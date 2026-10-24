@@ -1,0 +1,21 @@
+/* The sidebar has the size of its frame: the pane fills it */
+.root {
+  position: absolute;
+  inset: 0;
+}
+
+/* The content of the pane: the callouts, then the composer or a state, then
+   the comments */
+.content {
+  display: grid;
+  gap: var(--spacing-l);
+  align-content: start;
+  min-width: 0;
+  padding: var(--spacing-l);
+}
+
+/* A callout of the column: the gap of the column is its only space, not
+   the margin of the callout on top of it */
+.callout {
+  margin: 0;
+}

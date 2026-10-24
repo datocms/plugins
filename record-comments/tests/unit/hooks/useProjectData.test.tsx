@@ -26,7 +26,10 @@ function createCtx(loadItemTypeFields = vi.fn().mockResolvedValue([])) {
   } as never;
 }
 
-function createRecordCtx(recordId: string, formValues: Record<string, unknown>) {
+function createRecordCtx(
+  recordId: string,
+  formValues: Record<string, unknown>,
+) {
   const topLevelFields = [
     {
       attributes: {
@@ -137,9 +140,9 @@ describe('useProjectData', () => {
       result.current?.modelFields.find((field) => field.apiKey === 'title')
         ?.availableLocales,
     ).toEqual(['en']);
-    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual([
-      'title', 'content', 'content.0.heading',
-    ]);
+    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual(
+      ['title', 'content', 'content.0.heading'],
+    );
 
     ctx = createRecordCtx('record-b', {
       title: { pt: 'Record B' },
@@ -151,9 +154,9 @@ describe('useProjectData', () => {
       result.current?.modelFields.find((field) => field.apiKey === 'title')
         ?.availableLocales,
     ).toEqual(['pt']);
-    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual([
-      'title', 'content', 'content.0.description',
-    ]);
+    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual(
+      ['title', 'content', 'content.0.description'],
+    );
     unmount();
   });
 
@@ -185,9 +188,9 @@ describe('useProjectData', () => {
       result.current?.modelFields.find((field) => field.apiKey === 'title')
         ?.availableLocales,
     ).toEqual(['pt']);
-    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual([
-      'title', 'content', 'content.0.heading', 'content.1.description',
-    ]);
+    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual(
+      ['title', 'content', 'content.0.heading', 'content.1.description'],
+    );
     expect(loadItemTypeFields).toHaveBeenCalledTimes(3);
 
     const fieldsBeforeTyping = result.current?.modelFields;
@@ -211,7 +214,11 @@ describe('useProjectData', () => {
     );
     await flushPromises();
     const previousFields = result.current?.modelFields;
-    ctx = { ...ctx, item: { id: 'record-b' }, formValues: { title: { en: 'Record B' } } };
+    ctx = {
+      ...ctx,
+      item: { id: 'record-b' },
+      formValues: { title: { en: 'Record B' } },
+    };
     rerender();
     await flushPromises();
     expect(result.current?.modelFields).not.toBe(previousFields);
@@ -221,7 +228,9 @@ describe('useProjectData', () => {
 
   it('reloads schema explicitly on retry after a failed load', async () => {
     const ctx = createRecordCtx('record-a', { title: { en: 'Record A' } });
-    ctx.loadItemTypeFields.mockRejectedValueOnce(new Error('Field load failed'));
+    ctx.loadItemTypeFields.mockRejectedValueOnce(
+      new Error('Field load failed'),
+    );
     const { result, unmount } = renderHook(() =>
       useProjectData(ctx as never, { loadFields: true }),
     );
@@ -230,9 +239,9 @@ describe('useProjectData', () => {
     act(() => result.current?.retryFields());
     await flushPromises();
     expect(result.current?.fieldLoadError).toBeNull();
-    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual([
-      'title', 'content',
-    ]);
+    expect(result.current?.modelFields.map((field) => field.fieldPath)).toEqual(
+      ['title', 'content'],
+    );
     expect(ctx.loadItemTypeFields).toHaveBeenCalledTimes(2);
     unmount();
   });

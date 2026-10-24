@@ -14,7 +14,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | --- | --- | --- | --- | --- | --- |
 | 1 | dato-agent | 20107 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 2 | shopify-product | 12006 | ^19.2.4 | Done | Config, field settings, field editor and picker rebuilt; the collection filter issue is fixed. Build, lint and 1161 tests pass. On next.0. |
-| 3 | record-comments | 9491 | ^19.2.4 | Done | Sidebar rebuilt as a Pane with a kit composer and editor toolbar, plus all states. Build, lint and tests pass. 1 minor issue open. |
+| 3 | record-comments | 9491 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 4 | ai-translations | 9239 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Sidebar panel, config, picker, confirm and progress dialogs, and bulk page rebuilt; checked headless in light and dark. Build, lint and 980 tests pass. 6 minor issues open (2 already on master). |
 | 5 | import-export-schema | 7122 | ^19.2.4 | Done | Export and import flows rebuilt; the graph's Tab-stop issue is fixed. Build, lint and tests pass. On next.0. |
 | 6 | media-layouts | 6900 | ^19.2.4 | Done | Config, field settings (layout builder with kit drag and drop) and field editor rebuilt. Build passes (no lint or tests). 3 minor issues open. |

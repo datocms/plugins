@@ -21,8 +21,7 @@
       "@components/*": ["src/entrypoints/components/*"],
       "@hooks/*": ["src/entrypoints/hooks/*"],
       "@utils/*": ["src/entrypoints/utils/*"],
-      "@ctypes/*": ["src/entrypoints/types/*"],
-      "@styles/*": ["src/entrypoints/styles/*"]
+      "@ctypes/*": ["src/entrypoints/types/*"]
     },
 
     /* Linting */

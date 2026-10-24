@@ -1,0 +1,30 @@
+/* A RawButton has no look of its own: this class is its whole look, a quiet
+   inset row with the load-more chevron before the label. The column around
+   it already has its inset, thus the box goes out of the column by the
+   padding of the row, and the chevron and the label stay on the edge of the
+   column, in line with the comments. */
+.root {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  width: calc(100% + 2 * var(--spacing-m));
+  padding: var(--spacing-s) var(--spacing-m);
+  margin-inline: var(--negative-spacing-m);
+  font: inherit;
+  color: var(--color--ink);
+  text-align: start;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--row-radius);
+}
+
+.root:hover {
+  background: var(--color--surface-hover);
+}
+
+.root:focus-visible {
+  outline: none;
+  background: var(--color--surface-hover);
+  box-shadow: var(--focus-ring);
+}

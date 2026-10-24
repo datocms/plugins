@@ -249,7 +249,7 @@ describe('ownerToUserInfo', () => {
       expect(result.name).toBe('nameless');
     });
 
-    it('falls back to "Account Owner" when no email or names', () => {
+    it('falls back to "Account owner" when no email or names', () => {
       const owner = {
         id: 'owner-123',
         type: 'account',
@@ -257,7 +257,7 @@ describe('ownerToUserInfo', () => {
 
       const result = ownerToUserInfo(owner);
 
-      expect(result.name).toBe('Account Owner');
+      expect(result.name).toBe('Account owner');
     });
 
     it('returns null avatar when no email', () => {

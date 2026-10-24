@@ -1,0 +1,59 @@
+/* The body of a group is a block flow: each piece keeps the space of a
+   Callout (spacing-l) under it, and the last one none. */
+
+/* The count line sits close to the list it counts */
+.lead {
+  margin: 0 0 var(--spacing-s);
+  font-weight: var(--font-weight-strong);
+}
+
+.models {
+  display: grid;
+  gap: var(--spacing-s);
+  padding: 0;
+  margin: 0 0 var(--spacing-l);
+  list-style: none;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.block {
+  margin-bottom: var(--spacing-l);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.progress {
+  display: grid;
+  gap: var(--spacing-s);
+  margin-bottom: var(--spacing-l);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.caption {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color--ink-subtle);
+}
+
+/* The details of a callout (the models not inspected, the records that
+   failed): a list under it, in the flow of the group */
+.list {
+  display: grid;
+  gap: var(--spacing-s);
+  padding-left: var(--spacing-l);
+  margin: 0 0 var(--spacing-l);
+  overflow-wrap: anywhere;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}

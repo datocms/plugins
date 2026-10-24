@@ -1,11 +1,18 @@
-type ContextWithSiteAndEnv = {
+type ContextWithEnv = {
+  environment: string;
+  isEnvironmentPrimary: boolean;
+};
+
+type ContextWithSiteAndEnv = ContextWithEnv & {
   site: {
     attributes: {
       internal_domain: string | null;
     };
   };
-  environment: string;
-  isEnvironmentPrimary: boolean;
+};
+
+type ContextWithPluginAndEnv = ContextWithEnv & {
+  plugin: { id: string };
 };
 
 function getBaseUrl(ctx: ContextWithSiteAndEnv): string | null {
@@ -13,7 +20,7 @@ function getBaseUrl(ctx: ContextWithSiteAndEnv): string | null {
   return domain ? `https://${domain}` : null;
 }
 
-function getEnvironmentPrefix(ctx: ContextWithSiteAndEnv): string {
+function getEnvironmentPrefix(ctx: ContextWithEnv): string {
   return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
 }
 
@@ -29,6 +36,11 @@ export function buildRecordEditPath(
   recordId: string,
 ): string {
   return `${getEnvironmentPrefix(ctx)}/editor/item_types/${modelId}/items/${recordId}/edit`;
+}
+
+/** The CMS path of this plugin's settings, for a `to` link. */
+export function buildPluginSettingsPath(ctx: ContextWithPluginAndEnv): string {
+  return `${getEnvironmentPrefix(ctx)}/configuration/plugins/${ctx.plugin.id}/edit`;
 }
 
 /** 'user' -> /project_settings/users, 'sso' -> /project_settings/sso-users, 'owner' -> not navigable */

@@ -2,7 +2,10 @@ import type { CommentSegment, Mention, UserMention } from '@ctypes/mentions';
 import { areSegmentsEqual } from '@utils/comparisonHelpers';
 import type { NavigableUserType } from '@utils/navigationHelpers';
 import { memo, useCallback, useMemo } from 'react';
-import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
+import {
+  type NavigationCallbacks,
+  useNavigationContext,
+} from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
 import { MentionDisplay } from './shared/MentionDisplay';
 
@@ -101,8 +104,12 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
 
         const { mention } = segment;
         const mentionKey = getMentionKey(mention, index);
-        const tooltipId = getTooltipId(mention, index);
-        const clickHandler = createMentionClickHandler(mention);
+        // A field that needs no scroll to a locale only opens a CMS path:
+        // it is a link, thus a middle click opens it in a new tab
+        const to = getMentionLinkPath(mention, nav);
+        const clickHandler = to
+          ? undefined
+          : createMentionClickHandler(mention);
 
         let isClickable = true;
         let isProjectOwner = false;
@@ -119,10 +126,10 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
           <MentionDisplay
             key={mentionKey}
             mention={mention}
+            to={to}
             onClick={clickHandler}
             isClickable={isClickable}
             isProjectOwner={isProjectOwner}
-            tooltipId={tooltipId}
             projectUsers={projectUsers}
           />
         );
@@ -131,11 +138,22 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
   );
 }, arePropsEqual);
 
-function getMentionIdentifier(
+/**
+ * The CMS path that a mention opens as a link. Only a field that is not
+ * localized: a localized field also scrolls the form to its locale, and the
+ * other mentions open pickers or new tabs, thus they stay actions.
+ */
+function getMentionLinkPath(
   mention: Mention,
-  index: number,
-  prefix: string,
-): string {
+  nav: NavigationCallbacks,
+): string | undefined {
+  if (mention.type !== 'field' || mention.localized) return undefined;
+  if (!nav.handleScrollToField) return undefined;
+  return nav.getFieldLinkPath?.(mention.fieldPath ?? mention.apiKey);
+}
+
+// The key of a mention: what it points to, and its place in the text
+function getMentionKey(mention: Mention, index: number): string {
   const base = (() => {
     switch (mention.type) {
       case 'user':
@@ -155,15 +173,7 @@ function getMentionIdentifier(
     }
   })();
 
-  return prefix ? `${base}-${prefix}-${index}` : `${base}-${index}`;
-}
-
-function getMentionKey(mention: Mention, index: number): string {
-  return getMentionIdentifier(mention, index, '');
-}
-
-function getTooltipId(mention: Mention, index: number): string {
-  return getMentionIdentifier(mention, index, 'tooltip');
+  return `${base}-${index}`;
 }
 
 export default CommentContentRenderer;

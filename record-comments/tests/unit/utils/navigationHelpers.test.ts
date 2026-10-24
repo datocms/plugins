@@ -1,4 +1,8 @@
-import { openModelPage, openUsersPage } from '@utils/navigationHelpers';
+import {
+  buildPluginSettingsPath,
+  openModelPage,
+  openUsersPage,
+} from '@utils/navigationHelpers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const openSpy = vi.fn();
@@ -34,5 +38,22 @@ describe('navigation helpers', () => {
     );
 
     expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('builds the plugin settings path with the environment prefix', () => {
+    expect(
+      buildPluginSettingsPath({
+        environment: 'main',
+        isEnvironmentPrimary: true,
+        plugin: { id: 'plugin-1' },
+      }),
+    ).toBe('/configuration/plugins/plugin-1/edit');
+    expect(
+      buildPluginSettingsPath({
+        environment: 'sandbox',
+        isEnvironmentPrimary: false,
+        plugin: { id: 'plugin-1' },
+      }),
+    ).toBe('/environments/sandbox/configuration/plugins/plugin-1/edit');
   });
 });

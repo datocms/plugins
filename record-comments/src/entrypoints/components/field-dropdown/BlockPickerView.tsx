@@ -1,7 +1,12 @@
 import type { BlockInfo } from '@ctypes/mentions';
-import styles from '@styles/comment.module.css';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
 import type { MutableRefObject, ReactNode, Ref } from 'react';
-import { cn } from '@/utils/cn';
+import { formatCount } from '@/utils/format';
+import {
+  MentionItemMeta,
+  MentionMenuItem,
+  MentionPanelLoading,
+} from '../shared/MentionPanel';
 
 type BlockPickerViewProps = {
   blocks: BlockInfo[];
@@ -10,10 +15,13 @@ type BlockPickerViewProps = {
   onSelectEntireField: () => void;
   onSelectBlock: (block: BlockInfo) => void;
   onHover: (index: number) => void;
-  selectedRef: Ref<HTMLButtonElement>;
+  selectedRef: Ref<HTMLDivElement>;
   justClickedInsideRef: MutableRefObject<boolean>;
+  /** The language of the user, for the separators of the numbers */
+  uiLocale?: string;
 };
 
+/** The whole field first, then each of its blocks (the index 0 is the field) */
 export function BlockPickerView({
   blocks,
   selectedIndex,
@@ -23,81 +31,52 @@ export function BlockPickerView({
   onHover,
   selectedRef,
   justClickedInsideRef,
+  uiLocale,
 }: BlockPickerViewProps): ReactNode {
   if (isLoading) {
-    return (
-      <div className={styles.mentionList}>
-        <div className={styles.mentionEmpty}>Loading blocks...</div>
-      </div>
-    );
+    return <MentionPanelLoading>Loading blocks…</MentionPanelLoading>;
   }
 
+  const markClick = () => {
+    justClickedInsideRef.current = true;
+  };
+
   return (
-    <div
-      className={styles.mentionList}
-      role="listbox"
-      aria-label="Select block"
-    >
-      <button
-        ref={selectedIndex === 0 ? selectedRef : null}
-        type="button"
-        role="option"
-        aria-selected={selectedIndex === 0}
-        className={cn(
-          styles.mentionOption,
-          styles.mentionOptionEntireField,
-          selectedIndex === 0 && styles.mentionOptionSelected,
-        )}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          justClickedInsideRef.current = true;
-          onSelectEntireField();
-        }}
-        onMouseEnter={() => onHover(0)}
+    <>
+      <MentionMenuItem
+        selected={selectedIndex === 0}
+        highlightRef={selectedRef}
+        onPress={markClick}
+        onPick={onSelectEntireField}
+        onHighlight={() => onHover(0)}
+        after={
+          <MentionItemMeta>
+            {formatCount(blocks.length, 'block', 'blocks', uiLocale)}
+          </MentionItemMeta>
+        }
       >
-        <span className={styles.mentionFieldLabel}>Select entire field</span>
-        <span className={styles.mentionFieldMeta}>
-          <span className={styles.mentionBlockCount}>
-            {blocks.length} block{blocks.length !== 1 ? 's' : ''}
-          </span>
-        </span>
-      </button>
+        Entire field
+      </MentionMenuItem>
 
       {blocks.length === 0 ? (
-        <div className={styles.mentionEmpty}>No blocks in this field</div>
+        <Dropdown.MenuEmpty>No blocks in this field</Dropdown.MenuEmpty>
       ) : (
         blocks.map((block, index) => {
-          const itemIndex = index + 1; // +1 for "Select entire field"
+          const itemIndex = index + 1;
           return (
-            <button
+            <MentionMenuItem
               key={`${block.modelId}-${block.index}`}
-              ref={itemIndex === selectedIndex ? selectedRef : null}
-              type="button"
-              role="option"
-              aria-selected={itemIndex === selectedIndex}
-              className={cn(
-                styles.mentionOption,
-                itemIndex === selectedIndex && styles.mentionOptionSelected,
-              )}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                justClickedInsideRef.current = true;
-                onSelectBlock(block);
-              }}
-              onMouseEnter={() => onHover(itemIndex)}
+              selected={itemIndex === selectedIndex}
+              highlightRef={selectedRef}
+              onPress={markClick}
+              onPick={() => onSelectBlock(block)}
+              onHighlight={() => onHover(itemIndex)}
             >
-              <span className={styles.mentionFieldLabel}>
-                {block.modelName} #{block.index + 1}
-              </span>
-              <span className={styles.mentionFieldMeta}>
-                <span className={styles.mentionBlockBadge}>
-                  {block.modelName}
-                </span>
-              </span>
-            </button>
+              {`${block.modelName} #${block.index + 1}`}
+            </MentionMenuItem>
           );
         })
       )}
-    </div>
+    </>
   );
 }

@@ -4,8 +4,8 @@ import { ApiError } from '@datocms/cma-client-browser';
 import { useOperationQueue } from '@hooks/useOperationQueue';
 import { act, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, render, renderHook } from '../testUtils/react';
 import { createCommentStorageFields } from '../fixtures/commentsStorage';
+import { flushPromises, render, renderHook } from '../testUtils/react';
 
 type QueueParams = Parameters<typeof useOperationQueue>[0];
 

@@ -199,14 +199,9 @@ describe('legacy migration integrity', () => {
     false,
     [legacy(), {}],
     [{ ...legacy(), replies: [{}] }],
-  ])(
-    'fails complete malformed records without discarding data: %j',
-    (value) => {
-      expect(() =>
-        prepareLegacyComments(value, false, userIdsByEmail),
-      ).toThrow();
-    },
-  );
+  ])('fails complete malformed records without discarding data: %j', (value) => {
+    expect(() => prepareLegacyComments(value, false, userIdsByEmail)).toThrow();
+  });
 
   it('verifies content and parent references, accepting only identifier conversion', () => {
     const comments = prepareLegacyComments(
@@ -334,8 +329,18 @@ describe('legacy migration integrity', () => {
     return new ApiError({
       request: { url: '/items', method: 'POST', headers: {} },
       response: {
-        status, statusText: 'Quota failure', headers: {},
-        body: { data: [{ id: 'error', type: 'api_error', attributes: { code, details: {} } }] },
+        status,
+        statusText: 'Quota failure',
+        headers: {},
+        body: {
+          data: [
+            {
+              id: 'error',
+              type: 'api_error',
+              attributes: { code, details: {} },
+            },
+          ],
+        },
       },
     });
   }
@@ -348,8 +353,9 @@ describe('legacy migration integrity', () => {
     const state = setup([source('record-1'), source('record-2')]);
     const error = quotaError(status, code);
     state.create.mockRejectedValue(error);
-    await expect(runLegacyMigration(state.options, emptyMigrationResults())).rejects.toBe(error);
+    await expect(
+      runLegacyMigration(state.options, emptyMigrationResults()),
+    ).rejects.toBe(error);
     expect(state.create).toHaveBeenCalledTimes(1);
   });
-
 });

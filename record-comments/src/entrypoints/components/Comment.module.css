@@ -1,0 +1,167 @@
+/* A comment: the avatar, then the header, the text and the footer. The
+   replies go under them. --comment-avatar-size is the side of the avatar
+   (the comment sets it from the kit's sizes). */
+.comment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--spacing-m);
+  align-items: start;
+  min-width: 0;
+}
+
+.main {
+  display: grid;
+  grid-column: 2;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+/* The name, the time and the actions, on one line */
+.header {
+  position: relative;
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+}
+
+.author {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  border-radius: var(--radius-xs);
+}
+
+/* The time takes the focus for the tooltip with the exact date */
+.time:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* The actions show while the pointer is on the comment, while one of them
+   has the focus and while the menu is open. They float at the end of the
+   header, so the name and the time keep the whole line while they are
+   hidden. Opacity, not visibility, so the keyboard reaches them. */
+.actions {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 0;
+  padding-inline-start: var(--spacing-s);
+  background: var(--color--surface);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease-out);
+  transform: translateY(-50%);
+}
+
+.main:hover .actions,
+.main:focus-within .actions,
+.actions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+/* A touch device has no hover: there the actions always show, in the line */
+@media (hover: none) {
+  .actions {
+    position: static;
+    flex: none;
+    padding: 0;
+    margin-inline-start: auto;
+    background: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.text {
+  font-size: var(--font-size-m);
+  line-height: 1.5;
+  color: var(--color--ink);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The upvotes and the replies toggle */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+}
+
+/* A RawButton has no look: this class is its whole look, a quiet toggle with
+   the disclosure chevron, the faces of the repliers and the count. It is a
+   button, not a link in a text: its label has the brand ink. */
+.repliesToggle {
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  padding: calc(var(--spacing-s) / 2) var(--spacing-s);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink-primary);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-s);
+}
+
+.repliesToggle:hover {
+  background: var(--color--surface-hover);
+}
+
+.repliesToggle:focus-visible {
+  outline: none;
+  background: var(--color--surface-hover);
+  box-shadow: var(--focus-ring);
+}
+
+.repliers {
+  display: inline-flex;
+  gap: calc(var(--spacing-s) / 2);
+}
+
+.repliers:empty {
+  display: none;
+}
+
+/* The replies: a hairline from the middle of the avatar, and the avatars of
+   the replies in line with the text of the comment */
+.replies {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--spacing-m);
+  min-width: 0;
+  padding-inline-start: calc(
+    var(--comment-avatar-size) /
+    2 +
+    var(--spacing-m) -
+    1px
+  );
+  margin-block-start: var(--spacing-m);
+  margin-inline-start: calc(var(--comment-avatar-size) / 2);
+  border-inline-start: 1px solid var(--color--border);
+}
+
+.replies[hidden] {
+  display: none;
+}
+
+.replyList {
+  display: grid;
+  gap: var(--spacing-m);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}

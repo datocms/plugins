@@ -1,11 +1,14 @@
 import type { ResolvedCommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
-import styles from '@styles/commentbar.module.css';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
 import { memo, type RefObject } from 'react';
 import Comment from './Comment';
+import styles from './CommentsList.module.css';
+import { CommentsIcon } from './Icons';
 import { CommentErrorBoundary } from './shared/CommentErrorBoundary';
+import { LoadMoreButton } from './shared/LoadMoreButton';
 import type { TipTapComposerRef } from './tiptap/TipTapComposer';
 
 type CommentsListProps = {
@@ -19,6 +22,11 @@ type CommentsListProps = {
   onFieldMentionIntent?: () => void;
   onFieldMentionsRetry?: () => void;
   projectUsers: UserInfo[];
+  /** The collaborators did not load yet */
+  usersLoading?: boolean;
+  /** The collaborators did not load */
+  usersLoadFailed?: boolean;
+  onUsersRetry?: () => void;
   projectModels: ModelInfo[];
   deleteComment: (id: string, parentCommentId?: string) => boolean;
   editComment: (
@@ -61,6 +69,9 @@ const CommentsListComponent = ({
   onFieldMentionIntent,
   onFieldMentionsRetry,
   projectUsers,
+  usersLoading,
+  usersLoadFailed,
+  onUsersRetry,
   projectModels,
   deleteComment,
   editComment,
@@ -76,49 +87,53 @@ const CommentsListComponent = ({
 }: CommentsListProps) => {
   if (comments.length === 0) {
     return (
-      <div className={styles.empty}>
-        <p>No comments yet</p>
-        <span>Be the first to leave a comment on this record.</span>
-      </div>
+      <BlankSlate
+        placement="section"
+        small
+        icon={<CommentsIcon />}
+        title="No comments yet"
+        description="The comments of your team about this record show here."
+      />
     );
   }
 
   return (
-    <div className={styles.commentsList}>
-      {comments.map((comment) => (
-        <CommentErrorBoundary key={comment.id}>
-          <Comment
-            deleteComment={deleteComment}
-            editComment={editComment}
-            upvoteComment={upvoteComment}
-            replyComment={replyComment}
-            commentObject={comment}
-            currentUserId={currentUserId}
-            modelFields={modelFields}
-            fieldMentionsLoading={fieldMentionsLoading}
-            fieldMentionsError={fieldMentionsError}
-            onFieldMentionIntent={onFieldMentionIntent}
-            onFieldMentionsRetry={onFieldMentionsRetry}
-            projectUsers={projectUsers}
-            projectModels={projectModels}
-            onPickerRequest={onPickerRequest}
-            onRecordModelSelect={onRecordModelSelect}
-            readableModels={readableModels}
-            canMentionAssets={canMentionAssets}
-            canMentionModels={canMentionModels}
-            ctx={ctx}
-            isPickerActive={isPickerActive}
-          />
-        </CommentErrorBoundary>
-      ))}
+    <div className={styles.root}>
+      <ul aria-label="Comments" className={styles.list}>
+        {comments.map((comment) => (
+          <li key={comment.id}>
+            <CommentErrorBoundary>
+              <Comment
+                deleteComment={deleteComment}
+                editComment={editComment}
+                upvoteComment={upvoteComment}
+                replyComment={replyComment}
+                commentObject={comment}
+                currentUserId={currentUserId}
+                modelFields={modelFields}
+                fieldMentionsLoading={fieldMentionsLoading}
+                fieldMentionsError={fieldMentionsError}
+                onFieldMentionIntent={onFieldMentionIntent}
+                onFieldMentionsRetry={onFieldMentionsRetry}
+                projectUsers={projectUsers}
+                usersLoading={usersLoading}
+                usersLoadFailed={usersLoadFailed}
+                onUsersRetry={onUsersRetry}
+                projectModels={projectModels}
+                onPickerRequest={onPickerRequest}
+                onRecordModelSelect={onRecordModelSelect}
+                readableModels={readableModels}
+                canMentionAssets={canMentionAssets}
+                canMentionModels={canMentionModels}
+                ctx={ctx}
+                isPickerActive={isPickerActive}
+              />
+            </CommentErrorBoundary>
+          </li>
+        ))}
+      </ul>
       {hasMoreComments && (
-        <button
-          type="button"
-          className={styles.loadMoreButton}
-          onClick={onLoadMore}
-        >
-          Load more comments
-        </button>
+        <LoadMoreButton label="Load more comments" onClick={onLoadMore} />
       )}
     </div>
   );

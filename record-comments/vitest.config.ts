@@ -14,6 +14,9 @@ export default defineConfig({
     ],
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
     exclude: ['tests/e2e/**/*', 'node_modules/**/*'],
+    // react-ui imports directories of its dependencies, which only a bundler
+    // resolves: let Vite transform it instead of Node.
+    server: { deps: { inline: ['datocms-react-ui'] } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -40,9 +43,6 @@ export default defineConfig({
       ),
       '@ctypes': fileURLToPath(
         new URL('./src/entrypoints/types', import.meta.url),
-      ),
-      '@styles': fileURLToPath(
-        new URL('./src/entrypoints/styles', import.meta.url),
       ),
     },
   },

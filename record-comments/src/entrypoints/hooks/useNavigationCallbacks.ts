@@ -4,6 +4,12 @@ import { useCallback } from 'react';
 import { useNavigationCallbacksBase } from './useNavigationCallbacksBase';
 
 type UseNavigationCallbacksReturn = {
+  /**
+   * The CMS path that opens a field of this record (the record edit path
+   * with its #fieldPath), for a link; undefined for an unsaved record, and
+   * when the project has no internal domain for the URL of the link
+   */
+  getFieldLinkPath: (fieldPath: string) => string | undefined;
   handleScrollToField: (
     fieldPath: string,
     localized: boolean,
@@ -19,6 +25,19 @@ export function useNavigationCallbacks(
   ctx: RenderItemFormSidebarCtx,
 ): UseNavigationCallbacksReturn {
   const base = useNavigationCallbacksBase(ctx);
+
+  const getFieldLinkPath = useCallback(
+    (fieldPath: string) => {
+      const recordId = ctx.item?.id;
+      if (!recordId) return undefined;
+      // Without the internal domain the link has no URL of the CMS (a middle
+      // click would open the path on the origin of the plugin): the mention
+      // then stays an action, through handleScrollToField
+      if (!ctx.site.attributes.internal_domain) return undefined;
+      return `${buildRecordEditPath(ctx, ctx.itemType.id, recordId)}#fieldPath=${fieldPath}`;
+    },
+    [ctx],
+  );
 
   const handleScrollToField = useCallback(
     async (fieldPath: string, localized: boolean, locale?: string) => {
@@ -57,7 +76,11 @@ export function useNavigationCallbacks(
       // This prevents field highlight from carrying over to the record edit modal
       const currentRecordId = ctx.item?.id;
       if (currentRecordId) {
-        const cleanPath = buildRecordEditPath(ctx, ctx.itemType.id, currentRecordId);
+        const cleanPath = buildRecordEditPath(
+          ctx,
+          ctx.itemType.id,
+          currentRecordId,
+        );
         await ctx.navigateTo(cleanPath);
       }
       await ctx.editItem(recordId);
@@ -67,6 +90,7 @@ export function useNavigationCallbacks(
 
   return {
     ...base,
+    getFieldLinkPath,
     handleScrollToField,
     handleOpenRecord,
   };

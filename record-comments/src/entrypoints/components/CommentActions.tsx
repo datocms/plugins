@@ -1,6 +1,8 @@
-import styles from '@styles/comment.module.css';
+import Button from 'datocms-react-ui/Button';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
 import { memo } from 'react';
-import { cn } from '@/utils/cn';
+import styles from './CommentActions.module.css';
 import {
   DeleteIcon,
   EditIcon,
@@ -36,7 +38,12 @@ function arePropsEqual(
   );
 }
 
-// CSS controls visibility; expose the revealed controls as a normal labeled action group.
+/**
+ * The actions on one comment. Upvote shows until the comment has its first
+ * upvote (then the reaction under the text takes its place), Reply only on a
+ * top-level comment, and the "⋮" with Edit and Delete only to the author. The
+ * comment decides when the group shows (on hover and focus, always on touch).
+ */
 const CommentActions = memo(function CommentActions({
   onUpvote,
   onReply,
@@ -47,62 +54,49 @@ const CommentActions = memo(function CommentActions({
   isTopLevel,
   hasUpvotes,
 }: CommentActionsProps) {
+  const canUpvote = !hasUpvotes;
+  const canReply = isTopLevel && onReply !== undefined;
+
+  if (!canUpvote && !canReply && !userIsAuthor) {
+    return null;
+  }
+
   return (
-    <div className={styles.actionsWrapper}>
-      <button
-        type="button"
-        className={styles.actionsTrigger}
-        aria-label="Show comment actions"
-      >
-        <MoreVerticalIcon aria-hidden="true" />
-      </button>
-      <div className={styles.actions} role="group" aria-label="Comment actions">
-        {!hasUpvotes && (
-          <button
-            type="button"
-            className={cn(
-              styles.actionBtn,
-              userUpvoted && styles.actionBtnActive,
-            )}
-            onClick={onUpvote}
-            aria-label={userUpvoted ? 'Remove upvote' : 'Upvote'}
-          >
-            <UpvoteIcon aria-hidden="true" />
-          </button>
-        )}
-
-        {isTopLevel && onReply && (
-          <button
-            type="button"
-            className={styles.actionBtn}
-            onClick={onReply}
-            aria-label="Reply to comment"
-          >
-            <ReplyIcon aria-hidden="true" />
-          </button>
-        )}
-
-        {userIsAuthor && (
-          <>
-            <button
-              type="button"
-              className={styles.actionBtn}
-              onClick={onEdit}
-              aria-label="Edit comment"
-            >
-              <EditIcon aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={cn(styles.actionBtn, styles.actionBtnDanger)}
-              onClick={onDelete}
-              aria-label="Delete comment"
-            >
-              <DeleteIcon aria-hidden="true" />
-            </button>
-          </>
-        )}
-      </div>
+    <div className={styles.group} role="group" aria-label="Comment actions">
+      {canUpvote && (
+        <Button
+          tone="ghost"
+          size="micro"
+          iconOnly
+          icon={UpvoteIcon}
+          label={userUpvoted ? 'Remove upvote' : 'Upvote'}
+          pressed={userUpvoted}
+          onClick={onUpvote}
+        />
+      )}
+      {canReply && (
+        <Button
+          tone="ghost"
+          size="micro"
+          iconOnly
+          icon={ReplyIcon}
+          label="Reply"
+          onClick={onReply}
+        />
+      )}
+      {userIsAuthor && (
+        <Dropdown triggerComponent={IconTrigger} icon={MoreVerticalIcon}>
+          <Dropdown.Menu placement="bottom-end">
+            <Dropdown.Option icon={<EditIcon />} onPick={onEdit}>
+              Edit
+            </Dropdown.Option>
+            <Dropdown.Separator />
+            <Dropdown.Option icon={<DeleteIcon />} alert onPick={onDelete}>
+              Delete
+            </Dropdown.Option>
+          </Dropdown.Menu>
+        </Dropdown>
+      )}
     </div>
   );
 }, arePropsEqual);

@@ -361,9 +361,17 @@ describe('isQuotaOrBillingError', () => {
   });
 
   it('does not treat ordinary rate limits or other errors as quota failures', () => {
-    expect(isQuotaOrBillingError(apiError(429, {}, 'RATE_LIMIT_EXCEEDED'))).toBe(false);
-    expect(isQuotaOrBillingError(apiError(422, {}, 'TECHNICAL_LIMIT_REACHED'))).toBe(false);
-    expect(isQuotaOrBillingError(apiError(422, {}, 'KEEP_URL_STORAGE_NOT_SUPPORTED'))).toBe(false);
+    expect(
+      isQuotaOrBillingError(apiError(429, {}, 'RATE_LIMIT_EXCEEDED')),
+    ).toBe(false);
+    expect(
+      isQuotaOrBillingError(apiError(422, {}, 'TECHNICAL_LIMIT_REACHED')),
+    ).toBe(false);
+    expect(
+      isQuotaOrBillingError(
+        apiError(422, {}, 'KEEP_URL_STORAGE_NOT_SUPPORTED'),
+      ),
+    ).toBe(false);
     expect(isQuotaOrBillingError(new Error('Malformed comments'))).toBe(false);
   });
 });

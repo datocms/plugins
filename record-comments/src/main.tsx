@@ -1,28 +1,28 @@
-// Bundle ~920KB (258KB gzipped): TipTap ~400KB, DatoCMS UI ~200KB, React ~150KB.
+// Bundle ~1.2MB (~370KB gzipped), mostly TipTap, the DatoCMS UI kit and React.
 // Acceptable tradeoff for rich functionality; loads once per session.
+
+// The kit stylesheet loads first, thus the CSS modules of the plugin come
+// after it and win at the same specificity
+import 'datocms-react-ui/styles.css';
+import {
+  parsePluginParams,
+  setCommentsModelIdForEnvironment,
+} from '@utils/pluginParams';
 import {
   connect,
   type OnBootCtx,
   type RenderConfigScreenCtx,
   type RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
-import { render } from '@/utils/render';
-import 'datocms-react-ui/styles.css';
-import '@/entrypoints/styles/tokens.css';
-import {
-  parsePluginParams,
-  setCommentsModelIdForEnvironment,
-} from '@utils/pluginParams';
-import TimeAgo from 'javascript-time-ago';
-import en from 'javascript-time-ago/locale/en.json';
+import Canvas from 'datocms-react-ui/Canvas';
 import { PLUGIN_IDS } from '@/constants';
 import CommentsBar from '@/entrypoints/CommentsBar';
 import ConfigScreen from '@/entrypoints/ConfigScreen';
 import { SidebarNavigationProvider } from '@/entrypoints/contexts/NavigationCallbacksContext';
+import { TEXTS } from '@/texts';
 import { ensureCommentsModelExists } from '@/utils/commentsStorage';
 import { logError, setDebugLoggingEnabled } from '@/utils/errorLogger';
-
-TimeAgo.addDefaultLocale(en);
+import { render } from '@/utils/render';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -63,8 +63,8 @@ connect({
         },
       );
       await ctx.alert(
-        'Comments plugin initialization warning: Unable to verify comment storage. ' +
-          'If this is your first time using the plugin, please check your permissions.',
+        "Record comments couldn't check where comments are stored. " +
+          'If you just installed the plugin, make sure your role can change the schema, then reload.',
       );
     }
   },
@@ -72,7 +72,11 @@ connect({
     setDebugLoggingEnabled(
       parsePluginParams(ctx.plugin.attributes.parameters).debugLoggingEnabled,
     );
-    render(<ConfigScreen ctx={ctx} />);
+    render(
+      <Canvas ctx={ctx} texts={TEXTS}>
+        <ConfigScreen ctx={ctx} />
+      </Canvas>,
+    );
   },
   itemFormSidebars() {
     return [
@@ -89,9 +93,11 @@ connect({
 
     if (sidebarId === PLUGIN_IDS.SIDEBAR) {
       render(
-        <SidebarNavigationProvider ctx={ctx}>
-          <CommentsBar ctx={ctx} />
-        </SidebarNavigationProvider>,
+        <Canvas ctx={ctx} texts={TEXTS}>
+          <SidebarNavigationProvider ctx={ctx}>
+            <CommentsBar ctx={ctx} />
+          </SidebarNavigationProvider>
+        </Canvas>,
       );
     }
   },

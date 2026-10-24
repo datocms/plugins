@@ -38,6 +38,10 @@ import {
 } from '@utils/tipTapSerializer';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
+  type FieldInputProps,
+  useFieldInput,
+} from 'datocms-react-ui/FieldWrapper';
+import {
   forwardRef,
   useCallback,
   useEffect,
@@ -47,7 +51,6 @@ import {
   useState,
 } from 'react';
 import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
-import { cn } from '@/utils/cn';
 import FieldMentionDropdown from '../FieldMentionDropdown';
 import ModelMentionDropdown from '../ModelMentionDropdown';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
@@ -64,14 +67,47 @@ import {
 } from './MentionNodeView';
 import styles from './TipTapComposer.module.css';
 
-type TipTapComposerProps = {
+/**
+ * The attributes of the editable element. In a FieldWrapper, the field gives
+ * it its id, its name (the label) and its description, as to every input;
+ * out of one, the aria-label names it.
+ */
+function getEditorAttributes(
+  field: FieldInputProps,
+  ariaLabel: string,
+): Record<string, string> {
+  const attributes: Record<string, string> = {
+    role: 'textbox',
+    'aria-multiline': 'true',
+  };
+  for (const [name, value] of Object.entries(field)) {
+    if (value !== undefined && value !== false) {
+      attributes[name] = String(value);
+    }
+  }
+  if (!attributes['aria-labelledby']) {
+    attributes['aria-label'] = ariaLabel;
+  }
+  return attributes;
+}
+
+export type TipTapComposerProps = {
   segments: CommentSegment[];
   onSegmentsChange?: (segments: CommentSegment[]) => void;
   onSubmit?: () => void;
   onCancel?: () => void;
   onBlur?: () => void;
+  onFocus?: () => void;
+  /** Shows while the editor is empty: an example, never an instruction */
   placeholder?: string;
+  /** The accessible name of the editor */
+  ariaLabel?: string;
   projectUsers: UserInfo[];
+  /** The collaborators did not load yet */
+  usersLoading?: boolean;
+  /** The collaborators did not load */
+  usersLoadFailed?: boolean;
+  onUsersRetry?: () => void;
   modelFields?: FieldInfo[];
   projectModels: ModelInfo[];
   canMentionAssets?: boolean;
@@ -84,7 +120,6 @@ type TipTapComposerProps = {
   onAssetTrigger?: () => void;
   onRecordTrigger?: () => void;
   autoFocus?: boolean;
-  large?: boolean;
   dropdownPosition?: 'above' | 'below';
   ctx?: RenderItemFormSidebarCtx;
 };
@@ -112,8 +147,13 @@ export const TipTapComposer = forwardRef<
       onSubmit,
       onCancel,
       onBlur,
-      placeholder = 'Write a comment...',
+      onFocus,
+      placeholder = 'Add a comment…',
+      ariaLabel = 'Comment',
       projectUsers,
+      usersLoading = false,
+      usersLoadFailed = false,
+      onUsersRetry,
       modelFields = [],
       projectModels,
       canMentionAssets = true,
@@ -126,13 +166,18 @@ export const TipTapComposer = forwardRef<
       onAssetTrigger,
       onRecordTrigger,
       autoFocus = false,
-      large = false,
       dropdownPosition = 'below',
       ctx,
     },
     ref,
   ) => {
     const nav = useNavigationContext();
+
+    // ProseMirror reads the attributes on each update of the view: the ref
+    // keeps the last ones of the field
+    const fieldProps = useFieldInput({});
+    const editorAttributesRef = useRef<Record<string, string>>({});
+    editorAttributesRef.current = getEditorAttributes(fieldProps, ariaLabel);
 
     // Slash command state
     const [activeSlashCommand, setActiveSlashCommand] =
@@ -152,6 +197,7 @@ export const TipTapComposer = forwardRef<
     const onSubmitRef = useRef(onSubmit);
     const onCancelRef = useRef(onCancel);
     const onBlurRef = useRef(onBlur);
+    const onFocusRef = useRef(onFocus);
     const onAssetTriggerRef = useRef(onAssetTrigger);
     const onRecordTriggerRef = useRef(onRecordTrigger);
     const onFieldMentionIntentRef = useRef(onFieldMentionIntent);
@@ -169,6 +215,7 @@ export const TipTapComposer = forwardRef<
       onSubmitRef.current = onSubmit;
       onCancelRef.current = onCancel;
       onBlurRef.current = onBlur;
+      onFocusRef.current = onFocus;
       onAssetTriggerRef.current = onAssetTrigger;
       onRecordTriggerRef.current = onRecordTrigger;
       onFieldMentionIntentRef.current = onFieldMentionIntent;
@@ -177,6 +224,7 @@ export const TipTapComposer = forwardRef<
       onSubmit,
       onCancel,
       onBlur,
+      onFocus,
       onAssetTrigger,
       onRecordTrigger,
       onFieldMentionIntent,
@@ -893,6 +941,7 @@ export const TipTapComposer = forwardRef<
       content: segmentsToTipTapDoc(segments),
       autofocus: autoFocus ? 'end' : false,
       editorProps: {
+        attributes: () => editorAttributesRef.current,
         handleKeyDown: (_view, event) => {
           // Submit on Enter (when not in slash command mode)
           if (
@@ -919,6 +968,9 @@ export const TipTapComposer = forwardRef<
         const doc = editor.getJSON();
         const newSegments = tipTapDocToFullSegments(doc);
         onSegmentsChangeRef.current?.(newSegments);
+      },
+      onFocus: () => {
+        onFocusRef.current?.();
       },
       onBlur: () => {
         onBlurRef.current?.();
@@ -1196,12 +1248,11 @@ export const TipTapComposer = forwardRef<
       segmentsRef.current = segments;
     }, [editor, segments]);
 
-    const editorClassName = cn(styles.editor, large && styles.editorLarge);
-
     return (
       <MentionClickContext.Provider value={mentionClickContextValue}>
-        <div style={{ position: 'relative' }}>
-          <div className={editorClassName}>
+        {/* Positioned: the mention panels open under (or above) the editor */}
+        <div className={styles.root}>
+          <div className={styles.editor}>
             <EditorContent editor={editor} />
           </div>
 
@@ -1212,6 +1263,7 @@ export const TipTapComposer = forwardRef<
               selectedIndex={selectedCommandIndex}
               onSelect={handleSelectCommand}
               onClose={handleCloseDropdown}
+              onHover={setSelectedCommandIndex}
               position={dropdownPosition}
             />
           )}
@@ -1225,7 +1277,11 @@ export const TipTapComposer = forwardRef<
                 selectedIndex={selectedItemIndex}
                 onSelect={handleSelectUser}
                 onClose={handleCloseDropdown}
+                onHover={setSelectedItemIndex}
                 position={dropdownPosition}
+                isLoading={usersLoading}
+                loadFailed={usersLoadFailed}
+                onRetry={onUsersRetry}
               />
             )}
 
@@ -1238,6 +1294,7 @@ export const TipTapComposer = forwardRef<
                 selectedIndex={selectedItemIndex}
                 onSelect={handleSelectField}
                 onClose={handleCloseDropdown}
+                onHover={setSelectedItemIndex}
                 pendingFieldForLocale={pendingFieldForLocale}
                 onClearPendingField={clearPendingFieldForLocale}
                 registerKeyHandler={registerFieldKeyHandler}
@@ -1259,6 +1316,7 @@ export const TipTapComposer = forwardRef<
                 selectedIndex={selectedItemIndex}
                 onSelect={handleSelectModel}
                 onClose={handleCloseDropdown}
+                onHover={setSelectedItemIndex}
                 position={dropdownPosition}
               />
             )}

@@ -1,0 +1,6 @@
+/* The indent of a field inside blocks: one step per level of depth (set as
+   --depth on the element), before the content of the option */
+.indent {
+  flex: none;
+  width: calc(var(--depth) * var(--spacing-l));
+}

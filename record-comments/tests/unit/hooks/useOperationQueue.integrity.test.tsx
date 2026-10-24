@@ -27,7 +27,13 @@ function apiFailure(status: number, code?: string) {
       headers: {},
       body: {
         data: code
-          ? [{ id: 'error', type: 'api_error', attributes: { code, details: {} } }]
+          ? [
+              {
+                id: 'error',
+                type: 'api_error',
+                attributes: { code, details: {} },
+              },
+            ]
           : [],
       },
     },
@@ -135,21 +141,23 @@ describe('comment persistence integrity', () => {
     hook.unmount();
   });
 
-  it.each(['{"invalid":true}', '[{"id":"broken"}]', false, 42])(
-    'refuses to overwrite malformed storage %s',
-    async (content) => {
-      const items = {
-        find: vi.fn().mockResolvedValue(aggregate(content)),
-        update: vi.fn(),
-      };
-      const hook = mountQueue({ items });
-      enqueue(hook);
-      await settle();
-      expect(items.update).not.toHaveBeenCalled();
-      expect(hook.ctx.alert).toHaveBeenCalledTimes(1);
-      hook.unmount();
-    },
-  );
+  it.each([
+    '{"invalid":true}',
+    '[{"id":"broken"}]',
+    false,
+    42,
+  ])('refuses to overwrite malformed storage %s', async (content) => {
+    const items = {
+      find: vi.fn().mockResolvedValue(aggregate(content)),
+      update: vi.fn(),
+    };
+    const hook = mountQueue({ items });
+    enqueue(hook);
+    await settle();
+    expect(items.update).not.toHaveBeenCalled();
+    expect(hook.ctx.alert).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
 
   it('accepts whitespace inside an empty JSON array', async () => {
     const items = {
@@ -278,12 +286,14 @@ describe('comment persistence integrity', () => {
 
   it('preserves newer votes when comment content still matches the editor baseline', async () => {
     const items = {
-      find: vi.fn().mockResolvedValue(
-        aggregate(
-          JSON.stringify([{ ...comment, upvoterIds: ['other-user'] }]),
-          'v2',
+      find: vi
+        .fn()
+        .mockResolvedValue(
+          aggregate(
+            JSON.stringify([{ ...comment, upvoterIds: ['other-user'] }]),
+            'v2',
+          ),
         ),
-      ),
       update: vi.fn().mockResolvedValue({}),
     };
     const hook = mountQueue({ items });

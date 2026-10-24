@@ -167,15 +167,12 @@ describe('migration helpers', () => {
       { legacyAuthor: { name: 'Different', email: 'different@example.com' } },
       { legacyUpvoters: ['different@example.com'] },
       { id: '' },
-    ])(
-      'rejects invalid or conflicting data without partial conversion: %j',
-      (overrides) => {
-        const source = { ...legacyComment(), ...overrides };
-        const snapshot = JSON.stringify(source);
-        expect(normalizeCommentIfValid(source)).toBeNull();
-        expect(JSON.stringify(source)).toBe(snapshot);
-      },
-    );
+    ])('rejects invalid or conflicting data without partial conversion: %j', (overrides) => {
+      const source = { ...legacyComment(), ...overrides };
+      const snapshot = JSON.stringify(source);
+      expect(normalizeCommentIfValid(source)).toBeNull();
+      expect(JSON.stringify(source)).toBe(snapshot);
+    });
 
     it('rejects cyclic or shared reply objects safely', () => {
       const source = normalizedComment();

@@ -29,14 +29,19 @@ describe('loadAllFields', () => {
     const ctx = {
       itemType: { id: 'model-1' },
       site: { attributes: { locales: ['en'] } },
-      itemTypes: { 'block-1': { id: 'block-1', attributes: { name: 'Block' } } },
+      itemTypes: {
+        'block-1': { id: 'block-1', attributes: { name: 'Block' } },
+      },
       formValues: { content: fieldType === 'single_block' ? block : [block] },
       loadItemTypeFields,
     } as never;
 
     const fields = await loadAllFields(ctx);
 
-    expect(fields.map((entry) => entry.fieldPath)).toEqual(['content', nestedPath]);
+    expect(fields.map((entry) => entry.fieldPath)).toEqual([
+      'content',
+      nestedPath,
+    ]);
     expect(fields[1]?.displayLabel).toContain('Block');
     expect(loadItemTypeFields).toHaveBeenCalledTimes(2);
   });

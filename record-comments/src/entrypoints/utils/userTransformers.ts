@@ -92,7 +92,7 @@ export function ownerToUserInfo(
     const fullName =
       [firstName, lastName].filter(Boolean).join(' ') ||
       extractEmailLocalPart(email) ||
-      'Account Owner';
+      'Account owner';
     return {
       id: String(owner.id),
       email,

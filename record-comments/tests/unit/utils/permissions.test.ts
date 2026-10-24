@@ -1,5 +1,6 @@
 import {
   filterReadableModels,
+  getRecordMentionModels,
   hasUnrestrictedModelReadPermission,
 } from '@utils/permissions';
 import { describe, expect, it } from 'vitest';
@@ -59,6 +60,19 @@ describe('model permissions', () => {
   });
 });
 
+describe('record mentions', () => {
+  it('apply only to the readable models that are not blocks', () => {
+    expect(getRecordMentionModels(models).map((model) => model.id)).toEqual([
+      'model-1',
+      'model-3',
+    ]);
+    // A role that reads only blocks has no record to mention
+    expect(
+      getRecordMentionModels(models.filter((model) => model.isBlockModel)),
+    ).toEqual([]);
+  });
+});
+
 describe('full model visibility before field cleanup', () => {
   const allow = { environment: 'sandbox', action: 'read', item_type: null };
 
@@ -111,17 +125,14 @@ describe('full model visibility before field cleanup', () => {
     { on_stage: 'draft' },
     { workflow: 'workflow-1' },
     { localization_scope: 'localized', locale: 'it' },
-  ])(
-    'rejects any matching negative visibility restriction %j',
-    (restriction) => {
-      expect(
-        hasUnrestrictedModelReadPermission(
-          context([allow], [{ ...allow, ...restriction }]),
-          'model-0',
-        ),
-      ).toBe(false);
-    },
-  );
+  ])('rejects any matching negative visibility restriction %j', (restriction) => {
+    expect(
+      hasUnrestrictedModelReadPermission(
+        context([allow], [{ ...allow, ...restriction }]),
+        'model-0',
+      ),
+    ).toBe(false);
+  });
 
   it('ignores negative permissions for other models, environments or actions', () => {
     expect(

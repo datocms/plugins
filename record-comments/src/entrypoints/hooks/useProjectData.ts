@@ -1,3 +1,4 @@
+import type { GeneralErrorType } from '@utils/errorCategorization';
 import {
   type FieldLoadCache,
   getFieldValuesMetadataKey,
@@ -26,6 +27,8 @@ type UseProjectDataOptions = {
 type LoadError = {
   source: string;
   message: string;
+  /** The kind of the failure, for the UI to word it */
+  type: GeneralErrorType;
 };
 
 type UseProjectDataReturn = {
@@ -35,8 +38,13 @@ type UseProjectDataReturn = {
   isLoadingFields: boolean;
   fieldLoadError: LoadError | null;
   loadError: LoadError | null;
+  /** The collaborators did not load yet (the mention list waits for them) */
+  isLoadingUsers: boolean;
+  /** Neither the users nor the SSO users loaded */
+  usersLoadError: LoadError | null;
   retry: () => void;
   retryFields: () => void;
+  retryUsers: () => void;
   /** Users with type information for upvoter name resolution */
   typedUsers: TypedUserInfo[];
 };
@@ -62,6 +70,7 @@ export function useProjectData(
   const itemTypeId = ctx.itemType.id;
   const siteId = ctx.site.id;
   const recordId = ctx.item?.id ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the keys give a new, empty cache when the site, the environment or the model changes.
   const fieldCache = useMemo<FieldLoadCache>(
     () => new Map(),
     [siteId, ctx.environment, itemTypeId],
@@ -226,8 +235,12 @@ export function useProjectData(
     isLoadingFields,
     fieldLoadError: fieldError,
     loadError: currentLoadError,
+    // Only the first load: a later one keeps the users already loaded
+    isLoadingUsers: !userData && !userError,
+    usersLoadError: userError,
     retry,
     retryFields,
+    retryUsers,
     typedUsers: stableTypedUsers,
   };
 }
