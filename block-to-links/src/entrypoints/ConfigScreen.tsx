@@ -9,21 +9,28 @@
  */
 
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  Form,
-  Section,
-  SelectField,
-  Spinner,
-  SwitchField,
-} from 'datocms-react-ui';
+import ApiKey from 'datocms-react-ui/ApiKey';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import CardList from 'datocms-react-ui/CardList';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import InfoList from 'datocms-react-ui/InfoList';
+import { Page } from 'datocms-react-ui/Page';
+import Pill from 'datocms-react-ui/Pill';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Icons } from '../components/Icons';
+import { BlockIcon, CircleExclamationIcon, OpenInNewTabIcon } from '../icons';
 import type {
   BlockAnalysis,
   ConversionProgress,
   ConversionResult,
+  ModularContentFieldInfo,
 } from '../types';
 import { analyzeBlock } from '../utils/analyzer';
 import { createClient } from '../utils/client';
@@ -45,207 +52,236 @@ type Option = {
   value: string;
 };
 
+const FIELD_TYPES: Record<ModularContentFieldInfo['fieldType'], string> = {
+  rich_text: 'Modular content',
+  structured_text: 'Structured text',
+  single_block: 'Single block',
+};
+
 // =============================================================================
 // Sub-components (extracted to reduce cognitive complexity of ConfigScreen)
 // =============================================================================
 
-type AnalyzedSectionProps = {
-  conversionState: Extract<ConversionState, { status: 'analyzed' }>;
-  ctx: Props['ctx'];
+type BlockPickerProps = {
+  loadingBlocks: boolean;
+  loadError: string | null;
+  blockOptions: Option[];
+  selectedBlockId: string;
+  handleBlockSelect: (blockId: string) => void;
+};
+
+function BlockPicker({
+  loadingBlocks,
+  loadError,
+  blockOptions,
+  selectedBlockId,
+  handleBlockSelect,
+}: BlockPickerProps) {
+  if (loadingBlocks) {
+    return (
+      <BlankSlate placement="inline" small loading title="Loading the blocks" />
+    );
+  }
+
+  if (loadError !== null) {
+    return (
+      <BlankSlate
+        placement="inline"
+        small
+        error
+        icon={<CircleExclamationIcon />}
+        title="The blocks didn't load"
+        code={loadError}
+        description="Reload the page to try again."
+        actions={
+          <Button label="Reload" onClick={() => window.location.reload()} />
+        }
+      />
+    );
+  }
+
+  if (blockOptions.length === 0) {
+    return (
+      <BlankSlate
+        placement="inline"
+        small
+        icon={<BlockIcon />}
+        title="No blocks yet"
+        description="Create a block in the blocks library, then reload this page to convert it."
+        actions={
+          <Button label="Reload" onClick={() => window.location.reload()} />
+        }
+      />
+    );
+  }
+
+  return (
+    <FieldWrapper
+      label="Block to convert"
+      hint="The conversion makes a model from the block, moves every block into a record of that model, and links the records where the blocks were."
+    >
+      <SelectInput
+        value={selectedBlockId || null}
+        onChange={(id) => handleBlockSelect(id ?? '')}
+        options={blockOptions}
+        placeholder="Pick a block"
+      />
+    </FieldWrapper>
+  );
+}
+
+type AnalyzedGroupsProps = {
+  analysis: BlockAnalysis;
+  envPrefix: string;
   fullyReplaceBlock: boolean;
   setFullyReplaceBlock: (v: boolean) => void;
   publishAfterChanges: boolean;
   setPublishAfterChanges: (v: boolean) => void;
   handleReset: () => void;
-  handleConvert: () => void;
+  handleConvert: () => Promise<void>;
 };
 
-function AnalyzedSection({
-  conversionState,
-  ctx,
+function AnalyzedGroups({
+  analysis,
+  envPrefix,
   fullyReplaceBlock,
   setFullyReplaceBlock,
   publishAfterChanges,
   setPublishAfterChanges,
   handleReset,
   handleConvert,
-}: AnalyzedSectionProps) {
-  const internalDomain = (
-    ctx.site as { attributes?: { internal_domain?: string | null } }
-  )?.attributes?.internal_domain;
+}: AnalyzedGroupsProps) {
+  const noFields = analysis.modularContentFields.length === 0;
 
   return (
-    <div className={s.analysis}>
-      <div className={s.card}>
-        <Section title="Analysis Results">
-          <div className={s.analysisGrid}>
-            <div className={s.analysisItem}>
-              <h3>
-                <span className={s.iconWrapper}>
-                  <Icons.Block />
-                </span>{' '}
-                Block Details
-              </h3>
-              <div className={s.analysisStat}>
-                <span className={s.statLabel}>Name</span>
-                <span
-                  className={s.statValueMain}
-                  title={conversionState.analysis.block.name}
-                >
-                  {conversionState.analysis.block.name}
-                </span>
-              </div>
-              <div className={s.analysisStat}>
-                <span className={s.statLabel}>API Key</span>
-                <span
-                  className={s.statValueCode}
-                  title={conversionState.analysis.block.apiKey}
-                >
-                  {conversionState.analysis.block.apiKey}
-                </span>
-              </div>
-            </div>
-            <div className={s.analysisItem}>
-              <h3>
-                <span className={s.iconWrapper}>
-                  <Icons.Database />
-                </span>{' '}
-                Usage Impact
-              </h3>
-              <div className={s.analysisStat}>
-                <span className={s.statLabel}>Records</span>
-                <span className={s.statValueMain}>
-                  {conversionState.analysis.totalAffectedRecords}
-                </span>
-              </div>
-              <div className={s.analysisStat}>
-                <span className={s.statLabel}>Locations</span>
-                <span className={s.statValueMain}>
-                  {conversionState.analysis.modularContentFields.length}
-                  {conversionState.analysis.modularContentFields.length ===
-                    0 && (
-                    <span
-                      className={s.warningIcon}
-                      title="Not used in any fields"
-                    >
-                      {' '}
-                      <Icons.Warning />
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
+    <>
+      <Page.Group title="Analysis">
+        <InfoList>
+          <InfoList.Row title="Block">
+            {analysis.block.name} <ApiKey>{analysis.block.apiKey}</ApiKey>
+          </InfoList.Row>
+          <InfoList.Row title="Affected records">
+            {analysis.totalAffectedRecords}
+          </InfoList.Row>
+          <InfoList.Row title="Fields">
+            {analysis.modularContentFields.length}
+          </InfoList.Row>
+        </InfoList>
+      </Page.Group>
+
+      <Page.Group title="Fields using this block" flush>
+        <CardList
+          actionsVisibility="always"
+          empty={
+            <Page.GroupInset>
+              <EmptySlot message="No field uses this block" />
+            </Page.GroupInset>
+          }
+        >
+          {analysis.modularContentFields.map((field) => (
+            <CardList.Item
+              key={field.id}
+              row={{
+                summary: (
+                  <EntityRow
+                    layout="row"
+                    title={field.label}
+                    afterTitle={
+                      <>
+                        {field.parentIsBlock && <Pill>In a block</Pill>}
+                        {field.localized && <Pill>Localized</Pill>}
+                      </>
+                    }
+                  >
+                    <ApiKey>{`${field.parentModelApiKey}.${field.apiKey}`}</ApiKey>{' '}
+                    · {FIELD_TYPES[field.fieldType]}
+                  </EntityRow>
+                ),
+                actions: (
+                  <Button
+                    tone="ghost"
+                    size="micro"
+                    iconOnly
+                    icon={OpenInNewTabIcon}
+                    label={`Open “${field.label}” in the schema`}
+                    to={`${envPrefix}/schema/item_types/${field.parentModelId}#f${field.id}`}
+                    newTab
+                  />
+                ),
+              }}
+            />
+          ))}
+        </CardList>
+      </Page.Group>
+
+      <Page.Group
+        title="Options"
+        footer={
+          <div className={s.footer}>
+            <Button tone="ghost" label="Cancel" onClick={handleReset} />
+            <Button
+              tone={fullyReplaceBlock ? 'alert' : 'primary'}
+              label={
+                fullyReplaceBlock ? 'Convert and replace' : 'Convert to model'
+              }
+              onClick={handleConvert}
+              disabled={
+                noFields
+                  ? {
+                      reason:
+                        'No field uses this block, so there is nothing to convert.',
+                    }
+                  : undefined
+              }
+            />
           </div>
+        }
+      >
+        <SwitchList>
+          <FieldWrapper hint="Deletes the original block model and its data after the conversion. The new links field takes its place.">
+            <SwitchInput
+              label="Replace the original block"
+              value={fullyReplaceBlock}
+              onChange={(v) => setFullyReplaceBlock(v === true)}
+            />
+          </FieldWrapper>
+          <FieldWrapper hint="Publishes every record that the conversion creates or updates.">
+            <SwitchInput
+              label="Publish the records after the conversion"
+              value={publishAfterChanges}
+              onChange={(v) => setPublishAfterChanges(v === true)}
+            />
+          </FieldWrapper>
+        </SwitchList>
+      </Page.Group>
+    </>
+  );
+}
 
-          <div className={s.analysisSection}>
-            <h3>
-              <span className={s.iconWrapper}>
-                <Icons.Field />
-              </span>{' '}
-              Fields using this block (
-              {conversionState.analysis.modularContentFields.length})
-            </h3>
-            {conversionState.analysis.modularContentFields.length === 0 ? (
-              <p className={s.emptyFieldsNote}>
-                This block is not used in any fields.
-              </p>
-            ) : (
-              <ul className={s.fieldList}>
-                {conversionState.analysis.modularContentFields.map((field) => {
-                  const fieldUrl = internalDomain
-                    ? `https://${internalDomain}/schema/item_types/${field.parentModelId}#f${field.id}`
-                    : undefined;
-                  return (
-                    <li key={field.id} className={s.fieldListItemClickable}>
-                      <a
-                        href={fieldUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={s.fieldListLink}
-                      >
-                        <div className={s.fieldInfo}>
-                          <strong>{field.label}</strong>
-                          <span className={s.fieldApiKey}>
-                            <Icons.Code /> {field.parentModelApiKey}.
-                            {field.apiKey}
-                          </span>
-                        </div>
-                        <div className={s.fieldMeta}>
-                          <span className={s.fieldType}>{field.fieldType}</span>
-                          {field.parentIsBlock && (
-                            <span className={s.badge}>In Block</span>
-                          )}
-                          {field.localized && (
-                            <span className={s.badge}>Localized</span>
-                          )}
-                        </div>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </Section>
+type ConvertingGroupProps = {
+  progress: ConversionProgress;
+};
 
-        <div className={s.conversionOptions}>
-          <SwitchField
-            id="fully-replace-block"
-            name="fully-replace-block"
-            label={
-              <div className={s.labelWithTooltip}>
-                Fully replace original block
-                <div className={s.tooltipContainer}>
-                  <Icons.Info />
-                  <div className={s.tooltip}>
-                    When enabled, the original block model and its field data
-                    will be deleted after conversion. The new links field will
-                    take its place.
-                  </div>
-                </div>
-              </div>
-            }
-            value={fullyReplaceBlock}
-            onChange={(newValue) => setFullyReplaceBlock(newValue)}
-          />
-          <SwitchField
-            id="publish-after-changes"
-            name="publish-after-changes"
-            label={
-              <div className={s.labelWithTooltip}>
-                Publish records after changes
-                <div className={s.tooltipContainer}>
-                  <Icons.Info />
-                  <div className={s.tooltip}>
-                    When enabled, all newly created and updated records will be
-                    published after the conversion completes.
-                  </div>
-                </div>
-              </div>
-            }
-            value={publishAfterChanges}
-            onChange={(newValue) => setPublishAfterChanges(newValue)}
-          />
-        </div>
-
-        <div className={s.actions}>
-          <Button onClick={handleReset} buttonType="muted">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConvert}
-            buttonType={fullyReplaceBlock ? 'negative' : 'primary'}
-            disabled={
-              conversionState.analysis.modularContentFields.length === 0
-            }
-          >
-            {fullyReplaceBlock
-              ? 'Convert & Replace Block'
-              : 'Convert Block to Model'}
-          </Button>
-        </div>
+function ConvertingGroup({ progress }: ConvertingGroupProps) {
+  return (
+    <Page.Group
+      title="Conversion"
+      status={
+        <Pill>{`Step ${progress.currentStep} of ${progress.totalSteps}`}</Pill>
+      }
+    >
+      <div className={s.readout}>
+        <ProgressBar
+          value={progress.percentage / 100}
+          ariaLabel={progress.stepDescription}
+        />
+        <p className={s.line}>
+          <span>{progress.stepDescription}</span>
+          <span className={s.meta}>{Math.round(progress.percentage)}%</span>
+        </p>
+        {progress.details && <p className={s.meta}>{progress.details}</p>}
       </div>
-    </div>
+    </Page.Group>
   );
 }
 
@@ -261,12 +297,12 @@ async function openConversionConfirmDialog(
   fullyReplaceBlock: boolean,
 ): Promise<unknown> {
   const confirmTitle = fullyReplaceBlock
-    ? 'Convert & Replace Block?'
-    : 'Convert Block to Model?';
+    ? 'Convert and replace the block?'
+    : 'Convert the block to a model?';
   const confirmContent = fullyReplaceBlock
-    ? 'This will create a new model from the block, create records from block instances, replace block fields with link fields, and DELETE the original block model and all its data. This operation cannot be undone. Are you sure?'
-    : 'This will create a new model from the block, create records from block instances, and create new link fields alongside existing block fields. The original block model will be kept intact and can be deleted later if desired.';
-  const confirmLabel = fullyReplaceBlock ? 'Convert & Replace' : 'Convert';
+    ? "This creates a model from the block, moves every block into a record, replaces the block fields with links fields, and deletes the original block model and its data. You can't undo this."
+    : 'This creates a model from the block, moves every block into a record, and adds a links field next to each block field. The original block model stays, and you can delete it later.';
+  const confirmLabel = fullyReplaceBlock ? 'Convert and replace' : 'Convert';
   const confirmIntent = fullyReplaceBlock ? 'negative' : 'positive';
 
   return ctx.openConfirm({
@@ -285,9 +321,9 @@ function buildSuccessMessage(
   fullyReplaceBlock: boolean,
 ): string {
   if (fullyReplaceBlock) {
-    return `Successfully converted and replaced block with model "${newModelApiKey}"!`;
+    return `The block was converted and replaced by the model “${newModelApiKey}”.`;
   }
-  return `Successfully converted block to model "${newModelApiKey}"! Original block preserved.`;
+  return `The block was converted to the model “${newModelApiKey}”. The original block was kept.`;
 }
 
 /**
@@ -321,7 +357,7 @@ async function applyConversionResult(
       status: 'error',
       message: result.error || 'Unknown error occurred',
     });
-    await ctx.alert(`Conversion failed: ${result.error}`);
+    await ctx.alert(`The conversion failed: ${result.error}`);
   }
 }
 
@@ -355,6 +391,7 @@ export default function ConfigScreen({ ctx }: Props) {
   });
   const [blockModels, setBlockModels] = useState<BlockModel[]>([]);
   const [loadingBlocks, setLoadingBlocks] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Replacement mode - if true, fully replaces original block; if false, adds link field alongside
   const [fullyReplaceBlock, setFullyReplaceBlock] = useState(false);
@@ -399,6 +436,7 @@ export default function ConfigScreen({ ctx }: Props) {
         setBlockModels(blocks);
       } catch (error) {
         console.error('Failed to fetch block models:', error);
+        setLoadError(error instanceof Error ? error.message : String(error));
       } finally {
         setLoadingBlocks(false);
       }
@@ -480,7 +518,7 @@ export default function ConfigScreen({ ctx }: Props) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setConversionState({ status: 'error', message });
-      await ctx.alert(`Conversion failed: ${message}`);
+      await ctx.alert(`The conversion failed: ${message}`);
     }
   }, [client, selectedBlockId, ctx, fullyReplaceBlock, publishAfterChanges]);
 
@@ -502,210 +540,120 @@ export default function ConfigScreen({ ctx }: Props) {
   // Check for access token
   if (!ctx.currentUserAccessToken) {
     return (
-      <Canvas ctx={ctx}>
-        <div className={s.container}>
-          <div className={s.error}>
-            <h2>Missing Permission</h2>
-            <p>
-              This plugin requires the "Current user access token" permission to
-              work. Please update the plugin settings to grant this permission.
-            </p>
-          </div>
-        </div>
-      </Canvas>
+      <Page>
+        <Page.Content>
+          <Page.Group
+            title="Permissions"
+            tone="warning"
+            status={<Pill tone="warning">Missing</Pill>}
+          >
+            <Callout tone="warning">
+              Grant the plugin the “Current user access token” permission in its
+              settings, so it can read and change the schema.
+            </Callout>
+          </Page.Group>
+        </Page.Content>
+      </Page>
     );
   }
 
+  const envPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.container}>
-        <div className={s.header}>
-          <h1 className={s.title}>Block to Links Converter</h1>
-          <p className={s.description}>
-            Convert modular content blocks into independent models with links,
-            preserving all data.
-          </p>
-        </div>
+    <Page>
+      <Page.Content>
+        <Page.Group title="Block">
+          <BlockPicker
+            loadingBlocks={loadingBlocks}
+            loadError={loadError}
+            blockOptions={blockOptions}
+            selectedBlockId={selectedBlockId}
+            handleBlockSelect={handleBlockSelect}
+          />
+        </Page.Group>
 
-        {loadingBlocks ? (
-          <div className={s.loading}>
-            <Spinner size={32} />
-            <p>Loading block models...</p>
-          </div>
-        ) : blockModels.length === 0 ? (
-          <div className={s.empty}>
-            <p>No block models found in this project.</p>
-            <Button onClick={() => window.location.reload()}>Refresh</Button>
-          </div>
-        ) : (
-          <Form>
-            <div className={s.card}>
-              <Section title="Block Selection">
-                <SelectField
-                  name="block"
-                  id="block"
-                  label="Choose a Block Model"
-                  hint="Select the modular block model you wish to convert."
-                  value={blockOptions.find((o) => o.value === selectedBlockId)}
-                  onChange={(newValue) =>
-                    handleBlockSelect(
-                      newValue ? (newValue as Option).value : '',
-                    )
-                  }
-                  selectInputProps={{
-                    options: blockOptions,
-                  }}
-                />
-              </Section>
-            </div>
-
-            {/* Analysis State */}
-            {conversionState.status === 'analyzing' && (
-              <div className={s.loading}>
-                <Spinner size={32} />
-                <div
-                  className={s.progressContainer}
-                  style={{
-                    width: '100%',
-                    maxWidth: '400px',
-                    margin: 'var(--spacing-m) 0 0 0',
-                  }}
-                >
-                  <div className={s.progressBar}>
-                    <div
-                      className={s.progressFill}
-                      style={{
-                        width: `${conversionState.progressPercentage || 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <p className={s.loadingText}>
+        {conversionState.status === 'analyzing' && (
+          <Page.Group title="Analysis">
+            <div className={s.readout}>
+              <ProgressBar
+                value={(conversionState.progressPercentage ?? 0) / 100}
+                ariaLabel="Analysis of the block"
+              />
+              <p className={s.line}>
+                <span>
                   {conversionState.progressMessage ||
                     'Analyzing block structure...'}
-                </p>
+                </span>
                 {conversionState.progressPercentage !== undefined && (
-                  <p className={s.percentageText}>
+                  <span className={s.meta}>
                     {conversionState.progressPercentage}%
-                  </p>
+                  </span>
                 )}
-              </div>
-            )}
-
-            {/* Analysis Results */}
-            {conversionState.status === 'analyzed' && (
-              <AnalyzedSection
-                conversionState={conversionState}
-                ctx={ctx}
-                fullyReplaceBlock={fullyReplaceBlock}
-                setFullyReplaceBlock={setFullyReplaceBlock}
-                publishAfterChanges={publishAfterChanges}
-                setPublishAfterChanges={setPublishAfterChanges}
-                handleReset={handleReset}
-                handleConvert={handleConvert}
-              />
-            )}
-
-            {/* Converting State */}
-            {conversionState.status === 'converting' && (
-              <div className={s.card}>
-                <div className={s.converting}>
-                  <Spinner size={32} />
-
-                  <div className={s.progressHeader}>
-                    <h2>Converting...</h2>
-                  </div>
-
-                  <div className={s.progressContainer}>
-                    <div className={s.progressSteps}>
-                      <span>
-                        Step {conversionState.progress.currentStep} of{' '}
-                        {conversionState.progress.totalSteps}
-                      </span>
-                      <span>
-                        {Math.round(conversionState.progress.percentage)}%
-                      </span>
-                    </div>
-                    <div className={s.progressBar}>
-                      <div
-                        className={s.progressFill}
-                        style={{
-                          width: `${conversionState.progress.percentage}%`,
-                        }}
-                      />
-                    </div>
-                    <p className={s.currentStep}>
-                      {conversionState.progress.stepDescription}
-                    </p>
-                    {conversionState.progress.details && (
-                      <p className={s.progressDetails}>
-                        {conversionState.progress.details}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Success State */}
-            {conversionState.status === 'success' && (
-              <div className={s.card}>
-                <div className={s.success}>
-                  <div className={s.successIcon}>
-                    <Icons.Check />
-                  </div>
-                  <h2 className={s.successTitle}>Conversion Complete!</h2>
-
-                  <div className={s.successStats}>
-                    <div className={s.statItem}>
-                      <span className={s.statValue}>
-                        {conversionState.result.migratedRecords}
-                      </span>
-                      <span className={s.statLabel}>Records Migrated</span>
-                    </div>
-                    <div className={s.statDivider} />
-                    <div className={s.statItem}>
-                      <span className={s.statValue}>
-                        {conversionState.result.convertedFields}
-                      </span>
-                      <span className={s.statLabel}>Fields Converted</span>
-                    </div>
-                  </div>
-
-                  <div className={s.successDetails}>
-                    <p>
-                      New Model Created:{' '}
-                      <strong>{conversionState.result.newModelApiKey}</strong>
-                    </p>
-                  </div>
-
-                  <div
-                    className={s.actions}
-                    style={{ justifyContent: 'center' }}
-                  >
-                    <Button onClick={handleReset} buttonType="primary">
-                      Convert Another Block
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Error State */}
-            {conversionState.status === 'error' && (
-              <div className={s.card}>
-                <div className={s.error}>
-                  <h2>Something went wrong</h2>
-                  <p>{conversionState.message}</p>
-                  <Button onClick={handleReset} buttonType="primary">
-                    Try Again
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Form>
+              </p>
+            </div>
+          </Page.Group>
         )}
-      </div>
-    </Canvas>
+
+        {conversionState.status === 'analyzed' && (
+          <AnalyzedGroups
+            analysis={conversionState.analysis}
+            envPrefix={envPrefix}
+            fullyReplaceBlock={fullyReplaceBlock}
+            setFullyReplaceBlock={setFullyReplaceBlock}
+            publishAfterChanges={publishAfterChanges}
+            setPublishAfterChanges={setPublishAfterChanges}
+            handleReset={handleReset}
+            handleConvert={handleConvert}
+          />
+        )}
+
+        {conversionState.status === 'converting' && (
+          <ConvertingGroup progress={conversionState.progress} />
+        )}
+
+        {conversionState.status === 'success' && (
+          <Page.Group
+            title="Conversion"
+            status={<Pill tone="success">Done</Pill>}
+            footer={
+              <Button
+                tone="primary"
+                label="Convert another block"
+                onClick={handleReset}
+              />
+            }
+          >
+            <InfoList>
+              <InfoList.Row title="New model">
+                <ApiKey>{conversionState.result.newModelApiKey}</ApiKey>
+              </InfoList.Row>
+              <InfoList.Row title="Records migrated">
+                {conversionState.result.migratedRecords}
+              </InfoList.Row>
+              <InfoList.Row title="Fields converted">
+                {conversionState.result.convertedFields}
+              </InfoList.Row>
+            </InfoList>
+          </Page.Group>
+        )}
+
+        {conversionState.status === 'error' && (
+          <Page.Group title="Conversion">
+            <BlankSlate
+              placement="inline"
+              small
+              error
+              icon={<CircleExclamationIcon />}
+              title="Something went wrong"
+              code={conversionState.message}
+              description="Pick the block again to start over."
+              actions={<Button label="Try again" onClick={handleReset} />}
+            />
+          </Page.Group>
+        )}
+      </Page.Content>
+    </Page>
   );
 }
