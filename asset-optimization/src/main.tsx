@@ -20,7 +20,7 @@ connect({
 
     return [
       {
-        label: 'Asset Management',
+        label: 'Asset management',
         items: [
           {
             label: 'Optimize assets',

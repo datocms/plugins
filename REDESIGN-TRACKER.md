@@ -25,7 +25,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 11 | all-records-viewer | 3919 | ^19.2.4 | Done | Build, lint and tests pass. On next.0. |
 | 12 | project-wide-stage-viewer | 3864 | ^19.2.4 | In progress | Partly rebuilt; interrupted by a usage limit (finished parts saved) |
 | 13 | centra | 3619 | ^19.2.4 | In progress | Partly rebuilt; interrupted by a usage limit (finished parts saved) |
-| 14 | asset-optimization | 3050 | ^19.2.4 | In progress | Rebuilt; final review interrupted by a usage limit |
+| 14 | asset-optimization | 3050 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 15 | locale-duplicate | 2841 | ^19.2.4 | In progress | Partly rebuilt; interrupted by a usage limit (finished parts saved) |
 | 16 | ai-asset-source | 2203 | ^19.2.4 | Pending | |
 | 17 | record-bin | 2048 | ^19.2.4 | Pending | |

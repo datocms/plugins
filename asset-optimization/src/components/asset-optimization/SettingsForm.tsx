@@ -1,104 +1,13 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  FieldGroup,
-  Form,
-  SelectField,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
 import debounce from 'lodash.debounce';
 import { useEffect, useRef } from 'react';
-import type { ActionMeta, MultiValue, SingleValue } from 'react-select';
-import s from '../../entrypoints/styles.module.css';
 import type { OptimizationSettings } from '../../utils/optimizationUtils';
-import { defaultSettings } from '../../utils/optimizationUtils';
-import ButtonTooltip from './ButtonTooltip';
-import ParamTooltip from './ParamTooltip';
-
-/**
- * Hint with doc link component
- */
-const HintWithDocLink = ({ hint, url }: { hint: string; url: string }) => {
-  const ariaLabel = `Learn more about ${hint}`;
-
-  const openDocumentation = () => {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  return (
-    <button
-      className={s.hintWithDoc}
-      onClick={openDocumentation}
-      type="button"
-      aria-label={ariaLabel}
-    >
-      <span>{hint}</span>
-      <span className={s.docLinkIcon}>&#x2139;</span>
-    </button>
-  );
-};
-
-/**
- * Regular hint without a documentation link
- */
-const Hint = ({ hint }: { hint: string }) => {
-  return (
-    <div className={s.plainHint}>
-      <span>{hint}</span>
-    </div>
-  );
-};
-
-type NumberSettingKey = keyof Pick<
-  OptimizationSettings,
-  | 'largeAssetThreshold'
-  | 'veryLargeAssetThreshold'
-  | 'qualityLarge'
-  | 'qualityVeryLarge'
-  | 'resizeDimensionLarge'
-  | 'resizeDimensionVeryLarge'
-  | 'minimumReduction'
->;
-
-const validateNumberSettingValue = (
-  name: NumberSettingKey,
-  value: number,
-): number => {
-  const isQualityField = name === 'qualityLarge' || name === 'qualityVeryLarge';
-  const isPercentageField = name === 'minimumReduction';
-  const isThresholdField =
-    name === 'largeAssetThreshold' || name === 'veryLargeAssetThreshold';
-  const isDimensionField =
-    name === 'resizeDimensionLarge' || name === 'resizeDimensionVeryLarge';
-
-  if (isQualityField || isPercentageField) {
-    return Math.min(Math.max(0, value), 100);
-  }
-  if (isThresholdField) {
-    return Math.max(0.1, value);
-  }
-  if (isDimensionField) {
-    return Math.max(1, value);
-  }
-  return value;
-};
-
-const extractSelectStringValue = (
-  newValue:
-    | SingleValue<{ value: string; label: string }>
-    | MultiValue<{ value: string; label: string }>,
-): string | null => {
-  if (
-    newValue &&
-    typeof newValue === 'object' &&
-    !Array.isArray(newValue) &&
-    'value' in newValue
-  ) {
-    return newValue.value;
-  }
-  return null;
-};
+import NumberSetting, { type NumberSettingKey } from './NumberSetting';
 
 // Documentation URLs
 const docUrls = {
@@ -112,32 +21,248 @@ const docUrls = {
   colorSpace: 'https://docs.imgix.com/apis/rendering/format/color-space',
 };
 
+const TARGET_FORMATS = [
+  { value: 'webp', label: 'WebP' },
+  { value: 'avif', label: 'AVIF' },
+];
+
+type SwitchSettingKey = keyof Pick<
+  OptimizationSettings,
+  | 'preserveOriginalFormat'
+  | 'resizeLargeImages'
+  | 'useAutoCompress'
+  | 'useDpr'
+  | 'useLossless'
+  | 'useChromaSubsampling'
+  | 'preserveColorProfile'
+>;
+
 interface SettingsFormProps {
   settings: OptimizationSettings;
   onSettingsChange: (newSettings: OptimizationSettings) => void;
-  onStartOptimization: () => void;
-  onPreviewOptimization: () => void;
-  ctx: RenderPageCtx; // Added ctx to access updatePluginParameters
+  ctx: RenderPageCtx;
+}
+
+type GroupProps = {
+  settings: OptimizationSettings;
+  onNumberChange: (name: NumberSettingKey, value: number) => void;
+  onSwitchChange: (name: SwitchSettingKey) => (value: boolean | null) => void;
+  onTargetFormatChange: (value: string | null) => void;
+};
+
+function ImageSizeGroup({ settings, onNumberChange }: GroupProps) {
+  return (
+    <Page.Group title="Image size">
+      <div className="form__field form__row">
+        <div className="form__row__cell">
+          <NumberSetting
+            name="largeAssetThreshold"
+            label="Large image threshold"
+            hint="Images of this size or larger are optimized."
+            unit="MB"
+            value={settings.largeAssetThreshold}
+            onChange={onNumberChange}
+          />
+        </div>
+        <div className="form__row__cell">
+          <NumberSetting
+            name="veryLargeAssetThreshold"
+            label="Very large image threshold"
+            hint="Images of this size or larger get the very large settings."
+            unit="MB"
+            value={settings.veryLargeAssetThreshold}
+            onChange={onNumberChange}
+          />
+        </div>
+      </div>
+      <NumberSetting
+        name="minimumReduction"
+        label="Minimum size reduction"
+        hint="An image is replaced only when its new file is at least this much smaller."
+        unit="%"
+        value={settings.minimumReduction}
+        onChange={onNumberChange}
+      />
+    </Page.Group>
+  );
+}
+
+function FormatGroup({
+  settings,
+  onSwitchChange,
+  onTargetFormatChange,
+}: GroupProps) {
+  return (
+    <Page.Group title="Format">
+      <FieldWrapper
+        hint="JPEG, PNG, GIF, WebP and AVIF images keep their format. Images in other formats are skipped."
+        docs={{ label: 'Imgix fm parameter', to: docUrls.format }}
+      >
+        <SwitchInput
+          label="Keep the original format"
+          value={settings.preserveOriginalFormat}
+          onChange={onSwitchChange('preserveOriginalFormat')}
+        />
+      </FieldWrapper>
+      {!settings.preserveOriginalFormat && (
+        <FieldWrapper label="Convert to">
+          <RadioGroupInput
+            small
+            value={settings.targetFormat}
+            options={TARGET_FORMATS}
+            onChange={onTargetFormatChange}
+          />
+        </FieldWrapper>
+      )}
+      <FieldWrapper
+        hint="Lets Imgix pick the best compression for each image (auto=compress)."
+        docs={{ label: 'Imgix auto parameter', to: docUrls.auto }}
+      >
+        <SwitchInput
+          label="Automatic compression"
+          value={settings.useAutoCompress}
+          onChange={onSwitchChange('useAutoCompress')}
+        />
+      </FieldWrapper>
+    </Page.Group>
+  );
+}
+
+function ResizeGroup({ settings, onNumberChange, onSwitchChange }: GroupProps) {
+  return (
+    <Page.Group title="Resize">
+      <FieldWrapper
+        hint="Scales an image down when its longer side is over the max size."
+        docs={{ label: 'Imgix size parameters', to: docUrls.resize }}
+      >
+        <SwitchInput
+          label="Resize large images"
+          value={settings.resizeLargeImages}
+          onChange={onSwitchChange('resizeLargeImages')}
+        />
+      </FieldWrapper>
+      {settings.resizeLargeImages && (
+        <div className="form__field form__row">
+          <div className="form__row__cell">
+            <NumberSetting
+              name="resizeDimensionLarge"
+              label="Max size of large images"
+              hint="The longer side, in pixels."
+              unit="px"
+              value={settings.resizeDimensionLarge}
+              onChange={onNumberChange}
+            />
+          </div>
+          <div className="form__row__cell">
+            <NumberSetting
+              name="resizeDimensionVeryLarge"
+              label="Max size of very large images"
+              hint="The longer side, in pixels."
+              unit="px"
+              value={settings.resizeDimensionVeryLarge}
+              onChange={onNumberChange}
+            />
+          </div>
+        </div>
+      )}
+    </Page.Group>
+  );
+}
+
+function CompressionGroup({
+  settings,
+  onNumberChange,
+  onSwitchChange,
+}: GroupProps) {
+  return (
+    <Page.Group title="Compression">
+      <FieldWrapper
+        hint={
+          settings.useLossless
+            ? "The quality settings don't apply while this is on."
+            : 'Keeps every detail when the output format allows it.'
+        }
+        docs={{ label: 'Imgix lossless parameter', to: docUrls.lossless }}
+      >
+        <SwitchInput
+          label="Lossless compression"
+          value={settings.useLossless}
+          onChange={onSwitchChange('useLossless')}
+        />
+      </FieldWrapper>
+      {!settings.useLossless && (
+        <div className="form__field form__row">
+          <div className="form__row__cell">
+            <NumberSetting
+              name="qualityLarge"
+              label="Large image quality"
+              hint="From 0 to 100 (q). Higher keeps more detail."
+              docs={{ label: 'Imgix q parameter', to: docUrls.quality }}
+              value={settings.qualityLarge}
+              onChange={onNumberChange}
+            />
+          </div>
+          <div className="form__row__cell">
+            <NumberSetting
+              name="qualityVeryLarge"
+              label="Very large image quality"
+              hint="From 0 to 100 (q). Higher keeps more detail."
+              value={settings.qualityVeryLarge}
+              onChange={onNumberChange}
+            />
+          </div>
+        </div>
+      )}
+    </Page.Group>
+  );
+}
+
+function AdvancedGroup({ settings, onSwitchChange }: GroupProps) {
+  return (
+    <Page.Group title="Advanced">
+      <SwitchList>
+        <FieldWrapper
+          hint="Adds dpr=2 to the images over the very large threshold."
+          docs={{ label: 'Imgix dpr parameter', to: docUrls.dpr }}
+        >
+          <SwitchInput
+            label="Double pixel density for very large images"
+            value={settings.useDpr}
+            onChange={onSwitchChange('useDpr')}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          hint="Uses 4:4:4 chroma subsampling (chromasub=444) for JPEG images."
+          docs={{ label: 'Imgix chromasub parameter', to: docUrls.chroma }}
+        >
+          <SwitchInput
+            label="Higher-quality chroma subsampling"
+            value={settings.useChromaSubsampling}
+            onChange={onSwitchChange('useChromaSubsampling')}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          hint="Keeps the color profile of the original (cs=origin), so colors stay accurate."
+          docs={{ label: 'Imgix cs parameter', to: docUrls.colorSpace }}
+        >
+          <SwitchInput
+            label="Keep color profiles"
+            value={settings.preserveColorProfile}
+            onChange={onSwitchChange('preserveColorProfile')}
+          />
+        </FieldWrapper>
+      </SwitchList>
+    </Page.Group>
+  );
 }
 
 /**
- * SettingsForm component for configuring optimization settings
- *
- * This component provides form controls for adjusting various asset optimization
- * parameters like quality, size thresholds, and format settings.
- *
- * @param settings - Current optimization settings
- * @param onSettingsChange - Callback for when settings change
- * @param onStartOptimization - Callback for when the start button is clicked
- * @param onPreviewOptimization - Callback for when the preview button is clicked
- * @param ctx - DatoCMS SDK context
- * @returns Rendered form component
+ * The optimization settings, one group per topic. Every change saves itself
+ * in the plugin parameters, 500 ms after the last one.
  */
 const SettingsForm = ({
   settings,
   onSettingsChange,
-  onStartOptimization,
-  onPreviewOptimization,
   ctx,
 }: SettingsFormProps) => {
   // Create debounced function for saving settings to plugin parameters
@@ -154,7 +279,6 @@ const SettingsForm = ({
           await ctx.updatePluginParameters({
             optimization_settings: JSON.stringify(newSettings),
           });
-          console.log('Settings saved to plugin parameters:', newSettings);
         } catch (error) {
           console.error('Error saving settings:', error);
         }
@@ -178,385 +302,25 @@ const SettingsForm = ({
     }
   }, [settings]);
 
-  /**
-   * Handle changes to text/number input fields
-   */
-  const handleNumberChange =
-    (name: NumberSettingKey): ((newValue: string) => void) =>
-    (newValue) => {
-      const value = Number.parseFloat(newValue);
-      if (!Number.isNaN(value)) {
-        const validatedValue = validateNumberSettingValue(name, value);
-        onSettingsChange({ ...settings, [name]: validatedValue });
-      }
-    };
-
-  /**
-   * Handle changes to switch fields
-   */
-  const handleSwitchChange =
-    (name: keyof OptimizationSettings) => (value: boolean) => {
-      onSettingsChange({ ...settings, [name]: value });
-    };
-
-  /**
-   * Handle changes to select fields
-   */
-  const handleSelectChange =
-    (name: keyof OptimizationSettings) =>
-    (
-      newValue:
-        | SingleValue<{ value: string; label: string }>
-        | MultiValue<{ value: string; label: string }>,
-      _actionMeta: ActionMeta<{ value: string; label: string }>,
-    ) => {
-      const selectedValue = extractSelectStringValue(newValue);
-      if (selectedValue !== null) {
-        onSettingsChange({ ...settings, [name]: selectedValue });
-      }
-    };
-
-  // Format options for the dropdown
-  const formatOptions = [
-    { label: 'WebP', value: 'webp' },
-    { label: 'AVIF', value: 'avif' },
-  ];
-
-  // Selected format option based on current settings
-  const selectedFormatOption =
-    formatOptions.find((option) => option.value === settings.targetFormat) ||
-    formatOptions[0];
+  const groupProps: GroupProps = {
+    settings,
+    onNumberChange: (name, value) =>
+      onSettingsChange({ ...settings, [name]: value }),
+    onSwitchChange: (name) => (value) =>
+      onSettingsChange({ ...settings, [name]: value === true }),
+    onTargetFormatChange: (value) => {
+      if (value) onSettingsChange({ ...settings, targetFormat: value });
+    },
+  };
 
   return (
-    <Form className={s.settingsForm}>
-      <FieldGroup>
-        <h4>Size Thresholds</h4>
-        <div className={s.fieldRow}>
-          <div className={s.field}>
-            <TextField
-              id="largeAssetThreshold"
-              name="largeAssetThreshold"
-              label="Large Asset (MB)"
-              value={settings.largeAssetThreshold.toString()}
-              onChange={handleNumberChange('largeAssetThreshold')}
-            />
-            <Hint
-              hint={`Assets above ${settings.largeAssetThreshold}MB will be optimized`}
-            />
-          </div>
-          <div className={s.field}>
-            <TextField
-              id="veryLargeAssetThreshold"
-              name="veryLargeAssetThreshold"
-              label="Very Large Asset (MB)"
-              value={settings.veryLargeAssetThreshold.toString()}
-              onChange={handleNumberChange('veryLargeAssetThreshold')}
-            />
-            <Hint
-              hint={`Assets above ${settings.veryLargeAssetThreshold}MB get stronger optimization`}
-            />
-          </div>
-        </div>
-        <div className={s.field}>
-          <TextField
-            id="minimumReduction"
-            name="minimumReduction"
-            label="Minimum Size Reduction (%)"
-            value={settings.minimumReduction.toString()}
-            onChange={handleNumberChange('minimumReduction')}
-          />
-          <Hint hint="Only replace if reduced by at least this percentage" />
-        </div>
-      </FieldGroup>
-
-      <FieldGroup>
-        <h4>Basic Optimization</h4>
-        <div className={s.fieldRow}>
-          <div className={s.field}>
-            <ParamTooltip
-              paramName="fm"
-              paramValue={
-                settings.preserveOriginalFormat
-                  ? undefined
-                  : settings.targetFormat
-              }
-            >
-              <SwitchField
-                id="preserveOriginalFormat"
-                name="preserveOriginalFormat"
-                label="Preserve Original Format"
-                value={settings.preserveOriginalFormat}
-                onChange={handleSwitchChange('preserveOriginalFormat')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Keep original image format (JPG, PNG, etc.)"
-              url={docUrls.format}
-            />
-          </div>
-          <div className={s.field}>
-            <ParamTooltip paramName="auto" paramValue="compress">
-              <SwitchField
-                id="useAutoCompress"
-                name="useAutoCompress"
-                label="Auto Compress"
-                value={settings.useAutoCompress}
-                onChange={handleSwitchChange('useAutoCompress')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Use Imgix's auto compression features"
-              url={docUrls.auto}
-            />
-          </div>
-        </div>
-
-        {!settings.preserveOriginalFormat && (
-          <div className={s.field}>
-            <ParamTooltip paramName="fm" paramValue={settings.targetFormat}>
-              <SelectField
-                id="targetFormat"
-                name="targetFormat"
-                label="Target Format"
-                value={selectedFormatOption}
-                onChange={handleSelectChange('targetFormat')}
-                selectInputProps={{
-                  options: formatOptions,
-                }}
-              />
-            </ParamTooltip>
-            <Hint hint="Format to convert images to" />
-          </div>
-        )}
-
-        <p className={s.infoText}>
-          <strong>Format Settings:</strong>{' '}
-          {settings.preserveOriginalFormat
-            ? 'Original image formats will be preserved while optimizing quality and file size.'
-            : `Images will be converted to ${settings.targetFormat.toUpperCase()} format for better compression.`}
-          {settings.useAutoCompress && (
-            <span>
-              {' '}
-              Auto compression is enabled, letting Imgix automatically optimize
-              each image.
-            </span>
-          )}
-        </p>
-
-        <div className={s.fieldRow}>
-          <div className={s.field}>
-            <ParamTooltip
-              paramName="max-w"
-              paramValue={settings.resizeLargeImages ? 'value' : undefined}
-            >
-              <SwitchField
-                id="resizeLargeImages"
-                name="resizeLargeImages"
-                label="Resize Large Images"
-                value={settings.resizeLargeImages}
-                onChange={handleSwitchChange('resizeLargeImages')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Reduce image dimensions to save space"
-              url={docUrls.resize}
-            />
-          </div>
-        </div>
-      </FieldGroup>
-
-      {settings.resizeLargeImages && (
-        <FieldGroup>
-          <h4>Resize Dimensions</h4>
-          <div className={s.fieldRow}>
-            <div className={s.field}>
-              <ParamTooltip
-                paramName="max-w"
-                paramValue={settings.resizeDimensionLarge}
-              >
-                <TextField
-                  id="resizeDimensionLarge"
-                  name="resizeDimensionLarge"
-                  label="Large Image Max Width (px)"
-                  value={settings.resizeDimensionLarge.toString()}
-                  onChange={handleNumberChange('resizeDimensionLarge')}
-                />
-              </ParamTooltip>
-              <Hint hint="Max dimension for large images" />
-            </div>
-            <div className={s.field}>
-              <ParamTooltip
-                paramName="max-w"
-                paramValue={settings.resizeDimensionVeryLarge}
-              >
-                <TextField
-                  id="resizeDimensionVeryLarge"
-                  name="resizeDimensionVeryLarge"
-                  label="Very Large Image Max Width (px)"
-                  value={settings.resizeDimensionVeryLarge.toString()}
-                  onChange={handleNumberChange('resizeDimensionVeryLarge')}
-                />
-              </ParamTooltip>
-              <Hint hint="Max dimension for very large images" />
-            </div>
-          </div>
-        </FieldGroup>
-      )}
-
-      <FieldGroup>
-        <h4>Compression Settings</h4>
-        {!settings.useLossless && (
-          <div className={s.fieldRow}>
-            <div className={s.field}>
-              <ParamTooltip paramName="q" paramValue={settings.qualityLarge}>
-                <TextField
-                  id="qualityLarge"
-                  name="qualityLarge"
-                  label="Large Image Quality"
-                  value={settings.qualityLarge.toString()}
-                  onChange={handleNumberChange('qualityLarge')}
-                />
-              </ParamTooltip>
-              <HintWithDocLink
-                hint="Quality for large images (0-100)"
-                url={docUrls.quality}
-              />
-            </div>
-            <div className={s.field}>
-              <ParamTooltip
-                paramName="q"
-                paramValue={settings.qualityVeryLarge}
-              >
-                <TextField
-                  id="qualityVeryLarge"
-                  name="qualityVeryLarge"
-                  label="Very Large Image Quality"
-                  value={settings.qualityVeryLarge.toString()}
-                  onChange={handleNumberChange('qualityVeryLarge')}
-                />
-              </ParamTooltip>
-              <HintWithDocLink
-                hint="Quality for very large images (0-100)"
-                url={docUrls.quality}
-              />
-            </div>
-          </div>
-        )}
-        {settings.useLossless && (
-          <p className={s.infoText} style={{ marginBottom: 0 }}>
-            <strong>Lossless Mode:</strong> Standard quality settings are
-            disabled when using Lossless Mode.
-          </p>
-        )}
-      </FieldGroup>
-
-      <FieldGroup className={s.advancedOptionsGroup}>
-        <h4>Advanced Options</h4>
-        <div className={s.optionsGrid}>
-          <div className={s.optionItem}>
-            <ParamTooltip
-              paramName="lossless"
-              paramValue={settings.useLossless ? 1 : undefined}
-            >
-              <SwitchField
-                id="useLossless"
-                name="useLossless"
-                label="Use Lossless Compression"
-                value={settings.useLossless}
-                onChange={handleSwitchChange('useLossless')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Use lossless compression when possible"
-              url={docUrls.lossless}
-            />
-          </div>
-          <div className={s.optionItem}>
-            <ParamTooltip
-              paramName="dpr"
-              paramValue={settings.useDpr ? 2 : undefined}
-            >
-              <SwitchField
-                id="useDpr"
-                name="useDpr"
-                label="Use DPR Optimization"
-                value={settings.useDpr}
-                onChange={handleSwitchChange('useDpr')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Optimize for high-resolution displays (Retina)"
-              url={docUrls.dpr}
-            />
-          </div>
-          <div className={s.optionItem}>
-            <ParamTooltip
-              paramName="chromasub"
-              paramValue={settings.useChromaSubsampling ? 444 : undefined}
-            >
-              <SwitchField
-                id="useChromaSubsampling"
-                name="useChromaSubsampling"
-                label="Enhanced Chroma Sampling"
-                value={settings.useChromaSubsampling}
-                onChange={handleSwitchChange('useChromaSubsampling')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Use higher quality chroma subsampling (444) for JPEGs"
-              url={docUrls.chroma}
-            />
-          </div>
-          <div className={s.optionItem}>
-            <ParamTooltip
-              paramName="cs"
-              paramValue={settings.preserveColorProfile ? 'origin' : undefined}
-            >
-              <SwitchField
-                id="preserveColorProfile"
-                name="preserveColorProfile"
-                label="Preserve Color Profiles"
-                value={settings.preserveColorProfile}
-                onChange={handleSwitchChange('preserveColorProfile')}
-              />
-            </ParamTooltip>
-            <HintWithDocLink
-              hint="Maintain accurate colors from original image"
-              url={docUrls.colorSpace}
-            />
-          </div>
-        </div>
-      </FieldGroup>
-
-      <div className={s.formActionContainer}>
-        <div className={s.buttonGroup}>
-          <Button
-            buttonType="muted"
-            buttonSize="l"
-            onClick={() => onSettingsChange({ ...defaultSettings })}
-          >
-            Restore Defaults
-          </Button>
-          <ButtonTooltip tooltip="Calculate potential improvements with current settings without replacing any assets">
-            <Button
-              buttonType="muted"
-              buttonSize="l"
-              onClick={onPreviewOptimization}
-            >
-              Preview Optimization
-            </Button>
-          </ButtonTooltip>
-          <Button
-            buttonType="primary"
-            buttonSize="l"
-            onClick={onStartOptimization}
-            fullWidth
-          >
-            Start Optimization
-          </Button>
-        </div>
-      </div>
-    </Form>
+    <>
+      <ImageSizeGroup {...groupProps} />
+      <FormatGroup {...groupProps} />
+      <ResizeGroup {...groupProps} />
+      <CompressionGroup {...groupProps} />
+      <AdvancedGroup {...groupProps} />
+    </>
   );
 };
 

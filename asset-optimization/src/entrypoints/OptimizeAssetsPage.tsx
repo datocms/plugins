@@ -1,11 +1,23 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, SelectField } from 'datocms-react-ui';
-import { useEffect, useRef, useState } from 'react';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Main from 'datocms-react-ui/Main';
+import { Page } from 'datocms-react-ui/Page';
+import Pane from 'datocms-react-ui/Pane';
+import Pill from 'datocms-react-ui/Pill';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import ActivityLog, {
   type LogEntry,
 } from '../components/asset-optimization/ActivityLog';
-import AssetList from '../components/asset-optimization/AssetList';
+import AssetList, {
+  type AssetCategory,
+} from '../components/asset-optimization/AssetList';
+import PageToolbar, {
+  type PagePhase,
+} from '../components/asset-optimization/PageToolbar';
 import ProgressIndicator from '../components/asset-optimization/ProgressIndicator';
 import { ACTIVITY_LOG_LIMIT } from '../components/asset-optimization/presentation';
 import ResultsStats from '../components/asset-optimization/ResultsStats';
@@ -17,12 +29,19 @@ import {
 import { formatFileSize } from '../utils/formatters';
 import {
   type AssetOptimizerResult,
+  defaultSettings,
   normalizeSettings,
   type OptimizationSettings,
 } from '../utils/optimizationUtils';
-import s from './styles.module.css';
+import s from './OptimizeAssetsPage.module.css';
 
 type Props = { ctx: RenderPageCtx };
+
+type CollectionOption = { value: string; label: string };
+
+// The option of the whole environment. Collection IDs are numeric, thus it
+// never matches one. The page keeps '' for it.
+const ALL_ASSETS = 'all';
 
 function readSettings(savedSettings: unknown): OptimizationSettings {
   try {
@@ -34,14 +53,77 @@ function readSettings(savedSettings: unknown): OptimizationSettings {
   }
 }
 
+/** The first group of the page when the plugin can't use the API token */
+function AccessGroup() {
+  return (
+    <Page.Group
+      title="API access"
+      tone="warning"
+      status={<Pill tone="warning">Not allowed</Pill>}
+    >
+      <Callout tone="warning">
+        Ask an admin to let this plugin use your API token, which it needs to
+        find and replace images.
+      </Callout>
+    </Page.Group>
+  );
+}
+
+type ScopeGroupProps = {
+  collections: CollectionOption[];
+  collectionId: string;
+  loading: boolean;
+  failed: boolean;
+  onChange: (collectionId: string) => void;
+};
+
+/** The images that a run handles: all of them, or one asset collection */
+function ScopeGroup({
+  collections,
+  collectionId,
+  loading,
+  failed,
+  onChange,
+}: ScopeGroupProps) {
+  const options = useMemo(
+    () => [{ value: ALL_ASSETS, label: 'All assets' }, ...collections],
+    [collections],
+  );
+
+  return (
+    <Page.Group title="Scope">
+      <FieldWrapper
+        label="Asset collection"
+        hint="Only images in this collection are processed, not its subcollections."
+        error={
+          failed
+            ? "Couldn't load the asset collections. Reload the page to pick one."
+            : undefined
+        }
+      >
+        <SelectInput
+          value={collectionId || ALL_ASSETS}
+          options={options}
+          loading={loading}
+          clearable={false}
+          onChange={(value: string | null) =>
+            onChange(!value || value === ALL_ASSETS ? '' : value)
+          }
+        />
+      </FieldWrapper>
+    </Page.Group>
+  );
+}
+
 const OptimizeAssetsPage = ({ ctx }: Props) => {
   const savedSettings = ctx.plugin.attributes.parameters.optimization_settings;
   const [settings, setSettings] = useState(() => readSettings(savedSettings));
-  const [collections, setCollections] = useState<
-    { value: string; label: string }[]
-  >([]);
+  const [collections, setCollections] = useState<CollectionOption[]>([]);
   const [collectionId, setCollectionId] = useState('');
   const [collectionError, setCollectionError] = useState(false);
+  const [collectionsLoading, setCollectionsLoading] = useState(() =>
+    Boolean(ctx.currentUserAccessToken),
+  );
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -53,9 +135,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
   const [result, setResult] = useState<AssetOptimizerResult | null>(null);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [droppedLogCount, setDroppedLogCount] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<
-    'optimized' | 'skipped' | 'failed' | null
-  >(null);
+  const [openCategories, setOpenCategories] = useState<AssetCategory[]>([]);
   const controller = useRef<AbortController | null>(null);
   const runLocked = useRef(false);
   const mounted = useRef(true);
@@ -63,8 +143,12 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
   const logCount = useRef(0);
 
   useEffect(() => {
-    if (!ctx.currentUserAccessToken) return;
+    if (!ctx.currentUserAccessToken) {
+      setCollectionsLoading(false);
+      return;
+    }
     let active = true;
+    setCollectionsLoading(true);
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
@@ -79,10 +163,14 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
           setCollections(
             items.map((item) => ({ value: item.id, label: item.label })),
           );
+          setCollectionsLoading(false);
         }
       })
       .catch(() => {
-        if (active) setCollectionError(true);
+        if (active) {
+          setCollectionError(true);
+          setCollectionsLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -155,7 +243,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
     setIsPreviewing(false);
     setIsCancelling(false);
     setResult(null);
-    setSelectedCategory(null);
+    setOpenCategories([]);
     setLogEntries([]);
     setDroppedLogCount(0);
     logBuffer.current = [];
@@ -163,13 +251,20 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
     setProgress({ phase: 'loading', current: 0, total: 0 });
   };
 
+  const collectionLabel = () =>
+    collections.find((item) => item.value === collectionId)?.label ??
+    collectionId;
+
   const confirmOptimization = async () => {
+    const scope = collectionId
+      ? `in the collection “${collectionLabel()}”`
+      : `in the whole “${ctx.environment}” environment`;
     const confirmation = await ctx.openConfirm({
-      title: 'Confirm Asset Optimization',
-      content: `WARNING: This is a destructive action that will permanently replace matching assets ${collectionId ? `in the collection "${collections.find((item) => item.value === collectionId)?.label ?? collectionId}"` : 'in the entire environment'}. This action is non-reversible and original assets cannot be recovered once replaced. Are you sure you want to proceed?`,
+      title: 'Replace images?',
+      content: `This replaces the matching images ${scope} with optimized versions. The originals can't be recovered.`,
       choices: [
         {
-          label: 'Proceed to Final Confirmation',
+          label: 'Continue',
           value: 'confirm',
           intent: 'positive',
         },
@@ -178,25 +273,24 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
     });
     if (confirmation !== 'confirm') return false;
     const finalConfirmation = await ctx.openConfirm({
-      title: 'Final Confirmation Required',
+      title: 'Replace the originals for good?',
       content:
-        'ARE YOU ABSOLUTELY SURE? This will immediately replace your original assets with optimized versions. Your original assets will be PERMANENTLY DELETED and CANNOT be recovered. This may affect the visual quality of your images if not configured correctly.\n\nWe STRONGLY RECOMMEND testing this first in a sandbox environment, so you can fine-tune the thresholds and optimization settings to your liking, make sure everything works with your project, and then promote the sandbox environment once you are satisfied with the results.',
+        "The originals are deleted and can't be recovered, and wrong settings can lower the quality of your images. Try the settings in a sandbox environment first, then promote it once you're happy with the results.",
       choices: [
         {
-          label: 'Yes, Replace My Assets',
+          label: 'Replace images',
           value: 'confirm',
-          intent: 'positive',
+          intent: 'negative',
         },
       ],
-      cancel: { label: 'No, Cancel Operation', value: false },
+      cancel: { label: 'Cancel', value: false },
     });
     return finalConfirmation === 'confirm';
   };
 
-  const reportResults = async (
-    completed: AssetOptimizerResult,
-    preview: boolean,
-  ) => {
+  // The toasts are not awaited: the promise of customToast settles only when
+  // the toast closes, and the run ends only after this function.
+  const reportResults = (completed: AssetOptimizerResult, preview: boolean) => {
     setResult(completed);
     addLog(
       `Processed ${completed.optimized + completed.skipped + completed.failed} of ${completed.totalAssets}. Optimized: ${completed.optimized}, Skipped: ${completed.skipped}, Failed: ${completed.failed}.`,
@@ -212,12 +306,25 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
         completed.stoppedReason ??
           'Operation cancelled. Accepted replacements were allowed to finish.',
       );
-      await ctx.notice('Asset processing stopped. Review the partial results.');
+      void ctx.customToast({
+        type: 'warning',
+        message: preview
+          ? 'Preview stopped. The results show what was checked.'
+          : 'Optimization stopped. The results show what was done.',
+        dismissAfterTimeout: true,
+      });
+    } else if (completed.failed > 0) {
+      void ctx.customToast({
+        type: 'warning',
+        message:
+          'Finished with failed images. Check the list of failed images.',
+        dismissAfterTimeout: true,
+      });
     } else {
-      await ctx.notice(
-        completed.failed > 0
-          ? 'Asset processing completed with failures. Review the failed assets.'
-          : `Asset optimization ${preview ? 'preview' : 'process'} completed!`,
+      void ctx.notice(
+        preview
+          ? 'Preview finished. No image was changed.'
+          : 'Optimization finished.',
       );
     }
   };
@@ -237,7 +344,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
     addLog(`Starting asset optimization ${preview ? 'preview' : 'process'}...`);
     addLog(
       collectionId
-        ? `Scope: collection "${collections.find((item) => item.value === collectionId)?.label ?? collectionId}" in environment ${ctx.environment}.`
+        ? `Scope: collection "${collectionLabel()}" in environment ${ctx.environment}.`
         : `Scope: all matching assets in environment ${ctx.environment}.`,
     );
     const completed = await runAssetOptimization(client, settings, {
@@ -251,14 +358,14 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
       },
     });
     if (!mounted.current) return;
-    await reportResults(completed, preview);
+    reportResults(completed, preview);
   };
 
   const reportError = async (error: unknown) => {
     if (!mounted.current) return;
     const message = error instanceof Error ? error.message : String(error);
     addLog(`Error during asset processing: ${message}`);
-    await ctx.alert(`Error during asset processing: ${message}`);
+    await ctx.alert(`Couldn't finish the run: ${message}`);
   };
 
   const finishRun = () => {
@@ -289,97 +396,109 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
     }
   };
 
+  const cancel = () => {
+    setIsCancelling(true);
+    controller.current?.abort();
+  };
+
+  const restoreDefaults = () => {
+    setSettings({ ...defaultSettings });
+    void ctx.notice('Default settings restored.');
+  };
+
+  const toggleCategory = (category: AssetCategory) =>
+    setOpenCategories((open) =>
+      open.includes(category)
+        ? open.filter((item) => item !== category)
+        : [...open, category],
+    );
+
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+  const hasAccessToken = Boolean(ctx.currentUserAccessToken);
+  const phase: PagePhase = isProcessing
+    ? 'running'
+    : result
+      ? 'results'
+      : 'settings';
+
+  let body: ReactNode;
+  if (phase === 'running') {
+    body = (
+      <ProgressIndicator
+        current={progress.current}
+        total={progress.total}
+        isLoading={progress.phase === 'loading'}
+        currentAsset={progress.asset}
+        isPreview={isPreviewing}
+        isCancelling={isCancelling}
+      />
+    );
+  } else if (result) {
+    body = (
+      <>
+        <ResultsStats
+          result={result}
+          largeAssetThreshold={settings.largeAssetThreshold}
+          isPreview={isPreviewing}
+        />
+        <AssetList
+          result={result}
+          isPreview={isPreviewing}
+          openCategories={openCategories}
+          onToggleCategory={toggleCategory}
+          environmentPrefix={environmentPrefix}
+        />
+      </>
+    );
+  } else {
+    body = (
+      <>
+        {!hasAccessToken && <AccessGroup />}
+        <ScopeGroup
+          collections={collections}
+          collectionId={collectionId}
+          loading={collectionsLoading}
+          failed={collectionError}
+          onChange={setCollectionId}
+        />
+        <SettingsForm
+          settings={settings}
+          onSettingsChange={setSettings}
+          ctx={ctx}
+        />
+      </>
+    );
+  }
+
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <div className={s.container}>
-        <h1 className={s.title}>Asset Optimization</h1>
-        {!isProcessing && !result && (
-          <div className={s.settingsContainer}>
-            <SelectField
-              id="assetCollection"
-              name="assetCollection"
-              label="Asset collection"
-              hint="Only matching images in this collection will be processed. Subcollections are excluded."
-              value={[{ value: '', label: 'All assets' }, ...collections].find(
-                (item) => item.value === collectionId,
-              )}
-              selectInputProps={{
-                options: [{ value: '', label: 'All assets' }, ...collections],
-              }}
-              onChange={(value) => {
-                if (value && !Array.isArray(value) && 'value' in value)
-                  setCollectionId(value.value);
-              }}
-            />
-            {collectionError && (
-              <p role="status">
-                Couldn't load asset collections. Reload to choose a collection.
-              </p>
-            )}
-            <SettingsForm
-              settings={settings}
-              onSettingsChange={setSettings}
-              onStartOptimization={() => startRun(false)}
-              onPreviewOptimization={() => startRun(true)}
-              ctx={ctx}
-            />
-          </div>
-        )}
-        <ProgressIndicator
-          current={progress.current}
-          total={progress.total}
-          isVisible={isProcessing}
-          isLoading={progress.phase === 'loading'}
-          currentAsset={progress.asset}
-          isPreview={isPreviewing}
-          assetSizeCategory={
-            settings.veryLargeAssetThreshold > 0
-              ? 'large and very large'
-              : 'large'
-          }
-        />
-        {isProcessing && (
-          <Button
-            buttonType="negative"
-            buttonSize="s"
-            disabled={isCancelling}
-            onClick={() => {
-              setIsCancelling(true);
-              controller.current?.abort();
-            }}
-          >
-            {isCancelling
-              ? 'Cancelling — finishing accepted replacements…'
-              : 'Cancel'}
-          </Button>
-        )}
-        {result && (
-          <>
-            <ResultsStats
-              result={result}
-              setSelectedCategory={setSelectedCategory}
-              resetState={resetState}
-              largeAssetThreshold={settings.largeAssetThreshold}
+      <Main className={s.page}>
+        <Pane
+          ariaLabel="Asset optimization"
+          header={
+            <PageToolbar
+              phase={phase}
               isPreview={isPreviewing}
+              isCancelling={isCancelling}
+              hasAccessToken={hasAccessToken}
+              onRestoreDefaults={restoreDefaults}
+              onPreview={() => startRun(true)}
+              onStart={() => startRun(false)}
+              onCancel={cancel}
+              onBackToSettings={resetState}
             />
-            {selectedCategory && (
-              <AssetList
-                assets={
-                  selectedCategory === 'optimized'
-                    ? result.optimizedAssets
-                    : selectedCategory === 'skipped'
-                      ? result.skippedAssets
-                      : result.failedAssets
-                }
-                category={selectedCategory}
-                onClose={() => setSelectedCategory(null)}
-                ctx={ctx}
-              />
-            )}
-          </>
-        )}
-        <ActivityLog log={logEntries} droppedLogCount={droppedLogCount} />
-      </div>
+          }
+        >
+          <Page variant="large">
+            <Page.Content>
+              {body}
+              <ActivityLog log={logEntries} droppedLogCount={droppedLogCount} />
+            </Page.Content>
+          </Page>
+        </Pane>
+      </Main>
     </Canvas>
   );
 };

@@ -1,0 +1,24 @@
+/* The positioned box with the height of the frame, which the pane fills */
+.page {
+  position: absolute;
+  inset: 0;
+  background-color: var(--color--surface);
+}
+
+/* The parts of the progress, one under the other */
+.progress {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
+/* The line of the run in progress: the spinner, the text and the share */
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.percent {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}

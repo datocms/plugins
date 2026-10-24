@@ -1,7 +1,7 @@
-import type { ReactElement } from 'react';
-import { useEffect, useRef } from 'react';
-import s from '../../entrypoints/styles.module.css';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
+import { Page } from 'datocms-react-ui/Page';
 import { formatFileSize } from '../../utils/formatters';
+import { useFormatters } from '../../utils/useFormatters';
 import { getVisibleActivityLog } from './presentation';
 
 /**
@@ -15,91 +15,41 @@ export interface LogEntry {
   savingsPercentage?: number;
 }
 
-/**
- * Props for the ActivityLog component
- */
 interface ActivityLogProps {
   log: LogEntry[];
   droppedLogCount?: number;
 }
 
+/** One line of the log, with the sizes of an optimized image */
+function logLine(entry: LogEntry): string {
+  if (!entry.originalSize || !entry.optimizedSize) return entry.text;
+  return `${entry.text}  ${formatFileSize(entry.originalSize)} → ${formatFileSize(entry.optimizedSize)} (−${entry.savingsPercentage}%)`;
+}
+
 /**
- * ActivityLog component displays a log of optimization activities
- *
- * This component displays log entries in reverse chronological order
- * (newest logs at the top) as per the user's preference.
- *
- * @param log - Array of log entries to display
- * @returns Rendered component or null if no logs are present
+ * The log of the run, newest first. It shows nothing while the log is empty.
  */
-const ActivityLog = ({
-  log,
-  droppedLogCount = 0,
-}: ActivityLogProps): ReactElement | null => {
-  // Create a ref for the logs container
-  const logsContainerRef = useRef<HTMLDivElement>(null);
-  const entryKeys = useRef(new WeakMap<LogEntry, number>());
-  const nextEntryKey = useRef(0);
-
-  const getEntryKey = (entry: LogEntry): string => {
-    if (entry.id !== undefined) return `log-${entry.id}`;
-    let key = entryKeys.current.get(entry);
-    if (key === undefined) {
-      key = nextEntryKey.current++;
-      entryKeys.current.set(entry, key);
-    }
-    return `entry-${key}`;
-  };
-
-  // Auto-scroll to the bottom whenever logs are updated
-  useEffect(() => {
-    if (logsContainerRef.current) {
-      const { scrollHeight, clientHeight } = logsContainerRef.current;
-      logsContainerRef.current.scrollTop = scrollHeight - clientHeight;
-    }
-  }, []);
-
+const ActivityLog = ({ log, droppedLogCount = 0 }: ActivityLogProps) => {
+  const format = useFormatters();
   if (log.length === 0) return null;
 
   const { entries, totalEntries, omittedEntries } = getVisibleActivityLog(
     log,
     droppedLogCount,
   );
+  const countText =
+    omittedEntries > 0
+      ? `Latest ${format.count(entries.length)} of ${format.count(totalEntries)} entries`
+      : format.plural(entries.length, 'entry', 'entries');
 
   return (
-    <div className={s.logWrapper}>
-      <div className={s.logHeader}>
-        <h3>Activity Log</h3>
-        <span>
-          {omittedEntries > 0
-            ? `Latest ${entries.length} of ${totalEntries} entries`
-            : `${entries.length} entries`}
-        </span>
-      </div>
-      <div className={s.logsContainer} ref={logsContainerRef}>
-        <div className={s.logs}>
-          {entries.map((entry) => (
-            <div key={getEntryKey(entry)} className={s.logEntry}>
-              <span>{entry.text}</span>
-              {entry.originalSize && entry.optimizedSize && (
-                <span className={s.sizeComparison}>
-                  <span className={s.originalSize}>
-                    {formatFileSize(entry.originalSize)}
-                  </span>
-                  <span className={s.sizeArrow}>→</span>
-                  <span className={s.optimizedSize}>
-                    {formatFileSize(entry.optimizedSize)}
-                  </span>
-                  <span className={s.sizeSavings}>
-                    (-{entry.savingsPercentage}%)
-                  </span>
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <Page.Group title="Activity log" footer={countText}>
+      <CodeSnippet
+        ariaLabel="Activity log"
+        maxHeight={320}
+        code={entries.map(logLine).join('\n')}
+      />
+    </Page.Group>
   );
 };
 

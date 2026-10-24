@@ -1,265 +1,277 @@
-import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button } from 'datocms-react-ui';
-import { type ReactElement, useEffect, useState } from 'react';
-import s from '../../entrypoints/styles.module.css';
+import Button from 'datocms-react-ui/Button';
+import { Page } from 'datocms-react-ui/Page';
+import {
+  Table,
+  type TableColumn,
+  type TableLayout,
+  useInMemoryTableLayout,
+} from 'datocms-react-ui/Table';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowUpRightFromSquareIcon, ImageIcon } from '../../icons';
 import { formatFileSize } from '../../utils/formatters';
 import type {
-  Asset,
-  OptimizedAsset as OptimizedAssetType,
+  AssetOptimizerResult,
+  OptimizedAsset,
   ProcessedAsset,
 } from '../../utils/optimizationUtils';
 import { ASSET_PAGE_SIZE, getAssetPage } from './presentation';
 
-interface AssetListProps {
-  assets: Asset[] | OptimizedAssetType[] | ProcessedAsset[];
-  category: 'optimized' | 'skipped' | 'failed';
-  onClose?: () => void;
-  ctx: RenderPageCtx;
+export type AssetCategory = 'optimized' | 'skipped' | 'failed';
+
+type ResultAsset = OptimizedAsset | ProcessedAsset;
+
+// The width of the controls of a row: two micro icon buttons
+const ROW_CONTROLS_WIDTH = 64;
+
+const extensionOf = (asset: ResultAsset) =>
+  (asset.path.split('.').pop() ?? '').toUpperCase();
+
+const sizesOf = (asset: ResultAsset) =>
+  'originalSize' in asset
+    ? { originalSize: asset.originalSize, optimizedSize: asset.optimizedSize }
+    : { originalSize: undefined, optimizedSize: undefined };
+
+const computeSavingsPercentage = (asset: ResultAsset): string => {
+  const { originalSize, optimizedSize } = sizesOf(asset);
+  if (!originalSize || !optimizedSize) return '—';
+  return `${Math.round(((originalSize - optimizedSize) / originalSize) * 100)}%`;
+};
+
+const fileColumn: TableColumn<ResultAsset> = {
+  name: 'file',
+  label: 'File',
+  minWidth: 240,
+  renderCell: (asset) => asset.path,
+};
+
+const typeColumn: TableColumn<ResultAsset> = {
+  name: 'type',
+  label: 'Type',
+  priority: 1,
+  renderCell: extensionOf,
+};
+
+function columnsOf(
+  category: AssetCategory,
+  isPreview: boolean,
+): TableColumn<ResultAsset>[] {
+  if (category === 'skipped') return [fileColumn, typeColumn];
+  if (category === 'failed')
+    return [
+      fileColumn,
+      typeColumn,
+      {
+        name: 'error',
+        label: 'Error',
+        priority: 2,
+        truncate: false,
+        renderCell: (asset) => ('error' in asset ? asset.error : undefined),
+      },
+    ];
+  return [
+    fileColumn,
+    typeColumn,
+    {
+      name: 'originalSize',
+      label: 'Original size',
+      renderCell: (asset) => {
+        const { originalSize } = sizesOf(asset);
+        return originalSize === undefined ? '—' : formatFileSize(originalSize);
+      },
+    },
+    {
+      name: 'optimizedSize',
+      label: isPreview ? 'Expected size' : 'New size',
+      renderCell: (asset) => {
+        const { optimizedSize } = sizesOf(asset);
+        return optimizedSize === undefined
+          ? '—'
+          : formatFileSize(optimizedSize);
+      },
+    },
+    {
+      name: 'saved',
+      label: 'Saved',
+      priority: 2,
+      renderCell: computeSavingsPercentage,
+    },
+  ];
 }
 
-// Local interface to ensure we have a complete asset with optimization properties
-interface DisplayAsset extends Asset {
-  originalSize?: number;
-  optimizedSize?: number;
-}
-
-const getCategoryBadgeClass = (
-  category: 'optimized' | 'skipped' | 'failed',
-): string => {
-  switch (category) {
-    case 'optimized':
-      return s.badgeGreen;
-    case 'failed':
-      return s.badgeRed;
-    case 'skipped':
-      return s.badgeGray;
-    default:
-      return s.badgeBlue;
-  }
+const DEFAULT_LAYOUTS: Record<AssetCategory, TableLayout> = {
+  optimized: {
+    columns: [
+      { name: 'file', width: 4 },
+      { name: 'type', width: 1 },
+      { name: 'originalSize', width: 1.5 },
+      { name: 'optimizedSize', width: 1.5 },
+      { name: 'saved', width: 1 },
+    ],
+  },
+  skipped: {
+    columns: [
+      { name: 'file', width: 4 },
+      { name: 'type', width: 1 },
+    ],
+  },
+  failed: {
+    columns: [
+      { name: 'file', width: 3 },
+      { name: 'type', width: 1 },
+      { name: 'error', width: 4 },
+    ],
+  },
 };
 
-const normalizeToDisplayAsset = (
-  asset: Asset | OptimizedAssetType | ProcessedAsset,
-): DisplayAsset => {
-  const originalSize =
-    'originalSize' in asset ? (asset.originalSize as number) : undefined;
-  const optimizedSize =
-    'optimizedSize' in asset ? (asset.optimizedSize as number) : undefined;
-  const size = 'size' in asset ? asset.size : (originalSize ?? 0);
-  const basename = 'basename' in asset ? asset.basename : '';
-
-  return {
-    id: asset.id,
-    path: asset.path,
-    url: asset.url,
-    is_image: true,
-    size,
-    basename,
-    originalSize,
-    optimizedSize,
-  };
+type CategoryGroupProps = {
+  category: AssetCategory;
+  title: string;
+  assets: readonly ResultAsset[];
+  isPreview: boolean;
+  open: boolean;
+  onToggle: () => void;
+  environmentPrefix: string;
 };
 
-const computeSavingsPercentage = (
-  originalSize: number | undefined,
-  optimizedSize: number | undefined,
-): number | null => {
-  if (!originalSize || !optimizedSize) {
-    return null;
-  }
-  return Math.round(((originalSize - optimizedSize) / originalSize) * 100);
-};
-
-type AssetListItemProps = {
-  asset: Asset | OptimizedAssetType | ProcessedAsset;
-  category: 'optimized' | 'skipped' | 'failed';
-  ctx: RenderPageCtx;
-};
-
-const AssetListItem = ({
-  asset,
+/** The images of one category of the results, in a table that opens */
+function CategoryGroup({
   category,
-  ctx,
-}: AssetListItemProps): ReactElement => {
-  const displayAsset = normalizeToDisplayAsset(asset);
-  const savingsPercentage = computeSavingsPercentage(
-    displayAsset.originalSize,
-    displayAsset.optimizedSize,
-  );
-  const fileExtension = displayAsset.path.split('.').pop() ?? '';
-  const showOptimizationStats =
-    category === 'optimized' &&
-    Boolean(displayAsset.originalSize) &&
-    Boolean(displayAsset.optimizedSize);
-
-  return (
-    <li key={displayAsset.id} className={s.assetListItem}>
-      <div className={s.assetItemContent}>
-        <div className={s.assetIcon}>
-          <div className={s.fileIconWrapper}>{fileExtension.toUpperCase()}</div>
-        </div>
-        <div className={s.assetDetails}>
-          <p className={s.assetPath}>{displayAsset.path}</p>
-          {'error' in asset &&
-            typeof asset.error === 'string' &&
-            asset.error && (
-              <p
-                style={{
-                  margin: 'var(--spacing-s) 0 0',
-                  fontSize: 'var(--font-size-xs)',
-                  color: 'var(--color--ink-danger)',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {asset.error}
-              </p>
-            )}
-          {showOptimizationStats && (
-            <div className={s.optimizationStats}>
-              <div className={s.sizeInfo}>
-                <div className={s.sizeBefore}>
-                  <span className={s.sizeLabel}>Original:</span>
-                  <span className={s.sizeValue}>
-                    {formatFileSize(displayAsset.originalSize ?? 0)}
-                  </span>
-                </div>
-                <div className={s.sizeArrow}>→</div>
-                <div className={s.sizeAfter}>
-                  <span className={s.sizeLabel}>Optimized:</span>
-                  <span className={s.sizeValue}>
-                    {formatFileSize(displayAsset.optimizedSize ?? 0)}
-                  </span>
-                </div>
-              </div>
-              {savingsPercentage && (
-                <div className={`${s.savingsBadge} ${s.badgeGreen}`}>
-                  {savingsPercentage}% savings
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <div className={s.assetActions}>
-          <Button
-            buttonSize="xxs"
-            buttonType="primary"
-            onClick={() => window.open(displayAsset.url, '_blank')}
-          >
-            View Asset
-          </Button>
-          <Button
-            buttonSize="xxs"
-            buttonType="muted"
-            style={{ marginLeft: '8px' }}
-            onClick={() =>
-              window.open(
-                `https://${ctx.site.attributes.internal_domain}/environments/${ctx.environment}/media/assets/${displayAsset.id}`,
-                '_blank',
-              )
-            }
-          >
-            Media Area
-          </Button>
-        </div>
-      </div>
-    </li>
-  );
-};
-
-/**
- * AssetList component displays categorized lists of assets (optimized, skipped, or failed)
- *
- * This component displays a list of assets based on the selected category with action buttons:
- * - "View Asset" button - Opens the asset in a new tab
- */
-const AssetList = ({
+  title,
   assets,
-  category,
-  onClose,
-  ctx,
-}: AssetListProps): ReactElement => {
+  isPreview,
+  open,
+  onToggle,
+  environmentPrefix,
+}: CategoryGroupProps) {
+  const [layout, setLayout] = useInMemoryTableLayout(DEFAULT_LAYOUTS[category]);
+  const columns = useMemo(
+    () => columnsOf(category, isPreview),
+    [category, isPreview],
+  );
   const [page, setPage] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Reset pagination whenever the selected result set changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reset pagination whenever the result set changes.
   useEffect(() => {
     setPage(0);
   }, [assets, category]);
 
-  const assetPage = getAssetPage<Asset | OptimizedAssetType | ProcessedAsset>(
-    assets,
-    page,
-  );
-  const badgeClass = getCategoryBadgeClass(category);
-  const categoryTitle = category.charAt(0).toUpperCase() + category.slice(1);
+  const assetPage = getAssetPage(assets, page);
 
   return (
-    <div className={s.assetListCard}>
-      <div className={s.assetListHeader}>
-        <div className={s.assetListHeaderTitle}>
-          <div className={`${s.categoryBadge} ${badgeClass}`}>
-            {assets.length}
-          </div>
-          <h3>{categoryTitle} Assets</h3>
-        </div>
-        {onClose && (
-          <Button buttonType="negative" buttonSize="xs" onClick={onClose}>
-            Close
-          </Button>
-        )}
-      </div>
-
-      {assets.length === 0 ? (
-        <div className={s.noAssetsMessage}>
-          No {category} assets to display.
-        </div>
-      ) : (
-        <ul key={`${category}-${assetPage.page}`} className={s.assetList}>
+    <Page.Group
+      title={title}
+      flush
+      collapse={{ open, onToggle }}
+      footer={
+        assets.length > ASSET_PAGE_SIZE ? (
+          <Toolbar>
+            <Toolbar.Pagination
+              ariaLabel={title}
+              totalEntries={assets.length}
+              perPage={ASSET_PAGE_SIZE}
+              currentPage={assetPage.page}
+              onChange={setPage}
+            />
+          </Toolbar>
+        ) : undefined
+      }
+    >
+      <Table
+        columns={columns}
+        layout={layout}
+        onLayoutChange={setLayout}
+        trailingWidth={ROW_CONTROLS_WIDTH}
+      >
+        <Table.Header />
+        <Table.Body>
           {assetPage.assets.map((asset) => (
-            <AssetListItem
+            <Table.Row
               key={asset.id}
-              asset={asset}
-              category={category}
-              ctx={ctx}
+              row={asset}
+              trailing={
+                <>
+                  <Button
+                    tone="ghost"
+                    size="micro"
+                    iconOnly
+                    icon={ArrowUpRightFromSquareIcon}
+                    label="Open image"
+                    href={asset.url}
+                    newTab
+                  />
+                  <Button
+                    tone="ghost"
+                    size="micro"
+                    iconOnly
+                    icon={ImageIcon}
+                    label="Open in media area"
+                    to={`${environmentPrefix}/media/assets/${asset.id}`}
+                    newTab
+                  />
+                </>
+              }
             />
           ))}
-        </ul>
-      )}
+        </Table.Body>
+      </Table>
+    </Page.Group>
+  );
+}
 
-      {assets.length > ASSET_PAGE_SIZE && (
-        <nav
-          aria-label={`${categoryTitle} assets pagination`}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--spacing-s)',
-            flexWrap: 'wrap',
-            padding: 'var(--spacing-m)',
-            borderTop: '1px solid var(--color--border)',
-          }}
-        >
-          <Button
-            buttonType="muted"
-            buttonSize="xxs"
-            disabled={assetPage.page === 0}
-            onClick={() => setPage(assetPage.page - 1)}
-          >
-            Previous
-          </Button>
-          <span aria-live="polite">
-            {assetPage.start + 1}–{assetPage.end} of {assets.length} assets
-            {' · '}Page {assetPage.page + 1} of {assetPage.totalPages}
-          </span>
-          <Button
-            buttonType="muted"
-            buttonSize="xxs"
-            disabled={assetPage.page === assetPage.totalPages - 1}
-            onClick={() => setPage(assetPage.page + 1)}
-          >
-            Next
-          </Button>
-        </nav>
-      )}
-    </div>
+interface AssetListProps {
+  result: AssetOptimizerResult;
+  isPreview: boolean;
+  openCategories: readonly AssetCategory[];
+  onToggleCategory: (category: AssetCategory) => void;
+  environmentPrefix: string;
+}
+
+/**
+ * The lists of the optimized, skipped and failed images of a run. A category
+ * with no image has no list.
+ */
+const AssetList = ({
+  result,
+  isPreview,
+  openCategories,
+  onToggleCategory,
+  environmentPrefix,
+}: AssetListProps) => {
+  const categories: {
+    category: AssetCategory;
+    title: string;
+    assets: readonly ResultAsset[];
+  }[] = [
+    {
+      category: 'optimized',
+      title: isPreview ? 'Images to optimize' : 'Optimized images',
+      assets: result.optimizedAssets,
+    },
+    {
+      category: 'skipped',
+      title: 'Skipped images',
+      assets: result.skippedAssets,
+    },
+    { category: 'failed', title: 'Failed images', assets: result.failedAssets },
+  ];
+
+  return (
+    <>
+      {categories
+        .filter(({ assets }) => assets.length > 0)
+        .map(({ category, title, assets }) => (
+          <CategoryGroup
+            key={category}
+            category={category}
+            title={title}
+            assets={assets}
+            isPreview={isPreview}
+            open={openCategories.includes(category)}
+            onToggle={() => onToggleCategory(category)}
+            environmentPrefix={environmentPrefix}
+          />
+        ))}
+    </>
   );
 };
 
