@@ -1,7 +1,5 @@
 // Runs inside the preview frame (frame.html). Same CSS order as src/main.tsx.
 import 'datocms-react-ui/styles.css';
-import '../../kit-fixes.css';
-import '../../ui/recipes.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import FindReplacePage from '../../entrypoints/FindReplacePage';

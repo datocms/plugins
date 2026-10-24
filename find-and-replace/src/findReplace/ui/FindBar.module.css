@@ -1,0 +1,56 @@
+/* The find form, in the toolbar of fields. Below 960px of frame width it
+   takes two lines (Find, then Replace with and the model filter); from 960px
+   it is one line, with the arrow between Find and Replace with. The toolbar
+   grows with the second line (it has a min-height, not a height). Only
+   layout here: the kit draws every control. */
+.form {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s) var(--spacing-m);
+  min-width: 0;
+  padding-block: var(--spacing-s);
+}
+
+/* Find with its options, and Replace with with the eraser and the filter */
+.find,
+.replace {
+  display: flex;
+  flex: 1 1 100%;
+  gap: var(--spacing-m);
+  align-items: center;
+  min-width: 0;
+}
+
+/* The box of a text field takes the free width of its line */
+.field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The magnifier before the Find text. An addon at the start touches the
+   text (it is made for prefixes such as "https://"): an icon needs a gap. */
+.findIcon {
+  display: flex;
+  margin-inline-end: var(--spacing-s);
+}
+
+.arrow {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .form {
+    flex-wrap: nowrap;
+  }
+
+  .find,
+  .replace {
+    flex-basis: 0;
+  }
+
+  .arrow {
+    display: flex;
+    flex: none;
+    color: var(--color--ink-subtle);
+  }
+}

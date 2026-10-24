@@ -1,0 +1,13 @@
+/* The bar has a width of its own, and gives way on a narrow frame */
+.bar {
+  flex: 0 1 160px;
+  min-width: var(--spacing-xl);
+}
+
+/* "1,200 of 4,000 records searched" stays whole, on one line: the bar and
+   the note before Stop give way instead. (Any shrink, even a tiny one,
+   would cut it with an ellipsis.) */
+.label {
+  flex: none;
+  white-space: nowrap;
+}

@@ -18,10 +18,10 @@ describe('counts', () => {
   });
 
   it('quotes strings, marks line breaks and tabs, and cuts at 40', () => {
-    expect(quote('Acme')).toBe('"Acme"');
-    expect(quote('a\r\nb\tc')).toBe('"a↵b→c"');
-    expect(quote('x'.repeat(40))).toBe(`"${'x'.repeat(40)}"`);
-    expect(quote('x'.repeat(41))).toBe(`"${'x'.repeat(39)}…"`);
+    expect(quote('Acme')).toBe('“Acme”');
+    expect(quote('a\r\nb\tc')).toBe('“a↵b→c”');
+    expect(quote('x'.repeat(40))).toBe(`“${'x'.repeat(40)}”`);
+    expect(quote('x'.repeat(41))).toBe(`“${'x'.repeat(39)}…”`);
   });
 });
 
@@ -155,7 +155,7 @@ describe('publishing', () => {
         retryable: false,
         detail: { fieldLabel: 'Published on', code: 'required' },
       }),
-    ).toBe('Couldn\'t publish, as "Published on" can\'t be empty.');
+    ).toBe("Couldn't publish, as “Published on” can't be empty.");
     expect(copy.publishReason({ kind: 'ready' })).toBeNull();
     expect(copy.publishReason({ kind: 'published' })).toBeNull();
   });
@@ -166,21 +166,23 @@ describe('primary', () => {
     expect(copy.primaryLabel('replace', 1)).toBe('Replace 1 match');
     expect(copy.primaryLabel('remove', 1200)).toBe('Remove 1,200 matches');
     expect(copy.primaryIdleLabel('remove')).toBe('Remove');
+    expect(copy.replaceActionName('replace')).toBe('Replace the matches');
+    expect(copy.replaceActionName('remove')).toBe('Remove the matches');
   });
 
   it('explains every disabled reason', () => {
     const reasons: Record<DisabledReason, string> = {
-      no_matches: 'You cannot remove anything until the search finds matches',
+      no_matches: 'You cannot remove anything until the search finds matches.',
       search_running:
-        'You cannot remove right now as the search is still running',
-      press_enter: 'You cannot remove until you press Enter to search',
-      invalid_pattern: 'You cannot remove as the pattern is not valid',
+        'You cannot remove right now as the search is still running.',
+      press_enter: 'You cannot remove until you press Enter to search.',
+      invalid_pattern: 'You cannot remove as the pattern is not valid.',
       no_replacement:
-        'You cannot replace until you type a replacement or turn on Replace with nothing',
-      invalid_replacement: 'You cannot replace until the replacement is fixed',
-      nothing_selected: 'You cannot remove as no matches are selected',
-      nothing_changes: 'You cannot replace as nothing would change',
-      replacing: 'You cannot remove right now as a replacement is in progress',
+        'You cannot replace until you type a replacement or turn on Replace with nothing.',
+      invalid_replacement: 'You cannot replace until the replacement is fixed.',
+      nothing_selected: 'You cannot remove as no matches are selected.',
+      nothing_changes: 'You cannot replace as nothing would change.',
+      replacing: 'You cannot remove right now as a replacement is in progress.',
     };
     for (const [reason, text] of Object.entries(reasons)) {
       expect(copy.disabledReason(reason as DisabledReason, 'remove')).toBe(
@@ -216,33 +218,15 @@ describe('progress', () => {
 });
 
 describe('results', () => {
-  it('labels rows, checkboxes and links', () => {
-    expect(copy.recordTitle(null, '42')).toBe('Record #42');
-    expect(copy.recordTitle('  ', '42')).toBe('Record #42');
-    expect(copy.recordCheckbox('About us')).toBe('Select "About us"');
-    expect(copy.matchCheckbox('Title', 'en')).toBe(
-      'Select this match in Title (en)',
-    );
-    expect(copy.matchCheckbox('Slug', null)).toBe('Select this match in Slug');
-    // Fields with 2+ matches number their checkboxes, like the lines' names.
-    expect(copy.matchCheckbox('Body', 'en', 1, 3)).toBe(
-      'Select match 2 in Body (en)',
-    );
-    expect(copy.matchCheckbox('SEO › Description', null, 0, 2)).toBe(
-      'Select match 1 in SEO › Description',
-    );
-    expect(copy.matchCheckbox('Title', 'en', 0, 1)).toBe(
-      'Select this match in Title (en)',
-    );
+  it('labels rows and links', () => {
+    // An untitled record keeps its ID, so two of them never read the same.
+    expect(copy.recordTitle(null, '42')).toBe('Record 42');
+    expect(copy.recordTitle('  ', '42')).toBe('Record 42');
+    expect(copy.recordTitle('About us', '42')).toBe('About us');
+    expect(copy.recordFacts('Article', 1)).toBe('Article · 1 match');
+    expect(copy.recordFacts('Article', 1200)).toBe('Article · 1,200 matches');
     expect(copy.showMore(1)).toBe('Show 1 more match');
     expect(copy.showMore(20)).toBe('Show 20 more matches');
-  });
-
-  it('writes the record meta after the title', () => {
-    expect(copy.recordMeta('Article', 1)).toBe('Article · 1 match');
-    expect(copy.recordMeta('Blog post', 1200)).toBe(
-      'Blog post · 1,200 matches',
-    );
   });
 
   it('writes where-cells as plain text, every segment kept', () => {
@@ -286,15 +270,15 @@ describe('results', () => {
         detail: { fieldLabel, code },
       });
     expect(failed('length')).toBe(
-      'The new value is too long or too short for "Title".',
+      'The new value is too long or too short for “Title”.',
     );
     expect(failed('format')).toBe(
-      'The new value doesn\'t have the format "Title" requires.',
+      "The new value doesn't have the format “Title” requires.",
     );
-    expect(failed('unique')).toBe('The new value must be unique in "Title".');
-    expect(failed('required')).toBe('"Title" can\'t be empty.');
+    expect(failed('unique')).toBe('The new value must be unique in “Title”.');
+    expect(failed('required')).toBe("“Title” can't be empty.");
     expect(failed('other')).toBe(
-      'The new value doesn\'t pass the validations of "Title".',
+      "The new value doesn't pass the validations of “Title”.",
     );
     expect(failed('length', null)).toBe(
       "The new value doesn't pass the field's validations.",
@@ -314,16 +298,16 @@ describe('results', () => {
   });
 });
 
-describe('lines above the card', () => {
+describe('callouts above the results', () => {
   it('explains pattern and replacement problems', () => {
     expect(copy.patternProblem({ code: 'invalid_regex', cause: null })).toBe(
-      'Pattern must be a valid regular expression',
+      'Pattern must be a valid regular expression.',
     );
     expect(copy.patternProblem({ code: 'too_slow' })).toBe(
-      'Pattern takes too long to run, so try a simpler one',
+      'Pattern takes too long to run, so try a simpler one.',
     );
     expect(copy.replacementProblem({ code: 'context_token' })).toBe(
-      "Replacement can't use $` or $'",
+      "Replacement can't use $` or $'.",
     );
     expect(
       copy.replacementWarning({
@@ -331,26 +315,26 @@ describe('lines above the card', () => {
         token: '$1',
         groupCount: 0,
       }),
-    ).toBe('Replacement uses $1, but the pattern has no groups');
+    ).toBe('Replacement uses $1, but the pattern has no groups.');
     expect(
       copy.replacementWarning({
         code: 'group_out_of_range',
         token: '$2',
         groupCount: 1,
       }),
-    ).toBe('Replacement uses $2, but the pattern only has 1 group');
+    ).toBe('Replacement uses $2, but the pattern only has 1 group.');
     expect(
       copy.replacementWarning({
         code: 'group_out_of_range',
         token: '$<year>',
         groupCount: 2,
       }),
-    ).toBe('Replacement uses $<year>, but the pattern only has 2 groups');
+    ).toBe('Replacement uses $<year>, but the pattern only has 2 groups.');
     expect(copy.replacementWarning({ code: 'slug_format', count: 1 })).toBe(
-      'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail',
+      'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail.',
     );
     expect(copy.replacementWarning({ code: 'slug_format', count: 4 })).toBe(
-      'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 4 slug changes will probably fail',
+      'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 4 slug changes will probably fail.',
     );
   });
 
@@ -372,6 +356,13 @@ describe('lines above the card', () => {
     ).toBe(
       'Search stopped after 1,200 records, so some matches may be missing.',
     );
+    // A two-sentence note has a title; a one-sentence one has none.
+    expect(
+      copy.noteTitle({ kind: 'capped', selfMatch: false, continued: false }),
+    ).toBe('More matches to replace');
+    expect(
+      copy.noteTitle({ kind: 'searchStopped', searched: 1200, total: null }),
+    ).toBeNull();
   });
 
   it('writes every callout', () => {
@@ -383,14 +374,17 @@ describe('lines above the card', () => {
       copy.callout({ kind: 'recordsFailed', count, retryable, singleReason });
     expect(failed(1, null, true)).toEqual({
       tone: 'danger',
+      title: "A record wasn't updated",
       text: "Couldn't update 1 record. The reason is under it.",
       action: 'retryRecords',
     });
     expect(failed(2, 'validation').text).toBe(
       "Couldn't update 2 records, as the new values don't pass their field validations.",
     );
+    expect(failed(2, 'unknown').title).toBe("Some records weren't updated");
     expect(failed(1, 'validation')).toEqual({
       tone: 'danger',
+      title: null,
       text: "Couldn't update 1 record, as the new value doesn't pass its field validations.",
       action: null,
     });
@@ -408,6 +402,7 @@ describe('lines above the card', () => {
       copy.callout({ kind: 'recordsSkipped', count: 1, allStale: true }),
     ).toEqual({
       tone: 'warning',
+      title: 'A record was skipped',
       text: '1 record changed after the search and was skipped. Search again to include it.',
       action: null,
     });
@@ -417,6 +412,9 @@ describe('lines above the card', () => {
     expect(
       copy.callout({ kind: 'recordsSkipped', count: 4, allStale: false }).text,
     ).toBe('4 records were skipped. The reason is under each one.');
+    expect(
+      copy.callout({ kind: 'recordsSkipped', count: 4, allStale: false }).title,
+    ).toBe('Some records were skipped');
 
     const models = (names: string[]) =>
       copy.callout({
@@ -426,7 +424,8 @@ describe('lines above the card', () => {
       });
     expect(models(['Author'])).toEqual({
       tone: 'warning',
-      text: 'Couldn\'t search the "Author" model.',
+      title: null,
+      text: "Couldn't search the “Author” model.",
       action: 'retryModels',
     });
     // Capped results: no "Try again", searching again reads them.
@@ -438,11 +437,12 @@ describe('lines above the card', () => {
       }),
     ).toEqual({
       tone: 'warning',
-      text: 'Couldn\'t search the "Author" and "Page" models. Searching again reads them once more.',
+      title: "Some models weren't searched",
+      text: "Couldn't search the “Author” and “Page” models. Searching again reads them once more.",
       action: null,
     });
     expect(models(['A', 'B', 'C']).text).toBe(
-      'Couldn\'t search the "A", "B" and "C" models.',
+      "Couldn't search the “A”, “B” and “C” models.",
     );
     expect(models(['A', 'B', 'C', 'D']).text).toBe("Couldn't search 4 models.");
   });
@@ -463,10 +463,10 @@ describe('no results and pane states', () => {
 
   it('titles no results with the searched pattern, quoted like the confirm', () => {
     expect(copy.noResultsTitle(view({}), 'Acme Corp')).toBe(
-      'No matches for "Acme Corp"',
+      'No matches for “Acme Corp”',
     );
     expect(copy.noResultsTitle(view({}), `a\tb\n${'x'.repeat(60)}`)).toBe(
-      `No matches for "a→b↵${'x'.repeat(35)}…"`,
+      `No matches for “a→b↵${'x'.repeat(35)}…”`,
     );
     expect(copy.noResultsTitle(view({ regex: true }), 'Acme\\d+')).toBe(
       'No matches for /Acme\\d+/',
@@ -488,14 +488,14 @@ describe('no results and pane states', () => {
   it('scopes the title to the chosen model when the filter hides matches elsewhere', () => {
     const hidden = { filteredModelName: 'Page', otherModelsHaveMatches: true };
     expect(copy.noResultsTitle(view(hidden), 'Acme')).toBe(
-      'No matches for "Acme" in "Page"',
+      'No matches for “Acme” in “Page”',
     );
     // Even right after a run: matches remain behind the filter.
     expect(
       copy.noResultsTitle(view({ ...hidden, followsRun: true }), 'Acme'),
-    ).toBe('No matches for "Acme" in "Page"');
+    ).toBe('No matches for “Acme” in “Page”');
     expect(copy.noResultsLine(view({ ...hidden, followsRun: true }))).toBe(
-      'Choose All models to see the others.',
+      'Other models have matches.',
     );
     // A filter that hides nothing changes nothing.
     expect(
@@ -514,7 +514,7 @@ describe('no results and pane states', () => {
       copy.noResultsLine(
         view({ filteredModelName: 'Article', otherModelsHaveMatches: true }),
       ),
-    ).toBe('Choose All models to see the others.');
+    ).toBe('Other models have matches.');
     expect(
       copy.noResultsLine(
         view({ caseSensitive: true, wholeWord: true, regex: true }),
@@ -531,11 +531,16 @@ describe('no results and pane states', () => {
   });
 
   it('writes the pane states', () => {
+    expect(copy.paneState({ kind: 'unavailable', cause: 'role' })).toEqual({
+      icon: 'ban',
+      title: 'Permission denied',
+      line: "Your role can't use this plugin. Ask a project admin to give it access in the plugin settings.",
+    });
     expect(copy.paneState({ kind: 'unavailable', cause: 'no_models' })).toEqual(
       {
         icon: 'ban',
         title: 'Permission denied',
-        line: "Your role can't edit records in any model this plugin can search.",
+        line: "Your role can't edit records in any model this plugin can search. Ask a project admin to give your role access to one of them.",
       },
     );
     expect(copy.paneState({ kind: 'unavailable', cause: 'token' })).toEqual({
@@ -543,12 +548,23 @@ describe('no results and pane states', () => {
       title: "Couldn't access your content",
       line: 'This plugin needs access to your API token. Ask a project admin to grant it in the plugin settings.',
     });
+    // A failure says what happened, then what to do.
+    expect(copy.paneState({ kind: 'bootFailed', cause: 'network' }).line).toBe(
+      "The Content Management API didn't respond. Check your connection, then try again.",
+    );
     expect(copy.paneState({ kind: 'bootFailed', cause: 'unknown' }).line).toBe(
-      'Something went wrong while loading your models and fields.',
+      'Something went wrong while loading your models and fields. Try again, and reload the page if it keeps failing.',
+    );
+    expect(
+      copy.paneState({ kind: 'searchFailed', cause: 'network' }).line,
+    ).toBe(
+      "The Content Management API didn't respond. Check your connection, then try again.",
     );
     expect(
       copy.paneState({ kind: 'searchFailed', cause: 'unknown' }).line,
-    ).toBe('Something went wrong while reading your records.');
+    ).toBe(
+      'Something went wrong while reading your records. Try again, and reload the page if it keeps failing.',
+    );
   });
 });
 
@@ -556,12 +572,13 @@ describe('model filter and live region', () => {
   it('counts options', () => {
     expect(copy.filterTrigger(null)).toBe('All models');
     expect(copy.filterTrigger({ name: 'Article' })).toBe('Article');
-    expect(copy.optionCount(96, false)).toBe('96');
-    expect(copy.optionCount(0, true)).toBe('0+');
-    expect(copy.optionCount(null, true)).toBe('—');
-    expect(copy.optionCountSuffix(1)).toBe(', 1 match');
-    expect(copy.optionCountSuffix(0)).toBe(', no matches');
-    expect(copy.optionCountSuffix(null)).toBe(", couldn't be searched");
+    expect(copy.optionCount(1, false)).toBe('1 match');
+    expect(copy.optionCount(12, false)).toBe('12 matches');
+    expect(copy.optionCount(1200, false)).toBe('1,200 matches');
+    expect(copy.optionCount(0, false)).toBe('No matches');
+    expect(copy.optionCount(96, true)).toBe('96+ matches');
+    expect(copy.optionCount(0, true)).toBe('0+ matches');
+    expect(copy.optionCount(null, true)).toBe("Couldn't search");
   });
 
   it('announces settled searches', () => {

@@ -1,0 +1,7 @@
+/* The meta of the results ("124 matches in 38 records") on a frame under
+   600px wide, where the title bar has no room for it. The list area spaces
+   it. */
+.meta {
+  margin: 0;
+  color: var(--color--ink-subtle);
+}

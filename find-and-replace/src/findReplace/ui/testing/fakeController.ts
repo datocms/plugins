@@ -34,10 +34,8 @@ type FakeControllerOptions = {
 
 function defaultRecordLink(recordKey: string): RecordLink {
   const [modelId, recordId] = recordKey.split(':');
-  return {
-    kind: 'href',
-    href: `https://acme.admin.datocms.com/editor/item_types/${modelId}/items/${recordId}/edit`,
-  };
+  const path = `/editor/item_types/${modelId}/items/${recordId}/edit`;
+  return { kind: 'href', href: `https://acme.admin.datocms.com${path}`, path };
 }
 
 /**

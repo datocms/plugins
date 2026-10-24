@@ -1,8 +1,10 @@
-import { Spinner, Toolbar, ToolbarStack } from 'datocms-react-ui';
-import { type RefObject, useLayoutEffect } from 'react';
-import { Button } from '../../ui/Button';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import Spinner from 'datocms-react-ui/Spinner';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import type { Ref } from 'react';
 import type { PublishState, RunState, SearchState } from '../contract';
 import { type Copy, STRINGS } from './copy';
+import styles from './ProgressRow.module.css';
 
 type ProgressRowProps = {
   search: SearchState;
@@ -12,27 +14,15 @@ type ProgressRowProps = {
   onStopSearch: () => void;
   onStopReplace: () => void;
   onStopPublish: () => void;
-  /** `.fr-progress`, for moving the focus to "Stop". */
-  containerRef: RefObject<HTMLDivElement | null>;
+  /** The Stop button, for moving the focus to it when a pass starts. */
+  stopRef?: Ref<HTMLElement>;
+  /**
+   * A frame under 600px wide: the row keeps the bar, the label and Stop, and
+   * has no room for the note. During a pass, "Keep this page open"
+   * then shows as a callout above the results (see Body).
+   */
+  narrow?: boolean;
 };
-
-type BarProps = { label: string; done: number; total: number };
-
-function ProgressBar({ label, done, total }: BarProps) {
-  const percent = total > 0 ? Math.min(100, (done / total) * 100) : 0;
-  return (
-    <div
-      className="dl-progress"
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={total}
-      aria-valuenow={done}
-    >
-      <div className="dl-progress__bar" style={{ width: `${percent}%` }} />
-    </div>
-  );
-}
 
 const isPassActive = (phase: string) =>
   phase === 'running' || phase === 'stopping';
@@ -50,125 +40,91 @@ export function isProgressVisible(
   );
 }
 
-type PassView = {
-  label: string;
-  done: number;
-  total: number;
+type ProgressView = {
+  /** The share done (0–1), or null while the total isn't known (a spinner). */
+  value: number | null;
+  /** What is done ("12 of 40 records processed"): the label next to the bar, and its name. */
   text: string;
+  /** "Keep this page open until it finishes" during a pass, or the time a search still needs. */
+  note: string | null;
   stopping: boolean;
   onStop: () => void;
 };
 
-/** The replace or publish pass the row shows, if one runs. */
-function activePass(props: ProgressRowProps): PassView | null {
-  const { run, publish, copy } = props;
+const fraction = (done: number, total: number) =>
+  total > 0 ? done / total : 0;
+
+/** The pass the row shows: publishing, else the replacement, else the search. */
+function progressView(props: ProgressRowProps): ProgressView {
+  const { search, run, publish, copy } = props;
   if (isPassActive(publish.phase)) {
+    const { done, total } = publish.progress;
     return {
-      label: STRINGS.publishProgress,
-      done: publish.progress.done,
-      total: publish.progress.total,
-      text: copy.publishProgress(publish.progress.done, publish.progress.total),
+      value: fraction(done, total),
+      text: copy.publishProgress(done, total),
+      note: STRINGS.keepOpen,
       stopping: publish.phase === 'stopping',
       onStop: props.onStopPublish,
     };
   }
   if (isPassActive(run.phase)) {
+    const { done, total } = run.progress;
     return {
-      label: STRINGS.replaceProgress,
-      done: run.progress.done,
-      total: run.progress.total,
-      text: copy.replaceProgress(run.progress.done, run.progress.total),
+      value: fraction(done, total),
+      text: copy.replaceProgress(done, total),
+      note: STRINGS.keepOpen,
       stopping: run.phase === 'stopping',
       onStop: props.onStopReplace,
     };
   }
-  return null;
+  const { searched, total } = search.progress;
+  return {
+    value: total === null ? null : fraction(searched, total),
+    text: copy.searchProgress(searched, total),
+    note:
+      search.secondsLeft === null ? null : copy.timeLeft(search.secondsLeft),
+    stopping: false,
+    onStop: props.onStopSearch,
+  };
 }
 
 /**
- * One 40px row for the search, the write and publishing: bar (or a 20px
- * spinner while the total is unknown), label, hint while writing, and a
- * compact Stop.
+ * The short row under the find form while the search reads the records,
+ * and while records are written or published: a bar (or a spinner while the
+ * total isn't known) and what is done, then at the right end a quiet note
+ * and Stop. The bar takes the text next to it as its name. On a frame under
+ * 600px wide the note has no room: the search's time left drops, and the
+ * "Keep this page open" of a pass moves above the results. "Stopping…" keeps
+ * the focus and says why it waits.
  */
 export function ProgressRow(props: ProgressRowProps) {
-  const { search, copy, onStopSearch, containerRef } = props;
-  const pass = activePass(props);
-  const writing = pass !== null;
-  const stopping = pass?.stopping ?? false;
-  const { searched, total } = search.progress;
-
-  // "Stopping…" keeps the focus it got from Space/Enter: a disabled button would drop it to
-  // <body> until the pass ends. So it's aria-disabled (the kit Button takes no aria props) and
-  // its click does nothing.
-  useLayoutEffect(() => {
-    const stop = containerRef.current?.querySelector('button');
-    if (stopping) {
-      stop?.setAttribute('aria-disabled', 'true');
-    } else {
-      stop?.removeAttribute('aria-disabled');
-    }
-  }, [stopping, containerRef]);
+  const view = progressView(props);
 
   return (
-    <Toolbar className="fr-toolbar fr-toolbar--progress">
-      <ToolbarStack
-        stackSize="s"
-        style={{ gap: 'var(--spacing-m)', minWidth: 0 }}
-      >
-        <div className="fr-progress" ref={containerRef}>
-          {pass && (
-            <ProgressBar
-              label={pass.label}
-              done={pass.done}
-              total={pass.total}
-            />
-          )}
-          {!writing && total !== null && (
-            <ProgressBar
-              label={STRINGS.searchProgress}
-              done={searched}
-              total={total}
-            />
-          )}
-          {!writing && total === null && (
-            <div
-              className="fr-progress__spinner"
-              role="progressbar"
-              aria-label={STRINGS.searchProgress}
-            >
-              <Spinner size={20} placement="centered" />
-            </div>
-          )}
-          <span className="fr-progress__label">
-            {pass ? pass.text : copy.searchProgress(searched, total)}
-          </span>
-          {writing && (
-            <span className="fr-progress__hint">{STRINGS.keepOpen}</span>
-          )}
-          {!writing && search.secondsLeft !== null && (
-            <span className="fr-progress__hint">
-              {copy.timeLeft(search.secondsLeft)}
-            </span>
-          )}
-          <div className="dl-toolbar__space" />
-          <Button
-            buttonSize="xxs"
-            className="fr-progress__stop"
-            onClick={() => {
-              if (stopping) {
-                return;
-              }
-              if (pass) {
-                pass.onStop();
-              } else {
-                onStopSearch();
-              }
-            }}
-          >
-            {stopping ? STRINGS.stopping : STRINGS.stop}
-          </Button>
-        </div>
-      </ToolbarStack>
+    <Toolbar style="short">
+      {view.value === null ? (
+        <Spinner inline label={false} />
+      ) : (
+        <ProgressBar
+          className={styles.bar}
+          value={view.value}
+          ariaLabel={view.text}
+        />
+      )}
+      <span className={styles.label}>{view.text}</span>
+      <Toolbar.Space />
+      {/* Why Stop is there, right before it: the pass needs the page open,
+          or the search needs this much longer. */}
+      {view.note && !props.narrow && <Toolbar.Note>{view.note}</Toolbar.Note>}
+      <Toolbar.Button
+        ref={props.stopRef}
+        tone="soft"
+        label={view.stopping ? STRINGS.stopping : STRINGS.stop}
+        disabled={
+          view.stopping ? { reason: STRINGS.stoppingReason } : undefined
+        }
+        onClick={view.onStop}
+      />
     </Toolbar>
   );
 }

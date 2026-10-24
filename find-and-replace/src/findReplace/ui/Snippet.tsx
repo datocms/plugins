@@ -1,6 +1,8 @@
+import Pill from 'datocms-react-ui/Pill';
 import { memo, type ReactNode } from 'react';
 import { type MatchDisplay, type MatchView, UI_LIMITS } from '../contract';
 import { STRINGS } from './copy';
+import styles from './Snippet.module.css';
 
 /** Context around a match reads as prose: every whitespace run is one space. */
 function collapseWhitespace(text: string): string {
@@ -42,13 +44,13 @@ function withWhitespaceMarkers(text: string): ReactNode[] {
     }
     if (part === '\t') {
       nodes.push(
-        <span key={index} className="fr-ws">
+        <span key={index} className={styles.marker} data-marker="tab">
           →
         </span>,
       );
     } else if (part === '\n' || part === '\r' || part === '\r\n') {
       nodes.push(
-        <span key={index} className="fr-ws">
+        <span key={index} className={styles.marker} data-marker="line-break">
           ↵
         </span>,
       );
@@ -60,44 +62,52 @@ function withWhitespaceMarkers(text: string): ReactNode[] {
   return nodes;
 }
 
+function Inserted({ text }: { text: string }) {
+  return <ins className={styles.added}>{withWhitespaceMarkers(text)}</ins>;
+}
+
 function MatchBody({ display, text }: { display: MatchDisplay; text: string }) {
   switch (display.kind) {
     case 'highlight':
     case 'noChange':
       return (
-        <mark className="fr-mark">
+        <mark className={styles.highlight}>
           {withWhitespaceMarkers(shortenMatched(text))}
         </mark>
       );
     case 'diff':
       return (
         <>
-          <del className="fr-del">
+          <del className={styles.removed}>
             {withWhitespaceMarkers(shortenMatched(text))}
           </del>
           {display.inserted !== '' && (
             <>
-              <span className="fr-sr-only">{STRINGS.replacedWith}</span>
-              <ins className="fr-ins">
-                {withWhitespaceMarkers(display.inserted)}
-              </ins>
+              <span className="visually-hidden">{STRINGS.replacedWith}</span>
+              <Inserted text={display.inserted} />
             </>
           )}
         </>
       );
     case 'final':
       return display.inserted === '' ? null : (
-        <ins className="fr-ins">{withWhitespaceMarkers(display.inserted)}</ins>
+        <Inserted text={display.inserted} />
       );
   }
 }
 
-/** One line of context with the match highlighted, previewed or written (§6.6). */
+/**
+ * One match in its context: highlighted (find mode, left out), previewed as
+ * a diff (a change to make, or the change a skipped or failed record didn't
+ * get), tagged "No change", or the text a run wrote.
+ */
 export const Snippet = memo(function Snippet({ match }: { match: MatchView }) {
   return (
-    <div className="fr-match__snippet">
+    <div className={styles.snippet} data-snippet={match.display.kind}>
       {match.display.kind === 'noChange' && (
-        <span className="dl-row-tag">{STRINGS.noChange}</span>
+        <span className={styles.tag}>
+          <Pill>{STRINGS.noChange}</Pill>
+        </span>
       )}
       {contextBefore(match)}
       <MatchBody display={match.display} text={match.text} />

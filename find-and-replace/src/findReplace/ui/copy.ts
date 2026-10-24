@@ -31,54 +31,69 @@ import {
 
 /** Strings that never depend on a count. */
 export const STRINGS = {
-  title: 'Find and Replace',
-  loading: 'Loading',
+  title: 'Find and replace',
+  /** The Toolbar.Help of the title: what the page is for. */
+  help: 'Finds text in the records of your models and replaces it. You review every match, and can leave any out, before anything changes.',
+  loading: 'Loading the models',
+  searching: 'Searching the records',
+  /** The name of the page's Pane: what it lists. The find form takes it as its search name. */
+  paneLabel: 'Records',
   findLabel: 'Find',
-  findPlaceholder: 'Type something to find…',
-  findPlaceholderRegex: 'Type a regular expression…',
-  findPlaceholderEnter: 'Type, then press Enter…',
-  findPlaceholderRegexEnter: 'Pattern, then press Enter…',
-  enterKey: 'Enter',
-  pressEnter: 'Press Enter to search',
+  /** Placeholders name the field, never instruct. */
+  findPlaceholder: 'Find',
+  pressEnter: 'Press Enter to search.',
   clearSearch: 'Clear search',
   matchCase: 'Match case',
   matchWholeWord: 'Match whole word',
   useRegex: 'Use regular expression',
+  /** The tooltip of the regular expression toggle. */
+  regexTip:
+    'Use regular expression. In Replace with, $1 inserts the first group of the pattern.',
   replaceLabel: 'Replace with',
-  replacePlaceholder: 'Replace with…',
-  replacePlaceholderRegex: 'Replace with… ($1 inserts a group)',
+  replacePlaceholder: 'Replace with',
   replacePlaceholderRemove: 'Matches will be removed',
   replaceWithNothing: 'Replace with nothing',
   allModels: 'All models',
   searchAgain: 'Search again',
-  inProgress: ', in progress',
-  searchProgress: 'Search progress',
-  replaceProgress: 'Replacement progress',
-  publishProgress: 'Publishing progress',
   publishing: 'Publishing…',
   published: 'Published',
   publishingReason:
-    'You cannot do anything else right now as records are being published',
+    'You cannot do anything else while the records are being published.',
   keepOpen: 'Keep this page open until it finishes',
+  /** The same, as a callout above the results on a phone-width frame, where the progress row has no room for it. */
+  keepOpenNotice: 'Keep this page open until it finishes.',
   stop: 'Stop',
   stopping: 'Stopping…',
-  selectAll: 'Select all',
+  stoppingReason: 'It stops after the record in progress.',
+  retryRecords: 'Try the failed records again',
+  retryModels: 'Search the failed models again',
+  retryDisabledReason:
+    'You cannot try again until the replacement or publishing ends.',
+  searchDisabledReason:
+    'You cannot change the search while records are being updated or published.',
+  recordColumn: 'Record',
+  matchColumn: 'Match',
+  modelColumn: 'Model',
+  statusColumn: 'Status',
   changesUrl: 'Changes the URL',
   changesUrlTip:
-    "Replacing text in a slug changes the record's URL, so slugs are left out unless you select them",
+    "Replacing text in a slug changes the record's URL, so slugs are left out unless you select them.",
   noChange: 'No change',
   showFewer: 'Show fewer matches',
   loadMore: 'Load more records',
   openRecordNewTab: 'Open record in a new tab',
   openRecord: 'Open record',
-  openRecordDisabled:
-    'You cannot open records right now as a replacement is in progress',
+  openRecordDisabled: 'You cannot open records while they are being updated.',
   updating: 'Updating…',
   replacedWith: ' replaced with ',
   tryAgain: 'Try again',
-  idleTitle: 'Find and replace across all records',
+  /** What is missing before the first search. */
+  idleTitle: 'No search yet',
   idleLine:
-    "Search every text field of every record. You'll review each match, and can leave any out, before anything changes.",
+    'Matches show here as you type. Nothing changes until you review them and confirm.',
+  idleLineEnter:
+    'Matches show here when you press Enter. Nothing changes until you review them and confirm.',
+  showAllModels: 'Show all models',
   everyMatchReplaced: 'Every match has been replaced',
   everyMatchRemoved: 'Every match has been removed',
   cancel: 'Cancel',
@@ -128,17 +143,24 @@ function shortText(text: string): string {
     : shown;
 }
 
-export function quote(text: string): string {
-  return `"${shortText(text)}"`;
+/** A name in a sentence: “Article”. */
+function quoteName(name: string): string {
+  return `“${name}”`;
 }
 
-/** The find pattern as the page quotes it: "Acme", or /Acme(\w+)/ in regex mode. */
+/** A string the user typed, in a sentence: “Acme”, cut to 40 characters. */
+export function quote(text: string): string {
+  return quoteName(shortText(text));
+}
+
+/** The find pattern as the page quotes it: “Acme”, or /Acme(\w+)/ in regex mode. */
 function quotePattern(pattern: string, regex: boolean): string {
   return regex ? `/${shortText(pattern)}/` : quote(pattern);
 }
 
+/** The title of a record, or “Record 42” when it has none (the ID keeps it unique). */
 export function recordTitle(title: string | null, recordId: string): string {
-  return title?.trim() ? title : `Record #${recordId}`;
+  return title?.trim() ? title : `Record ${recordId}`;
 }
 
 // ── Toolbar meta ────────────────────────────────────────────────────────────
@@ -222,19 +244,22 @@ function metaText(c: Counts, meta: MetaView): string | null {
 const DISABLED_REASONS: Record<DisabledReason, (verb: ReplaceVerb) => string> =
   {
     no_matches: (verb) =>
-      `You cannot ${verb} anything until the search finds matches`,
+      `You cannot ${verb} anything until the search finds matches.`,
     search_running: (verb) =>
-      `You cannot ${verb} right now as the search is still running`,
-    press_enter: (verb) => `You cannot ${verb} until you press Enter to search`,
-    invalid_pattern: (verb) => `You cannot ${verb} as the pattern is not valid`,
+      `You cannot ${verb} right now as the search is still running.`,
+    press_enter: (verb) =>
+      `You cannot ${verb} until you press Enter to search.`,
+    invalid_pattern: (verb) =>
+      `You cannot ${verb} as the pattern is not valid.`,
     no_replacement: () =>
-      'You cannot replace until you type a replacement or turn on Replace with nothing',
+      'You cannot replace until you type a replacement or turn on Replace with nothing.',
     invalid_replacement: () =>
-      'You cannot replace until the replacement is fixed',
-    nothing_selected: (verb) => `You cannot ${verb} as no matches are selected`,
-    nothing_changes: () => 'You cannot replace as nothing would change',
+      'You cannot replace until the replacement is fixed.',
+    nothing_selected: (verb) =>
+      `You cannot ${verb} as no matches are selected.`,
+    nothing_changes: () => 'You cannot replace as nothing would change.',
     replacing: (verb) =>
-      `You cannot ${verb} right now as a replacement is in progress`,
+      `You cannot ${verb} right now as a replacement is in progress.`,
   };
 
 // ── Row statuses and reasons ────────────────────────────────────────────────
@@ -256,17 +281,18 @@ function validationReason(detail: FailDetail | null): string {
   if (!detail || !field) {
     return "The new value doesn't pass the field's validations.";
   }
+  const name = quoteName(field);
   switch (detail.code) {
     case 'length':
-      return `The new value is too long or too short for "${field}".`;
+      return `The new value is too long or too short for ${name}.`;
     case 'format':
-      return `The new value doesn't have the format "${field}" requires.`;
+      return `The new value doesn't have the format ${name} requires.`;
     case 'unique':
-      return `The new value must be unique in "${field}".`;
+      return `The new value must be unique in ${name}.`;
     case 'required':
-      return `"${field}" can't be empty.`;
+      return `${name} can't be empty.`;
     case 'other':
-      return `The new value doesn't pass the validations of "${field}".`;
+      return `The new value doesn't pass the validations of ${name}.`;
   }
 }
 
@@ -307,8 +333,8 @@ function publishValidationReason(detail: FailDetail | null): string {
     return "Couldn't publish, as the record doesn't pass its validations.";
   }
   return detail?.code === 'required'
-    ? `Couldn't publish, as "${field}" can't be empty.`
-    : `Couldn't publish, as "${field}" doesn't pass its validations.`;
+    ? `Couldn't publish, as ${quoteName(field)} can't be empty.`
+    : `Couldn't publish, as ${quoteName(field)} doesn't pass its validations.`;
 }
 
 function publishReason(status: RecordPublishStatus): string | null {
@@ -326,25 +352,25 @@ function publishReason(status: RecordPublishStatus): string | null {
   }
 }
 
-// ── Lines above the card ────────────────────────────────────────────────────
+// ── Callouts above the results ──────────────────────────────────────────────
 
 function patternProblemText(problem: PatternProblem): string {
   switch (problem.code) {
     case 'invalid_regex':
       return problem.cause
-        ? `Pattern must be a valid regular expression (${problem.cause})`
-        : 'Pattern must be a valid regular expression';
+        ? `Pattern must be a valid regular expression (${problem.cause}).`
+        : 'Pattern must be a valid regular expression.';
     case 'zero_width':
-      return 'Pattern must match at least one character';
+      return 'Pattern must match at least one character.';
     case 'too_slow':
-      return 'Pattern takes too long to run, so try a simpler one';
+      return 'Pattern takes too long to run, so try a simpler one.';
   }
 }
 
 function replacementProblemText(problem: ReplacementProblem): string {
   switch (problem.code) {
     case 'context_token':
-      return "Replacement can't use $` or $'";
+      return "Replacement can't use $` or $'.";
   }
 }
 
@@ -355,18 +381,23 @@ function replacementWarningText(
   switch (warning.code) {
     case 'group_out_of_range':
       if (warning.groupCount === 0) {
-        return `Replacement uses ${warning.token}, but the pattern has no groups`;
+        return `Replacement uses ${warning.token}, but the pattern has no groups.`;
       }
       return warning.groupCount === 1
-        ? `Replacement uses ${warning.token}, but the pattern only has 1 group`
-        : `Replacement uses ${warning.token}, but the pattern only has ${c.fmt(warning.groupCount)} groups`;
+        ? `Replacement uses ${warning.token}, but the pattern only has 1 group.`
+        : `Replacement uses ${warning.token}, but the pattern only has ${c.fmt(warning.groupCount)} groups.`;
     case 'self_match':
-      return 'Your replacement also matches this search, so a later search can find these matches again';
+      return 'Your replacement also matches this search, so a later search can find these matches again.';
     case 'slug_format':
       return warning.count === 1
-        ? 'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail'
-        : `Slugs only allow lowercase letters, numbers, hyphens and underscores, so ${c.fmt(warning.count)} slug changes will probably fail`;
+        ? 'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail.'
+        : `Slugs only allow lowercase letters, numbers, hyphens and underscores, so ${c.fmt(warning.count)} slug changes will probably fail.`;
   }
+}
+
+/** The title of a note whose text has two sentences: the problem in a few words. */
+function noteTitle(note: NoteView): string | null {
+  return note.kind === 'capped' ? 'More matches to replace' : null;
 }
 
 function noteText(c: Counts, note: NoteView): string {
@@ -379,10 +410,14 @@ function noteText(c: Counts, note: NoteView): string {
     : `Search stopped after ${c.fmt(note.searched)} of ${c.records(note.total)}, so some matches may be missing.`;
 }
 
+/** The retry a callout's situation offers. It is an option of the title bar's ⋮, never a button in the callout. */
 export type CalloutAction = 'retryRecords' | 'retryModels';
 
 export type CalloutCopy = {
   tone: 'danger' | 'warning';
+  /** The problem in a few words, when the text has two sentences; else null. */
+  title: string | null;
+  /** The whole message: the callout holds only this text. */
   text: string;
   action: CalloutAction | null;
 };
@@ -413,6 +448,22 @@ function recordsFailedText(
   }
 }
 
+/** One reason fits one sentence; mixed reasons take two, under a title. */
+function recordsFailedTitle(
+  callout: Extract<CalloutView, { kind: 'recordsFailed' }>,
+): string | null {
+  switch (callout.singleReason) {
+    case 'validation':
+    case 'permission':
+    case 'network':
+      return null;
+    default:
+      return callout.count === 1
+        ? "A record wasn't updated"
+        : "Some records weren't updated";
+  }
+}
+
 function recordsSkippedText(
   c: Counts,
   callout: Extract<CalloutView, { kind: 'recordsSkipped' }>,
@@ -433,7 +484,7 @@ function modelsFailedText(
   c: Counts,
   modelNames: ReadonlyArray<string>,
 ): string {
-  const [a, b, third] = modelNames.map((name) => `"${name}"`);
+  const [a, b, third] = modelNames.map(quoteName);
   switch (modelNames.length) {
     case 1:
       return `Couldn't search the ${a} model.`;
@@ -451,12 +502,17 @@ function calloutCopy(c: Counts, callout: CalloutView): CalloutCopy {
     case 'recordsFailed':
       return {
         tone: 'danger',
+        title: recordsFailedTitle(callout),
         text: recordsFailedText(c, callout),
         action: callout.retryable ? 'retryRecords' : null,
       };
     case 'recordsSkipped':
       return {
         tone: 'warning',
+        title:
+          callout.count === 1
+            ? 'A record was skipped'
+            : 'Some records were skipped',
         text: recordsSkippedText(c, callout),
         action: null,
       };
@@ -464,11 +520,16 @@ function calloutCopy(c: Counts, callout: CalloutView): CalloutCopy {
       return callout.retryable
         ? {
             tone: 'warning',
+            title: null,
             text: modelsFailedText(c, callout.modelNames),
             action: 'retryModels',
           }
         : {
             tone: 'warning',
+            title:
+              callout.modelNames.length === 1
+                ? "A model wasn't searched"
+                : "Some models weren't searched",
             text: `${modelsFailedText(c, callout.modelNames)} Searching again reads ${callout.modelNames.length === 1 ? 'it' : 'them'} once more.`,
             action: null,
           };
@@ -492,15 +553,15 @@ function narrowingParts(view: NoResultsView): string[] {
   return parts;
 }
 
-/** A model filter is on and other models still have matches. */
-function hiddenByFilter(
+/** A model filter is on and other models still have matches: "Show all models" leads back to them. */
+export function hiddenByFilter(
   view: NoResultsView,
 ): view is NoResultsView & { filteredModelName: string } {
   return view.filteredModelName !== null && view.otherModelsHaveMatches;
 }
 
 /**
- * `No matches for "Acme"` (`/Acme/` in regex mode), scoped to the chosen model
+ * `No matches for “Acme”` (`/Acme/` in regex mode), scoped to the chosen model
  * when the filter hides matches elsewhere, or the closing proof after "Search
  * again" (`verb`: the run's). A filter that hides matches wins over the proof:
  * the page never claims every match is gone while some remain behind it.
@@ -508,7 +569,7 @@ function hiddenByFilter(
 function noResultsTitle(view: NoResultsView, pattern: string): string {
   const what = quotePattern(pattern, view.regex);
   if (hiddenByFilter(view)) {
-    return `No matches for ${what} in "${view.filteredModelName}"`;
+    return `No matches for ${what} in ${quoteName(view.filteredModelName)}`;
   }
   if (view.followsRun) {
     return view.runVerb === 'remove'
@@ -521,7 +582,7 @@ function noResultsTitle(view: NoResultsView, pattern: string): string {
 
 function noResultsLine(view: NoResultsView): string {
   if (hiddenByFilter(view)) {
-    return 'Choose All models to see the others.';
+    return 'Other models have matches.';
   }
   if (view.followsRun) {
     return 'Type something else to find.';
@@ -542,12 +603,17 @@ export type PaneStateCase =
   | { kind: 'searchFailed'; cause: 'network' | 'unknown' };
 
 export type PaneStateCopy = {
+  /** Every case is an error: 'ban' for a permission that is missing, else the exclamation. */
   icon: 'ban' | 'error';
   title: string;
   line: string;
 };
 
-const API_DIDNT_RESPOND = "The Content Management API didn't respond.";
+/** A failure the user can't see the cause of: what happened, then what to do. */
+const API_DIDNT_RESPOND =
+  "The Content Management API didn't respond. Check your connection, then try again.";
+const TRY_AGAIN_OR_RELOAD =
+  'Try again, and reload the page if it keeps failing.';
 
 function unavailablePane(cause: 'role' | 'no_models' | 'token'): PaneStateCopy {
   switch (cause) {
@@ -555,13 +621,13 @@ function unavailablePane(cause: 'role' | 'no_models' | 'token'): PaneStateCopy {
       return {
         icon: 'ban',
         title: 'Permission denied',
-        line: 'Your account does not have enough privileges to access this area',
+        line: "Your role can't use this plugin. Ask a project admin to give it access in the plugin settings.",
       };
     case 'no_models':
       return {
         icon: 'ban',
         title: 'Permission denied',
-        line: "Your role can't edit records in any model this plugin can search.",
+        line: "Your role can't edit records in any model this plugin can search. Ask a project admin to give your role access to one of them.",
       };
     case 'token':
       return {
@@ -583,7 +649,7 @@ export function paneStateCopy(pane: PaneStateCase): PaneStateCopy {
       line:
         pane.cause === 'network'
           ? API_DIDNT_RESPOND
-          : 'Something went wrong while loading your models and fields.',
+          : `Something went wrong while loading your models and fields. ${TRY_AGAIN_OR_RELOAD}`,
     };
   }
   return {
@@ -592,7 +658,7 @@ export function paneStateCopy(pane: PaneStateCase): PaneStateCopy {
     line:
       pane.cause === 'network'
         ? API_DIDNT_RESPOND
-        : 'Something went wrong while reading your records.',
+        : `Something went wrong while reading your records. ${TRY_AGAIN_OR_RELOAD}`,
   };
 }
 
@@ -601,7 +667,7 @@ export function paneStateCopy(pane: PaneStateCase): PaneStateCopy {
 function confirmQuestion(c: Counts, plan: PlanFacts): string {
   const where =
     plan.recordCount === 1 && plan.singleRecord
-      ? `"${recordTitle(plan.singleRecord.title, plan.singleRecord.id)}"`
+      ? quoteName(recordTitle(plan.singleRecord.title, plan.singleRecord.id))
       : c.records(plan.recordCount);
   const what = plan.regex
     ? `matches of ${quotePattern(plan.pattern, true)}`
@@ -756,18 +822,19 @@ function toastPublishPartial(c: Counts, pass: PublishTotals): string {
 
 // ── Model filter ────────────────────────────────────────────────────────────
 
-function optionCount(c: Counts, count: number | null, partial: boolean) {
+/** The count of a model filter option: "12 matches", "96+ matches" while partial. */
+function optionCount(
+  c: Counts,
+  count: number | null,
+  partial: boolean,
+): string {
   if (count === null) {
-    return '—';
+    return "Couldn't search";
   }
-  return partial ? `${c.fmt(count)}+` : c.fmt(count);
-}
-
-function optionCountSuffix(c: Counts, count: number | null): string {
-  if (count === null) {
-    return ", couldn't be searched";
+  if (partial) {
+    return `${c.fmt(count)}+ matches`;
   }
-  return count === 0 ? ', no matches' : `, ${c.matches(count)}`;
+  return count === 0 ? 'No matches' : c.matches(count);
 }
 
 // ── Where-cells ─────────────────────────────────────────────────────────────
@@ -816,16 +883,20 @@ export function createCopy(locale: string) {
     records: c.records,
     quote,
     recordTitle,
+    /** "Article · 3 matches": the model and the count of a record, under its title in a narrow table. */
+    recordFacts: (modelName: string, matchCount: number) =>
+      `${modelName} · ${c.matches(matchCount)}`,
     whereLabel,
     whereName,
 
     meta: (meta: MetaView) => metaText(c, meta),
-    found: (matches: number, records: number, capped: boolean) =>
-      foundText(c, matches, records, capped),
 
     primaryLabel: (verb: ReplaceVerb, count: number) =>
       `${capitalVerb(verb)} ${c.matches(count)}`,
     primaryIdleLabel: capitalVerb,
+    /** What Cmd/Ctrl + Enter does: the name of the page's replace action. */
+    replaceActionName: (verb: ReplaceVerb) =>
+      `${capitalVerb(verb)} the matches`,
     publishLabel: (count: number) => `Publish ${c.records(count)}`,
     disabledReason: (reason: DisabledReason, verb: ReplaceVerb) =>
       DISABLED_REASONS[reason](verb),
@@ -849,22 +920,6 @@ export function createCopy(locale: string) {
     publishProgress: (done: number, total: number) =>
       `${c.fmt(done)} of ${c.records(total)} published`,
 
-    /** "Article · 3 matches", after the record title. */
-    recordMeta: (modelName: string, count: number) =>
-      `${modelName} · ${c.matches(count)}`,
-    recordCheckbox: (title: string) => `Select "${title}"`,
-    /** "Select this match in Title (en)"; "Select match 2 in Body (en)" when the field has 2+ matches. */
-    matchCheckbox: (
-      path: string,
-      locale: string | null,
-      index = 0,
-      total = 1,
-    ) => {
-      const which = total > 1 ? `match ${c.fmt(index + 1)}` : 'this match';
-      return locale
-        ? `Select ${which} in ${path} (${locale})`
-        : `Select ${which} in ${path}`;
-    },
     showMore: (count: number) =>
       count === 1 ? 'Show 1 more match' : `Show ${c.fmt(count)} more matches`,
     statusWord: (kind: 'replaced' | 'skipped' | 'failed') =>
@@ -877,6 +932,7 @@ export function createCopy(locale: string) {
     replacementWarning: (warning: ReplacementWarning) =>
       replacementWarningText(c, warning),
     note: (note: NoteView) => noteText(c, note),
+    noteTitle,
     callout: (callout: CalloutView) => calloutCopy(c, callout),
 
     noResultsTitle,
@@ -909,7 +965,6 @@ export function createCopy(locale: string) {
       selected ? selected.name : STRINGS.allModels,
     optionCount: (count: number | null, partial: boolean) =>
       optionCount(c, count, partial),
-    optionCountSuffix: (count: number | null) => optionCountSuffix(c, count),
 
     announceSettled: (event: {
       matches: number;

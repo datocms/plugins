@@ -1,26 +1,46 @@
-import { Button } from '../../ui/Button';
-import { faBan, faCircleExclamation, Icon } from '../../ui/icons';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { ArrowsRotateIcon, BanIcon, CircleExclamationIcon } from '../../icons';
 import { type Copy, type PaneStateCase, STRINGS } from './copy';
 
-type PaneStateProps = {
-  pane: PaneStateCase;
+type PageStateProps = {
+  state: PaneStateCase;
   copy: Copy;
   /** Shows "Try again" when set. */
   onRetry?: () => void;
 };
 
-/** A whole-body state: no access, a load error or a failed search. */
-export function PaneState({ pane, copy, onRetry }: PaneStateProps) {
-  const text = copy.paneState(pane);
+/**
+ * The content of the page when there is nothing else to show: no access, a
+ * load that failed, or a search that failed. Each is an error with its status
+ * icon: the ban for a permission that is missing, the exclamation for the
+ * rest. It centers in the content of the Pane. The raw error never shows: the
+ * line says what happened.
+ */
+export function PageState({ state, copy, onRetry }: PageStateProps) {
+  const text = copy.paneState(state);
 
   return (
-    <div className="dl-pane-state">
-      <div className="dl-pane-state__icon">
-        <Icon glyph={text.icon === 'ban' ? faBan : faCircleExclamation} />
-      </div>
-      <div className="dl-pane-state__title">{text.title}</div>
-      <p>{text.line}</p>
-      {onRetry && <Button onClick={onRetry}>{STRINGS.tryAgain}</Button>}
-    </div>
+    <BlankSlate
+      placement="area"
+      error
+      icon={text.icon === 'ban' ? <BanIcon /> : <CircleExclamationIcon />}
+      title={text.title}
+      description={text.line}
+      actions={
+        onRetry ? (
+          <Button
+            icon={ArrowsRotateIcon}
+            label={STRINGS.tryAgain}
+            onClick={onRetry}
+          />
+        ) : undefined
+      }
+    />
   );
+}
+
+/** An area that loads, saying what loads ("Loading the models"). */
+export function LoadingState({ title }: { title: string }) {
+  return <BlankSlate placement="area" loading title={title} />;
 }

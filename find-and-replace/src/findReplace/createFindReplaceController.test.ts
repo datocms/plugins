@@ -594,6 +594,7 @@ describe('snapshots', () => {
     expect(recordLink('article:a1')).toEqual({
       kind: 'href',
       href: 'https://acme.admin.datocms.com/editor/item_types/article/items/a1/edit',
+      path: '/editor/item_types/article/items/a1/edit',
     });
   });
 

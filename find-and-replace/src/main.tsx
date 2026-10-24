@@ -4,8 +4,6 @@ import {
   type RenderPageCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
-import './ui/recipes.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FindReplacePage from './entrypoints/FindReplacePage';
 import { readPluginParameters } from './utils/parameters';
@@ -32,7 +30,7 @@ connect({
 
     return [
       {
-        label: 'Find and Replace',
+        label: 'Find and replace',
         icon: 'file-magnifying-glass',
         placement: ['after', 'content'],
         pointsTo: { pageId: PAGE_ID },

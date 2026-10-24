@@ -13,7 +13,10 @@ export function useAnnouncer(): [Announcement | null, (text: string) => void] {
 
 /**
  * One visually hidden polite region. It announces settled states only (a
- * search settled, the pattern turned invalid, a pass ended), never progress.
+ * search settled, a pass ended), never progress. A pattern that turns invalid
+ * isn't announced here: its danger callout is an alert, which a screen reader
+ * reads as it appears, and it mounts again for each invalid pattern (see
+ * FormLines), so the same problem twice is read twice.
  */
 export function LiveRegion({
   announcement,
@@ -21,7 +24,7 @@ export function LiveRegion({
   announcement: Announcement | null;
 }) {
   return (
-    <div className="fr-sr-only" aria-live="polite">
+    <div className="visually-hidden" aria-live="polite">
       {announcement && <span key={announcement.id}>{announcement.text}</span>}
     </div>
   );

@@ -7,14 +7,13 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import kitFixesCss from '../../kit-fixes.css?raw';
-import recipesCss from '../../ui/recipes.css?raw';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { FindReplaceApp } from './FindReplaceApp';
 import {
   disabledPrimary,
   resultsSnapshot,
   runEndedEvent,
+  STATE_IDS,
   stateBoot,
   stateFixture,
 } from './testing/fixtures';
@@ -25,159 +24,239 @@ import {
   renderState,
 } from './testing/renderPage';
 
-class IntersectionObserverMock {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-}
-
+// Moving through a kit menu scrolls the active option into view, which jsdom
+// can't do.
+const scrollIntoView = Element.prototype.scrollIntoView;
 beforeAll(() => {
-  // The kit Dropdown menu watches its position with an IntersectionObserver.
-  Object.defineProperty(globalThis, 'IntersectionObserver', {
-    configurable: true,
-    writable: true,
-    value: IntersectionObserverMock,
-  });
+  Element.prototype.scrollIntoView = () => {};
+});
+afterAll(() => {
+  Element.prototype.scrollIntoView = scrollIntoView;
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
 });
 
-function toolbarMeta(): string | null {
-  return document.querySelector('.dl-toolbar__subtitle')?.textContent ?? null;
+// ── Queries ─────────────────────────────────────────────────────────────────
+
+/** The toolbar of the page's title. */
+function titleBar(): HTMLElement {
+  const bar = screen.getByRole('heading', { level: 1 }).parentElement
+    ?.parentElement;
+  if (!bar) {
+    throw new Error('no title bar');
+  }
+  return bar;
 }
 
-function primaryButton(): HTMLButtonElement | null {
-  const button = document.querySelector('.dl-kit-button--primary');
-  return button instanceof HTMLButtonElement ? button : null;
+/** The text after the title ("9 matches in 4 records"), or null. */
+function toolbarMeta(): string | null {
+  const title = screen.getByRole('heading', { level: 1 }).parentElement;
+  return title?.nextElementSibling?.textContent || null;
+}
+
+/** The labels of the title bar's text buttons, in order: the slot. */
+function slotLabels(): string[] {
+  return within(titleBar())
+    .getAllByRole('button')
+    .map((button) => button.textContent ?? '')
+    .filter((label) => label !== '');
+}
+
+/** The title bar's "⋮", or null when nothing applies. */
+function titleDots(): HTMLElement | null {
+  return within(titleBar()).queryByRole('button', { name: 'Actions' });
+}
+
+function input(name: 'Find' | 'Replace with'): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>(
+    `input[aria-label="${name}"]`,
+  );
 }
 
 function findInput(): HTMLInputElement | null {
-  return screen.queryByRole('textbox', {
-    name: 'Find',
-  }) as HTMLInputElement | null;
+  return input('Find');
+}
+
+function replaceInput(): HTMLInputElement | null {
+  return input('Replace with');
 }
 
 function records(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('.fr-record'));
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-record]'));
 }
 
-function progressLabel(): string | null {
-  return document.querySelector('.fr-progress__label')?.textContent ?? null;
+/** The scrolling content of the page's Pane, after its header. */
+function paneContent(): HTMLElement {
+  const content = screen.getByRole('main').firstElementChild?.lastElementChild;
+  if (!(content instanceof HTMLElement)) {
+    throw new Error('no pane content');
+  }
+  return content;
 }
 
-/** The disabled primary's reason, as screen readers get it. */
-function primaryReason(): string | null {
-  const anchor = document.querySelector('.dl-tooltip-anchor');
-  const id = anchor?.getAttribute('aria-describedby');
-  return id ? (document.getElementById(id)?.textContent ?? null) : null;
+/** The open menu (menus render at the end of the body). */
+function openMenu(): HTMLElement {
+  return screen.getByRole('menu', { hidden: true });
 }
 
-/** The declarations of the first top-level rule with exactly this selector. */
-function cssRule(source: string, selector: string): string {
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '');
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const rule = new RegExp(`(?:^|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(
-    code,
+/** The options of the open menu, by their text. */
+function menuOptions(): string[] {
+  return within(openMenu())
+    .getAllByRole('menuitem', { hidden: true })
+    .map((option) => option.textContent ?? '');
+}
+
+function menuOption(text: RegExp): HTMLElement {
+  const option = within(openMenu())
+    .getAllByRole('menuitem', { hidden: true })
+    .find((candidate) => text.test(candidate.textContent ?? ''));
+  if (!option) {
+    throw new Error(`no option ${text}`);
+  }
+  return option;
+}
+
+async function menuClosed() {
+  await waitFor(() =>
+    expect(screen.queryByRole('menu', { hidden: true })).toBeNull(),
   );
-  return rule?.[1] ?? '';
 }
+
+/**
+ * A control disabled with a reason: it keeps the focus (aria-disabled), and
+ * the reason opens on focus and describes it to screen readers.
+ */
+async function expectReason(control: HTMLElement, reason: string) {
+  expect(control).toHaveAttribute('aria-disabled', 'true');
+  expect(control).not.toHaveAttribute('disabled');
+  act(() => control.focus());
+  await waitFor(() => expect(control).toHaveAccessibleDescription(reason));
+}
+
+/**
+ * Renders `run` in a frame `width` pixels wide: every `(max-width: …)` media
+ * query (the kit's phone and small viewport, the page's own) answers for it.
+ */
+function atFrameWidth(width: number, run: () => void) {
+  const original = window.matchMedia;
+  window.matchMedia = (media: string) => {
+    const max = /\(max-width:\s*([\d.]+)px\)/.exec(media);
+    return {
+      ...original(media),
+      matches: max !== null && width <= Number(max[1]),
+    };
+  };
+  try {
+    run();
+  } finally {
+    window.matchMedia = original;
+  }
+}
+
+/** Cmd/Ctrl + Enter: jsdom is not a Mac, so "mod" is Ctrl. The kit's actions read `code`. */
+function pressModEnter(element: Element) {
+  fireEvent.keyDown(element, {
+    key: 'Enter',
+    code: 'Enter',
+    keyCode: 13,
+    which: 13,
+    ctrlKey: true,
+  });
+}
+
+// ── States ──────────────────────────────────────────────────────────────────
 
 describe('every state renders', () => {
-  it('S1 booting: title only, a disabled find row, the 80px spinner', () => {
+  it('S1 booting: the title, a disabled find form and a loading area', () => {
     renderState('S1');
-    expect(screen.getByText('Find and Replace')).toBeInTheDocument();
-    expect(primaryButton()).toBeNull();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Find and replace' }),
+    ).toBeInTheDocument();
+    // The title's "?" only: no slot, no "⋮", no meta.
+    expect(slotLabels()).toEqual([]);
+    expect(titleDots()).toBeNull();
     expect(toolbarMeta()).toBeNull();
     expect(findInput()).toBeDisabled();
-    expect(
-      screen.getByRole('textbox', { name: 'Replace with' }),
-    ).toBeDisabled();
+    expect(replaceInput()).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Match case' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(screen.getByText('Loading the models')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Replace with nothing' }),
     ).toBeNull();
   });
 
-  it('S2 idle: disabled primary with its reason, Find focused, idle state', () => {
+  it('S2 idle: Find focused, the idle state, the primary waits with its reason', async () => {
     renderState('S2');
-    expect(primaryButton()).toHaveTextContent('Replace');
-    expect(primaryButton()).toBeDisabled();
-    expect(primaryReason()).toBe(
-      'You cannot replace anything until the search finds matches',
-    );
     expect(findInput()).toHaveFocus();
-    expect(findInput()).toHaveAttribute(
-      'placeholder',
-      'Type something to find…',
-    );
-    expect(
-      screen.getByText('Find and replace across all records'),
-    ).toBeInTheDocument();
+    // A placeholder names the field, it never instructs.
+    expect(findInput()).toHaveAttribute('placeholder', 'Find');
+    expect(screen.getByText('No search yet')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Replace with nothing' }),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'All models' })).toBeNull();
+    expect(slotLabels()).toEqual(['Replace']);
+    await expectReason(
+      screen.getByRole('button', { name: 'Replace' }),
+      'You cannot replace anything until the search finds matches.',
+    );
   });
 
-  it('S3 typing: ✕ appears, the primary waits for the search', () => {
+  it('S3 typing: ✕ appears, the primary waits for the search', async () => {
     renderState('S3');
     expect(findInput()).toHaveValue('Acm');
     expect(screen.getByRole('button', { name: 'Clear search' })).toBeEnabled();
-    expect(primaryReason()).toBe(
-      'You cannot replace right now as the search is still running',
+    expect(screen.getByText('No search yet')).toBeInTheDocument();
+    await expectReason(
+      screen.getByRole('button', { name: 'Replace' }),
+      'You cannot replace right now as the search is still running.',
     );
-    expect(
-      screen.getByText('Find and replace across all records'),
-    ).toBeInTheDocument();
   });
 
-  it('S4 invalid pattern: invalid group and one form line', () => {
+  it('S4 invalid pattern: an invalid Find and the problem, nothing else', async () => {
     renderState('S4');
-    expect(document.querySelector('.fr-find')).toHaveClass(
-      'dl-input-group--invalid',
+    expect(findInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Pattern must be a valid regular expression (unterminated group).',
     );
-    expect(findInput()).toHaveAttribute(
-      'placeholder',
-      'Type a regular expression…',
-    );
-    expect(document.querySelector('.dl-form-error')).toHaveTextContent(
-      'Pattern must be a valid regular expression (unterminated group)',
-    );
-    expect(primaryReason()).toBe(
-      'You cannot replace as the pattern is not valid',
+    // The problem is the description of the field: a screen reader that
+    // comes back to Find hears why it is invalid.
+    expect(findInput()).toHaveAccessibleDescription(
+      /^\s*Pattern must be a valid regular expression \(unterminated group\)\.\s*$/,
     );
     expect(records()).toHaveLength(0);
+    await expectReason(
+      screen.getByRole('button', { name: 'Replace' }),
+      'You cannot replace as the pattern is not valid.',
+    );
   });
 
-  it('S5 searching: progress row with a spinner, the body spinner', () => {
+  it('S5 searching: a spinner while the total is unknown, the searching area', () => {
     renderState('S5');
-    const progress = screen.getByRole('progressbar', {
-      name: 'Search progress',
-    });
-    expect(progress).not.toHaveAttribute('aria-valuenow');
-    expect(progressLabel()).toBe('300 records searched');
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.getByText('300 records searched')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
-    const body = document.querySelector('.dl-pane__body');
-    expect(body?.children).toHaveLength(1);
+    expect(screen.getByText('Searching the records')).toBeInTheDocument();
     expect(toolbarMeta()).toBeNull();
   });
 
-  it('S6 streaming: determinate bar, live meta, the eraser', () => {
+  it('S6 streaming: a determinate bar, the live meta, the eraser', () => {
     renderState('S6');
+    // The bar is named by the text next to it.
     const progress = screen.getByRole('progressbar', {
-      name: 'Search progress',
+      name: '1,200 of 3,400 records searched',
     });
-    expect(progress).toHaveAttribute('aria-valuenow', '1200');
-    expect(progress).toHaveAttribute('aria-valuemax', '3400');
-    expect(progressLabel()).toBe('1,200 of 3,400 records searched');
+    // 1,200 of 3,400, as a share of 100.
+    expect(progress).toHaveAttribute('aria-valuenow', '35');
+    expect(progress).toHaveAttribute('aria-valuemax', '100');
+    expect(
+      screen.getByText('1,200 of 3,400 records searched'),
+    ).toBeInTheDocument();
     expect(toolbarMeta()).toBe('4 matches in 2 records');
     expect(records()).toHaveLength(2);
     expect(
@@ -185,177 +264,175 @@ describe('every state renders', () => {
     ).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('S26 large project: the Enter key cap, described to screen readers, and why Replace waits', () => {
+  it('S26 large project: the Enter key cap, described to screen readers, and why Replace waits', async () => {
     renderState('S26');
-    const input = screen.getByRole('textbox', { name: 'Find' });
-    expect(input).toHaveValue('Acme Corp');
-    expect(input).toHaveAttribute('placeholder', 'Type, then press Enter…');
-    expect(input).toHaveAccessibleDescription('Press Enter to search');
-    expect(document.querySelector('.fr-find__enter kbd')).toHaveTextContent(
-      'Enter',
-    );
-    expect(primaryReason()).toBe(
-      'You cannot replace until you press Enter to search',
-    );
+    const find = findInput();
+    expect(find).toHaveValue('Acme Corp');
+    expect(find).toHaveAttribute('placeholder', 'Find');
+    // The magnifier before it adds nothing to the description.
+    expect(find).toHaveAccessibleDescription(/^\s*Press Enter to search\.$/);
+    expect(find?.parentElement?.querySelector('kbd')).toHaveTextContent('↵');
     // The results of the last search stay on screen.
     expect(records()).toHaveLength(4);
+    await expectReason(
+      screen.getByRole('button', { name: 'Replace' }),
+      'You cannot replace until you press Enter to search.',
+    );
   });
 
   it('S27 large project: records read and the time left', () => {
     renderState('S27');
-    expect(progressLabel()).toBe('48,000 of 184,000 records searched');
-    expect(document.querySelector('.fr-progress__hint')).toHaveTextContent(
-      'About 3 minutes left',
-    );
     expect(
-      screen.getByRole('textbox', { name: 'Find' }),
-    ).not.toHaveAccessibleDescription();
-    expect(document.querySelector('.fr-find__enter')).toBeNull();
+      screen.getByText('48,000 of 184,000 records searched'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('About 3 minutes left')).toBeInTheDocument();
+    expect(findInput()).not.toHaveAccessibleDescription();
+    expect(document.querySelector('kbd')).toBeNull();
   });
 
   it('S28 capped again after reading on: "the next 10,000"', () => {
     renderState('S28');
-    expect(document.querySelector('.fr-note')).toHaveTextContent(
-      'Showing the next 10,000 matches. Replace them, then search again for the rest.',
-    );
+    expect(
+      screen.getByText(
+        'Showing the next 10,000 matches. Replace them, then search again for the rest.',
+      ),
+    ).toBeInTheDocument();
   });
 
-  it('S7 results: a read-only list, the model filter, no checkboxes', () => {
+  it('S7 results: a read-only list, the model filter, no checkboxes', async () => {
     renderState('S7');
     expect(toolbarMeta()).toBe('9 matches in 4 records');
-    expect(document.querySelector('.fr-summary')).toHaveTextContent(
-      '9 matches in 4 records',
-    );
     expect(records()).toHaveLength(4);
     expect(screen.getByRole('button', { name: 'All models' })).toBeEnabled();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-    expect(screen.queryByText('Select all')).toBeNull();
     expect(screen.queryByText('Changes the URL')).toBeNull();
-    expect(primaryReason()).toBe(
-      'You cannot replace until you type a replacement or turn on Replace with nothing',
+    await expectReason(
+      screen.getByRole('button', { name: 'Replace' }),
+      'You cannot replace until you type a replacement or turn on Replace with nothing.',
     );
   });
 
   it('S8 capped: the note, 50 records and "Load more records"', () => {
     renderState('S8');
     expect(toolbarMeta()).toBe('10,000+ matches in 2,310 records');
-    expect(document.querySelector('.fr-note')).toHaveTextContent(
-      'Showing the first 10,000 matches. Replace them, then search again for the rest.',
-    );
+    expect(
+      screen.getByText(
+        'Showing the first 10,000 matches. Replace them, then search again for the rest.',
+      ),
+    ).toBeInTheDocument();
     expect(records()).toHaveLength(50);
-    expect(
-      screen.getByRole('button', { name: 'Load more records' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Show 20 more matches' }),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Load more records')).toBeInTheDocument();
+    expect(screen.getAllByText('Show 20 more matches').length).toBeGreaterThan(
+      0,
+    );
   });
 
-  it('S9 no results: the idle style, the searched pattern and what narrows it', () => {
+  it('S9 no results: the searched pattern and what narrows it', () => {
     renderState('S9');
     expect(toolbarMeta()).toBe('No matches');
-    const empty = document.querySelector('.dl-list-empty');
-    expect(empty?.querySelector('.dl-list-empty__icon svg')).not.toBeNull();
-    expect(empty?.querySelector('.dl-list-empty__title')).toHaveTextContent(
-      'No matches for "Acme Corp"',
-    );
-    expect(empty).toHaveTextContent(
-      'Consider broadening your search: turn off Match case, or try different keywords.',
-    );
-    expect(document.querySelector('.dl-blank-slate')).toBeNull();
-    expect(document.querySelector('.fr-summary')).toBeNull();
+    expect(screen.getByText('No matches for “Acme Corp”')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Consider broadening your search: turn off Match case, or try different keywords.',
+      ),
+    ).toBeInTheDocument();
+    expect(records()).toHaveLength(0);
     expect(
       screen.queryByRole('button', { name: 'Replace with nothing' }),
     ).toBeNull();
   });
 
-  it('S10a models failed: a warning callout with "Try again"', async () => {
+  it('S10a models failed: a text-only warning, the retry in the "⋮"', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S10a');
-    const callout = document.querySelector('.dl-callout--warning');
-    expect(callout).toHaveTextContent(
-      'Couldn\'t search the "Author" and "Legal page" models.',
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Couldn't search the “Author” and “Legal page” models.",
     );
-    // Not a live region: only the one polite region announces (§4.12).
-    expect(callout).not.toHaveAttribute('role');
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    const dots = titleDots();
+    if (!dots) {
+      throw new Error('no ⋮');
+    }
+    await user.click(dots);
+    // One option: no icon.
+    expect(menuOptions()).toEqual(['Search the failed models again']);
+    expect(menuOption(/failed models/).querySelector('svg')).toBeNull();
+    await user.click(menuOption(/failed models/));
     expect(controller?.callsTo('retryFailedModels')).toHaveLength(1);
   });
 
   it('S10b search stopped: a plain note', () => {
     renderState('S10b');
-    expect(document.querySelector('.fr-note')).toHaveTextContent(
-      'Search stopped after 1,200 of 3,400 records, so some matches may be missing.',
-    );
+    expect(
+      screen.getByText(
+        'Search stopped after 1,200 of 3,400 records, so some matches may be missing.',
+      ),
+    ).toBeInTheDocument();
     expect(toolbarMeta()).toBe('24 matches in 9 records');
   });
 
-  it('S11 plan: diffs, the strip, "Select all" and a counted primary', () => {
+  it('S11 plan: diffs, checkboxes, "Select all" and a counted primary', () => {
     renderState('S11');
     expect(toolbarMeta()).toBe('8 of 9 matches will change');
-    expect(primaryButton()).toHaveTextContent('Replace 8 matches');
-    expect(primaryButton()).toBeEnabled();
-    const selectAll = screen.getByRole('checkbox', { name: 'Select all' });
-    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    expect(slotLabels()).toEqual(['Replace 8 matches']);
+    expect(
+      screen.getByRole('button', { name: 'Replace 8 matches' }),
+    ).toBeEnabled();
+    // Not every match is in: "Select all" is unchecked (it includes them all).
+    expect(
+      screen.getByRole('checkbox', { name: 'Select all rows' }),
+    ).not.toBeChecked();
     expect(screen.getByText('Changes the URL')).toBeInTheDocument();
-    expect(document.querySelectorAll('.fr-del')).toHaveLength(8);
-    expect(document.querySelectorAll('.fr-ins')).toHaveLength(8);
-    expect(document.querySelector('.fr-results')).toHaveClass(
-      'fr-results--selecting',
-    );
+    expect(document.querySelectorAll('del')).toHaveLength(8);
+    expect(document.querySelectorAll('ins')).toHaveLength(8);
   });
 
   it('S11b remove: the eraser is on and everything says "Remove"', () => {
     renderState('S11b');
-    expect(primaryButton()).toHaveTextContent('Remove 3 matches');
-    const replaceInput = screen.getByRole('textbox', { name: 'Replace with' });
-    expect(replaceInput).toBeDisabled();
-    expect(replaceInput).toHaveValue('');
-    expect(replaceInput).toHaveAttribute(
-      'placeholder',
-      'Matches will be removed',
-    );
+    expect(slotLabels()).toEqual(['Remove 3 matches']);
+    const replace = replaceInput();
+    expect(replace).toBeDisabled();
+    expect(replace).toHaveValue('');
+    expect(replace).toHaveAttribute('placeholder', 'Matches will be removed');
     expect(
       screen.getByRole('button', { name: 'Replace with nothing' }),
     ).toHaveAttribute('aria-pressed', 'true');
-    expect(document.querySelectorAll('.fr-ins')).toHaveLength(0);
-    expect(document.querySelectorAll('.fr-del')).toHaveLength(3);
+    expect(document.querySelectorAll('ins')).toHaveLength(0);
+    expect(document.querySelectorAll('del')).toHaveLength(3);
   });
 
-  it('S11c no change: the warning line and "No change" tags', () => {
+  it('S11c no change: the warning and "No change" tags', () => {
     renderState('S11c');
-    expect(document.querySelector('.fr-form-warning')).toHaveTextContent(
-      'Your replacement also matches this search, so a later search can find these matches again',
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Your replacement also matches this search, so a later search can find these matches again.',
     );
     expect(screen.getAllByText('No change')).toHaveLength(2);
     expect(toolbarMeta()).toBe('5 of 9 matches will change');
   });
 
-  it('S12 excluding: unchecked record and match, counts follow', () => {
+  it('S12 excluding: an unchecked record and match, the count follows', () => {
     renderState('S12');
-    expect(primaryButton()).toHaveTextContent('Replace 6 matches');
+    expect(slotLabels()).toEqual(['Replace 6 matches']);
     expect(
-      screen.getByRole('checkbox', { name: 'Select "Legal notice"' }),
+      screen.getByRole('checkbox', { name: 'Legal notice' }),
     ).not.toBeChecked();
     expect(
-      screen.getByRole('checkbox', {
-        name: 'Select this match in Body (en)',
-      }),
+      screen.getByRole('checkbox', { name: 'Body, en' }),
     ).not.toBeChecked();
   });
 
-  it('S12b model filter: counts per model, "—" when it could not be searched', async () => {
+  it('S12b model filter: counts per model, "Couldn\'t search" when it could not be searched', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S12b');
     await user.click(screen.getByRole('button', { name: 'All models' }));
-    const author = await screen.findByRole('button', {
-      name: /Author/,
-    });
-    expect(author).toHaveTextContent("Author—, couldn't be searched");
-    expect(screen.getByRole('button', { name: /^Article/ })).toHaveTextContent(
-      'Article6, 6 matches',
-    );
-    await user.click(screen.getByRole('button', { name: /^Page/ }));
+    expect(menuOptions()).toEqual([
+      'All models9 matches',
+      'Article6 matches',
+      "AuthorCouldn't search",
+      'Page3 matches',
+    ]);
+    await user.click(menuOption(/^Page/));
     expect(controller?.callsTo('setModelFilter')).toEqual([['page']]);
   });
 
@@ -366,7 +443,7 @@ describe('every state renders', () => {
     expect(mock.openConfirm).toHaveBeenCalledWith({
       title: 'Replace 6 matches?',
       content:
-        'Are you sure you want to replace "Acme" with "Globex" in 3 records? Records in models without draft/published change on your website right away.',
+        'Are you sure you want to replace “Acme” with “Globex” in 3 records? Records in models without draft/published change on your website right away.',
       choices: [
         { label: 'Yes, replace 6 matches', value: true, intent: 'negative' },
       ],
@@ -374,26 +451,36 @@ describe('every state renders', () => {
     });
   });
 
-  it('S14 replacing: record progress, locked row, busy primary, statuses', () => {
+  it('S14 replacing: record progress, a locked form, a busy primary, statuses', async () => {
     renderState('S14');
     const progress = screen.getByRole('progressbar', {
-      name: 'Replacement progress',
+      name: '1 of 3 records processed',
     });
-    expect(progress).toHaveAttribute('aria-valuenow', '1');
-    expect(progress).toHaveAttribute('aria-valuemax', '3');
-    expect(progressLabel()).toBe('1 of 3 records processed');
+    expect(progress).toHaveAttribute('aria-valuenow', '33');
+    expect(screen.getByText('1 of 3 records processed')).toBeInTheDocument();
     expect(
       screen.getByText('Keep this page open until it finishes'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
+
     expect(findInput()).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear search' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'All models' })).toBeDisabled();
-    expect(primaryButton()).toHaveTextContent('Replace 6 matches, in progress');
-    expect(primaryButton()).toBeDisabled();
-    expect(primaryReason()).toBe(
-      'You cannot replace right now as a replacement is in progress',
+    expect(replaceInput()).toBeDisabled();
+    const lockedReason =
+      'You cannot change the search while records are being updated or published.';
+    await expectReason(
+      screen.getByRole('button', { name: 'Clear search' }),
+      lockedReason,
     );
+    await expectReason(
+      screen.getByRole('button', { name: 'All models' }),
+      lockedReason,
+    );
+
+    // The busy primary keeps its counted label.
+    const primary = screen.getByRole('button', { name: 'Replace 6 matches' });
+    expect(primary).toHaveAttribute('aria-busy', 'true');
+    expect(primary).toBeDisabled();
+
     expect(screen.getByText('Replaced')).toBeInTheDocument();
     expect(screen.getByText('Updating…')).toBeInTheDocument();
     for (const checkbox of screen.getAllByRole('checkbox')) {
@@ -401,11 +488,10 @@ describe('every state renders', () => {
     }
   });
 
-  it('S15 stopping: "Stopping…" is disabled but keeps the focus', async () => {
+  it('S15 stopping: "Stopping…" keeps the focus, says why, and ignores clicks', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S14');
-    const stop = screen.getByRole('button', { name: 'Stop' });
-    act(() => stop.focus());
+    act(() => screen.getByRole('button', { name: 'Stop' }).focus());
     act(() =>
       controller?.setSnapshot((current) => ({
         ...current,
@@ -413,88 +499,112 @@ describe('every state renders', () => {
       })),
     );
     const stopping = screen.getByRole('button', { name: 'Stopping…' });
-    expect(stopping).toBe(stop);
-    expect(stopping).toHaveAttribute('aria-disabled', 'true');
-    // Not the disabled attribute: that would drop the focus to <body>.
-    expect(stopping).toBeEnabled();
     expect(stopping).toHaveFocus();
+    await expectReason(stopping, 'It stops after the record in progress.');
     await user.click(stopping);
     expect(controller?.callsTo('stopReplace')).toHaveLength(0);
   });
 
-  it('the progress row is one thin row with a compact Stop', () => {
-    renderState('S14');
-    expect(screen.getByRole('button', { name: 'Stop' }).className).toMatch(
-      /buttonSize-xxs/,
-    );
-    expect(cssRule(recipesCss, '.fr-toolbar.fr-toolbar--progress > *')).toMatch(
-      /padding-block:\s*4px/,
-    );
-  });
-
   it('S16 done: "Search again" and "Publish 2 records" in the slot, a report without checkboxes', () => {
     renderState('S16');
-    expect(primaryButton()).toHaveTextContent('Publish 2 records');
-    const searchAgain = screen.getByRole('button', { name: 'Search again' });
-    expect(searchAgain).toBeEnabled();
-    expect(searchAgain).toHaveClass('dl-kit-button--muted');
-    // One solid primary, after the soft one.
-    expect(document.querySelectorAll('.dl-kit-button--primary')).toHaveLength(
-      1,
-    );
+    expect(slotLabels()).toEqual(['Search again', 'Publish 2 records']);
+    expect(screen.getByRole('button', { name: 'Search again' })).toBeEnabled();
     expect(toolbarMeta()).toBe('6 matches replaced');
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     expect(screen.getAllByText('Replaced')).toHaveLength(3);
-    expect(document.querySelector('.fr-results')).not.toHaveClass(
-      'fr-results--selecting',
-    );
   });
 
-  it('S17 failed: the danger callout, inline reasons and "Try again"', async () => {
+  it('S17 failed: the danger callout, reasons under the records, the retry in the "⋮"', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S17');
     expect(toolbarMeta()).toBe('119 matches replaced, 2 records failed');
-    expect(document.querySelector('.dl-callout--danger')).toHaveTextContent(
+    expect(screen.getByRole('alert')).toHaveTextContent(
       "Couldn't update 2 records. The reason is under each one.",
     );
     expect(
-      screen.getByText('The new value is too long or too short for "Title".'),
+      screen.getByText('The new value is too long or too short for “Title”.'),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Couldn't save this record. Try again."),
     ).toBeInTheDocument();
-    expect(document.querySelectorAll('.fr-record--attention')).toHaveLength(2);
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getAllByText('Failed')).toHaveLength(2);
+
+    const dots = titleDots();
+    if (!dots) {
+      throw new Error('no ⋮');
+    }
+    await user.click(dots);
+    expect(menuOptions()).toEqual(['Try the failed records again']);
+    await user.click(menuOption(/failed records/));
     expect(controller?.callsTo('retryFailedRecords')).toHaveLength(1);
   });
 
-  it('S18 skipped: the warning callout without an action', () => {
-    renderState('S18');
-    expect(toolbarMeta()).toBe('115 matches replaced, 3 records skipped');
-    expect(document.querySelector('.dl-callout--warning')).toHaveTextContent(
-      '3 records changed after the search and were skipped. Search again to include them.',
-    );
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  it('the "⋮" holds both retries, with icons, and they wait while a pass runs', async () => {
+    const user = userEvent.setup();
+    const failed = stateFixture('S17').snapshot;
+    const modelsFailed = stateFixture('S10a').snapshot;
+    if (!failed || !modelsFailed) {
+      throw new Error('fixtures');
+    }
+    const { controller } = renderSnapshot({
+      ...failed,
+      callouts: [...failed.callouts, ...modelsFailed.callouts],
+      findRow: { ...failed.findRow, enabled: false },
+    });
+    const dots = titleDots();
+    if (!dots) {
+      throw new Error('no ⋮');
+    }
+    await user.click(dots);
+    expect(menuOptions()).toEqual([
+      'Try the failed records again',
+      'Search the failed models again',
+    ]);
+    for (const option of ['failed records', 'failed models']) {
+      expect(
+        menuOption(new RegExp(option)).querySelector('svg'),
+      ).not.toBeNull();
+    }
+    await user.click(menuOption(/failed records/));
+    expect(controller.callsTo('retryFailedRecords')).toHaveLength(0);
     expect(
-      screen.getByText('Changed after the search. Search again to include it.'),
+      await screen.findByText(
+        'You cannot try again until the replacement or publishing ends.',
+      ),
     ).toBeInTheDocument();
   });
 
-  it('S19 stopped: the primary offers the rest', () => {
+  it('S18 skipped: the warning callout and no retry', () => {
+    renderState('S18');
+    expect(toolbarMeta()).toBe('115 matches replaced, 3 records skipped');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '3 records changed after the search and were skipped. Search again to include them.',
+    );
+    expect(titleDots()).toBeNull();
+    expect(
+      screen.getAllByText(
+        'Changed after the search. Search again to include it.',
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('S19 stopped: the primary offers the rest, attempted records are locked', () => {
     renderState('S19');
     expect(toolbarMeta()).toBe('48 of 121 matches replaced');
-    expect(primaryButton()).toHaveTextContent('Replace 73 matches');
-    expect(primaryButton()).toBeEnabled();
-    expect(document.querySelectorAll('.fr-record__check--empty')).toHaveLength(
-      1,
+    expect(
+      screen.getByRole('button', { name: 'Replace 73 matches' }),
+    ).toBeEnabled();
+    const locked = records().filter((row) =>
+      within(row).getByRole('checkbox').hasAttribute('disabled'),
     );
+    expect(locked).toHaveLength(1);
   });
 
   it('S20 every match replaced', () => {
     renderState('S20');
-    expect(document.querySelector('.dl-list-empty__title')).toHaveTextContent(
-      'Every match has been replaced',
-    );
+    expect(
+      screen.getByText('Every match has been replaced'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText('Type something else to find.'),
     ).toBeInTheDocument();
@@ -512,12 +622,13 @@ describe('every state renders', () => {
         },
       })),
     );
-    expect(document.querySelector('.dl-list-empty__title')).toHaveTextContent(
-      'Every match has been removed',
-    );
+    expect(
+      screen.getByText('Every match has been removed'),
+    ).toBeInTheDocument();
   });
 
-  it('S20 never claims every match is gone while the model filter hides some', () => {
+  it('S20 never claims every match is gone while the model filter hides some', async () => {
+    const user = userEvent.setup();
     const { controller } = renderState('S20');
     act(() =>
       controller?.setSnapshot((current) => ({
@@ -529,11 +640,12 @@ describe('every state renders', () => {
         },
       })),
     );
-    const title = document.querySelector('.dl-list-empty__title');
-    expect(title).toHaveTextContent(/^No matches for ".*" in "Page"$/);
     expect(
-      screen.getByText('Choose All models to see the others.'),
+      screen.getByText(/^No matches for “.*” in “Page”$/),
     ).toBeInTheDocument();
+    expect(screen.getByText('Other models have matches.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all models' }));
+    expect(controller?.callsTo('setModelFilter')).toEqual([[null]]);
   });
 
   it('S9 keeps the searched pattern in its title while the next search is pending', () => {
@@ -545,181 +657,170 @@ describe('every state renders', () => {
         search: { ...current.search, phase: 'pending' },
       })),
     );
-    expect(document.querySelector('.dl-list-empty__title')).toHaveTextContent(
-      'No matches for "Acme Corp"',
-    );
+    expect(screen.getByText('No matches for “Acme Corp”')).toBeInTheDocument();
     act(() =>
       controller?.setSnapshot((current) => ({
         ...current,
         search: { ...current.search, phase: 'settled', resultsId: 2 },
       })),
     );
-    expect(document.querySelector('.dl-list-empty__title')).toHaveTextContent(
-      'No matches for "Acme Co"',
-    );
+    expect(screen.getByText('No matches for “Acme Co”')).toBeInTheDocument();
   });
 
-  it('S21 search failed: a pane state with "Try again", the find row stays usable', async () => {
+  it('S21 search failed: "Try again" in the content, the find form stays usable', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S21');
     expect(screen.getByText("Couldn't search the records")).toBeInTheDocument();
     expect(
-      screen.getByText("The Content Management API didn't respond."),
+      screen.getByText(
+        "The Content Management API didn't respond. Check your connection, then try again.",
+      ),
     ).toBeInTheDocument();
     expect(findInput()).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(controller?.callsTo('retrySearch')).toHaveLength(1);
   });
 
-  it('S22 unavailable: no find row, no button', () => {
+  it('S22 unavailable: the title and the state, no find form, no button', () => {
     renderState('S22');
     expect(screen.getByText('Permission denied')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Your account does not have enough privileges to access this area',
+        "Your role can't use this plugin. Ask a project admin to give it access in the plugin settings.",
       ),
     ).toBeInTheDocument();
     expect(findInput()).toBeNull();
-    expect(screen.queryByRole('button')).toBeNull();
+    // Only the title's "?".
+    expect(
+      screen.getAllByRole('button').map((button) => button.ariaLabel),
+    ).toEqual(['About this page']);
   });
 
-  it('S23 boot error: "Try again" re-runs the boot', async () => {
+  it('S23 boot error: "Try again" boots again, never the raw error', async () => {
     const user = userEvent.setup();
     const { retry } = renderState('S23');
     expect(screen.getByText("Couldn't load your content")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The Content Management API didn't respond. Check your connection, then try again.",
+      ),
+    ).toBeInTheDocument();
     expect(findInput()).toBeNull();
+    expect(titleDots()).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
+  it('the title says what the page is for in its "?"', async () => {
+    const user = userEvent.setup();
+    renderState('S2');
+    await user.click(screen.getByRole('button', { name: 'About this page' }));
+    expect(
+      await screen.findByText(
+        'Finds text in the records of your models and replaces it. You review every match, and can leave any out, before anything changes.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('under 600px the meta and "Keep this page open" move above the results', () => {
+    atFrameWidth(540, () => {
+      renderState('S7');
+      expect(toolbarMeta()).toBeNull();
+      expect(screen.getByText('9 matches in 4 records')).toBeInTheDocument();
+      cleanup();
+
+      // A pass: the progress row has no room for the quiet line, the content says it.
+      renderState('S14');
+      expect(screen.getByText('1 of 3 records processed')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Keep this page open until it finishes'),
+      ).toBeNull();
+      expect(
+        screen.getByText('Keep this page open until it finishes.'),
+      ).toBeInTheDocument();
+      cleanup();
+
+      // A search: only its time left drops.
+      renderState('S27');
+      expect(screen.queryByText('About 3 minutes left')).toBeNull();
+      expect(
+        screen.queryByText(/Keep this page open until it finishes/),
+      ).toBeNull();
+      cleanup();
+
+      // Not a phone: both buttons of the slot keep their labels.
+      renderState('S16');
+      expect(slotLabels()).toEqual(['Search again', 'Publish 2 records']);
+      cleanup();
+    });
+
+    // From 600px the meta follows the title, and the quiet line is in the row.
+    atFrameWidth(600, () => {
+      renderState('S7');
+      expect(toolbarMeta()).toBe('9 matches in 4 records');
+      cleanup();
+      renderState('S14');
+      expect(
+        screen.getByText('Keep this page open until it finishes'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Keep this page open until it finishes.'),
+      ).toBeNull();
+    });
+  });
+
+  it('on a phone-width frame "Search again" next to "Publish" shows only its icon', () => {
+    atFrameWidth(360, () => {
+      renderState('S7');
+      expect(toolbarMeta()).toBeNull();
+      expect(screen.getByText('9 matches in 4 records')).toBeInTheDocument();
+      cleanup();
+
+      // Next to "Publish 2 records", "Search again" is an icon named by its label.
+      renderState('S16');
+      expect(slotLabels()).toEqual(['Publish 2 records']);
+      expect(
+        within(titleBar()).getByRole('button', { name: 'Search again' }),
+      ).toBeInTheDocument();
+      cleanup();
+
+      // Alone, it keeps its label.
+      renderState('S17');
+      expect(slotLabels()).toEqual(['Search again']);
+    });
+  });
+
   it('builds a fixture for every state', () => {
-    for (const id of [
-      'S1',
-      'S2',
-      'S3',
-      'S4',
-      'S5',
-      'S6',
-      'S7',
-      'S8',
-      'S9',
-      'S10a',
-      'S10b',
-      'S11',
-      'S11b',
-      'S11c',
-      'S12',
-      'S12b',
-      'S13',
-      'S14',
-      'S15',
-      'S16',
-      'S17',
-      'S18',
-      'S19',
-      'S20',
-      'S21',
-      'S22',
-      'S23',
-    ] as const) {
+    for (const id of STATE_IDS) {
       const fixture = stateFixture(id);
       expect(fixture.boot !== null || fixture.snapshot !== null).toBe(true);
     }
   });
 });
 
-describe('toolbars', () => {
-  it('grow with their content: no fixed height, never squeezed by the pane', () => {
-    renderState('S14');
-    const toolbars = Array.from(
-      document.querySelectorAll<HTMLElement>('.fr-toolbar'),
-    );
-    expect(toolbars).toHaveLength(3);
-    expect(
-      document.querySelector('.fr-bar')?.closest('.fr-toolbar'),
-    ).toHaveClass('fr-toolbar--find');
-    expect(
-      document.querySelector('.fr-progress')?.closest('.fr-toolbar'),
-    ).toHaveClass('fr-toolbar--progress');
-    for (const toolbar of toolbars) {
-      expect(toolbar.style.height).toBe('');
-      expect(toolbar.style.minHeight).toBe('');
-      expect(toolbar.style.maxHeight).toBe('');
-    }
+// ── Styles ──────────────────────────────────────────────────────────────────
 
-    // The kit Toolbar is a shrinkable item of the pane's column: flex: none keeps
-    // a wrapped find row as tall as its two rows (it spilled over at 580px).
-    const base = cssRule(recipesCss, '.fr-toolbar');
-    expect(base).toMatch(/(?:^|;)\s*flex:\s*none/);
-    expect(base).toMatch(/min-height:\s*60px/);
-    const findStack = cssRule(recipesCss, '.fr-toolbar.fr-toolbar--find > *');
-    expect(findStack).toMatch(/padding-block:\s*10px/);
-    for (const rule of [
-      base,
-      findStack,
-      cssRule(recipesCss, '.fr-toolbar.fr-toolbar--progress'),
-    ]) {
-      expect(rule).not.toBe('');
-      expect(rule).not.toMatch(/(?:^|[;\s])(?:max-)?height:/);
-    }
-  });
+const pageStyles = import.meta.glob<string>('./*.module.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
 });
 
 describe('styles', () => {
-  const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '');
-
-  it('draws a visible keyboard focus inside the input groups and on checkboxes', () => {
-    for (const selector of [
-      '.dl-input-group__addon--button:focus-visible',
-      '.fr-find__clear:focus-visible',
-      '.dl-checkbox:focus-visible',
-    ]) {
-      const rule = cssRule(recipesCss, selector);
-      // The focus border as well as the pale halo (the halo alone vanished on muted fills).
-      expect({ selector, rule }).toEqual({
-        selector,
-        rule: expect.stringMatching(
-          /--color--focus--border[\s\S]*--color--focus--outline/,
-        ),
-      });
+  it('paint with tokens only: no raw color values in the CSS modules', () => {
+    expect(Object.keys(pageStyles).length).toBeGreaterThan(0);
+    for (const [file, source] of Object.entries(pageStyles)) {
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '');
+      const hit =
+        /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i.exec(code)?.[0] ?? null;
+      expect({ file, hit }).toEqual({ file, hit: null });
     }
-    expect(
-      cssRule(recipesCss, '.dl-input-group__addon--button:focus-visible'),
-    ).toMatch(/opacity:\s*1/);
-    // A focused kit button isn't faded like a hovered one.
-    expect(
-      cssRule(
-        kitFixesCss,
-        '.dl-kit-button.dl-kit-button:focus:not(:hover):not(:active)',
-      ),
-    ).toMatch(/opacity:\s*1/);
-  });
-
-  it('frames diffs with padding, never an outline that covers the text around them', () => {
-    const diffRules = code(recipesCss).match(
-      /[^{}]*\.fr-(?:del|ins)\b[^{]*\{[^}]*\}/g,
-    );
-    expect(diffRules?.length).toBeGreaterThan(0);
-    for (const rule of diffRules ?? []) {
-      expect(rule).not.toMatch(/outline|box-shadow/);
-    }
-    expect(cssRule(recipesCss, '.fr-del,\n.fr-ins')).toMatch(
-      /padding:\s*0 2px/,
-    );
-  });
-
-  it('keeps the find row on one line only where both inputs stay readable', () => {
-    expect(code(recipesCss)).toMatch(
-      /@media \(max-width: 959px\) \{\s*\.fr-bar \{[^}]*flex-wrap: wrap/,
-    );
-    // The filter is exactly as tall as the input groups: the row never grows when it appears.
-    expect(cssRule(recipesCss, '.fr-bar__filter .dl-kit-button')).toMatch(
-      /height:\s*40px/,
-    );
   });
 });
 
-describe('find row', () => {
+// ── Find form ───────────────────────────────────────────────────────────────
+
+describe('find form', () => {
   it('sends every keystroke untrimmed, Enter searches, Esc stops or clears', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S2');
@@ -729,6 +830,18 @@ describe('find row', () => {
     expect(controller?.callsTo('searchNow')).toHaveLength(1);
     await user.keyboard('{Escape}');
     expect(controller?.callsTo('stopOrClear')).toHaveLength(1);
+  });
+
+  it('ignores Enter and Esc while an input method composes', () => {
+    const { controller } = renderState('S3');
+    const find = findInput();
+    if (!find) {
+      throw new Error('no Find');
+    }
+    fireEvent.keyDown(find, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(find, { key: 'Escape', isComposing: true });
+    expect(controller?.callsTo('searchNow')).toHaveLength(0);
+    expect(controller?.callsTo('stopOrClear')).toHaveLength(0);
   });
 
   it('✕ clears the search and gives the focus back to Find', async () => {
@@ -756,11 +869,26 @@ describe('find row', () => {
     ]);
   });
 
+  it('the regular expression toggle says what $1 does', async () => {
+    const user = userEvent.setup();
+    renderState('S4');
+    // Placeholders stay names in regex mode too.
+    expect(replaceInput()).toHaveAttribute('placeholder', 'Replace with');
+    await user.hover(
+      screen.getByRole('button', { name: 'Use regular expression' }),
+    );
+    expect(
+      await screen.findByText(
+        'Use regular expression. In Replace with, $1 inserts the first group of the pattern.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('the Replace field: typing, the eraser, Esc clears, Enter never writes', async () => {
     const user = userEvent.setup();
     const { controller, mock } = renderState('S7');
-    const replaceInput = screen.getByRole('textbox', { name: 'Replace with' });
-    await user.type(replaceInput, 'Gl');
+    const replace = screen.getByRole('textbox', { name: 'Replace with' });
+    await user.type(replace, 'Gl');
     expect(controller?.callsTo('setReplacementText')).toEqual([['G'], ['Gl']]);
     await user.keyboard('{Enter}');
     expect(controller?.callsTo('searchNow')).toHaveLength(0);
@@ -774,32 +902,70 @@ describe('find row', () => {
     expect(controller?.callsTo('setRemove')).toEqual([[true]]);
   });
 
-  it('shows the regex placeholders', () => {
-    renderState('S4');
-    expect(
-      screen.getByRole('textbox', { name: 'Replace with' }),
-    ).toHaveAttribute('placeholder', 'Replace with… ($1 inserts a group)');
+  it('turning the eraser off brings the typed text back', () => {
+    const remove = stateFixture('S11b').snapshot;
+    if (!remove) {
+      throw new Error('fixtures');
+    }
+    const { controller } = renderSnapshot({
+      ...remove,
+      replace: { text: 'Globex', remove: true },
+    });
+    expect(replaceInput()).toHaveValue('');
+    expect(replaceInput()).toBeDisabled();
+    act(() => controller.setRemove(false));
+    expect(replaceInput()).toBeEnabled();
+    expect(replaceInput()).toHaveValue('Globex');
   });
 
   it('Mod+Enter opens the confirm only when the primary is enabled', async () => {
-    const user = userEvent.setup();
     const disabled = renderState('S7');
-    await user.type(
-      screen.getByRole('textbox', { name: 'Find' }),
-      '{Control>}{Enter}{/Control}',
-    );
+    const find = findInput();
+    if (!find) {
+      throw new Error('no Find');
+    }
+    pressModEnter(find);
+    await act(async () => {});
     expect(disabled.mock.openConfirm).not.toHaveBeenCalled();
     expect(disabled.controller?.callsTo('searchNow')).toHaveLength(0);
     cleanup();
 
     const enabled = renderState('S11');
-    await user.type(
-      screen.getByRole('textbox', { name: 'Replace with' }),
-      '{Meta>}{Enter}{/Meta}',
-    );
-    expect(enabled.mock.openConfirm).toHaveBeenCalledTimes(1);
+    const replace = replaceInput();
+    if (!replace) {
+      throw new Error('no Replace with');
+    }
+    // Not while an input method composes text.
+    fireEvent.keyDown(replace, {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      ctrlKey: true,
+      isComposing: true,
+    });
+    await act(async () => {});
+    expect(enabled.mock.openConfirm).not.toHaveBeenCalled();
+
+    pressModEnter(replace);
+    await waitFor(() => expect(enabled.mock.openConfirm).toHaveBeenCalled());
+    expect(enabled.controller?.callsTo('setReplacementText')).toHaveLength(0);
+  });
+
+  it('Mod+Enter is a shortcut of the page, shown on the primary', async () => {
+    const user = userEvent.setup();
+    const { mock } = renderState('S11');
+    // From anywhere on the page, not only from the fields.
+    pressModEnter(document.body);
+    await waitFor(() => expect(mock.openConfirm).toHaveBeenCalledTimes(1));
+
+    // The primary's tooltip says what the keys do.
+    await user.hover(screen.getByRole('button', { name: 'Replace 8 matches' }));
+    expect(await screen.findByText('Replace the matches')).toBeInTheDocument();
   });
 });
+
+// ── Confirm, focus and scrolling ────────────────────────────────────────────
 
 describe('confirm, focus and scrolling', () => {
   it('confirming calls replace(token); cancelling focuses the primary', async () => {
@@ -814,10 +980,28 @@ describe('confirm, focus and scrolling', () => {
 
     const cancelled = renderState('S12');
     cancelled.mock.openConfirm.mockResolvedValueOnce(false);
-    findInput()?.focus();
-    await user.keyboard('{Control>}{Enter}{/Control}');
-    await waitFor(() => expect(primaryButton()).toHaveFocus());
+    const find = findInput();
+    if (!find) {
+      throw new Error('no Find');
+    }
+    act(() => find.focus());
+    pressModEnter(find);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Replace 6 matches' }),
+      ).toHaveFocus(),
+    );
     expect(cancelled.controller?.callsTo('replace')).toHaveLength(0);
+  });
+
+  it('opens one confirm at a time', async () => {
+    const user = userEvent.setup();
+    const { mock } = renderState('S12');
+    mock.openConfirm.mockReturnValueOnce(new Promise(() => {}));
+    const primary = screen.getByRole('button', { name: 'Replace 6 matches' });
+    await user.click(primary);
+    await user.click(primary);
+    expect(mock.openConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('moves the focus to Stop when a pass starts, then to "Search again" when it finishes', () => {
@@ -848,10 +1032,11 @@ describe('confirm, focus and scrolling', () => {
     }
     const pass = stopped.run.totals;
     act(() => controller.emit(runEndedEvent({ stopped: true, pass })));
-    expect(primaryButton()).not.toHaveFocus();
+    expect(document.activeElement).toBe(document.body);
     act(() => controller.setSnapshot(stopped));
-    expect(primaryButton()).toHaveTextContent('Replace 73 matches');
-    expect(primaryButton()).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Replace 73 matches' }),
+    ).toHaveFocus();
   });
 
   it('"Search again" in the slot searches and focuses Find', async () => {
@@ -862,66 +1047,69 @@ describe('confirm, focus and scrolling', () => {
     expect(findInput()).toHaveFocus();
   });
 
-  it('a new result set scrolls the body to the top', () => {
+  it('a new result set, and the end of a pass, scroll the content to the top', () => {
     const { controller } = renderSnapshot(resultsSnapshot());
-    const body = document.querySelector('.dl-pane__body');
-    if (!(body instanceof HTMLElement)) {
-      throw new Error('no body');
-    }
-    body.scrollTop = 120;
+    const content = paneContent();
+    content.scrollTop = 120;
     act(() =>
       controller.setSnapshot((current) => ({
         ...current,
         search: { ...current.search, resultsId: current.search.resultsId + 1 },
       })),
     );
-    expect(body.scrollTop).toBe(0);
+    expect(content.scrollTop).toBe(0);
+
+    content.scrollTop = 80;
+    act(() => controller.emit(runEndedEvent()));
+    expect(content.scrollTop).toBe(0);
   });
 
-  it('keeps the focus on the primary when it turns from disabled to enabled', () => {
+  it('keeps the focus on the primary when it turns from disabled to enabled, and back', () => {
     const { controller } = renderSnapshot({
       ...resultsSnapshot(),
       primary: disabledPrimary('search_running', { count: 36 }),
     });
-    const anchor = document.querySelector<HTMLElement>('.dl-tooltip-anchor');
-    act(() => anchor?.focus());
-    expect(anchor).toHaveFocus();
+    act(() => screen.getByRole('button', { name: 'Replace' }).focus());
     act(() =>
       controller.setSnapshot((current) => ({
         ...current,
         primary: { kind: 'replace', verb: 'replace', count: 36, enabled: true },
       })),
     );
-    expect(primaryButton()).toHaveTextContent('Replace 36 matches');
-    expect(primaryButton()).toHaveFocus();
-    // And back: the disabled primary's anchor takes it.
+    expect(
+      screen.getByRole('button', { name: 'Replace 36 matches' }),
+    ).toHaveFocus();
     act(() =>
       controller.setSnapshot((current) => ({
         ...current,
         primary: disabledPrimary('search_running', { count: 36 }),
       })),
     );
-    expect(document.querySelector('.dl-tooltip-anchor')).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Replace' })).toHaveFocus();
   });
 
-  it('when the focused control unmounts, the focus goes back to Find', async () => {
-    const user = userEvent.setup();
+  it('when the focused control unmounts, the focus goes back to Find', () => {
     const { controller } = renderState('S10a');
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus();
+    const dots = titleDots();
+    act(() => dots?.focus());
+    expect(dots).toHaveFocus();
+    // The retry no longer applies: the "⋮" goes.
     act(() =>
       controller?.setSnapshot((current) => ({ ...current, callouts: [] })),
     );
+    expect(titleDots()).toBeNull();
     expect(findInput()).toHaveFocus();
   });
 });
+
+// ── Live region ─────────────────────────────────────────────────────────────
 
 describe('live region', () => {
   function liveText(): string {
     return document.querySelector('[aria-live="polite"]')?.textContent ?? '';
   }
 
-  it('announces settled searches, invalid patterns and ended passes only', () => {
+  it('announces settled searches and ended passes only', () => {
     const { controller } = renderState('S7');
     if (!controller) {
       throw new Error('fixtures');
@@ -956,13 +1144,15 @@ describe('live region', () => {
     );
     expect(liveText()).toBe('Search stopped. 24 matches in 9 records');
 
+    // An invalid pattern is a danger callout, an alert of its own: the live
+    // region doesn't read it a second time.
     act(() =>
       controller.emit({
         type: 'patternInvalid',
         problem: { code: 'zero_width' },
       }),
     );
-    expect(liveText()).toBe('Pattern must match at least one character');
+    expect(liveText()).toBe('Search stopped. 24 matches in 9 records');
 
     act(() =>
       controller.emit({
@@ -974,6 +1164,37 @@ describe('live region', () => {
       }),
     );
     expect(liveText()).toBe('No matches');
+  });
+
+  it('reads the same pattern problem again for each invalid pattern', () => {
+    const { controller } = renderState('S4');
+    const problem = controller?.getSnapshot().search.patternProblem;
+    if (!controller || !problem) {
+      throw new Error('fixtures');
+    }
+    const first = screen.getByRole('alert');
+    // Enter again on the same pattern: the same problem, the same text.
+    act(() => controller.emit({ type: 'patternInvalid', problem }));
+    const second = screen.getByRole('alert');
+    expect(second).not.toBe(first);
+    expect(second).toHaveTextContent(first.textContent ?? '');
+  });
+
+  it('reads the same text twice as two announcements', () => {
+    const { controller } = renderState('S7');
+    const settled = {
+      type: 'searchSettled',
+      matches: 9,
+      records: 4,
+      capped: false,
+      stopped: false,
+    } as const;
+    act(() => controller?.emit(settled));
+    const first = document.querySelector('[aria-live="polite"] > *');
+    act(() => controller?.emit(settled));
+    const second = document.querySelector('[aria-live="polite"] > *');
+    expect(second).toHaveTextContent('9 matches in 4 records');
+    expect(second).not.toBe(first);
   });
 
   it('announces the meta of a pass that ended', () => {
@@ -995,8 +1216,10 @@ describe('live region', () => {
   });
 });
 
+// ── Toasts ──────────────────────────────────────────────────────────────────
+
 describe('toasts', () => {
-  it('fires exactly one toast per ended pass, also in StrictMode', async () => {
+  it('fires exactly one toast per ended pass, also in StrictMode', () => {
     const { controller, mock } = renderState('S16', { strict: true });
     const totals = stateFixture('S16').snapshot?.run.totals;
     if (!controller || !totals) {
@@ -1019,7 +1242,7 @@ describe('toasts', () => {
     expect(mock.customToast).not.toHaveBeenCalled();
   });
 
-  it('runs the CTA the user clicked when the run session is still open', async () => {
+  it('runs the CTA the user clicked while the run session is still open', async () => {
     const { controller, mock } = renderState('S18');
     const totals = stateFixture('S18').snapshot?.run.totals;
     if (!controller || !totals) {
@@ -1045,6 +1268,27 @@ describe('toasts', () => {
       cta: { label: 'Search again', value: 'searchAgain' },
       dismissOnPageChange: true,
     });
+  });
+
+  it('"Try again" retries the failed records when they can be retried', async () => {
+    const { controller, mock } = renderState('S17');
+    const totals = stateFixture('S17').snapshot?.run.totals;
+    if (!controller || !totals) {
+      throw new Error('fixtures');
+    }
+    mock.customToast.mockResolvedValueOnce('retry');
+    act(() =>
+      controller.emit({
+        type: 'runEnded',
+        stopped: false,
+        verb: 'replace',
+        pass: totals,
+        allFailedCause: null,
+      }),
+    );
+    await waitFor(() =>
+      expect(controller.callsTo('retryFailedRecords')).toHaveLength(1),
+    );
   });
 
   it('ignores a CTA once a new search has ended the run session', async () => {
@@ -1079,7 +1323,9 @@ describe('toasts', () => {
   });
 });
 
-describe('lines above the card', () => {
+// ── Lines above the results ─────────────────────────────────────────────────
+
+describe('lines above the results', () => {
   it('a capped search whose replacement matches itself still warns: a later search can find the matches again', () => {
     const capped = stateFixture('S8').snapshot;
     if (!capped) {
@@ -1091,142 +1337,83 @@ describe('lines above the card', () => {
       note: { kind: 'capped', selfMatch: true, continued: false },
       replacementCheck: { problem: null, warnings: [{ code: 'self_match' }] },
     });
-    expect(document.querySelector('.fr-note')).toHaveTextContent(
-      'Showing the first 10,000 matches. Replace them, then search again for the rest.',
+    expect(
+      screen.getByText(
+        'Showing the first 10,000 matches. Replace them, then search again for the rest.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Your replacement also matches this search, so a later search can find these matches again.',
     );
-    expect(document.querySelector('.fr-form-warning')).toHaveTextContent(
-      'Your replacement also matches this search, so a later search can find these matches again',
+  });
+
+  it('shows the replacement problem first, then the warnings in order', () => {
+    const plan = stateFixture('S11').snapshot;
+    if (!plan) {
+      throw new Error('fixtures');
+    }
+    renderSnapshot({
+      ...plan,
+      replacementCheck: {
+        problem: { code: 'context_token' },
+        warnings: [
+          { code: 'self_match' },
+          { code: 'group_out_of_range', token: '$2', groupCount: 1 },
+        ],
+      },
+    });
+    expect(
+      screen.getAllByRole('alert').map((alert) => alert.textContent),
+    ).toEqual([
+      "Replacement can't use $` or $'.",
+      'Your replacement also matches this search, so a later search can find these matches again.',
+      'Replacement uses $2, but the pattern only has 1 group.',
+    ]);
+    // The problem belongs to Replace with: invalid, and described by it.
+    expect(replaceInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(replaceInput()).toHaveAccessibleDescription(
+      "Replacement can't use $` or $'.",
     );
+    expect(findInput()).not.toHaveAttribute('aria-invalid');
+    expect(findInput()).not.toHaveAccessibleDescription(/Replacement/);
+  });
+
+  it('updates a warning in place when its count changes, so it is not read out again', () => {
+    const plan = stateFixture('S11').snapshot;
+    if (!plan) {
+      throw new Error('fixtures');
+    }
+    const slugs = (count: number) => ({
+      problem: null,
+      warnings: [{ code: 'slug_format', count } as const],
+    });
+    const { controller } = renderSnapshot({
+      ...plan,
+      replacementCheck: slugs(1),
+    });
+    const before = screen.getByRole('alert');
+    act(() =>
+      controller.setSnapshot((current) => ({
+        ...current,
+        replacementCheck: slugs(2),
+      })),
+    );
+    const after = screen.getByRole('alert');
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent('so 2 slug changes will probably fail.');
   });
 });
 
+// ── Model filter ────────────────────────────────────────────────────────────
+
 describe('model filter', () => {
-  function trigger(): HTMLElement {
-    return screen.getByRole('button', { name: 'All models' });
+  function trigger(name = 'All models'): HTMLElement {
+    return screen.getByRole('button', { name });
   }
-
-  function option(name: RegExp): HTMLElement {
-    return within(document.body).getByRole('button', { name });
-  }
-
-  it('works from the keyboard: opens on the chosen option, arrows move, Enter picks', async () => {
-    const user = userEvent.setup();
-    const { controller } = renderState('S12b');
-    act(() => trigger().focus());
-    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
-    await user.keyboard('{Enter}');
-    expect(trigger()).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(option(/^All models.+/)).toHaveFocus());
-    await user.keyboard('{ArrowDown}');
-    expect(option(/^Article/)).toHaveFocus();
-    await user.keyboard('{ArrowDown}{ArrowDown}');
-    expect(option(/^Page/)).toHaveFocus();
-    await user.keyboard('{ArrowUp}');
-    expect(option(/^Author/)).toHaveFocus();
-    await user.keyboard('{End}');
-    expect(option(/^Page/)).toHaveFocus();
-    await user.keyboard('{Home}');
-    expect(option(/^All models.+/)).toHaveFocus();
-    await user.keyboard('{ArrowUp}');
-    expect(option(/^Page/)).toHaveFocus();
-    await user.keyboard('{Enter}');
-    expect(controller?.callsTo('setModelFilter')).toEqual([['page']]);
-    // The menu closed and the focus went back to the trigger, not to <body>.
-    expect(document.querySelector('.fr-option')).toBeNull();
-    expect(trigger()).toHaveFocus();
-  });
-
-  it('Esc closes the menu and returns to the trigger; Tab closes it and moves on', async () => {
-    const user = userEvent.setup();
-    renderState('S12b');
-    act(() => trigger().focus());
-    await user.keyboard('{ArrowDown}');
-    await waitFor(() => expect(option(/^All models.+/)).toHaveFocus());
-    await user.keyboard('{Escape}');
-    expect(document.querySelector('.fr-option')).toBeNull();
-    expect(trigger()).toHaveFocus();
-    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
-
-    await user.keyboard('{Enter}');
-    await waitFor(() => expect(option(/^All models.+/)).toHaveFocus());
-    // Tab from an option: the menu closes and the focus is back on the trigger before the
-    // browser's own Tab runs, so it moves on to the control after the trigger (the menu itself
-    // sits at the end of <body>).
-    act(() => {
-      fireEvent.keyDown(option(/^All models.+/), { key: 'Tab' });
-    });
-    expect(document.querySelector('.fr-option')).toBeNull();
-    expect(trigger()).toHaveFocus();
-  });
-
-  it('above 5 options, opens in the search input and moves on to the options', async () => {
-    const user = userEvent.setup();
-    const names = ['Article', 'Author', 'Event', 'FAQ', 'Page', 'Product'];
-    const { controller } = renderSnapshot({
-      ...resultsSnapshot(),
-      modelFilter: {
-        ...resultsSnapshot().modelFilter,
-        options: names.map((name) => ({
-          id: name.toLowerCase(),
-          name,
-          matchCount: 1,
-        })),
-        allMatchCount: 6,
-      },
-    });
-    act(() => trigger().focus());
-    await user.keyboard('{Enter}');
-    const search = await waitFor(() => {
-      const input = within(document.body).getByPlaceholderText('Search...');
-      expect(input).toHaveFocus();
-      return input;
-    });
-    await user.keyboard('{ArrowDown}');
-    expect(option(/^All models.+/)).toHaveFocus();
-    await user.keyboard('{ArrowDown}');
-    expect(option(/^Article/)).toHaveFocus();
-    // Typing on an option goes to the search input.
-    await user.keyboard('p');
-    expect(search).toHaveFocus();
-    // Enter in the search picks the first option it shows.
-    await user.keyboard('{Enter}');
-    expect(controller.callsTo('setModelFilter')).toEqual([[null]]);
-    expect(trigger()).toHaveFocus();
-
-    // Space on an option picks it (it isn't typed into the search).
-    await user.keyboard('{Enter}');
-    await waitFor(() =>
-      expect(
-        within(document.body).getByPlaceholderText('Search...'),
-      ).toHaveFocus(),
-    );
-    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
-    expect(option(/^Author/)).toHaveFocus();
-    await user.keyboard(' ');
-    expect(controller.callsTo('setModelFilter')).toEqual([[null], ['author']]);
-    expect(trigger()).toHaveFocus();
-  });
-
-  it('closes when a run disables it', async () => {
-    const user = userEvent.setup();
-    const { controller } = renderState('S12b');
-    await user.click(trigger());
-    expect(document.querySelector('.fr-option')).not.toBeNull();
-    act(() =>
-      controller?.setSnapshot((current) => ({
-        ...current,
-        modelFilter: { ...current.modelFilter, enabled: false },
-      })),
-    );
-    expect(document.querySelector('.fr-option')).toBeNull();
-    expect(trigger()).toBeDisabled();
-  });
 
   it('is hidden until the snapshot says so and shows the selected model', () => {
     const { controller } = renderSnapshot(resultsSnapshot());
-    expect(
-      screen.getByRole('button', { name: 'All models' }),
-    ).toBeInTheDocument();
+    expect(trigger()).toBeInTheDocument();
     act(() =>
       controller.setSnapshot((current) => ({
         ...current,
@@ -1236,7 +1423,7 @@ describe('model filter', () => {
         },
       })),
     );
-    expect(screen.getByRole('button', { name: 'Article' })).toBeInTheDocument();
+    expect(trigger('Article')).toBeInTheDocument();
     act(() =>
       controller.setSnapshot((current) => ({
         ...current,
@@ -1249,28 +1436,115 @@ describe('model filter', () => {
   it('shows partial counts with a "+"', async () => {
     const user = userEvent.setup();
     renderState('S8');
-    await user.click(screen.getByRole('button', { name: 'All models' }));
-    const menu = document.querySelector('.fr-option')?.closest('div[style]');
-    expect(menu).not.toBeNull();
+    await user.click(trigger());
+    expect(menuOption(/^Article/)).toHaveTextContent('Article6,912+ matches');
+  });
+
+  it('a pick sets the filter, closes the menu and gives the focus back to the trigger', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderState('S12b');
+    await user.click(trigger());
+    await user.click(menuOption(/^Article/));
+    expect(controller?.callsTo('setModelFilter')).toEqual([['article']]);
+    await menuClosed();
+    expect(trigger()).toHaveFocus();
+  });
+
+  it('works from the keyboard (the kit menu): Enter opens, arrows move, Enter picks, Esc closes', async () => {
+    const { controller } = renderState('S12b');
+    // The kit reads the legacy key codes, which user-event leaves at 0.
+    const press = (element: Element, key: string, keyCode: number) =>
+      fireEvent.keyDown(element, { key, keyCode, which: keyCode });
+
+    act(() => trigger().focus());
+    press(trigger(), 'Enter', 13);
+    expect(trigger()).toHaveAttribute('aria-expanded', 'true');
+    press(openMenu(), 'ArrowDown', 40);
+    press(openMenu(), 'Enter', 13);
+    expect(controller?.callsTo('setModelFilter')).toHaveLength(1);
+    await menuClosed();
+
+    act(() => trigger().focus());
+    press(trigger(), 'Enter', 13);
+    press(openMenu(), 'Escape', 27);
+    await menuClosed();
+    expect(trigger()).toHaveFocus();
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('above 5 options, the menu has a search field', async () => {
+    const user = userEvent.setup();
+    const names = ['Article', 'Author', 'Event', 'FAQ', 'Page', 'Product'];
+    renderSnapshot({
+      ...resultsSnapshot(),
+      modelFilter: {
+        ...resultsSnapshot().modelFilter,
+        options: names.map((name) => ({
+          id: name.toLowerCase(),
+          name,
+          matchCount: 1,
+        })),
+        allMatchCount: 6,
+      },
+    });
+    await user.click(trigger());
     expect(
-      within(document.body).getByRole('button', { name: /^Article/ }),
-    ).toHaveTextContent('Article6,912+, 6,912 matches');
+      within(openMenu()).getByRole('textbox', { hidden: true }),
+    ).toBeInTheDocument();
+    expect(menuOptions()).toHaveLength(7);
+  });
+
+  it('closes when a run disables it, and says why it waits', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderState('S12b');
+    await user.click(trigger());
+    expect(openMenu()).toBeInTheDocument();
+    act(() =>
+      controller?.setSnapshot((current) => ({
+        ...current,
+        modelFilter: { ...current.modelFilter, enabled: false },
+      })),
+    );
+    await menuClosed();
+    await expectReason(
+      trigger(),
+      'You cannot change the search while records are being updated or published.',
+    );
   });
 });
+
+// ── Host updates ────────────────────────────────────────────────────────────
 
 describe('host updates', () => {
   it('re-renders on a new ctx object without remounting or re-subscribing', () => {
     const { boot, controller } = stateBoot('S7');
     const { rerender, mock } = renderBoot(boot);
-    const input = findInput();
+    const find = findInput();
     const next = createMockCtx();
     // A theme switch: a new ctx object whose primitives are the same.
     rerender(<FindReplaceApp ctx={{ ...next.ctx }} boot={boot} />);
-    expect(findInput()).toBe(input);
+    expect(findInput()).toBe(find);
     expect(controller?.listenerCounts()).toEqual({ snapshot: 1, events: 1 });
     expect(mock.openConfirm).not.toHaveBeenCalled();
   });
+
+  it('a new controller gets a fresh page', async () => {
+    const user = userEvent.setup();
+    const first = stateBoot('S8');
+    const { rerender, mock } = renderBoot(first.boot);
+    await user.click(screen.getByText('Load more records'));
+    expect(records()).toHaveLength(100);
+    const second = stateBoot('S8');
+    rerender(<FindReplaceApp ctx={mock.ctx} boot={second.boot} />);
+    expect(records()).toHaveLength(50);
+    expect(first.controller?.listenerCounts()).toEqual({
+      snapshot: 0,
+      events: 0,
+    });
+  });
 });
+
+// ── Publishing ──────────────────────────────────────────────────────────────
 
 describe('publish after a run', () => {
   it('confirms with the host (positive intent), then publishes with the offer token', async () => {
@@ -1292,27 +1566,34 @@ describe('publish after a run', () => {
     );
   });
 
-  it('cancelling publishes nothing', async () => {
+  it('cancelling publishes nothing and focuses the slot', async () => {
     const user = userEvent.setup();
     const { controller, mock } = renderState('S16');
     mock.openConfirm.mockResolvedValueOnce(false);
     await user.click(screen.getByRole('button', { name: 'Publish 2 records' }));
-    await waitFor(() => expect(mock.openConfirm).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Search again' }),
+      ).toHaveFocus(),
+    );
+    expect(mock.openConfirm).toHaveBeenCalledTimes(1);
     expect(controller?.callsTo('publish')).toHaveLength(0);
   });
 
-  it('S24 publishing: busy primary, locked find row, progress with Stop', async () => {
+  it('S24 publishing: the busy publish alone, a locked form, progress with Stop', async () => {
     const user = userEvent.setup();
     const { controller } = renderState('S24');
-    const primary = primaryButton();
-    expect(primary).toBeDisabled();
-    expect(primary).toHaveTextContent('Publish 2 records');
-    expect(
-      screen.queryByRole('button', { name: 'Search again' }),
-    ).not.toBeInTheDocument();
+    expect(slotLabels()).toEqual(['Publish 2 records']);
+    const publish = screen.getByRole('button', { name: 'Publish 2 records' });
+    expect(publish).toBeDisabled();
+    expect(publish).toHaveAttribute('aria-busy', 'true');
     expect(findInput()).toBeDisabled();
-    expect(progressLabel()).toBe('1 of 2 records published');
+    expect(screen.getByText('1 of 2 records published')).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: '1 of 2 records published' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Published')).toBeInTheDocument();
+    expect(screen.getByText('Publishing…')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(controller?.callsTo('stopPublish')).toHaveLength(1);
   });
@@ -1320,7 +1601,7 @@ describe('publish after a run', () => {
   it('S25 published: the status, the meta, and why the others stayed unpublished', () => {
     renderState('S25');
     expect(toolbarMeta()).toBe('6 matches replaced, 1 record published');
-    expect(primaryButton()).toBeNull();
+    expect(slotLabels()).toEqual(['Search again']);
     expect(screen.getAllByText('Published')).toHaveLength(1);
     expect(
       screen.getByText(
@@ -1328,7 +1609,7 @@ describe('publish after a run', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Couldn\'t publish, as "Published on" can\'t be empty.'),
+      screen.getByText("Couldn't publish, as “Published on” can't be empty."),
     ).toBeInTheDocument();
   });
 

@@ -1,13 +1,23 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import { useRegisterActions } from 'datocms-react-ui/Actions';
+import Canvas from 'datocms-react-ui/Canvas';
+import {
+  useIsPhone,
+  useMediaQuery,
+} from 'datocms-react-ui/hooks/useMediaQuery';
+import ListArea from 'datocms-react-ui/ListArea';
+import Main from 'datocms-react-ui/Main';
+import Pane from 'datocms-react-ui/Pane';
 import {
   type KeyboardEvent,
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import type {
   BootView,
@@ -20,16 +30,17 @@ import type {
   ReplaceInput,
 } from '../contract';
 import { useFindReplaceEvent, useFindReplaceSnapshot } from '../useFindReplace';
-import { Body, BodySpinner } from './Body';
+import { Body, shownFieldProblems } from './Body';
 import { buildConfirmOptions, buildPublishConfirmOptions } from './confirm';
 import { type CalloutAction, type Copy, createCopy, STRINGS } from './copy';
-import { FindBar, type FindBarHandlers } from './FindBar';
+import { type FieldProblemIds, FindBar, type FindBarHandlers } from './FindBar';
+import styles from './FindReplaceApp.module.css';
 import { LiveRegion, useAnnouncer } from './LiveRegion';
-import { PaneState } from './PaneState';
-import { PrimarySlot } from './PrimarySlot';
+import { LoadingState, PageState } from './PaneState';
+import { PrimarySlot, REPLACE_ACTION_ID } from './PrimarySlot';
 import { isProgressVisible, ProgressRow } from './ProgressRow';
 import { ResultsEnv, type ResultsEnvValue } from './ResultsEnv';
-import { TitleBar } from './TitleBar';
+import { NARROW_FRAME_QUERY, type RetryOptions, TitleBar } from './TitleBar';
 import {
   publishToast,
   type RunEndedEvent,
@@ -73,18 +84,18 @@ type NotReady = Exclude<BootView, { status: 'ready' }>;
 function BootBody({ boot, copy }: { boot: NotReady; copy: Copy }) {
   switch (boot.status) {
     case 'booting':
-      return <BodySpinner label={STRINGS.loading} />;
+      return <LoadingState title={STRINGS.loading} />;
     case 'unavailable':
       return (
-        <PaneState
-          pane={{ kind: 'unavailable', cause: boot.cause }}
+        <PageState
+          state={{ kind: 'unavailable', cause: boot.cause }}
           copy={copy}
         />
       );
     case 'failed':
       return (
-        <PaneState
-          pane={{ kind: 'bootFailed', cause: boot.cause }}
+        <PageState
+          state={{ kind: 'bootFailed', cause: boot.cause }}
           copy={copy}
           onRetry={boot.retry}
         />
@@ -92,29 +103,41 @@ function BootBody({ boot, copy }: { boot: NotReady; copy: Copy }) {
   }
 }
 
-/** S1 (the tool's shape, every control disabled), S22 and S23 (title only). */
+/**
+ * S1 (the tool's shape, every control disabled, while the models load), S22
+ * and S23 (the title and the state only: no find form, no "⋮", no button).
+ */
 function BootPage({ boot, copy }: { boot: NotReady; copy: Copy }) {
-  const findInputRef = useRef<HTMLInputElement>(null);
+  const findInputId = useId();
 
   return (
-    <div className="dl-pane dl-pane--last">
-      <TitleBar />
-      {boot.status === 'booting' && (
-        <FindBar
-          find={BOOT_FIND}
-          replace={BOOT_REPLACE}
-          findRow={BOOT_FIND_ROW}
-          invalid={false}
-          modelFilter={null}
-          copy={copy}
-          findInputRef={findInputRef}
-          handlers={BOOT_HANDLERS}
-        />
-      )}
-      <div className="dl-pane__body">
-        <BootBody boot={boot} copy={copy} />
-      </div>
-    </div>
+    <Main className={styles.page}>
+      <Pane
+        ariaLabel={STRINGS.paneLabel}
+        header={
+          <>
+            <TitleBar />
+            {boot.status === 'booting' && (
+              <FindBar
+                findInputId={findInputId}
+                find={BOOT_FIND}
+                replace={BOOT_REPLACE}
+                findRow={BOOT_FIND_ROW}
+                invalid={false}
+                modelFilter={null}
+                copy={copy}
+                handlers={BOOT_HANDLERS}
+                booting
+              />
+            )}
+          </>
+        }
+      >
+        <ListArea>
+          <BootBody boot={boot} copy={copy} />
+        </ListArea>
+      </Pane>
+    </Main>
   );
 }
 
@@ -234,10 +257,16 @@ function usePublishFlow(
   }, [controller, ctxRef, copy, requestFocus]);
 }
 
-function isModEnter(event: KeyboardEvent<HTMLInputElement>): boolean {
-  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+/** Cmd or Ctrl + Enter, on every system: the fields' replace keys. */
+function withModifier(event: KeyboardEvent<HTMLInputElement>): boolean {
+  return event.metaKey || event.ctrlKey;
 }
 
+/**
+ * The fields' own keys: Enter, Cmd/Ctrl + Enter and Esc. The fields handle
+ * Cmd/Ctrl + Enter themselves, so Ctrl + Enter also works on a Mac; the
+ * page's replace action takes the keys elsewhere on the page.
+ */
 function useFindBarHandlers(
   controller: FindReplaceController,
   requestReplace: () => void,
@@ -252,7 +281,7 @@ function useFindBarHandlers(
         }
         if (event.key === 'Enter') {
           event.preventDefault();
-          if (isModEnter(event)) {
+          if (withModifier(event)) {
             requestReplace();
           } else {
             controller.searchNow();
@@ -275,7 +304,7 @@ function useFindBarHandlers(
         if (event.key === 'Enter') {
           // Enter never writes: only the primary (through the confirm) does.
           event.preventDefault();
-          if (isModEnter(event)) {
+          if (withModifier(event)) {
             requestReplace();
           }
         } else if (event.key === 'Escape') {
@@ -290,6 +319,42 @@ function useFindBarHandlers(
   );
 }
 
+/**
+ * The retries that the callouts above the results offer, as options of the
+ * title bar's "⋮" (a callout holds only text). Only while the callouts show.
+ */
+function retryActions(
+  snapshot: FindReplaceSnapshot,
+  copy: Copy,
+): CalloutAction[] {
+  if (snapshot.body !== 'results' && snapshot.body !== 'noResults') {
+    return [];
+  }
+  const actions: CalloutAction[] = [];
+  for (const callout of snapshot.callouts) {
+    const { action } = copy.callout(callout);
+    if (action && !actions.includes(action)) {
+      actions.push(action);
+    }
+  }
+  return actions;
+}
+
+/** The element that scrolls the content of the Pane: the nearest scrolling ancestor of the marker. */
+function scrollContainerOf(marker: HTMLElement): HTMLElement | null {
+  for (let node = marker.parentElement; node; node = node.parentElement) {
+    const { overflowY } = window.getComputedStyle(node);
+    if (
+      overflowY === 'auto' ||
+      overflowY === 'scroll' ||
+      overflowY === 'overlay'
+    ) {
+      return node;
+    }
+  }
+  return marker.parentElement;
+}
+
 type ReadyPageProps = {
   ctx: RenderPageCtx;
   controller: FindReplaceController;
@@ -300,31 +365,41 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
   const snapshot = useFindReplaceSnapshot(controller);
   const ctxRef = useLatest(ctx);
   const snapshotRef = useLatest(snapshot);
-  const findRef = useRef<HTMLInputElement>(null);
-  const slotRef = useRef<HTMLSpanElement>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const findInputId = useId();
+  const patternProblemId = useId();
+  const replacementProblemId = useId();
+  const slotRef = useRef<HTMLElement>(null);
+  const stopRef = useRef<HTMLElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const [announcement, announce] = useAnnouncer();
   const { requestFocus, onFocus } = useFocusManager({
-    find: findRef,
+    findId: findInputId,
     slot: slotRef,
-    progress: progressRef,
+    stop: stopRef,
     snapshot: snapshotRef,
   });
   const requestReplace = useReplaceFlow(controller, ctxRef, copy, requestFocus);
   const requestPublish = usePublishFlow(controller, ctxRef, copy, requestFocus);
   const handlers = useFindBarHandlers(controller, requestReplace, requestFocus);
+  const isPhone = useIsPhone();
+  const narrow = useMediaQuery(NARROW_FRAME_QUERY).matches;
+  // Each invalid pattern remounts its danger callout, so its alert is read
+  // again, also when the same problem comes back (Enter on the same "(").
+  const [invalidCount, setInvalidCount] = useState(0);
 
+  // The Pane keeps its scroll container to itself: scroll the one around
+  // the marker at the top of the content.
   const scrollToTop = useCallback(() => {
-    if (bodyRef.current) {
-      bodyRef.current.scrollTop = 0;
+    const container = topRef.current && scrollContainerOf(topRef.current);
+    if (container) {
+      container.scrollTop = 0;
     }
   }, []);
 
   // Ready: the caret goes to Find.
   useEffect(() => {
-    findRef.current?.focus();
-  }, []);
+    document.getElementById(findInputId)?.focus();
+  }, [findInputId]);
 
   // A new result set starts at the top.
   const resultsId = snapshot.search.resultsId;
@@ -363,7 +438,10 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
         announce(copy.announceSettled(event));
         return;
       case 'patternInvalid':
-        announce(copy.patternProblem(event.problem));
+        // The pattern problem is a danger callout, an alert of its own: the
+        // live region doesn't read it a second time. A new key remounts it,
+        // so the alert speaks for every event.
+        setInvalidCount((count) => count + 1);
         return;
       case 'runStarted':
         requestFocus('stop', isRunActive);
@@ -393,76 +471,114 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
   });
 
   const env = useMemo<ResultsEnvValue>(
-    () => ({
-      controller,
-      copy,
-      navigateTo: (path) => {
-        ctxRef.current.navigateTo(path);
-      },
-    }),
-    [controller, copy, ctxRef],
+    () => ({ controller, copy }),
+    [controller, copy],
   );
 
-  const onCalloutAction = useCallback(
-    (action: CalloutAction) => {
-      if (action === 'retryRecords') {
-        controller.retryFailedRecords();
-      } else {
-        controller.retryFailedModels();
-      }
+  const retries: RetryOptions = {
+    actions: retryActions(snapshot, copy),
+    enabled: snapshot.findRow.enabled,
+    onRetryRecords: () => controller.retryFailedRecords(),
+    onRetryModels: () => controller.retryFailedModels(),
+  };
+  const { primary } = snapshot;
+  const replaceEnabled = primary.kind === 'replace' && primary.enabled;
+  const replaceVerb = primary.kind === 'replace' ? primary.verb : 'replace';
+
+  // Cmd/Ctrl + Enter, an action of the page: the replace confirm, while the
+  // primary is enabled. The primary shows its name and keys.
+  useRegisterActions([
+    {
+      id: REPLACE_ACTION_ID,
+      name: copy.replaceActionName(replaceVerb),
+      shortcut: { key: 'enter', mod: true, runWithInputFocus: true },
+      applicable: () => replaceEnabled,
+      run: requestReplace,
     },
-    [controller],
-  );
+  ]);
+
+  // Each problem of the find form shows once, above the results, and its
+  // field points to it while it shows.
+  const problemIds: FieldProblemIds = {
+    pattern: patternProblemId,
+    replacement: replacementProblemId,
+  };
+  const shownProblems = shownFieldProblems(snapshot);
+  const fieldProblemIds: FieldProblemIds = {
+    pattern: shownProblems.pattern ? patternProblemId : undefined,
+    replacement: shownProblems.replacement ? replacementProblemId : undefined,
+  };
 
   return (
     <ResultsEnv.Provider value={env}>
-      <div className="dl-pane dl-pane--last" onFocus={onFocus}>
-        <TitleBar meta={copy.meta(snapshot.meta)}>
-          <PrimarySlot
-            primary={snapshot.primary}
-            copy={copy}
-            onReplace={requestReplace}
-            onSearchAgain={() => {
-              controller.searchAgain();
-              requestFocus('find');
-            }}
-            onPublish={requestPublish}
-            slotRef={slotRef}
-          />
-        </TitleBar>
-        <FindBar
-          find={snapshot.find}
-          replace={snapshot.replace}
-          findRow={snapshot.findRow}
-          invalid={snapshot.search.phase === 'invalid'}
-          modelFilter={snapshot.modelFilter}
-          copy={copy}
-          findInputRef={findRef}
-          handlers={handlers}
-        />
-        {isProgressVisible(snapshot.search, snapshot.run, snapshot.publish) && (
-          <ProgressRow
-            search={snapshot.search}
-            run={snapshot.run}
-            publish={snapshot.publish}
-            copy={copy}
-            onStopSearch={() => controller.stopSearch()}
-            onStopReplace={() => controller.stopReplace()}
-            onStopPublish={() => controller.stopPublish()}
-            containerRef={progressRef}
-          />
-        )}
-        <div className="dl-pane__body" ref={bodyRef}>
+      <Main className={styles.page} onFocus={onFocus}>
+        <Pane
+          ariaLabel={STRINGS.paneLabel}
+          header={
+            <>
+              <TitleBar
+                meta={copy.meta(snapshot.meta)}
+                narrow={narrow}
+                retries={retries}
+              >
+                <PrimarySlot
+                  primary={primary}
+                  copy={copy}
+                  onReplace={requestReplace}
+                  onSearchAgain={() => {
+                    controller.searchAgain();
+                    requestFocus('find');
+                  }}
+                  onPublish={requestPublish}
+                  slotRef={slotRef}
+                  isPhone={isPhone}
+                />
+              </TitleBar>
+              <FindBar
+                findInputId={findInputId}
+                find={snapshot.find}
+                replace={snapshot.replace}
+                findRow={snapshot.findRow}
+                invalid={snapshot.search.phase === 'invalid'}
+                problemIds={fieldProblemIds}
+                modelFilter={snapshot.modelFilter}
+                copy={copy}
+                handlers={handlers}
+              />
+              {isProgressVisible(
+                snapshot.search,
+                snapshot.run,
+                snapshot.publish,
+              ) && (
+                <ProgressRow
+                  search={snapshot.search}
+                  run={snapshot.run}
+                  publish={snapshot.publish}
+                  copy={copy}
+                  onStopSearch={() => controller.stopSearch()}
+                  onStopReplace={() => controller.stopReplace()}
+                  onStopPublish={() => controller.stopPublish()}
+                  stopRef={stopRef}
+                  narrow={narrow}
+                />
+              )}
+            </>
+          }
+        >
+          <div ref={topRef} />
           <Body
             snapshot={snapshot}
             copy={copy}
+            narrow={narrow}
+            patternAlertKey={invalidCount}
+            problemIds={problemIds}
             onRetrySearch={() => controller.retrySearch()}
-            onCalloutAction={onCalloutAction}
             onSelectAll={(included) => controller.setAllIncluded(included)}
+            onShowAllModels={() => controller.setModelFilter(null)}
           />
-        </div>
-      </div>
-      <LiveRegion announcement={announcement} />
+        </Pane>
+        <LiveRegion announcement={announcement} />
+      </Main>
     </ResultsEnv.Provider>
   );
 }
@@ -492,18 +608,16 @@ export function FindReplaceApp({ ctx, boot }: FindReplaceAppProps) {
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <div className="fr-app">
-        {boot.status === 'ready' ? (
-          <ReadyPage
-            key={controllerKey(boot.controller)}
-            ctx={ctx}
-            controller={boot.controller}
-            copy={copy}
-          />
-        ) : (
-          <BootPage boot={boot} copy={copy} />
-        )}
-      </div>
+      {boot.status === 'ready' ? (
+        <ReadyPage
+          key={controllerKey(boot.controller)}
+          ctx={ctx}
+          controller={boot.controller}
+          copy={copy}
+        />
+      ) : (
+        <BootPage boot={boot} copy={copy} />
+      )}
     </Canvas>
   );
 }

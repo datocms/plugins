@@ -1,19 +1,19 @@
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  SelectField,
-  Spinner,
-  SwitchField,
-} from 'datocms-react-ui';
-import { useEffect, useMemo, useState } from 'react';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import type { ModelSummary, PluginParameters, RoleSummary } from '../types';
 import { buildCmaClient } from '../utils/cma';
 import { readPluginParameters } from '../utils/parameters';
 import { loadModels, loadRoles } from '../utils/schema';
-import s from './ConfigScreen.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -23,13 +23,6 @@ type SelectOption = {
   label: string;
   value: string;
 };
-
-type SingleValue<T> = T | null;
-type MultiValue<T> = readonly T[];
-type SelectChangeValue =
-  | SingleValue<SelectOption>
-  | MultiValue<SelectOption>
-  | readonly (SelectOption | MultiValue<SelectOption>)[];
 
 type DraftState = {
   restrictToRoles: boolean;
@@ -47,6 +40,7 @@ function toDraftState(params: PluginParameters): DraftState {
   };
 }
 
+/** The saved parameters: exactly these four keys. */
 function toPayload(state: DraftState): PluginParameters {
   return {
     restrictToRoles: state.restrictToRoles,
@@ -56,63 +50,30 @@ function toPayload(state: DraftState): PluginParameters {
   };
 }
 
-function isSelectOption(value: unknown): value is SelectOption {
-  return (
-    Boolean(value) &&
-    typeof value === 'object' &&
-    'label' in (value as Record<string, unknown>) &&
-    'value' in (value as Record<string, unknown>)
-  );
-}
-
-function toOptionArray(value: SelectChangeValue): SelectOption[] {
-  if (!Array.isArray(value)) {
-    return isSelectOption(value) ? [value] : [];
-  }
-
-  const options: SelectOption[] = [];
-
-  for (const entry of value) {
-    if (Array.isArray(entry)) {
-      for (const nested of entry) {
-        if (isSelectOption(nested)) {
-          options.push(nested);
-        }
-      }
-      continue;
-    }
-
-    if (isSelectOption(entry)) {
-      options.push(entry);
-    }
-  }
-
-  return options;
-}
-
-function toModelOption(model: ModelSummary): SelectOption {
-  return {
-    label: `${model.name} (${model.id})`,
-    value: model.id,
-  };
-}
-
-function toRoleOption(role: RoleSummary): SelectOption {
-  return {
-    label: `${role.name} (${role.id})`,
-    value: role.id,
-  };
-}
-
-function selectedOptions(
-  value: string[],
-  options: SelectOption[],
+/**
+ * The options of a select: the name, and the ID in parentheses only when
+ * another option has the same name.
+ */
+function toOptions(
+  items: ReadonlyArray<{ id: string; name: string }>,
 ): SelectOption[] {
-  const optionMap = new Map(options.map((option) => [option.value, option]));
+  const namesSeen = new Map<string, number>();
+  for (const item of items) {
+    namesSeen.set(item.name, (namesSeen.get(item.name) ?? 0) + 1);
+  }
 
-  return value.map(
-    (entry) => optionMap.get(entry) ?? { label: entry, value: entry },
-  );
+  return items.map((item) => ({
+    value: item.id,
+    label:
+      (namesSeen.get(item.name) ?? 0) > 1
+        ? `${item.name} (${item.id})`
+        : item.name,
+  }));
+}
+
+/** A saved ID that no option has (a deleted role or model) still shows. */
+function optionForSavedId(value: string): SelectOption {
+  return { value, label: value };
 }
 
 function normalizeIds(value: string[]): string[] {
@@ -134,11 +95,24 @@ function isDraftDirty(draft: DraftState, params: PluginParameters): boolean {
   );
 }
 
+/** A callout's text, with a title when it takes two sentences. */
+type LoadError = { title: string | null; text: string };
+
+const NO_TOKEN_ERROR: LoadError = {
+  title: null,
+  text: "Couldn't load the roles and models, as the plugin has no access to your API token.",
+};
+
+const LOAD_FAILED_ERROR: LoadError = {
+  title: "Couldn't load the roles and models",
+  text: 'Reload the page to try again.',
+};
+
 type ProjectOptions = {
   availableModels: ModelSummary[];
   availableRoles: RoleSummary[];
   isLoadingOptions: boolean;
-  loadError: string | null;
+  loadError: LoadError | null;
 };
 
 /** Loads the project's models and roles for the selectors. */
@@ -146,14 +120,12 @@ function useProjectOptions(client: Client | null): ProjectOptions {
   const [availableModels, setAvailableModels] = useState<ModelSummary[]>([]);
   const [availableRoles, setAvailableRoles] = useState<RoleSummary[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
 
   useEffect(() => {
     if (!client) {
       setIsLoadingOptions(false);
-      setLoadError(
-        'Grant currentUserAccessToken to load project roles and models.',
-      );
+      setLoadError(NO_TOKEN_ERROR);
       return;
     }
 
@@ -169,13 +141,9 @@ function useProjectOptions(client: Client | null): ProjectOptions {
         setAvailableModels(models);
         setAvailableRoles(roles);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled) {
-          setLoadError(
-            error instanceof Error
-              ? error.message
-              : 'Failed to load project roles and models.',
-          );
+          setLoadError(LOAD_FAILED_ERROR);
         }
       })
       .finally(() => {
@@ -202,6 +170,27 @@ function clientFor(
     : null;
 }
 
+/**
+ * Each restriction is a boolean whose two answers need a name, so it is a
+ * pair of radios: 'all' stores false, 'some' stores true.
+ */
+type Scope = 'all' | 'some';
+
+const toScope = (restricted: boolean): Scope => (restricted ? 'some' : 'all');
+
+const ROLE_SCOPES: ReadonlyArray<RadioGroupOption<Scope>> = [
+  { value: 'all', label: 'Every role that can edit records' },
+  { value: 'some', label: 'Only some roles' },
+];
+
+const MODEL_SCOPES: ReadonlyArray<RadioGroupOption<Scope>> = [
+  { value: 'all', label: 'Every model the role can edit' },
+  { value: 'some', label: 'Only some models' },
+];
+
+const ROLE_SELECTION_ERROR = 'Select at least one role.';
+const MODEL_SELECTION_ERROR = 'Select at least one model.';
+
 function selectionErrors(draft: DraftState): {
   roleSelectionError: string | null;
   modelSelectionError: string | null;
@@ -209,30 +198,38 @@ function selectionErrors(draft: DraftState): {
   return {
     roleSelectionError:
       draft.restrictToRoles && draft.allowedRoleIds.length === 0
-        ? 'Select at least one role.'
+        ? ROLE_SELECTION_ERROR
         : null,
     modelSelectionError:
       draft.restrictToModels && draft.allowedModelIds.length === 0
-        ? 'Select at least one model.'
+        ? MODEL_SELECTION_ERROR
         : null,
   };
 }
 
-/** The loading spinner and the load error, shown under an active restriction. */
-function OptionsNotice({
-  isLoadingOptions,
-  loadError,
-}: Pick<ProjectOptions, 'isLoadingOptions' | 'loadError'>) {
-  return (
-    <>
-      {isLoadingOptions && (
-        <div className={s.notice}>
-          <Spinner size={24} />
-        </div>
-      )}
-      {loadError && <p className={s.notice}>{loadError}</p>}
-    </>
-  );
+/** Why Save is unavailable, or undefined when it can save. */
+function saveDisabledReason({
+  canEditSchema,
+  isDirty,
+  roleSelectionError,
+  modelSelectionError,
+}: {
+  canEditSchema: boolean;
+  isDirty: boolean;
+  roleSelectionError: string | null;
+  modelSelectionError: string | null;
+}): { reason: string } | undefined {
+  if (!canEditSchema) {
+    return { reason: "Your role can't change the settings of plugins." };
+  }
+  if (!isDirty) {
+    return { reason: 'There are no changes to save.' };
+  }
+  if (roleSelectionError && modelSelectionError) {
+    return { reason: 'Select at least one role and one model.' };
+  }
+  const selectionError = roleSelectionError ?? modelSelectionError;
+  return selectionError ? { reason: selectionError } : undefined;
 }
 
 export default function ConfigScreen({ ctx }: Props) {
@@ -256,26 +253,38 @@ export default function ConfigScreen({ ctx }: Props) {
     setDraft(toDraftState(params));
   }, [params]);
 
-  const modelOptions = useMemo<SelectOption[]>(
-    () => availableModels.map(toModelOption),
+  const modelOptions = useMemo(
+    () => toOptions(availableModels),
     [availableModels],
   );
-  const roleOptions = useMemo<SelectOption[]>(
-    () => availableRoles.map(toRoleOption),
+  const roleOptions = useMemo(
+    () => toOptions(availableRoles),
     [availableRoles],
   );
   const isDirty = useMemo(() => isDraftDirty(draft, params), [draft, params]);
   const { roleSelectionError, modelSelectionError } = selectionErrors(draft);
   const hasValidationError = Boolean(roleSelectionError || modelSelectionError);
   const hasRestriction = draft.restrictToRoles || draft.restrictToModels;
+  const disabledReason = saveDisabledReason({
+    canEditSchema,
+    isDirty,
+    roleSelectionError,
+    modelSelectionError,
+  });
 
-  async function handleSave() {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isSaving) {
+      return;
+    }
+
     if (!canEditSchema) {
       ctx.alert('Your role cannot update plugin settings.');
       return;
     }
 
-    if (hasValidationError) {
+    if (!isDirty || hasValidationError) {
       return;
     }
 
@@ -284,6 +293,8 @@ export default function ConfigScreen({ ctx }: Props) {
     try {
       await ctx.updatePluginParameters(toPayload(draft));
       ctx.notice('Settings successfully saved!');
+    } catch {
+      ctx.alert("Couldn't save the settings.");
     } finally {
       setIsSaving(false);
     }
@@ -291,125 +302,103 @@ export default function ConfigScreen({ ctx }: Props) {
 
   return (
     <Canvas ctx={ctx}>
-      <div className={s.container}>
-        <p className={s.instructions}>
-          By default, every role and model allowed by DatoCMS permissions is
-          available. Turn on a restriction only when Find and Replace should be
-          limited further.
-        </p>
-        <FieldGroup>
-          <div className={s.restriction}>
-            <SwitchField
-              name="restrictToRoles"
-              id="restrictToRoles"
-              label="Allow only certain roles to bulk update"
-              value={draft.restrictToRoles}
-              onChange={(restrictToRoles) =>
-                setDraft((current) => ({ ...current, restrictToRoles }))
+      <Page>
+        <Page.Content>
+          {!canEditSchema && (
+            <Callout>Your role can't change these settings.</Callout>
+          )}
+          <form onSubmit={handleSubmit}>
+            <Page.Group
+              title="Access"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  label="Save"
+                  busy={isSaving}
+                  disabled={disabledReason}
+                />
               }
-              switchInputProps={{
-                name: 'restrictToRoles',
-                value: draft.restrictToRoles,
-                disabled: !canEditSchema,
-              }}
-            />
-            {draft.restrictToRoles && (
-              <div className={s.restrictionSelector}>
-                <SelectField
-                  name="allowedRoleIds"
-                  id="allowedRoleIds"
-                  label="Roles allowed to bulk update"
-                  hint="Only the selected roles can open Find and Replace."
+            >
+              {hasRestriction && loadError && (
+                <Callout tone="danger" title={loadError.title ?? undefined}>
+                  {loadError.text}
+                </Callout>
+              )}
+              <FieldWrapper label="Who can use Find and replace">
+                <RadioGroupInput
+                  value={toScope(draft.restrictToRoles)}
+                  options={ROLE_SCOPES}
+                  disabled={!canEditSchema}
+                  onChange={(scope) =>
+                    setDraft((current) => ({
+                      ...current,
+                      restrictToRoles: scope === 'some',
+                    }))
+                  }
+                />
+              </FieldWrapper>
+              {draft.restrictToRoles && (
+                <FieldWrapper
+                  label="Roles"
+                  hint="Only these roles see Find and replace in the navigation and can open it."
                   error={roleSelectionError ?? undefined}
-                  value={selectedOptions(draft.allowedRoleIds, roleOptions)}
-                  selectInputProps={{
-                    inputId: 'allowedRoleIds-input',
-                    'aria-label': 'Roles allowed to bulk update',
-                    isMulti: true,
-                    options: roleOptions,
-                    isDisabled: isLoadingOptions || !canEditSchema,
-                  }}
-                  onChange={(value) =>
+                >
+                  <SelectInput
+                    multiple
+                    value={draft.allowedRoleIds}
+                    options={roleOptions}
+                    loading={isLoadingOptions}
+                    disabled={!canEditSchema}
+                    acceptValueNotIncludedInOptions={optionForSavedId}
+                    onChange={(allowedRoleIds) =>
+                      setDraft((current) => ({
+                        ...current,
+                        allowedRoleIds: allowedRoleIds ?? [],
+                      }))
+                    }
+                  />
+                </FieldWrapper>
+              )}
+              <FieldWrapper label="Models it searches">
+                <RadioGroupInput
+                  value={toScope(draft.restrictToModels)}
+                  options={MODEL_SCOPES}
+                  disabled={!canEditSchema}
+                  onChange={(scope) =>
                     setDraft((current) => ({
                       ...current,
-                      allowedRoleIds: toOptionArray(value).map(
-                        (option) => option.value,
-                      ),
+                      restrictToModels: scope === 'some',
                     }))
                   }
                 />
-              </div>
-            )}
-          </div>
-          <div className={s.restriction}>
-            <SwitchField
-              name="restrictToModels"
-              id="restrictToModels"
-              label="Allow only certain models to be bulk updated"
-              value={draft.restrictToModels}
-              onChange={(restrictToModels) =>
-                setDraft((current) => ({ ...current, restrictToModels }))
-              }
-              switchInputProps={{
-                name: 'restrictToModels',
-                value: draft.restrictToModels,
-                disabled: !canEditSchema,
-              }}
-            />
-            {draft.restrictToModels && (
-              <div className={s.restrictionSelector}>
-                <SelectField
-                  name="allowedModelIds"
-                  id="allowedModelIds"
-                  label="Models allowed for bulk updates"
-                  hint="Only the selected models are available in Find and Replace."
+              </FieldWrapper>
+              {draft.restrictToModels && (
+                <FieldWrapper
+                  label="Models"
+                  hint="Find and replace searches and changes only the records of these models."
                   error={modelSelectionError ?? undefined}
-                  value={selectedOptions(draft.allowedModelIds, modelOptions)}
-                  selectInputProps={{
-                    inputId: 'allowedModelIds-input',
-                    'aria-label': 'Models allowed for bulk updates',
-                    isMulti: true,
-                    options: modelOptions,
-                    isDisabled: isLoadingOptions || !canEditSchema,
-                  }}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      allowedModelIds: toOptionArray(value).map(
-                        (option) => option.value,
-                      ),
-                    }))
-                  }
-                />
-              </div>
-            )}
-          </div>
-        </FieldGroup>
-        {hasRestriction && (
-          <OptionsNotice
-            isLoadingOptions={isLoadingOptions}
-            loadError={loadError}
-          />
-        )}
-        <div className={s.actions}>
-          <Button
-            fullWidth
-            buttonType="primary"
-            onClick={handleSave}
-            disabled={
-              !isDirty || isSaving || !canEditSchema || hasValidationError
-            }
-          >
-            {isSaving ? 'Saving…' : 'Save settings'}
-          </Button>
-        </div>
-        {!canEditSchema && (
-          <p className={s.notice}>
-            Your role can use Find and Replace if allowed, but cannot change
-            plugin settings.
-          </p>
-        )}
-      </div>
+                >
+                  <SelectInput
+                    multiple
+                    value={draft.allowedModelIds}
+                    options={modelOptions}
+                    loading={isLoadingOptions}
+                    disabled={!canEditSchema}
+                    acceptValueNotIncludedInOptions={optionForSavedId}
+                    onChange={(allowedModelIds) =>
+                      setDraft((current) => ({
+                        ...current,
+                        allowedModelIds: allowedModelIds ?? [],
+                      }))
+                    }
+                  />
+                </FieldWrapper>
+              )}
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

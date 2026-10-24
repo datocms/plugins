@@ -690,8 +690,12 @@ export type PlanFacts = {
 };
 
 export type RecordLink =
-  /** `https://{internal_domain}{/environments/x}/editor/item_types/{model}/items/{record}/edit`: open in a new tab. */
-  | { kind: 'href'; href: string }
+  /**
+   * `https://{internal_domain}{/environments/x}/editor/item_types/{model}/items/{record}/edit`:
+   * open in a new tab. `path` is the same page without the domain, for a
+   * link that the host's router builds the `href` of.
+   */
+  | { kind: 'href'; href: string; path: string }
   /** `internal_domain` unknown: same path for `ctx.navigateTo` (leaves the page; the UI disables it while running). */
   | { kind: 'path'; path: string };
 

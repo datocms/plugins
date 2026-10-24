@@ -22,8 +22,9 @@ export function recordEditorPath(
 }
 
 /**
- * Where "Open record" goes: a new tab on the admin domain when it is known,
- * else the same path for `ctx.navigateTo`.
+ * Where "Open record" goes: a new tab on the admin domain when it is known
+ * (with its path, for a link the host's router builds), else the same path
+ * for `ctx.navigateTo`.
  */
 export function recordLink(
   options: RecordLinkOptions,
@@ -32,7 +33,7 @@ export function recordLink(
 ): RecordLink {
   const path = recordEditorPath(options, modelId, recordId);
   return options.internalDomain
-    ? { kind: 'href', href: `https://${options.internalDomain}${path}` }
+    ? { kind: 'href', href: `https://${options.internalDomain}${path}`, path }
     : { kind: 'path', path };
 }
 

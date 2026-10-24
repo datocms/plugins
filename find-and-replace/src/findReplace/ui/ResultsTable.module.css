@@ -1,0 +1,47 @@
+/* The contents of the cells. The table draws the rows, the lines and the
+   space; these classes only lay out the text inside a cell. */
+
+.title {
+  font-weight: var(--font-weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.subtle {
+  color: var(--color--ink-subtle);
+}
+
+/* "SEO › Description · en", with the "Changes the URL" pill after it. */
+.where {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+  color: var(--color--ink-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* The one cell of a narrow frame: the lines of a record (title, model and
+   count, status) or of a match (place, snippet), one under the other. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+/* An inline spinner before "Updating…" or "Publishing…". */
+.busy {
+  display: inline-flex;
+  gap: var(--spacing-s);
+  align-items: center;
+}
+
+/* "Show 20 more matches" and "Show fewer matches". */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+}

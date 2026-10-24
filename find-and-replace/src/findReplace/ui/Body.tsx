@@ -1,104 +1,122 @@
-import { Spinner } from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
+import ListArea from 'datocms-react-ui/ListArea';
 import type { FindReplaceSnapshot } from '../contract';
-import { Callouts } from './Callouts';
-import { type CalloutAction, type Copy, STRINGS } from './copy';
+import styles from './Body.module.css';
+import { Callouts, NoteCallout } from './Callouts';
+import { type Copy, STRINGS } from './copy';
+import type { FieldProblemIds } from './FindBar';
 import { FormLines } from './FormLines';
 import { IdleState } from './IdleState';
 import { NoResults } from './NoResults';
-import { PaneState } from './PaneState';
-import { ResultsList } from './ResultsList';
-import { TriCheckbox } from './TriCheckbox';
+import { LoadingState, PageState } from './PaneState';
+import { ResultsTable } from './ResultsTable';
 
-/** The 80px spinner, centered in the pane body (booting, and searching before the first match). */
-export function BodySpinner({ label }: { label?: string }) {
-  return (
-    <>
-      <Spinner size={80} placement="centered" />
-      {label && (
-        <span className="fr-sr-only" role="status">
-          {label}
-        </span>
-      )}
-    </>
-  );
-}
-
-type BodyProps = {
+export type BodyProps = {
   snapshot: FindReplaceSnapshot;
   copy: Copy;
+  /**
+   * A frame under 600px wide: the meta line shows above the results, not in
+   * the title bar, and so does "Keep this page open" while a pass runs.
+   */
+  narrow: boolean;
+  /** Counts the invalid patterns: a new value remounts the pattern's alert, which is then read again. */
+  patternAlertKey?: number;
+  /** The ids of the problem texts of the find form, which its inputs point to. */
+  problemIds?: FieldProblemIds;
+  /** "Try again" after a failed search. */
   onRetrySearch: () => void;
-  onCalloutAction: (action: CalloutAction) => void;
+  /** "Select all" in the header of the results. */
   onSelectAll: (included: boolean) => void;
+  /** "Show all models" when the model filter hides every match. */
+  onShowAllModels: () => void;
 };
 
-/** Everything above the card and the card itself (body kind `results`). */
-function Results({
-  snapshot,
-  copy,
-  onCalloutAction,
-  onSelectAll,
-}: Omit<BodyProps, 'onRetrySearch'>) {
-  const { selection, run, publish } = snapshot;
-  const selecting = selection.ui !== 'hidden';
-  // A replace or publish pass: same-tab links would leave it.
-  const runActive =
+/**
+ * The problems of the find form that the body shows: the pattern problem
+ * stands in for the results, the replacement problem tops them. The field of
+ * each one takes it as its description while it shows.
+ */
+export function shownFieldProblems(snapshot: FindReplaceSnapshot): {
+  pattern: boolean;
+  replacement: boolean;
+} {
+  return {
+    pattern:
+      snapshot.body === 'invalid' && snapshot.search.patternProblem !== null,
+    replacement:
+      snapshot.body === 'results' && snapshot.replacementCheck.problem !== null,
+  };
+}
+
+/** A replace or publish pass runs (running or stopping): same-tab links would leave it. */
+function isPassActive(snapshot: FindReplaceSnapshot): boolean {
+  const { run, publish } = snapshot;
+  return (
     run.phase === 'running' ||
     run.phase === 'stopping' ||
     publish.phase === 'running' ||
-    publish.phase === 'stopping';
-  const summary = copy.meta(snapshot.meta);
+    publish.phase === 'stopping'
+  );
+}
+
+/** The results, and what to know about them above the table. */
+function Results({
+  snapshot,
+  copy,
+  narrow,
+  problemIds,
+  onSelectAll,
+}: Pick<
+  BodyProps,
+  'snapshot' | 'copy' | 'narrow' | 'problemIds' | 'onSelectAll'
+>) {
+  const meta = narrow ? copy.meta(snapshot.meta) : null;
+  const runActive = isPassActive(snapshot);
 
   return (
     <>
-      {summary && <p className="fr-summary">{summary}</p>}
-      <FormLines copy={copy} replacementCheck={snapshot.replacementCheck} />
-      <Callouts
-        callouts={snapshot.callouts}
+      {meta && <p className={styles.meta}>{meta}</p>}
+      {/* The progress row of a narrow frame has no room for it. */}
+      {narrow && runActive && <Callout>{STRINGS.keepOpenNotice}</Callout>}
+      <FormLines
         copy={copy}
-        actionsEnabled={snapshot.findRow.enabled}
-        onAction={onCalloutAction}
+        replacementCheck={snapshot.replacementCheck}
+        problemIds={problemIds}
       />
-      {snapshot.note && <p className="fr-note">{copy.note(snapshot.note)}</p>}
-      {selecting && (
-        <label className="fr-results__head">
-          <TriCheckbox
-            state={selection.all}
-            disabled={selection.ui === 'disabled'}
-            onChange={onSelectAll}
-          />
-          {STRINGS.selectAll}
-        </label>
-      )}
-      <ResultsList
+      <Callouts callouts={snapshot.callouts} copy={copy} />
+      <NoteCallout note={snapshot.note} copy={copy} />
+      <ResultsTable
         key={snapshot.search.resultsId}
         records={snapshot.records}
-        selecting={selecting}
-        selectionDisabled={selection.ui === 'disabled'}
+        selection={snapshot.selection}
         runActive={runActive}
+        onSelectAll={onSelectAll}
       />
     </>
   );
 }
 
-/** What the pane body shows for `snapshot.body` (one of). */
-export function Body({
+function BodyContent({
   snapshot,
   copy,
+  narrow,
+  patternAlertKey = 0,
+  problemIds,
   onRetrySearch,
-  onCalloutAction,
   onSelectAll,
+  onShowAllModels,
 }: BodyProps) {
   switch (snapshot.body) {
     case 'idle':
-      return <IdleState />;
+      return <IdleState enterToSearch={snapshot.findRow.enterToSearch} />;
     case 'blank':
       return null;
     case 'spinner':
-      return <BodySpinner />;
+      return <LoadingState title={STRINGS.searching} />;
     case 'searchFailed':
       return (
-        <PaneState
-          pane={{
+        <PageState
+          state={{
             kind: 'searchFailed',
             cause: snapshot.search.failure?.cause ?? 'unknown',
           }}
@@ -108,45 +126,54 @@ export function Body({
       );
     case 'invalid':
       return (
-        <div className="dl-page dl-page--large">
-          <FormLines
-            copy={copy}
-            patternProblem={snapshot.search.patternProblem}
-          />
-        </div>
+        <FormLines
+          copy={copy}
+          patternProblem={snapshot.search.patternProblem}
+          patternAlertKey={patternAlertKey}
+          problemIds={problemIds}
+        />
       );
     case 'noResults':
       return (
-        <div className="dl-page dl-page--large fr-page--fill">
-          <Callouts
-            callouts={snapshot.callouts}
-            copy={copy}
-            actionsEnabled={snapshot.findRow.enabled}
-            onAction={onCalloutAction}
-          />
-          {snapshot.note && (
-            <p className="fr-note">{copy.note(snapshot.note)}</p>
-          )}
+        <>
+          <Callouts callouts={snapshot.callouts} copy={copy} />
+          <NoteCallout note={snapshot.note} copy={copy} />
           {snapshot.noResults && (
             <NoResults
               view={snapshot.noResults}
               pattern={snapshot.find.pattern}
               pending={snapshot.search.phase === 'pending'}
+              belowNotices={
+                snapshot.callouts.length > 0 || snapshot.note !== null
+              }
               copy={copy}
+              onShowAllModels={onShowAllModels}
             />
           )}
-        </div>
+        </>
       );
     case 'results':
       return (
-        <div className="dl-page dl-page--large">
-          <Results
-            snapshot={snapshot}
-            copy={copy}
-            onCalloutAction={onCalloutAction}
-            onSelectAll={onSelectAll}
-          />
-        </div>
+        <Results
+          snapshot={snapshot}
+          copy={copy}
+          narrow={narrow}
+          problemIds={problemIds}
+          onSelectAll={onSelectAll}
+        />
       );
   }
+}
+
+/**
+ * The content of the page's Pane for `snapshot.body`: the list area with the
+ * results and the notices above them, or the state that stands in for them.
+ * The results table reads its controller and copy from `ResultsEnv`.
+ */
+export function Body(props: BodyProps) {
+  return (
+    <ListArea>
+      <BodyContent {...props} />
+    </ListArea>
+  );
 }

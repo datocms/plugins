@@ -1,0 +1,55 @@
+/* One match in its context, three lines at most. The cell of the table places
+   it; only the marks and the diff have a look of their own. */
+.snippet {
+  display: -webkit-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/* The "No change" pill leads the line: the pill has no margin of its own. */
+.tag {
+  margin-right: var(--spacing-s);
+}
+
+/* The matched text: the frame is padding, so it never covers the characters
+   around it, and a wrapped mark keeps it on every line. A matched double
+   space stays visible. */
+.highlight,
+.removed,
+.added {
+  padding-inline: 0.15em;
+  white-space: pre-wrap;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* The highlight context has a surface only: the text keeps the ink of the
+   page (the browser's mark ink would ignore the theme). */
+.highlight {
+  color: inherit;
+  background-color: var(--color--highlight--surface);
+  border-radius: var(--radius-xs);
+}
+
+/* A diff run takes the surface of its context and keeps the ink of the page:
+   the inks of a diff context are the borders of a version diff, not a text.
+   The line through tells a removal apart without its color. */
+.removed {
+  text-decoration: line-through;
+  background-color: var(--color--diff-removed--surface);
+}
+
+.added {
+  text-decoration: none;
+  background-color: var(--color--diff-added--surface);
+}
+
+/* The ↵ and → that stand for a line break and a tab. */
+.marker {
+  color: var(--color--ink-subtle);
+}

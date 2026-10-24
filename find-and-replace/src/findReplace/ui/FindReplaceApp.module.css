@@ -1,0 +1,7 @@
+/* The page fills the frame (the frame has a fixed height), so the Pane in it
+   gets the full height: a fixed header and content that scrolls. */
+.page {
+  position: absolute;
+  inset: 0;
+  background-color: var(--color--surface);
+}

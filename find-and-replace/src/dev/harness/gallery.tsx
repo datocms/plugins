@@ -12,7 +12,7 @@ import {
 } from '../../findReplace/ui/testing/fixtures';
 
 /**
- * `?view=states&state=S1…S23`: the real `FindReplaceApp` rendered from a
+ * `?view=states&state=S1…S28`: the real `FindReplaceApp` rendered from a
  * snapshot fixture and a fake controller (no engine, no backend), for
  * reviewing states that are hard to reach by hand. States that are reached by
  * interacting (S12b: the model filter open; S13: the confirm) perform that
@@ -49,13 +49,25 @@ function interactionLabel(
   return null;
 }
 
+/**
+ * Presses the enabled button with this text, as a pointer does: the kit's
+ * menu triggers open on mouse down, other buttons act on click.
+ */
 function clickButtonLabelled(label: string): boolean {
   const button = [...document.querySelectorAll('button')].find(
     (candidate) =>
-      !candidate.disabled && candidate.textContent?.trim() === label,
+      !candidate.disabled &&
+      candidate.getAttribute('aria-disabled') !== 'true' &&
+      candidate.textContent?.trim() === label,
   );
-  button?.click();
-  return Boolean(button);
+  if (!button) {
+    return false;
+  }
+  button.dispatchEvent(
+    new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }),
+  );
+  button.click();
+  return true;
 }
 
 export function Gallery({ ctx, state }: GalleryProps) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCopy } from './copy';
 import { makeTotals, runEndedEvent } from './testing/fixtures';
-import { createMockCtx } from './testing/renderPage';
+import { createMockCtx } from './testing/mockCtx';
 import { runToast, showRunToast } from './toasts';
 
 const copy = createCopy('en');

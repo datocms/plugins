@@ -1,17 +1,18 @@
-import { faFileMagnifyingGlass, Icon } from '../../ui/icons';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import { FileMagnifyingGlassIcon } from '../../icons';
 import { STRINGS } from './copy';
 
-/** Before the first search: what the page does, and that nothing changes before review. */
-export function IdleState() {
+/**
+ * Before the first search: what shows here, and that nothing changes before
+ * the review. The icon is the one of the page's navigation tab.
+ */
+export function IdleState({ enterToSearch }: { enterToSearch: boolean }) {
   return (
-    <div className="dl-list-empty fr-idle">
-      <div className="dl-list-empty__body">
-        <div className="dl-list-empty__icon">
-          <Icon glyph={faFileMagnifyingGlass} />
-        </div>
-        <div className="dl-list-empty__title">{STRINGS.idleTitle}</div>
-        <div>{STRINGS.idleLine}</div>
-      </div>
-    </div>
+    <BlankSlate
+      placement="area"
+      icon={<FileMagnifyingGlassIcon />}
+      title={STRINGS.idleTitle}
+      description={enterToSearch ? STRINGS.idleLineEnter : STRINGS.idleLine}
+    />
   );
 }

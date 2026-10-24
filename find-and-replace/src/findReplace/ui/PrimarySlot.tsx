@@ -1,9 +1,17 @@
-import { Spinner } from 'datocms-react-ui';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import type { Ref } from 'react';
-import { Button } from '../../ui/Button';
-import { DisabledWithReason } from '../../ui/DisabledWithReason';
+import { ArrowsRotateIcon } from '../../icons';
 import type { PrimaryView } from '../contract';
 import { type Copy, STRINGS } from './copy';
+
+/** The id of the page's Cmd/Ctrl + Enter action, which opens the replace confirm. */
+export const REPLACE_ACTION_ID = 'replace';
+
+/** The name and the keys of the replace action, in the tooltip of the enabled primary. */
+const REPLACE_TOOLTIP = {
+  action: REPLACE_ACTION_ID,
+  placement: 'bottom',
+} as const;
 
 type PrimarySlotProps = {
   primary: PrimaryView;
@@ -13,96 +21,114 @@ type PrimarySlotProps = {
   onSearchAgain: () => void;
   /** Opens the publish confirm. */
   onPublish: () => void;
-  /** The slot wrapper, for moving the focus to whatever the slot holds. */
-  slotRef?: Ref<HTMLSpanElement>;
+  /** The first button of the slot, for moving the focus to whatever the slot holds. */
+  slotRef?: Ref<HTMLElement>;
+  /**
+   * A phone-width frame: next to "Publish N records", "Search again" shows
+   * only its icon (its label is its name and tooltip), so both fit by the
+   * title.
+   */
+  isPhone?: boolean;
 };
 
-function BusyLabel() {
-  return (
-    <>
-      <span className="fr-sr-only">{STRINGS.inProgress}</span>
-      <span className="fr-button-spinner">
-        <Spinner size={20} placement="centered" />
-      </span>
-    </>
-  );
-}
-
-function SlotContent({
+function SlotButtons({
   primary,
   copy,
   onReplace,
   onSearchAgain,
   onPublish,
-}: Omit<PrimarySlotProps, 'slotRef'>) {
-  if (primary.kind === 'searchAgain') {
-    return (
-      <>
-        <Button buttonSize="s" onClick={onSearchAgain}>
-          {STRINGS.searchAgain}
-        </Button>
-        {primary.publish && (
-          <Button buttonType="primary" buttonSize="s" onClick={onPublish}>
-            {copy.publishLabel(primary.publish.recordCount)}
-          </Button>
-        )}
-      </>
-    );
+  slotRef,
+  isPhone = false,
+}: PrimarySlotProps) {
+  switch (primary.kind) {
+    case 'searchAgain':
+      return (
+        <>
+          {isPhone && primary.publish ? (
+            <Toolbar.Button
+              ref={slotRef}
+              tone="soft"
+              iconOnly
+              icon={ArrowsRotateIcon}
+              label={STRINGS.searchAgain}
+              onClick={onSearchAgain}
+            />
+          ) : (
+            <Toolbar.Button
+              ref={slotRef}
+              tone="soft"
+              label={STRINGS.searchAgain}
+              onClick={onSearchAgain}
+            />
+          )}
+          {primary.publish && (
+            <Toolbar.Button
+              tone="primary"
+              label={copy.publishLabel(primary.publish.recordCount)}
+              onClick={onPublish}
+            />
+          )}
+        </>
+      );
+    case 'publishing':
+      // Busy: the kit disables a busy button (Button: "busy … it is
+      // disabled"), so its reason shows on hover only. The focus is on Stop
+      // during the pass, and the progress row says what runs.
+      return (
+        <Toolbar.Button
+          ref={slotRef}
+          tone="primary"
+          label={copy.publishLabel(primary.count)}
+          busy
+          disabled={{ reason: STRINGS.publishingReason }}
+        />
+      );
+    case 'replace':
+      if (primary.enabled) {
+        return (
+          <Toolbar.Button
+            ref={slotRef}
+            tone="primary"
+            label={copy.primaryLabel(primary.verb, primary.count)}
+            onClick={onReplace}
+            tooltip={REPLACE_TOOLTIP}
+          />
+        );
+      }
+      // A run keeps the counted label with a spinner; otherwise the
+      // primary waits without a count. Either way it says why: a waiting
+      // primary keeps the focus with its reason; a busy one is disabled by the
+      // kit (as the publishing one above), while the focus is on Stop.
+      return (
+        <Toolbar.Button
+          ref={slotRef}
+          tone="primary"
+          label={
+            primary.busy
+              ? copy.primaryLabel(primary.verb, primary.count)
+              : copy.primaryIdleLabel(primary.verb)
+          }
+          busy={primary.busy}
+          disabled={{
+            reason: copy.disabledReason(primary.reason, primary.verb),
+          }}
+        />
+      );
   }
-
-  if (primary.kind === 'publishing') {
-    return (
-      <DisabledWithReason reason={STRINGS.publishingReason}>
-        <Button
-          buttonType="primary"
-          buttonSize="s"
-          disabled
-          style={{ pointerEvents: 'none' }}
-        >
-          {copy.publishLabel(primary.count)}
-          <BusyLabel />
-        </Button>
-      </DisabledWithReason>
-    );
-  }
-
-  if (primary.enabled) {
-    return (
-      <Button buttonType="primary" buttonSize="s" onClick={onReplace}>
-        {copy.primaryLabel(primary.verb, primary.count)}
-      </Button>
-    );
-  }
-
-  return (
-    <DisabledWithReason
-      reason={copy.disabledReason(primary.reason, primary.verb)}
-    >
-      <Button
-        buttonType="primary"
-        buttonSize="s"
-        disabled
-        style={{ pointerEvents: 'none' }}
-      >
-        {primary.busy
-          ? copy.primaryLabel(primary.verb, primary.count)
-          : copy.primaryIdleLabel(primary.verb)}
-        {primary.busy && <BusyLabel />}
-      </Button>
-    </DisabledWithReason>
-  );
 }
 
 /**
- * The slot at the far right of the title toolbar: the solid primary
- * (enabled, disabled with a reason, or busy) or, after a finished run, a soft
- * "Search again" in its place, followed by a solid "Publish N records" when
- * replaced records can be published.
+ * The slot at the right end of the title bar: the primary (enabled, disabled
+ * with a reason, or busy) or, after a finished run, a soft "Search again" in
+ * its place, followed by a primary "Publish N records" when replaced records
+ * can be published. The slot holds one primary at most. The page registers
+ * the Cmd/Ctrl + Enter action (`REPLACE_ACTION_ID`): the enabled primary
+ * shows its keys.
  */
-export function PrimarySlot({ slotRef, ...props }: PrimarySlotProps) {
+export function PrimarySlot(props: PrimarySlotProps) {
   return (
-    <span ref={slotRef} className="fr-slot">
-      <SlotContent {...props} />
-    </span>
+    <Toolbar.Group gap="s">
+      <SlotButtons {...props} />
+    </Toolbar.Group>
   );
 }

@@ -1,10 +1,4 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DisabledReason, PrimaryView } from '../contract';
@@ -19,124 +13,141 @@ function renderPrimary(primary: PrimaryView) {
   return renderSnapshot({ ...idleSnapshot(), primary });
 }
 
-function primaryButton(): HTMLElement | null {
-  return document.querySelector('.dl-kit-button--primary');
+/** The title bar: the toolbar of the page's title. */
+function titleBar(): HTMLElement {
+  const bar = screen.getByRole('heading', { level: 1 }).parentElement
+    ?.parentElement;
+  if (!bar) {
+    throw new Error('no title bar');
+  }
+  return bar;
+}
+
+/** The names of the slot's buttons, in order (the title's "?" left out). */
+function slotLabels(): string[] {
+  return within(titleBar())
+    .getAllByRole('button')
+    .map((button) => button.textContent ?? '')
+    .filter((label) => label !== '');
 }
 
 describe('PrimarySlot', () => {
-  it('enabled: the solid primary with the count', () => {
+  it('enabled: the primary with the count', () => {
     renderPrimary({
       kind: 'replace',
       verb: 'replace',
       count: 118,
       enabled: true,
     });
-    expect(primaryButton()).toHaveTextContent('Replace 118 matches');
-    expect(primaryButton()).toBeEnabled();
-    expect(document.querySelector('.dl-tooltip-anchor')).toBeNull();
+    const primary = screen.getByRole('button', { name: 'Replace 118 matches' });
+    expect(primary).toBeEnabled();
+    expect(primary).not.toHaveAttribute('aria-disabled');
+    expect(slotLabels()).toEqual(['Replace 118 matches']);
   });
 
   it('enabled remove, one match', () => {
     renderPrimary({ kind: 'replace', verb: 'remove', count: 1, enabled: true });
-    expect(primaryButton()).toHaveTextContent('Remove 1 match');
+    expect(
+      screen.getByRole('button', { name: 'Remove 1 match' }),
+    ).toBeEnabled();
   });
 
   const reasons: Array<[DisabledReason, string]> = [
     [
       'no_matches',
-      'You cannot replace anything until the search finds matches',
+      'You cannot replace anything until the search finds matches.',
     ],
     [
       'search_running',
-      'You cannot replace right now as the search is still running',
+      'You cannot replace right now as the search is still running.',
     ],
-    ['press_enter', 'You cannot replace until you press Enter to search'],
-    ['invalid_pattern', 'You cannot replace as the pattern is not valid'],
+    ['press_enter', 'You cannot replace until you press Enter to search.'],
+    ['invalid_pattern', 'You cannot replace as the pattern is not valid.'],
     [
       'no_replacement',
-      'You cannot replace until you type a replacement or turn on Replace with nothing',
+      'You cannot replace until you type a replacement or turn on Replace with nothing.',
     ],
     [
       'invalid_replacement',
-      'You cannot replace until the replacement is fixed',
+      'You cannot replace until the replacement is fixed.',
     ],
-    ['nothing_selected', 'You cannot replace as no matches are selected'],
-    ['nothing_changes', 'You cannot replace as nothing would change'],
+    ['nothing_selected', 'You cannot replace as no matches are selected.'],
+    ['nothing_changes', 'You cannot replace as nothing would change.'],
     [
       'replacing',
-      'You cannot replace right now as a replacement is in progress',
+      'You cannot replace right now as a replacement is in progress.',
     ],
   ];
 
   for (const [reason, text] of reasons) {
     it(`disabled (${reason}): no count, the reason reachable by keyboard`, async () => {
       const user = userEvent.setup();
-      renderPrimary(disabledPrimary(reason, { count: 12 }));
-      expect(primaryButton()).toBeDisabled();
-      expect(primaryButton()).toHaveTextContent(/^Replace$/);
+      const { mock } = renderPrimary(disabledPrimary(reason, { count: 12 }));
+      const primary = screen.getByRole('button', { name: 'Replace' });
+      // Disabled with a reason: it keeps its place in the tab order.
+      expect(primary).toHaveAttribute('aria-disabled', 'true');
+      expect(primary).not.toHaveAttribute('disabled');
 
-      const anchor = document.querySelector('.dl-tooltip-anchor');
-      expect(anchor).toHaveAttribute('tabindex', '0');
-      // Tab from the page start: the slot comes first.
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
+      // The slot follows the title's "?".
+      act(() =>
+        screen.getByRole('button', { name: 'About this page' }).focus(),
+      );
       await user.tab();
-      expect(anchor).toHaveFocus();
-      const describedBy = anchor?.getAttribute('aria-describedby') ?? '';
-      const description = describedBy
-        .split(' ')
-        .map((id) => document.getElementById(id)?.textContent)
-        .filter(Boolean);
-      expect(description).toContain(text);
-      // The tooltip opens on focus too.
-      expect(await screen.findAllByText(text)).toHaveLength(2);
+      expect(primary).toHaveFocus();
+      // The reason opens on focus and describes the button.
+      await waitFor(() => expect(primary).toHaveAccessibleDescription(text));
+
+      await user.click(primary);
+      expect(mock.openConfirm).not.toHaveBeenCalled();
     });
   }
 
-  it('opens the reason when the pointer moves over it, not when it appears under a still pointer', async () => {
-    const text = 'You cannot replace anything until the search finds matches';
-    renderPrimary(disabledPrimary('no_matches'));
-    const anchor = document.querySelector('.dl-tooltip-anchor');
-    if (!(anchor instanceof HTMLElement)) {
-      throw new Error('no anchor');
-    }
-    // What Chrome sends an element that mounts under the pointer ("Search again" was just
-    // clicked there): boundary events, no movement.
-    fireEvent.pointerOver(anchor, { pointerType: 'mouse' });
-    fireEvent.pointerEnter(anchor, { pointerType: 'mouse' });
-    fireEvent.mouseOver(anchor);
-    fireEvent.mouseEnter(anchor);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    expect(screen.getAllByText(text)).toHaveLength(1); // the hidden description only
-    fireEvent.pointerMove(anchor, { pointerType: 'mouse' });
-    expect(await screen.findAllByText(text)).toHaveLength(2);
-    fireEvent.pointerLeave(anchor, { pointerType: 'mouse' });
-    await waitFor(() => expect(screen.getAllByText(text)).toHaveLength(1));
+  it('disabled: the reason opens on hover too', async () => {
+    const user = userEvent.setup();
+    renderPrimary(disabledPrimary('nothing_selected', { verb: 'remove' }));
+    await user.hover(screen.getByRole('button', { name: 'Remove' }));
+    expect(
+      await screen.findByText('You cannot remove as no matches are selected.'),
+    ).toBeInTheDocument();
   });
 
-  it('busy: keeps its label, adds a spinner and ", in progress"', () => {
+  it('busy: keeps its label and says it is busy', () => {
     renderPrimary(
       disabledPrimary('replacing', { verb: 'remove', count: 6, busy: true }),
     );
-    expect(primaryButton()).toHaveTextContent('Remove 6 matches, in progress');
-    expect(primaryButton()?.querySelector('.fr-button-spinner')).not.toBeNull();
-    expect(primaryButton()).toBeDisabled();
+    const primary = screen.getByRole('button', { name: 'Remove 6 matches' });
+    expect(primary).toHaveAttribute('aria-busy', 'true');
+    expect(primary).toBeDisabled();
   });
 
-  it('"Search again" is a soft button that replaces the primary', async () => {
+  it('"Search again" replaces the primary, then focuses Find', async () => {
     const user = userEvent.setup();
     const { controller } = renderPrimary({
       kind: 'searchAgain',
       publish: null,
     });
-    expect(primaryButton()).toBeNull();
-    const button = screen.getByRole('button', { name: 'Search again' });
-    expect(button).toHaveClass('dl-kit-button--muted');
-    await user.click(button);
+    expect(slotLabels()).toEqual(['Search again']);
+    await user.click(screen.getByRole('button', { name: 'Search again' }));
     expect(controller.callsTo('searchAgain')).toHaveLength(1);
     expect(screen.getByRole('textbox', { name: 'Find' })).toHaveFocus();
+  });
+
+  it('a publish offer follows "Search again"; while publishing it is the only button', () => {
+    const { controller } = renderPrimary({
+      kind: 'searchAgain',
+      publish: { token: 'publish-token', recordCount: 1, heldCount: 0 },
+    });
+    expect(slotLabels()).toEqual(['Search again', 'Publish 1 record']);
+
+    act(() =>
+      controller.setSnapshot((current) => ({
+        ...current,
+        primary: { kind: 'publishing', count: 1 },
+      })),
+    );
+    expect(slotLabels()).toEqual(['Publish 1 record']);
+    const publishing = screen.getByRole('button', { name: 'Publish 1 record' });
+    expect(publishing).toHaveAttribute('aria-busy', 'true');
+    expect(publishing).toBeDisabled();
   });
 });

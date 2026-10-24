@@ -1,7 +1,9 @@
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
 import { useState } from 'react';
-import { faFileMagnifyingGlass, Icon } from '../../ui/icons';
+import { SearchIcon } from '../../icons';
 import type { NoResultsView } from '../contract';
-import type { Copy } from './copy';
+import { type Copy, hiddenByFilter, STRINGS } from './copy';
 
 type NoResultsProps = {
   view: NoResultsView;
@@ -9,14 +11,26 @@ type NoResultsProps = {
   pattern: string;
   /** A new search is scheduled: the body still shows the previous one. */
   pending: boolean;
+  /** Callouts or a note sit above it, in the flow of the list area. */
+  belowNotices: boolean;
   copy: Copy;
+  /** Turns the model filter off. */
+  onShowAllModels: () => void;
 };
 
 /**
- * A settled search with nothing to show, in the idle state's quiet style: the
- * title quotes what was searched, the line names only what narrows it.
+ * A settled search with nothing to show: the title quotes what was searched,
+ * the line names only what narrows it. When the model filter hides the
+ * matches of other models, it leads back to them.
  */
-export function NoResults({ view, pattern, pending, copy }: NoResultsProps) {
+export function NoResults({
+  view,
+  pattern,
+  pending,
+  belowNotices,
+  copy,
+  onShowAllModels,
+}: NoResultsProps) {
   // While the next search is pending the title keeps the searched pattern.
   const [searched, setSearched] = useState(pattern);
   if (!pending && searched !== pattern) {
@@ -24,16 +38,16 @@ export function NoResults({ view, pattern, pending, copy }: NoResultsProps) {
   }
 
   return (
-    <div className="dl-list-empty fr-no-results">
-      <div className="dl-list-empty__body">
-        <div className="dl-list-empty__icon">
-          <Icon glyph={faFileMagnifyingGlass} />
-        </div>
-        <div className="dl-list-empty__title">
-          {copy.noResultsTitle(view, pending ? searched : pattern)}
-        </div>
-        <div>{copy.noResultsLine(view)}</div>
-      </div>
-    </div>
+    <BlankSlate
+      placement={belowNotices ? 'section' : 'area'}
+      icon={<SearchIcon />}
+      title={copy.noResultsTitle(view, pending ? searched : pattern)}
+      description={copy.noResultsLine(view)}
+      actions={
+        hiddenByFilter(view) ? (
+          <Button label={STRINGS.showAllModels} onClick={onShowAllModels} />
+        ) : undefined
+      }
+    />
   );
 }

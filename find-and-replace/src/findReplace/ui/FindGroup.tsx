@@ -1,132 +1,140 @@
-import { TextInput } from 'datocms-react-ui';
-import { type KeyboardEvent, type RefObject, useId } from 'react';
-import { IconToggle } from '../../ui/IconToggle';
+import { Shortcut } from 'datocms-react-ui/Actions';
+import type { ButtonProps } from 'datocms-react-ui/Button';
+import InputGroup from 'datocms-react-ui/InputGroup';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import type { KeyboardEvent } from 'react';
 import {
-  faAsterisk,
-  faFontCase,
-  faInputText,
-  faMagnifyingGlass,
-  faXmark,
-  Icon,
-} from '../../ui/icons';
-import { Tip } from '../../ui/Tip';
+  AsteriskIcon,
+  FontCaseIcon,
+  InputTextIcon,
+  SearchIcon,
+  XmarkIcon,
+} from '../../icons';
 import type { FindInput, FindOption } from '../contract';
 import { STRINGS } from './copy';
+import styles from './FindBar.module.css';
+
+/** A control's `disabled`: plainly, or with the reason it waits. */
+export type ControlDisabled = ButtonProps['disabled'];
 
 type FindGroupProps = {
+  /** The id of the Find input: the page moves the focus to it by id. */
+  inputId: string;
   find: FindInput;
   enabled: boolean;
+  /** How the controls are disabled when `enabled` is false: plainly while booting, with a reason during a pass. */
+  disabled: ControlDisabled;
   showClear: boolean;
-  /** Large projects: searches start on Enter (the placeholder says so). */
-  enterToSearch: boolean;
-  /** The text or settings in the field haven't been searched yet. */
+  /** The text or settings in the field haven't been searched yet (large projects). */
   awaitingEnter: boolean;
   invalid: boolean;
-  inputRef: RefObject<HTMLInputElement | null>;
+  /**
+   * The id of the text that says what is wrong with the pattern, while the
+   * page shows it: the input takes it as its description.
+   */
+  problemId?: string;
   onPatternChange: (pattern: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onClear: () => void;
   onOptionChange: (option: FindOption, on: boolean) => void;
 };
 
-function placeholderOf(find: FindInput, enterToSearch: boolean): string {
-  if (enterToSearch) {
-    return find.regex
-      ? STRINGS.findPlaceholderRegexEnter
-      : STRINGS.findPlaceholderEnter;
-  }
-  return find.regex ? STRINGS.findPlaceholderRegex : STRINGS.findPlaceholder;
+/** The Enter keycap after the text, described once to screen readers. */
+function EnterHint() {
+  return (
+    <>
+      <span aria-hidden="true">
+        <Shortcut keys={{ key: 'enter' }} />
+      </span>
+      <span className="visually-hidden">{STRINGS.pressEnter}</span>
+    </>
+  );
 }
 
-/** ⌕ · Find input · [Enter] · ✕ · Match case · Match whole word · Use regular expression. */
+/** ⌕ Find [Enter] · ✕ · Match case · Match whole word · Use regular expression. */
 export function FindGroup({
+  inputId,
   find,
   enabled,
+  disabled,
   showClear,
-  enterToSearch,
   awaitingEnter,
   invalid,
-  inputRef,
+  problemId,
   onPatternChange,
   onKeyDown,
   onClear,
   onOptionChange,
 }: FindGroupProps) {
-  const enterHintId = useId();
-  const showEnter = awaitingEnter && enabled;
-  const classes = [
-    'dl-input-group',
-    'fr-find',
-    'fr-bar__find',
-    invalid ? 'dl-input-group--invalid' : null,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const controlDisabled = enabled ? undefined : disabled;
 
   return (
-    <div className={classes}>
-      <span className="fr-find__icon" aria-hidden="true">
-        <Icon glyph={faMagnifyingGlass} />
-      </span>
-      <TextInput
-        id="fr-find"
-        type="text"
-        value={find.pattern}
-        onChange={(value: string) => onPatternChange(value)}
-        labelText={STRINGS.findLabel}
-        placeholder={placeholderOf(find, enterToSearch)}
-        disabled={!enabled}
-        inputRef={inputRef as RefObject<HTMLInputElement>}
-        spellCheck={false}
-        autoComplete="off"
-        enterKeyHint="search"
-        aria-invalid={invalid || undefined}
-        aria-describedby={showEnter ? enterHintId : undefined}
-        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => onKeyDown(event)}
-      />
-      {showEnter && (
-        // Hidden from the reading order: the field's description says it once.
-        <span className="fr-find__enter" aria-hidden="true">
-          <kbd>{STRINGS.enterKey}</kbd>
-          <span id={enterHintId} className="fr-sr-only">
-            {STRINGS.pressEnter}
-          </span>
-        </span>
-      )}
-      {showClear && (
-        <Tip label={STRINGS.clearSearch}>
-          <button
-            type="button"
-            className="fr-find__clear"
-            aria-label={STRINGS.clearSearch}
-            disabled={!enabled}
+    <div className={styles.find}>
+      <div className={styles.field}>
+        {/* A field of the search bar, like the kit's own filter input: no
+            FieldWrapper, whose label (hidden or not) and error line would
+            push the box off the line of the bar's buttons. The pattern
+            problem shows once, in place of the results: the input is
+            invalid and takes that text as its description, and the input
+            group reads its addons (the Enter hint) after it. */}
+        <InputGroup
+          id={inputId}
+          pre={
+            <span className={styles.findIcon}>
+              <SearchIcon />
+            </span>
+          }
+          post={awaitingEnter && enabled ? <EnterHint /> : undefined}
+          code={find.regex}
+          aria-label={STRINGS.findLabel}
+          placeholder={STRINGS.findPlaceholder}
+          value={find.pattern}
+          onChange={(value) => onPatternChange(value ?? '')}
+          onKeyDown={onKeyDown}
+          aria-invalid={invalid || undefined}
+          aria-describedby={problemId}
+          spellCheck={false}
+          autoComplete="off"
+          enterKeyHint="search"
+          disabled={!enabled}
+        />
+      </div>
+      <Toolbar.Group>
+        {showClear && (
+          <Toolbar.Button
+            iconOnly
+            icon={XmarkIcon}
+            label={STRINGS.clearSearch}
+            disabled={controlDisabled}
             onClick={onClear}
-          >
-            <Icon glyph={faXmark} />
-          </button>
-        </Tip>
-      )}
-      <IconToggle
-        glyph={faFontCase}
-        label={STRINGS.matchCase}
-        pressed={find.caseSensitive}
-        disabled={!enabled}
-        onChange={(on) => onOptionChange('caseSensitive', on)}
-      />
-      <IconToggle
-        glyph={faInputText}
-        label={STRINGS.matchWholeWord}
-        pressed={find.wholeWord}
-        disabled={!enabled}
-        onChange={(on) => onOptionChange('wholeWord', on)}
-      />
-      <IconToggle
-        glyph={faAsterisk}
-        label={STRINGS.useRegex}
-        pressed={find.regex}
-        disabled={!enabled}
-        onChange={(on) => onOptionChange('regex', on)}
-      />
+          />
+        )}
+        <Toolbar.Button
+          iconOnly
+          icon={FontCaseIcon}
+          label={STRINGS.matchCase}
+          pressed={find.caseSensitive}
+          disabled={controlDisabled}
+          onClick={() => onOptionChange('caseSensitive', !find.caseSensitive)}
+        />
+        <Toolbar.Button
+          iconOnly
+          icon={InputTextIcon}
+          label={STRINGS.matchWholeWord}
+          pressed={find.wholeWord}
+          disabled={controlDisabled}
+          onClick={() => onOptionChange('wholeWord', !find.wholeWord)}
+        />
+        <Toolbar.Button
+          iconOnly
+          icon={AsteriskIcon}
+          label={STRINGS.useRegex}
+          tooltip={STRINGS.regexTip}
+          pressed={find.regex}
+          disabled={controlDisabled}
+          onClick={() => onOptionChange('regex', !find.regex)}
+        />
+      </Toolbar.Group>
     </div>
   );
 }

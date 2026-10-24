@@ -21,12 +21,18 @@ type FocusRequest = {
 };
 
 type FocusRefs = {
-  find: RefObject<HTMLInputElement | null>;
+  /** The id of the Find input (the kit's inputs take no ref). */
+  findId: string;
+  /** The first button of the primary slot. */
   slot: RefObject<HTMLElement | null>;
-  progress: RefObject<HTMLElement | null>;
+  /** Stop, in the progress row. */
+  stop: RefObject<HTMLElement | null>;
   /** The last rendered snapshot. */
   snapshot: RefObject<FindReplaceSnapshot>;
 };
+
+/** A control that swaps its element while keeping its place: the focus stays with it. */
+type SwappingControl = 'slot' | 'stop';
 
 function resolveTarget(
   target: FocusTarget,
@@ -34,36 +40,52 @@ function resolveTarget(
 ): HTMLElement | null {
   switch (target) {
     case 'find':
-      return refs.find.current;
-    case 'slot':
-      // A disabled primary is reached through its tooltip anchor.
-      return (
-        refs.slot.current?.querySelector<HTMLElement>(
-          '.dl-tooltip-anchor, button:not(:disabled)',
-        ) ?? null
-      );
+      return document.getElementById(refs.findId);
+    case 'slot': {
+      // A busy primary can't take the focus: wait until it can.
+      const element = refs.slot.current;
+      return element && !element.matches(':disabled') ? element : null;
+    }
     case 'stop':
-      return (
-        refs.progress.current?.querySelector<HTMLElement>('button') ?? null
-      );
+      return refs.stop.current;
+  }
+}
+
+/** The new element of a control that swapped its element, when it's still the same control. */
+function swappedControl(
+  control: SwappingControl | null,
+  refs: FocusRefs,
+): HTMLElement | null {
+  switch (control) {
+    case 'slot':
+      return refs.snapshot.current.primary.kind === 'replace'
+        ? resolveTarget('slot', refs)
+        : null;
+    case 'stop':
+      return resolveTarget('stop', refs);
+    default:
+      return null;
   }
 }
 
 /**
- * Focus moves requested by events and clicks, applied as soon as their target
- * is rendered; and when the focused control unmounts for any other reason,
- * the focus goes back to the Find input. One exception: the primary swaps
- * its element when it turns enabled or disabled (a button, or a focusable
- * anchor around the disabled one); that is still the same control, so the
- * focus stays on it. ("Search again" giving way to the primary is not.)
+ * Focus moves requested by events and clicks, applied as soon as their
+ * target is rendered; and when the focused control unmounts for any other
+ * reason, the focus goes back to the Find input.
+ *
+ * Two controls are exceptions: the primary, and Stop. A button that turns
+ * disabled with a reason (or back) is drawn again as a new element. It's
+ * still the same control, so the focus stays on it: the primary while it
+ * stays the primary ("Search again" giving way to it is not the same
+ * control), and Stop while the progress row shows ("Stop" → "Stopping…").
  */
 export function useFocusManager(refs: FocusRefs) {
-  // The refs themselves are stable, so the first object is kept.
+  // The refs and the id are stable, so the first object is kept.
   const refsRef = useRef(refs);
   const pendingRef = useRef<FocusRequest | null>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
-  /** The last focused element was the primary ("Replace …", enabled or not). */
-  const lastOnPrimaryRef = useRef(false);
+  /** The control the last focused element was, if it's one that swaps its element. */
+  const lastControlRef = useRef<SwappingControl | null>(null);
 
   const applyPending = useCallback(() => {
     const request = pendingRef.current;
@@ -104,23 +126,28 @@ export function useFocusManager(refs: FocusRefs) {
     ) {
       lastFocusedRef.current = null;
       const current = refsRef.current;
-      const primary =
-        lastOnPrimaryRef.current &&
-        current.snapshot.current.primary.kind === 'replace'
-          ? resolveTarget('slot', current)
-          : null;
-      (primary ?? current.find.current)?.focus();
+      const same = swappedControl(lastControlRef.current, current);
+      (same ?? resolveTarget('find', current))?.focus();
     }
   });
 
-  /** Put on the pane (React focus events bubble, portals included). */
+  /** Put on the page (React focus events bubble, portals included). */
   const onFocus = useCallback((event: FocusEvent<HTMLElement>) => {
-    if (event.target instanceof HTMLElement) {
-      const current = refsRef.current;
-      lastFocusedRef.current = event.target;
-      lastOnPrimaryRef.current =
-        current.snapshot.current.primary.kind === 'replace' &&
-        (current.slot.current?.contains(event.target) ?? false);
+    if (!(event.target instanceof HTMLElement)) {
+      return;
+    }
+    const current = refsRef.current;
+    const target = event.target;
+    lastFocusedRef.current = target;
+    if (
+      current.snapshot.current.primary.kind === 'replace' &&
+      (current.slot.current?.contains(target) ?? false)
+    ) {
+      lastControlRef.current = 'slot';
+    } else if (current.stop.current?.contains(target) ?? false) {
+      lastControlRef.current = 'stop';
+    } else {
+      lastControlRef.current = null;
     }
   }, []);
 
