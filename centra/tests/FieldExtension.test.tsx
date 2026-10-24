@@ -5,42 +5,28 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import FieldExtension from '../src/entrypoints/FieldExtension';
-import { CentraClient } from '../src/lib/centraClient';
+import {
+  CentraClient,
+  type HydratedCentraReference,
+} from '../src/lib/centraClient';
+import { canvasCtx } from './canvasCtx';
 
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Button: ({
-    children,
-    disabled,
-    leftIcon,
-    onClick,
-  }: {
-    children: ReactNode;
-    disabled?: boolean;
-    leftIcon?: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" disabled={disabled} onClick={onClick}>
-      {leftIcon}
-      {children}
-    </button>
-  ),
-  Spinner: () => <span>Loading</span>,
-}));
-
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-});
+afterEach(cleanup);
 
 const connection = {
   endpoint: 'https://example.centra.test/store-dtc-api-no-session',
   token: 'test-token',
+};
+
+const MULTIPLE_PRODUCTS = {
+  paramsVersion: '1',
+  kind: 'primaryProduct',
+  cardinality: 'multiple',
 };
 
 function createCtx(
@@ -51,47 +37,74 @@ function createCtx(
     openModalResult: unknown;
   }> = {},
 ) {
-  const setFieldValue = vi.fn().mockResolvedValue(undefined);
-  const openModal = vi
-    .fn()
-    .mockResolvedValue(overrides.openModalResult ?? null);
+  const setFieldValue = vi.fn(async (_path: string, _value: unknown) => {});
+  const openModal = vi.fn(
+    async (_options: Record<string, unknown>) =>
+      overrides.openModalResult ?? null,
+  );
   const ctx = {
+    ...canvasCtx(),
+    mode: 'renderFieldExtension',
     parameters: overrides.parameters ?? {
       paramsVersion: '1',
       kind: 'primaryProduct',
       cardinality: 'single',
     },
     plugin: {
-      attributes: {
-        parameters: {
-          paramsVersion: '2',
-          ...connection,
-        },
-      },
+      id: 'centra-plugin',
+      attributes: { parameters: { paramsVersion: '2', ...connection } },
     },
-    environment: 'primary',
+    environment: 'main',
+    isEnvironmentPrimary: true,
+    currentRole: { meta: { final_permissions: { can_edit_schema: true } } },
     field: { attributes: { field_type: 'json' } },
     fieldPath: 'centra_reference',
     formValues: { centra_reference: overrides.value ?? null },
     disabled: overrides.disabled ?? false,
     setFieldValue,
     openModal,
-    openConfirm: vi.fn().mockResolvedValue('cancel'),
   } as unknown as RenderFieldExtensionCtx;
 
   return { ctx, openModal, setFieldValue };
+}
+
+function documentOf(displayItemIds: number[]) {
+  return JSON.stringify({
+    version: 1,
+    kind: 'primaryProduct',
+    references: displayItemIds.map((displayItemId) => ({ displayItemId })),
+  });
+}
+
+function savedDocument(displayItemIds: number[]) {
+  return JSON.stringify(
+    {
+      version: 1,
+      kind: 'primaryProduct',
+      references: displayItemIds.map((displayItemId) => ({ displayItemId })),
+    },
+    null,
+    2,
+  );
+}
+
+function resolved(id: number, name: string): HydratedCentraReference {
+  return {
+    status: 'resolved',
+    reference: { displayItemId: id },
+    displayItem: { id, name, isPrimaryVariant: true, media: [], items: [] },
+    primaryDrift: false,
+  };
 }
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-type HydrationResult = Awaited<ReturnType<CentraClient['hydrateReferences']>>;
-
 function deferredHydration() {
-  let resolve!: (value: HydrationResult) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<HydrationResult>(
+  let resolve: (value: HydratedCentraReference[]) => void = () => undefined;
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<HydratedCentraReference[]>(
     (resolvePromise, rejectPromise) => {
       resolve = resolvePromise;
       reject = rejectPromise;
@@ -100,25 +113,35 @@ function deferredHydration() {
   return { promise, reject, resolve };
 }
 
+/** Opens the "⋮" of a row (the kit's trigger opens on mouse down). */
+async function openRowMenu(title: string) {
+  fireEvent.mouseDown(
+    screen.getByRole('button', { name: `Actions for ${title}` }),
+  );
+  return screen.findByRole('menu');
+}
+
+/** Picks an option of a row's "⋮" (the kit's options pick on mouse down). */
+async function pickRowAction(title: string, option: string) {
+  const menu = await openRowMenu(title);
+  fireEvent.mouseDown(within(menu).getByRole('menuitem', { name: option }));
+}
+
+function rowTitles(names: string[]) {
+  return screen
+    .getAllByText(new RegExp(`^(${names.join('|')})$`))
+    .map((element) => element.textContent);
+}
+
 describe('FieldExtension', () => {
   it.each([
-    ['primaryProduct', 'single', 'No product specified', 'Choose product'],
-    [
-      'variant',
-      'single',
-      'No product variant specified',
-      'Choose product variant',
-    ],
-    ['item', 'single', 'No SKU specified', 'Choose SKU'],
-    ['primaryProduct', 'multiple', 'No products present', 'Choose product'],
-    [
-      'variant',
-      'multiple',
-      'No product variants present',
-      'Choose product variant',
-    ],
-    ['item', 'multiple', 'No SKUs present', 'Choose SKU'],
-  ] as const)('uses restrained empty copy for %s %s fields', (kind, cardinality, message, action) => {
+    ['primaryProduct', 'single', 'No product yet', 'Choose product'],
+    ['variant', 'single', 'No product variant yet', 'Choose product variant'],
+    ['item', 'single', 'No SKU yet', 'Choose SKU'],
+    ['primaryProduct', 'multiple', 'No products yet', 'Add products'],
+    ['variant', 'multiple', 'No product variants yet', 'Add product variants'],
+    ['item', 'multiple', 'No SKUs yet', 'Add SKUs'],
+  ] as const)('shows the empty slot of %s %s fields', (kind, cardinality, message, action) => {
     const { ctx } = createCtx({
       parameters: { paramsVersion: '1', kind, cardinality },
     });
@@ -126,7 +149,9 @@ describe('FieldExtension', () => {
     render(<FieldExtension ctx={ctx} />);
 
     expect(screen.getByText(message)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: action })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: new RegExp(`${action}$`) }),
+    ).toBeInTheDocument();
   });
 
   it('persists only stable versioned IDs returned by the picker', async () => {
@@ -135,256 +160,192 @@ describe('FieldExtension', () => {
     });
 
     render(<FieldExtension ctx={ctx} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Choose product' }));
+    fireEvent.click(screen.getByRole('button', { name: /Choose product$/ }));
 
     await waitFor(() => expect(openModal).toHaveBeenCalledOnce());
     const modalOptions = openModal.mock.calls[0]?.[0];
     expect(() => JSON.stringify(modalOptions?.parameters)).not.toThrow();
     expect(modalOptions?.initialHeight).toBe(730);
+    expect(modalOptions?.title).toBe('Select Centra product');
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith(
         'centra_reference',
-        JSON.stringify(
-          {
-            version: 1,
-            kind: 'primaryProduct',
-            references: [{ displayItemId: 2752 }],
-          },
-          null,
-          2,
-        ),
+        savedDocument([2752]),
       ),
     );
   });
 
-  it('does not expose mutations for a disabled field', () => {
-    const { ctx, openModal } = createCtx({ disabled: true });
-    render(<FieldExtension ctx={ctx} />);
+  it('offers no changes on a disabled field', async () => {
+    const empty = createCtx({ disabled: true });
+    render(<FieldExtension ctx={empty.ctx} />);
 
-    expect(
-      screen.getByRole('button', { name: 'Choose product' }),
-    ).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Choose product' }));
-    expect(openModal).not.toHaveBeenCalled();
+    expect(screen.getByText('No product yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+    fireEvent.click(screen.getByText('No product yet'));
+    expect(empty.openModal).not.toHaveBeenCalled();
+    expect(screen.getByText('This field is read-only.')).toBeInTheDocument();
+    cleanup();
+
+    vi.spyOn(CentraClient.prototype, 'hydrateReferences').mockResolvedValue([
+      resolved(2752, 'Dog Toy'),
+      resolved(558, 'Elina_UK'),
+    ]);
+    const filled = createCtx({
+      disabled: true,
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752, 558]),
+    });
+    render(<FieldExtension ctx={filled.ctx} />);
+
+    expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('This field is read-only.')).toBeInTheDocument();
   });
 
-  it('uses native-style add controls and keyboard-accessible drag sorting', async () => {
+  it('reorders with Move down at once and keeps the order until the value arrives', async () => {
     const hydrate = vi
       .spyOn(CentraClient.prototype, 'hydrateReferences')
       .mockResolvedValue([
-        {
-          status: 'resolved',
-          reference: { displayItemId: 2752 },
-          displayItem: {
-            id: 2752,
-            name: 'Dog Toy',
-            isPrimaryVariant: true,
-            media: [],
-            items: [],
-          },
-          primaryDrift: false,
-        },
-        {
-          status: 'resolved',
-          reference: { displayItemId: 558 },
-          displayItem: {
-            id: 558,
-            name: 'Elina_UK',
-            isPrimaryVariant: true,
-            media: [],
-            items: [],
-          },
-          primaryDrift: false,
-        },
+        resolved(2752, 'Dog Toy'),
+        resolved(558, 'Elina_UK'),
       ]);
     const { ctx, setFieldValue } = createCtx({
-      parameters: {
-        paramsVersion: '1',
-        kind: 'primaryProduct',
-        cardinality: 'multiple',
-      },
-      value: JSON.stringify({
-        version: 1,
-        kind: 'primaryProduct',
-        references: [{ displayItemId: 2752 }, { displayItemId: 558 }],
-      }),
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752, 558]),
     });
-
-    const rectangle = (left: number): DOMRect =>
-      ({
-        x: left,
-        y: 0,
-        top: 0,
-        left,
-        right: left + 200,
-        bottom: 240,
-        width: 200,
-        height: 240,
-        toJSON: () => ({}),
-      }) as DOMRect;
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: HTMLElement) {
-        if (this.dataset.testid === 'centra-sortable-reference') {
-          const sortables = Array.from(
-            document.querySelectorAll(
-              '[data-testid="centra-sortable-reference"]',
-            ),
-          );
-          return rectangle(sortables.indexOf(this) * 220);
-        }
-        return rectangle(0);
-      },
-    );
 
     const { rerender } = render(<FieldExtension ctx={ctx} />);
 
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
-    expect(screen.getByText('Elina_UK')).toBeInTheDocument();
     const addButton = screen.getByRole('button', { name: 'Add products' });
     expect(addButton.querySelector('svg')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Move (up|down)/ })).toBeNull();
 
-    const [first, second] = screen.getAllByTestId('centra-sortable-reference');
-
-    first.focus();
-    fireEvent.keyDown(first, { code: 'Space' });
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-    fireEvent.keyDown(document, { code: 'ArrowRight' });
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-    fireEvent.keyDown(document, { code: 'Space' });
+    const menu = await openRowMenu('Dog Toy');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((option) => option.textContent),
+    ).toEqual(['Replace', 'Move down', 'Remove']);
+    fireEvent.mouseDown(
+      within(menu).getByRole('menuitem', { name: 'Move down' }),
+    );
 
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith(
         'centra_reference',
-        JSON.stringify(
-          {
-            version: 1,
-            kind: 'primaryProduct',
-            references: [{ displayItemId: 558 }, { displayItemId: 2752 }],
-          },
-          null,
-          2,
-        ),
+        savedDocument([558, 2752]),
       ),
     );
+    expect(rowTitles(['Dog Toy', 'Elina_UK'])).toEqual(['Elina_UK', 'Dog Toy']);
 
-    const optimisticOrder = screen.getAllByTestId('centra-sortable-reference');
-    expect(optimisticOrder).toEqual([second, first]);
-
-    const reorderedValue = JSON.stringify({
-      version: 1,
-      kind: 'primaryProduct',
-      references: [{ displayItemId: 558 }, { displayItemId: 2752 }],
-    });
     rerender(
       <FieldExtension
         ctx={
           {
             ...ctx,
-            formValues: { centra_reference: reorderedValue },
+            formValues: { centra_reference: documentOf([558, 2752]) },
           } as RenderFieldExtensionCtx
         }
       />,
     );
 
     await act(async () => Promise.resolve());
-    expect(screen.getAllByTestId('centra-sortable-reference')).toEqual([
-      second,
-      first,
-    ]);
+    expect(rowTitles(['Dog Toy', 'Elina_UK'])).toEqual(['Elina_UK', 'Dog Toy']);
     expect(hydrate).toHaveBeenCalledOnce();
   });
 
-  it('shows card-shaped skeletons instead of generic identities during first hydration', async () => {
+  it('removes a reference from its menu', async () => {
+    vi.spyOn(CentraClient.prototype, 'hydrateReferences').mockResolvedValue([
+      resolved(2752, 'Dog Toy'),
+      resolved(558, 'Elina_UK'),
+    ]);
+    const { ctx, setFieldValue } = createCtx({
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752, 558]),
+    });
+    render(<FieldExtension ctx={ctx} />);
+
+    expect(await screen.findByText('Elina_UK')).toBeInTheDocument();
+    await pickRowAction('Elina_UK', 'Remove');
+
+    await waitFor(() =>
+      expect(setFieldValue).toHaveBeenCalledWith(
+        'centra_reference',
+        savedDocument([2752]),
+      ),
+    );
+  });
+
+  it('refuses a replacement that is already in the field', async () => {
+    vi.spyOn(CentraClient.prototype, 'hydrateReferences').mockResolvedValue([
+      resolved(2752, 'Dog Toy'),
+      resolved(558, 'Elina_UK'),
+    ]);
+    const { ctx, openModal, setFieldValue } = createCtx({
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752, 558]),
+      openModalResult: { references: [{ displayItemId: 558 }] },
+    });
+    render(<FieldExtension ctx={ctx} />);
+
+    expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
+    await pickRowAction('Dog Toy', 'Replace');
+
+    await waitFor(() =>
+      expect(ctx.alert).toHaveBeenCalledWith(
+        'That product is already in this field.',
+      ),
+    );
+    const modalOptions = openModal.mock.calls[0]?.[0];
+    expect(modalOptions?.title).toBe('Select Centra product');
+    expect(modalOptions?.parameters).toEqual({
+      fieldParameters: { ...MULTIPLE_PRODUCTS, cardinality: 'single' },
+      references: [{ displayItemId: 2752 }],
+    });
+    expect(setFieldValue).not.toHaveBeenCalled();
+  });
+
+  it('shows one loading state, never the bare IDs, during the first hydration', async () => {
     const pending = deferredHydration();
     vi.spyOn(CentraClient.prototype, 'hydrateReferences').mockReturnValue(
       pending.promise,
     );
-    const { ctx } = createCtx({
-      value: JSON.stringify({
-        version: 1,
-        kind: 'primaryProduct',
-        references: [{ displayItemId: 2752 }],
-      }),
-    });
+    const { ctx } = createCtx({ value: documentOf([2752]) });
 
     render(<FieldExtension ctx={ctx} />);
 
-    expect(screen.getByTestId('centra-reference-skeleton')).toBeInTheDocument();
-    expect(screen.queryByText('Centra product')).not.toBeInTheDocument();
+    expect(screen.getByText('Loading the products')).toBeInTheDocument();
     expect(screen.queryByText('DisplayItem 2752')).not.toBeInTheDocument();
 
     await act(async () => {
-      pending.resolve([
-        {
-          status: 'resolved',
-          reference: { displayItemId: 2752 },
-          displayItem: {
-            id: 2752,
-            name: 'Dog Toy',
-            isPrimaryVariant: true,
-            media: [],
-            items: [],
-          },
-          primaryDrift: false,
-        },
-      ]);
+      pending.resolve([resolved(2752, 'Dog Toy')]);
       await pending.promise;
     });
 
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('centra-reference-skeleton'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading the products')).not.toBeInTheDocument();
   });
 
-  it('retains matching hydrated cards while a new reference loads and exposes its ID on failure', async () => {
+  it('keeps hydrated rows while a new reference loads, and shows its ID on failure', async () => {
     const pending = deferredHydration();
     const hydrate = vi
       .spyOn(CentraClient.prototype, 'hydrateReferences')
-      .mockResolvedValueOnce([
-        {
-          status: 'resolved',
-          reference: { displayItemId: 2752 },
-          displayItem: {
-            id: 2752,
-            name: 'Dog Toy',
-            isPrimaryVariant: true,
-            media: [],
-            items: [],
-          },
-          primaryDrift: false,
-        },
-      ])
+      .mockResolvedValueOnce([resolved(2752, 'Dog Toy')])
       .mockReturnValueOnce(pending.promise);
-    const value = JSON.stringify({
-      version: 1,
-      kind: 'primaryProduct',
-      references: [{ displayItemId: 2752 }],
-    });
     const { ctx } = createCtx({
-      parameters: {
-        paramsVersion: '1',
-        kind: 'primaryProduct',
-        cardinality: 'multiple',
-      },
-      value,
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752]),
     });
     const { rerender } = render(<FieldExtension ctx={ctx} />);
 
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
 
-    const nextValue = JSON.stringify({
-      version: 1,
-      kind: 'primaryProduct',
-      references: [{ displayItemId: 2752 }, { displayItemId: 558 }],
-    });
     rerender(
       <FieldExtension
         ctx={
           {
             ...ctx,
-            formValues: { centra_reference: nextValue },
+            formValues: { centra_reference: documentOf([2752, 558]) },
           } as RenderFieldExtensionCtx
         }
       />,
@@ -392,19 +353,21 @@ describe('FieldExtension', () => {
 
     await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Dog Toy')).toBeInTheDocument();
-    expect(screen.getByTestId('centra-reference-skeleton')).toBeInTheDocument();
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Loading the product' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('DisplayItem 558')).not.toBeInTheDocument();
 
     pending.reject(new Error('Centra is temporarily unavailable.'));
 
     expect(
-      await screen.findByText(/Live catalog details could not be loaded/),
+      await screen.findByText("Couldn't load the Centra details"),
     ).toBeInTheDocument();
+    expect(screen.getByText(/Centra is temporarily unavailable/)).toBeVisible();
     expect(screen.getByText('Dog Toy')).toBeInTheDocument();
     expect(screen.getByText('DisplayItem 558')).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('centra-reference-skeleton'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('preserves an unsupported document without rewriting it', () => {
@@ -417,10 +380,11 @@ describe('FieldExtension', () => {
     });
     render(<FieldExtension ctx={ctx} />);
 
-    expect(screen.getByText(/Saved value preserved/)).toBeInTheDocument();
+    expect(screen.getByText("The saved value isn't valid")).toBeInTheDocument();
     expect(
       screen.getByText(/unsupported Centra reference version 2/),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear value' })).toBeVisible();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
@@ -439,19 +403,14 @@ describe('FieldExtension', () => {
         primaryDrift: true,
       },
     ]);
-    const { ctx, setFieldValue } = createCtx({
-      value: JSON.stringify({
-        version: 1,
-        kind: 'primaryProduct',
-        references: [{ displayItemId: 2752 }],
-      }),
-    });
+    const { ctx, setFieldValue } = createCtx({ value: documentOf([2752]) });
 
     render(<FieldExtension ctx={ctx} />);
 
     expect(
-      await screen.findByText(/no longer the primary variant/),
+      await screen.findByText('No longer the primary variant'),
     ).toBeInTheDocument();
+    expect(screen.getByText('The saved ID is unchanged.')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
@@ -460,22 +419,14 @@ describe('FieldExtension', () => {
       new Error('Centra is temporarily unavailable.'),
     );
     const { ctx, setFieldValue } = createCtx({
-      parameters: {
-        paramsVersion: '1',
-        kind: 'primaryProduct',
-        cardinality: 'multiple',
-      },
-      value: JSON.stringify({
-        version: 1,
-        kind: 'primaryProduct',
-        references: [{ displayItemId: 2752 }, { displayItemId: 558 }],
-      }),
+      parameters: MULTIPLE_PRODUCTS,
+      value: documentOf([2752, 558]),
     });
 
     render(<FieldExtension ctx={ctx} />);
 
     expect(
-      await screen.findByText(/Live catalog details could not be loaded/),
+      await screen.findByText("Couldn't load the Centra details"),
     ).toBeInTheDocument();
     expect(screen.getByText('DisplayItem 2752')).toBeInTheDocument();
     expect(screen.getByText('DisplayItem 558')).toBeInTheDocument();
@@ -513,11 +464,7 @@ describe('FieldExtension', () => {
       },
     ]);
     const { ctx } = createCtx({
-      parameters: {
-        paramsVersion: '1',
-        kind: 'item',
-        cardinality: 'multiple',
-      },
+      parameters: { paramsVersion: '1', kind: 'item', cardinality: 'multiple' },
       value: JSON.stringify({
         version: 1,
         kind: 'item',
@@ -529,7 +476,7 @@ describe('FieldExtension', () => {
 
     expect(await screen.findByText('Elina_UK')).toBeInTheDocument();
     expect(
-      screen.getByText(/S · Black · SKU ELINA-BLACK · £120.00/),
+      screen.getByText('S · Black · SKU ELINA-BLACK · £120.00'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/GTIN/)).not.toBeInTheDocument();
     expect(screen.queryByText('Available')).not.toBeInTheDocument();
@@ -540,26 +487,8 @@ describe('FieldExtension', () => {
   it('does not restart hydration for an equivalent SDK context object', async () => {
     const hydrate = vi
       .spyOn(CentraClient.prototype, 'hydrateReferences')
-      .mockResolvedValue([
-        {
-          status: 'resolved',
-          reference: { displayItemId: 2752 },
-          displayItem: {
-            id: 2752,
-            name: 'Dog Toy',
-            isPrimaryVariant: true,
-            media: [],
-            items: [],
-          },
-          primaryDrift: false,
-        },
-      ]);
-    const value = JSON.stringify({
-      version: 1,
-      kind: 'primaryProduct',
-      references: [{ displayItemId: 2752 }],
-    });
-    const { ctx } = createCtx({ value });
+      .mockResolvedValue([resolved(2752, 'Dog Toy')]);
+    const { ctx } = createCtx({ value: documentOf([2752]) });
     const { rerender } = render(<FieldExtension ctx={ctx} />);
 
     await waitFor(() => expect(hydrate).toHaveBeenCalledOnce());

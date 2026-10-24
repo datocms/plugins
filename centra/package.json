@@ -34,24 +34,21 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
-    "datocms-plugin-sdk": "^2.2.2",
-    "datocms-react-ui": "^2.2.2",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.1",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@types/lodash-es": "^4.17.12",
+    "@biomejs/biome": "^2.3.14",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.2",
-    "@biomejs/biome": "^2.3.14",
     "jsdom": "^28.1.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
@@ -66,9 +63,7 @@
   },
   "overrides": {
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     }
   },
   "allowScripts": {

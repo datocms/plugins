@@ -1,7 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import type { FormEvent, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { canvasCtx } from '../../tests/canvasCtx';
 import type { CentraPluginParametersV2 } from '../types';
 import ConfigScreen from './ConfigScreen';
 
@@ -24,58 +30,6 @@ vi.mock('../lib/centraClient', () => ({
   },
 }));
 
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
-  FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Form: ({
-    children,
-    onSubmit,
-  }: {
-    children: ReactNode;
-    onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
-  }) => <form onSubmit={onSubmit}>{children}</form>,
-  TextField: ({
-    id,
-    label,
-    value,
-    onChange,
-    error,
-    textInputProps,
-  }: {
-    id: string;
-    label: ReactNode;
-    value: string;
-    onChange: (value: string, event: unknown) => void;
-    error?: ReactNode;
-    textInputProps?: { type?: string; disabled?: boolean };
-  }) => (
-    <div>
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type={textInputProps?.type ?? 'text'}
-        disabled={textInputProps?.disabled}
-        value={value}
-        onChange={(event) => onChange(event.target.value, event)}
-      />
-      {error && <span>{error}</span>}
-    </div>
-  ),
-  Button: ({
-    children,
-    type = 'button',
-    disabled,
-  }: {
-    children: ReactNode;
-    type?: 'button' | 'submit';
-    disabled?: boolean;
-  }) => (
-    <button type={type} disabled={disabled}>
-      {children}
-    </button>
-  ),
-}));
-
 const VALID_PARAMETERS: CentraPluginParametersV2 = {
   paramsVersion: '2',
   endpoint: 'https://shop.example.com/store-api-no-session',
@@ -89,20 +43,28 @@ function createCtx({
   parameters?: Record<string, unknown> | CentraPluginParametersV2;
   canEditSchema?: boolean;
 } = {}) {
-  const updatePluginParameters = vi.fn().mockResolvedValue(undefined);
-  const notice = vi.fn();
-  const alert = vi.fn().mockResolvedValue(undefined);
+  const base = canvasCtx();
+  const updatePluginParameters = vi.fn(async () => undefined);
   const ctx = {
-    plugin: { attributes: { parameters } },
+    ...base,
+    mode: 'renderConfigScreen',
+    plugin: { id: 'plugin-id', attributes: { parameters } },
     currentRole: {
       meta: { final_permissions: { can_edit_schema: canEditSchema } },
     },
     updatePluginParameters,
-    notice,
-    alert,
   } as unknown as RenderConfigScreenCtx;
 
-  return { ctx, updatePluginParameters, notice, alert };
+  return {
+    ctx,
+    updatePluginParameters,
+    notice: base.notice,
+    alert: base.alert,
+  };
+}
+
+function saveButton() {
+  return screen.getByRole('button', { name: 'Save' });
 }
 
 describe('ConfigScreen', () => {
@@ -120,13 +82,14 @@ describe('ConfigScreen', () => {
     const { ctx } = createCtx();
     render(<ConfigScreen ctx={ctx} />);
 
-    expect(screen.getByLabelText('Storefront API URL')).toHaveValue(
+    expect(screen.getByLabelText(/Storefront API URL/)).toHaveValue(
       VALID_PARAMETERS.endpoint,
     );
-    expect(screen.getByLabelText('API token')).toHaveAttribute(
+    expect(screen.getByLabelText(/API token/)).toHaveAttribute(
       'type',
       'password',
     );
+    expect(saveButton()).toBeInTheDocument();
     expect(screen.queryByText('Market')).not.toBeInTheDocument();
     expect(screen.queryByText('Pricelist')).not.toBeInTheDocument();
     expect(screen.queryByText('Language overrides')).not.toBeInTheDocument();
@@ -150,7 +113,7 @@ describe('ConfigScreen', () => {
     });
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+    fireEvent.click(saveButton());
 
     await waitFor(() => expect(updatePluginParameters).toHaveBeenCalledOnce());
     expect(clientMocks.constructor).toHaveBeenCalledWith(VALID_PARAMETERS);
@@ -159,22 +122,37 @@ describe('ConfigScreen', () => {
       limit: 1,
     });
     expect(updatePluginParameters).toHaveBeenCalledWith(VALID_PARAMETERS);
-    expect(notice).toHaveBeenCalledWith('Centra connected successfully.');
+    expect(notice).toHaveBeenCalledWith(
+      'Centra connected. Add the Centra editor to a JSON field to use it.',
+    );
   });
 
   it('keeps invalid credentials unsaved and shows field-level guidance', async () => {
     const { ctx, updatePluginParameters } = createCtx({ parameters: {} });
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.change(screen.getByLabelText('Storefront API URL'), {
+    const endpoint = screen.getByLabelText(/Storefront API URL/);
+    fireEvent.change(endpoint, {
       target: { value: 'http://shop.example.com/graphql' },
     });
-    fireEvent.change(screen.getByLabelText('API token'), {
+    fireEvent.change(screen.getByLabelText(/API token/), {
       target: { value: 'catalog-token' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+    fireEvent.click(saveButton());
 
-    expect(await screen.findByText(/Use an HTTPS endpoint/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Use an HTTPS endpoint/i),
+    ).toBeInTheDocument();
+    // The error is the field's: the input gets the invalid state
+    expect(endpoint).toHaveAttribute('aria-invalid', 'true');
+
+    // A value that isn't a URL gets the field's error too, not the browser's
+    fireEvent.change(endpoint, { target: { value: 'shop.example.com' } });
+    fireEvent.click(saveButton());
+
+    expect(
+      await screen.findByText('Enter a valid absolute URL.'),
+    ).toBeInTheDocument();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expect(clientMocks.searchDisplayItems).not.toHaveBeenCalled();
   });
@@ -188,14 +166,14 @@ describe('ConfigScreen', () => {
     });
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+    fireEvent.click(saveButton());
 
     await waitFor(() => expect(alert).toHaveBeenCalledOnce());
     expect(alert).toHaveBeenCalledWith('Invalid token [redacted]');
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
 
-  it('leaves the connecting state while the failure alert is still open', async () => {
+  it('leaves the saving state while the failure alert is still open', async () => {
     clientMocks.searchDisplayItems.mockRejectedValue(
       new Error('Centra is unavailable'),
     );
@@ -205,21 +183,50 @@ describe('ConfigScreen', () => {
     alert.mockReturnValue(new Promise(() => undefined));
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+    fireEvent.click(saveButton());
 
     await waitFor(() => expect(alert).toHaveBeenCalledOnce());
-    expect(
-      screen.getByRole('button', { name: 'Save and connect' }),
-    ).toBeEnabled();
+    await waitFor(() => expect(saveButton()).not.toHaveAttribute('aria-busy'));
+    expect(saveButton()).toBeEnabled();
+    expect(saveButton()).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('saves only changes, and Enter in a field submits them', async () => {
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    const token = screen.getByLabelText(/API token/);
+    const form = token.closest('form');
+    if (!form) throw new Error('The settings are not in a form');
+
+    expect(saveButton()).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.submit(form);
+    expect(clientMocks.searchDisplayItems).not.toHaveBeenCalled();
+
+    fireEvent.change(token, { target: { value: ' another-token ' } });
+
+    expect(saveButton()).not.toHaveAttribute('aria-disabled');
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(updatePluginParameters).toHaveBeenCalledOnce());
+    expect(updatePluginParameters).toHaveBeenCalledWith({
+      ...VALID_PARAMETERS,
+      token: 'another-token',
+    });
   });
 
   it('renders read-only credentials without a save action', () => {
     const { ctx } = createCtx({ canEditSchema: false });
     render(<ConfigScreen ctx={ctx} />);
 
-    expect(screen.getByText(/can view these settings/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Storefront API URL')).toBeDisabled();
-    expect(screen.getByLabelText('API token')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save and connect' })).toBeDisabled();
+    expect(
+      screen.getByText("Your role can't change the plugin settings."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Storefront API URL/)).toBeDisabled();
+    expect(screen.getByLabelText(/API token/)).toBeDisabled();
+    expect(saveButton()).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(saveButton());
+
+    expect(clientMocks.searchDisplayItems).not.toHaveBeenCalled();
   });
 });

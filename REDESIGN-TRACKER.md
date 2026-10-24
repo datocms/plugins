@@ -24,7 +24,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 10 | web-previews | 4002 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Config, sidebar preview, record panel, Visual tab and setup guide rebuilt; checked headless in light and dark. Build, typecheck and biome pass (no tests). The icon is picked inline in its cell instead of in the old dialog. 3 minor issues open. |
 | 11 | all-records-viewer | 3919 | ^19.2.4 | Done | Build, lint and tests pass. On next.0. |
 | 12 | project-wide-stage-viewer | 3864 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |
-| 13 | centra | 3619 | ^19.2.4 | In progress | Partly rebuilt; interrupted by a usage limit (finished parts saved) |
+| 13 | centra | 3619 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 14 | asset-optimization | 3050 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 15 | locale-duplicate | 2841 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 16 | ai-asset-source | 2203 | ^19.2.4 | Pending | |

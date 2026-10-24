@@ -1,40 +1,46 @@
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  type DragEndEvent,
-  type DragStartEvent,
-  type DropAnimation,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  rectSortingStrategy,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import CardList from 'datocms-react-ui/CardList';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
+import {
+  DragHandle,
+  SortableItem,
+  type SortableItemApi,
+  SortableList,
+} from 'datocms-react-ui/dnd';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import FieldHint from 'datocms-react-ui/FieldHint';
+import Link from 'datocms-react-ui/Link';
+import Pill from 'datocms-react-ui/Pill';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
 import get from 'lodash-es/get';
 import isEqual from 'lodash-es/isEqual';
 import {
-  type CSSProperties,
-  type ReactNode,
+  type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import SelectedReferenceRow from '../components/SelectedReferenceRow';
+import Thumbnail from '../components/Thumbnail';
 import { PICKER_MODAL_HEIGHT, PICKER_MODAL_ID } from '../constants';
 import {
+  ArrowDownIcon,
+  ArrowRightArrowLeftIcon,
+  ArrowUpIcon,
+  EllipsisVerticalIcon,
+  PlusIcon,
+  TrashIcon,
+} from '../icons';
+import {
   CentraClient,
-  type CentraDisplayItem,
-  type CentraItem,
+  type HydratedCentraReference,
 } from '../lib/centraClient';
 import {
   isConnectionComplete,
@@ -52,19 +58,28 @@ import type {
   CentraReference,
   PickerModalResult,
 } from '../types';
+import {
+  type CountNouns,
+  displayItemDetail,
+  fallbackIdentity,
+  imageUrl,
+  isRecord,
+  itemDetail,
+  KIND_NOUNS,
+  productTitle,
+  referenceStatus,
+} from '../utils/catalog';
+import { pluginSettingsPath } from '../utils/paths';
+import { useDeepStableValue } from '../utils/useDeepStableValue';
 import styles from './FieldExtension.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type HydratedReference = Awaited<
-  ReturnType<CentraClient['hydrateReferences']>
->[number];
-
 type CachedHydratedReference = {
   key: string;
-  entry: HydratedReference;
+  entry: HydratedCentraReference;
 };
 
 type HydrationState =
@@ -85,29 +100,14 @@ type HydrationState =
       error: string;
     };
 
-const DROP_ANIMATION: DropAnimation = {
-  duration: 200,
-  easing: 'cubic-bezier(0.55, 0, 0.1, 1)',
-  keyframes: ({ transform: { initial, final } }) => [
-    { transform: CSS.Transform.toString(initial), opacity: 1 },
-    { transform: CSS.Transform.toString(final), opacity: 0 },
-  ],
-  sideEffects: null,
+/** A saved reference, with its catalog data once hydrated */
+type ReferenceRow = {
+  key: string;
+  reference: CentraReference;
+  hydrated: HydratedCentraReference | undefined;
+  /** No catalog data yet: a reference added after the first load */
+  loading: boolean;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function useDeepStableValue<T>(value: T): T {
-  const valueRef = useRef(value);
-
-  if (!isEqual(valueRef.current, value)) {
-    valueRef.current = value;
-  }
-
-  return valueRef.current;
-}
 
 function haveSameReferenceKeys(
   left: readonly string[],
@@ -171,74 +171,10 @@ function validFieldParameters(value: unknown): boolean {
   );
 }
 
-function productTitle(displayItem: CentraDisplayItem): string {
-  return (
-    displayItem.name?.trim() ||
-    displayItem.productVariant?.name?.trim() ||
-    (displayItem.productNumber
-      ? `Product ${displayItem.productNumber}`
-      : `DisplayItem ${displayItem.id}`)
-  );
-}
-
-function imageUrl(displayItem: CentraDisplayItem | undefined): string | null {
-  const media = displayItem?.media;
-  if (!media || media.length === 0) return null;
-  const image = media.find((medium) =>
-    medium.source.type?.toLocaleLowerCase().includes('image'),
-  );
-  return image?.source.url ?? media[0]?.source.url ?? null;
-}
-
-function itemTitle(item: CentraItem): string {
-  return (
-    item.name?.trim() ||
-    (item.productSizeId !== undefined
-      ? `Size ${String(item.productSizeId)}`
-      : undefined) ||
-    item.sku?.trim() ||
-    `Item ${item.id}`
-  );
-}
-
-function displayItemDetail(displayItem: CentraDisplayItem): string[] {
-  return Array.from(
-    new Set(
-      [
-        displayItem.productVariant?.name?.trim(),
-        displayItem.productVariant?.number?.trim(),
-        displayItem.price?.formattedValue,
-      ].filter((part): part is string => Boolean(part)),
-    ),
-  );
-}
-
-function itemDetail(
-  displayItem: CentraDisplayItem,
-  item: CentraItem,
-): string[] {
-  const label = itemTitle(item);
-  const details = [
-    label === item.sku?.trim() ? null : label,
-    displayItem.productVariant?.name?.trim(),
-    item.sku ? `SKU ${item.sku}` : null,
-    displayItem.price?.formattedValue,
-  ];
-  return Array.from(
-    new Set(details.filter((part): part is string => Boolean(part))),
-  );
-}
-
-function fallbackIdentity(reference: CentraReference): string {
-  return 'itemId' in reference
-    ? `Item ${reference.itemId} · DisplayItem ${reference.displayItemId}`
-    : `DisplayItem ${reference.displayItemId}`;
-}
-
 function friendlyError(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : 'Centra could not hydrate the saved references.';
+    : "Couldn't load the saved items from Centra.";
 }
 
 function readPickerResult(value: unknown): PickerModalResult | null {
@@ -248,167 +184,349 @@ function readPickerResult(value: unknown): PickerModalResult | null {
   return { references: value.references as CentraReference[] };
 }
 
-function entityLabel(parameters: CentraFieldParametersV1): string {
-  if (parameters.kind === 'item') return 'SKU';
-  if (parameters.kind === 'variant') return 'product variant';
-  return 'product';
-}
-
-function emptyLabel(parameters: CentraFieldParametersV1): string {
-  if (parameters.cardinality === 'single') {
-    if (parameters.kind === 'item') return 'No SKU specified';
-    if (parameters.kind === 'variant') return 'No product variant specified';
-    return 'No product specified';
-  }
-
-  if (parameters.kind === 'item') return 'No SKUs present';
-  if (parameters.kind === 'variant') return 'No product variants present';
-  return 'No products present';
-}
-
-function PlusIcon() {
-  return (
-    <svg className={styles.plusIcon} viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 3v10M3 8h10" />
-    </svg>
-  );
-}
-
-function SortableReferenceItem({
-  id,
-  children,
-}: {
-  id: string;
-  children: ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`${styles.sortableItem} ${
-        isDragging ? styles.sortableItemDragging : ''
-      }`}
-      style={style}
-      data-testid="centra-sortable-reference"
-      {...attributes}
-      {...listeners}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ReferenceEntrySkeleton() {
-  return (
-    <article
-      className={styles.skeletonCard}
-      data-testid="centra-reference-skeleton"
-      aria-label="Loading saved Centra reference"
-    >
-      <div className={styles.skeletonMedia} aria-hidden="true" />
-      <div className={styles.skeletonCaption} aria-hidden="true">
-        <span className={`${styles.skeletonLine} ${styles.skeletonTitle}`} />
-        <span className={`${styles.skeletonLine} ${styles.skeletonDetail}`} />
-      </div>
-    </article>
-  );
-}
-
-type ReferenceEntryProps = {
-  reference: CentraReference;
-  hydrated?: HydratedReference;
-  kind: CentraFieldParametersV1['kind'];
-  disabled: boolean;
-  onReplace: () => void;
-  onRemove: () => void;
-};
-
-function unresolvedReason(reason: 'displayItemNotFound' | 'itemNotFound') {
-  return reason === 'itemNotFound'
-    ? 'The saved SKU item could not be found. The IDs remain unchanged.'
-    : 'The saved DisplayItem could not be found. The ID remains unchanged.';
-}
-
-function referenceDetails(
-  displayItem: CentraDisplayItem | undefined,
-  item: CentraItem | undefined,
-): string[] {
-  if (!displayItem) return [];
-  return item ? itemDetail(displayItem, item) : displayItemDetail(displayItem);
-}
-
 function referenceWarning(
-  hydrated: HydratedReference | undefined,
-): string | undefined {
+  hydrated: HydratedCentraReference | undefined,
+): { title: string; text: string } | undefined {
   if (hydrated?.status === 'resolved' && hydrated.primaryDrift) {
-    return 'This DisplayItem is no longer the primary variant. The saved ID has not changed.';
+    return {
+      title: 'No longer the primary variant',
+      text: 'The saved ID is unchanged.',
+    };
   }
   if (hydrated?.status === 'unresolved') {
-    return unresolvedReason(hydrated.reason);
+    return hydrated.reason === 'itemNotFound'
+      ? {
+          title: 'Centra no longer has this SKU',
+          text: 'The saved IDs are unchanged.',
+        }
+      : {
+          title: 'Centra no longer has this product',
+          text: 'The saved ID is unchanged.',
+        };
   }
   return undefined;
 }
 
-function referenceStatus(
-  displayItem: CentraDisplayItem | undefined,
-  item: CentraItem | undefined,
-): 'Unavailable' | 'Out of stock' | null {
-  if (displayItem?.available === false) return 'Unavailable';
-  if (item) {
-    return item.stock?.available === false ? 'Out of stock' : null;
+/**
+ * The title and the details line of a row. Without catalog data the title
+ * is the saved IDs; an unresolved row adds them to its details.
+ */
+function rowText({ reference, hydrated, loading }: ReferenceRow) {
+  if (loading) return { title: 'Loading…', details: '' };
+  const displayItem = hydrated?.displayItem;
+  if (!displayItem) return { title: fallbackIdentity(reference), details: '' };
+
+  const item = hydrated?.status === 'resolved' ? hydrated.item : undefined;
+  const details = item
+    ? itemDetail(displayItem, item)
+    : displayItemDetail(displayItem);
+  if (hydrated?.status === 'unresolved') {
+    details.push(fallbackIdentity(reference));
   }
-  return displayItem?.hasStock === false ? 'Out of stock' : null;
+  return { title: productTitle(displayItem), details: details.join(' · ') };
 }
 
-function ReferenceEntry({
-  reference,
-  hydrated,
-  kind,
-  disabled,
+/** The open row menu that the frame keeps room for (one is open at a time) */
+let roomHolder: HTMLElement | null = null;
+
+/**
+ * The field's frame is only as tall as its rows, and the kit fits an open
+ * menu inside the frame, so in a short field a row's menu would scroll in a
+ * sliver. While a menu is open, the frame keeps room for all of it under its
+ * trigger (4px away, plus the 30px the kit keeps from the edge): the
+ * auto-resizer grows the frame, and shrinks it back once the menu closes.
+ * The kit fills the menu's portal right after setting its ref.
+ */
+function useMenuRoom(anchor: RefObject<HTMLElement | null>) {
+  const openMenu = useRef<HTMLElement | null>(null);
+
+  return useCallback(
+    (menu: HTMLDivElement | null) => {
+      const root = document.documentElement;
+      if (openMenu.current && roomHolder === openMenu.current) {
+        roomHolder = null;
+        root.style.minHeight = '';
+      }
+      openMenu.current = menu;
+      if (!menu) return;
+
+      queueMicrotask(() => {
+        if (!anchor.current || !menu.isConnected) return;
+        const panel = menu.querySelector('[role="menu"]') ?? menu;
+        const bottom = anchor.current.getBoundingClientRect().bottom;
+        roomHolder = menu;
+        root.style.minHeight = `${Math.ceil(
+          bottom + window.scrollY + 4 + panel.scrollHeight + 30,
+        )}px`;
+      });
+    },
+    [anchor],
+  );
+}
+
+type RowMenuProps = {
+  title: string;
+  /** A multiple field with several items: Move up and Move down */
+  reorderable: boolean;
+  index: number;
+  count: number;
+  onReplace: () => void;
+  onRemove: () => void;
+  onMove: (to: number) => void;
+};
+
+/** The "⋮" of a row. Move up and Move down are the keyboard's reorder. */
+function RowMenu({
+  title,
+  reorderable,
+  index,
+  count,
   onReplace,
   onRemove,
-}: ReferenceEntryProps) {
-  const resolved = hydrated?.status === 'resolved' ? hydrated : undefined;
-  const unresolved = hydrated?.status === 'unresolved' ? hydrated : undefined;
-  const displayItem = resolved?.displayItem ?? unresolved?.displayItem;
-  const item = resolved?.item;
-  let title = kind === 'item' ? 'Centra SKU' : 'Centra product';
-
-  if (displayItem) {
-    title = productTitle(displayItem);
-  }
-
-  const details = referenceDetails(displayItem, item);
-  const warning = referenceWarning(hydrated);
-  const status = referenceStatus(displayItem, item);
+  onMove,
+}: RowMenuProps) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const menuRef = useMenuRoom(anchor);
 
   return (
-    <SelectedReferenceRow
-      title={title}
-      identity={fallbackIdentity(reference)}
-      detail={details.length > 0 ? details.join(' · ') : null}
-      imageUrl={imageUrl(displayItem)}
-      status={status}
-      preorder={item?.preorder === true}
-      unresolved={hydrated?.status === 'unresolved'}
-      showIdentity={!displayItem}
-      warning={warning}
-      disabled={disabled}
-      onReplace={onReplace}
-      onRemove={onRemove}
+    <div ref={anchor}>
+      <Dropdown
+        triggerComponent={IconTrigger}
+        icon={EllipsisVerticalIcon}
+        label={`Actions for ${title}`}
+      >
+        <Dropdown.Menu ref={menuRef} placement="bottom-end">
+          <Dropdown.Option
+            icon={<ArrowRightArrowLeftIcon />}
+            onPick={onReplace}
+          >
+            Replace
+          </Dropdown.Option>
+          {reorderable && index > 0 && (
+            <Dropdown.Option
+              icon={<ArrowUpIcon />}
+              onPick={() => onMove(index - 1)}
+            >
+              Move up
+            </Dropdown.Option>
+          )}
+          {reorderable && index < count - 1 && (
+            <Dropdown.Option
+              icon={<ArrowDownIcon />}
+              onPick={() => onMove(index + 1)}
+            >
+              Move down
+            </Dropdown.Option>
+          )}
+          <Dropdown.Separator />
+          <Dropdown.Option icon={<TrashIcon />} alert onPick={onRemove}>
+            Remove
+          </Dropdown.Option>
+        </Dropdown.Menu>
+      </Dropdown>
+    </div>
+  );
+}
+
+type ReferenceItemProps = Omit<RowMenuProps, 'title'> & {
+  row: ReferenceRow;
+  /** What the field picks, singular ("product") */
+  noun: string;
+  sortable: SortableItemApi;
+  /** A read-only field has no actions */
+  disabled: boolean;
+};
+
+/**
+ * One saved reference: its image, title, statuses and details, then the "⋮"
+ * with its changes. A warning about the saved IDs shows under the row.
+ */
+function ReferenceItem({
+  row,
+  noun,
+  sortable,
+  disabled,
+  ...menu
+}: ReferenceItemProps) {
+  const { hydrated, loading } = row;
+  const displayItem = hydrated?.displayItem;
+  const item = hydrated?.status === 'resolved' ? hydrated.item : undefined;
+  const status = referenceStatus(displayItem, item);
+  const warning = referenceWarning(hydrated);
+  const { title, details } = rowText(row);
+
+  return (
+    <CardList.Item
+      ref={sortable.ref}
+      className={styles.item}
+      row={{
+        summary: (
+          <>
+            {menu.reorderable && (
+              <DragHandle ref={sortable.handleRef} gutter="normal" />
+            )}
+            <EntityRow
+              layout="row"
+              image={<Thumbnail url={imageUrl(displayItem)} />}
+              title={title}
+              afterTitle={
+                <>
+                  {hydrated?.status === 'unresolved' && (
+                    <Pill tone="warning">Not found</Pill>
+                  )}
+                  {status && <Pill tone="warning">{status}</Pill>}
+                  {item?.preorder && <Pill>Preorder</Pill>}
+                </>
+              }
+            >
+              {details}
+            </EntityRow>
+            {loading && (
+              <ProgressBar placement="edge" ariaLabel={`Loading the ${noun}`} />
+            )}
+            {/* The row is positioned: without a body, the drop line goes on
+                its edges */}
+            {!warning && sortable.dropIndicator}
+          </>
+        ),
+        actions: !disabled && !loading && <RowMenu title={title} {...menu} />,
+      }}
+      body={
+        warning ? (
+          <>
+            {sortable.dropIndicator}
+            <Callout tone="warning" title={warning.title}>
+              {warning.text}
+            </Callout>
+          </>
+        ) : undefined
+      }
     />
+  );
+}
+
+type ReferenceListProps = {
+  rows: ReferenceRow[];
+  nouns: CountNouns;
+  multiple: boolean;
+  /** A multiple field with several items: drag and drop, Move up, Move down */
+  reorderable: boolean;
+  disabled: boolean;
+  /** A hydration runs */
+  busy: boolean;
+  onAdd: () => void;
+  onReplace: (index: number) => void;
+  onRemove: (index: number) => void;
+  onReorder: (from: number, to: number) => void;
+};
+
+/**
+ * The references in one card, or the empty slot that fills the field. A
+ * multiple field adds more from the card's footer.
+ */
+function ReferenceList({
+  rows,
+  nouns,
+  multiple,
+  reorderable,
+  disabled,
+  busy,
+  onAdd,
+  onReplace,
+  onRemove,
+  onReorder,
+}: ReferenceListProps) {
+  const add = {
+    label: multiple ? `Add ${nouns.other}` : `Choose ${nouns.one}`,
+    icon: PlusIcon,
+    onClick: onAdd,
+  };
+
+  return (
+    <div className={reorderable ? styles.gutter : undefined} aria-busy={busy}>
+      {/* Always rendered, so the rows don't remount when reordering starts
+          to apply: the list is only disabled */}
+      <SortableList
+        disabled={!reorderable}
+        onDrop={({ source, destination }) =>
+          onReorder(source.index, destination.index)
+        }
+      >
+        <CardList
+          add={multiple && !disabled ? add : undefined}
+          empty={
+            <EmptySlot
+              message={`No ${multiple ? nouns.other : nouns.one} yet`}
+              action={disabled ? undefined : add}
+            />
+          }
+        >
+          {rows.map((row, index) => (
+            <SortableItem key={row.key} id={row.key} index={index} handle>
+              {(sortable) => (
+                <ReferenceItem
+                  row={row}
+                  noun={nouns.one}
+                  sortable={sortable}
+                  disabled={disabled}
+                  reorderable={reorderable}
+                  index={index}
+                  count={rows.length}
+                  onReplace={() => onReplace(index)}
+                  onRemove={() => onRemove(index)}
+                  onMove={(to) => onReorder(index, to)}
+                />
+              )}
+            </SortableItem>
+          ))}
+        </CardList>
+      </SortableList>
+    </div>
+  );
+}
+
+/** A saved value that the editor can't read, kept until an editor clears it */
+function InvalidValue({
+  message,
+  disabled,
+  onClear,
+}: {
+  message: string;
+  disabled: boolean;
+  onClear: () => Promise<void>;
+}) {
+  return (
+    <>
+      <Callout tone="danger" title="The saved value isn't valid">
+        {message}
+      </Callout>
+      {!disabled && (
+        <Button tone="ghost-alert" label="Clear value" onClick={onClear} />
+      )}
+    </>
+  );
+}
+
+/** The connection is missing: the next step is the plugin settings */
+function NotConnected({ ctx }: Props) {
+  const settings = ctx.currentRole.meta.final_permissions.can_edit_schema ? (
+    <Link
+      to={pluginSettingsPath({
+        pluginId: ctx.plugin.id,
+        environment: ctx.environment,
+        isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+      })}
+    >
+      plugin settings
+    </Link>
+  ) : (
+    'plugin settings'
+  );
+
+  return (
+    <Callout tone="warning" title="Centra isn't connected">
+      Add the Storefront API URL and token in the {settings}.
+    </Callout>
   );
 }
 
@@ -438,21 +556,12 @@ export default function FieldExtension({ ctx }: Props) {
     entries: [],
     referenceKeys: [],
   });
-  const [activeDragKey, setActiveDragKey] = useState<string | null>(null);
+  // Until a hydration finishes or fails once, the field shows one loading
+  // state, never the bare IDs; after it, a new reference loads in its row
+  const [hydrationSettled, setHydrationSettled] = useState(false);
   const [optimisticReferenceKeys, setOptimisticReferenceKeys] = useState<
     string[] | null
   >(null);
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
 
   const savedReferences = parsed.ok ? parsed.references : [];
   const savedReferenceKeys = useMemo(
@@ -496,10 +605,6 @@ export default function FieldExtension({ ctx }: Props) {
     fieldParameters.cardinality === 'multiple' &&
     references.length > 1 &&
     !ctx.disabled;
-  const activeDragIndex = activeDragKey
-    ? currentReferenceKeys.indexOf(activeDragKey)
-    : -1;
-  const activeDragReference = references[activeDragIndex];
 
   useEffect(() => {
     if (!optimisticReferenceKeys) return;
@@ -547,6 +652,7 @@ export default function FieldExtension({ ctx }: Props) {
           })),
           referenceKeys: requestedKeys,
         });
+        setHydrationSettled(true);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -556,6 +662,7 @@ export default function FieldExtension({ ctx }: Props) {
           referenceKeys: requestedKeys,
           error: friendlyError(error),
         }));
+        setHydrationSettled(true);
       });
 
     return () => controller.abort();
@@ -567,6 +674,8 @@ export default function FieldExtension({ ctx }: Props) {
     hydrationReferences,
     parsed.ok,
   ]);
+
+  const nouns = KIND_NOUNS[fieldParameters.kind];
 
   const persist = async (nextReferences: readonly CentraReference[]) => {
     const document = buildReferenceDocument(fieldParameters, nextReferences);
@@ -582,10 +691,13 @@ export default function FieldExtension({ ctx }: Props) {
   ): Promise<CentraReference[] | null> => {
     if (ctx.disabled) return null;
 
+    const pickerNouns = KIND_NOUNS[parameters.kind];
     const rawResult = await ctx.openModal({
       id: PICKER_MODAL_ID,
-      title: `Select Centra ${entityLabel(parameters)}${
-        parameters.cardinality === 'multiple' ? 's' : ''
+      title: `Select Centra ${
+        parameters.cardinality === 'multiple'
+          ? pickerNouns.other
+          : pickerNouns.one
       }`,
       width: 'xl',
       initialHeight: PICKER_MODAL_HEIGHT,
@@ -619,9 +731,7 @@ export default function FieldExtension({ ctx }: Props) {
         referenceKey(fieldParameters.kind, reference) === replacementKey,
     );
     if (alreadySelected) {
-      await ctx.alert(
-        'That Centra reference is already selected in this field.',
-      );
+      await ctx.alert(`That ${nouns.one} is already in this field.`);
       return;
     }
     const next = [...references];
@@ -632,9 +742,9 @@ export default function FieldExtension({ ctx }: Props) {
   const clearInvalidValue = async () => {
     if (ctx.disabled) return;
     const confirmed = await ctx.openConfirm({
-      title: 'Clear invalid Centra value?',
+      title: 'Clear the saved value?',
       content:
-        'The existing raw JSON will be removed. This action cannot be undone from the plugin.',
+        "The raw JSON of this field is removed. You can't undo this from the plugin.",
       choices: [{ label: 'Clear value', value: 'clear', intent: 'negative' }],
       cancel: { label: 'Keep value', value: 'cancel' },
     });
@@ -643,25 +753,10 @@ export default function FieldExtension({ ctx }: Props) {
     }
   };
 
-  const handleDragStart = ({ active }: DragStartEvent) => {
+  // A drop, Move up and Move down: the new order shows at once, then saves
+  const reorder = (from: number, to: number) => {
     if (!sortingEnabled) return;
-    setActiveDragKey(String(active.id));
-  };
-
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    const draggedKey = String(active.id);
-    setActiveDragKey(null);
-    if (!sortingEnabled || !over || active.id === over.id) return;
-
-    const sourceIndex = currentReferenceKeys.indexOf(draggedKey);
-    const destinationIndex = currentReferenceKeys.indexOf(String(over.id));
-    if (sourceIndex < 0 || destinationIndex < 0) return;
-
-    const nextReferences = moveReference(
-      references,
-      sourceIndex,
-      destinationIndex,
-    );
+    const nextReferences = moveReference(references, from, to);
     const nextReferenceKeys = nextReferences.map((reference) =>
       referenceKey(fieldParameters.kind, reference),
     );
@@ -670,16 +765,27 @@ export default function FieldExtension({ ctx }: Props) {
       setOptimisticReferenceKeys((current) =>
         isEqual(current, nextReferenceKeys) ? null : current,
       );
-      void ctx.alert('The new Centra order could not be saved. Try again.');
+      void ctx.alert("Couldn't save the new order. Try again.");
     });
   };
+
+  const rows = references.map((reference): ReferenceRow => {
+    const key = referenceKey(fieldParameters.kind, reference);
+    const hydrated = hydratedByKey.get(key);
+    const loading =
+      !hydrated &&
+      (hydration.status === 'idle' ||
+        hydration.status === 'loading' ||
+        !hydrationMatchesReferences);
+    return { key, reference, hydrated, loading };
+  });
 
   if (ctx.field.attributes.field_type !== 'json') {
     return (
       <Canvas ctx={ctx}>
-        <div className={styles.error} role="alert">
-          The Centra reference editor supports JSON fields only.
-        </div>
+        <Callout tone="warning">
+          The Centra editor works on JSON fields only.
+        </Callout>
       </Canvas>
     );
   }
@@ -687,10 +793,10 @@ export default function FieldExtension({ ctx }: Props) {
   if (!fieldParametersValid) {
     return (
       <Canvas ctx={ctx}>
-        <div className={styles.error} role="alert">
-          This field has unsupported Centra settings. Open the field settings,
-          choose a reference type and selection mode, then save the schema.
-        </div>
+        <Callout tone="warning" title="Unsupported field settings">
+          Open the field settings, choose what editors pick and how many, then
+          save the field.
+        </Callout>
       </Canvas>
     );
   }
@@ -698,21 +804,11 @@ export default function FieldExtension({ ctx }: Props) {
   if (!parsed.ok) {
     return (
       <Canvas ctx={ctx}>
-        <div className={styles.root}>
-          <div className={styles.error} role="alert">
-            <strong>Saved value preserved.</strong> {parsed.error.message}
-          </div>
-          <div>
-            <Button
-              buttonType="negative"
-              buttonSize="s"
-              disabled={ctx.disabled}
-              onClick={() => void clearInvalidValue()}
-            >
-              Clear invalid value
-            </Button>
-          </div>
-        </div>
+        <InvalidValue
+          message={parsed.error.message}
+          disabled={ctx.disabled}
+          onClear={clearInvalidValue}
+        />
       </Canvas>
     );
   }
@@ -720,146 +816,48 @@ export default function FieldExtension({ ctx }: Props) {
   if (!isConnectionComplete(connection)) {
     return (
       <Canvas ctx={ctx}>
-        <div className={styles.error} role="alert">
-          Add a valid Centra Storefront API URL and token in the plugin settings
-          to use this field.
-        </div>
+        <NotConnected ctx={ctx} />
       </Canvas>
     );
   }
 
-  const label = entityLabel(fieldParameters);
-
   return (
     <Canvas ctx={ctx}>
-      <div className={styles.root}>
-        {hydration.status === 'error' && (
-          <div className={styles.warning} role="alert">
-            Live catalog details could not be loaded. Saved IDs remain
-            unchanged. {hydration.error}
-          </div>
-        )}
+      {hydration.status === 'error' && (
+        <Callout tone="warning" title="Couldn't load the Centra details">
+          The saved IDs are unchanged. {hydration.error}
+        </Callout>
+      )}
 
-        {references.length === 0 ? (
-          <div className={styles.empty}>
-            <div className={styles.emptyLabel}>
-              {emptyLabel(fieldParameters)}
-            </div>
-            <div className={styles.emptyActions}>
-              <Button
-                buttonSize="s"
-                buttonType="muted"
-                leftIcon={<PlusIcon />}
-                disabled={ctx.disabled}
-                onClick={() => void openAndPersist()}
-              >
-                Choose {label}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragCancel={() => setActiveDragKey(null)}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={currentReferenceKeys}
-                strategy={rectSortingStrategy}
-              >
-                <div
-                  className={`${styles.list} ${
-                    fieldParameters.cardinality === 'single'
-                      ? styles.single
-                      : ''
-                  }`}
-                  aria-busy={hydration.status === 'loading'}
-                >
-                  {references.map((reference, index) => {
-                    const key = referenceKey(fieldParameters.kind, reference);
-                    const hydrated = hydratedByKey.get(key);
-                    const showSkeleton =
-                      !hydrated &&
-                      (hydration.status === 'idle' ||
-                        hydration.status === 'loading' ||
-                        !hydrationMatchesReferences);
+      {rows.length > 0 && !hydrationSettled ? (
+        <BlankSlate
+          placement="inline"
+          small
+          loading
+          title={`Loading the ${nouns.other}`}
+        />
+      ) : (
+        <ReferenceList
+          rows={rows}
+          nouns={nouns}
+          multiple={fieldParameters.cardinality === 'multiple'}
+          reorderable={sortingEnabled}
+          disabled={ctx.disabled}
+          busy={hydration.status === 'loading'}
+          onAdd={() => void openAndPersist()}
+          onReplace={(index) => void replaceAt(index)}
+          onRemove={(index) =>
+            void persist(
+              references.filter(
+                (_candidate, candidateIndex) => candidateIndex !== index,
+              ),
+            )
+          }
+          onReorder={reorder}
+        />
+      )}
 
-                    const entry = showSkeleton ? (
-                      <ReferenceEntrySkeleton key={`${key}:skeleton`} />
-                    ) : (
-                      <ReferenceEntry
-                        key={`${key}:entry`}
-                        reference={reference}
-                        hydrated={hydrated}
-                        kind={fieldParameters.kind}
-                        disabled={ctx.disabled}
-                        onReplace={() => void replaceAt(index)}
-                        onRemove={() =>
-                          void persist(
-                            references.filter(
-                              (_candidate, candidateIndex) =>
-                                candidateIndex !== index,
-                            ),
-                          )
-                        }
-                      />
-                    );
-
-                    return sortingEnabled ? (
-                      <SortableReferenceItem key={key} id={key}>
-                        {entry}
-                      </SortableReferenceItem>
-                    ) : (
-                      <div key={key} className={styles.referenceItem}>
-                        {entry}
-                      </div>
-                    );
-                  })}
-                </div>
-              </SortableContext>
-
-              <DragOverlay dropAnimation={DROP_ANIMATION}>
-                {activeDragReference && (
-                  <div className={styles.dragOverlay}>
-                    <ReferenceEntry
-                      reference={activeDragReference}
-                      hydrated={hydratedByKey.get(
-                        referenceKey(fieldParameters.kind, activeDragReference),
-                      )}
-                      kind={fieldParameters.kind}
-                      disabled
-                      onReplace={() => undefined}
-                      onRemove={() => undefined}
-                    />
-                  </div>
-                )}
-              </DragOverlay>
-            </DndContext>
-
-            {fieldParameters.cardinality === 'multiple' && (
-              <div className={styles.addAction}>
-                <Button
-                  buttonSize="s"
-                  buttonType="muted"
-                  leftIcon={<PlusIcon />}
-                  disabled={ctx.disabled}
-                  onClick={() => void openAndPersist()}
-                >
-                  Add {label}s
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-
-        {ctx.disabled && (
-          <div className={styles.disabledHint}>
-            This field is read-only in the current workflow state.
-          </div>
-        )}
-      </div>
+      {ctx.disabled && <FieldHint hint="This field is read-only." />}
     </Canvas>
   );
 }

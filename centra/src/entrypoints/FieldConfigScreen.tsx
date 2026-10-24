@@ -1,5 +1,10 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, SelectField } from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
 import { useEffect, useRef, useState } from 'react';
 import { normalizeFieldParameters } from '../lib/parameters';
 import type {
@@ -7,50 +12,40 @@ import type {
   CentraFieldParametersV1,
   CentraReferenceKind,
 } from '../types';
-import styles from './FieldConfigScreen.module.css';
 
 type Props = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
-type Option<Value extends string> = {
-  value: Value;
-  label: string;
-};
-
-const KIND_OPTIONS: Option<CentraReferenceKind>[] = [
+const KIND_OPTIONS: readonly RadioGroupOption<CentraReferenceKind>[] = [
   {
     value: 'primaryProduct',
     label: 'Products',
+    hint: 'Stores the product through its primary variant.',
   },
   {
     value: 'variant',
-    label: 'Exact product variants',
+    label: 'Product variants',
+    hint: 'Stores one exact variant, such as a color.',
   },
   {
     value: 'item',
-    label: 'SKUs / sizes',
+    label: 'SKUs',
+    hint: 'Stores one size of a variant, with its SKU.',
   },
 ];
 
-const CARDINALITY_OPTIONS: Option<CentraCardinality>[] = [
-  {
-    value: 'single',
-    label: 'One',
-  },
-  {
-    value: 'multiple',
-    label: 'Multiple',
-  },
+const CARDINALITY_OPTIONS: readonly RadioGroupOption<CentraCardinality>[] = [
+  { value: 'single', label: 'One' },
+  { value: 'multiple', label: 'Multiple' },
 ];
 
-function isOption<Value extends string>(value: unknown): value is Option<Value> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'value' in value &&
-    typeof value.value === 'string'
-  );
+function isReferenceKind(value: unknown): value is CentraReferenceKind {
+  return value === 'primaryProduct' || value === 'variant' || value === 'item';
+}
+
+function isCardinality(value: unknown): value is CentraCardinality {
+  return value === 'single' || value === 'multiple';
 }
 
 function errorMessage(value: unknown): string | undefined {
@@ -65,11 +60,8 @@ function isValidV1Parameters(value: unknown): boolean {
   const parameters = value as Record<string, unknown>;
   return (
     parameters.paramsVersion === '1' &&
-    (parameters.kind === 'primaryProduct' ||
-      parameters.kind === 'variant' ||
-      parameters.kind === 'item') &&
-    (parameters.cardinality === 'single' ||
-      parameters.cardinality === 'multiple')
+    isReferenceKind(parameters.kind) &&
+    isCardinality(parameters.cardinality)
   );
 }
 
@@ -101,6 +93,8 @@ export default function FieldConfigScreen({ ctx }: Props) {
     const normalized = normalizeFieldParameters(ctx.parameters);
     setLocalParameters(normalized);
 
+    // A new field starts with empty parameters: write the defaults once, so
+    // the field validates without a change
     if (isJsonField && isEmptyParameterPayload(ctx.parameters)) {
       void ctx.setParameters(normalized);
     }
@@ -111,6 +105,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
   ) {
     if (!isJsonField) return;
 
+    // Always the complete payload, so unsupported settings get replaced whole
     const nextParameters: CentraFieldParametersV1 = {
       ...parameters,
       ...patch,
@@ -124,63 +119,42 @@ export default function FieldConfigScreen({ ctx }: Props) {
   if (!isJsonField) {
     return (
       <Canvas ctx={ctx}>
-        <p className={styles.warning} role="alert">
-          The Centra reference editor can only be installed on JSON fields.
-        </p>
+        <Callout tone="warning">
+          The Centra editor works on JSON fields only.
+        </Callout>
       </Canvas>
     );
   }
 
   return (
     <Canvas ctx={ctx}>
-      <div className={styles.container}>
-        {hasUnsupportedParameters && (
-          <p className={styles.warning} role="alert">
-            These saved Centra field settings use an unsupported version or
-            shape. They have not been changed. Choose a reference type or
-            selection mode to replace them with version 1 settings.
-          </p>
-        )}
-
-        <SelectField
-          id="kind"
-          name="kind"
-          label="Select"
-          required
-          value={KIND_OPTIONS.find((option) => option.value === parameters.kind)}
-          onChange={(value) => {
-            if (isOption<CentraReferenceKind>(value)) {
-              updateParameters({ kind: value.value });
-            }
-          }}
-          error={errorMessage(ctx.errors.kind)}
-          selectInputProps={{
-            isMulti: false,
-            options: KIND_OPTIONS,
+      {hasUnsupportedParameters && (
+        <Callout tone="warning" title="Unsupported settings">
+          These settings come from another version of the plugin. They stay as
+          they are until you change an option below.
+        </Callout>
+      )}
+      <FieldWrapper label="Editors pick" error={errorMessage(ctx.errors.kind)}>
+        <RadioGroupInput
+          options={KIND_OPTIONS}
+          value={parameters.kind}
+          onChange={(kind) => {
+            if (isReferenceKind(kind)) updateParameters({ kind });
           }}
         />
-
-        <SelectField
-          id="cardinality"
-          name="cardinality"
-          label="Allow"
-          required
-          value={CARDINALITY_OPTIONS.find(
-            (option) => option.value === parameters.cardinality,
-          )}
-          onChange={(value) => {
-            if (isOption<CentraCardinality>(value)) {
-              updateParameters({ cardinality: value.value });
-            }
-          }}
-          error={errorMessage(ctx.errors.cardinality)}
-          selectInputProps={{
-            isMulti: false,
-            options: CARDINALITY_OPTIONS,
+      </FieldWrapper>
+      <FieldWrapper
+        label="How many"
+        error={errorMessage(ctx.errors.cardinality)}
+      >
+        <RadioGroupInput
+          options={CARDINALITY_OPTIONS}
+          value={parameters.cardinality}
+          onChange={(cardinality) => {
+            if (isCardinality(cardinality)) updateParameters({ cardinality });
           }}
         />
-
-      </div>
+      </FieldWrapper>
     </Canvas>
   );
 }

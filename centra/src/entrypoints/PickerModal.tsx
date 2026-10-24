@@ -1,16 +1,31 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, TextInput } from 'datocms-react-ui';
-import isEqual from 'lodash-es/isEqual';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import { useDebouncedValue } from 'datocms-react-ui/hooks/useDebouncedValue';
+import IdText from 'datocms-react-ui/IdText';
+import ListArea from 'datocms-react-ui/ListArea';
+import Pane from 'datocms-react-ui/Pane';
+import Pill from 'datocms-react-ui/Pill';
+import {
+  type RowSelection,
+  Table,
+  type TableColumn,
+  type TableFirstCell,
+  useInMemoryTableLayout,
+} from 'datocms-react-ui/Table';
+import StatusCell from 'datocms-react-ui/Table/cells/StatusCell';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import CatalogItemRow from '../components/CatalogItemRow';
-import CatalogProductCard from '../components/CatalogProductCard';
-import Pagination from '../components/Pagination';
-import useDebouncedValue from '../components/useDebouncedValue';
+import Thumbnail from '../components/Thumbnail';
 import {
   PICKER_MODAL_HEIGHT,
   SEARCH_DEBOUNCE_MS,
   SEARCH_PAGE_SIZE,
 } from '../constants';
+import { BagShoppingIcon, CircleExclamationIcon } from '../icons';
 import {
   CentraClient,
   type CentraDisplayItem,
@@ -25,9 +40,27 @@ import { dedupeReferences, referenceKey } from '../lib/references';
 import type {
   CentraFieldParametersV1,
   CentraReference,
+  CentraReferenceKind,
   PickerModalParameters,
   PickerModalResult,
 } from '../types';
+import {
+  availabilityLabel,
+  type CountNouns,
+  countLabel,
+  hasExactItemMatch,
+  imageUrl,
+  isRecord,
+  itemStockLabel,
+  itemTitle,
+  KIND_NOUNS,
+  productDetail,
+  productIdentity,
+  productTitle,
+  rankItems,
+} from '../utils/catalog';
+import { scrollParent, scrollToNearestEdge } from '../utils/scroll';
+import { useDeepStableValue } from '../utils/useDeepStableValue';
 import styles from './PickerModal.module.css';
 
 type Props = {
@@ -38,40 +71,11 @@ type SearchState = {
   status: 'loading' | 'success' | 'error';
   items: CentraDisplayItem[];
   page: number;
+  /** The text of the last settled search */
+  query: string;
   totalCount?: number;
   error?: string;
 };
-
-const INITIAL_CARD_SKELETON_IDS = [
-  'initial-card-1',
-  'initial-card-2',
-  'initial-card-3',
-  'initial-card-4',
-  'initial-card-5',
-  'initial-card-6',
-  'initial-card-7',
-  'initial-card-8',
-];
-const INITIAL_DRILLDOWN_SKELETON_IDS = [
-  'initial-drilldown-1',
-  'initial-drilldown-2',
-  'initial-drilldown-3',
-  'initial-drilldown-4',
-  'initial-drilldown-5',
-];
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function useDeepStableValue<T>(value: T): T {
-  const valueRef = useRef(value);
-
-  if (!isEqual(valueRef.current, value)) {
-    valueRef.current = value;
-  }
-
-  return valueRef.current;
-}
 
 function readModalParameters(value: unknown): PickerModalParameters | null {
   if (!isRecord(value) || !Array.isArray(value.references)) {
@@ -82,68 +86,6 @@ function readModalParameters(value: unknown): PickerModalParameters | null {
     fieldParameters: normalizeFieldParameters(value.fieldParameters),
     references: value.references as CentraReference[],
   };
-}
-
-function productTitle(displayItem: CentraDisplayItem): string {
-  return (
-    displayItem.name?.trim() ||
-    displayItem.productVariant?.name?.trim() ||
-    (displayItem.productNumber
-      ? `Product ${displayItem.productNumber}`
-      : `DisplayItem ${displayItem.id}`)
-  );
-}
-
-function productIdentity(displayItem: CentraDisplayItem): string {
-  return displayItem.productNumber
-    ? `Product ${displayItem.productNumber}`
-    : `DisplayItem ${displayItem.id}`;
-}
-
-function productDetail(displayItem: CentraDisplayItem): string | undefined {
-  const parts = [
-    displayItem.productVariant?.name?.trim(),
-    displayItem.productVariant?.number?.trim(),
-  ].filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join(' · ') : undefined;
-}
-
-function imageUrl(displayItem: CentraDisplayItem): string | null {
-  const image = displayItem.media.find((medium) =>
-    medium.source.type?.toLocaleLowerCase().includes('image'),
-  );
-  return image?.source.url ?? displayItem.media[0]?.source.url ?? null;
-}
-
-function itemTitle(item: CentraItem): string {
-  return (
-    item.name?.trim() ||
-    (item.productSizeId !== undefined
-      ? `Size ${String(item.productSizeId)}`
-      : undefined) ||
-    item.sku?.trim() ||
-    `Item ${item.id}`
-  );
-}
-
-function itemStockLabel(item: CentraItem): string | null {
-  if (!item.stock) return null;
-
-  return item.stock.available ? 'Available' : 'Unavailable';
-}
-
-function hasExactItemMatch(
-  displayItem: CentraDisplayItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (normalizedQuery.length === 0) return false;
-
-  return displayItem.items.some(
-    (item) =>
-      item.sku?.toLocaleLowerCase() === normalizedQuery ||
-      item.GTIN?.toLocaleLowerCase() === normalizedQuery,
-  );
 }
 
 function friendlyError(error: unknown): string {
@@ -205,317 +147,437 @@ function pageCountForResult(result: {
   return Math.max(1, result.page + (result.hasMore ? 1 : 0));
 }
 
-function pickerEntityLabels(kind: CentraFieldParametersV1['kind']): {
-  singular: string;
-  plural: string;
-} {
-  switch (kind) {
-    case 'item':
-      return { singular: 'SKU / size', plural: 'SKUs / sizes' };
-    case 'variant':
-      return { singular: 'product variant', plural: 'product variants' };
-    default:
-      return { singular: 'product', plural: 'products' };
-  }
-}
+/**
+ * What the results list, and the name of the list: the SKU picker lists
+ * products, with their SKUs
+ */
+const LISTED: Record<
+  CentraReferenceKind,
+  { nouns: CountNouns; label: string }
+> = {
+  primaryProduct: { nouns: KIND_NOUNS.primaryProduct, label: 'Products' },
+  variant: { nouns: KIND_NOUNS.variant, label: 'Product variants' },
+  item: { nouns: KIND_NOUNS.primaryProduct, label: 'Products' },
+};
 
-function CatalogSkeleton({ drilldown }: { drilldown: boolean }) {
-  return (
-    <div
-      className={`${styles.skeletonCard} ${
-        drilldown ? styles.skeletonDrilldown : ''
-      }`}
-      aria-hidden="true"
-    >
-      <div className={styles.skeletonMedia} />
-      <div className={styles.skeletonContent}>
-        <span className={styles.skeletonTitle} />
-        <span className={styles.skeletonLine} />
-        <span className={styles.skeletonShortLine} />
-      </div>
-      <div className={styles.skeletonAction} />
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// The results: a table of products or variants, or a tree of products and
+// their SKUs
+// ---------------------------------------------------------------------------
 
-type ProductResultProps = {
-  displayItem: CentraDisplayItem;
+type SelectionProps = {
   fieldParameters: CentraFieldParametersV1;
   selection: CentraReference[];
-  query: string;
-  expanded: boolean;
-  onToggleExpanded: () => void;
   onToggleReference: (reference: CentraReference) => void;
 };
 
-function ProductResult({
-  displayItem,
-  fieldParameters,
-  selection,
-  query,
-  expanded,
-  onToggleExpanded,
-  onToggleReference,
-}: ProductResultProps) {
-  const itemListId = `centra-display-item-${displayItem.id}-items`;
-  const summaryId = `centra-display-item-${displayItem.id}-summary`;
-  const displayReference: CentraReference = {
-    displayItemId: displayItem.id,
-  };
-  const displaySelected =
-    fieldParameters.kind !== 'item' &&
-    selectionContains(fieldParameters, selection, displayReference);
-  let actionLabel = displaySelected ? 'Remove' : 'Select';
-  if (fieldParameters.kind === 'item') {
-    actionLabel = expanded ? 'Hide SKUs' : 'Choose SKU';
-  }
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const rankedItems = displayItem.items
-    .map((item, index) => ({
-      item,
-      index,
-      exact:
-        normalizedQuery.length > 0 &&
-        (item.sku?.toLocaleLowerCase() === normalizedQuery ||
-          item.GTIN?.toLocaleLowerCase() === normalizedQuery),
-    }))
-    .sort(
-      (left, right) =>
-        Number(right.exact) - Number(left.exact) || left.index - right.index,
-    )
-    .map(({ item }) => item);
-  const selectedItemCount = selection.filter(
-    (reference) =>
-      'itemId' in reference && reference.displayItemId === displayItem.id,
-  ).length;
+type ResultRow =
+  | { type: 'product'; displayItem: CentraDisplayItem; selectedCount: number }
+  | { type: 'item'; item: CentraItem };
 
-  return (
-    <CatalogProductCard
-      title={productTitle(displayItem)}
-      identity={productIdentity(displayItem)}
-      detail={productDetail(displayItem)}
-      imageUrl={imageUrl(displayItem)}
-      price={displayItem.price?.formattedValue}
-      available={displayItem.available}
-      hasStock={displayItem.hasStock}
-      selected={displaySelected}
-      actionLabel={actionLabel}
-      actionExpanded={fieldParameters.kind === 'item' ? expanded : undefined}
-      actionControls={fieldParameters.kind === 'item' ? itemListId : undefined}
-      summaryId={summaryId}
-      onAction={() =>
-        fieldParameters.kind === 'item'
-          ? onToggleExpanded()
-          : onToggleReference(displayReference)
-      }
-    >
-      {fieldParameters.kind === 'item' && expanded && (
-        <div className={styles.skuPanel}>
-          <div className={styles.skuHeader}>
-            <strong>SKUs / sizes</strong>
-            <span>
-              {selectedItemCount === 0
-                ? 'Choose one or more rows'
-                : `${selectedItemCount} selected`}
-            </span>
-          </div>
-          {displayItem.items.length === 0 ? (
-            <div className={styles.notice}>
-              This product has no selectable SKU items.
-            </div>
-          ) : (
-            rankedItems.map((item) => {
-              const reference: CentraReference = {
-                displayItemId: displayItem.id,
-                itemId: item.id,
-              };
-              return (
-                <CatalogItemRow
-                  key={item.id}
-                  title={itemTitle(item)}
-                  itemId={item.id}
-                  sku={item.sku}
-                  gtin={item.GTIN}
-                  stockLabel={itemStockLabel(item)}
-                  preorder={item.preorder}
-                  selected={selectionContains(
-                    fieldParameters,
-                    selection,
-                    reference,
-                  )}
-                  onSelect={() => onToggleReference(reference)}
-                />
-              );
-            })
-          )}
-        </div>
-      )}
-    </CatalogProductCard>
-  );
+function AvailabilityCell({ label }: { label: string | null }) {
+  return label ? (
+    <StatusCell tone={label === 'Available' ? 'success' : 'warning'}>
+      {label}
+    </StatusCell>
+  ) : null;
 }
 
-function SearchStatus({
-  pending,
-  search,
-}: {
-  pending: boolean;
-  search: SearchState;
-}) {
-  if (pending) {
-    return <div className={styles.statusRow}>Searching…</div>;
-  }
-
-  if (search.status === 'error') {
+function NameCell({ row }: { row: ResultRow }) {
+  if (row.type === 'item') {
     return (
-      <div className={styles.statusRow}>
-        <span className={styles.statusError} role="alert">
-          {search.error}
-        </span>
-      </div>
+      <EntityRow
+        layout="row"
+        title={itemTitle(row.item)}
+        afterTitle={row.item.preorder ? <Pill>Preorder</Pill> : undefined}
+      >
+        Item <IdText id={row.item.id} />
+      </EntityRow>
     );
   }
 
+  const { displayItem, selectedCount } = row;
   return (
-    <div className={styles.statusRow} aria-live="polite">
-      {typeof search.totalCount === 'number' ? (
-        `${search.totalCount} matching products`
-      ) : (
-        <span aria-hidden="true">&nbsp;</span>
-      )}
-    </div>
+    <EntityRow
+      layout="row"
+      image={<Thumbnail url={imageUrl(displayItem)} />}
+      title={productTitle(displayItem)}
+      afterTitle={
+        selectedCount > 0 ? (
+          <Pill>{`${countLabel(selectedCount, KIND_NOUNS.item)} selected`}</Pill>
+        ) : undefined
+      }
+    >
+      {[productIdentity(displayItem), productDetail(displayItem)]
+        .filter(Boolean)
+        .join(' · ')}
+    </EntityRow>
   );
 }
 
-type PickerResultsProps = {
-  fieldParameters: CentraFieldParametersV1;
-  entityPlural: string;
-  search: SearchState;
-  searchIsPending: boolean;
-  selection: CentraReference[];
-  query: string;
-  expandedDisplayItemId: number | null;
-  isChangingPage: boolean;
-  onToggleExpanded: (displayItemId: number) => void;
-  onToggleReference: (reference: CentraReference) => void;
+const COLUMNS: TableColumn<ResultRow>[] = [
+  {
+    name: 'name',
+    label: 'Name',
+    // The image, the title and the details: two lines of their own
+    truncate: false,
+    minWidth: 200,
+    renderCell: (row) => <NameCell row={row} />,
+  },
+  {
+    name: 'sku',
+    label: 'SKU',
+    renderCell: (row) =>
+      row.type === 'item' && row.item.sku ? <IdText id={row.item.sku} /> : null,
+  },
+  {
+    name: 'gtin',
+    label: 'GTIN',
+    renderCell: (row) =>
+      row.type === 'item' && row.item.GTIN ? (
+        <IdText id={row.item.GTIN} />
+      ) : null,
+  },
+  {
+    name: 'price',
+    label: 'Price',
+    renderCell: (row) =>
+      row.type === 'product' ? row.displayItem.price?.formattedValue : null,
+  },
+  {
+    name: 'availability',
+    label: 'Availability',
+    renderCell: (row) => (
+      <AvailabilityCell
+        label={
+          row.type === 'product'
+            ? availabilityLabel(
+                row.displayItem.available,
+                row.displayItem.hasStock,
+              )
+            : itemStockLabel(row.item)
+        }
+      />
+    ),
+  },
+];
+
+const SKU_LAYOUT = {
+  columns: [
+    { name: 'name', width: 5 },
+    { name: 'sku', width: 2 },
+    { name: 'gtin', width: 2 },
+    { name: 'price', width: 1.2 },
+    { name: 'availability', width: 2 },
+  ],
 };
 
-function PickerResults({
+const ALWAYS_VISIBLE_CHECKBOXES = { alwaysVisible: true };
+
+/** A product or a variant has no SKU or GTIN of its own */
+const PRODUCT_COLUMNS = COLUMNS.filter(
+  (column) => column.name !== 'sku' && column.name !== 'gtin',
+);
+
+const PRODUCT_LAYOUT = {
+  columns: [
+    { name: 'name', width: 5 },
+    { name: 'price', width: 1.2 },
+    { name: 'availability', width: 2 },
+  ],
+};
+
+/**
+ * A row per product or variant. A click on the row (or its checkbox) toggles
+ * it in the selection.
+ */
+function ProductTable({
+  items,
   fieldParameters,
-  entityPlural,
-  search,
-  searchIsPending,
   selection,
-  query,
-  expandedDisplayItemId,
-  isChangingPage,
-  onToggleExpanded,
   onToggleReference,
-}: PickerResultsProps) {
-  const drilldown = fieldParameters.kind === 'item';
-  const resultsAreInactive =
-    searchIsPending || isChangingPage || search.status === 'error';
-  const initialSkeletonIds = drilldown
-    ? INITIAL_DRILLDOWN_SKELETON_IDS
-    : INITIAL_CARD_SKELETON_IDS;
-  const showInitialSkeletons = searchIsPending && search.items.length === 0;
+}: SelectionProps & { items: CentraDisplayItem[] }) {
+  const [layout, setLayout] = useInMemoryTableLayout(PRODUCT_LAYOUT);
 
   return (
-    <div
-      id="centra-picker-results"
-      className={`${styles.results} ${
-        resultsAreInactive && search.items.length > 0
-          ? styles.resultsRefreshing
-          : ''
-      }`}
-      aria-busy={searchIsPending || isChangingPage}
-      inert={resultsAreInactive ? true : undefined}
+    <Table
+      columns={PRODUCT_COLUMNS}
+      layout={layout}
+      onLayoutChange={setLayout}
+      checkboxes={ALWAYS_VISIBLE_CHECKBOXES}
     >
-      {showInitialSkeletons && (
-        <>
-          <span
-            className={styles.srOnly}
-            role="status"
-            aria-label="Loading Centra catalog"
-          />
-          {initialSkeletonIds.map((id) => (
-            <CatalogSkeleton key={id} drilldown={drilldown} />
-          ))}
-        </>
-      )}
+      <Table.Header />
+      <Table.Body>
+        {items.map((displayItem) => {
+          const reference: CentraReference = { displayItemId: displayItem.id };
+          const row: ResultRow = {
+            type: 'product',
+            displayItem,
+            selectedCount: 0,
+          };
+          return (
+            <Table.Row
+              key={displayItem.id}
+              row={row}
+              selection={{
+                selected: selectionContains(
+                  fieldParameters,
+                  selection,
+                  reference,
+                ),
+                onSelect: () => onToggleReference(reference),
+              }}
+            />
+          );
+        })}
+      </Table.Body>
+    </Table>
+  );
+}
 
-      {!searchIsPending &&
-        search.status === 'error' &&
-        search.items.length === 0 && (
-          <div className={styles.resultsState}>
-            Centra could not load the catalog. Try the search again.
-          </div>
-        )}
+/** A product is never picked itself: its SKUs are */
+const PRODUCT_SELECTION: RowSelection = {
+  selected: false,
+  onSelect: () => {},
+  disabled: true,
+};
 
-      {!searchIsPending &&
-        search.status === 'success' &&
-        search.items.length === 0 && (
-          <div className={styles.resultsState}>
-            No matching {entityPlural} were found.
-          </div>
-        )}
+const SKU_FIRST_CELL: TableFirstCell = { indentation: 30 };
 
-      {search.items.map((displayItem) => (
-        <ProductResult
-          key={displayItem.id}
-          displayItem={displayItem}
-          fieldParameters={fieldParameters}
-          selection={selection}
-          query={query}
-          expanded={expandedDisplayItemId === displayItem.id}
-          onToggleExpanded={() => onToggleExpanded(displayItem.id)}
-          onToggleReference={onToggleReference}
+const NO_SKUS = { reason: 'This product has no SKUs.' };
+
+type SkuTableProps = SelectionProps & {
+  items: CentraDisplayItem[];
+  query: string;
+  expandedDisplayItemId: number | null;
+  onToggleExpanded: (displayItemId: number) => void;
+};
+
+/**
+ * A row per product, which opens its SKUs under it (one product at a time),
+ * exact SKU or GTIN matches first. A click on a SKU row (or its checkbox)
+ * toggles it in the selection.
+ */
+function SkuTable({
+  items,
+  query,
+  expandedDisplayItemId,
+  onToggleExpanded,
+  fieldParameters,
+  selection,
+  onToggleReference,
+}: SkuTableProps) {
+  const [layout, setLayout] = useInMemoryTableLayout(SKU_LAYOUT);
+
+  const skuRows = (displayItem: CentraDisplayItem) =>
+    rankItems(displayItem, query).map((item, index) => {
+      const reference: CentraReference = {
+        displayItemId: displayItem.id,
+        itemId: item.id,
+      };
+      const row: ResultRow = { type: 'item', item };
+      return (
+        <Table.Row
+          key={`${displayItem.id}-${item.id}`}
+          row={row}
+          firstCell={SKU_FIRST_CELL}
+          selection={{
+            selected: selectionContains(fieldParameters, selection, reference),
+            onSelect: () => onToggleReference(reference),
+          }}
+          wrapperProps={
+            index === 0
+              ? { id: `centra-display-item-${displayItem.id}-items` }
+              : undefined
+          }
         />
-      ))}
-    </div>
+      );
+    });
+
+  return (
+    <Table
+      columns={COLUMNS}
+      layout={layout}
+      onLayoutChange={setLayout}
+      checkboxes={ALWAYS_VISIBLE_CHECKBOXES}
+      tree
+    >
+      <Table.Header />
+      <Table.Body>
+        {items.flatMap((displayItem) => {
+          const open = expandedDisplayItemId === displayItem.id;
+          const hasSkus = displayItem.items.length > 0;
+          // A product with no SKU doesn't open: no pointer, no Tab stop
+          const openRow = hasSkus
+            ? { onOpen: () => onToggleExpanded(displayItem.id) }
+            : {};
+          const row: ResultRow = {
+            type: 'product',
+            displayItem,
+            selectedCount: selection.filter(
+              (reference) =>
+                'itemId' in reference &&
+                reference.displayItemId === displayItem.id,
+            ).length,
+          };
+          return [
+            <Table.Row
+              key={displayItem.id}
+              row={row}
+              selection={PRODUCT_SELECTION}
+              {...openRow}
+              firstCell={{
+                expandable: {
+                  open,
+                  onToggle: () => onToggleExpanded(displayItem.id),
+                  disabled: hasSkus ? undefined : NO_SKUS,
+                },
+              }}
+              wrapperProps={{
+                id: `centra-display-item-${displayItem.id}-summary`,
+              }}
+            />,
+            ...(open ? skuRows(displayItem) : []),
+          ];
+        })}
+      </Table.Body>
+    </Table>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The bars and the states
+// ---------------------------------------------------------------------------
+
+type PickerHeaderProps = {
+  query: string;
+  onQueryChange: (query: string) => void;
+  /** New results load while the last ones show */
+  reloading: boolean;
+};
+
+/** The text filter of the list (named by the Pane), with its own "✕" */
+function PickerHeader({ query, onQueryChange, reloading }: PickerHeaderProps) {
+  return (
+    <Toolbar fields>
+      <Toolbar.FilterInput value={query} onChange={onQueryChange} />
+      <Toolbar.Spinner show={reloading} />
+    </Toolbar>
   );
 }
 
 type PickerFooterProps = {
-  entityLabel: string;
-  entityPlural: string;
-  selectionCount: number;
-  currentPage: number;
+  /** The number of results, when Centra gives it */
+  count: string | null;
+  selectedLabel: string;
+  page: number;
   pageCount: number;
-  searchIsPending: boolean;
-  isChangingPage: boolean;
+  disabled: boolean;
   onPageChange: (page: number) => void;
   onApply: () => void;
 };
 
 function PickerFooter({
-  entityLabel,
-  entityPlural,
-  selectionCount,
-  currentPage,
+  count,
+  selectedLabel,
+  page,
   pageCount,
-  searchIsPending,
-  isChangingPage,
+  disabled,
   onPageChange,
   onApply,
 }: PickerFooterProps) {
   return (
-    <div className={styles.footer} role="group" aria-label="Picker actions">
-      <span className={styles.footerInfo}>
-        <strong>{selectionCount}</strong>{' '}
-        {selectionCount === 1 ? entityLabel : entityPlural} selected
-      </span>
-      <Pagination
+    <Toolbar>
+      <Toolbar.Subtitle>
+        {count !== null && `${count} · `}
+        <span role="status" aria-live="polite">
+          {selectedLabel}
+        </span>
+      </Toolbar.Subtitle>
+      <Toolbar.Space />
+      <Toolbar.Pagination
         perPage={SEARCH_PAGE_SIZE}
-        currentPage={currentPage - 1}
+        currentPage={page - 1}
         totalEntries={pageCount * SEARCH_PAGE_SIZE}
-        maxPagesToShow={5}
-        disabled={searchIsPending || isChangingPage}
-        onPageChange={(page) => onPageChange(page + 1)}
+        disabled={disabled}
+        onChange={(newPage) => onPageChange(newPage + 1)}
       />
-      <Button buttonType="primary" onClick={onApply}>
-        Apply selection
-      </Button>
-    </div>
+      <Toolbar.Button
+        tone="primary"
+        label="Apply selection"
+        onClick={onApply}
+      />
+    </Toolbar>
+  );
+}
+
+type NoResultsProps = {
+  nouns: CountNouns;
+  pending: boolean;
+  /** The last settled search */
+  search: SearchState;
+  onRetry: () => void;
+};
+
+/** The results area with no item: the first load, a failure or no match */
+function NoResults({ nouns, pending, search, onRetry }: NoResultsProps) {
+  if (pending) {
+    return (
+      <BlankSlate
+        placement="area"
+        loading
+        title={`Loading the ${nouns.other}`}
+      />
+    );
+  }
+
+  if (search.error !== undefined) {
+    return (
+      <BlankSlate
+        placement="area"
+        error
+        icon={<CircleExclamationIcon />}
+        title="Couldn't load the catalog"
+        code={search.error}
+        description="Check the connection in the plugin settings, then try again."
+        actions={<Button label="Try again" onClick={onRetry} />}
+      />
+    );
+  }
+
+  if (search.query !== '') {
+    return <Pane.FilterBlankSlate />;
+  }
+
+  return (
+    <BlankSlate
+      placement="area"
+      icon={<BagShoppingIcon />}
+      title={`No ${nouns.other} found`}
+    />
+  );
+}
+
+/** The picker can't open: the frame sizes itself to the message */
+function SetupProblem({
+  ctx,
+  title,
+  description,
+}: {
+  ctx: RenderModalCtx;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Canvas ctx={ctx}>
+      <BlankSlate
+        placement="inline"
+        error
+        icon={<CircleExclamationIcon />}
+        title={title}
+        description={description}
+      />
+    </Canvas>
   );
 }
 
@@ -552,11 +614,17 @@ export default function PickerModal({ ctx }: Props) {
   >(null);
   const [isChangingPage, setIsChangingPage] = useState(false);
   const [pageCount, setPageCount] = useState(1);
+  const [retryCount, setRetryCount] = useState(0);
+  // Until the first search finishes or fails, the results area shows its
+  // loading state; after it, a new search keeps the last state on screen
+  const [loaded, setLoaded] = useState(false);
   const pageController = useRef<AbortController | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState<SearchState>({
     status: 'loading',
     items: [],
     page: 1,
+    query: '',
   });
 
   useEffect(() => {
@@ -577,15 +645,12 @@ export default function PickerModal({ ctx }: Props) {
     setQuery(value);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a retry runs the same search again.
   useEffect(() => {
     if (!fieldParameters || !isConnectionComplete(connection)) return;
 
     const controller = new AbortController();
-    setSearch((current) => ({
-      ...current,
-      status: 'loading',
-      error: undefined,
-    }));
+    setSearch((current) => ({ ...current, status: 'loading' }));
 
     const request = searchCatalog(client, fieldParameters, {
       query: debouncedQuery,
@@ -600,8 +665,10 @@ export default function PickerModal({ ctx }: Props) {
           status: 'success',
           items: result.items,
           page: result.page,
+          query: debouncedQuery,
           totalCount: result.totalCount,
         });
+        setLoaded(true);
         setPageCount(pageCountForResult(result));
 
         setExpandedDisplayItemId((current) => {
@@ -615,10 +682,12 @@ export default function PickerModal({ ctx }: Props) {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
+        setLoaded(true);
         setPageCount(1);
         setSearch((current) => ({
           ...current,
           status: 'error',
+          query: debouncedQuery,
           error: friendlyError(error),
         }));
       });
@@ -627,43 +696,40 @@ export default function PickerModal({ ctx }: Props) {
       controller.abort();
       pageController.current?.abort();
     };
-  }, [client, connection, debouncedQuery, fieldParameters]);
+  }, [client, connection, debouncedQuery, fieldParameters, retryCount]);
 
   useLayoutEffect(() => {
     if (expandedDisplayItemId === null) return;
 
-    const summary = document.getElementById(
-      `centra-display-item-${expandedDisplayItemId}-summary`,
+    scrollToNearestEdge(
+      document.getElementById(
+        `centra-display-item-${expandedDisplayItemId}-summary`,
+      ),
     );
-    const itemList = document.getElementById(
-      `centra-display-item-${expandedDisplayItemId}-items`,
+    scrollToNearestEdge(
+      document.getElementById(
+        `centra-display-item-${expandedDisplayItemId}-items`,
+      ),
     );
-
-    summary?.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
-    itemList
-      ?.querySelector('button')
-      ?.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
   }, [expandedDisplayItemId]);
 
   if (!modalParameters || !fieldParameters) {
     return (
-      <Canvas ctx={ctx}>
-        <div className={styles.error} role="alert">
-          The picker received invalid parameters. Close it and reopen the Centra
-          field.
-        </div>
-      </Canvas>
+      <SetupProblem
+        ctx={ctx}
+        title="Couldn't open the picker"
+        description="Close it and open the Centra field again."
+      />
     );
   }
 
   if (!isConnectionComplete(connection)) {
     return (
-      <Canvas ctx={ctx}>
-        <div className={styles.error} role="alert">
-          Add a valid Centra Storefront API URL and token in the plugin settings
-          before browsing the catalog.
-        </div>
-      </Canvas>
+      <SetupProblem
+        ctx={ctx}
+        title="Centra isn't connected"
+        description="Add the Storefront API URL and token in the plugin settings, then open the picker again."
+      />
     );
   }
 
@@ -685,7 +751,12 @@ export default function PickerModal({ ctx }: Props) {
   };
 
   const changePage = async (page: number) => {
-    if (isChangingPage || page === search.page || page < 1 || page > pageCount) {
+    if (
+      isChangingPage ||
+      page === search.page ||
+      page < 1 ||
+      page > pageCount
+    ) {
       return;
     }
     pageController.current?.abort();
@@ -710,6 +781,7 @@ export default function PickerModal({ ctx }: Props) {
         status: 'success',
         items: result.items,
         page: result.page,
+        query: debouncedQuery,
         totalCount: result.totalCount,
       });
       setPageCount((current) =>
@@ -718,14 +790,13 @@ export default function PickerModal({ ctx }: Props) {
           : pageCountForResult(result),
       );
       setExpandedDisplayItemId(null);
-      document
-        .getElementById('centra-picker-results')
-        ?.scrollTo?.({ top: 0, behavior: 'auto' });
+      scrollParent(resultsRef.current)?.scrollTo({ top: 0 });
     } catch (error) {
       if (controller.signal.aborted) return;
       setSearch((current) => ({
         ...current,
         status: 'error',
+        query: debouncedQuery,
         error: friendlyError(error),
       }));
     } finally {
@@ -743,80 +814,95 @@ export default function PickerModal({ ctx }: Props) {
     ctx.resolve(result);
   };
 
-  const { singular: entityLabel, plural: entityPlural } = pickerEntityLabels(
-    fieldParameters.kind,
-  );
+  const { kind } = fieldParameters;
+  const listed = LISTED[kind];
   const queryIsDebouncing = query.trim() !== debouncedQuery;
   const searchIsPending = queryIsDebouncing || search.status === 'loading';
+  const isBusy = searchIsPending || isChangingPage;
+  const hasResults = search.items.length > 0;
   const toggleExpanded = (displayItemId: number) => {
     setExpandedDisplayItemId((current) =>
       current === displayItemId ? null : displayItemId,
     );
   };
-  const canvasVerticalPadding = verticalBodyPadding(ctx.bodyPadding);
+  const selectionProps: SelectionProps = {
+    fieldParameters,
+    selection,
+    onToggleReference: toggleReference,
+  };
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
       <div
         className={styles.root}
-        style={{ height: `calc(100vh - ${canvasVerticalPadding}px)` }}
+        style={{
+          height: `calc(100vh - ${verticalBodyPadding(ctx.bodyPadding)}px)`,
+        }}
       >
-        <div className={styles.header}>
-          <div className={styles.searchRow}>
-            <TextInput
-              id="centra-search"
-              name="centra-search"
-              type="search"
-              className={styles.searchInput}
-              labelText={`Search Centra ${entityPlural}`}
-              placeholder={
-                fieldParameters.kind === 'item'
-                  ? 'Search products, sizes, SKU, or GTIN…'
-                  : 'Search by name or product number…'
-              }
-              value={query}
-              onChange={updateQuery}
+        <Pane
+          ariaLabel={listed.label}
+          header={
+            <PickerHeader
+              query={query}
+              onQueryChange={updateQuery}
+              reloading={isBusy && loaded}
             />
-            <Button
-              buttonSize="s"
-              buttonType="muted"
-              disabled={query.length === 0}
-              onClick={() => updateQuery('')}
-            >
-              Clear
-            </Button>
-          </div>
-
-          <SearchStatus
-            pending={searchIsPending || isChangingPage}
-            search={search}
-          />
-        </div>
-
-        <PickerResults
-          fieldParameters={fieldParameters}
-          entityPlural={entityPlural}
-          search={search}
-          searchIsPending={searchIsPending}
-          selection={selection}
-          query={debouncedQuery}
-          expandedDisplayItemId={expandedDisplayItemId}
-          isChangingPage={isChangingPage}
-          onToggleExpanded={toggleExpanded}
-          onToggleReference={toggleReference}
-        />
-
-        <PickerFooter
-          entityLabel={entityLabel}
-          entityPlural={entityPlural}
-          selectionCount={selection.length}
-          currentPage={search.page}
-          pageCount={pageCount}
-          searchIsPending={searchIsPending}
-          isChangingPage={isChangingPage}
-          onPageChange={(page) => void changePage(page)}
-          onApply={resolveSelection}
-        />
+          }
+          footer={
+            <PickerFooter
+              count={
+                typeof search.totalCount === 'number'
+                  ? countLabel(search.totalCount, listed.nouns, ctx.ui.locale)
+                  : null
+              }
+              selectedLabel={`${countLabel(
+                selection.length,
+                KIND_NOUNS[kind],
+                ctx.ui.locale,
+              )} selected`}
+              page={search.page}
+              pageCount={pageCount}
+              disabled={isBusy}
+              onPageChange={(page) => void changePage(page)}
+              onApply={resolveSelection}
+            />
+          }
+        >
+          <ListArea>
+            {search.status === 'error' && hasResults && (
+              <Callout tone="danger">{search.error}</Callout>
+            )}
+            {hasResults ? (
+              <div
+                ref={resultsRef}
+                aria-busy={isBusy}
+                inert={isBusy || search.status === 'error' ? true : undefined}
+              >
+                {kind === 'item' ? (
+                  <SkuTable
+                    {...selectionProps}
+                    items={search.items}
+                    query={debouncedQuery}
+                    expandedDisplayItemId={expandedDisplayItemId}
+                    onToggleExpanded={toggleExpanded}
+                  />
+                ) : (
+                  <ProductTable {...selectionProps} items={search.items} />
+                )}
+              </div>
+            ) : (
+              <NoResults
+                nouns={KIND_NOUNS[kind]}
+                pending={!loaded}
+                search={search}
+                onRetry={() => {
+                  setLoaded(false);
+                  setRetryCount((count) => count + 1);
+                }}
+              />
+            )}
+          </ListArea>
+        </Pane>
       </div>
     </Canvas>
   );

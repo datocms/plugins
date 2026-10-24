@@ -1,5 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import { FIELD_EXTENSION_ID, PICKER_MODAL_ID } from './constants';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldConfigScreen from './entrypoints/FieldConfigScreen';
@@ -40,11 +41,11 @@ connect({
       parameters.paramsVersion !== '1' ||
       !REFERENCE_KINDS.includes(parameters.kind as CentraReferenceKind)
     ) {
-      errors.kind = 'Choose the Centra entity this field references.';
+      errors.kind = 'Choose what editors pick.';
     }
 
     if (!CARDINALITIES.includes(parameters.cardinality as CentraCardinality)) {
-      errors.cardinality = 'Choose whether this field stores one or many references.';
+      errors.cardinality = 'Choose how many items editors pick.';
     }
 
     return errors;
