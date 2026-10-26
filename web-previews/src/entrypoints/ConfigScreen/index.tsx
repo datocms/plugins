@@ -32,19 +32,16 @@ export default function ConfigScreen({ ctx }: PropTypes) {
               Fix the fields that show an error, then save.
             </Callout>
           )}
-          {/* A block of its own: the button stays on a line of its own */}
-          <div>
-            <Button
-              submit
-              tone="primary"
-              expand={false}
-              label="Save"
-              busy={form.saving}
-              disabled={
-                form.dirty ? undefined : { reason: 'Change a setting to save.' }
-              }
-            />
-          </div>
+          <Button
+            submit
+            tone="primary"
+            expand
+            label="Save"
+            busy={form.saving}
+            disabled={
+              form.dirty ? undefined : { reason: 'Change a setting to save.' }
+            }
+          />
         </form>
       </Page.Content>
     </Page>

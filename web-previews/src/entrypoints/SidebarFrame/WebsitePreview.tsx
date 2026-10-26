@@ -5,7 +5,7 @@ import Toolbar from 'datocms-react-ui/Toolbar';
 import { useCallback, useEffect, useState } from 'react';
 import { CustomSizeBar } from '../../components/Browser/CustomSizeBar';
 import { useCompactSidebarBar } from '../../components/Browser/compactBar';
-import { EditModeButton } from '../../components/Browser/EditModeButton';
+import { EditModeSwitch } from '../../components/Browser/EditModeSwitch';
 import { PreviewFrame } from '../../components/Browser/PreviewFrame';
 import { ViewportMenu } from '../../components/Browser/ViewportMenu';
 import type { ViewportState } from '../../components/Browser/viewport';
@@ -213,9 +213,9 @@ export function WebsitePreview({
         iconOnly={compactBar}
       />
       {showsEditMode && (
-        <EditModeButton
-          // In the second bar of a narrow sidebar, the button shows only its
-          // icon, as the other controls of that bar: with its label, the bar
+        <EditModeSwitch
+          // In the second bar of a narrow sidebar, the switch shows without its
+          // label, as the other controls of that bar show only icons: with it, the bar
           // doesn't fit in a 300px sidebar
           iconOnly={compactBar}
           pressed={editModeActive}

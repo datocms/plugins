@@ -13,8 +13,6 @@ import {
   faExpand,
   faEye,
   faGlobe,
-  faMagnifyingGlass,
-  faPenToSquare,
   faRuler,
   fas,
   faTriangleExclamation,
@@ -77,9 +75,6 @@ export const DisplayIcon = svgIcon(faDisplay);
 export const GlobeIcon = svgIcon(faGlobe);
 export const WarningIcon = svgIcon(faTriangleExclamation);
 export const ErrorIcon = svgIcon(faCircleExclamation);
-export const SearchIcon = svgIcon(faMagnifyingGlass);
-/** Edit mode, where the button shows only its icon */
-export const EditModeIcon = svgIcon(faPenToSquare);
 
 function lookUpIcon(name: string) {
   // The library is typed for its own icon names: an unknown name finds nothing
@@ -124,8 +119,8 @@ export function isValidIconName(name: string): name is IconName {
 }
 
 /**
- * The pickers show only the first matches of a search: the query narrows
- * the list
+ * The icon select shows only the first matches of a search: the query
+ * narrows the list
  */
 export const ICON_RESULTS_LIMIT = 36;
 

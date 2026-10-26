@@ -72,25 +72,32 @@ export function ViewportMenu({ value, onChange, fitLabel, iconOnly }: Props) {
       <Dropdown.Menu placement="bottom-end">
         <Dropdown.Option
           active={value === 'responsive'}
+          icon={<FitIcon />}
           onPick={() => onChange('responsive')}
         >
           {fitLabel}
         </Dropdown.Option>
-        {defaultViewports.map((viewport) => (
-          <Dropdown.Option
-            key={`${viewport.name} ${viewport.width}×${viewport.height} ${viewport.icon}`}
-            active={isSameChoice(value, viewport)}
-            onPick={() => onChange(viewport)}
-          >
-            <EntityRow
-              layout="row"
-              title={viewport.name}
-              aside={`${viewport.width} × ${viewport.height}`}
-            />
-          </Dropdown.Option>
-        ))}
+        {defaultViewports.map((viewport) => {
+          const ViewportIcon = iconByName(viewport.icon) ?? DisplayIcon;
+
+          return (
+            <Dropdown.Option
+              key={`${viewport.name} ${viewport.width}×${viewport.height} ${viewport.icon}`}
+              active={isSameChoice(value, viewport)}
+              icon={<ViewportIcon />}
+              onPick={() => onChange(viewport)}
+            >
+              <EntityRow
+                layout="row"
+                title={viewport.name}
+                aside={`${viewport.width} × ${viewport.height}`}
+              />
+            </Dropdown.Option>
+          );
+        })}
         <Dropdown.Option
           active={value === 'custom'}
+          icon={<CustomSizeIcon />}
           onPick={() => onChange('custom')}
         >
           Custom size

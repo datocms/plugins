@@ -2,7 +2,7 @@ import { useLayoutEffect } from 'react';
 
 /**
  * Lets a frame that sizes itself to its content (the config screen, the
- * record sidebar panel, the icon picker) shrink again.
+ * record sidebar panel) shrink again.
  *
  * The kit's styles.css gives html and body `height: 100%`, which an
  * imposed-size frame needs to fill its frame. The SDK's auto-resizer measures

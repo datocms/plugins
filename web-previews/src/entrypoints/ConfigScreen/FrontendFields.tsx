@@ -10,7 +10,7 @@ import type { TableListChange } from 'datocms-react-ui/TableList';
 import type { RawFrontend } from '../../types';
 import { MARKETPLACE_URL } from './links';
 import type { RowsTouched } from './useSettingsForm';
-import type { FrontendErrors } from './validation';
+import type { FeatureSwitches, FrontendErrors } from './validation';
 
 type CustomHeader = NonNullable<RawFrontend['customHeaders']>[number];
 
@@ -38,12 +38,15 @@ function fromTuples(tuples: Tuple[]): CustomHeader[] {
 
 type Props = {
   frontend: RawFrontend;
+  switches: FeatureSwitches;
   errors: FrontendErrors;
   /** The frontend-level error shows only after a save attempt */
   submitAttempted: boolean;
   showsError: (field: FrontendField) => boolean;
   headersTouched: RowsTouched | boolean;
   onChange: (patch: Partial<RawFrontend>) => void;
+  /** Turns a feature on or off: off, its URL goes too */
+  onFeatureChange: (feature: keyof FeatureSwitches, on: boolean) => void;
   onBlur: (field: FrontendField) => void;
   onHeadersChange: (change: TableListChange) => void;
   onHeaderCellBlur: (cell: { index: number; field: string }) => void;
@@ -52,20 +55,20 @@ type Props = {
 /** The fields of a frontend, in the body of its item */
 export function FrontendFields({
   frontend,
+  switches,
   errors,
   submitAttempted,
   showsError,
   headersTouched,
   onChange,
+  onFeatureChange,
   onBlur,
   onHeadersChange,
   onHeaderCellBlur,
 }: Props) {
   const errorOf = (field: FrontendField) =>
     showsError(field) ? errors[field] : undefined;
-  const previewLinksOn = Boolean(frontend.previewWebhook);
   const draftModeUrl = frontend.visualEditing?.enableDraftModeUrl ?? '';
-  const visualEditingOn = Boolean(draftModeUrl);
 
   return (
     <>
@@ -83,14 +86,16 @@ export function FrontendFields({
       <FieldWrapper hint="Lists the pages of the record in the sidebar. The frontend needs an endpoint that returns them.">
         <SwitchInput
           label="Preview links"
-          value={previewLinksOn}
-          onChange={(on) => onChange({ previewWebhook: on ? 'https://' : '' })}
+          value={switches.previewLinks}
+          // On, the field starts empty: its placeholder shows an example
+          onChange={(on) => onFeatureChange('previewLinks', Boolean(on))}
         />
       </FieldWrapper>
-      {previewLinksOn && (
+      {switches.previewLinks && (
         <>
           <FieldWrapper
             label="Preview links endpoint"
+            required
             hint="A POST endpoint that gets the record and returns the URLs of its pages."
             docs={{
               label: 'How the endpoint works',
@@ -127,21 +132,15 @@ export function FrontendFields({
       <FieldWrapper hint="Full-screen editing next to the website, with click-to-edit overlays. The frontend needs draft mode and DatoCMS Content Link.">
         <SwitchInput
           label="Visual editing"
-          value={visualEditingOn}
-          onChange={(on) =>
-            onChange({
-              visualEditing: {
-                ...frontend.visualEditing,
-                enableDraftModeUrl: on ? 'https://' : '',
-              },
-            })
-          }
+          value={switches.visualEditing}
+          onChange={(on) => onFeatureChange('visualEditing', Boolean(on))}
         />
       </FieldWrapper>
-      {visualEditingOn && (
+      {switches.visualEditing && (
         <>
           <FieldWrapper
             label="Draft mode route"
+            required
             hint="The route that turns on draft mode. It gets the page to open in its redirect query parameter."
             docs={{
               label: 'How the route works',

@@ -8,7 +8,7 @@ import {
   useCompactVisualTabBar,
   useNarrowVisualTabBar,
 } from '../../../components/Browser/compactBar';
-import { EditModeButton } from '../../../components/Browser/EditModeButton';
+import { EditModeSwitch } from '../../../components/Browser/EditModeSwitch';
 import { PreviewFrame } from '../../../components/Browser/PreviewFrame';
 import { ViewportMenu } from '../../../components/Browser/ViewportMenu';
 import { useViewport } from '../../../components/Browser/viewport';
@@ -176,14 +176,12 @@ const UI = () => {
                 </div>
               )}
               <div className={styles.cell}>
-                <Toolbar.Group>
-                  <Toolbar.Button
-                    iconOnly
-                    icon={ReloadIcon}
-                    label="Reload the page"
-                    onClick={reloadIframe}
-                  />
-                </Toolbar.Group>
+                <Toolbar.Button
+                  iconOnly
+                  icon={ReloadIcon}
+                  label="Reload the page"
+                  onClick={reloadIframe}
+                />
               </div>
               {visualEditingFrontends.length > 1 && (
                 <div className={styles.cell}>
@@ -204,7 +202,7 @@ const UI = () => {
                 />
               </div>
               <div className={styles.cell}>
-                <EditModeButton
+                <EditModeSwitch
                   iconOnly={narrowBar}
                   pressed={
                     contentLink.type === 'connected' &&

@@ -1,16 +1,11 @@
 // The texts of the plugin for the Message props of the components, in ICU
 // syntax. Every Canvas gets this constant, so the object stays the same
-// between renders. In a plural, `#` gets the number separators of the user's
-// locale.
+// between renders.
 export const TEXTS = {
   // Every copy button of the plugin copies the URL of a page
   'clipboard.copy': 'Copy URL',
   // The feedback of every copy control, in the control
   'clipboard.copied': 'Copied',
-  'webPreviews.iconCount': '{count, plural, one {# icon} other {# icons}}',
-  // The icon picker shows only the first matches
-  'webPreviews.iconCountCapped':
-    '{count, plural, one {# icon} other {# icons}}. Type to narrow the list: the first {limit, number} show.',
   // The errors of the cells of the viewports and of the custom headers
   'webPreviews.errors.enterName': 'Enter a name',
   'webPreviews.errors.enterWidth': 'Enter a width',
@@ -41,9 +36,9 @@ function numberFormat(locale: string): Intl.NumberFormat {
 }
 
 /**
- * The 'webPreviews.iconCount' texts as a plain string, with the number
- * separators of the locale. Canvas formats only the Message props: the title
- * of a group of a select menu takes a string.
+ * How many icons match a search, as a plain string with the number separators
+ * of the locale. Canvas formats only the Message props: the title of a group
+ * of a select menu takes a string, thus this text is not in TEXTS.
  */
 export function iconCountText({
   count,

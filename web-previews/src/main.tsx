@@ -4,7 +4,6 @@ import 'datocms-react-ui/styles.css';
 import { connect } from 'datocms-plugin-sdk';
 import Canvas from 'datocms-react-ui/Canvas';
 import ConfigScreen from './entrypoints/ConfigScreen';
-import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
 import SidebarFrame from './entrypoints/SidebarFrame';
@@ -124,16 +123,6 @@ connect({
         return render(
           <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
             <InspectorLoading />
-          </Canvas>,
-        );
-    }
-  },
-  renderModal(modalId, ctx) {
-    switch (modalId) {
-      case 'iconPicker':
-        return render(
-          <Canvas ctx={ctx} texts={TEXTS}>
-            <IconPickerModal ctx={ctx} />
           </Canvas>,
         );
     }

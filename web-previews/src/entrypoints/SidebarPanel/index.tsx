@@ -8,7 +8,6 @@ import EntityRow from 'datocms-react-ui/EntityRow';
 import Link from 'datocms-react-ui/Link';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
-import Spinner from 'datocms-react-ui/Spinner';
 import Tooltip from 'datocms-react-ui/Tooltip';
 import type { CSSProperties, ReactNode } from 'react';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
@@ -131,14 +130,11 @@ function PreviewLinkRow({
         }
       >
         {/* The details show the path: the full URL is in the tooltip. A URL
-            that the details show as it is needs no tooltip */}
-        {details === urlString ? (
+            that the details show as it is needs no tooltip, so it gets no
+            label: the trigger stays the same element */}
+        <Tooltip label={details !== urlString && urlString}>
           <span>{details}</span>
-        ) : (
-          <Tooltip label={urlString}>
-            <span>{details}</span>
-          </Tooltip>
-        )}
+        </Tooltip>
       </EntityRow>
     </RowList.Item>
   );
@@ -319,7 +315,14 @@ export default function PreviewLinksPanel({ ctx }: PropTypes) {
   // The spinner shows only before the first response: a refresh keeps the
   // last links on screen
   if (!statusByFrontend) {
-    return <Spinner.Area size="small" label="Loading the preview links" />;
+    return (
+      <BlankSlate
+        placement="inline"
+        small
+        loading
+        title="Loading the preview links"
+      />
+    );
   }
 
   const firstStatus = Object.values(statusByFrontend)[0];

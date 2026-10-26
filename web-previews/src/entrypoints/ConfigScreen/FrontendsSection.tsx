@@ -3,16 +3,16 @@ import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
-import type { RawFrontend } from '../../types';
 import { FrontendFields } from './FrontendFields';
+import { MARKETPLACE_URL } from './links';
 import type { SettingsForm } from './useSettingsForm';
-import { hasErrors } from './validation';
+import { type FeatureSwitches, hasErrors } from './validation';
 
-/** What the frontend offers, under its name */
-function featureSummary(frontend: RawFrontend) {
+/** What the frontend offers, under its name: the features turned on */
+function featureSummary(switches: FeatureSwitches) {
   const features = [
-    frontend.previewWebhook ? 'Preview links' : undefined,
-    frontend.visualEditing?.enableDraftModeUrl ? 'Visual editing' : undefined,
+    switches.previewLinks ? 'Preview links' : undefined,
+    switches.visualEditing ? 'Visual editing' : undefined,
   ].filter(Boolean);
 
   return features.length > 0 ? features.join(' · ') : 'Nothing turned on';
@@ -28,10 +28,13 @@ export function FrontendsSection({ form }: Props) {
 
   return (
     <Page.Section>
-      <Page.SectionTitle>Frontends</Page.SectionTitle>
       <Page.SectionDescription>
         The websites that show your records. Each frontend can return preview
-        links, offer visual editing, or both.
+        links, offer visual editing, or both. Not sure how to set them up?{' '}
+        <a href={MARKETPLACE_URL} target="_blank" rel="noreferrer">
+          Read the documentation
+        </a>
+        .
       </Page.SectionDescription>
       <CardList
         add={add}
@@ -40,6 +43,7 @@ export function FrontendsSection({ form }: Props) {
         {frontends.map((frontend, index) => {
           const key = form.frontendKeys[index] ?? `frontend-at-${index}`;
           const path = (field: string) => `${key}.${field}`;
+          const switches = form.frontendSwitches[index];
           const errors = form.errors.frontends[index] ?? {};
           // A card that shows an error can't close until the error is fixed,
           // as the Viewports section: its closed row wouldn't show the error
@@ -58,7 +62,7 @@ export function FrontendsSection({ form }: Props) {
                       frontend.disabled ? <Pill>Disabled</Pill> : undefined
                     }
                   >
-                    {featureSummary(frontend)}
+                    {featureSummary(switches)}
                   </EntityRow>
                 ),
                 actions: (
@@ -78,6 +82,7 @@ export function FrontendsSection({ form }: Props) {
                 body: (
                   <FrontendFields
                     frontend={frontend}
+                    switches={switches}
                     errors={errors}
                     submitAttempted={form.submitAttempted}
                     showsError={(field) => form.showsError(path(field))}
@@ -85,6 +90,9 @@ export function FrontendsSection({ form }: Props) {
                       form.submitAttempted || (form.touchedHeaders[key] ?? [])
                     }
                     onChange={(patch) => form.updateFrontend(index, patch)}
+                    onFeatureChange={(feature, on) =>
+                      form.setFeature(index, feature, on)
+                    }
                     onBlur={(field) => form.touchField(path(field))}
                     onHeadersChange={(change) =>
                       form.followHeaders(key, change)

@@ -18,6 +18,12 @@ export type CellError = {
 /** The errors of a custom header, keyed by the columns of its KeyValueList */
 export type HeaderErrors = { key?: CellError; value?: CellError };
 
+/**
+ * The switches of the features of a frontend. They keep their own state: a
+ * URL that the user clears doesn't turn its feature off.
+ */
+export type FeatureSwitches = { previewLinks: boolean; visualEditing: boolean };
+
 export type FrontendErrors = {
   name?: string;
   /** No feature is on, and the frontend is not disabled */
@@ -79,6 +85,7 @@ function validateCustomHeaders(headers: CustomHeader[]): HeaderErrors[] {
 export function validateFrontend(
   frontend: RawFrontend,
   allFrontends: RawFrontend[],
+  switches: FeatureSwitches,
 ): FrontendErrors {
   const errors: FrontendErrors = {};
 
@@ -90,15 +97,14 @@ export function validateFrontend(
     errors.name = 'Use a name that no other frontend has';
   }
 
-  const draftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
-
-  if (!frontend.previewWebhook && !draftModeUrl && !frontend.disabled) {
+  if (!switches.previewLinks && !switches.visualEditing && !frontend.disabled) {
     errors.feature =
       'Turn on preview links or visual editing, or disable this frontend.';
   }
 
-  if (frontend.previewWebhook) {
-    if (!isValidUrl(frontend.previewWebhook)) {
+  // A feature that is on needs its URL: an empty one is no valid URL either
+  if (switches.previewLinks) {
+    if (!isValidUrl(frontend.previewWebhook ?? '')) {
       errors.previewWebhook = ENTER_URL;
     }
 
@@ -110,7 +116,10 @@ export function validateFrontend(
     }
   }
 
-  if (draftModeUrl && !isValidUrl(draftModeUrl)) {
+  if (
+    switches.visualEditing &&
+    !isValidUrl(frontend.visualEditing?.enableDraftModeUrl ?? '')
+  ) {
     errors.draftModeUrl = ENTER_URL;
   }
 
@@ -141,13 +150,17 @@ export function validateViewport(viewport: RawViewport): ViewportErrors {
   return errors;
 }
 
-export function validateSettings(draft: Parameters): SettingsErrors {
+/** `switches` holds the switches of each frontend, in the same order */
+export function validateSettings(
+  draft: Parameters,
+  switches: FeatureSwitches[],
+): SettingsErrors {
   const frontends = draft.frontends ?? [];
   const width = draft.defaultSidebarWidth;
 
   return {
-    frontends: frontends.map((frontend) =>
-      validateFrontend(frontend, frontends),
+    frontends: frontends.map((frontend, index) =>
+      validateFrontend(frontend, frontends, switches[index]),
     ),
     // The old input was a number input: only digits make a width in pixels
     defaultSidebarWidth:

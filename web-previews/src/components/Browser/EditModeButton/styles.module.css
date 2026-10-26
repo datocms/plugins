@@ -1,6 +1,0 @@
-/* The box that the Tooltip anchors to, around the button: it has the size
-   of the button, and is a part of the bar as the button would be */
-.anchor {
-  display: flex;
-  flex: none;
-}

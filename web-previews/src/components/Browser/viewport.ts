@@ -25,8 +25,13 @@ export function sizingOf(
     return 'responsive';
   }
 
+  // A dimension that the user clears is 0, and its field shows an error:
+  // the preview takes the starting size for it, thus it does not collapse
   if (choice === 'custom') {
-    return customSize;
+    return {
+      width: customSize.width || DEFAULT_CUSTOM_SIZE.width,
+      height: customSize.height || DEFAULT_CUSTOM_SIZE.height,
+    };
   }
 
   return choice;

@@ -18,7 +18,11 @@ import {
   type RawFrontend,
   type RawViewport,
 } from '../../types';
-import { hasErrors, validateSettings } from './validation';
+import {
+  type FeatureSwitches,
+  hasErrors,
+  validateSettings,
+} from './validation';
 
 export type RowsTouched = (TableListRowTouched | undefined)[];
 
@@ -39,6 +43,14 @@ function newFrontend(): RawFrontend {
     previewWebhook: '',
     customHeaders: [],
     visualEditing: { enableDraftModeUrl: '', initialPath: '' },
+  };
+}
+
+/** The switches that the URLs of a frontend give: a feature with a URL is on */
+function switchesOf(frontend: RawFrontend): FeatureSwitches {
+  return {
+    previewLinks: Boolean(frontend.previewWebhook),
+    visualEditing: Boolean(frontend.visualEditing?.enableDraftModeUrl),
   };
 }
 
@@ -147,6 +159,17 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
   const [frontendKeys, setFrontendKeys] = useState(() =>
     (baseline.frontends ?? []).map(() => newFrontendKey()),
   );
+  // Keyed as the frontends: a switch stays with its frontend
+  const [switches, setSwitches] = useState<
+    Partial<Record<string, FeatureSwitches>>
+  >(() =>
+    Object.fromEntries(
+      (baseline.frontends ?? []).map((frontend, index) => [
+        frontendKeys[index],
+        switchesOf(frontend),
+      ]),
+    ),
+  );
   const [openFrontends, setOpenFrontends] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -162,13 +185,22 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
   const [saving, setSaving] = useState(false);
   const { touchAfterClick, flush: flushTouches } = useTouchesAfterClick();
 
-  const errors = validateSettings(draft);
+  // The switches of each frontend, in the order of the frontends
+  const frontendSwitches = (draft.frontends ?? []).map(
+    (frontend, index) =>
+      switches[frontendKeys[index] ?? ''] ?? switchesOf(frontend),
+  );
+  const errors = validateSettings(draft, frontendSwitches);
   const viewportsInvalid = errors.viewports.some(hasErrors);
   const valid =
     !errors.frontends.some(hasErrors) &&
     !errors.defaultSidebarWidth &&
     !viewportsInvalid;
-  const dirty = !isEqual(comparable(draft), comparable(baseline));
+  // A switch turned on before its URL is typed is a change too: the save
+  // then shows the error of the empty URL
+  const dirty =
+    !isEqual(comparable(draft), comparable(baseline)) ||
+    !isEqual(frontendSwitches, (draft.frontends ?? []).map(switchesOf));
 
   const update = (patch: Partial<Parameters>) =>
     setDraft((current) => ({ ...current, ...patch }));
@@ -183,11 +215,13 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
 
   const addFrontend = () => {
     const key = newFrontendKey();
+    const frontend = newFrontend();
     setDraft((current) => ({
       ...current,
-      frontends: [...(current.frontends ?? []), newFrontend()],
+      frontends: [...(current.frontends ?? []), frontend],
     }));
     setFrontendKeys((keys) => [...keys, key]);
+    setSwitches((current) => ({ ...current, [key]: switchesOf(frontend) }));
     setOpenFrontends((open) => new Set(open).add(key));
   };
 
@@ -197,6 +231,65 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
       frontends: (current.frontends ?? []).filter((_f, i) => i !== index),
     }));
     setFrontendKeys((keys) => keys.filter((_k, i) => i !== index));
+  };
+
+  /**
+   * Turns a feature of a frontend on or off. A feature that goes off loses
+   * its URL, and its field forgets its touch: on again, the empty field
+   * waits for a blur or a save before it shows its error.
+   */
+  const setFeature = (
+    index: number,
+    feature: keyof FeatureSwitches,
+    on: boolean,
+  ) => {
+    const key = frontendKeys[index];
+
+    if (!key) {
+      return;
+    }
+
+    setSwitches((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? frontendSwitches[index]),
+        [feature]: on,
+      },
+    }));
+
+    if (on) {
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      frontends: (current.frontends ?? []).map((frontend, i) => {
+        if (i !== index) {
+          return frontend;
+        }
+
+        return feature === 'previewLinks'
+          ? { ...frontend, previewWebhook: '' }
+          : {
+              ...frontend,
+              visualEditing: {
+                ...frontend.visualEditing,
+                enableDraftModeUrl: '',
+              },
+            };
+      }),
+    }));
+
+    const urlPath = `${key}.${feature === 'previewLinks' ? 'previewWebhook' : 'draftModeUrl'}`;
+    setTouchedFields((touched) => {
+      if (!touched.has(urlPath)) {
+        return touched;
+      }
+
+      const next = new Set(touched);
+      next.delete(urlPath);
+      return next;
+    });
   };
 
   const toggleFrontend = (key: string) =>
@@ -317,6 +410,7 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
     saveFailed: submitAttempted && !valid,
     submitAttempted,
     frontendKeys,
+    frontendSwitches,
     openFrontends,
     viewportsOpen,
     viewportsInvalid,
@@ -327,6 +421,7 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx) {
     updateFrontend,
     addFrontend,
     removeFrontend,
+    setFeature,
     toggleFrontend,
     touchField,
     showsError,
