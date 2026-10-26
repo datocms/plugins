@@ -1,4 +1,5 @@
 import type {
+  RenderItemFormOutletCtx,
   RenderItemFormSidebarCtx,
   RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
@@ -71,7 +72,10 @@ export async function makeRequest(
 }
 
 export function useStatusByFrontend(
-  ctx: RenderItemFormSidebarCtx | RenderItemFormSidebarPanelCtx,
+  ctx:
+    | RenderItemFormSidebarCtx
+    | RenderItemFormSidebarPanelCtx
+    | RenderItemFormOutletCtx,
 ) {
   const [statusByFrontend, setStatusByFrontend] = useState<
     Record<string, FrontendStatus | undefined> | undefined

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { Frontend, PreviewLinkWithFrontend } from '../../types';
+import type { PreviewLinkWithFrontend } from '../../types';
 import type { FrontendStatus } from '../../utils/common';
 import { reconcilePreviewLinkSelection } from './previewLinkSelection';
 
@@ -20,12 +20,8 @@ const EMPTY_SELECTION: PreviewLinkSelection = {
  */
 export function usePreviewLinkSelection({
   statusByFrontend,
-  frontends,
-  editModeEnabled,
 }: {
   statusByFrontend: Record<string, FrontendStatus | undefined> | undefined;
-  frontends: Frontend[];
-  editModeEnabled: boolean;
 }) {
   const previewLinks = useMemo(() => {
     if (!statusByFrontend) return [];
@@ -53,30 +49,25 @@ export function usePreviewLinkSelection({
       previewLinks,
       selectedPreviewLink: reconcilePreviewLinkSelection({
         selectedPreviewLink: selection.selectedPreviewLink,
-        previousPreviewLinks: selection.previewLinks,
         previewLinks,
-        frontends,
-        editModeEnabled,
       }),
     };
 
     // Guarded render-time synchronization makes React rerender this component
-    // before committing its children. The iframe therefore never sees the
-    // stale Published selection after a real Draft link appears.
+    // before committing its children. The iframe therefore never sees a
+    // stale selection after the Preview Links response changes.
     setSelection(synchronizedSelection);
   }
 
   const selectPreviewLink = useCallback(
     (selectedPreviewLink: PreviewLinkWithFrontend) => {
-      // Remember which response the manual selection came from. If Published
-      // is chosen while Draft already exists, later refreshes must preserve it.
+      // Remember which response the manual selection came from.
       setSelection({ previewLinks, selectedPreviewLink });
     },
     [previewLinks],
   );
 
   return {
-    previewLinks,
     selectedPreviewLink: synchronizedSelection.selectedPreviewLink,
     selectPreviewLink,
   };

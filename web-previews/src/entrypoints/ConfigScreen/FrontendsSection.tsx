@@ -3,8 +3,9 @@ import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
+import { DocLinks } from './DocLinks';
 import { FrontendFields } from './FrontendFields';
-import { MARKETPLACE_URL } from './links';
+import { FRONTEND_DOC_LINKS } from './links';
 import type { SettingsForm } from './useSettingsForm';
 import { type FeatureSwitches, hasErrors } from './validation';
 
@@ -28,13 +29,13 @@ export function FrontendsSection({ form }: Props) {
 
   return (
     <Page.Section>
+      <Page.SectionTitle>Frontends</Page.SectionTitle>
       <Page.SectionDescription>
-        The websites that show your records. Each frontend can return preview
-        links, offer visual editing, or both. Not sure how to set them up?{' '}
-        <a href={MARKETPLACE_URL} target="_blank" rel="noreferrer">
-          Read the documentation
-        </a>
-        .
+        <p>
+          The websites that show your records. Each frontend can return preview
+          links, offer visual editing, or both.
+        </p>
+        <DocLinks links={FRONTEND_DOC_LINKS} />
       </Page.SectionDescription>
       <CardList
         add={add}
@@ -59,7 +60,7 @@ export function FrontendsSection({ form }: Props) {
                     // Unnamed frontends stay apart by their position
                     title={frontend.name || `Frontend ${index + 1}`}
                     afterTitle={
-                      frontend.disabled ? <Pill>Disabled</Pill> : undefined
+                      frontend.disabled ? <Pill>Hidden</Pill> : undefined
                     }
                   >
                     {featureSummary(switches)}

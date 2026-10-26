@@ -4,6 +4,7 @@ import 'datocms-react-ui/styles.css';
 import { connect } from 'datocms-plugin-sdk';
 import Canvas from 'datocms-react-ui/Canvas';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import FormPreviewLinks from './entrypoints/FormPreviewLinks';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
 import SidebarFrame from './entrypoints/SidebarFrame';
@@ -33,7 +34,7 @@ connect({
     return visualEditingFrontends.length > 0
       ? [
           {
-            label: 'Visual',
+            label: 'Visual Editing',
             icon: 'eye',
             pointsTo: {
               inspectorId: 'visual',
@@ -63,9 +64,9 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Related website pages',
+        label: 'Preview links',
         startOpen: previewLinksSidebarPanel.startOpen,
-        placement: ['before', 'links'],
+        placement: ['after', 'info'],
       },
     ];
   },
@@ -73,6 +74,31 @@ connect({
     render(
       <Canvas ctx={ctx} texts={TEXTS}>
         <SidebarPanel ctx={ctx} />
+      </Canvas>,
+    );
+  },
+  itemFormOutlets(itemType, ctx) {
+    if (itemType.attributes.modular_block) {
+      return [];
+    }
+
+    const { frontends, previewLinksFormOutlet } = normalizeParameters(
+      ctx.plugin.attributes.parameters as Parameters,
+    );
+
+    if (
+      !previewLinksFormOutlet ||
+      !frontends.some((f) => !f.disabled && f.previewLinks)
+    ) {
+      return [];
+    }
+
+    return [{ id: 'webPreviewsLinks', initialHeight: 0 }];
+  },
+  renderItemFormOutlet(_itemFormOutletId, ctx) {
+    render(
+      <Canvas ctx={ctx} texts={TEXTS}>
+        <FormPreviewLinks ctx={ctx} />
       </Canvas>,
     );
   },

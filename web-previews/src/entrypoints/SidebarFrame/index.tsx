@@ -12,7 +12,6 @@ import {
   type StatusByFrontend,
   useLogFailures,
 } from '../../utils/failures';
-import { usePersistedSidebarVisualEditing } from '../../utils/persistedSidebarVisualEditing';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 import styles from './styles.module.css';
 import { usePreviewLinkSelection } from './usePreviewLinkSelection';
@@ -104,13 +103,12 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   useLogFailures(statusByFrontend);
 
-  // The viewport and edit mode stay while the response changes
+  // The viewport stays while the response changes
   const viewport = useViewport();
-  const [editModeEnabled, setEditModeEnabled] =
-    usePersistedSidebarVisualEditing(ctx.site);
 
-  const { previewLinks, selectedPreviewLink, selectPreviewLink } =
-    usePreviewLinkSelection({ statusByFrontend, frontends, editModeEnabled });
+  const { selectedPreviewLink, selectPreviewLink } = usePreviewLinkSelection({
+    statusByFrontend,
+  });
 
   if (frontends.length === 0) {
     return (
@@ -152,12 +150,9 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
       ctx={ctx}
       frontends={frontends}
       statusByFrontend={statusByFrontend}
-      previewLinks={previewLinks}
       selectedPreviewLink={selectedPreviewLink}
       onSelectPreviewLink={selectPreviewLink}
       viewport={viewport}
-      editModeEnabled={editModeEnabled}
-      onEditModeChange={setEditModeEnabled}
     />
   );
 };

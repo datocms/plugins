@@ -6,9 +6,11 @@
 }
 
 /* The part of the toolbar with the menu of the links can get narrower than
-   the link, thus the trigger cuts its text */
+   the link, thus the trigger cuts its text, and it is the container of the
+   query that drops the host */
 .fill {
   min-width: 0;
+  container-type: inline-size;
 }
 
 /* The buttons of the actions keep their width: the menu of the links gets

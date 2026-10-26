@@ -9,10 +9,3 @@
   flex: 1;
   min-width: 0;
 }
-
-/* The code font makes the field shorter than the buttons of the bar, and
-   the bar lines its parts up at the top (for the error under the field):
-   the field gets the height of a control, so its edges meet theirs */
-.form :global(.input-group) {
-  min-height: var(--control-height);
-}

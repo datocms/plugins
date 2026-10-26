@@ -14,6 +14,7 @@ import { ViewportMenu } from '../../../components/Browser/ViewportMenu';
 import { useViewport } from '../../../components/Browser/viewport';
 import { ReloadIcon } from '../../../icons';
 import {
+  DEFAULT_SIDEBAR_WIDTH,
   getVisualEditingFrontends,
   normalizeParameters,
   type Parameters,
@@ -25,11 +26,6 @@ import { FrontendSelector } from './AddressBar/FrontendSelector';
 import styles from './styles.module.css';
 
 type ContentLink = ReturnType<typeof useContentLink>['contentLink'];
-
-// The Alt gesture belongs to the Content Link script of the website, not to
-// an action of the plugin, thus the hint names the key in words
-const EDIT_MODE_TOOLTIP =
-  'Click an element of the page to edit its record. Holding Alt (Option on a Mac) flips edit mode while the key is down.';
 
 /** Why edit mode cannot change now, while the page is not connected */
 function editModeDisabledReason(contentLink: ContentLink): string | undefined {
@@ -70,7 +66,7 @@ function useReportContentLinkErrors(
 
     if (contentLinkErrorReason === 'failed-connection') {
       alert(
-        "The website doesn't respond to the Visual tab. Check that DatoCMS Content Link is installed on the website.",
+        "The website doesn't respond to the Visual Editing tab. Check that DatoCMS Content Link is installed on the website.",
       );
     }
 
@@ -95,7 +91,7 @@ const UI = () => {
   const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-  const { iframeAllowAttribute } = params;
+  const { iframeAllowAttribute, previewLinksSidebar } = params;
   const visualEditingFrontends = getVisualEditingFrontends(params);
 
   // The frontend comes from the provider, as the one that the panel sync
@@ -107,6 +103,7 @@ const UI = () => {
     iframeState,
     reloadIframe,
     contentLink,
+    setPreferredClickToEdit,
   } = useContentLink();
 
   if (!selectedFrontend.visualEditing) {
@@ -135,9 +132,8 @@ const UI = () => {
   // changes
   const viewport = useViewport();
   // In a narrow frame the viewport trigger shows only its icon (the icon of
-  // its choice), and in a very narrow one the frontend trigger and edit mode
-  // too: the address keeps the width. The icon of the frontend trigger is the
-  // same for every frontend, so it keeps its name as long as it can
+  // its choice), and in a very narrow one edit mode shows only its switch:
+  // the address keeps the width. The frontend trigger keeps its name
   const compactBar = useCompactVisualTabBar();
   const narrowBar = useNarrowVisualTabBar();
 
@@ -146,6 +142,7 @@ const UI = () => {
       return;
     }
 
+    setPreferredClickToEdit(!contentLink.state.clickToEditEnabled);
     contentLink.methods.setClickToEditEnabled(
       contentLink.state.clickToEditEnabled
         ? {
@@ -165,6 +162,15 @@ const UI = () => {
             {/* The parts stay in line with the address field, also while it
                 shows its error under it */}
             <div className={styles.row}>
+              {visualEditingFrontends.length > 1 && (
+                <div className={styles.cell}>
+                  <FrontendSelector
+                    frontends={visualEditingFrontends}
+                    currentFrontend={selectedFrontend}
+                    onChange={changeFrontend}
+                  />
+                </div>
+              )}
               {/* A new frontend starts a new address, with no error */}
               <AddressBar
                 key={selectedFrontend.name}
@@ -179,26 +185,22 @@ const UI = () => {
                 <Toolbar.Button
                   iconOnly
                   icon={ReloadIcon}
-                  label="Reload the page"
+                  label="Refresh the preview"
                   onClick={reloadIframe}
                 />
               </div>
-              {visualEditingFrontends.length > 1 && (
-                <div className={styles.cell}>
-                  <FrontendSelector
-                    frontends={visualEditingFrontends}
-                    currentFrontend={selectedFrontend}
-                    onChange={changeFrontend}
-                    iconOnly={narrowBar}
-                  />
-                </div>
-              )}
+              {/* The viewport menu hides, and the preview fits the frame,
+                  while the frame is narrower than the default width of the
+                  Website preview tab */}
               <div className={styles.cell}>
                 <ViewportMenu
                   value={viewport.choice}
                   onChange={viewport.setChoice}
                   fitLabel="Fit to window"
                   iconOnly={compactBar}
+                  minWidth={
+                    previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH
+                  }
                 />
               </div>
               <div className={styles.cell}>
@@ -208,10 +210,11 @@ const UI = () => {
                     contentLink.type === 'connected' &&
                     contentLink.state.clickToEditEnabled
                   }
+                  temporary={
+                    contentLink.type === 'connected' &&
+                    contentLink.clickToEditTemporary
+                  }
                   onToggle={handleToggleClickToEdit}
-                  // Two sentences: a paragraph, in the wide tooltip
-                  tooltip={EDIT_MODE_TOOLTIP}
-                  long
                   disabledReason={editModeDisabledReason(contentLink)}
                 />
               </div>

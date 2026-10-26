@@ -1,13 +1,8 @@
-/* The box that the Tooltip anchors to, around the switch: it has the size
-   of the switch, and is a part of the bar as the switch would be */
-.anchor {
+/* The hint, then the switch, with the gap between two parts of the bar. It
+   is also the box that the Tooltip anchors to */
+.root {
   display: flex;
   flex: none;
   align-items: center;
-}
-
-/* The hidden label still keeps the space before it: without it, the switch
-   reaches the end of the bar as the other controls do */
-.labelHidden :global(.SwitchInput__label) {
-  margin-left: 0;
+  gap: var(--spacing-m);
 }

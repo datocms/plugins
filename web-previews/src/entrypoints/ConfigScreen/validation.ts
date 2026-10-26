@@ -99,7 +99,7 @@ export function validateFrontend(
 
   if (!switches.previewLinks && !switches.visualEditing && !frontend.disabled) {
     errors.feature =
-      'Turn on preview links or visual editing, or disable this frontend.';
+      'Enable Preview Links or Visual Editing, or hide this frontend.';
   }
 
   // A feature that is on needs its URL: an empty one is no valid URL either

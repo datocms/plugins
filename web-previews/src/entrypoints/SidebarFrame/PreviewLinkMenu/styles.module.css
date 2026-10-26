@@ -6,22 +6,23 @@
 }
 
 /* The layout of the trigger (a DropdownTriggerButton with the kit's
-   "button--ghost-inline", which draws its surface). The text takes the free
-   width and the chevron stays at the right end. The text clips, not the
-   button: the surface is out of the box of the button. The trigger keeps the
-   height of its line, as the textual triggers of the kit: the toolbar
-   centers it next to its buttons, and it pins no height of its own. */
+   "button--ghost-inline", which draws its surface). It is as wide as its
+   text, so the chevron follows the value, and at most as wide as the menu:
+   the text then ends with an ellipsis. The text clips, not the button: the
+   surface is out of the box of the button. The trigger keeps the height of
+   its line, as the textual triggers of the kit: the toolbar centers it next
+   to its buttons, and it pins no height of its own. */
 .trigger {
   display: flex;
   gap: var(--spacing-s);
   align-items: center;
-  width: 100%;
+  max-width: 100%;
   min-width: 0;
   text-align: start;
 }
 
 .text {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -35,4 +36,11 @@
 .url {
   font-weight: var(--font-weight-regular);
   color: var(--color--ink-subtle);
+}
+
+/* Narrow sidebar: drop the host, keep the path */
+@container (max-width: 400px) {
+  .host {
+    display: none;
+  }
 }

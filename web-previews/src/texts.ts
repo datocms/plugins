@@ -2,10 +2,6 @@
 // syntax. Every Canvas gets this constant, so the object stays the same
 // between renders.
 export const TEXTS = {
-  // Every copy button of the plugin copies the URL of a page
-  'clipboard.copy': 'Copy URL',
-  // The feedback of every copy control, in the control
-  'clipboard.copied': 'Copied',
   // The errors of the cells of the viewports and of the custom headers
   'webPreviews.errors.enterName': 'Enter a name',
   'webPreviews.errors.enterWidth': 'Enter a width',

@@ -8,7 +8,6 @@ import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import type { TableListChange } from 'datocms-react-ui/TableList';
 import type { RawFrontend } from '../../types';
-import { MARKETPLACE_URL } from './links';
 import type { RowsTouched } from './useSettingsForm';
 import type { FeatureSwitches, FrontendErrors } from './validation';
 
@@ -83,9 +82,9 @@ export function FrontendFields({
           onBlur={() => onBlur('name')}
         />
       </FieldWrapper>
-      <FieldWrapper hint="Lists the pages of the record in the sidebar. The frontend needs an endpoint that returns them.">
+      <FieldWrapper>
         <SwitchInput
-          label="Preview links"
+          label="Enable Preview Links for this frontend"
           value={switches.previewLinks}
           // On, the field starts empty: its placeholder shows an example
           onChange={(on) => onFeatureChange('previewLinks', Boolean(on))}
@@ -94,13 +93,8 @@ export function FrontendFields({
       {switches.previewLinks && (
         <>
           <FieldWrapper
-            label="Preview links endpoint"
+            label="Preview Links endpoint URL"
             required
-            hint="A POST endpoint that gets the record and returns the URLs of its pages."
-            docs={{
-              label: 'How the endpoint works',
-              to: `${MARKETPLACE_URL}#the-preview-links-api-endpoint`,
-            }}
             error={errorOf('previewWebhook')}
           >
             <StringInput
@@ -111,10 +105,7 @@ export function FrontendFields({
               onBlur={() => onBlur('previewWebhook')}
             />
           </FieldWrapper>
-          <FieldWrapper
-            label="Custom headers"
-            hint="Sent with every request to the endpoint."
-          >
+          <FieldWrapper label="Custom headers sent to the endpoint">
             <KeyValueList
               texts={HEADER_TEXTS}
               value={toTuples(frontend.customHeaders ?? [])}
@@ -129,9 +120,9 @@ export function FrontendFields({
           </FieldWrapper>
         </>
       )}
-      <FieldWrapper hint="Full-screen editing next to the website, with click-to-edit overlays. The frontend needs draft mode and DatoCMS Content Link.">
+      <FieldWrapper>
         <SwitchInput
-          label="Visual editing"
+          label="Enable Visual Editing for this frontend"
           value={switches.visualEditing}
           onChange={(on) => onFeatureChange('visualEditing', Boolean(on))}
         />
@@ -139,13 +130,8 @@ export function FrontendFields({
       {switches.visualEditing && (
         <>
           <FieldWrapper
-            label="Draft mode route"
+            label="Draft mode URL"
             required
-            hint="The route that turns on draft mode. It gets the page to open in its redirect query parameter."
-            docs={{
-              label: 'How the route works',
-              to: `${MARKETPLACE_URL}#the-enable-draft-mode-route`,
-            }}
             error={errorOf('draftModeUrl')}
           >
             <StringInput
@@ -163,10 +149,7 @@ export function FrontendFields({
               onBlur={() => onBlur('draftModeUrl')}
             />
           </FieldWrapper>
-          <FieldWrapper
-            label="Initial path"
-            hint="The page that the Visual tab opens first. The default is /."
-          >
+          <FieldWrapper label="Start page" labelExtras={{ optional: true }}>
             <StringInput
               code
               placeholder="/blog"
@@ -183,9 +166,9 @@ export function FrontendFields({
           </FieldWrapper>
         </>
       )}
-      <FieldWrapper hint="A disabled frontend keeps its settings, but editors don't see it.">
+      <FieldWrapper>
         <SwitchInput
-          label="Disabled"
+          label="Hide this frontend from editors"
           value={Boolean(frontend.disabled)}
           onChange={(disabled) => onChange({ disabled: Boolean(disabled) })}
         />

@@ -2,7 +2,8 @@ import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
 import { useState } from 'react';
-import { IFRAME_ALLOW_DOCS_URL } from './links';
+import { DocLinks } from './DocLinks';
+import { IFRAME_ALLOW_DOCS_URL, IFRAME_DOC_LINKS } from './links';
 import type { SettingsForm } from './useSettingsForm';
 
 type Props = {
@@ -21,7 +22,8 @@ export function IframeSection({ form }: Props) {
       {open && (
         <>
           <Page.SectionDescription>
-            What the website can do inside the preview.
+            <p>What the website can do inside the preview.</p>
+            <DocLinks links={IFRAME_DOC_LINKS} />
           </Page.SectionDescription>
           <FieldWrapper
             label="Allow attribute"

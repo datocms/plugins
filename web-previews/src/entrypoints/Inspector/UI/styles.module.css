@@ -23,3 +23,9 @@
   align-items: center;
   min-height: var(--control-height);
 }
+
+/* A control that hides itself (the viewport menu in a narrow frame) leaves
+   no gap */
+.cell:empty {
+  display: none;
+}

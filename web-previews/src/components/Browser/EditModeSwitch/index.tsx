@@ -1,70 +1,68 @@
 import Label from 'datocms-react-ui/Label';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
+import Toolbar from 'datocms-react-ui/Toolbar';
 import Tooltip from 'datocms-react-ui/Tooltip';
 import { useId } from 'react';
 import styles from './styles.module.css';
 
-const LABEL = 'Edit mode';
-
 type Props = {
   /** The overlays of the page are on */
   pressed: boolean;
+  /** Holding Alt in the preview flipped the overlays: they go back on release */
+  temporary: boolean;
   onToggle: () => void;
-  /** What edit mode does, shown while the switch is enabled */
-  tooltip: string;
-  /** The tooltip is a paragraph (more than one sentence) */
-  long?: boolean;
-  /** Why edit mode is not possible now: the switch is then disabled */
+  /** Why the overlays can't change now: the switch is then disabled */
   disabledReason?: string;
   /**
-   * The switch shows without its label, in a narrow bar: its tooltip then
-   * names it before telling what it does
+   * The switch shows without its label and its hint, in a narrow bar: its
+   * tooltip then names it
    */
   iconOnly?: boolean;
 };
 
 /**
  * The switch of the click-to-edit overlays, at the right end of the toolbar
- * of a preview. A switch, not a toggle button: on and off read at a glance.
+ * of a preview, after the hint of the Alt key. A switch, not a toggle
+ * button: on and off read at a glance.
  */
 export function EditModeSwitch({
   pressed,
+  temporary,
   onToggle,
-  tooltip,
-  long,
   disabledReason,
   iconOnly,
 }: Props) {
   const id = useId();
   const descriptionId = useId();
-  const disabled = Boolean(disabledReason);
 
-  // The Tooltip tells what edit mode does, or why it's off limits now. The
-  // switch gets the same text as its description, from a hidden element (a
+  const label = `Visual editing ${pressed ? 'on' : 'off'}`;
+  // The Alt gesture belongs to the Content Link script of the website, not
+  // to an action of the plugin, thus the hint names the key in words
+  const hint = temporary
+    ? `Release ⌥ Alt to ${pressed ? 'hide' : 'show'}`
+    : `Hold ⌥ Alt to ${pressed ? 'hide' : 'peek'}`;
+
+  // The Tooltip tells why the switch is off limits now. In a narrow bar it
+  // names the switch only: keys don't go in a tooltip. The switch gets the
+  // reason or the hint as its description, from a hidden element (a
   // description reads the text of a hidden element that it points to).
-  const tooltipText =
-    disabledReason ?? (iconOnly ? `${LABEL}. ${tooltip}` : tooltip);
-
   return (
-    <Tooltip long={long && !disabled} label={tooltipText}>
+    <Tooltip label={disabledReason ?? (iconOnly ? label : undefined)}>
       {/* The Tooltip anchors to a span: the switch takes no ref */}
-      <span
-        className={
-          iconOnly ? `${styles.anchor} ${styles.labelHidden}` : styles.anchor
-        }
-      >
+      <span className={styles.root}>
+        {!iconOnly && <Toolbar.Note>{hint}</Toolbar.Note>}
         <SwitchInput
           id={id}
           name="editMode"
           // In a narrow bar, the label is only for a screen reader
-          label={iconOnly ? <Label htmlFor={id} label={LABEL} hidden /> : LABEL}
+          label={iconOnly ? <Label htmlFor={id} label={label} hidden /> : label}
           value={pressed}
           onChange={onToggle}
-          disabled={disabled}
+          disabled={Boolean(disabledReason)}
           aria-describedby={descriptionId}
         />
         <span id={descriptionId} hidden>
-          {disabledReason ?? tooltip}
+          {disabledReason ?? hint}
         </span>
       </span>
     </Tooltip>

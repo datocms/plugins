@@ -2,6 +2,8 @@ import { useCtx } from 'datocms-react-ui/Canvas';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
 import EntityRow from 'datocms-react-ui/EntityRow';
+import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
+import { useEffect } from 'react';
 import {
   CustomSizeIcon,
   DisplayIcon,
@@ -22,6 +24,8 @@ type Props = {
    * name of the choice is then its tooltip
    */
   iconOnly: boolean;
+  /** Hides the menu, falling back to "Fit", when the frame is narrower */
+  minWidth?: number;
 };
 
 /**
@@ -48,12 +52,31 @@ function describe(choice: ViewportChoice) {
  * The menu of the sizes of the preview: fit to the free space, the presets
  * of the plugin settings, or a size that the user types.
  */
-export function ViewportMenu({ value, onChange, fitLabel, iconOnly }: Props) {
+export function ViewportMenu({
+  value,
+  onChange,
+  fitLabel,
+  iconOnly,
+  minWidth = 0,
+}: Props) {
   const ctx = useCtx();
   const { defaultViewports } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
   const { icon, label, named } = describe(value);
+
+  // The query reads the width of the frame. With no minimum it never matches
+  const tooNarrow = useMediaQuery(`(max-width: ${minWidth - 0.02}px)`).matches;
+
+  useEffect(() => {
+    if (tooNarrow && value !== 'responsive') {
+      onChange('responsive');
+    }
+  }, [tooNarrow, value, onChange]);
+
+  if (tooNarrow) {
+    return null;
+  }
 
   return (
     <Dropdown

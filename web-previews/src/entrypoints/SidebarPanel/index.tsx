@@ -3,16 +3,33 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import { useCtx } from 'datocms-react-ui/Canvas';
-import CopyButton from 'datocms-react-ui/CopyButton';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import Link from 'datocms-react-ui/Link';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import Tooltip from 'datocms-react-ui/Tooltip';
-import type { CSSProperties, ReactNode } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useRef,
+} from 'react';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
-import { ErrorIcon, EyeIcon, OpenInNewTabIcon } from '../../icons';
-import type { Frontend, PreviewLink } from '../../types';
+import {
+  ActionToggleIcon,
+  ErrorIcon,
+  EyeIcon,
+  OpenInNewTabIcon,
+} from '../../icons';
+import {
+  type Frontend,
+  normalizeParameters,
+  type Parameters,
+  type PreviewLink,
+} from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import {
   errorMessage,
@@ -24,6 +41,8 @@ import {
 } from '../../utils/failures';
 import { useFrameSizedToContent } from '../../utils/frame';
 import {
+  displayPath,
+  displayUrl,
   extractRedirectFromDraftModePreviewUrl,
   inspectorUrl,
   pluginSettingsUrl,
@@ -43,9 +62,16 @@ type PropTypes = {
 /**
  * The rows of the panel. The frame already has an inset (its body padding),
  * so the box of the list goes out into it: the text of the rows stays in
- * line with the text of the panel (RowList, “The inset row”).
+ * line with the text of the panel (RowList, “The inset row”). In a
+ * Page.Group, the inset is the padding of the group instead.
  */
-function InsetRowList({ children }: { children: ReactNode }) {
+function InsetRowList({
+  children,
+  inGroup,
+}: {
+  children: ReactNode;
+  inGroup?: boolean;
+}) {
   const { bodyPadding } = useCtx();
   const [, right = 0, , left = 0] = bodyPadding;
   const frameInsets = {
@@ -54,90 +80,211 @@ function InsetRowList({ children }: { children: ReactNode }) {
   } as CSSProperties;
 
   return (
-    <div className={styles.rows} style={frameInsets}>
+    <div className={styles.rows} style={inGroup ? undefined : frameInsets}>
       <RowList>{children}</RowList>
     </div>
   );
 }
 
 /**
- * The path of a link, for the details of its row. An endpoint can return a
- * URL that isn't absolute: the row then shows it as it is.
+ * The link the path opens: the draft-mode one when we can tell (by the
+ * frontend's draft mode URL, then by label), otherwise the first.
  */
-function pathOf(urlString: string): string {
-  try {
-    const { pathname, search } = new URL(urlString);
-    return `${pathname}${search}`;
-  } catch {
-    return urlString;
-  }
+function primaryLinkOf(links: PreviewLink[], draftModeUrl: string | undefined) {
+  return (
+    links.find(
+      ({ url }) =>
+        draftModeUrl &&
+        extractRedirectFromDraftModePreviewUrl(url, draftModeUrl) !== undefined,
+    ) ??
+    links.find(({ label }) => /draft/i.test(label)) ??
+    links[0]
+  );
 }
 
-function PreviewLinkRow({
-  previewLink,
+/** The links of each page (host and clean path), in the order they came */
+function linksByPage(previewLinks: PreviewLink[]): [string, PreviewLink[]][] {
+  const pages = new Map<string, PreviewLink[]>();
+  for (const previewLink of previewLinks) {
+    const page = displayUrl(previewLink.url);
+    pages.set(page, [...(pages.get(page) ?? []), previewLink]);
+  }
+  return [...pages];
+}
+
+/** The open row menu that the frame keeps room for (one is open at a time) */
+let roomHolder: HTMLElement | null = null;
+
+/**
+ * The frames of the panel and of the form outlet are only as tall as their
+ * rows, and the kit fits an open menu inside the frame, so a row's menu
+ * would scroll in a sliver. While a menu is open, the frame keeps room for
+ * all of it under its trigger (4px away, plus the 30px the kit keeps from
+ * the edge): the auto-resizer grows the frame, and shrinks it back once the
+ * menu closes. The kit fills the menu's portal right after setting its ref.
+ */
+function useMenuRoom(anchor: RefObject<HTMLElement | null>) {
+  const openMenu = useRef<HTMLElement | null>(null);
+
+  return useCallback(
+    (menu: HTMLDivElement | null) => {
+      const root = document.documentElement;
+      if (openMenu.current && roomHolder === openMenu.current) {
+        roomHolder = null;
+        root.style.minHeight = '';
+      }
+      openMenu.current = menu;
+      if (!menu) return;
+
+      queueMicrotask(() => {
+        if (!anchor.current || !menu.isConnected) return;
+        const panel = menu.querySelector('[role="menu"]') ?? menu;
+        const bottom = anchor.current.getBoundingClientRect().bottom;
+        roomHolder = menu;
+        root.style.minHeight = `${Math.ceil(
+          bottom + window.scrollY + 4 + panel.scrollHeight + 30,
+        )}px`;
+      });
+    },
+    [anchor],
+  );
+}
+
+/**
+ * One row per page: the path opens the primary (draft) link, the eye opens
+ * the page in Visual Editing, and the other links are in a menu.
+ */
+function PreviewPageRow({
   frontend,
+  page,
+  links,
   showFrontend,
 }: {
-  previewLink: PreviewLink;
   frontend: Frontend;
+  page: string;
+  links: PreviewLink[];
   /** With several frontends, the row names the one that returned it */
   showFrontend: boolean;
 }) {
   const ctx = useCtx();
-  const { url: urlString, label } = previewLink;
+  // The actions are as tall as the ⋮, so the menu opens under their bottom
+  const actions = useRef<HTMLSpanElement>(null);
+  const menuRef = useMenuRoom(actions);
+  const { showVisualTab } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
   const draftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
+  const primaryLink = primaryLinkOf(links, draftModeUrl);
+  const otherLinks = links.filter((link) => link !== primaryLink);
   // A link to the draft-mode route of a frontend with visual editing opens
-  // its page in the Visual tab too
-  const visualEditingPath = draftModeUrl
-    ? extractRedirectFromDraftModePreviewUrl(urlString, draftModeUrl)
-    : undefined;
-  const details = visualEditingPath ?? pathOf(urlString);
+  // its page in the Visual Editing tab too
+  const visualEditingPath =
+    showVisualTab && draftModeUrl
+      ? links
+          .map(({ url }) =>
+            extractRedirectFromDraftModePreviewUrl(url, draftModeUrl),
+          )
+          .find(Boolean)
+      : undefined;
 
   return (
     <RowList.Item>
       <EntityRow
         layout="row"
         kicker={showFrontend ? frontend.name : undefined}
-        // The panel is narrow: a long label wraps, so it stays readable
-        multilineTitle
-        title={label}
+        title={
+          <Tooltip label={`Open ${primaryLink.label}: ${page}`}>
+            <a href={primaryLink.url} target="_blank" rel="noreferrer">
+              {displayPath(primaryLink.url)}
+            </a>
+          </Tooltip>
+        }
+        afterTitle={<OpenInNewTabIcon />}
         trailing={
-          <span className={styles.actions}>
+          <span ref={actions} className={styles.actions}>
             {visualEditingPath && (
               <Button
                 tone="ghost"
                 size="micro"
                 iconOnly
                 icon={EyeIcon}
-                label="Open in the Visual tab"
+                label="Edit in Visual Editing"
                 to={inspectorUrl(ctx, {
                   path: visualEditingPath,
                   frontend: frontend.name,
                 })}
               />
             )}
-            <CopyButton value={urlString} />
-            <Button
-              tone="ghost"
-              size="micro"
-              iconOnly
-              icon={OpenInNewTabIcon}
-              label="Open in a new tab"
-              href={urlString}
-              newTab
-            />
+            {otherLinks.length > 0 && (
+              <Dropdown
+                triggerComponent={IconTrigger}
+                icon={ActionToggleIcon}
+                label="More preview links"
+              >
+                <Dropdown.Menu ref={menuRef} placement="bottom-end">
+                  {otherLinks.map((link) => (
+                    <Dropdown.Option
+                      key={`${link.label}\n${link.url}`}
+                      href={link.url}
+                      newTab
+                      // A menu with one option has no icon
+                      icon={
+                        otherLinks.length > 1 ? <OpenInNewTabIcon /> : undefined
+                      }
+                    >
+                      {`Open ${link.label} version`}
+                    </Dropdown.Option>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            )}
           </span>
         }
-      >
-        {/* The details show the path: the full URL is in the tooltip. A URL
-            that the details show as it is needs no tooltip, so it gets no
-            label: the trigger stays the same element */}
-        <Tooltip label={details !== urlString && urlString}>
-          <span>{details}</span>
-        </Tooltip>
-      </EntityRow>
+      />
     </RowList.Item>
   );
+}
+
+/** The rows of the pages of each frontend, in one list */
+export function PreviewPageRows({
+  linksByFrontend,
+  showFrontend,
+  inGroup,
+}: {
+  linksByFrontend: { frontend: Frontend; previewLinks: PreviewLink[] }[];
+  /** Each row names its frontend (with several frontends) */
+  showFrontend: boolean;
+  /** The list is in a Page.Group, not straight in the frame */
+  inGroup?: boolean;
+}) {
+  return (
+    <InsetRowList inGroup={inGroup}>
+      {linksByFrontend.flatMap(({ frontend, previewLinks }) =>
+        linksByPage(previewLinks).map(([page, links]) => (
+          <PreviewPageRow
+            key={`${frontend.name}\n${page}`}
+            frontend={frontend}
+            page={page}
+            links={links}
+            showFrontend={showFrontend}
+          />
+        )),
+      )}
+    </InsetRowList>
+  );
+}
+
+/** The frontends that returned at least one link, with their links */
+export function linksByFrontendOf(
+  frontends: Frontend[],
+  statusByFrontend: StatusByFrontend,
+) {
+  return frontends.flatMap((frontend) => {
+    const status = statusByFrontend[frontend.name];
+    return status && 'previewLinks' in status && status.previewLinks.length > 0
+      ? [{ frontend, previewLinks: status.previewLinks }]
+      : [];
+  });
 }
 
 /**
@@ -158,10 +305,6 @@ function FailedFrontendNextStep() {
       <Link to={pluginSettingsUrl(ctx)}>{PLUGIN_SETTINGS_WORDS}</Link>.
     </>
   );
-}
-
-function previewLinkKey(frontend: Frontend, previewLink: PreviewLink) {
-  return `${frontend.name}\n${previewLink.label}\n${previewLink.url}`;
 }
 
 /** The links of the only frontend, or why there are none */
@@ -191,16 +334,10 @@ function FrontendResult({
   }
 
   return (
-    <InsetRowList>
-      {status.previewLinks.map((previewLink) => (
-        <PreviewLinkRow
-          key={previewLinkKey(frontend, previewLink)}
-          previewLink={previewLink}
-          frontend={frontend}
-          showFrontend={false}
-        />
-      ))}
-    </InsetRowList>
+    <PreviewPageRows
+      linksByFrontend={[{ frontend, previewLinks: status.previewLinks }]}
+      showFrontend={false}
+    />
   );
 }
 
@@ -224,12 +361,7 @@ function SeveralFrontendsResult({
       : [];
   });
 
-  const linksByFrontend = frontends.flatMap((frontend) => {
-    const status = statusByFrontend[frontend.name];
-    return status && 'previewLinks' in status && status.previewLinks.length > 0
-      ? [{ frontend, previewLinks: status.previewLinks }]
-      : [];
-  });
+  const linksByFrontend = linksByFrontendOf(frontends, statusByFrontend);
 
   if (linksByFrontend.length === 0 && failures.length === 0) {
     return <SidebarPanel.Blank message={NO_LINKS} />;
@@ -269,18 +401,7 @@ function SeveralFrontendsResult({
           <FailedFrontendNextStep />
         </Callout>
       ))}
-      <InsetRowList>
-        {linksByFrontend.flatMap(({ frontend, previewLinks }) =>
-          previewLinks.map((previewLink) => (
-            <PreviewLinkRow
-              key={previewLinkKey(frontend, previewLink)}
-              previewLink={previewLink}
-              frontend={frontend}
-              showFrontend
-            />
-          )),
-        )}
-      </InsetRowList>
+      <PreviewPageRows linksByFrontend={linksByFrontend} showFrontend />
     </>
   );
 }
@@ -293,8 +414,8 @@ function hasNoLinks(status: FrontendStatus | undefined) {
 }
 
 /**
- * The “Related website pages” panel of the record sidebar: the pages that
- * each frontend returns for the record.
+ * The “Preview links” panel of the record sidebar: the pages that each
+ * frontend returns for the record.
  */
 export default function PreviewLinksPanel({ ctx }: PropTypes) {
   useFrameSizedToContent();

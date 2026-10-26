@@ -1,8 +1,10 @@
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import EntityRow from 'datocms-react-ui/EntityRow';
+import Tooltip from 'datocms-react-ui/Tooltip';
 import type { Frontend, PreviewLinkWithFrontend } from '../../../types';
 import type { FrontendStatus } from '../../../utils/common';
-import { PreviewLinkTrigger } from './PreviewLinkTrigger';
+import { displayPath } from '../../../utils/urls';
+import { PreviewLinkText, PreviewLinkTrigger } from './PreviewLinkTrigger';
 import styles from './styles.module.css';
 
 type Props = {
@@ -10,20 +12,8 @@ type Props = {
   statusByFrontend: Record<string, FrontendStatus | undefined>;
   /** The link picked in the menu */
   selectedPreviewLink: PreviewLinkWithFrontend;
-  /** The link that the iframe loads (the editable version in edit mode) */
-  shownPreviewLink: PreviewLinkWithFrontend;
   onChange: (previewLink: PreviewLinkWithFrontend) => void;
 };
-
-/** The path of a link, under its label */
-function pathOf(url: string) {
-  try {
-    const { pathname, search } = new URL(url);
-    return `${pathname}${search}`;
-  } catch {
-    return url;
-  }
-}
 
 function hasNoLinks(status: FrontendStatus | undefined) {
   return (
@@ -61,7 +51,7 @@ function FrontendOptions({
           }
         >
           <EntityRow layout="row" title={previewLink.label}>
-            {pathOf(previewLink.url)}
+            {displayPath(previewLink.url)}
           </EntityRow>
         </Dropdown.Option>
       ))}
@@ -77,16 +67,42 @@ export function PreviewLinkMenu({
   frontends,
   statusByFrontend,
   selectedPreviewLink,
-  shownPreviewLink,
   onChange,
 }: Props) {
+  const showFrontendName = frontends.length > 1;
+
+  // A single link (e.g. a model without draft/published): nothing to choose
+  const statuses = Object.values(statusByFrontend);
+  const linkCount = statuses.reduce(
+    (count, status) =>
+      count +
+      (status && 'previewLinks' in status ? status.previewLinks.length : 0),
+    0,
+  );
+  const hasErrors = statuses.some((status) => status && 'error' in status);
+
+  if (linkCount === 1 && !hasErrors) {
+    // The same text in the same place, as plain text: no menu, no chevron
+    return (
+      <Tooltip label={selectedPreviewLink.url} placement="bottom-start">
+        <span className={styles.text}>
+          <PreviewLinkText
+            previewLink={selectedPreviewLink}
+            showFrontendName={showFrontendName}
+          />
+        </span>
+      </Tooltip>
+    );
+  }
+
   return (
     // The menu fills its part of the toolbar: its trigger shows the label of
-    // the link, then its URL
+    // the link, then its host and path
     <Dropdown
       triggerComponent={PreviewLinkTrigger}
       className={styles.dropdown}
-      previewLink={shownPreviewLink}
+      previewLink={selectedPreviewLink}
+      showFrontendName={showFrontendName}
     >
       <Dropdown.Menu optionPaddingY={6}>
         {frontends.length === 1 ? (

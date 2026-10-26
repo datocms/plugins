@@ -186,8 +186,9 @@ function AddressBar({ frontend }: AddressBarProps) {
         >
           <InputGroup
             aria-label="Page"
-            pre={visualEditingOrigin}
-            code
+            // The host, as a browser shows it: the kit cuts a long addon at
+            // half the field, which the scheme would fill
+            pre={new URL(visualEditingOrigin).host}
             placeholder="/"
             value={inputValue}
             onChange={(value) => setInputValue(value ?? '')}

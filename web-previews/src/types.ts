@@ -37,6 +37,7 @@ export type Parameters = {
   defaultSidebarWidth?: string;
   previewLinksSidebarDisabled?: boolean;
   previewLinksSidebarPanelDisabled?: boolean;
+  previewLinksFormOutlet?: boolean;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
 };
@@ -70,6 +71,7 @@ export type NormalizedParameters = {
   frontends: Frontend[];
   showVisualTab: boolean;
   previewLinksSidebarPanel?: { startOpen: boolean };
+  previewLinksFormOutlet: boolean;
   previewLinksSidebar?: { defaultWidth: number };
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
@@ -81,6 +83,8 @@ const DEFAULT_VIEWPORTS: readonly Viewport[] = [
   { name: 'Desktop', width: 1280, height: 800, icon: 'desktop-alt' },
 ] as const;
 
+export const DEFAULT_SIDEBAR_WIDTH = 900;
+
 export const MIN_VIEWPORT_DIMENSION = 200;
 export const MAX_VIEWPORT_DIMENSION = 3840;
 
@@ -91,6 +95,7 @@ export function normalizeParameters({
   defaultSidebarWidth,
   previewLinksSidebarDisabled,
   previewLinksSidebarPanelDisabled,
+  previewLinksFormOutlet,
   iframeAllowAttribute,
   defaultViewports,
 }: Parameters): NormalizedParameters {
@@ -119,13 +124,15 @@ export function normalizeParameters({
       : {
           startOpen: Boolean(startOpen),
         },
+    // Opt-in: installations predating this setting keep their record form unchanged
+    previewLinksFormOutlet: Boolean(previewLinksFormOutlet),
     // If not explicitly disabled (backwards compatible), create the sidebar config
     previewLinksSidebar: previewLinksSidebarDisabled
       ? undefined
       : {
           defaultWidth: defaultSidebarWidth
             ? Number.parseInt(defaultSidebarWidth, 10)
-            : 900,
+            : DEFAULT_SIDEBAR_WIDTH,
         },
     iframeAllowAttribute,
     defaultViewports: defaultViewports?.map((viewport) => ({
@@ -147,6 +154,7 @@ export function denormalizeParameters({
   frontends,
   showVisualTab,
   previewLinksSidebarPanel,
+  previewLinksFormOutlet,
   previewLinksSidebar,
   iframeAllowAttribute,
   defaultViewports,
@@ -185,6 +193,7 @@ export function denormalizeParameters({
     defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
     previewLinksSidebarDisabled: !previewLinksSidebar,
     previewLinksSidebarPanelDisabled: !previewLinksSidebarPanel,
+    previewLinksFormOutlet,
     iframeAllowAttribute,
     defaultViewports: defaultViewports.map((viewport) => ({
       name: viewport.name,
@@ -199,6 +208,8 @@ export type PreviewLink = {
   url: string;
   label: string;
   reloadPreviewOnRecordUpdate: boolean | { delayInMs: number };
+  /** The page updates itself on record changes, so it needs no manual reload */
+  realtimeUpdates?: boolean;
 };
 
 export type Response = {

@@ -1,0 +1,5 @@
+/* The group is the whole content of its frame: no space under it, which the
+   kit gives a group for the next one */
+.group {
+  margin-bottom: 0;
+}

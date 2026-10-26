@@ -6,10 +6,9 @@ import {
 import {
   faArrowsRotate,
   faArrowUpRightFromSquare,
-  faCheck,
   faCircleExclamation,
-  faCopy,
   faDisplay,
+  faEllipsisVertical,
   faExpand,
   faEye,
   faGlobe,
@@ -65,9 +64,9 @@ function svgIcon(definition: IconSource): IconComponent {
 
 export const ReloadIcon = svgIcon(faArrowsRotate);
 export const EyeIcon = svgIcon(faEye);
-export const CopyIcon = svgIcon(faCopy);
-export const CheckIcon = svgIcon(faCheck);
 export const OpenInNewTabIcon = svgIcon(faArrowUpRightFromSquare);
+/** The "⋮" of a menu of actions */
+export const ActionToggleIcon = svgIcon(faEllipsisVertical);
 export const FitIcon = svgIcon(faExpand);
 export const CustomSizeIcon = svgIcon(faRuler);
 /** The icon of a viewport preset whose icon name is unknown */

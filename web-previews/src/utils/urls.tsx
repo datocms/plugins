@@ -31,6 +31,47 @@ export function extractRedirectFromDraftModePreviewUrl(
 }
 
 /**
+ * The page path a preview link sends the browser to via its `redirect` query
+ * param, as the official starters' draft-mode enable/disable routes do.
+ */
+export function extractRedirectPath(urlString: string): string | undefined {
+  const redirect = new URL(urlString).searchParams.get('redirect');
+  return redirect?.startsWith('/') ? redirect : undefined;
+}
+
+/** A short, secret-free label for a preview link URL. */
+export function displayPath(urlString: string): string {
+  // An endpoint can return a URL that isn't absolute: it shows as it is
+  try {
+    const redirectPath = extractRedirectPath(urlString);
+    if (redirectPath) {
+      return redirectPath;
+    }
+
+    const url = new URL(urlString);
+    url.searchParams.delete('token');
+    // Display only: undo the encoding URLSearchParams applies on serialization
+    return url.pathname + decodeURIComponent(url.search);
+  } catch {
+    return urlString;
+  }
+}
+
+/** The host of a preview link URL, empty for a URL that isn't absolute */
+export function hostOf(urlString: string): string {
+  try {
+    return new URL(urlString).host;
+  } catch {
+    return '';
+  }
+}
+
+/** Like `displayPath()`, prefixed with the host the browser ends up on. */
+export function displayUrl(urlString: string): string {
+  return hostOf(urlString) + displayPath(urlString);
+}
+
+/**
  * The start of the CMS paths of the current environment: empty on the
  * primary environment, `/environments/<id>` on a sandbox.
  */
