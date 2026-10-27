@@ -34,7 +34,10 @@ import {
 } from '../selection/matcher';
 import type { DiscoveryModel } from '../selection/query';
 import type { RequestPool } from '../selection/requestPool';
-import { discoveryModelsOf } from '../selection/schemaIndex';
+import {
+  discoveryModelsOf,
+  SEARCHABLE_FIELD_TYPES,
+} from '../selection/schemaIndex';
 import type {
   DiscoverySpec,
   MatcherSpec,
@@ -164,15 +167,6 @@ type ScanRequest = {
 
 const NO_PROGRESS: SearchProgress = { searched: 0, total: null };
 const NO_MODELS: ReadonlyArray<ModelName> = [];
-
-/** Text, long text, slug, Structured Text and SEO: every field find and replace can write. */
-const SEARCHABLE_FIELD_TYPES: DiscoverySpec['fieldTypes'] = [
-  'string',
-  'text',
-  'slug',
-  'structured_text',
-  'seo',
-];
 
 export const INITIAL_FIND: FindInput = {
   pattern: '',
@@ -834,7 +828,7 @@ export class SearchSession {
       rootModelIds: this.models.map((model) => model.id),
       locales: [...this.options.locales],
       publicationStatuses: [],
-      fieldTypes: SEARCHABLE_FIELD_TYPES,
+      fieldTypes: [...SEARCHABLE_FIELD_TYPES],
       matcher,
     };
   }

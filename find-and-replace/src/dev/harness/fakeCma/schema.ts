@@ -6,7 +6,8 @@ import { stableId } from './ids';
  *
  * Models: Article (draft mode on, localized, slug, Structured Text, SEO),
  * Page (draft mode off: every write goes live; localized Modular Content),
- * Author (draft mode on, Markdown bio). Block models: Quote, Text, Hero and
+ * Author (draft mode on, Markdown bio), Product (draft mode off; HTML text
+ * with entities, prices, JSON, assets). Block models: Quote, Text, Hero and
  * Button (Hero › Button is a Single Block inside a Modular Content block).
  */
 
@@ -41,6 +42,7 @@ export type ModelKey =
   | 'article'
   | 'page'
   | 'author'
+  | 'product'
   | 'quote'
   | 'text_block'
   | 'hero'
@@ -267,6 +269,76 @@ const MODELS: ModelDefinition[] = [
         },
       },
       seoField(false),
+    ],
+  },
+  {
+    apiKey: 'product',
+    name: 'Product',
+    block: false,
+    draftMode: false,
+    titleField: 'name',
+    hint: 'The shop catalog. Changes go live when saved.',
+    fields: [
+      {
+        apiKey: 'name',
+        label: 'Name',
+        fieldType: 'string',
+        editor: 'single_line',
+        parameters: { heading: true, placeholder: null },
+        validators: { required: {} },
+      },
+      {
+        apiKey: 'description',
+        label: 'Description',
+        fieldType: 'text',
+        localized: true,
+        editor: 'wysiwyg',
+        parameters: { toolbar: ['format', 'bold', 'italic', 'link'] },
+      },
+      {
+        apiKey: 'price',
+        label: 'Price',
+        fieldType: 'float',
+        localized: true,
+        editor: 'float',
+      },
+      {
+        apiKey: 'stock',
+        label: 'Stock',
+        fieldType: 'integer',
+        editor: 'integer',
+      },
+      {
+        apiKey: 'structured_data',
+        label: 'Structured data',
+        fieldType: 'json',
+        localized: true,
+        editor: 'json_editor',
+      },
+      {
+        apiKey: 'image',
+        label: 'Image',
+        fieldType: 'file',
+        editor: 'file',
+      },
+      {
+        apiKey: 'gallery',
+        label: 'Gallery',
+        fieldType: 'gallery',
+        editor: 'gallery',
+      },
+      {
+        apiKey: 'available_from',
+        label: 'Available from',
+        fieldType: 'date',
+        editor: 'date_picker',
+      },
+      {
+        apiKey: 'featured',
+        label: 'Featured',
+        fieldType: 'boolean',
+        editor: 'boolean',
+      },
     ],
   },
   {

@@ -22,6 +22,7 @@ import {
   RootReplacementError,
 } from './replacementPlanning';
 import type { ReplacementTemplate } from './replacementTemplate';
+import { invalidNumberValue } from './valueReplacement';
 import {
   classifyWriteError,
   isNotFoundError,
@@ -309,6 +310,22 @@ type PlannedWrite = {
   statusBefore: PublicationStatus | null;
 };
 
+/** A number field would get text it doesn't take: nothing is sent. */
+function numberFailure({
+  fieldValue,
+  value,
+}: PreparedRootChanges['changedValues'][number]): RecordWriteOutcome {
+  return {
+    status: 'failed',
+    reason: 'validation',
+    retryable: false,
+    detail: {
+      fieldLabel: fieldValue.field.label,
+      code: typeof value === 'number' ? 'whole_number' : 'number',
+    },
+  };
+}
+
 /** Checks the selection against the fresh record and compiles the payload. */
 async function planWrite(
   args: ReplaceInRecordArgs,
@@ -335,6 +352,10 @@ async function planWrite(
         ),
     });
     if (prepared.changedValues.length === 0) return skipped('stale');
+    const invalidNumber = prepared.changedValues.find((change) =>
+      invalidNumberValue(change.fieldValue, change.value),
+    );
+    if (invalidNumber) return numberFailure(invalidNumber);
     const attributes = compileRootUpdateAttributes({
       root: fresh,
       schema: args.schema,

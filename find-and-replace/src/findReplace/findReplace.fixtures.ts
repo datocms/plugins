@@ -64,6 +64,7 @@ function field(
   position: number,
   localized = false,
   validators: UnknownRecord = {},
+  editor?: string,
 ): ApiTypes.Field {
   return {
     id,
@@ -74,13 +75,54 @@ function field(
     localized,
     position,
     validators,
+    ...(editor ? { appearance: { editor, parameters: {}, addons: [] } } : {}),
     item_type: { id: modelId, type: 'item_type' },
-  } as ApiTypes.Field;
+  } as unknown as ApiTypes.Field;
+}
+
+/**
+ * `product` "Product" (no drafts): Name, an HTML Description, a Markdown
+ * Notes, a localized Price (float), Stock (integer), Structured data (JSON),
+ * Image (file), Gallery, Launch (date) and Related (link).
+ */
+function productFields(): ApiTypes.Field[] {
+  const product = (
+    id: string,
+    label: string,
+    fieldType: ApiTypes.Field['field_type'],
+    position: number,
+    options: { localized?: boolean; editor?: string } = {},
+  ) =>
+    field(
+      `product-${id}`,
+      'product',
+      label,
+      id,
+      fieldType,
+      position,
+      options.localized ?? false,
+      {},
+      options.editor,
+    );
+  return [
+    product('name', 'Name', 'string', 1),
+    product('description', 'Description', 'text', 2, { editor: 'wysiwyg' }),
+    product('notes', 'Notes', 'text', 3, { editor: 'markdown' }),
+    product('price', 'Price', 'float', 4, { localized: true }),
+    product('stock', 'Stock', 'integer', 5),
+    product('schema', 'Structured data', 'json', 6),
+    product('image', 'Image', 'file', 7),
+    product('gallery', 'Gallery', 'gallery', 8),
+    product('launch', 'Launch', 'date', 9),
+    product('related', 'Related', 'link', 10),
+  ];
 }
 
 export type FixtureSchemaOptions = {
   /** Article titles are localized (`{ en, it }`). */
   localizedTitle?: boolean;
+  /** Adds the `product` model (see `productFields`). */
+  products?: boolean;
 };
 
 /**
@@ -99,9 +141,17 @@ export function fixtureSchema(options: FixtureSchemaOptions = {}): SchemaIndex {
     ...itemType('section', 'Section', false),
     modular_block: true,
   } as ApiTypes.ItemType;
+  const product = itemType('product', 'Product', false, 'product-name');
   return buildSchemaIndex({
-    itemTypes: [article, page, author, section],
+    itemTypes: [
+      article,
+      page,
+      author,
+      section,
+      ...(options.products ? [product] : []),
+    ],
     fieldsByItemTypeId: new Map([
+      [product.id, options.products ? productFields() : []],
       [
         article.id,
         [
@@ -160,7 +210,7 @@ export function fixtureSchema(options: FixtureSchemaOptions = {}): SchemaIndex {
 
 export type FixtureRecord = {
   id: string;
-  modelId: 'article' | 'page' | 'author';
+  modelId: 'article' | 'page' | 'author' | 'product';
   attributes: UnknownRecord;
   /** Defaults to `draft`. */
   status?: 'draft' | 'updated' | 'published';
@@ -576,6 +626,8 @@ export type HarnessOptions = {
   limits?: Partial<FindReplaceLimits>;
   locales?: ReadonlyArray<string>;
   localizedTitle?: boolean;
+  /** Adds the `product` model to the schema. */
+  products?: boolean;
   links?: { internalDomain: string | null; isEnvironmentPrimary: boolean };
   environment?: string;
   matchField?: MatchTraversedField;
@@ -588,7 +640,10 @@ export type HarnessOptions = {
 
 export function setupController(options: HarnessOptions = {}): Harness {
   const cma = options.cma ?? createFakeCma(options.records ?? acmeRecords());
-  const schema = fixtureSchema({ localizedTitle: options.localizedTitle });
+  const schema = fixtureSchema({
+    localizedTitle: options.localizedTitle,
+    products: options.products,
+  });
   const unload = {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),

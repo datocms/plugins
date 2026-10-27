@@ -12,7 +12,7 @@ By default anyone whose role can read and update a model can use it on that mode
 
 ## Finding text
 
-Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, SEO fields and text inside blocks at any depth, in every locale. In projects with more than 10,000 records, press Enter to start the search.
+Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, SEO fields, the text values of JSON fields, the alt and title text set on asset fields, number fields and text inside blocks at any depth, in every locale. Under the results, a line names the fields that weren't searched (dates, links, colors and other fields without text). In projects with more than 10,000 records, press Enter to start the search.
 
 You can match case, match whole words, or use a regular expression (JavaScript syntax, with `$1`, `$<name>` and `$&` available in the replacement). Without whole-word matching, "Startup" also matches inside "Startups".
 
@@ -31,6 +31,15 @@ In models with draft/published, replacing saves a draft and nothing goes live un
 ![After replacing, the toolbar offers to publish the changed records](docs/after-replacing.png)
 
 In models without draft/published, records change on your website as soon as they're replaced. The confirmation dialog warns you before you start.
+
+## Matching caveats
+
+- **Encoded characters**: text is matched as editors read it. A character stored as an HTML entity (`&uuml;` for ü) or a JSON escape is found by the character itself, and a non-breaking space matches a plain space. Replacing keeps the stored format: a character the field already stores as an entity is written the same way.
+- **HTML text fields**: only the visible text is searched, never the tags, so you can't search or replace markup such as `<strong>`. A match can run across inline formatting but not across paragraphs, and when it spans formatting the new text goes into the first formatted part.
+- **JSON fields**: only string values are searched. Keys, numbers and the structure are left alone, so the JSON stays valid.
+- **Number fields**: they match a whole value, so `46.90` finds every 46.9 but not 146.9. A replacement that isn't a number, or a decimal in an integer field, is flagged before replacing and never saved.
+- **Numbers in text**: in text fields a search for `46.90` also matches inside `146.90`. Turn on whole-word matching when changing prices.
+- **Asset fields**: only the alt and title text set on the field is searched, not the defaults stored on the asset in the media area.
 
 ## Development
 

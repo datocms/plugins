@@ -22,6 +22,11 @@ const SEO_SUBFIELD_LABELS: Readonly<Record<string, string>> = {
   description: 'Description',
 };
 
+const ASSET_SUBFIELD_LABELS: Readonly<Record<string, string>> = {
+  alt: 'Alt text',
+  title: 'Title',
+};
+
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -104,12 +109,38 @@ function blockOrdinal(
   return position < 0 ? null : position + 1;
 }
 
-/** "Title" or "Description" for a match inside an SEO field value. */
-export function seoSubfieldLabel(
+/**
+ * Where a match sits inside an SEO, file or gallery field value: "Title" or
+ * "Description" of an SEO field, "Alt text" or "Title" of an asset ("Asset
+ * 2", "Alt text" in a gallery). Empty for other fields.
+ */
+export function subfieldSegments(
+  fieldType: string,
   fragments: ReadonlyArray<TextFragment> | undefined,
-): string | null {
-  const key = fragments?.[0]?.path[0];
-  return typeof key === 'string' ? (SEO_SUBFIELD_LABELS[key] ?? null) : null;
+): string[] {
+  const path = fragments?.[0]?.path ?? [];
+  const [first, second] = path;
+  switch (fieldType) {
+    case 'seo': {
+      const label =
+        typeof first === 'string' ? SEO_SUBFIELD_LABELS[first] : undefined;
+      return label ? [label] : [];
+    }
+    case 'file': {
+      const label =
+        typeof first === 'string' ? ASSET_SUBFIELD_LABELS[first] : undefined;
+      return label ? [label] : [];
+    }
+    case 'gallery': {
+      const label =
+        typeof second === 'string' ? ASSET_SUBFIELD_LABELS[second] : undefined;
+      return typeof first === 'number' && label
+        ? [`Asset ${first + 1}`, label]
+        : [];
+    }
+    default:
+      return [];
+  }
 }
 
 /**
@@ -117,8 +148,8 @@ export function seoSubfieldLabel(
  * enclosing block: the parent field's label (skipped when it repeats the
  * previous segment), then the block model's name, with a 1-based ordinal when
  * the parent field holds 2+ blocks of that model ("Quote 2"). Then the field's
- * own label. A match in an SEO field adds "Title" or "Description" from its
- * fragments.
+ * own label. A match in an SEO, file or gallery field adds where it sits
+ * (see `subfieldSegments`) from its fragments.
  *
  * `record` is the root record the field value was traversed from (as fetched,
  * nested), used to count sibling blocks.
@@ -155,9 +186,7 @@ export function fieldPathSegments({
 
   segments.push(fieldLabel(schema, fieldValue.fieldId, fieldValue.fieldApiKey));
 
-  const seoLabel =
-    fieldValue.fieldType === 'seo' ? seoSubfieldLabel(fragments) : null;
-  if (seoLabel) segments.push(seoLabel);
+  segments.push(...subfieldSegments(fieldValue.fieldType, fragments));
   return segments;
 }
 

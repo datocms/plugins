@@ -26,7 +26,12 @@ export type SearchableFieldType =
   | 'text'
   | 'slug'
   | 'structured_text'
-  | 'seo';
+  | 'seo'
+  | 'json'
+  | 'float'
+  | 'integer'
+  | 'file'
+  | 'gallery';
 
 export type BrowseCoordinates = {
   rootModelId: string;

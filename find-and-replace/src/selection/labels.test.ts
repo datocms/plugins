@@ -9,7 +9,7 @@ import {
   fieldPathSegments,
   modelRecordTitle,
   recordTitle,
-  seoSubfieldLabel,
+  subfieldSegments,
   titleFieldApiKey,
 } from './labels';
 import { traverseRecord } from './traversal';
@@ -172,7 +172,24 @@ describe('fieldPathSegments', () => {
       ]),
     ).toEqual(['SEO', 'Title']);
     expect(pathOf(record, owner('article-1', 'seo'))).toEqual(['SEO']);
-    expect(seoSubfieldLabel([{ path: [], start: 0, end: 1 }])).toBeNull();
+    expect(subfieldSegments('seo', [{ path: [], start: 0, end: 1 }])).toEqual(
+      [],
+    );
+  });
+
+  it('names the asset text a file or gallery match sits in', () => {
+    expect(
+      subfieldSegments('file', [{ path: ['alt'], start: 0, end: 3 }]),
+    ).toEqual(['Alt text']);
+    expect(
+      subfieldSegments('file', [{ path: ['title'], start: 0, end: 3 }]),
+    ).toEqual(['Title']);
+    expect(
+      subfieldSegments('gallery', [{ path: [1, 'alt'], start: 0, end: 3 }]),
+    ).toEqual(['Asset 2', 'Alt text']);
+    expect(
+      subfieldSegments('string', [{ path: ['alt'], start: 0, end: 3 }]),
+    ).toEqual([]);
   });
 
   it('falls back to the API key only when a label is empty', () => {

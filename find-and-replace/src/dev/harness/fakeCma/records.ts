@@ -572,8 +572,100 @@ function defaultAuthors(): StoredItem[] {
   ];
 }
 
+function product(
+  key: string,
+  createdAt: number,
+  attributes: Record<string, unknown>,
+): StoredItem {
+  return rootItem({
+    model: 'product',
+    key: `product:${key}`,
+    attributes,
+    status: 'published',
+    draftMode: false,
+    createdAt,
+  });
+}
+
+function asset(
+  uploadId: string,
+  alt: string | null,
+  title: string | null,
+): Record<string, unknown> {
+  return {
+    upload_id: uploadId,
+    alt,
+    title,
+    custom_data: {},
+    focal_point: null,
+  };
+}
+
+function productJson(name: string, price: string, description: string): string {
+  return JSON.stringify(
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name,
+      description,
+      offers: { '@type': 'Offer', price, priceCurrency: 'EUR' },
+    },
+    null,
+    2,
+  );
+}
+
+/** Text stored with HTML entities, localized prices, JSON and asset texts. */
+function defaultProducts(): StoredItem[] {
+  return [
+    product('widget-mini', 700, {
+      name: 'Widget Mini',
+      description: {
+        en: '<p>The <strong>Widget&nbsp;Mini</strong> fits in every bag &ndash; even on a caf&eacute; table.</p>\n<p>Ob Laptop oder Rechner, ob &uuml;ber Deinen Browser.</p>',
+        it: '<p>Il Widget Mini &egrave; perfetto per il caf&eacute;.</p>',
+      },
+      price: { en: 46.9, it: 46.9 },
+      stock: 12,
+      structured_data: {
+        en: productJson(
+          'Widget Mini',
+          '46.90',
+          'Fits in every bag, even on a café table.',
+        ),
+        it: productJson('Widget Mini', '46.90', 'Perfetto per il café.'),
+      },
+      image: asset('upload-widget-mini', 'Widget Mini on a café table', null),
+      gallery: [
+        asset('upload-widget-mini-front', 'Widget Mini, front', null),
+        asset('upload-widget-mini-back', null, 'Widget Mini, back'),
+      ],
+      available_from: '2026-11-01',
+      featured: true,
+    }),
+    product('widget-max', 800, {
+      name: 'Widget Max',
+      description: {
+        en: '<p>Twice the <em>Widget</em>, for 146.90&nbsp;&euro;.</p>',
+        it: '<p>Il doppio del Widget.</p>',
+      },
+      price: { en: 146.9, it: 46.9 },
+      stock: 3,
+      structured_data: { en: null, it: null },
+      image: null,
+      gallery: [],
+      available_from: null,
+      featured: false,
+    }),
+  ];
+}
+
 export function defaultRecords(): StoredItem[] {
-  return [...defaultArticles(), ...defaultPages(), ...defaultAuthors()];
+  return [
+    ...defaultArticles(),
+    ...defaultPages(),
+    ...defaultAuthors(),
+    ...defaultProducts(),
+  ];
 }
 
 export function supportingRecords(): StoredItem[] {

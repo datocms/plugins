@@ -1,5 +1,6 @@
 import {
   type CalloutView,
+  type CoverageView,
   DEFAULT_LIMITS,
   type DisabledReason,
   type FailDetail,
@@ -265,6 +266,10 @@ function validationReason(detail: FailDetail | null): string {
       return `The new value must be unique in "${field}".`;
     case 'required':
       return `"${field}" can't be empty.`;
+    case 'number':
+      return `"${field}" only takes numbers.`;
+    case 'whole_number':
+      return `"${field}" only takes whole numbers.`;
     case 'other':
       return `The new value doesn't pass the validations of "${field}".`;
   }
@@ -366,6 +371,10 @@ function replacementWarningText(
       return warning.count === 1
         ? 'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail'
         : `Slugs only allow lowercase letters, numbers, hyphens and underscores, so ${c.fmt(warning.count)} slug changes will probably fail`;
+    case 'number_format':
+      return warning.count === 1
+        ? "Number fields only take numbers (whole numbers for integer fields), so 1 change won't be saved"
+        : `Number fields only take numbers (whole numbers for integer fields), so ${c.fmt(warning.count)} changes won't be saved`;
   }
 }
 
@@ -427,6 +436,33 @@ function recordsSkippedText(
   return one
     ? '1 record was skipped. The reason is under it.'
     : `${n} records were skipped. The reason is under each one.`;
+}
+
+/** How the coverage line names a field type the search leaves out. */
+const FIELD_TYPE_NAMES: Readonly<Record<string, string>> = {
+  boolean: 'boolean',
+  color: 'color',
+  date: 'date',
+  date_time: 'date and time',
+  lat_lon: 'location',
+  link: 'single link',
+  links: 'multiple links',
+  video: 'external video',
+};
+
+function listText(parts: ReadonlyArray<string>): string {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** "Not searched: 3 date fields and 1 color field, as they don't hold text." */
+function coverageText(c: Counts, coverage: CoverageView): string {
+  const parts = coverage.unsearched.map(({ fieldType, count }) => {
+    const name = FIELD_TYPE_NAMES[fieldType] ?? fieldType.replace(/_/g, ' ');
+    return `${c.fmt(count)} ${name} ${count === 1 ? 'field' : 'fields'}`;
+  });
+  const total = coverage.unsearched.reduce((sum, { count }) => sum + count, 0);
+  return `Not searched: ${listText(parts)}, as ${total === 1 ? "it doesn't" : "they don't"} hold text.`;
 }
 
 function modelsFailedText(
@@ -877,6 +913,7 @@ export function createCopy(locale: string) {
     replacementWarning: (warning: ReplacementWarning) =>
       replacementWarningText(c, warning),
     note: (note: NoteView) => noteText(c, note),
+    coverage: (coverage: CoverageView) => coverageText(c, coverage),
     callout: (callout: CalloutView) => calloutCopy(c, callout),
 
     noResultsTitle,

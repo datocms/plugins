@@ -226,7 +226,9 @@ export type ReplacementWarning =
   /** Literal mode only: the replacement text itself matches the find settings (Acme → Acme Inc). */
   | { code: 'self_match' }
   /** Included slug matches whose new text has characters outside [a-z0-9_-]; they will probably fail validation. */
-  | { code: 'slug_format'; count: number };
+  | { code: 'slug_format'; count: number }
+  /** Included number matches whose new text isn't a number (a whole number for integer fields); they fail. */
+  | { code: 'number_format'; count: number };
 
 export type ReplacementCheck = {
   problem: ReplacementProblem | null;
@@ -313,7 +315,15 @@ export type FailReason =
 /** Validation details when the server gives them. `fieldLabel` comes from the schema by field id. */
 export type FailDetail = {
   fieldLabel: string | null;
-  code: 'length' | 'format' | 'unique' | 'required' | 'other';
+  code:
+    | 'length'
+    | 'format'
+    | 'unique'
+    | 'required'
+    /** A number field got text that isn't a number, or an integer field a fraction. */
+    | 'number'
+    | 'whole_number'
+    | 'other';
 };
 
 export type RecordRunStatus =
@@ -596,6 +606,11 @@ export type CalloutView =
       retryable: boolean;
     };
 
+/** Fields the search left out, as they hold no text (dates, links, colors…). */
+export type CoverageView = {
+  unsearched: ReadonlyArray<{ fieldType: string; count: number }>;
+};
+
 export type NoResultsView = {
   /** "Every match has been replaced." */
   followsRun: boolean;
@@ -721,6 +736,8 @@ export type FindReplaceSnapshot = {
   callouts: ReadonlyArray<CalloutView>;
   /** Non-null exactly when `body === 'noResults'`. */
   noResults: NoResultsView | null;
+  /** Shown with results and no results, when the models in scope have fields that aren't searched. */
+  coverage: CoverageView | null;
 
   selection: SelectionView;
   /**

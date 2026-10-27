@@ -21,6 +21,9 @@ import type {
 import type { InclusionMatch } from './inclusion';
 import { recordKeyOf } from './links';
 
+/** Fields whose texts (SEO title and description, asset alt and title) are listed apart. */
+const SUBFIELD_TYPES: ReadonlySet<string> = new Set(['seo', 'file', 'gallery']);
+
 export type MatchEntry = InclusionMatch & {
   modelId: string;
   target: DiscoveredTarget;
@@ -28,7 +31,7 @@ export type MatchEntry = InclusionMatch & {
 };
 
 export type FieldEntry = {
-  /** fieldValueIdentity (plus the subfield for SEO, whose title and description are listed apart). */
+  /** fieldValueIdentity (plus the subfield for SEO and assets, whose texts are listed apart). */
   key: string;
   path: ReadonlyArray<string>;
   locale: string | null;
@@ -180,10 +183,9 @@ export class ResultSet {
     target: DiscoveredTarget,
   ): FieldEntry {
     const { field } = target.presentation;
-    const key =
-      ref.fieldValue.fieldType === 'seo'
-        ? `${identity}|${field.pathSegments[field.pathSegments.length - 1] ?? ''}`
-        : identity;
+    const key = SUBFIELD_TYPES.has(ref.fieldValue.fieldType)
+      ? `${identity}|${field.pathSegments.join('|')}`
+      : identity;
     const existing = this.fieldsByKey.get(key);
     if (existing) return existing;
 
