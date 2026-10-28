@@ -52,58 +52,6 @@ export function isExactMatchCompatibleFieldType(
   return SEARCHABLE_FIELD_TYPE_SET.has(fieldType);
 }
 
-/** Fields that hold blocks: their blocks' fields are searched instead. */
-const BLOCK_CONTAINER_TYPES: ReadonlySet<string> = new Set([
-  'rich_text',
-  'single_block',
-]);
-
-export type UnsearchedFieldCount = {
-  fieldType: ApiTypes.Field['field_type'];
-  count: number;
-};
-
-/**
- * Fields of the given root models (and of the blocks they can hold) whose
- * type isn't searched, counted by type, most first.
- */
-export function unsearchedFieldCounts(
-  schema: SchemaIndex,
-  rootModelIds: ReadonlyArray<string>,
-): UnsearchedFieldCount[] {
-  const roots = new Set(rootModelIds);
-  const modelIds = [...roots];
-  for (const [
-    blockModelId,
-    reachable,
-  ] of schema.reachableRootModelIdsByBlockModelId) {
-    if ([...reachable].some((rootId) => roots.has(rootId))) {
-      modelIds.push(blockModelId);
-    }
-  }
-
-  const counts = new Map<ApiTypes.Field['field_type'], number>();
-  for (const modelId of modelIds) {
-    for (const field of schema.fieldsByModelId.get(modelId) ?? []) {
-      if (
-        field.exactMatchCompatible ||
-        BLOCK_CONTAINER_TYPES.has(field.fieldType)
-      ) {
-        continue;
-      }
-      counts.set(field.fieldType, (counts.get(field.fieldType) ?? 0) + 1);
-    }
-  }
-
-  return [...counts]
-    .map(([fieldType, count]) => ({ fieldType, count }))
-    .sort(
-      (left, right) =>
-        right.count - left.count ||
-        left.fieldType.localeCompare(right.fieldType),
-    );
-}
-
 function fieldsForModel(
   source: FieldsByItemTypeId,
   modelId: string,

@@ -274,7 +274,7 @@ export function invalidNumberValue(
 }
 
 /** New text for a number field that the field won't take. */
-export function rejectsNumberText(
+function rejectsNumberText(
   fieldType: 'float' | 'integer',
   text: string,
 ): boolean {
@@ -282,6 +282,19 @@ export function rejectsNumberText(
   if (value === null) return false;
   if (typeof value !== 'number') return true;
   return fieldType === 'integer' && !Number.isInteger(value);
+}
+
+/**
+ * A match in a number field whose replacement leaves a number the field won't
+ * take: "abc", or a decimal in an integer field.
+ */
+export function rejectsNumberEdit(
+  fieldType: 'float' | 'integer',
+  match: Pick<ExactMatchRef, 'context'>,
+  inserted: string,
+): boolean {
+  const { before, after } = match.context;
+  return rejectsNumberText(fieldType, before + inserted + after);
 }
 
 export function replaceExactMatches(
@@ -308,14 +321,18 @@ export function replaceExactMatches(
   }
 
   if (isNumberFieldType(fieldValue.field.fieldType)) {
-    const [match] = matches;
-    const value = numberValue(replacementFor(replacement, match));
+    const text =
+      typeof fieldValue.value === 'number' ? String(fieldValue.value) : '';
+    const edits = [
+      ...fragmentEdits(matches, replacement, AS_TYPED).values(),
+    ].flatMap((group) => group.edits);
+    const value = numberValue(applyTextEdits(text, edits));
     return {
       supported: true,
       changed: value !== fieldValue.value,
       value,
-      replacementCount: 1,
-      ...previewFor(match, replacement),
+      replacementCount: matches.length,
+      ...previewFor(matches[0], replacement),
     };
   }
 

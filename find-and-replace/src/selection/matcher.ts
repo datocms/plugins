@@ -713,9 +713,9 @@ function isNumberField(fieldValue: TraversedFieldValue): boolean {
 }
 
 /**
- * A number field matches as a whole value: a literal search when it is the
- * same number ("46.90" finds 46.9), a regular expression when it matches all
- * of the number as written ("46.9").
+ * A number field matches like text, on its value as written ("46.9"), so
+ * whole-word matching works as it does anywhere else. A literal search for the
+ * same number written another way ("46.90") also matches the whole value.
  */
 function numberMatches(
   fieldValue: TraversedFieldValue,
@@ -732,30 +732,28 @@ function numberMatches(
   }
 
   const text = String(value);
-  const found =
-    spec.kind === 'literal'
-      ? parseNumber(spec.pattern) === value
-        ? {
-            occurrenceIndex: 0,
-            start: 0,
-            end: text.length,
-            matchedText: text,
-            context: matchContext(text, 0, text.length),
-          }
-        : undefined
-      : match()(text).find(
-          (candidate) => candidate.start === 0 && candidate.end === text.length,
-        );
-  if (!found) return [];
+  let found = match()(text);
+  if (
+    found.length === 0 &&
+    spec.kind === 'literal' &&
+    parseNumber(spec.pattern) === value
+  ) {
+    found = [
+      {
+        occurrenceIndex: 0,
+        start: 0,
+        end: text.length,
+        matchedText: text,
+        context: matchContext(text, 0, text.length),
+      },
+    ];
+  }
 
-  return [
-    {
-      ...found,
-      occurrenceIndex: 0,
-      flowPath: [],
-      fragments: [{ path: [], start: 0, end: text.length }],
-    },
-  ];
+  return found.map((candidate) => ({
+    ...candidate,
+    flowPath: [],
+    fragments: [{ path: [], start: candidate.start, end: candidate.end }],
+  }));
 }
 
 function samePath(left: ValuePath, right: ValuePath): boolean {

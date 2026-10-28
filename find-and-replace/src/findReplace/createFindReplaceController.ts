@@ -6,7 +6,7 @@
 
 import { publishRecord } from '../replacement/publishRecord';
 import { replaceInRecord } from '../replacement/replaceRecord';
-import { rejectsNumberText } from '../replacement/valueReplacement';
+import { rejectsNumberEdit } from '../replacement/valueReplacement';
 import type { DiscoveredTarget } from '../selection/discoverTargets';
 import {
   type DiscoveryTimers,
@@ -21,11 +21,9 @@ import {
 } from '../selection/identity';
 import { captureGroupInfo } from '../selection/matcher';
 import { RequestPool } from '../selection/requestPool';
-import { unsearchedFieldCounts } from '../selection/schemaIndex';
 import type { MatcherSpec } from '../selection/types';
 import {
   type CalloutView,
-  type CoverageView,
   type CreateFindReplaceControllerOptions,
   DEFAULT_LIMITS,
   type FindOption,
@@ -182,7 +180,7 @@ function countMatch(
   if (
     (fieldType === 'float' || fieldType === 'integer') &&
     plan.inserted !== null &&
-    rejectsNumberText(fieldType, plan.inserted)
+    rejectsNumberEdit(fieldType, match.ref, plan.inserted)
   ) {
     tally.numberFormatMatches += 1;
   }
@@ -206,11 +204,6 @@ class FindReplaceStore {
   private inclusion: InclusionState = initialInclusion();
   private inclusionRevision = 0;
   private modelFilter: string | null = null;
-  /** The coverage line for the model filter it was computed for. */
-  private coverage: {
-    modelFilter: string | null;
-    view: CoverageView | null;
-  } | null = null;
   /** Records re-sorted after a pass (for one result set). */
   private displayOrder: { resultsId: number; records: RecordEntry[] } | null =
     null;
@@ -1110,20 +1103,6 @@ class FindReplaceStore {
     };
   }
 
-  /** Fields of the models in scope that aren't searched (null when none). */
-  private coverageView(): CoverageView | null {
-    if (this.coverage?.modelFilter === this.modelFilter) {
-      return this.coverage.view;
-    }
-    const rootModelIds = this.search.models
-      .map((model) => model.id)
-      .filter((modelId) => this.inFilter(modelId));
-    const unsearched = unsearchedFieldCounts(this.options.schema, rootModelIds);
-    const view = unsearched.length > 0 ? { unsearched } : null;
-    this.coverage = { modelFilter: this.modelFilter, view };
-    return view;
-  }
-
   private noResultsView(): NoResultsView {
     const { search } = this;
     const settings = search.resultsFind ?? search.find;
@@ -1312,10 +1291,6 @@ class FindReplaceStore {
       noResults: reuse(
         previous?.noResults,
         body === 'noResults' ? this.noResultsView() : null,
-      ),
-      coverage: reuse(
-        previous?.coverage,
-        body === 'noResults' || body === 'results' ? this.coverageView() : null,
       ),
       selection: reuse(previous?.selection, {
         ui: selectionUi,

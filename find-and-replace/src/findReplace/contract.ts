@@ -606,11 +606,6 @@ export type CalloutView =
       retryable: boolean;
     };
 
-/** Fields the search left out, as they hold no text (dates, links, colors…). */
-export type CoverageView = {
-  unsearched: ReadonlyArray<{ fieldType: string; count: number }>;
-};
-
 export type NoResultsView = {
   /** "Every match has been replaced." */
   followsRun: boolean;
@@ -736,8 +731,6 @@ export type FindReplaceSnapshot = {
   callouts: ReadonlyArray<CalloutView>;
   /** Non-null exactly when `body === 'noResults'`. */
   noResults: NoResultsView | null;
-  /** Shown with results and no results, when the models in scope have fields that aren't searched. */
-  coverage: CoverageView | null;
 
   selection: SelectionView;
   /**

@@ -76,22 +76,7 @@ function Results({
         selectionDisabled={selection.ui === 'disabled'}
         runActive={runActive}
       />
-      <Coverage snapshot={snapshot} copy={copy} />
     </>
-  );
-}
-
-/** Which fields the search left out, under the results (or no results). */
-function Coverage({
-  snapshot,
-  copy,
-}: {
-  snapshot: FindReplaceSnapshot;
-  copy: Copy;
-}) {
-  if (!snapshot.coverage) return null;
-  return (
-    <p className="fr-note fr-coverage">{copy.coverage(snapshot.coverage)}</p>
   );
 }
 
@@ -150,7 +135,6 @@ export function Body({
               copy={copy}
             />
           )}
-          <Coverage snapshot={snapshot} copy={copy} />
         </div>
       );
     case 'results':

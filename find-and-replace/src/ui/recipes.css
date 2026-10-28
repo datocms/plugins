@@ -418,13 +418,6 @@
   line-height: 1.3;
   color: var(--color--ink-subtle);
 }
-/* Under the results card, or centred under an empty search. */
-.fr-coverage {
-  margin: var(--spacing-m) 0 0;
-}
-.fr-page--fill > .fr-coverage {
-  text-align: center;
-}
 .fr-summary {
   display: none;
   margin: 0 0 10px 2px;

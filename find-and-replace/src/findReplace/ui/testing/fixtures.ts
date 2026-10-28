@@ -203,7 +203,6 @@ export function idleSnapshot(): FindReplaceSnapshot {
     note: null,
     callouts: [],
     noResults: null,
-    coverage: null,
     selection: { ui: 'hidden', all: 'all' },
     records: [],
     run: {

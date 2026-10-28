@@ -8,7 +8,6 @@ import {
   searchFor,
   setupController,
 } from './findReplace.fixtures';
-import { createCopy } from './ui/copy';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -159,8 +158,8 @@ describe('number fields', () => {
     const harness = setup();
     const snapshot = await searchFor(harness, '46.90');
 
-    // 146.9 is a different price, so it isn't a match; the price text in
-    // the structured data is.
+    // 146.9 doesn't hold "46.90", so it isn't a match; the price text in the
+    // structured data is.
     expect(
       snapshot.records.map((record) => [
         record.key,
@@ -189,7 +188,7 @@ describe('number fields', () => {
     );
   });
 
-  it('only matches a whole value', async () => {
+  it('matches like text, so whole-word matching keeps to whole values', async () => {
     const harness = setup();
     const priceMatches = (snapshot: FindReplaceSnapshot) =>
       snapshot.records
@@ -197,15 +196,34 @@ describe('number fields', () => {
         .filter((field) => field.path[0] === 'Price')
         .flatMap((field) => field.matches.map((match) => match.text));
 
-    expect(priceMatches(await searchFor(harness, '46'))).toEqual([]);
-    harness.controller.setOption('regex', true);
-    expect(priceMatches(await searchFor(harness, '\\d+\\.9'))).toEqual([
+    // 146.9 holds "46.9" too, as it would in a text field.
+    expect(priceMatches(await searchFor(harness, '46.9'))).toEqual([
       '46.9',
       '46.9',
-      '146.9',
+      '46.9',
       '46.9',
     ]);
-    expect(priceMatches(await searchFor(harness, '46'))).toEqual([]);
+    harness.controller.setOption('wholeWord', true);
+    expect(priceMatches(await searchFor(harness, '46.9'))).toHaveLength(3);
+    expect(priceMatches(await searchFor(harness, '46.90'))).toHaveLength(3);
+    harness.controller.setOption('wholeWord', false);
+    harness.controller.setOption('regex', true);
+    expect(priceMatches(await searchFor(harness, '^1\\d'))).toEqual(['14']);
+  });
+
+  it('replaces inside a number as it would in text', async () => {
+    const harness = setup();
+    await searchFor(harness, '46.9');
+    harness.controller.setReplacementText('49.9');
+    await replaceAll(harness);
+    expect(stored(harness, 'pr2').price).toEqual({ en: 149.9, it: 49.9 });
+
+    await searchFor(harness, '.');
+    harness.controller.setReplacementText(',');
+    expect(harness.snapshot().replacementCheck.warnings).toContainEqual({
+      code: 'number_format',
+      count: 4,
+    });
   });
 
   it("warns about, and doesn't save, text a number field won't take", async () => {
@@ -284,32 +302,5 @@ describe('asset fields', () => {
         alt: 'Notebook keyboard',
       }),
     ]);
-  });
-});
-
-describe('coverage', () => {
-  it('says which fields the search left out', async () => {
-    const harness = setup();
-    const snapshot = await searchFor(harness, 'Laptop');
-    expect(snapshot.coverage).toEqual({
-      unsearched: [
-        { fieldType: 'date', count: 1 },
-        { fieldType: 'link', count: 1 },
-      ],
-    });
-    expect(
-      createCopy('en').coverage(snapshot.coverage ?? { unsearched: [] }),
-    ).toBe(
-      "Not searched: 1 date field and 1 single link field, as they don't hold text.",
-    );
-
-    const none = await searchFor(harness, 'nothing like this');
-    expect(none.body).toBe('noResults');
-    expect(none.coverage).toEqual(snapshot.coverage);
-  });
-
-  it('is left out when every field in scope is searched', async () => {
-    const harness = setupController();
-    expect((await searchFor(harness, 'acme')).coverage).toBeNull();
   });
 });

@@ -1,6 +1,5 @@
 import {
   type CalloutView,
-  type CoverageView,
   DEFAULT_LIMITS,
   type DisabledReason,
   type FailDetail,
@@ -436,33 +435,6 @@ function recordsSkippedText(
   return one
     ? '1 record was skipped. The reason is under it.'
     : `${n} records were skipped. The reason is under each one.`;
-}
-
-/** How the coverage line names a field type the search leaves out. */
-const FIELD_TYPE_NAMES: Readonly<Record<string, string>> = {
-  boolean: 'boolean',
-  color: 'color',
-  date: 'date',
-  date_time: 'date and time',
-  lat_lon: 'location',
-  link: 'single link',
-  links: 'multiple links',
-  video: 'external video',
-};
-
-function listText(parts: ReadonlyArray<string>): string {
-  if (parts.length <= 1) return parts.join('');
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-}
-
-/** "Not searched: 3 date fields and 1 color field, as they don't hold text." */
-function coverageText(c: Counts, coverage: CoverageView): string {
-  const parts = coverage.unsearched.map(({ fieldType, count }) => {
-    const name = FIELD_TYPE_NAMES[fieldType] ?? fieldType.replace(/_/g, ' ');
-    return `${c.fmt(count)} ${name} ${count === 1 ? 'field' : 'fields'}`;
-  });
-  const total = coverage.unsearched.reduce((sum, { count }) => sum + count, 0);
-  return `Not searched: ${listText(parts)}, as ${total === 1 ? "it doesn't" : "they don't"} hold text.`;
 }
 
 function modelsFailedText(
@@ -913,7 +885,6 @@ export function createCopy(locale: string) {
     replacementWarning: (warning: ReplacementWarning) =>
       replacementWarningText(c, warning),
     note: (note: NoteView) => noteText(c, note),
-    coverage: (coverage: CoverageView) => coverageText(c, coverage),
     callout: (callout: CalloutView) => calloutCopy(c, callout),
 
     noResultsTitle,
