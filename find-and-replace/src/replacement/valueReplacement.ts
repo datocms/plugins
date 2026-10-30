@@ -1,4 +1,5 @@
 import {
+  attributeEncoder,
   encodedTextEncoder,
   jsonTextEncoder,
   storesMarkup,
@@ -156,7 +157,7 @@ function replacementFor(
   return typeof replacement === 'string' ? replacement : replacement(match);
 }
 
-type Encode = (text: string) => string;
+type Encode = (text: string, match: ExactMatchRef) => string;
 
 const AS_TYPED: Encode = (text) => text;
 
@@ -165,8 +166,14 @@ function encoderFor(fieldValue: TraversedFieldValue): Encode {
   const { value, field } = fieldValue;
   if (typeof value !== 'string') return AS_TYPED;
   switch (field.fieldType) {
-    case 'text':
-      return encodedTextEncoder(value, storesMarkup(field));
+    case 'text': {
+      const encode = encodedTextEncoder(value, storesMarkup(field));
+      const encodeUrl = attributeEncoder(encode);
+      return (text, match) =>
+        match.fragments[0]?.subfield === 'link_url'
+          ? encodeUrl(text)
+          : encode(text);
+    }
     case 'json':
       return jsonTextEncoder(value);
     default:
@@ -187,7 +194,7 @@ function fragmentEdits(
   const groups = new Map<string, { path: ValuePath; edits: TextEdit[] }>();
 
   for (const match of matches) {
-    const inserted = encode(replacementFor(replacement, match));
+    const inserted = encode(replacementFor(replacement, match), match);
     for (const [index, fragment] of match.fragments.entries()) {
       const key = pathKey(fragment.path);
       const group = groups.get(key) ?? {

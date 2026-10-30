@@ -21,8 +21,14 @@ import type {
 import type { InclusionMatch } from './inclusion';
 import { recordKeyOf } from './links';
 
-/** Fields whose texts (SEO title and description, asset alt and title) are listed apart. */
-const SUBFIELD_TYPES: ReadonlySet<string> = new Set(['seo', 'file', 'gallery']);
+/** Fields whose texts (SEO title and description, asset alt and title, link URLs) are listed apart. */
+const SUBFIELD_TYPES: ReadonlySet<string> = new Set([
+  'seo',
+  'file',
+  'gallery',
+  'text',
+  'structured_text',
+]);
 
 export type MatchEntry = InclusionMatch & {
   modelId: string;

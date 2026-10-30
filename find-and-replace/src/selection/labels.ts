@@ -112,13 +112,20 @@ function blockOrdinal(
 /**
  * Where a match sits inside an SEO, file or gallery field value: "Title" or
  * "Description" of an SEO field, "Alt text" or "Title" of an asset ("Asset
- * 2", "Alt text" in a gallery). Empty for other fields.
+ * 2", "Alt text" in a gallery). "Link URL" for the URL of a link in text.
+ * Empty otherwise.
  */
 export function subfieldSegments(
   fieldType: string,
   fragments: ReadonlyArray<TextFragment> | undefined,
 ): string[] {
-  const path = fragments?.[0]?.path ?? [];
+  const fragment = fragments?.[0];
+  if (fragment?.subfield === 'link_url') return ['Link URL'];
+  return valueSubfieldSegments(fieldType, fragment?.path ?? []);
+}
+
+/** The SEO, file or gallery part of a match at `path` in the field value. */
+function valueSubfieldSegments(fieldType: string, path: ValuePath): string[] {
   const [first, second] = path;
   switch (fieldType) {
     case 'seo': {

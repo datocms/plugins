@@ -105,11 +105,15 @@ export type MatchContext = {
   afterTruncated: boolean;
 };
 
+/** Text that isn't prose: the URL of a link (an HTML `href`, a Structured Text `url`). */
+export type TextSubfield = 'link_url';
+
 /** UTF-16 offsets within the string at `path`, relative to the field value. */
 export type TextFragment = {
   path: ValuePath;
   start: number;
   end: number;
+  subfield?: TextSubfield;
 };
 
 /**

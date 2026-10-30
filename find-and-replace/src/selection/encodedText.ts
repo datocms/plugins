@@ -7,7 +7,7 @@
  */
 
 import type { FlowSegment, StructuredTextFlow } from './matcher';
-import type { SchemaField } from './types';
+import type { SchemaField, TextSubfield } from './types';
 
 /** The HTML 4 entities for U+00A0 to U+00FF, in code point order. */
 const LATIN_1_ENTITIES =
@@ -200,7 +200,14 @@ class FlowBuilder {
   constructor(
     /** Shows non-breaking spaces as plain spaces, as editors see them. */
     private readonly nbspAsSpace: boolean,
+    private readonly subfield?: TextSubfield,
   ) {}
+
+  private segment(segment: FlowSegment): void {
+    this.segments.push(
+      this.subfield ? { ...segment, subfield: this.subfield } : segment,
+    );
+  }
 
   private visible(text: string): string {
     return this.nbspAsSpace ? text.replace(NBSP_ALL, ' ') : text;
@@ -211,7 +218,7 @@ class FlowBuilder {
     if (end <= start) return;
     const projectedStart = this.text.length;
     this.text += this.visible(raw.slice(start, end));
-    this.segments.push({
+    this.segment({
       path: [],
       projectedStart,
       projectedEnd: this.text.length,
@@ -223,7 +230,7 @@ class FlowBuilder {
   encoded(start: number, end: number, char: string): void {
     const projectedStart = this.text.length;
     this.text += this.visible(char);
-    this.segments.push({
+    this.segment({
       path: [],
       projectedStart,
       projectedEnd: this.text.length,
@@ -302,7 +309,9 @@ const RAW_TEXT_TAGS = new Set(['script', 'style']);
 
 const TAG_NAME_AT = /<(\/?)([A-Za-z][A-Za-z0-9-]*)/y;
 
-type Tag = { end: number; boundary: boolean };
+type Range = { start: number; end: number };
+
+type Tag = { end: number; boundary: boolean; href?: Range };
 
 /** The end of a tag's `>`, skipping quoted attribute values; -1 if unclosed. */
 function tagEnd(raw: string, from: number): number {
@@ -318,6 +327,26 @@ function tagEnd(raw: string, from: number): number {
     }
   }
   return -1;
+}
+
+const HREF_ATTRIBUTE = /\shref\s*=\s*("([^"]*)"|'([^']*)'|[^\s"'=<>`]+)/i;
+
+/** The value of the `href` attribute of the tag from `start` to `end`. */
+function hrefRange(raw: string, start: number, end: number): Range | undefined {
+  const match = HREF_ATTRIBUTE.exec(raw.slice(start, end));
+  const value = match?.[1];
+  if (!match || value === undefined) return undefined;
+  const quoted = match[2] ?? match[3];
+  const valueStart =
+    start +
+    match.index +
+    match[0].length -
+    value.length +
+    (quoted === undefined ? 0 : 1);
+  const length = quoted === undefined ? value.length : quoted.length;
+  return length > 0
+    ? { start: valueStart, end: valueStart + length }
+    : undefined;
 }
 
 /** A tag or comment starting at `index` (a `<`), or null for a literal `<`. */
@@ -342,11 +371,22 @@ function tagAt(raw: string, index: number): Tag | null {
     const closeEnd = close < 0 ? -1 : tagEnd(raw, close);
     return { end: closeEnd < 0 ? raw.length : closeEnd, boundary: true };
   }
+  if (!closing && name === 'a') {
+    return { end, boundary: true, href: hrefRange(raw, index, end) };
+  }
   return { end, boundary: BOUNDARY_TAGS.has(name) };
 }
 
-/** An entity (`char` is what it stands for) or a tag (`char` is null). */
-type Token = { end: number; char: string | null; boundary: boolean };
+/**
+ * An entity (`char` is what it stands for) or a tag (`char` is null, `href`
+ * the URL of a link).
+ */
+type Token = {
+  end: number;
+  char: string | null;
+  boundary: boolean;
+  href?: Range;
+};
 
 /** The entity, or with `markup` the tag, starting at `index`. */
 function tokenAt(raw: string, index: number, markup: boolean): Token | null {
@@ -359,7 +399,7 @@ function tokenAt(raw: string, index: number, markup: boolean): Token | null {
   }
   if (markup && char === '<') {
     const tag = tagAt(raw, index);
-    return tag ? { end: tag.end, char: null, boundary: tag.boundary } : null;
+    return tag ? { ...tag, char: null } : null;
   }
   return null;
 }
@@ -370,33 +410,50 @@ export function storesMarkup(field: SchemaField): boolean {
   return field.fieldType === 'text' && appearance?.editor === 'wysiwyg';
 }
 
-/**
- * The decoded text of a text field value. With `markup` (HTML editor) tags
- * are left out and block tags split the text into separate flows; otherwise
- * only entities are decoded. Non-breaking spaces read as spaces.
- */
-export function projectEncodedText(
+function decodeInto(
+  flow: FlowBuilder,
   raw: string,
+  from: number,
+  to: number,
   markup: boolean,
-): StructuredTextFlow[] {
-  const flow = new FlowBuilder(true);
-  let runStart = 0;
-  let index = 0;
+): void {
+  let runStart = from;
+  let index = from;
 
-  while (index < raw.length) {
+  while (index < to) {
     const token = tokenAt(raw, index, markup);
-    if (!token) {
+    if (!token || token.end > to) {
       index += 1;
       continue;
     }
     flow.verbatim(raw, runStart, index);
     if (token.char !== null) flow.encoded(index, token.end, token.char);
     if (token.boundary) flow.flush();
+    if (token.href) {
+      const link = new FlowBuilder(false, 'link_url');
+      decodeInto(link, raw, token.href.start, token.href.end, false);
+      link.flush();
+      flow.flows.push(...link.flows);
+    }
     index = token.end;
     runStart = index;
   }
 
-  flow.verbatim(raw, runStart, raw.length);
+  flow.verbatim(raw, runStart, to);
+}
+
+/**
+ * The decoded text of a text field value. With `markup` (HTML editor) tags
+ * are left out, block tags split the text into separate flows, and each link
+ * URL is a flow of its own; otherwise only entities are decoded.
+ * Non-breaking spaces read as spaces.
+ */
+export function projectEncodedText(
+  raw: string,
+  markup: boolean,
+): StructuredTextFlow[] {
+  const flow = new FlowBuilder(true);
+  decodeInto(flow, raw, 0, raw.length, markup);
   flow.flush();
   return flow.flows;
 }
@@ -433,6 +490,19 @@ export function encodedTextEncoder(
     }
     return result;
   };
+}
+
+const QUOTE_ENTITIES: Readonly<Record<string, string>> = {
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/** Encodes text inserted into an attribute value (a link URL): quotes too. */
+export function attributeEncoder(
+  encode: (text: string) => string,
+): (text: string) => string {
+  return (text) =>
+    encode(text).replace(/["']/g, (quote) => QUOTE_ENTITIES[quote] ?? quote);
 }
 
 const JSON_ESCAPES: Readonly<Record<string, string>> = {

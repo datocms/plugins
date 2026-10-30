@@ -337,3 +337,109 @@ describe('replaceMatchingText', () => {
     expect(result.replacementCount).toBe(1);
   });
 });
+
+function htmlFieldValue(value: string): TraversedFieldValue {
+  const base = fieldValue('text', value);
+  return {
+    ...base,
+    field: {
+      ...base.field,
+      raw: { appearance: { editor: 'wysiwyg' } } as unknown as ApiTypes.Field,
+    },
+  };
+}
+
+describe('unicode normalization', () => {
+  const decomposed = 'Marktfu' + '\u0308' + 'hrer';
+
+  it('matches decomposed text and rewrites only the replaced span', () => {
+    const muller = 'Mu' + '\u0308' + 'ller';
+    const result = replaceMatchingText(
+      fieldValue('string', `${decomposed} und Marktführer bei ${muller}`),
+      matcher('Marktführer'),
+      'Marktleader',
+    );
+    expect(result.replacementCount).toBe(2);
+    expect(result.value).toBe(`Marktleader und Marktleader bei ${muller}`);
+  });
+
+  it('matches a decomposed search in composed text', () => {
+    expect(
+      matchesForTraversedField(
+        fieldValue('string', 'Marktführer'),
+        matcher(decomposed),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('composes a combining mark stored as an entity', () => {
+    const result = replaceMatchingText(
+      fieldValue('text', 'Herr Mu&#776;ller'),
+      matcher('Müller'),
+      'Meier',
+    );
+    expect(result.value).toBe('Herr Meier');
+  });
+});
+
+describe('link URLs', () => {
+  it('replaces the href of a link in HTML, escaping it as an attribute', () => {
+    const value = htmlFieldValue(
+      '<p><a href="https://old.example.com/?a=1&amp;b=2">old.example.com</a></p>',
+    );
+    const [url, text] = matchesForTraversedField(
+      value,
+      matcher('old.example.com'),
+    );
+    expect(url?.fragments).toEqual([
+      { path: [], start: 20, end: 35, subfield: 'link_url' },
+    ]);
+    expect(text?.fragments).toEqual([{ path: [], start: 50, end: 65 }]);
+
+    expect(
+      replaceMatchingText(value, matcher('old.example.com/?a=1&b'), 'x"y&b')
+        .value,
+    ).toBe('<p><a href="https://x&quot;y&amp;b=2">old.example.com</a></p>');
+  });
+
+  it('replaces the URL of a Structured Text link', () => {
+    const result = replaceMatchingText(
+      fieldValue('structured_text', {
+        schema: 'dast',
+        document: {
+          type: 'root',
+          children: [
+            {
+              type: 'paragraph',
+              children: [
+                {
+                  type: 'link',
+                  url: 'https://old.example.com/a',
+                  children: [{ type: 'span', value: 'Read more' }],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      matcher('old.example.com'),
+      'new.example.com',
+    );
+    expect(result.replacementCount).toBe(1);
+    expect(result.value).toMatchObject({
+      document: {
+        children: [
+          {
+            children: [
+              {
+                type: 'link',
+                url: 'https://new.example.com/a',
+                children: [{ type: 'span', value: 'Read more' }],
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+});

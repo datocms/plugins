@@ -25,6 +25,10 @@ const SCHEMA_ORG = `{
   "offers": { "price": "46.90", "priceCurrency": "EUR" }
 }`;
 
+/** "Marktführer" and "Müller", their "ü" stored as "u" plus a combining mark. */
+const DECOMPOSED_LEADER = 'Marktfu\u0308hrer';
+const DECOMPOSED_MULLER = 'Mu\u0308ller';
+
 function products(): FixtureRecord[] {
   return [
     {
@@ -70,8 +74,9 @@ function products(): FixtureRecord[] {
       modelId: 'product',
       attributes: {
         name: 'Laptop Max',
-        description: '<p>Nothing to see</p>',
-        notes: null,
+        description:
+          '<p>Nothing to see, visit <a href="https://old.example.com/shop?x=1&amp;y=2">old.example.com</a></p>',
+        notes: `${DECOMPOSED_LEADER}, Marktführer, ${DECOMPOSED_MULLER}`,
         price: { en: 146.9, it: 46.9 },
         stock: 3,
         schema: null,
@@ -302,5 +307,38 @@ describe('asset fields', () => {
         alt: 'Notebook keyboard',
       }),
     ]);
+  });
+});
+
+describe('unicode normalization', () => {
+  it('finds letters stored decomposed and leaves the rest as stored', async () => {
+    const harness = setup();
+    const snapshot = await searchFor(harness, 'Marktführer');
+    expect(allMatches(snapshot).map((match) => match.text)).toEqual([
+      'Marktführer',
+      'Marktführer',
+    ]);
+
+    harness.controller.setReplacementText('Marktleader');
+    await replaceAll(harness);
+    expect(stored(harness, 'pr2').notes).toBe(
+      `Marktleader, Marktleader, ${DECOMPOSED_MULLER}`,
+    );
+  });
+});
+
+describe('link URLs', () => {
+  it('lists link URLs apart and replaces them', async () => {
+    const harness = setup();
+    const snapshot = await searchFor(harness, 'old.example.com');
+    expect(
+      recordByKey(snapshot, 'product:pr2').fields.map((field) => field.path),
+    ).toEqual([['Description', 'Link URL'], ['Description']]);
+
+    harness.controller.setReplacementText('new.example.com');
+    await replaceAll(harness);
+    expect(stored(harness, 'pr2').description).toBe(
+      '<p>Nothing to see, visit <a href="https://new.example.com/shop?x=1&amp;y=2">new.example.com</a></p>',
+    );
   });
 });

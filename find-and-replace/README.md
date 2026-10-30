@@ -12,7 +12,7 @@ By default anyone whose role can read and update a model can use it on that mode
 
 ## Finding text
 
-Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, SEO fields, the text values of JSON fields, the alt and title text set on asset fields, number fields and text inside blocks at any depth, in every locale. In projects with more than 10,000 records, press Enter to start the search.
+Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, link URLs, SEO fields, the text values of JSON fields, the alt and title text set on asset fields, number fields and text inside blocks at any depth, in every locale. In projects with more than 10,000 records, press Enter to start the search.
 
 You can match case, match whole words, or use a regular expression (JavaScript syntax, with `$1`, `$<name>` and `$&` available in the replacement). Without whole-word matching, "Startup" also matches inside "Startups".
 
@@ -20,7 +20,7 @@ You can match case, match whole words, or use a regular expression (JavaScript s
 
 Type the new text in **Replace with** and every match turns into a before-and-after preview. Uncheck the records or single matches you want to keep, click **Replace N matches** and confirm. To delete the matched text, turn on **Replace with nothing**; an empty replacement field on its own never deletes anything.
 
-Slug matches start unchecked, because changing a slug changes the record's URL. In Structured Text, link text can be replaced but the link and any linked record are left alone.
+Slug matches start unchecked, because changing a slug changes the record's URL. Links to other records are left alone.
 
 Records are updated one at a time. If someone edited a record after your search, it's skipped rather than overwritten, and **Search again** picks up the current text. A record that fails is usually breaking a field validation, and the reason is shown under it. Keep the page open until the run finishes. A single search stops at 10,000 matches; replace those and search again for the rest.
 
@@ -34,8 +34,8 @@ In models without draft/published, records change on your website as soon as the
 
 ## Matching caveats
 
-- **Encoded characters**: text is matched as editors read it. A character stored as an HTML entity (`&uuml;` for ü) or a JSON escape is found by the character itself, and a non-breaking space matches a plain space. Replacing keeps the stored format: a character the field already stores as an entity is written the same way.
-- **HTML text fields**: only the visible text is searched, never the tags, so you can't search or replace markup such as `<strong>`. A match can run across inline formatting but not across paragraphs, and when it spans formatting the new text goes into the first formatted part.
+- **Encoded characters**: text is matched as editors read it. A character stored as an HTML entity (`&uuml;` for ü), a JSON escape or a letter plus a combining mark is found by the character itself, and a non-breaking space matches a plain space. Replacing keeps the stored format: a character the field already stores as an entity is written the same way.
+- **HTML text fields**: only the visible text and link URLs are searched, never the tags, so you can't search or replace markup such as `<strong>`. A match can run across inline formatting but not across paragraphs, and when it spans formatting the new text goes into the first formatted part.
 - **JSON fields**: only string values are searched. Keys, numbers and the structure are left alone, so the JSON stays valid.
 - **Number fields**: they're matched like text, on the value as written (46.9), and a search for the same number written another way, like `46.90`, also finds it. A change that doesn't leave a valid number, or leaves a decimal in an integer field, is flagged before replacing and never saved.
 - **Prices**: without whole-word matching, `46.9` also matches inside `146.9`, in text and number fields alike. Turn on whole-word matching when changing prices.

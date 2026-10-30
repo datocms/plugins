@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attributeEncoder,
   encodedTextEncoder,
   jsonTextEncoder,
   projectEncodedText,
@@ -48,7 +49,56 @@ describe('projectEncodedText', () => {
           true,
         ),
       ),
-    ).toEqual(['Title', 'One two', 'three ', 'link', ' end', 'a < b']);
+    ).toEqual([
+      'Title',
+      'One two',
+      'three ',
+      '/?a=1&b=>',
+      'link',
+      ' end',
+      'a < b',
+    ]);
+  });
+
+  it('gives each link URL a flow of its own, marked as one', () => {
+    const flows = projectEncodedText(
+      `<p>Go <a data-href="no" href='https://a.de/?x=1&amp;y=2'>here</a>, <a href=/b>b</a> or <a href="">c</a></p>`,
+      true,
+    );
+    expect(texts(flows)).toEqual([
+      'Go ',
+      'https://a.de/?x=1&y=2',
+      'here',
+      ', ',
+      '/b',
+      'b',
+      ' or ',
+      'c',
+    ]);
+    expect(flows[1]?.segments).toEqual([
+      {
+        path: [],
+        projectedStart: 0,
+        projectedEnd: 17,
+        rawStart: 30,
+        subfield: 'link_url',
+      },
+      {
+        path: [],
+        projectedStart: 17,
+        projectedEnd: 18,
+        rawStart: 47,
+        rawEnd: 52,
+        subfield: 'link_url',
+      },
+      {
+        path: [],
+        projectedStart: 18,
+        projectedEnd: 21,
+        rawStart: 52,
+        subfield: 'link_url',
+      },
+    ]);
   });
 });
 
@@ -62,6 +112,11 @@ describe('encodedTextEncoder', () => {
     expect(encodedTextEncoder('<p>plain</p>', true)('a & <b> ü')).toBe(
       'a &amp; &lt;b&gt; ü',
     );
+  });
+
+  it('also escapes quotes in an attribute value', () => {
+    const encode = attributeEncoder(encodedTextEncoder('<p>plain</p>', true));
+    expect(encode(`a"b'c&d`)).toBe('a&quot;b&#39;c&amp;d');
   });
 });
 
