@@ -146,14 +146,11 @@
 
 /* The fields and fieldsets of a model or block: in a HoverCard of the
    graph, and in the body of an overview item */
-.fieldList,
-.fieldsetFields {
+.fieldList {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-s);
-  padding: 0;
-  margin: 0;
-  list-style: none;
+  min-width: 0;
 }
 
 .fieldListEmpty {
@@ -161,21 +158,30 @@
   color: var(--color--ink-subtle);
 }
 
+/* Inset rows in a column that already has an inset (RowList, "The inset
+   row"): the box goes out of the column by the inset of the list plus the
+   padding of the content of a row, thus the text of the rows stays on the
+   edge of the column. The kit sets that padding on each row, thus this box
+   can't read it: it uses its default, --spacing-m (from a 480px frame up
+   the kit trims it by 2px). */
+.fieldRows {
+  margin-inline: calc(-1 * (var(--row-inset) + var(--spacing-m)));
+}
+
+/* A fieldset: its title on the edge of the column, and its fields nested
+   under it, thus their box goes out of the column only at the right */
 .fieldset {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
   min-width: 0;
+
+  .fieldRows {
+    margin-left: 0;
+  }
 }
 
 .fieldsetTitle {
+  display: block;
   overflow: hidden;
   font-weight: var(--font-weight-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.fieldsetFields {
-  padding-left: var(--spacing-m);
-  border-left: 1px solid var(--color--border);
 }

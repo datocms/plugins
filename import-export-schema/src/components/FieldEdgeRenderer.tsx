@@ -9,7 +9,7 @@ import {
 import HoverCard from 'datocms-react-ui/HoverCard';
 import RawButton from 'datocms-react-ui/RawButton';
 import { getBezierPath, getSelfPath } from './bezier';
-import { Field } from './Field';
+import { FieldRows } from './FieldList';
 import s from './graph.module.css';
 import type { ItemTypeNode } from './ItemTypeNodeRenderer';
 import type { PluginNode } from './PluginNodeRenderer';
@@ -97,13 +97,7 @@ export function FieldEdgeRenderer({
           content={
             fields.length > 0 ? (
               <HoverCard.Body>
-                <ul className={s.fieldList}>
-                  {fields.map((field) => (
-                    <li key={field.id}>
-                      <Field field={field} />
-                    </li>
-                  ))}
-                </ul>
+                <FieldRows fields={fields} />
               </HoverCard.Body>
             ) : null
           }
