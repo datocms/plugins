@@ -432,7 +432,7 @@ export default function ConfigScreen({ ctx }: Props) {
               <FieldWrapper
                 label="Provider"
                 docs={{
-                  label: 'Where to generate alt text',
+                  label: 'Where to find the alt text actions',
                   to: ACTIONS_DOCUMENTATION_URL,
                 }}
               >
