@@ -4,8 +4,13 @@ import {
   type SchemaTypes,
 } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { ButtonLink, Canvas, Spinner } from 'datocms-react-ui';
-import { useEffect, useMemo, useState } from 'react';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import RowList from 'datocms-react-ui/RowList';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import { CircleExclamationIcon } from '../icons';
 import s from './styles.module.css';
 
 type PluginParameters = {
@@ -155,13 +160,12 @@ async function fetchInverseRelationshipRows({
   return response.data.map((item) => mapItemToRow(item, titleField, locales));
 }
 
-export default function SidebarPanel({ ctx }: Props) {
+export default function InverseRelationshipsPanel({ ctx }: Props) {
   const environmentPrefix = ctx.isEnvironmentPrimary
     ? ''
     : `/environments/${ctx.environment}`;
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<Row[]>();
 
   const params = ctx.plugin.attributes.parameters as PluginParameters;
 
@@ -188,15 +192,10 @@ export default function SidebarPanel({ ctx }: Props) {
       }
 
       if (!params.itemTypeApiKey || !params.fieldApiKey) {
-        setError(
-          'Please configure a valid model and field in plugin settings.',
-        );
+        setError('No model or field is set.');
         setRows([]);
         return;
       }
-
-      setLoading(true);
-      setError(null);
 
       try {
         const itemTypes = Object.values(ctx.itemTypes).filter(
@@ -219,6 +218,7 @@ export default function SidebarPanel({ ctx }: Props) {
           limit: params.limit,
         });
 
+        setError(null);
         setRows(mapped);
       } catch (e) {
         setError(
@@ -227,8 +227,6 @@ export default function SidebarPanel({ ctx }: Props) {
             : 'Failed to load inverse relationships.',
         );
         setRows([]);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -249,43 +247,49 @@ export default function SidebarPanel({ ctx }: Props) {
     .filter((itemType): itemType is SchemaTypes.ItemType => Boolean(itemType))
     .find((itemType) => itemType.attributes.api_key === params.itemTypeApiKey);
 
+  const [, right, , left] = ctx.bodyPadding;
+  const insets = {
+    '--frame-inset-left': `${left}px`,
+    '--frame-inset-right': `${right}px`,
+  } as CSSProperties;
+
   return (
     <Canvas ctx={ctx}>
-      <div className={s.root}>
-        {loading && (
-          <div className={s.center}>
-            <Spinner />
-          </div>
-        )}
-
-        {!loading && error && <p className={s.error}>{error}</p>}
-
-        {!loading && !error && rows.length === 0 && (
-          <p className={s.empty}>No linked records found.</p>
-        )}
-
-        {!loading && !error && rows.length > 0 && (
-          <ul className={s.list}>
-            {rows.map((row) => (
-              <li key={row.id}>
-                <ButtonLink
-                  href="#"
-                  buttonSize="xxs"
-                  buttonType="muted"
-                  onClick={() => {
-                    if (!model) return;
-                    ctx.navigateTo(
-                      `${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`,
-                    );
-                  }}
+      {error ? (
+        <BlankSlate
+          placement="inline"
+          small
+          error
+          icon={<CircleExclamationIcon />}
+          title="The linked records didn't load"
+          code={error}
+          description="Check the model, field and API token in the plugin settings."
+        />
+      ) : !rows ? (
+        <BlankSlate
+          placement="inline"
+          small
+          loading
+          title="Loading the linked records"
+        />
+      ) : rows.length === 0 ? (
+        <SidebarPanel.Blank message="No records link to this record" />
+      ) : (
+        model && (
+          <div className={s.rows} style={insets}>
+            <RowList>
+              {rows.map((row) => (
+                <RowList.Item
+                  key={row.id}
+                  to={`${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`}
                 >
-                  {row.label}
-                </ButtonLink>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                  <EntityRow layout="row" title={row.label} />
+                </RowList.Item>
+              ))}
+            </RowList>
+          </div>
+        )
+      )}
     </Canvas>
   );
 }

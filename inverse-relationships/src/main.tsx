@@ -3,6 +3,7 @@ import {
   type RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import SidebarPanel from './entrypoints/SidebarPanel';
 import { render } from './utils/render';
 

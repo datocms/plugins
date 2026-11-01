@@ -1,0 +1,8 @@
+/*
+ * The kit's styles.css gives html and body `height: 100%`, so the
+ * auto-resizer could grow this self-sizing frame but never shrink it.
+ */
+html,
+body {
+  height: auto;
+}

@@ -48,7 +48,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 34 | yandex-translate | 424 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 35 | schema-erd | 401 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. 2 minor issues open. |
 | 36 | asset-localization-checker | 381 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
-| 37 | inverse-relationships | 365 | ^19.2.4 | Pending | |
+| 37 | inverse-relationships | 365 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 38 | conditional-fields | 349 | ^19.2.4 | Pending | |
 | 39 | field-anchor-menu | 343 | ^19.2.4 | Pending | |
 | 40 | record-auto-save | 338 | ^19.2.4 | Pending | |
