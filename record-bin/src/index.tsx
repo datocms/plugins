@@ -26,7 +26,7 @@ connect({
     // Performing deletion here would bypass other plugins' concurrent vetoes.
     if (items.length > 200) {
       await ctx
-        .notice(
+        .alert(
           "Record Bin cancelled this deletion because a selection above 200 records can't be archived safely. Delete at most 200 records at a time.",
         )
         .catch((error) =>

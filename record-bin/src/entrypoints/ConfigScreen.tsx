@@ -550,9 +550,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           webhookRemovalError,
         );
         if (notifyOnFailure) {
-          await ctx.notice(
-            "Runtime was saved as Lambda-less, but one or more managed '🗑 Record Bin' webhooks could not be removed automatically. Remove them manually if needed.",
-          );
+          void ctx.customToast({
+            type: 'warning',
+            message:
+              "Runtime was saved as Lambda-less, but one or more managed '🗑 Record Bin' webhooks could not be removed automatically. Remove them manually if needed.",
+          });
         }
       }
     },

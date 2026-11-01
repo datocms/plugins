@@ -37,7 +37,7 @@ const context = (token: string | undefined = 'token') => ({
   environment: 'main',
   cmaBaseUrl: 'https://example.invalid',
   plugin: { attributes: { parameters: {} } },
-  notice: vi.fn().mockResolvedValue(undefined),
+  alert: vi.fn().mockResolvedValue(undefined),
 });
 type Request = {
   method: string;
