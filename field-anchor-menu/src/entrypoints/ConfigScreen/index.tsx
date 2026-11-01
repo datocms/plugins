@@ -1,69 +1,112 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import { Field, Form as FormHandler } from 'react-final-form';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NumberInput from 'datocms-react-ui/NumberInput';
+import { Page } from 'datocms-react-ui/Page';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { type FormEvent, useState } from 'react';
 import {
   normalizeGlobalParams,
   type ValidGlobalParams,
 } from '../../utils/globalParams';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+// The kit inputs give null when they are emptied
+type Draft = Omit<ValidGlobalParams, 'minFieldsToShow'> & {
+  minFieldsToShow: number | null;
+};
+
 export default function ConfigScreen({ ctx }: Props) {
+  const saved = normalizeGlobalParams(ctx.plugin.attributes.parameters);
+
+  const [draft, setDraft] = useState<Draft>(() =>
+    normalizeGlobalParams(ctx.plugin.attributes.parameters),
+  );
+  const [saving, setSaving] = useState(false);
+
+  const invalid = draft.minFieldsToShow === null;
+  const dirty =
+    draft.minFieldsToShow !== saved.minFieldsToShow ||
+    draft.startOpen !== saved.startOpen;
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const { minFieldsToShow } = draft;
+
+    if (!dirty || minFieldsToShow === null || saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await ctx.updatePluginParameters({ ...draft, minFieldsToShow });
+      ctx.notice('Settings saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Canvas ctx={ctx}>
-      <FormHandler<ValidGlobalParams>
-        initialValues={normalizeGlobalParams(ctx.plugin.attributes.parameters)}
-        onSubmit={async (values: ValidGlobalParams) => {
-          await ctx.updatePluginParameters(values);
-          ctx.notice('Settings updated successfully!');
-        }}
-      >
-        {({ handleSubmit, submitting, dirty }) => (
-          <Form onSubmit={handleSubmit}>
-            <FieldGroup>
-              <Field name="minFieldsToShow">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="minFieldsToShow"
-                    label="Show the sidebar panel for all models with at least this number of fields:"
-                    required
-                    error={error}
-                    {...input}
-                  />
-                )}
-              </Field>
-              <Field name="startOpen">
-                {({ input, meta: { error } }) => (
-                  <SwitchField
-                    id="startOpen"
-                    label="Start the sidebar panel open?"
-                    error={error}
-                    {...input}
-                  />
-                )}
-              </Field>
-            </FieldGroup>
-            <Button
-              type="submit"
-              fullWidth
-              buttonSize="l"
-              buttonType="primary"
-              disabled={submitting || !dirty}
+      <Page className={s.page}>
+        <Page.Content>
+          <form onSubmit={handleSubmit}>
+            <Page.Group
+              title="Sidebar panel"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  expand={false}
+                  label="Save"
+                  busy={saving}
+                  disabled={
+                    !dirty
+                      ? { reason: 'There are no changes to save.' }
+                      : invalid
+                        ? {
+                            reason: 'Enter the minimum number of fields first.',
+                          }
+                        : undefined
+                  }
+                />
+              }
             >
-              Save settings
-            </Button>
-          </Form>
-        )}
-      </FormHandler>
+              <FieldWrapper
+                label="Minimum number of fields"
+                required
+                hint="The “Scroll to field” panel shows only on the records of models with at least this many fields."
+                error={invalid ? 'Enter a number.' : undefined}
+              >
+                <NumberInput
+                  inputMode="numeric"
+                  placeholder="5"
+                  value={draft.minFieldsToShow}
+                  onChange={(value) =>
+                    setDraft({ ...draft, minFieldsToShow: value })
+                  }
+                />
+              </FieldWrapper>
+              <FieldWrapper>
+                <SwitchInput
+                  label="Panel starts open"
+                  value={draft.startOpen}
+                  onChange={(value) =>
+                    setDraft({ ...draft, startOpen: Boolean(value) })
+                  }
+                />
+              </FieldWrapper>
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

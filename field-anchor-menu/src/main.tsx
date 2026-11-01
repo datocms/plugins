@@ -4,6 +4,7 @@ import {
   type RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldAnchorMenu from './entrypoints/SidebarPanel';
 import {
@@ -59,12 +60,16 @@ connect({
         return;
       }
 
+      const remaining = upgradedFields.length - index;
+      const fieldsLeft = remaining === 1 ? 'field' : `${remaining} fields`;
+      const moreFieldsLeft = `${remaining} more ${remaining === 1 ? 'field' : 'fields'}`;
+
       const result = await ctx.customToast({
         type: 'warning',
         message:
           index === 0
-            ? `Plugin upgraded successfully, you can now remove ${upgradedFields.length} fields. Go to the first one and remove it!`
-            : `Great! ${upgradedFields.length - index} more to remove:`,
+            ? `Plugin upgraded. You can now remove the ${fieldsLeft} it used, starting with this one.`
+            : `${moreFieldsLeft} to remove.`,
         dismissOnPageChange: false,
         dismissAfterTimeout: false,
         cta: {

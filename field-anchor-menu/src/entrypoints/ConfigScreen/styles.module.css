@@ -1,5 +1,6 @@
-.grid {
-  display: grid;
-  grid-template-columns: 3fr 1fr 40px;
-  column-gap: var(--spacing-m);
+/* The kit's minimum height of a page is for a full-height area: in this
+   frame, which sizes itself to its content, it would keep the frame from
+   shrinking */
+.page {
+  min-height: 0;
 }

@@ -1,34 +1,30 @@
-.link {
-  display: block;
-  text-decoration: none;
-  cursor: pointer;
-}
-.link:hover {
-  text-decoration: underline;
+/* RowList, "The inset row": the text of a row starts at the inset of the
+   list plus the padding of the row's content (--spacing-m in a frame as
+   narrow as a sidebar), so the box of the list goes out into the frame
+   padding by that much, never past it, and the text of the rows stays in
+   line with the text of the panel. The component passes the frame padding
+   in. */
+.rows {
+  --rows-text-inset: calc(var(--row-inset) + var(--spacing-m));
+
+  margin-left: calc(
+    -1 *
+    min(var(--rows-text-inset), var(--frame-inset-left, 0px))
+  );
+  margin-right: calc(
+    -1 *
+    min(var(--rows-text-inset), var(--frame-inset-right, 0px))
+  );
 }
 
-.link:last-child {
-  margin-bottom: 0;
-}
-
-.group {
-  margin: var(--spacing-m) 0;
-}
-
-.groupName {
-  width: 100%;
-  white-space: nowrap;
+/* The title of a fieldset: subtle and small like the kit's group titles, on
+   one line, in line with the text of the rows */
+.groupTitle {
+  margin-top: var(--spacing-s);
+  padding-inline: var(--rows-text-inset);
   overflow: hidden;
-  text-overflow: ellipsis;
-  border-bottom: 1px solid var(--color--border);
-  color: var(--color--ink-subtle);
-  margin-bottom: var(--spacing-m);
-  text-transform: uppercase;
-  font-weight: bold;
   font-size: var(--font-size-xs);
-}
-
-.groupChildren {
-  padding-left: var(--spacing-m);
-  border-left: 3px solid var(--color--border);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
