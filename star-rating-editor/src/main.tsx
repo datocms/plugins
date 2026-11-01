@@ -6,6 +6,7 @@ import {
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldConfigScreen, { validate } from './entrypoints/FieldConfigScreen';
 import StarRatingEditor from './entrypoints/StarRatingEditor';
@@ -70,7 +71,7 @@ connect({
     ctx.updatePluginParameters(validGlobalParams);
 
     if (someUpgraded) {
-      ctx.notice('Plugin settings successfully upgraded!');
+      ctx.notice('Star rating settings upgraded.');
     }
   },
   renderConfigScreen(ctx) {

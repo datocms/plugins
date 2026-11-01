@@ -1,5 +1,5 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
 import get from 'lodash-es/get';
 import ReactStars from 'react-rating-stars-component';
 import { useFieldSettings } from '../utils/fieldParams';
@@ -23,7 +23,7 @@ const StarRatingEditor = ({ ctx }: PropTypes) => {
         count={maxRating}
         char="★"
         activeColor={starsColor}
-        color={ctx.cssDesignTokens['--color--ink-placeholder']}
+        color="var(--color--ink-placeholder)"
         size={32}
         isHalf={false}
         a11y={true}

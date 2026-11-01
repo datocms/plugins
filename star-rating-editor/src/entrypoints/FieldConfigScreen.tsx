@@ -1,12 +1,9 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Canvas,
-  FieldWrapper,
-  Form,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import { useCallback, useState } from 'react';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NumberInput from 'datocms-react-ui/NumberInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { useState } from 'react';
 import ColorInput from '../components/ColorInput';
 import {
   type FieldParams,
@@ -22,25 +19,21 @@ type PropTypes = {
 export function validateMaxRating(value: string | number): string | undefined {
   const parsedValue = Number.parseInt(String(value), 10);
 
-  if (
-    Number.isNaN(parsedValue) ||
-    parsedValue < 2 ||
-    parsedValue > 10
-  ) {
-    return 'Rating must be a number between 2 and 10!';
+  if (Number.isNaN(parsedValue) || parsedValue < 2 || parsedValue > 10) {
+    return 'Enter a number from 2 to 10.';
   }
 }
 
 export function validateStarsColor(value: string | null): string | undefined {
   if (!value) {
-    return 'A color is required!';
+    return 'Enter a color.';
   }
 
   const s = new Option().style;
   s.color = value;
 
   if (s.color === '') {
-    return 'Invalid color!';
+    return 'Enter a valid CSS color, such as #FFB400.';
   }
 }
 
@@ -75,65 +68,64 @@ const FieldConfigScreen = ({ ctx }: PropTypes) => {
 
   type EditableField = 'maxRating' | 'starsColor';
 
-  const update = useCallback(
-    (field: EditableField, value: string | number | null) => {
-      const newParameters = { ...formValues, [field]: value };
-      setFormValues(newParameters);
-      ctx.setParameters(newParameters);
-    },
-    [formValues, ctx],
-  );
+  const update = (field: EditableField, value: string | number | null) => {
+    const newParameters = { ...formValues, [field]: value };
+    setFormValues(newParameters);
+    ctx.setParameters(newParameters);
+  };
 
   const errors = ctx.errors as Partial<Record<string, string>>;
 
+  // An emptied override input stores '', never null: null means "use the
+  // default" and would hide the input, while '' fails validation and blocks
+  // the save
   return (
     <Canvas ctx={ctx}>
-      <Form>
-        <SwitchField
-          id="useDefaultMaxRating"
-          name="useDefaultMaxRating"
-          label="Use default maximum rating?"
+      <FieldWrapper
+        hint={`${globalParams.defaultMaxRating} stars, from the plugin settings.`}
+      >
+        <SwitchInput
+          label="Use the default maximum rating"
           value={formValues.maxRating === null}
-          onChange={(checked) =>
-            update('maxRating', checked ? null : globalParams.defaultMaxRating)
+          onChange={(on) =>
+            update('maxRating', on ? null : globalParams.defaultMaxRating)
           }
         />
-        {formValues.maxRating !== null && (
-          <TextField
-            id="maxRating"
-            name="maxRating"
-            label="Override maximum rating"
-            required
+      </FieldWrapper>
+      {formValues.maxRating !== null && (
+        <FieldWrapper
+          label="Maximum rating"
+          required
+          hint="From 2 to 10."
+          error={errors.maxRating}
+        >
+          <NumberInput
+            inputMode="numeric"
+            placeholder="5"
             value={formValues.maxRating}
-            onChange={update.bind(null, 'maxRating')}
-            error={errors.maxRating}
+            onChange={(value) => update('maxRating', value ?? '')}
           />
-        )}
-        <SwitchField
-          id="useDefaultStarsColor"
-          name="useDefaultStarsColor"
-          label="Use default stars color?"
+        </FieldWrapper>
+      )}
+      <FieldWrapper
+        hint={`${globalParams.defaultStarsColor}, from the plugin settings.`}
+      >
+        <SwitchInput
+          label="Use the default stars color"
           value={formValues.starsColor === null}
-          onChange={(checked) =>
-            update(
-              'starsColor',
-              checked ? null : globalParams.defaultStarsColor,
-            )
+          onChange={(on) =>
+            update('starsColor', on ? null : globalParams.defaultStarsColor)
           }
         />
-        {formValues.starsColor !== null && (
-          <FieldWrapper
-            id="starsColor"
-            label="Stars color"
-            error={errors.starsColor}
-          >
-            <ColorInput
-              value={formValues.starsColor}
-              onChange={update.bind(null, 'starsColor')}
-            />
-          </FieldWrapper>
-        )}
-      </Form>
+      </FieldWrapper>
+      {formValues.starsColor !== null && (
+        <FieldWrapper label="Stars color" required error={errors.starsColor}>
+          <ColorInput
+            value={formValues.starsColor}
+            onChange={(value) => update('starsColor', value ?? '')}
+          />
+        </FieldWrapper>
+      )}
     </Canvas>
   );
 };

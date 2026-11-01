@@ -1,105 +1,136 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  FieldWrapper,
-  Form,
-  Section,
-  TextField,
-} from 'datocms-react-ui';
-import { Field, Form as FormHandler } from 'react-final-form';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NumberInput from 'datocms-react-ui/NumberInput';
+import { Page } from 'datocms-react-ui/Page';
+import StringInput from 'datocms-react-ui/StringInput';
+import isEqual from 'lodash-es/isEqual';
+import { type FormEvent, useState } from 'react';
 import ColorInput from '../components/ColorInput';
 import {
   normalizeGlobalParams,
   type ValidGlobalParams,
 } from '../utils/globalParams';
 import { validateMaxRating, validateStarsColor } from './FieldConfigScreen';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+// The kit inputs give null when they are emptied
+type Draft = Omit<
+  ValidGlobalParams,
+  'defaultMaxRating' | 'defaultStarsColor'
+> & {
+  defaultMaxRating: number | null;
+  defaultStarsColor: string | null;
+};
+
 export default function ConfigScreen({ ctx }: Props) {
+  const saved = normalizeGlobalParams(ctx.plugin.attributes.parameters);
+
+  const [draft, setDraft] = useState<Draft>(() =>
+    normalizeGlobalParams(ctx.plugin.attributes.parameters),
+  );
+  const [saving, setSaving] = useState(false);
+
+  const maxRatingError = validateMaxRating(draft.defaultMaxRating ?? '');
+  const starsColorError = validateStarsColor(draft.defaultStarsColor);
+  const invalid = Boolean(maxRatingError || starsColorError);
+  const dirty = !isEqual(draft, saved);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!dirty || invalid || saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await ctx.updatePluginParameters(draft);
+      ctx.notice('Settings saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Canvas ctx={ctx}>
-      <FormHandler<ValidGlobalParams>
-        initialValues={normalizeGlobalParams(ctx.plugin.attributes.parameters)}
-        validate={(values: ValidGlobalParams) => {
-          return {
-            defaultMaxRating: validateMaxRating(values.defaultMaxRating),
-            defaultStarsColor: validateStarsColor(values.defaultStarsColor),
-          };
-        }}
-        onSubmit={async (values: ValidGlobalParams) => {
-          await ctx.updatePluginParameters(values);
-          ctx.notice('Settings updated successfully!');
-        }}
-      >
-        {({ handleSubmit, submitting, dirty }) => (
-          <Form onSubmit={handleSubmit}>
-            <FieldGroup>
-              <Section title="Default settings">
-                <FieldGroup>
-                  <p>
-                    These settings will be the default for all star-rating
-                    editors, unless they're overridden on a per-field basis.
-                  </p>
-                  <Field name="defaultMaxRating">
-                    {({ input, meta: { error } }) => (
-                      <TextField
-                        id="defaultMaxRating"
-                        label="Max rating"
-                        hint="The maximum number of stars that can be set for a field"
-                        placeholder="5"
-                        required
-                        error={error}
-                        {...input}
-                      />
-                    )}
-                  </Field>
-                  <Field name="defaultStarsColor">
-                    {({ input, meta: { error } }) => (
-                      <FieldWrapper
-                        id="defaultStarsColor"
-                        label="Stars color"
-                        required
-                        error={error}
-                      >
-                        <ColorInput {...input} />
-                      </FieldWrapper>
-                    )}
-                  </Field>
-                </FieldGroup>
-              </Section>
-              <Section title="Automatic mapping">
-                <Field name="autoApplyToFieldsWithApiKey">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="autoApplyToFieldsWithApiKey"
-                      label="Auto-apply this plugin to all Integer fields fields matching the following API identifier:"
-                      hint="A regular expression can be used"
-                      placeholder="star_rating"
-                      error={error}
-                      textInputProps={{ monospaced: true }}
-                      {...input}
-                    />
-                  )}
-                </Field>
-              </Section>
-            </FieldGroup>
-            <Button
-              type="submit"
-              fullWidth
-              buttonSize="l"
-              buttonType="primary"
-              disabled={submitting || !dirty}
+      <Page className={s.page}>
+        <Page.Content>
+          <form onSubmit={handleSubmit}>
+            <Page.Group
+              title="Settings"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  expand={false}
+                  label="Save"
+                  busy={saving}
+                  disabled={
+                    !dirty
+                      ? { reason: 'There are no changes to save.' }
+                      : invalid
+                        ? { reason: 'Fix the errors above first.' }
+                        : undefined
+                  }
+                />
+              }
             >
-              Save settings
-            </Button>
-          </Form>
-        )}
-      </FormHandler>
+              <FieldWrapper
+                label="Maximum rating"
+                required
+                hint="From 2 to 10. Each field can set its own."
+                error={maxRatingError}
+              >
+                <NumberInput
+                  inputMode="numeric"
+                  placeholder="5"
+                  value={draft.defaultMaxRating}
+                  onChange={(value) =>
+                    setDraft({ ...draft, defaultMaxRating: value })
+                  }
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                label="Stars color"
+                required
+                hint="The color of the selected stars. Each field can set its own."
+                error={starsColorError}
+              >
+                <ColorInput
+                  value={draft.defaultStarsColor}
+                  onChange={(value) =>
+                    setDraft({ ...draft, defaultStarsColor: value })
+                  }
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                label="Auto-apply to Integer fields with API key"
+                labelExtras={{ optional: true }}
+                hint="A regular expression. The Integer fields whose API key matches it use the star rating editor."
+              >
+                <StringInput
+                  code
+                  placeholder="star_rating"
+                  value={draft.autoApplyToFieldsWithApiKey}
+                  onChange={(value) =>
+                    setDraft({
+                      ...draft,
+                      autoApplyToFieldsWithApiKey: value ?? '',
+                    })
+                  }
+                />
+              </FieldWrapper>
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

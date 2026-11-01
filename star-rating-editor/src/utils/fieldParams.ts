@@ -66,13 +66,11 @@ export function normalizeFieldParams(
   return {
     paramsVersion: '2',
     maxRating:
-      maxRating === null ||
-      globalParams.defaultMaxRating === maxRating
+      maxRating === null || globalParams.defaultMaxRating === maxRating
         ? null
         : maxRating,
     starsColor:
-      starsColor === null ||
-      globalParams.defaultStarsColor === starsColor
+      starsColor === null || globalParams.defaultStarsColor === starsColor
         ? null
         : starsColor,
   };
