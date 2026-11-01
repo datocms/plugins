@@ -10,7 +10,7 @@ const FIELD_EXTENSION_ID = 'disableField';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
-    if (ctx.plugin.attributes.parameters.migratedFromLegacyPlugin) {
+    if (ctx.plugin.attributes.parameters?.migratedFromLegacyPlugin) {
       return;
     }
 
@@ -54,14 +54,14 @@ connect({
     });
 
     if (someUpgraded) {
-      ctx.notice('Plugin settings upgraded successfully!');
+      ctx.notice('Disabled field settings upgraded.');
     }
   },
   manualFieldExtensions() {
     return [
       {
         id: FIELD_EXTENSION_ID,
-        name: 'Disabled Field',
+        name: 'Disabled field',
         type: 'addon',
         fieldTypes: 'all',
         initialHeight: 0,
