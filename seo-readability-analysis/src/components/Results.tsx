@@ -1,6 +1,7 @@
 import * as interpreters from 'yoastseo/build/scoring/interpreters';
 import type { AnalysisAssessment, AnalysisResult } from '../types';
 import ResultGroup, { type Group } from './ResultGroup';
+import s from './styles.module.css';
 
 const scoreKeyToTitle: Partial<Record<string, string>> = {
   feedback: 'Feedback',
@@ -47,7 +48,7 @@ export default function Results({
   const groupedResults = groupResults(assessment.results);
 
   return (
-    <div className="Plugin__results">
+    <div className={s.results}>
       {['bad', 'ok', 'good', 'feedback']
         .filter((key) => groupedResults[key])
         .map((key) => (

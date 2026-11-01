@@ -28,15 +28,11 @@
   },
   "dependencies": {
     "@types/lodash-es": "^4.17.12",
-    "datocms-plugin-sdk": "^2.3.0",
-    "datocms-react-ui": "^2.2.7",
-    "final-form": "^5.0.0",
-    "final-form-arrays": "^4.0.1",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.1",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-final-form": "^7.0.0",
-    "react-final-form-arrays": "^5.0.0",
     "yoastseo": "^3.6.0"
   },
   "scripts": {
@@ -65,9 +61,7 @@
   "overrides": {
     "@babel/runtime": "^7.28.6",
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     },
     "yoastseo": {
       "@wordpress/i18n": "^6.0.0"

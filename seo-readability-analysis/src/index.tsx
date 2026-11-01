@@ -4,7 +4,6 @@ import FieldExtension from './entrypoints/FieldExtension';
 import type { Parameters } from './types';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import './style.css';
 
 const initialHeight = 200;
 

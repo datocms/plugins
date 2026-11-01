@@ -1,11 +1,16 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Button } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Spinner from 'datocms-react-ui/Spinner';
+import { Tabs } from 'datocms-react-ui/Tabs';
 import get from 'lodash-es/get';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as helpers from 'yoastseo/build/helpers';
 import Paper from 'yoastseo/build/values/Paper';
 import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
 import createWorker from 'yoastseo/build/worker/createWorker';
+import { RefreshIcon } from '../icons';
 import type {
   Analysis,
   AnalysisAssessment,
@@ -15,6 +20,7 @@ import type {
 import Results from './Results';
 import ScoreIcon from './ScoreIcon';
 import Seo from './Seo';
+import s from './styles.module.css';
 
 const worker = new AnalysisWorkerWrapper(
   createWorker(import.meta.env.PROD ? './main.js' : '/main.js'),
@@ -69,11 +75,6 @@ const removeResultsWithNoText = (
   };
 };
 
-const tabs = [
-  { title: 'SEO', key: 'seo' },
-  { title: 'Readability', key: 'readability' },
-];
-
 type FieldValue = {
   keyword: string;
   synonyms: string;
@@ -127,6 +128,7 @@ const serializeFieldValue = (
   value: Partial<FieldValue> | null | undefined,
 ): string => JSON.stringify(normalizeFieldValue(value));
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the field editor keeps its logic as it was, with the states of its tabs.
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl, customHeaders } = ctx.plugin.attributes
     .parameters as ValidParameters;
@@ -256,6 +258,7 @@ const Main = ({ ctx }: PropTypes) => {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the analysis flow stays as it was, in one place.
       const run = async () => {
         if (!isWorkerReady || !page) {
           return;
@@ -313,7 +316,7 @@ const Main = ({ ctx }: PropTypes) => {
     return () => window.clearTimeout(timeoutId);
   }, [isWorkerReady, page, keyword, synonyms, relatedKeywords]);
 
-  const [activeTab, setActiveTab] = useState(tabs[0].key);
+  const [activeTab, setActiveTab] = useState('seo');
   const hasMounted = useRef(false);
   const ctxRef = useRef(ctx);
   const lastSyncedValue = useRef<string>(comparableRawFieldValue);
@@ -373,136 +376,100 @@ const Main = ({ ctx }: PropTypes) => {
         (1.0 + validRelatedIndices.length)
       : 0;
 
+  // The page loads or its first analysis runs
+  const firstAnalysisPending =
+    !workerError && !analysisError && (pageFetchingInProgress || page !== null);
+
   return (
-    <div className="Plugin">
-      <div className="Plugin__bar">
-        <div className="Plugin__bar__options">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`Plugin__bar__option ${
-                tab.key === activeTab ? 'is-active' : ''
-              }`}
-            >
-              {tab.title}{' '}
-              <ScoreIcon
-                score={
-                  tab.key === 'seo'
-                    ? overallSeoScore
-                    : analysis && analysis.readability.score / 10
-                }
-              />
-            </button>
-          ))}
-        </div>
-        <div className="Plugin__bar__status">
-          {workerError ? (
-            <span className="Plugin__bar__status-error">
-              Error loading web worker! More info on console
+    <Tabs
+      ariaLabel="Analysis"
+      activeTabId={activeTab}
+      onChange={setActiveTab}
+      extraInfo={
+        <div className={s.status}>
+          {!workerError && !isWorkerReady && (
+            <span className={s.statusText}>
+              <Spinner inline label={false} /> Loading the analyzer
             </span>
-          ) : !isWorkerReady ? (
-            <span>Loading web worker...</span>
-          ) : pageFetchingInProgress ? (
-            <span>Extracting content...</span>
-          ) : analysisInProgress ? (
-            <span>Analyzing content...</span>
-          ) : (
-            (pageError || analysisError) && (
-              <span className="Plugin__bar__status-error">
-                Error running analysis! More info on console
-              </span>
-            )
           )}
-        </div>
-        <div className="Plugin__bar__actions">
+          {analysisInProgress && (
+            <span className={s.statusText}>
+              <Spinner inline label={false} /> Analyzing the content
+            </span>
+          )}
           <Button
-            type="button"
-            buttonSize="xxs"
+            tone="ghost"
+            icon={RefreshIcon}
+            label="Reload content"
             onClick={refetchPage}
-            disabled={pageFetchingInProgress}
-            leftIcon={
-              <svg
-                aria-hidden="true"
-                focusable="false"
-                role="img"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 512 512"
-                style={{ width: '1em', height: '1em' }}
-              >
-                <path
-                  fill="currentColor"
-                  d="M440.65 12.57l4 82.77A247.16 247.16 0 0 0 255.83 8C134.73 8 33.91 94.92 12.29 209.82A12 12 0 0 0 24.09 224h49.05a12 12 0 0 0 11.67-9.26 175.91 175.91 0 0 1 317-56.94l-101.46-4.86a12 12 0 0 0-12.57 12v47.41a12 12 0 0 0 12 12H500a12 12 0 0 0 12-12V12a12 12 0 0 0-12-12h-47.37a12 12 0 0 0-11.98 12.57zM255.83 432a175.61 175.61 0 0 1-146-77.8l101.8 4.87a12 12 0 0 0 12.57-12v-47.4a12 12 0 0 0-12-12H12a12 12 0 0 0-12 12V500a12 12 0 0 0 12 12h47.35a12 12 0 0 0 12-12.6l-4.15-82.57A247.17 247.17 0 0 0 255.83 504c121.11 0 221.93-86.92 243.55-201.82a12 12 0 0 0-11.8-14.18h-49.05a12 12 0 0 0-11.67 9.26A175.86 175.86 0 0 1 255.83 432z"
-                ></path>
-              </svg>
-            }
-          >
-            Reload content
-          </Button>
+            busy={pageFetchingInProgress}
+          />
         </div>
-      </div>
-      <div className="Plugin__content">
-        {activeTab === 'seo' ? (
-          <>
+      }
+      beforeContent={
+        workerError ? (
+          <Callout tone="danger">
+            The analyzer couldn't load. The browser console has the details.
+          </Callout>
+        ) : (
+          (pageError || analysisError) && (
+            <Callout tone="danger">
+              The analysis failed. The browser console has the details.
+            </Callout>
+          )
+        )
+      }
+      tabs={[
+        {
+          id: 'seo',
+          label: (
+            <span>
+              <ScoreIcon score={overallSeoScore} ariaLabel /> SEO
+            </span>
+          ),
+          content: (
             <Seo
               keyword={keyword}
               synonyms={synonyms}
               setKeyword={setKeyword}
               setSynonyms={setSynonyms}
-              analysis={analysis?.seo}
+              relatedKeywords={relatedKeywords}
+              setRelatedKeywords={setRelatedKeywords}
+              analysis={analysis}
             />
-
-            {relatedKeywords.map((relatedKeyword, i) => (
-              <Seo
-                key={relatedKeyword.keyword || `related-keyword-${i}`}
-                keyword={relatedKeyword.keyword}
-                synonyms={relatedKeyword.synonyms}
-                setKeyword={(keyword) =>
-                  setRelatedKeywords((old) =>
-                    old.map((related, j) =>
-                      i === j ? { ...related, keyword } : related,
-                    ),
-                  )
-                }
-                setSynonyms={(synonyms) =>
-                  setRelatedKeywords((old) =>
-                    old.map((related, j) =>
-                      i === j ? { ...related, synonyms } : related,
-                    ),
-                  )
-                }
-                onRemove={() => {
-                  setRelatedKeywords((old) => old.filter((_, j) => i !== j));
-                }}
-                analysis={analysis?.relatedKeywordsSeo[i]}
-              />
-            ))}
-
-            {keyword && (
-              <div className="Plugin__add-new">
-                <Button
-                  type="button"
-                  fullWidth
-                  onClick={() => {
-                    setRelatedKeywords((old) => [
-                      ...old,
-                      { keyword: '', synonyms: '' },
-                    ]);
-                  }}
-                >
-                  Add related keyword
-                </Button>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="Plugin__readability">
-            <Results assessment={analysis?.readability} />
-          </div>
-        )}
-      </div>
-    </div>
+          ),
+        },
+        {
+          id: 'readability',
+          label: (
+            <span>
+              <ScoreIcon
+                score={analysis && analysis.readability.score / 10}
+                ariaLabel={analysis !== null}
+              />{' '}
+              Readability
+            </span>
+          ),
+          content: analysis ? (
+            <Results assessment={analysis.readability} />
+          ) : firstAnalysisPending ? (
+            <BlankSlate
+              placement="inline"
+              small
+              loading
+              title="Loading the analysis"
+            />
+          ) : (
+            <BlankSlate
+              placement="inline"
+              small
+              title="No analysis yet"
+              description="The analysis runs on the frontend page of the saved record."
+            />
+          ),
+        },
+      ]}
+    />
   );
 };
 

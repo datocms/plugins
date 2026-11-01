@@ -1,0 +1,109 @@
+/* The end of the row of tabs: what runs, and the reload */
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+}
+
+.statusText {
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+}
+
+/* A block of results between two fields */
+.block {
+  margin-bottom: var(--form-field-gap);
+}
+
+.block:last-child {
+  margin-bottom: 0;
+}
+
+.relatedTitle {
+  margin: 0 0 var(--spacing-s);
+  font-weight: var(--font-weight-strong);
+}
+
+.results {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
+/* The title of a group of results, which opens and closes it */
+.groupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  font: inherit;
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink);
+  cursor: pointer;
+}
+
+.groupToggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.count {
+  font-weight: var(--font-weight-regular);
+  color: var(--color--ink-subtle);
+}
+
+.items {
+  display: grid;
+  gap: var(--spacing-s);
+  margin: var(--spacing-s) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+}
+
+.itemBody {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The text of a result is the HTML of Yoast */
+.itemBody p {
+  margin: 0;
+}
+
+.itemBody a {
+  color: var(--color--ink-link);
+}
+
+.marks {
+  margin-top: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+}
+
+.mark {
+  padding: var(--spacing-m);
+}
+
+.mark + .mark {
+  border-top: 1px solid var(--color--border);
+}
+
+.mark * {
+  font-weight: var(--font-weight-regular);
+  font-style: normal;
+}
+
+/* Yoast marks the passages with its own global class */
+.markWithHighlights :global(.yoast-text-mark) {
+  padding: 0 calc(var(--spacing-s) / 2);
+  border-radius: var(--radius-xs);
+  background: var(--color--highlight--surface);
+}

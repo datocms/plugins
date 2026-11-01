@@ -1,172 +1,172 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  FormLabel,
-  TextField,
-} from 'datocms-react-ui';
-import arrayMutators from 'final-form-arrays';
-import { Field, Form as FormHandler } from 'react-final-form';
-import { FieldArray } from 'react-final-form-arrays';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import StringInput from 'datocms-react-ui/StringInput';
+import TableList, { type TableListColumn } from 'datocms-react-ui/TableList';
+import isEqual from 'lodash-es/isEqual';
+import { type FormEvent, useMemo, useState } from 'react';
 import type { CustomHeader, Parameters } from '../types';
-import s from './styles.module.css';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
 };
 
-type ConfigErrors = {
-  htmlGeneratorUrl?: string;
-  customHeaders?: Record<string, string>[];
+type HeaderErrors = {
+  name?: string;
+  value?: string;
 };
 
-function validateCustomHeaders(
-  headers: CustomHeader[] | undefined,
-): Record<string, string>[] | undefined {
-  return headers?.map((header) => {
-    const headerErrors: Record<string, string> = {};
+// Empty strings and missing keys count as no value
+function readSettings(parameters: Parameters) {
+  return {
+    url:
+      ('htmlGeneratorUrl' in parameters && parameters.htmlGeneratorUrl) || null,
+    headers: ('customHeaders' in parameters && parameters.customHeaders) || [],
+    autoApply:
+      ('autoApplyToFieldsWithApiKey' in parameters &&
+        parameters.autoApplyToFieldsWithApiKey) ||
+      null,
+  };
+}
+
+function validateCustomHeaders(headers: CustomHeader[]): HeaderErrors[] {
+  return headers.map((header) => {
+    const headerErrors: HeaderErrors = {};
 
     if (!header.name) {
-      headerErrors.name = 'Name required!';
+      headerErrors.name = 'Enter a header name';
     } else if (headers.filter((h) => h.name === header.name).length > 1) {
-      headerErrors.name = 'Name must be unique!';
+      headerErrors.name = 'Header names must be unique';
     }
 
     if (!header.value) {
-      headerErrors.value = 'Value required!';
+      headerErrors.value = 'Enter a value';
     }
 
     return headerErrors;
   });
 }
 
+const newHeader = (): CustomHeader => ({ name: '', value: '' });
+
 export default function ConfigScreen({ ctx }: PropTypes) {
+  const saved = readSettings(ctx.plugin.attributes.parameters as Parameters);
+
+  const [url, setUrl] = useState<string | null>(saved.url);
+  const [headers, setHeaders] = useState<CustomHeader[]>(saved.headers);
+  const [autoApply, setAutoApply] = useState<string | null>(saved.autoApply);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const dirty = !isEqual({ url, headers, autoApply }, saved);
+  const headerErrors = validateCustomHeaders(headers);
+  const valid =
+    !!url && headerErrors.every((errors) => !errors.name && !errors.value);
+
+  const columns = useMemo<TableListColumn<CustomHeader>[]>(
+    () => [
+      { id: 'name', field: 'name', label: 'Header', code: true },
+      { id: 'value', field: 'value', label: 'Value' },
+    ],
+    [],
+  );
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!dirty || saving) {
+      return;
+    }
+
+    if (!valid) {
+      setSubmitAttempted(true);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await ctx.updatePluginParameters({
+        ...ctx.plugin.attributes.parameters,
+        htmlGeneratorUrl: url,
+        customHeaders: headers,
+        autoApplyToFieldsWithApiKey: autoApply,
+      });
+      ctx.notice('Settings saved.');
+      setSubmitAttempted(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Canvas ctx={ctx}>
-      <FormHandler<Parameters>
-        initialValues={ctx.plugin.attributes.parameters}
-        mutators={{ ...arrayMutators }}
-        validate={(values) => {
-          const errors: ConfigErrors = {};
-
-          if (!('htmlGeneratorUrl' in values) || !values.htmlGeneratorUrl) {
-            errors.htmlGeneratorUrl = 'This field is required!';
-          }
-
-          errors.customHeaders = validateCustomHeaders(
-            'customHeaders' in values ? values.customHeaders : undefined,
-          );
-
-          return errors;
-        }}
-        onSubmit={async (values) => {
-          await ctx.updatePluginParameters(values);
-          ctx.notice('Settings updated successfully!');
-        }}
-      >
-        {({ handleSubmit, submitting, dirty }) => (
-          <Form onSubmit={handleSubmit}>
-            <FieldGroup>
-              <Field name="htmlGeneratorUrl">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="htmlGeneratorUrl"
-                    label="Frontend metadata endpoint URL"
-                    hint="A CORS-enabled endpoint that returns the required frontend metadata. It can include a query string. The itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters will be added dynamically."
-                    placeholder="https://yourwebsite.com/api/metadata"
-                    required
-                    error={error}
-                    {...input}
-                  />
-                )}
-              </Field>
-              <div>
-                <FormLabel htmlFor="">Custom headers</FormLabel>
-                <FieldArray name="customHeaders">
-                  {({ fields }) => (
-                    <FieldGroup>
-                      {fields.map((header, headerIndex) => (
-                        <div key={header} className={s.deletableItem}>
-                          <div className={s.headerGrid}>
-                            <div>
-                              <Field name={`${header}.name`}>
-                                {({ input, meta: { error } }) => (
-                                  <TextField
-                                    id={`headers-${headerIndex}-name`}
-                                    label="Header"
-                                    placeholder="Header"
-                                    required
-                                    error={error}
-                                    {...input}
-                                  />
-                                )}
-                              </Field>
-                            </div>
-                            <div>
-                              <Field name={`${header}.value`}>
-                                {({ input, meta: { error } }) => (
-                                  <TextField
-                                    id={`headers-${headerIndex}-value`}
-                                    label="Value"
-                                    placeholder="Value"
-                                    required
-                                    error={error}
-                                    {...input}
-                                  />
-                                )}
-                              </Field>
-                            </div>
-                          </div>
-                          <div className={s.deletableItemAction}>
-                            <Button
-                              type="button"
-                              buttonType="negative"
-                              buttonSize="s"
-                              onClick={() => fields.remove(headerIndex)}
-                            >
-                              Remove header
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        buttonSize="s"
-                        onClick={() => fields.push({ name: '', value: '' })}
-                      >
-                        Add header
-                      </Button>
-                    </FieldGroup>
-                  )}
-                </FieldArray>
-              </div>
-              <Field name="autoApplyToFieldsWithApiKey">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="autoApplyToFieldsWithApiKey"
-                    label="Auto-apply to all JSON fields with the following API identifier:"
-                    placeholder="seo_analysis"
-                    error={error}
-                    textInputProps={{ monospaced: true }}
-                    {...input}
-                  />
-                )}
-              </Field>
-            </FieldGroup>
-            <Button
-              type="submit"
-              fullWidth
-              buttonSize="l"
-              buttonType="primary"
-              disabled={submitting || !dirty}
+      <Page>
+        <Page.Content>
+          <form onSubmit={handleSubmit}>
+            <Page.Group
+              title="Settings"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  expand={false}
+                  label="Save"
+                  busy={saving}
+                  disabled={
+                    dirty
+                      ? undefined
+                      : { reason: 'There are no changes to save.' }
+                  }
+                />
+              }
             >
-              Save settings
-            </Button>
-          </Form>
-        )}
-      </FormHandler>
+              <FieldWrapper
+                label="Frontend metadata endpoint"
+                required
+                hint="A CORS-enabled endpoint that returns the frontend metadata of a record. It can have a query string: the plugin adds the itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters."
+                error={
+                  submitAttempted && !url ? 'Enter the endpoint URL' : undefined
+                }
+              >
+                <StringInput
+                  code
+                  placeholder="https://www.example.com/api/seo-metadata"
+                  value={url}
+                  onChange={(value) => setUrl(value || null)}
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                label="Custom headers"
+                hint="Sent with every request to the endpoint."
+              >
+                <TableList<CustomHeader>
+                  value={headers}
+                  onChange={setHeaders}
+                  errors={headerErrors}
+                  touched={submitAttempted}
+                  columns={columns}
+                  emptyMessage="No custom headers"
+                  add={{ label: 'Add header', newItem: newHeader }}
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                label="Auto-apply to JSON fields with API key"
+                hint="The JSON fields with this API key use this plugin as their editor."
+              >
+                <StringInput
+                  code
+                  placeholder="seo_analysis"
+                  value={autoApply}
+                  onChange={(value) => setAutoApply(value || null)}
+                />
+              </FieldWrapper>
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }
