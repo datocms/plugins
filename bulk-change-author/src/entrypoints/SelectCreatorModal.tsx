@@ -1,11 +1,18 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Form, SelectField } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import SelectInput from 'datocms-react-ui/SelectInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BulkProgress,
   bulkChangeCreator,
   type CreatorType,
 } from '../actions/bulkChangeCreator';
+import { CircleExclamationIcon } from '../icons';
 import { makeClient } from '../services/cmaClient';
 import { describeApiError } from '../services/requestErrors';
 import {
@@ -13,6 +20,13 @@ import {
   resolveExecutionError,
 } from '../utils/bulkCreatorWorkflow';
 import styles from './SelectCreatorModal.module.css';
+
+// A module constant: a new texts object on each render would render the whole
+// dialog again
+const TEXTS = {
+  'bulkChangeAuthor.newCreatorHint':
+    '{count, plural, =0 {Becomes the creator of the selected records.} one {Becomes the creator of the selected record.} other {Becomes the creator of the # selected records.}}',
+} as const;
 
 type Props = {
   ctx: RenderModalCtx;
@@ -25,13 +39,15 @@ type ModalParameters = {
   itemIds?: string[];
 };
 
+// A collaborator, an SSO user and the owner account can share an id: the
+// select's value joins the type and the id, and `id` keeps the bare id
 type Option = {
   label: string;
   value: string;
+  id: string;
   userType: CreatorType;
 };
 
-type SingleValue<T> = T | null;
 type OptionGroup<T> = {
   label?: string;
   options: T[];
@@ -128,7 +144,7 @@ function findPreselectedOption(
   }
 
   const match = allOptions.find((option) => {
-    const matchesId = option.value === preselectedUserId;
+    const matchesId = option.id === preselectedUserId;
     if (!matchesId) {
       return false;
     }
@@ -195,46 +211,21 @@ function ExecutionProgress({ progress }: { progress: BulkProgress }) {
         {progress.stopping ? 'Stopping…' : 'Changing creators…'}{' '}
         {progress.processed} of {progress.total} records processed.
       </p>
-      <progress
-        max={Math.max(1, progress.total)}
-        value={progress.processed}
-        aria-label="Records processed"
+      <ProgressBar
+        value={progress.total > 0 ? progress.processed / progress.total : 0}
+        ariaLabel="Changing creators"
       />
-      <p>
+      <p className={styles.subtle}>
         {progress.succeeded} changed, {progress.active} in progress.
         {progress.failed > 0 && ` ${progress.failed} failed.`}
       </p>
       {progress.stopping && (
-        <p>
+        <p className={styles.subtle}>
           Waiting for requests already started to finish. No further records
           will be started.
         </p>
       )}
     </div>
-  );
-}
-
-function CreatorModalHeader({
-  title,
-  isContinuousExecution,
-}: {
-  title: string;
-  isContinuousExecution: boolean;
-}) {
-  return (
-    <header className={styles.header}>
-      <h2 className={styles.heading}>{title}</h2>
-      <p className={styles.subheading}>
-        Select a collaborator, SSO user, or project owner to assign as the new
-        creator for the chosen records.
-      </p>
-      {isContinuousExecution && (
-        <p className={styles.subheading}>
-          Large selections can take hours. Keep this window open until the
-          changes finish.
-        </p>
-      )}
-    </header>
   );
 }
 
@@ -250,7 +241,11 @@ export default function SelectCreatorModal({ ctx }: Props) {
   );
   const [optionGroups, setOptionGroups] = useState<OptionGroup<Option>[]>([]);
   const [selectedUser, setSelectedUser] = useState<Option | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // With a token the creators load on mount: start in the loading state, so
+  // the first frame doesn't say that there are no creators
+  const [isLoading, setIsLoading] = useState<boolean>(
+    Boolean(ctx.currentUserAccessToken),
+  );
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [partialListWarning, setPartialListWarning] = useState<string | null>(
@@ -288,18 +283,16 @@ export default function SelectCreatorModal({ ctx }: Props) {
         return;
       }
       if (allOptions.length === 0) {
-        setFetchError(resolveErrorMessage(firstRejectionReason));
+        setFetchError(describeApiError(firstRejectionReason));
       } else {
-        setPartialListWarning(
-          `Some creators could not be loaded. Only the available creators are listed. ${resolveErrorMessage(firstRejectionReason)}`,
-        );
+        setPartialListWarning(describeApiError(firstRejectionReason));
       }
     }
 
     async function loadUsers() {
       if (!ctx.currentUserAccessToken) {
         setFetchError(
-          "The plugin is missing the 'currentUserAccessToken' permission required to load users.",
+          'The plugin has no access to your API token (currentUserAccessToken permission).',
         );
         setOptionGroups([]);
         setSelectedUser(null);
@@ -317,7 +310,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
           return;
         }
 
-        setFetchError(resolveErrorMessage(error));
+        setFetchError(describeApiError(error));
         setOptionGroups([]);
         setSelectedUser(null);
       } finally {
@@ -346,17 +339,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
     };
   }, []);
 
-  const title = useMemo(() => {
-    if (itemCount <= 0) {
-      return 'Change creators';
-    }
-    const plural = itemCount === 1 ? 'record' : 'records';
-    return `Change creators for ${itemCount} ${plural}`;
-  }, [itemCount]);
-
-  const errorMessage = fetchError ?? selectionError ?? undefined;
-
-  const handleSelectChange = (option: SingleValue<Option>) => {
+  const handleSelectChange = (option: Option | null) => {
     if (executionStarted.current) {
       return;
     }
@@ -378,7 +361,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
     if (!isContinuousExecution || !itemIds) {
       executionStarted.current = true;
       ctx.resolve({
-        userId: selectedUser.value,
+        userId: selectedUser.id,
         userType: selectedUser.userType,
       });
       return;
@@ -410,7 +393,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
         environment: ctx.environment,
         baseUrl: ctx.cmaBaseUrl,
         itemIds,
-        userId: selectedUser.value,
+        userId: selectedUser.id,
         userType: selectedUser.userType,
         signal: controller.signal,
         onProgress: setProgress,
@@ -436,66 +419,89 @@ export default function SelectCreatorModal({ ctx }: Props) {
     setProgress((current) => current && { ...current, stopping: true });
   };
 
-  return (
-    <Canvas ctx={ctx}>
-      <Form onSubmit={handleSubmit} className={styles.form}>
-        <CreatorModalHeader
-          title={title}
-          isContinuousExecution={isContinuousExecution}
+  const cancel = <Button tone="ghost" label="Cancel" onClick={handleCancel} />;
+
+  if (fetchError) {
+    return (
+      <Canvas ctx={ctx}>
+        <BlankSlate
+          placement="inline"
+          error
+          icon={<CircleExclamationIcon />}
+          title="Couldn't load the creators"
+          code={fetchError}
+          description="Close this dialog and try again."
         />
-        <SelectField<Option, false, OptionGroup<Option>>
-          id="new-creator"
-          name="new-creator"
+        <div className={styles.footer}>{cancel}</div>
+      </Canvas>
+    );
+  }
+
+  return (
+    <Canvas ctx={ctx} texts={TEXTS}>
+      <form onSubmit={handleSubmit}>
+        {partialListWarning && (
+          <Callout
+            tone="warning"
+            title="Some creators couldn't be loaded"
+            className={styles.callout}
+          >
+            Only the available creators are listed. {partialListWarning}
+          </Callout>
+        )}
+        {isContinuousExecution && (
+          <Callout title="This can take hours" className={styles.callout}>
+            Keep this dialog open until the change finishes.
+          </Callout>
+        )}
+        <FieldWrapper
           label="New creator"
           required
-          value={selectedUser}
-          onChange={handleSelectChange}
-          hint="Collaborators, SSO users, and the project owner are listed."
-          error={errorMessage}
-          selectInputProps={{
-            options: optionGroups,
-            isClearable: false,
-            isDisabled: isLoading || Boolean(fetchError) || isRunning,
-            isLoading,
-            placeholder: isLoading
-              ? 'Loading users…'
-              : hasOptions
-                ? 'Choose a collaborator, SSO user, or project owner'
-                : 'No users available',
+          hint={{
+            id: 'bulkChangeAuthor.newCreatorHint',
+            values: { count: itemCount },
           }}
-        />
-        {partialListWarning && (
-          <p className={styles.warning} role="status">
-            {partialListWarning}
-          </p>
-        )}
-        {isRunning && progress && <ExecutionProgress progress={progress} />}
-        <footer className={styles.footer}>
-          <Button
-            type="submit"
-            buttonType="primary"
-            disabled={
-              isLoading || Boolean(fetchError) || !selectedUser || isRunning
+          error={selectionError ?? undefined}
+        >
+          <SelectInput<Option, OptionGroup<Option>>
+            value={selectedUser?.value ?? null}
+            onChange={(_value, option) => handleSelectChange(option)}
+            options={optionGroups}
+            clearable={false}
+            loading={isLoading}
+            disabled={isLoading || isRunning}
+            placeholder={
+              isLoading || hasOptions
+                ? 'Pick a creator'
+                : 'No creators available'
             }
-          >
-            {isRunning ? 'Changing creator…' : 'Change creator'}
-          </Button>
+          />
+        </FieldWrapper>
+        {isRunning && progress && <ExecutionProgress progress={progress} />}
+        <div className={styles.footer}>
           {isRunning ? (
             <Button
-              type="button"
-              buttonType="muted"
+              tone="ghost"
+              label="Stop"
+              busy={progress?.stopping}
               onClick={handleStop}
-              disabled={progress?.stopping}
-            >
-              {progress?.stopping ? 'Stopping…' : 'Stop'}
-            </Button>
+            />
           ) : (
-            <Button type="button" buttonType="muted" onClick={handleCancel}>
-              Cancel
-            </Button>
+            cancel
           )}
-        </footer>
-      </Form>
+          <Button
+            submit
+            tone="primary"
+            label="Change creator"
+            busy={isRunning}
+            disabled={
+              isLoading
+                ? { reason: 'Wait for the creators to load.' }
+                : !selectedUser && { reason: 'Pick the new creator first.' }
+            }
+          />
+        </div>
+      </form>
     </Canvas>
   );
 }
@@ -602,7 +608,7 @@ function toCollaboratorOption(user: RawCollaborator): Option {
   const email = firstNonEmpty(attributes.email, user.email);
   const label = formatLabel(name, email, `User ${user.id}`);
 
-  return { label, value: user.id, userType: 'user' };
+  return { label, value: `user:${user.id}`, id: user.id, userType: 'user' };
 }
 
 function toSsoOption(user: RawSsoUser): Option {
@@ -614,7 +620,12 @@ function toSsoOption(user: RawSsoUser): Option {
   const username = firstNonEmpty(attributes.username, user.username);
   const label = formatLabel(name, username, `SSO user ${user.id}`);
 
-  return { label, value: user.id, userType: 'sso_user' };
+  return {
+    label,
+    value: `sso_user:${user.id}`,
+    id: user.id,
+    userType: 'sso_user',
+  };
 }
 
 function toOwnerOption(owner: RawSiteOwner | null): Option | null {
@@ -626,7 +637,8 @@ function toOwnerOption(owner: RawSiteOwner | null): Option | null {
     owner.type === 'organization' ? 'organization' : 'personal account';
   return {
     label: `Project owner (${suffix})`,
-    value: owner.id,
+    value: `${owner.type}:${owner.id}`,
+    id: owner.id,
     userType: owner.type,
   };
 }
@@ -666,8 +678,4 @@ function formatLabel(
   }
 
   return primary ?? secondary ?? fallback;
-}
-
-function resolveErrorMessage(error: unknown): string {
-  return `Unable to load creators. ${describeApiError(error)}`;
 }

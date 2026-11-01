@@ -6,6 +6,7 @@ import {
   type RenderModalCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import {
   type BulkResult,
   bulkChangeCreator,

@@ -9,11 +9,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import type {
-  ButtonHTMLAttributes,
-  FormHTMLAttributes,
-  PropsWithChildren,
-} from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BulkProgress, BulkResult } from '../actions/bulkChangeCreator';
 import SelectCreatorModal from './SelectCreatorModal';
@@ -37,76 +32,45 @@ vi.mock('../services/cmaClient', () => ({
   }),
 }));
 
-type TestOption = { label: string; value: string; userType: string };
-type TestSelectProps = {
-  label: string;
-  value: TestOption | null;
-  error?: string;
-  onChange: (option: TestOption | null) => void;
-  selectInputProps: {
-    options: Array<{ label: string; options: TestOption[] }>;
-    isDisabled: boolean;
-  };
-};
-
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: PropsWithChildren) => <>{children}</>,
-  Form: (props: FormHTMLAttributes<HTMLFormElement>) => <form {...props} />,
-  Button: ({
-    children,
-    type,
-    disabled,
-    onClick,
-  }: ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type={type} disabled={disabled} onClick={onClick}>
-      {children}
-    </button>
-  ),
-  SelectField: ({
-    label,
-    value,
-    error,
-    onChange,
-    selectInputProps,
-  }: TestSelectProps) => {
-    const options = selectInputProps.options.flatMap((group) => group.options);
-    return (
-      <>
-        <select
-          aria-label={label}
-          value={value ? `${value.userType}:${value.value}` : ''}
-          disabled={selectInputProps.isDisabled}
-          onChange={(event) =>
-            onChange(
-              options.find(
-                (option) =>
-                  `${option.userType}:${option.value}` === event.target.value,
-              ) ?? null,
-            )
-          }
-        >
-          <option value="">Choose creator</option>
-          {options.map((option) => (
-            <option
-              key={`${option.userType}:${option.value}`}
-              value={`${option.userType}:${option.value}`}
-            >
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {error && <p>{error}</p>}
-      </>
-    );
-  },
+// jsdom has no layout: the react-ui components only need these to exist
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+vi.stubGlobal('matchMedia', (media: string) => ({
+  matches: false,
+  media,
+  onchange: null,
+  addListener() {},
+  removeListener() {},
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent: () => false,
 }));
+Element.prototype.scrollIntoView = () => {};
 
 function context(parameters: Record<string, unknown> = {}) {
   return {
+    mode: 'renderModal',
     parameters,
     environment: 'main',
     currentUserAccessToken: 'test-token',
     cmaBaseUrl: 'https://example.invalid',
+    cssDesignTokens: {},
+    colorScheme: 'light',
+    bodyPadding: [0, 0, 0, 0],
+    ui: { locale: 'en' },
+    site: { attributes: { internal_domain: null } },
+    navigateTo: vi.fn(),
+    notice: vi.fn(),
+    alert: vi.fn(),
+    customToast: vi.fn(),
+    openConfirm: vi.fn(),
+    startAutoResizer: vi.fn(),
+    stopAutoResizer: vi.fn(),
+    updateHeight: vi.fn(),
     resolve: vi.fn(),
   } as unknown as RenderModalCtx;
 }
@@ -115,10 +79,10 @@ async function chooseOwner() {
   // All creator responses are mocked. Flush React's async effects directly so
   // assertions do not depend on a wall-clock polling timeout under parallel CI.
   await act(async () => {});
-  expect(screen.getByRole('combobox')).toHaveProperty('disabled', false);
-  fireEvent.change(screen.getByRole('combobox'), {
-    target: { value: 'account:owner' },
-  });
+  const combobox = screen.getByRole('combobox');
+  expect(combobox).toHaveProperty('disabled', false);
+  fireEvent.keyDown(combobox, { key: 'ArrowDown' });
+  fireEvent.click(screen.getByText('Project owner (personal account)'));
 }
 
 beforeEach(() => {
@@ -137,7 +101,10 @@ describe('SelectCreatorModal', () => {
     await chooseOwner();
     expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
     expect(screen.queryByRole('progressbar')).toBeNull();
-    expect(screen.queryByText(/Large selections can take hours/)).toBeNull();
+    expect(screen.queryByText(/can take hours/)).toBeNull();
+    expect(
+      screen.getByText('Becomes the creator of the 2 selected records.'),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Change creator' }));
     expect(ctx.resolve).toHaveBeenCalledWith({
@@ -180,7 +147,9 @@ describe('SelectCreatorModal', () => {
         stopping: false,
       }),
     );
-    expect(screen.getByRole('progressbar')).toHaveProperty('value', 21);
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe(
+      '4',
+    );
     expect(screen.getByText(/20 changed, 6 in progress/).textContent).toContain(
       '1 failed',
     );
@@ -188,10 +157,11 @@ describe('SelectCreatorModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(execution.signal.aborted).toBe(true);
     expect(ctx.resolve).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Stopping…' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    const stop = screen.getByRole('button', { name: 'Stop' });
+    expect(
+      stop.getAttribute('aria-busy') === 'true' ||
+        stop.hasAttribute('disabled'),
+    ).toBe(true);
     expect(
       screen.getByText(/Waiting for requests already started/),
     ).toBeTruthy();
@@ -213,10 +183,9 @@ describe('SelectCreatorModal', () => {
     const ctx = context({ itemCount: 2 });
     render(<SelectCreatorModal ctx={ctx} />);
     await chooseOwner();
-    expect(screen.getByRole('status').textContent).toContain(
-      'Some creators could not be loaded',
-    );
-    expect(screen.getByRole('status').textContent).toContain('HTTP 403');
+    const warning = screen.getByRole('alert');
+    expect(warning.textContent).toContain("Some creators couldn't be loaded");
+    expect(warning.textContent).toContain('HTTP 403');
     fireEvent.click(screen.getByRole('button', { name: 'Change creator' }));
     expect(ctx.resolve).toHaveBeenCalledWith({
       userId: 'owner',
@@ -244,8 +213,24 @@ describe('SelectCreatorModal', () => {
     const ctx = context({ itemIds: Array(500).fill('record') });
     render(<SelectCreatorModal ctx={ctx} />);
     await chooseOwner();
+    expect(screen.getByText(/can take hours/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(ctx.resolve).toHaveBeenCalledWith(null);
     expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
+  });
+
+  it('offers only Cancel when no creator could be loaded', async () => {
+    const forbidden = { response: { status: 403 } };
+    mocks.usersList.mockRejectedValue(forbidden);
+    mocks.ssoUsersList.mockRejectedValue(forbidden);
+    mocks.siteFind.mockRejectedValue(forbidden);
+    const ctx = context({ itemIds: Array(500).fill('record') });
+    render(<SelectCreatorModal ctx={ctx} />);
+    await act(async () => {});
+    expect(screen.getByText("Couldn't load the creators")).toBeTruthy();
+    expect(screen.getByText('HTTP 403')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Change creator' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(ctx.resolve).toHaveBeenCalledWith(null);
   });
 });
