@@ -8,6 +8,7 @@ import {
 } from './types';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 
 function isValidFieldType(value: string): value is ValidFieldType {
   return value === 'string' || value === 'text';
@@ -57,7 +58,7 @@ connect({
     );
 
     if (someFieldUpgraded) {
-      ctx.notice('Plugin upgraded successfully!');
+      ctx.notice('Plugin upgraded.');
     }
   },
   renderConfigScreen(ctx) {

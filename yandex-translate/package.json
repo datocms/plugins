@@ -28,21 +28,14 @@
     "translate"
   ],
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.2.0",
-    "@fortawesome/free-solid-svg-icons": "^7.2.0",
-    "@fortawesome/react-fontawesome": "^3.3.0",
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "datocms-plugin-sdk": "^2.2.2",
-    "datocms-react-ui": "^2.2.4",
-    "final-form": "^5.0.0",
-    "final-form-arrays": "^4.0.0",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.2",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-final-form": "^7.0.0",
-    "react-final-form-arrays": "^4.0.0"
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.2.0",
@@ -54,9 +47,7 @@
   "type": "module",
   "overrides": {
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     }
   },
   "allowScripts": {

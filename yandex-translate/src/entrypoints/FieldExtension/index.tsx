@@ -1,25 +1,22 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import get from 'lodash-es/get';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { normalizeParams } from '../../types';
 import translate from '../../utils/translate';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
 export default function FieldExtension({ ctx }: Props) {
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [pageError, setPageError] = useState<Error | null>(null);
-
   const mainLocale = ctx.site.attributes.locales[0];
   const configParameters = normalizeParams(ctx.plugin.attributes.parameters);
 
-  const handleClick = useCallback(async () => {
+  // The Button is busy until the returned promise settles
+  const handleClick = async () => {
     try {
-      setIsTranslating(true);
       const format =
         ctx.field.attributes.appearance?.editor === 'wysiwyg'
           ? 'html'
@@ -44,13 +41,15 @@ export default function FieldExtension({ ctx }: Props) {
       if (!ctx.itemType.attributes.all_locales_required) {
         ctx.setFieldValue('internalLocales', ctx.site.attributes.locales);
       }
+
+      ctx.notice('Translated to the other locales.');
     } catch (error) {
       console.error(error);
-      setPageError(error as Error);
-    } finally {
-      setIsTranslating(false);
+      ctx.alert(
+        `Could not translate this field: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-  }, [ctx, mainLocale, configParameters.yandexApiKey]);
+  };
 
   useEffect(() => {
     if (ctx.locale !== mainLocale || !ctx.field.attributes.localized) {
@@ -65,16 +64,7 @@ export default function FieldExtension({ ctx }: Props) {
 
   return (
     <Canvas ctx={ctx}>
-      <button type="button" onClick={handleClick} className={s.link}>
-        {isTranslating ? 'Translating...' : 'Translate in other languages'}
-      </button>
-      <div className={s.plugin__status}>
-        {pageError && (
-          <p className={s.plugin__error}>
-            Error fetching data! More info on console
-          </p>
-        )}
-      </div>
+      <Button label="Translate to other locales" onClick={handleClick} />
     </Canvas>
   );
 }
