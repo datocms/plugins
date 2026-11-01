@@ -34,7 +34,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 20 | seo-readability-analysis | 1355 | ^19.2.4 | Pending | |
 | 21 | delete-unused-assets | 1325 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 22 | table-editor | 1148 | ^17.0.2 | Pending | |
-| 23 | tile-picker | 1110 | ^18.3.1 | Pending | |
+| 23 | tile-picker | 1110 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests none. No open issues. |
 | 24 | bulk-change-author | 974 | ^19.2.4 | Pending | |
 | 25 | project-exporter | 797 | ^19.2.4 | Pending | |
 | 26 | content-calendar | 768 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |

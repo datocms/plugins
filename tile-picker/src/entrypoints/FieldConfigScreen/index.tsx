@@ -1,83 +1,128 @@
-import {useCallback, useRef, useState} from 'react';
-import type {RenderManualFieldExtensionConfigScreenCtx} from 'datocms-plugin-sdk';
-import {Canvas, FieldGroup, Form, SelectField, Section} from 'datocms-react-ui';
-import {Form as FormHandler, FormSpy, Field} from 'react-final-form';
-import arrayMutators from 'final-form-arrays';
-import type {GroupBase} from 'react-select';
-import type {FieldConfig, Presentation, ValidFieldParameters, ValidPluginParameters} from '../../lib/types';
-import {normalizeFieldParameters, normalizeOption, normalizePluginParameters} from '../../lib/types';
-import OptionsSection from './OptionsSection';
-import PresentationSection from './PresentationSection';
+import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import NumberInput from 'datocms-react-ui/NumberInput';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import StringInput from 'datocms-react-ui/StringInput';
+import { useState } from 'react';
+import OptionsList, {
+  type OptionRow,
+  toOption,
+  toRow,
+} from '../../components/OptionsList';
+import type {
+  FieldConfig,
+  Presentation,
+  ValidFieldParameters,
+} from '../../lib/types';
+import {
+  normalizeFieldParameters,
+  normalizePluginParameters,
+} from '../../lib/types';
 
-type Props = {ctx: RenderManualFieldExtensionConfigScreenCtx};
-type Opt = {label: string; value: string};
+type Props = { ctx: RenderManualFieldExtensionConfigScreenCtx };
 
-type FormValues = FieldConfig;
+type State = {
+  presets?: string[];
+  options: OptionRow[];
+  presentation?: Presentation;
+};
 
-function cleanFieldConfig(values: Partial<FormValues>): ValidFieldParameters {
-	const config: FieldConfig = {};
-	if (values.presets?.length) config.presets = values.presets;
-	if (values.options?.length) {
-		config.options = values.options.map(opt => normalizeOption(opt as Record<string, string>));
-	}
-	if (values.presentation) {
-		const pres: Presentation = {};
-		if (values.presentation.type) pres.type = values.presentation.type;
-		if (values.presentation.columns != null) pres.columns = Number(values.presentation.columns);
-		if (values.presentation.width) pres.width = values.presentation.width;
-		if (Object.keys(pres).length > 0) config.presentation = pres;
-	}
-	return {paramsVersion: '2', config};
+const LAYOUTS = [
+  { value: 'grid', label: 'Grid' },
+  { value: 'carousel', label: 'Carousel' },
+] as const;
+
+function cleanFieldConfig(state: State): ValidFieldParameters {
+  const config: FieldConfig = {};
+  if (state.presets?.length) config.presets = state.presets;
+  if (state.options.length) config.options = state.options.map(toOption);
+  if (state.presentation) {
+    const pres: Presentation = {};
+    if (state.presentation.type) pres.type = state.presentation.type;
+    if (state.presentation.columns != null)
+      pres.columns = Number(state.presentation.columns);
+    if (state.presentation.width) pres.width = state.presentation.width;
+    if (Object.keys(pres).length > 0) config.presentation = pres;
+  }
+  return { paramsVersion: '2', config };
 }
 
-export default function FieldConfigScreen({ctx}: Props): JSX.Element {
-	const [initialValues] = useState<FormValues>(() => normalizeFieldParameters(ctx.parameters).config);
-	const hasMounted = useRef(false);
+export default function FieldConfigScreen({ ctx }: Props) {
+  const [state, setState] = useState<State>(() => {
+    const { config } = normalizeFieldParameters(ctx.parameters);
+    return { ...config, options: (config.options ?? []).map(toRow) };
+  });
 
-	const [presetOptions] = useState<Opt[]>(() => {
-		const pluginParams = normalizePluginParameters(ctx.plugin.attributes.parameters) as ValidPluginParameters;
-		return Object.keys(pluginParams.presets).map(k => ({value: k, label: k}));
-	});
+  const [presetNames] = useState(() =>
+    Object.keys(
+      normalizePluginParameters(ctx.plugin.attributes.parameters).presets,
+    ),
+  );
 
-	const handleFormSpy = useCallback(({values}: {values: FormValues}) => {
-		if (!hasMounted.current) { hasMounted.current = true; return; }
-		ctx.setParameters(cleanFieldConfig(values));
-	}, [ctx]);
+  // Every change goes to the field at once: the CMS's Save stores it
+  const update = (next: State) => {
+    setState(next);
+    ctx.setParameters(cleanFieldConfig(next));
+  };
 
-	return (
-		<Canvas ctx={ctx}>
-			<FormHandler<FormValues>
-				initialValues={initialValues}
-				mutators={{...arrayMutators}}
-				onSubmit={() => {}}
-			>
-				{({handleSubmit}) => (
-					<Form onSubmit={handleSubmit}>
-						<Section title="Options">
-							<FieldGroup>
-								{presetOptions.length > 0 && (
-									<Field name="presets">
-										{({input}) => (
-											<SelectField<Opt, true, GroupBase<Opt>>
-												id="presets"
-												name="presets"
-												label="From presets"
-												hint="Merge options from one or more global presets"
-												value={presetOptions.filter(o => (input.value as string[] ?? []).includes(o.value))}
-												onChange={opts => input.onChange((opts as Opt[]).map(o => o.value))}
-												selectInputProps={{isMulti: true, options: presetOptions, isClearable: true}}
-											/>
-										)}
-									</Field>
-								)}
-								<OptionsSection />
-							</FieldGroup>
-						</Section>
-						<PresentationSection />
-						<FormSpy subscription={{values: true}} onChange={handleFormSpy} />
-					</Form>
-				)}
-			</FormHandler>
-		</Canvas>
-	);
+  const updatePresentation = (changes: Presentation) =>
+    update({ ...state, presentation: { ...state.presentation, ...changes } });
+
+  const layout = state.presentation?.type ?? 'grid';
+
+  return (
+    <>
+      {presetNames.length > 0 && (
+        <FieldWrapper
+          label="Presets"
+          hint="Editors also get the options of these presets, before the ones below."
+        >
+          <SelectInput
+            multiple
+            clearable
+            options={presetNames.map((name) => ({ value: name, label: name }))}
+            // Presets that no longer exist don't show
+            value={(state.presets ?? []).filter((name) =>
+              presetNames.includes(name),
+            )}
+            onChange={(presets) => update({ ...state, presets: presets ?? [] })}
+          />
+        </FieldWrapper>
+      )}
+      <OptionsList
+        value={state.options}
+        onChange={(options) => update({ ...state, options })}
+      />
+      <FieldWrapper label="Layout">
+        <RadioGroupInput
+          value={layout}
+          onChange={(type) => updatePresentation({ type: type ?? undefined })}
+          options={LAYOUTS}
+        />
+      </FieldWrapper>
+      {layout === 'grid' ? (
+        <FieldWrapper label="Columns">
+          <NumberInput
+            value={state.presentation?.columns ?? null}
+            onChange={(columns) =>
+              updatePresentation({ columns: columns ?? undefined })
+            }
+            placeholder="6"
+            inputMode="numeric"
+          />
+        </FieldWrapper>
+      ) : (
+        <FieldWrapper label="Tile width">
+          <StringInput
+            value={state.presentation?.width ?? null}
+            onChange={(width) =>
+              updatePresentation({ width: width ?? undefined })
+            }
+            placeholder="250px"
+          />
+        </FieldWrapper>
+      )}
+    </>
+  );
 }

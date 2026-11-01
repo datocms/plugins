@@ -1,100 +1,128 @@
-import {useCallback, useEffect, useMemo, useRef} from 'react';
-import type {CSSProperties, ChangeEvent} from 'react';
-import {Canvas} from 'datocms-react-ui';
-import type {RenderFieldExtensionCtx} from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import Callout from 'datocms-react-ui/Callout';
 import get from 'lodash-es/get';
-import {normalizeFieldParameters, normalizePluginParameters} from '../lib/types';
-import type {Option} from '../lib/types';
-import s from '../lib/styles.module.css';
-
-import lang, {EN_NO_VALUE_MATCH, EN_PLEASE_SELECT_OPTION, EN_NO_OPTIONS} from '../lang';
+import { useEffect, useMemo, useRef } from 'react';
 import Visualizer from '../components/visualizers/visualizer';
+import lang, {
+  EN_NO_OPTIONS,
+  EN_NO_VALUE_MATCH,
+  EN_PLEASE_SELECT_OPTION,
+} from '../lang';
+import s from '../lib/styles.module.css';
+import type { Option } from '../lib/types';
+import {
+  normalizeFieldParameters,
+  normalizePluginParameters,
+} from '../lib/types';
 
 type VisualSelectProps = {
-	ctx: RenderFieldExtensionCtx;
+  ctx: RenderFieldExtensionCtx;
 };
 
 const defaults = {
-	columns: 6,
-	width: '250px',
+  columns: 6,
+  width: '250px',
 };
 
-const VisualSelect = ({ctx}: VisualSelectProps): JSX.Element => {
-	const selectedField = useRef<HTMLInputElement>(null);
+const VisualSelect = ({ ctx }: VisualSelectProps) => {
+  const selectedTile = useRef<HTMLSpanElement>(null);
 
-	const [options, presentation] = useMemo(() => {
-		const {presets: allPresets} = normalizePluginParameters(ctx.plugin.attributes.parameters);
-		const {config} = normalizeFieldParameters(ctx.parameters);
-		const presetOptions = (config.presets ?? []).flatMap(key => allPresets[key] ?? []);
-		return [[...presetOptions, ...(config.options ?? [])] as Option[], config.presentation ?? {}];
-	}, [ctx.parameters, ctx.plugin.attributes.parameters]);
+  const [options, presentation] = useMemo(() => {
+    const { presets: allPresets } = normalizePluginParameters(
+      ctx.plugin.attributes.parameters,
+    );
+    const { config } = normalizeFieldParameters(ctx.parameters);
+    const presetOptions = (config.presets ?? []).flatMap(
+      (key) => allPresets[key] ?? [],
+    );
+    return [
+      [...presetOptions, ...(config.options ?? [])] as Option[],
+      config.presentation ?? {},
+    ];
+  }, [ctx.parameters, ctx.plugin.attributes.parameters]);
 
-	const currentValue = useMemo(
-		() => get(ctx.formValues, ctx.fieldPath) as string,
-		[ctx.formValues, ctx.fieldPath],
-	);
+  const currentValue = useMemo(
+    () => get(ctx.formValues, ctx.fieldPath) as string,
+    [ctx.formValues, ctx.fieldPath],
+  );
 
-	const hasValidValue = useMemo(() => {
-		return [...options, {value: null}].map(o => o.value).includes(currentValue);
-	}, [options, currentValue]);
+  const hasValidValue = useMemo(() => {
+    return [...options, { value: null }]
+      .map((o) => o.value)
+      .includes(currentValue);
+  }, [options, currentValue]);
 
-	const handleOnChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-		ctx.setFieldValue(ctx.fieldPath, event.target.value);
-	}, []);
+  const isCarousel = presentation.type === 'carousel';
 
-	const customStyle: CSSProperties = useMemo(() => ({
-		display: presentation.type === 'carousel' ? 'flex' : 'grid',
-		gridTemplateColumns: `repeat(${presentation.columns ?? defaults.columns}, 1fr)`,
-	}), [presentation]);
+  // On mount, the carousel scrolls the selected tile into view
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once, as before
+  useEffect(() => {
+    if (isCarousel && selectedTile.current) {
+      selectedTile.current.scrollIntoView({
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, []);
 
-	const customWidth: CSSProperties = useMemo(() => (
-		presentation.type === 'carousel' ? {width: presentation.width ?? defaults.width} : {}
-	), [presentation]);
+  const tiles = (
+    <fieldset
+      aria-label={ctx.field.attributes.label}
+      disabled={ctx.disabled}
+      className={s.tiles}
+      style={
+        isCarousel
+          ? undefined
+          : {
+              gridTemplateColumns: `repeat(${presentation.columns ?? defaults.columns}, minmax(0, 1fr))`,
+            }
+      }
+    >
+      {options.map((option, index) => (
+        <label
+          // biome-ignore lint/suspicious/noArrayIndexKey: options have no id, and names can repeat
+          key={index}
+          className={s.option}
+          style={
+            isCarousel
+              ? { width: presentation.width ?? defaults.width }
+              : undefined
+          }
+        >
+          <input
+            type="radio"
+            className={s.radio}
+            name={ctx.fieldPath}
+            value={option.value}
+            checked={currentValue === option.value}
+            onChange={() => ctx.setFieldValue(ctx.fieldPath, option.value)}
+          />
+          <span
+            ref={currentValue === option.value ? selectedTile : null}
+            className={s.tile}
+          >
+            <Visualizer option={option} />
+            <span className={s.name}>{option.name}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
 
-	useEffect(() => {
-		if (presentation.type === 'carousel' && selectedField.current) {
-			selectedField.current.scrollIntoView({block: 'nearest', inline: 'center'});
-		}
-	}, [selectedField]);
-
-	return (
-		<Canvas ctx={ctx}>
-			{!hasValidValue && (
-				<div className={s['notice']}>
-					<div>{lang(EN_NO_VALUE_MATCH, {value: currentValue})}</div>
-					<div><b>{lang(EN_PLEASE_SELECT_OPTION)}</b></div>
-				</div>
-			)}
-			{options.length === 0 && (
-				<div className={s['notice']}>{lang(EN_NO_OPTIONS)}</div>
-			)}
-			<div className={presentation.type === 'carousel' ? s['carousel-scroll-container'] : ''}>
-				<fieldset style={customStyle} id={ctx.field.id} className={s['fieldset']}>
-					{options.map(option => (
-						<label key={option.name} className={s['label']} htmlFor={`${option.name}_${ctx.field.id}`}>
-							<input
-								id={`${option.name}_${ctx.field.id}`}
-								className={s['radio']}
-								type="radio"
-								value={option.value}
-								name="options"
-								defaultChecked={currentValue == option.value}
-								onChange={handleOnChange}
-							/>
-							<div
-								ref={currentValue == option.value ? selectedField : null}
-								style={customWidth}
-								className={s['mark']}
-							>
-								<Visualizer option={option} />
-								<span className={s['name']}>{option.name}</span>
-							</div>
-						</label>
-					))}
-				</fieldset>
-			</div>
-		</Canvas>
-	);
+  return (
+    <>
+      {!hasValidValue && (
+        <Callout tone="warning" title="Unknown value">
+          {lang(EN_NO_VALUE_MATCH, { value: currentValue })}{' '}
+          {lang(EN_PLEASE_SELECT_OPTION)}
+        </Callout>
+      )}
+      {options.length === 0 && (
+        <Callout tone="warning">{lang(EN_NO_OPTIONS)}</Callout>
+      )}
+      {isCarousel ? <div className={s.carousel}>{tiles}</div> : tiles}
+    </>
+  );
 };
 
 export default VisualSelect;

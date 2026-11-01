@@ -1,235 +1,141 @@
+/* The field editor: a radio group drawn as tiles */
 
-.space-top {
-	margin-top: var(--spacing-m);
+/* The group has no look of its own: the tiles are the controls. The
+   columns of the grid come from the field's settings, as an inline style. */
+.tiles {
+  display: grid;
+  gap: var(--spacing-s);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.fieldset {
-	border: 0;
-	box-sizing: border-box;
-	display: grid;
-	grid-gap: var(--spacing-s);
-	/* 7.4589rem is a magic number that ensures the right hand edge of the grid
-	lines up nicely with the form/field container set up by DatoCMS */
-	grid-template-columns: repeat(auto-fit, minmax(0, 7.4589rem));
-	padding: 0;
+/* The carousel: one row that scrolls sideways. The padding keeps the focus
+   ring of the first and the last tile in view. */
+.carousel {
+  overflow-x: auto;
+  padding: var(--spacing-s);
 }
 
-.label {
-	padding: 0;
+.carousel .tiles {
+  display: flex;
 }
 
+/* The width of a carousel tile comes from the field's settings, as an
+   inline style. The radio is placed inside its tile. */
+.option {
+  position: relative;
+}
+
+.carousel .option {
+  flex: none;
+}
+
+/* The radio keeps the focus and the keys of a radio group, out of sight:
+   the tile next to it shows its state */
 .radio {
-	height: 1px;
-	left: -10000px;
-	overflow: hidden;
-	position: absolute;
-	top: auto;
-	width: 1px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
-.mark {
-	border-color: var(--color--border);
-	border-radius: 5px;
-	border-style: solid;
-	border-width: 1px;
-	color: var(--color--ink);
-	cursor: pointer;
-	font-size: var(--font-size-xs);
-	padding: var(--spacing-s);
-	text-align: center;
-	transition: all .15s cubic-bezier(.55, 0, .1, 1);
+/* A tile is a control: the box of a field */
+.tile {
+  display: block;
+  padding: var(--spacing-s);
+  color: var(--color--ink);
+  text-align: center;
+  cursor: pointer;
+  background: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
 }
 
-.color-preview {
-	border-radius: 3px;
-	width: 100%;
-	aspect-ratio: 4 / 3;
+.tile:hover {
+  border-color: var(--color--border-hover);
 }
 
-.image-preview-container {
-	background: var(--color--surface-muted);
-	border-radius: 3px;
-	padding-top: 75%;
-	position: relative;
+.radio:checked + .tile {
+  color: var(--color--selected--ink);
+  background: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
 }
 
-.image-preview {
-	bottom: 0;
-	height: calc(100% - var(--spacing-m) * 2);
-	left: 0;
-	margin: var(--spacing-m);
-	object-fit: contain;
-	object-position: center;
-	position: absolute;
-	right: 0;
-	top: 0;
-	width: calc(100% - var(--spacing-m) * 2);
+/* The focus of a field: its border and the ring */
+.radio:focus-visible + .tile {
+  border-color: var(--color--focus--border);
+  box-shadow: var(--focus-ring);
+}
+
+/* A disabled field never fades: it takes the disabled-field context, also
+   when it is checked */
+.radio:disabled + .tile {
+  color: var(--color--disabled-field--ink);
+  cursor: default;
+  background: var(--color--disabled-field--surface);
+  border-color: var(--color--border);
+}
+
+.radio:disabled:checked + .tile {
+  border-color: var(--color--disabled-field--fill);
 }
 
 .name {
-	display: block;
-	line-height: 1;
-	margin-bottom: 0;
-	margin-left: 0;
-	margin-right: 0;
-	margin-top: var(--spacing-s);
-	overflow: hidden;
-	padding: 0;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+  display: block;
+  margin-top: var(--spacing-s);
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.label input:checked ~ .mark {
-	border-color: var(--color--selected--border);
-	background: var(--color--selected--surface);
-	color: var(--color--selected--ink);
+/* The previews of an option, in a tile and in the settings */
+
+/* The color is the option's own: the hairline keeps the box of a white or
+   a black swatch in view */
+.color {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-xs);
+  outline: 1px solid var(--color--border);
+  outline-offset: -1px;
 }
 
-.label:hover .mark,
-.label:focus .mark {
-	box-shadow: 0 0 0 3px var(--color--focus--outline);
+/* The image fits inside a quiet box */
+.image {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--color--surface-muted);
+  border-radius: var(--radius-xs);
 }
 
-.notice {
-	background: var(--color--warning-soft--surface);
-	color: var(--color--warning-soft--ink);
-	padding: var(--spacing-m);
-	border-radius: 5px;
-	font-size: var(--font-size-xs);
-	margin-bottom: var(--spacing-m);
-	border-style: solid;
-	border-width: 1px;
-	border-color: var(--color--warning-soft--border);
+.image img {
+  position: absolute;
+  top: var(--spacing-s);
+  left: var(--spacing-s);
+  width: calc(100% - 2 * var(--spacing-s));
+  height: calc(100% - 2 * var(--spacing-s));
+  object-fit: contain;
 }
 
-.carousel-scroll-container {
-	overflow-x: scroll;
-	white-space: nowrap;
-	padding-bottom: 1rem;
-	/* 3px here ensures that the outline hover effect on cards
-	is not clipped off by the hidden overflow */
-	padding-top: 3px;
+/* The preview cell of an option row: a small box at the inset of the text
+   of the other cells */
+.preview {
+  max-width: 2.5em;
+  padding-inline: var(--TableList-horizontal-cell-padding);
 }
 
-.scroll-container {
-	overflow-x: scroll;
-	white-space: nowrap;
-}
+/* The plugin settings */
 
-
-.option-swatch {
-	display: inline-block;
-	width: 65px;
-	height: 45px;
-	border-radius: 3px;
-	box-shadow: var(--shadow--raised);
-	flex-shrink: 0;
-}
-
-.option-swatch--empty {
-	background-color: var(--color--surface);
-	background-image:
-		linear-gradient(45deg, var(--color--border) 25%, transparent 25%),
-		linear-gradient(-45deg, var(--color--border) 25%, transparent 25%),
-		linear-gradient(45deg, transparent 75%, var(--color--border) 75%),
-		linear-gradient(-45deg, transparent 75%, var(--color--border) 75%);
-	background-size: 8px 8px;
-	background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
-}
-
-.option-swatch-img {
-	width: 65px;
-	height: 45px;
-	border-radius: 3px;
-	object-fit: cover;
-	box-shadow: var(--shadow--raised);
-	flex-shrink: 0;
-}
-
-.option-remove {
-	display: flex;
-	justify-content: flex-end;
-	margin-top: var(--spacing-s);
-}
-
-.card {
-	border: 1px solid var(--color--border);
-	border-radius: 5px;
-}
-
-.card--error {
-	border-color: var(--color--danger-soft--border);
-}
-
-.card-header {
-	display: flex;
-	align-items: center;
-	gap: var(--spacing-s);
-	padding: var(--spacing-m);
-	cursor: pointer;
-	text-align: left;
-}
-
-.card-header:hover {
-	background: var(--color--surface-muted);
-}
-
-.card-chevron {
-	color: var(--color--ink-subtle);
-	flex-shrink: 0;
-}
-
-.card-body {
-	padding: var(--spacing-m);
-	border-top: 1px solid var(--color--border);
-}
-
-.option-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: var(--spacing-m);
-	align-items: start;
-}
-
-.presentation-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: var(--spacing-m);
-}
-
-.preset-header {
-	display: flex;
-	align-items: center;
-	gap: var(--spacing-s);
-	flex: 1;
-}
-
-.preset-title {
-	flex: 1;
-	font-weight: 500;
-}
-
-.option-title {
-	display: flex;
-	align-items: center;
-	gap: var(--spacing-m);
-	flex: 1;
-}
-
-.option-title-name {
-	flex: 1;
-}
-
-
-.empty-state {
-	color: var(--color--ink-muted);
-	font-size: var(--font-size-s);
-	margin-bottom: var(--spacing-m);
-}
-
-.nested-options {
-	display: flex;
-	flex-direction: column;
-	gap: var(--spacing-s);
-	margin-bottom: var(--spacing-m);
+/* The kit's minimum height of a page is for a full-height area: in this
+   frame, which sizes itself to its content, it would keep the frame from
+   shrinking */
+.page {
+  min-height: 0;
 }
