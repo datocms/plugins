@@ -123,11 +123,11 @@ function closesMenu(event: KeyboardEvent): boolean {
 }
 
 /**
- * The field picker: adds a field of the model to the context. The menu
- * takes the focus. Opened by typing "@" (the `open()` of `fieldPickerRef`),
- * it gives the focus back to the message when it closes with Escape or Tab,
- * thus the user goes on typing. Opened with its button, it gives the focus
- * back to the button, as every menu does.
+ * The field picker: adds a field of the model to the context. Its search
+ * field takes the focus. Opened by typing "@" (the `open()` of
+ * `fieldPickerRef`), it gives the focus back to the message when it closes
+ * with Escape or Tab, thus the user goes on typing. Opened with its button,
+ * it gives the focus back to the button, as every menu does.
  */
 function FieldPicker({
   scopedFields,
@@ -181,7 +181,13 @@ function FieldPicker({
         controlRef={dropdownRef}
         disabled={fieldPickerDisabledReason(scopedFields, unscopedFields)}
       >
-        <Dropdown.Menu placement="top-start" optionPaddingY={6}>
+        {/* The search field always shows, also with 5 fields or fewer: the
+            letters typed after "@" filter the fields on every model */}
+        <Dropdown.Menu
+          placement="top-start"
+          optionPaddingY={6}
+          contextualSearch={{ placeholder: 'Search fields...' }}
+        >
           {unscopedFields.map((field) => (
             <Dropdown.Option
               key={field.id}
