@@ -1,29 +1,24 @@
 import { buildClient } from '@datocms/cma-client-browser';
-import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
-import 'datocms-react-ui/styles.css';
-import DeletionModal from './entrypoints/DeletionModal';
+import { connect } from 'datocms-plugin-sdk';
 import {
   collectAssets,
   deleteAssets,
   waitForRecordDeletion,
 } from './utils/assetCleanup';
-import { render } from './utils/render';
+
+const assets = (count: number) =>
+  `${count} ${count === 1 ? 'asset' : 'assets'}`;
 
 connect({
-  renderModal(modalId: string, ctx: RenderModalCtx) {
-    switch (modalId) {
-      case 'deletionModal':
-        return render(<DeletionModal ctx={ctx} />);
-    }
-  },
   async onBeforeItemsDestroy(items, ctx) {
     if (items.length === 0) return true;
 
-    const wantToDelete = await ctx.openModal({
-      id: 'deletionModal',
+    const wantToDelete = await ctx.openConfirm({
       title: 'Delete assets only used in these records?',
-      width: 's',
-      closeDisabled: true,
+      content:
+        'The assets are deleted once the records are gone. Assets still used elsewhere are kept.',
+      choices: [{ label: 'Delete', value: true, intent: 'negative' }],
+      cancel: { label: 'Keep', value: false },
     });
     if (wantToDelete !== true) return true;
 
@@ -66,7 +61,9 @@ connect({
       try {
         const { deleted, kept } = await deleteAssets(client, uploadIds);
         await ctx.notice(
-          `${deleted} assets successfully deleted; ${kept} kept because they are still in use.`,
+          kept > 0
+            ? `Deleted ${assets(deleted)}. Kept ${assets(kept)} still in use elsewhere.`
+            : `Deleted ${assets(deleted)}.`,
         );
       } catch {
         await ctx.alert('Could not delete all the assets of these records.');
