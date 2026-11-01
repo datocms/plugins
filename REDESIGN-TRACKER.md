@@ -18,7 +18,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 4 | ai-translations | 9239 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Sidebar panel, config, picker, confirm and progress dialogs, and bulk page rebuilt; checked headless in light and dark. Build, lint and 980 tests pass. 6 minor issues open (2 already on master). |
 | 5 | import-export-schema | 7122 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |
 | 6 | media-layouts | 6900 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
-| 7 | broken-link-checker | 6569 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 2 minor issues open. |
+| 7 | broken-link-checker | 6569 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 8 | prompt-dato | 6025 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests none. 1 minor issue open. |
 | 9 | find-and-replace | 5803 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 10 | web-previews | 4002 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Config, sidebar preview, record panel, Visual tab and setup guide rebuilt; checked headless in light and dark. Build, typecheck and biome pass (no tests). The icon is picked inline in its cell instead of in the old dialog. 3 minor issues open. |

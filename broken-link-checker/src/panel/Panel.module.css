@@ -4,13 +4,15 @@
   margin-top: var(--spacing-m);
 }
 
-/* Holds the panel's action, so the line box around the button adds no
-   height. The action pulls its box out by 0.8em (its own font size, which
-   is this one), so its text lines up with the content; with its 4px focus
-   ring, that goes past the frame's side padding, which RecordPanel passes
-   in, and the frame's edge would cut the ring. So the box comes back just
-   enough to keep the ring in the frame (Button, "Do not clip the button"). */
-.action {
+/* Hold the panel's small actions (SidebarPanel.Action), so the line box
+   around a button adds no height. An action pulls its box out by 0.8em (its
+   own font size, which is this one), so its text lines up with the content;
+   with its 4px focus ring, that goes past the frame's side padding, which
+   RecordPanel passes in, and the frame's edge would cut the ring. So the box
+   comes back just enough to keep the ring in the frame (Button, "Do not clip
+   the button"). */
+.action,
+.controls {
   display: flex;
   padding-inline-start: max(
     0px,
@@ -23,9 +25,8 @@
   margin-bottom: 0;
 }
 
-/* The controls of the list above them: the "Show" actions, then the pages. */
+/* The "Show" actions of the list above them, one under the other. */
 .controls {
-  display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
@@ -35,9 +36,10 @@
   margin-top: var(--spacing-s);
 }
 
-/* The pages take the whole width. */
-.pages {
-  align-self: stretch;
+/* The pages of the issues, right under their action. They are out of its
+   box, so they take the whole width of the panel. */
+.panel > .pages {
+  margin-top: 0;
 }
 
 /* The facts under the summary. */

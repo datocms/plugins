@@ -1,5 +1,5 @@
-import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { useState } from 'react';
 import { countLabel, formatWarning } from '../report/format';
@@ -51,8 +51,8 @@ function shownIssues(
 /**
  * What a canceled or partial check leaves out. When nothing could be read,
  * the reason alone is the message. Otherwise the content that couldn't be
- * read is a list; its controls sit right under the callout, since a callout
- * holds no buttons.
+ * read is a list; its action and its pages sit right under the callout,
+ * since a callout holds no buttons.
  */
 function CoverageCallout({
   cancelled,
@@ -94,24 +94,23 @@ function CoverageCallout({
       </Callout>
       {canToggle && (
         <div className={styles.controls}>
-          <Button
-            tone="ghost"
+          <SidebarPanel.Action
             label={issuesToggleLabel(warnings.length, expanded, uiLocale)}
             onClick={() => setExpanded((value) => !value)}
           />
-          {expanded && warnings.length > LARGE_WARNING_COUNT && (
-            <Toolbar className={styles.pages}>
-              <Toolbar.Pagination
-                ariaLabel="Content issues"
-                compact
-                currentPage={page}
-                perPage={WARNINGS_PER_PAGE}
-                totalEntries={warnings.length}
-                onChange={setPage}
-              />
-            </Toolbar>
-          )}
         </div>
+      )}
+      {canToggle && expanded && warnings.length > LARGE_WARNING_COUNT && (
+        <Toolbar className={styles.pages}>
+          <Toolbar.Pagination
+            ariaLabel="Content issues"
+            compact
+            currentPage={page}
+            perPage={WARNINGS_PER_PAGE}
+            totalEntries={warnings.length}
+            onChange={setPage}
+          />
+        </Toolbar>
       )}
     </>
   );

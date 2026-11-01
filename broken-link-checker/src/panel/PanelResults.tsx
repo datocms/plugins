@@ -1,4 +1,3 @@
-import Button from 'datocms-react-ui/Button';
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
@@ -200,8 +199,7 @@ function PanelResult({
       )}
       {!paginated && morePlaces > 0 && (
         <div className={styles.controls}>
-          <Button
-            tone="ghost"
+          <SidebarPanel.Action
             label={
               large
                 ? countLabel(
@@ -274,8 +272,7 @@ export function PanelResults({
       {(hidden > 0 || canToggle) && (
         <div className={styles.controls}>
           {hidden > 0 && (
-            <Button
-              tone="ghost"
+            <SidebarPanel.Action
               label={countLabel(
                 Math.min(hidden, URLS_PER_STEP),
                 'Show 1 more URL',
@@ -286,8 +283,7 @@ export function PanelResults({
             />
           )}
           {canToggle && (
-            <Button
-              tone="ghost"
+            <SidebarPanel.Action
               label={
                 showAll
                   ? 'Show only URLs that need attention'
