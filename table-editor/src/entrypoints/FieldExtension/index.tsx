@@ -1,5 +1,5 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
 import deepEqual from 'fast-deep-equal';
 import get from 'lodash-es/get';
 import { useRef, useState } from 'react';
@@ -48,7 +48,12 @@ export default function FieldExtension({ ctx }: Props) {
   }, [value]);
 
   if (value === 'invalid') {
-    return <Canvas ctx={ctx}>Invalid value!</Canvas>;
+    return (
+      <Callout tone="danger" title="The table editor can't read this value">
+        It needs a JSON object with a “columns” list of names and a “data” list
+        of rows.
+      </Callout>
+    );
   }
 
   const handleUpdate = (value: Value | null) => {
@@ -76,17 +81,13 @@ export default function FieldExtension({ ctx }: Props) {
     handleUpdate(exitValue);
   };
 
-  return (
-    <Canvas ctx={ctx}>
-      {value === null ? (
-        <Empty onChange={handleUpdate} />
-      ) : (
-        <TableEditor
-          value={value}
-          onChange={handleUpdate}
-          onOpenInFullScreen={handleOpenInFullScreen}
-        />
-      )}
-    </Canvas>
+  return value === null ? (
+    <Empty onChange={handleUpdate} />
+  ) : (
+    <TableEditor
+      value={value}
+      onChange={handleUpdate}
+      onOpenInFullScreen={handleOpenInFullScreen}
+    />
   );
 }

@@ -1,24 +1,20 @@
-import {
-  faCog,
-  faLongArrowAltLeft,
-  faLongArrowAltRight,
-  faPen,
-  faTimes,
-  faTrashAlt,
-} from '@fortawesome/free-solid-svg-icons';
-import {
-  Button,
-  Dropdown,
-  DropdownMenu,
-  DropdownOption,
-  DropdownSeparator,
-  TextField,
-  useCtx,
-} from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import Button from 'datocms-react-ui/Button';
+import { Dropdown, useCloseMenu } from 'datocms-react-ui/Dropdown';
+import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import StringInput from 'datocms-react-ui/StringInput';
+import { type FormEvent, useRef, useState } from 'react';
 import type { Column } from 'react-table';
+import {
+  ActionToggleIcon,
+  AddIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  DeleteIcon,
+  EditIcon,
+} from '../../icons';
 import type { Actions, Row } from '../../types';
-import { FontAwesomeIcon } from '../FontAwesomeIcon';
+import { useMenuRoom } from '../../utils/useMenuRoom';
 import s from './style.module.css';
 
 type Props = Actions & {
@@ -28,6 +24,130 @@ type Props = Actions & {
   columns: Column<Row>[];
 };
 
+type MenuProps = Pick<
+  Props,
+  | 'columns'
+  | 'onColumnRename'
+  | 'onAddColumn'
+  | 'onMoveColumn'
+  | 'onRemoveColumn'
+> & { id: string | undefined };
+
+// The menu renders this only while it is open, thus each opening starts on
+// the options, and the rename form starts from the current name.
+function ColumnMenu({
+  id,
+  columns,
+  onColumnRename,
+  onAddColumn,
+  onMoveColumn,
+  onRemoveColumn,
+}: MenuProps) {
+  const closeMenu = useCloseMenu();
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(id ?? '');
+  const [error, setError] = useState<string>();
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setError('Give the column a name.');
+      return;
+    }
+
+    if (columns.find((c) => c.id === name)) {
+      setError('Column names must be unique.');
+      return;
+    }
+
+    if (!id) {
+      return;
+    }
+
+    onColumnRename(id, name);
+    closeMenu();
+  };
+
+  if (renaming) {
+    // The menu stops Enter (it picks the highlighted option): in the form,
+    // Enter submits the new name.
+    return (
+      <form
+        onSubmit={submit}
+        onKeyDown={(event) => event.key === 'Enter' && event.stopPropagation()}
+      >
+        <div className="Dropdown__menu__body">
+          <FieldWrapper label="Column name" error={error}>
+            <StringInput
+              value={name}
+              onChange={(newName) => {
+                setName(newName ?? '');
+                setError(undefined);
+              }}
+              autoFocus
+            />
+          </FieldWrapper>
+          <Button tone="primary" size="small" submit label="Rename" />
+        </div>
+      </form>
+    );
+  }
+
+  if (!id) {
+    return null;
+  }
+
+  const columnIndex = columns.findIndex((c) => c.id === id);
+
+  return (
+    <>
+      <Dropdown.Option
+        icon={<EditIcon />}
+        closeMenuOnClick={false}
+        onPick={() => setRenaming(true)}
+      >
+        Rename
+      </Dropdown.Option>
+      <Dropdown.Separator />
+      <Dropdown.Option
+        icon={<ArrowLeftIcon />}
+        disabled={
+          columnIndex === 0 ? { reason: 'This is the first column.' } : false
+        }
+        onPick={() => onMoveColumn(id, true)}
+      >
+        Move left
+      </Dropdown.Option>
+      <Dropdown.Option
+        icon={<ArrowRightIcon />}
+        disabled={
+          columnIndex === columns.length - 1
+            ? { reason: 'This is the last column.' }
+            : false
+        }
+        onPick={() => onMoveColumn(id, false)}
+      >
+        Move right
+      </Dropdown.Option>
+      <Dropdown.Separator />
+      <Dropdown.Option icon={<AddIcon />} onPick={() => onAddColumn(id, true)}>
+        Add column to the left
+      </Dropdown.Option>
+      <Dropdown.Option icon={<AddIcon />} onPick={() => onAddColumn(id, false)}>
+        Add column to the right
+      </Dropdown.Option>
+      <Dropdown.Separator />
+      <Dropdown.Option
+        icon={<DeleteIcon />}
+        alert
+        onPick={() => onRemoveColumn(id)}
+      >
+        Delete column
+      </Dropdown.Option>
+    </>
+  );
+}
+
 export default function EditableHeader({
   column: { id },
   columns,
@@ -36,113 +156,34 @@ export default function EditableHeader({
   onMoveColumn,
   onRemoveColumn,
 }: Props) {
-  const ctx = useCtx();
-  const [panel, setPanel] = useState('root');
-  const [nameValue, setNameValue] = useState(id ?? '');
-
-  useEffect(() => {
-    setNameValue(id ?? '');
-  }, [id]);
-
-  const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!nameValue?.trim()) {
-      ctx.alert('Please provide a valid name');
-      return;
-    }
-
-    if (columns.find((c) => c.id === nameValue)) {
-      ctx.alert('Column names must be unique!');
-      return;
-    }
-
-    if (!id) {
-      return;
-    }
-
-    onColumnRename(id, nameValue);
-  };
-
-  const columnIndex = columns.findIndex((c) => c.id === id);
+  const anchor = useRef<HTMLDivElement>(null);
+  const menuRef = useMenuRoom(anchor);
 
   return (
-    <Dropdown
-      renderTrigger={({ onClick }) => (
-        <button onClick={onClick} className={s.button}>
-          <span>{id}</span>
-          <FontAwesomeIcon icon={faCog} />
-        </button>
-      )}
-    >
-      <DropdownMenu
-        alignment={columnIndex >= columns.length / 2 ? 'right' : 'left'}
-      >
-        {panel === 'root' && id && (
-          <>
-            <DropdownOption
-              closeMenuOnClick={false}
-              onClick={() => {
-                setPanel('rename');
-              }}
-            >
-              <FontAwesomeIcon icon={faPen} /> Rename column
-            </DropdownOption>
-            <DropdownOption red onClick={onRemoveColumn.bind(null, id)}>
-              <FontAwesomeIcon icon={faTrashAlt} /> Remove column
-            </DropdownOption>
-            <DropdownSeparator />
-
-            <DropdownOption
-              onClick={onMoveColumn.bind(null, id, false)}
-              disabled={columnIndex === columns.length - 1}
-            >
-              <FontAwesomeIcon icon={faLongArrowAltRight} /> Move column to the
-              right
-            </DropdownOption>
-            <DropdownOption
-              onClick={onMoveColumn.bind(null, id, true)}
-              disabled={columnIndex === 0}
-            >
-              <FontAwesomeIcon icon={faLongArrowAltLeft} /> Move column to the
-              left
-            </DropdownOption>
-            <DropdownSeparator />
-            <DropdownOption onClick={onAddColumn.bind(null, id, false)}>
-              <FontAwesomeIcon icon={faLongArrowAltRight} /> Add column to the
-              right
-            </DropdownOption>
-            <DropdownOption onClick={onAddColumn.bind(null, id, true)}>
-              <FontAwesomeIcon icon={faLongArrowAltLeft} /> Add column to the
-              left
-            </DropdownOption>
-          </>
-        )}
-        {panel === 'rename' && (
-          <>
-            <form className={s.editForm} onSubmit={handleChangeName}>
-              <TextField
-                id="newName"
-                name="newName"
-                label="Rename column:"
-                value={nameValue}
-                onChange={(newName) => setNameValue(newName)}
-              />
-              <Button type="submit" buttonSize="xxs" fullWidth>
-                Rename
-              </Button>
-            </form>
-            <DropdownSeparator />
-            <DropdownOption
-              closeMenuOnClick={false}
-              onClick={() => {
-                setPanel('root');
-              }}
-            >
-              <FontAwesomeIcon icon={faTimes} /> Cancel
-            </DropdownOption>
-          </>
-        )}
-      </DropdownMenu>
-    </Dropdown>
+    <>
+      <span className={s.name}>{id}</span>
+      <div ref={anchor}>
+        <Dropdown
+          triggerComponent={IconTrigger}
+          icon={ActionToggleIcon}
+          label={`Actions for column “${id}”`}
+        >
+          <Dropdown.Menu
+            ref={menuRef}
+            placement="bottom-end"
+            contextualSearch={false}
+          >
+            <ColumnMenu
+              id={id}
+              columns={columns}
+              onColumnRename={onColumnRename}
+              onAddColumn={onAddColumn}
+              onMoveColumn={onMoveColumn}
+              onRemoveColumn={onRemoveColumn}
+            />
+          </Dropdown.Menu>
+        </Dropdown>
+      </div>
+    </>
   );
 }

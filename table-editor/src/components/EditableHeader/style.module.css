@@ -1,41 +1,7 @@
-.button {
-  all: inherit;
-  cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  font-weight: bold;
-  background: var(--color--surface-muted);
-  transition: background 0.2s var(--material-ease);
-  user-select: none;
-  display: flex;
-  align-items: center;
-  line-height: 1.2;
-}
-
-.button span {
+.name {
   flex: 1;
-}
-
-.button:hover {
-  background: var(--color--surface-hover);
-}
-
-.button svg {
-  margin-left: 10px;
-  color: var(--color--ink-subtle);
-  opacity: 0;
-  transition: opacity 0.2s var(--material-ease);
-}
-
-.button:hover svg {
-  opacity: 1;
-}
-
-.editForm {
-  padding: 0 15px;
-}
-
-.editForm button {
-  margin-top: 5px;
+  min-width: 0;
+  padding: var(--input-padding);
+  font-weight: var(--font-weight-strong);
+  overflow-wrap: anywhere;
 }

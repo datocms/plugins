@@ -1,22 +1,9 @@
-import {
-  faExpand,
-  faLongArrowAltDown,
-  faLongArrowAltUp,
-  faPlus,
-  faTrash,
-  faTrashAlt,
-} from '@fortawesome/free-solid-svg-icons';
-import classNames from 'classnames';
-import {
-  Button,
-  Dropdown,
-  DropdownMenu,
-  DropdownOption,
-  DropdownSeparator,
-  useCtx,
-} from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
 import omit from 'lodash-es/omit';
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import {
   type Column,
   type TableOptions,
@@ -25,10 +12,18 @@ import {
   useTable,
 } from 'react-table';
 import { useDeepCompareMemo } from 'use-deep-compare';
+import {
+  ActionToggleIcon,
+  AddIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  DeleteIcon,
+  ExpandIcon,
+} from '../../icons';
 import type { Actions, Row, Value } from '../../types';
+import { useMenuRoom } from '../../utils/useMenuRoom';
 import EditableCell from '../EditableCell';
 import EditableHeader from '../EditableHeader';
-import { FontAwesomeIcon } from '../FontAwesomeIcon';
 import s from './styles.module.css';
 
 type Props = {
@@ -248,18 +243,17 @@ export default function TableEditor({
 
   const handleClear = async () => {
     const result = await ctx.openConfirm({
-      title: 'Clear the table?',
-      content:
-        'Are you sure you want to clear the table and start over? All rows and headers will be destroyed.',
+      title: 'Delete the table?',
+      content: 'All its rows and columns go away.',
       choices: [
         {
-          label: 'Yes, clear the table',
+          label: 'Delete table',
           value: true,
           intent: 'negative',
         },
       ],
       cancel: {
-        label: 'Go back',
+        label: 'Cancel',
         value: false,
       },
     });
@@ -288,120 +282,49 @@ export default function TableEditor({
       useFlexLayout,
     );
 
-  const tbodyRef = useRef<HTMLDivElement>(null);
-  const theadRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!tbodyRef.current) {
-      return;
-    }
-
-    const tbody = tbodyRef.current;
-
-    const handler = (event: Event) => {
-      if (!theadRef.current) {
-        return;
-      }
-
-      const scrollTarget = event.target;
-      if (scrollTarget instanceof Element) {
-        theadRef.current.scrollLeft = scrollTarget.scrollLeft;
-      }
-    };
-
-    tbody.addEventListener('scroll', handler);
-
-    return () => {
-      tbody.removeEventListener('scroll', handler);
-    };
-  }, []);
-
   return (
     <div>
       <div {...getTableProps()} className={s.table}>
-        <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
-          {headerGroups.map((headerGroup) => (
-            <div
-              {...headerGroup.getHeaderGroupProps()}
-              className={s.tr}
-            >
-              {headerGroup.headers.map((column) => (
-                <div
-                  {...column.getHeaderProps()}
-                  className={s.th}
-                >
-                  {column.render('Header')}
-                  <div
-                    {...column.getResizerProps()}
-                    className={classNames(s.resizer, {
-                      [s.isResizing]: column.isResizing,
-                    })}
-                  />
-                </div>
-              ))}
+        {headerGroups.map((headerGroup) => {
+          const { key, ...headerGroupProps } =
+            headerGroup.getHeaderGroupProps();
+          return (
+            <div key={key} {...headerGroupProps} className={s.tr}>
+              {headerGroup.headers.map((column) => {
+                const { key, ...headerProps } = column.getHeaderProps();
+                return (
+                  <div key={key} {...headerProps} className={s.th}>
+                    {column.render('Header')}
+                    <div {...column.getResizerProps()} className={s.resizer} />
+                  </div>
+                );
+              })}
+              <div className={s.rowActions} />
             </div>
-          ))}
-        </div>
+          );
+        })}
 
-        <div
-          {...getTableBodyProps()}
-          ref={tbodyRef}
-          style={{ overflowX: 'auto' }}
-        >
+        <div {...getTableBodyProps()} className={s.body}>
           {rows.map((row, i) => {
             prepareRow(row);
+            const { key, ...rowProps } = row.getRowProps();
             return (
-              <div {...row.getRowProps()} className={s.tr}>
-                <div className={s.dropdownWrapper}>
-                  <Dropdown
-                    renderTrigger={({ onClick }) => (
-                      <button
-                        onClick={onClick}
-                        className={s.handle}
-                        type="button"
-                      />
-                    )}
-                  >
-                    <DropdownMenu>
-                      <DropdownOption
-                        onClick={onMoveRow.bind(null, i, false)}
-                        disabled={i === 0}
-                      >
-                        <FontAwesomeIcon icon={faLongArrowAltUp} /> Move row up
-                      </DropdownOption>
-                      <DropdownOption
-                        onClick={onMoveRow.bind(null, i, true)}
-                        disabled={i === rows.length - 1}
-                      >
-                        <FontAwesomeIcon icon={faLongArrowAltDown} /> Move row
-                        down
-                      </DropdownOption>
-                      <DropdownSeparator />
-                      <DropdownOption onClick={onAddRow.bind(null, i, false)}>
-                        <FontAwesomeIcon icon={faLongArrowAltUp} /> Add row
-                        above
-                      </DropdownOption>
-                      <DropdownOption onClick={onAddRow.bind(null, i, true)}>
-                        <FontAwesomeIcon icon={faLongArrowAltDown} /> Add row
-                        below
-                      </DropdownOption>
-                      <DropdownSeparator />
-                      <DropdownOption red onClick={onRemoveRow.bind(null, i)}>
-                        <FontAwesomeIcon icon={faTrashAlt} /> Remove row
-                      </DropdownOption>
-                    </DropdownMenu>
-                  </Dropdown>
-                </div>
+              <div key={key} {...rowProps} className={s.tr}>
                 {row.cells.map((cell) => {
+                  const { key, ...cellProps } = cell.getCellProps();
                   return (
-                    <div
-                      {...cell.getCellProps()}
-                      className={s.td}
-                    >
+                    <div key={key} {...cellProps} className={s.td}>
                       {cell.render('Cell')}
                     </div>
                   );
                 })}
+                <RowMenu
+                  index={i}
+                  count={rows.length}
+                  onMoveRow={onMoveRow}
+                  onAddRow={onAddRow}
+                  onRemoveRow={onRemoveRow}
+                />
               </div>
             );
           })}
@@ -410,32 +333,95 @@ export default function TableEditor({
 
       <div className={s.actions}>
         <Button
-          onClick={onAddRow.bind(null, value.data.length, true)}
-          buttonSize="s"
-          leftIcon={<FontAwesomeIcon icon={faPlus} />}
-        >
-          Add new row
-        </Button>
-
-        <div className={s.actionsSpacer} />
-
+          icon={AddIcon}
+          label="Add row"
+          onClick={() => onAddRow(value.data.length, true)}
+        />
+        <div className={s.spacer} />
         {onOpenInFullScreen && (
           <Button
+            tone="ghost"
+            icon={ExpandIcon}
+            label="Edit in full screen"
             onClick={onOpenInFullScreen}
-            buttonSize="s"
-            leftIcon={<FontAwesomeIcon icon={faExpand} />}
-          >
-            Edit in full-screen
-          </Button>
+          />
         )}
         <Button
+          tone="ghost-alert"
+          icon={DeleteIcon}
+          label="Delete table"
           onClick={handleClear}
-          buttonSize="s"
-          leftIcon={<FontAwesomeIcon icon={faTrash} />}
-        >
-          Clear
-        </Button>
+        />
       </div>
+    </div>
+  );
+}
+
+type RowMenuProps = Pick<Actions, 'onMoveRow' | 'onAddRow' | 'onRemoveRow'> & {
+  index: number;
+  count: number;
+};
+
+// The "⋮" at the end of a row
+function RowMenu({
+  index,
+  count,
+  onMoveRow,
+  onAddRow,
+  onRemoveRow,
+}: RowMenuProps) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const menuRef = useMenuRoom(anchor);
+
+  return (
+    <div ref={anchor} className={s.rowActions}>
+      <Dropdown
+        triggerComponent={IconTrigger}
+        icon={ActionToggleIcon}
+        label={`Actions for row ${index + 1}`}
+      >
+        <Dropdown.Menu ref={menuRef} placement="bottom-end">
+          <Dropdown.Option
+            icon={<ArrowUpIcon />}
+            disabled={
+              index === 0 ? { reason: 'This is the first row.' } : false
+            }
+            onPick={() => onMoveRow(index, false)}
+          >
+            Move up
+          </Dropdown.Option>
+          <Dropdown.Option
+            icon={<ArrowDownIcon />}
+            disabled={
+              index === count - 1 ? { reason: 'This is the last row.' } : false
+            }
+            onPick={() => onMoveRow(index, true)}
+          >
+            Move down
+          </Dropdown.Option>
+          <Dropdown.Separator />
+          <Dropdown.Option
+            icon={<AddIcon />}
+            onPick={() => onAddRow(index, false)}
+          >
+            Add row above
+          </Dropdown.Option>
+          <Dropdown.Option
+            icon={<AddIcon />}
+            onPick={() => onAddRow(index, true)}
+          >
+            Add row below
+          </Dropdown.Option>
+          <Dropdown.Separator />
+          <Dropdown.Option
+            icon={<DeleteIcon />}
+            alert
+            onPick={() => onRemoveRow(index)}
+          >
+            Delete row
+          </Dropdown.Option>
+        </Dropdown.Menu>
+      </Dropdown>
     </div>
   );
 }

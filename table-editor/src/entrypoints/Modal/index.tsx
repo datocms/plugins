@@ -1,5 +1,5 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
 import { useState } from 'react';
 import { Empty } from '../../components/Empty';
 import TableEditor from '../../components/TableEditor';
@@ -24,19 +24,16 @@ export default function Modal({ ctx }: Props) {
   };
 
   return (
-    <Canvas ctx={ctx}>
+    <>
       {value === null ? (
         <Empty onChange={setValue} />
       ) : (
         <TableEditor value={value} onChange={setValue} />
       )}
-      <div className={s.bar}>
-        <Button onClick={handleClose}>Cancel</Button>{' '}
-        <div className={s.barSpacer} />
-        <Button buttonType="primary" onClick={handleSave}>
-          Save and close
-        </Button>
+      <div className={s.footer}>
+        <Button tone="ghost" label="Cancel" onClick={handleClose} />
+        <Button tone="primary" label="Save" onClick={handleSave} />
       </div>
-    </Canvas>
+    </>
   );
 }

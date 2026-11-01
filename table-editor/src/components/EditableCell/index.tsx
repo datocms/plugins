@@ -52,6 +52,7 @@ export default function EditableCell({
   return (
     <Textarea
       value={value}
+      aria-label={`${id}, row ${index + 1}`}
       onPaste={(e) => {
         e.preventDefault();
         const table = toTable(e.clipboardData);

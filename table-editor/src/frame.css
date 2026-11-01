@@ -1,0 +1,5 @@
+/* The kit gives html and body `height: 100%`, which keeps the auto-resizer from shrinking a frame sized to its content. */
+html,
+body {
+  height: auto;
+}

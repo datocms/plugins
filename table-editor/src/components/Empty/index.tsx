@@ -1,6 +1,5 @@
-import { Button } from 'datocms-react-ui';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
 import type { Value } from '../../types';
-import s from './style.module.css';
 
 type Props = {
   onChange: (newValue: Value | null) => void;
@@ -8,19 +7,17 @@ type Props = {
 
 export const Empty = ({ onChange }: Props) => {
   return (
-    <div className={s.noValue}>
-      <div className={s.noValue_label}>No table present!</div>
-      <Button
-        buttonSize="s"
-        onClick={() => {
+    <EmptySlot
+      message="No table yet"
+      action={{
+        label: 'Add table',
+        onClick: () => {
           onChange({
             columns: ['Column A', 'Column B'],
             data: [{ 'Column A': '', 'Column B': '' }],
           });
-        }}
-      >
-        Insert new table
-      </Button>
-    </div>
+        },
+      }}
+    />
   );
 };

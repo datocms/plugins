@@ -1,8 +1,7 @@
-.bar {
+.footer {
   display: flex;
-  margin-top: var(--spacing-xl);
-}
-
-.barSpacer {
-  flex: 1;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-l);
 }

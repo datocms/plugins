@@ -33,7 +33,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 19 | block-to-links | 1422 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests pass. No open issues. |
 | 20 | seo-readability-analysis | 1355 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, no lint script, no tests. No open issues. |
 | 21 | delete-unused-assets | 1325 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 22 | table-editor | 1148 | ^17.0.2 | Pending | |
+| 22 | table-editor | 1148 | ^17.0.2 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 23 | tile-picker | 1110 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests none. No open issues. |
 | 24 | bulk-change-author | 974 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 25 | project-exporter | 797 | ^19.2.4 | Pending | |

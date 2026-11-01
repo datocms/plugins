@@ -1,130 +1,81 @@
+/* The header and the rows scroll together in one box with the look of a field */
 .table {
-  border-spacing: 0;
-  border-bottom: 0;
-  margin-bottom: var(--spacing-m);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  background: var(--color--surface-raised);
+  overflow-x: auto;
 }
 
-.thead {
-  /* These styles are required for a scrollable body to align with the header properly */
-  overflow-y: auto;
-  overflow-x: hidden;
-  margin-left: 15px;
-}
-
-.tbody {
-  /* These styles are required for a scrollable table body */
-  overflow-y: scroll;
-  overflow-x: hidden;
-  height: 250px;
-}
-
-.tr {
+/* The cells draw the dividers and the header surface: a row is only as wide
+   as the box, while its cells overflow it */
+.th,
+.td,
+.rowActions {
   position: relative;
   border-bottom: 1px solid var(--color--border);
 }
 
-.tr:last-child .td {
+.th:not(:last-child),
+.td:not(:last-child) {
+  border-right: 1px solid var(--color--border);
+}
+
+.body > .tr:last-child > * {
   border-bottom: 0;
 }
 
 .th,
-.td {
-  margin: 0;
-  padding: 0;
-  border-right: 1px solid var(--color--border);
-  /* In this example we use an absolutely position resizer so this is required. */
-  position: relative;
+.th + .rowActions {
+  background: var(--color--surface-muted);
 }
 
+/* Dragging a resize handle must not select the column names it passes over */
 .th {
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  align-items: center;
+  padding-right: var(--spacing-s);
+  user-select: none;
 }
 
-.th > * {
-  width: 100%;
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-}
-
-.th:last-child,
-.td:last-child {
-  border-right: 0;
-}
-
-.td textarea {
-  font-family: inherit;
-  font-size: inherit;
-  resize: none;
-  display: block;
-  width: 100%;
-  border: 0;
-  padding: 12px;
-  box-sizing: border-box;
-  outline: none;
-  background: transparent;
-}
-
+/* react-table's resize handle, on the right edge of the header cell */
 .resizer {
-  right: 0;
-  width: 10px;
-  height: 100%;
   position: absolute;
   top: 0;
-  left: 100%;
-  margin-left: -5px;
+  right: -5px;
+  width: 10px;
+  height: 100%;
   z-index: 1;
-  /* prevents from scrolling while dragging on touch devices */
   touch-action: none;
 }
 
-.dropdownWrapper {
-  width: 15px;
+.td textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  padding: var(--input-padding);
+  font: inherit;
+  color: var(--color--ink);
+  background: transparent;
+  resize: none;
+  outline: none;
 }
 
-.dropdownWrapper > * {
-  position: absolute !important;
-  right: 100%;
-  width: 15px;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-}
-
-.handle {
-  all: inherit;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+.rowActions {
+  flex: none;
+  width: var(--control-height);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color--surface-muted);
-  cursor: pointer;
-  transition: background 0.2s var(--material-ease);
-}
-
-.handle:hover {
-  background: var(--color--surface-hover);
 }
 
 .actions {
   display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
 }
 
-.actions > * {
-  margin-right: 10px;
-}
-
-.actions > *:last-child {
-  margin-right: 0;
-}
-
-.actionsSpacer {
+.spacer {
   flex: 1;
 }
