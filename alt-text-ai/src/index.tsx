@@ -3,13 +3,13 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { connect, type DropdownAction, type Field } from 'datocms-plugin-sdk';
 import get from 'lodash/get';
-import { observeFieldContext } from './services/fieldContext';
 import {
   type AltGenerationMode,
   hasGeneratableFieldValue,
   runAltGenerationForField,
   runAltGenerationForUploads,
 } from './services/altTextGeneration';
+import { observeFieldContext } from './services/fieldContext';
 
 const GENERATE_MISSING_ALTS_ACTION_ID = 'generate-missing-alts';
 const REGENERATE_ALL_ALTS_ACTION_ID = 'regenerate-all-alts';

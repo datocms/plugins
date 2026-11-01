@@ -20,6 +20,7 @@ function asset(id: string, alt: string | null = null): FileFieldValue {
     title: null,
     custom_data: {},
     focal_point: null,
+    poster_time: null,
   };
 }
 

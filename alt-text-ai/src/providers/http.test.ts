@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isFatalProviderFailure, parseRetryAfter } from './errors';
-import { readBoundedResponseBytes, ResponseTooLargeError } from './http';
+import { ResponseTooLargeError, readBoundedResponseBytes } from './http';
 import { fetchProviderJson } from './shared';
 
 function jsonResponse(

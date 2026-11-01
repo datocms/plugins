@@ -4,10 +4,10 @@ import type {
   Upload,
 } from 'datocms-plugin-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAltTextProvider } from '../providers/factory';
-import type { AltTextProvider } from '../providers/types';
 import { AltTextProviderError } from '../providers/errors';
+import { createAltTextProvider } from '../providers/factory';
 import { withHttpRetries } from '../providers/http';
+import type { AltTextProvider } from '../providers/types';
 import { runAltGenerationForUploads } from './altTextGeneration';
 
 vi.mock('@datocms/cma-client-browser', () => ({

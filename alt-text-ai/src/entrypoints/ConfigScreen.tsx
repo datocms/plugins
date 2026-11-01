@@ -1,16 +1,17 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  CreatableSelectField,
-  FieldGroup,
-  Form,
-  Section,
-  SelectField,
-  Spinner,
-  TextareaField,
-  TextField,
-} from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import Pill from 'datocms-react-ui/Pill';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import TextareaInput from 'datocms-react-ui/TextareaInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   activeProviderValidationError,
@@ -22,11 +23,11 @@ import {
   serializePluginConfiguration,
 } from '../config';
 import { listProviderModels } from '../providers/modelDiscovery';
-import s from './styles.module.css';
 
 const MODEL_DISCOVERY_DELAY_MS = 600;
 const ACTIONS_DOCUMENTATION_URL =
   'https://github.com/datocms/plugins/tree/master/alt-text-ai#where-to-generate-alt-text';
+const READ_ONLY_REASON = "Your role can't change the plugin settings.";
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -48,36 +49,48 @@ type DirectProviderId = Exclude<ProviderId, 'alttext-ai'>;
 const PROVIDER_DETAILS: Record<
   ProviderId,
   {
+    hint: string;
     apiKeyLabel: string;
-    apiKeyPlaceholder: string;
+    apiKeyPlaceholder: string | null;
     apiKeyUrl: string;
     modelLabel?: string;
   }
 > = {
   'alttext-ai': {
+    hint: 'Uses the generation settings of your AltText.ai account. Needs an AltText.ai API key.',
     apiKeyLabel: 'AltText.ai API key',
-    apiKeyPlaceholder: 'Paste your AltText.ai API key',
+    apiKeyPlaceholder: null,
     apiKeyUrl: 'https://alttext.ai/account/api_keys',
   },
   openai: {
+    hint: 'Sends each image with your prompt. Needs an OpenAI API key.',
     apiKeyLabel: 'OpenAI API key',
     apiKeyPlaceholder: 'sk-...',
     apiKeyUrl: 'https://platform.openai.com/api-keys',
     modelLabel: 'OpenAI model',
   },
   anthropic: {
+    hint: 'Sends each image with your prompt. Needs an Anthropic API key.',
     apiKeyLabel: 'Anthropic API key',
     apiKeyPlaceholder: 'sk-ant-...',
     apiKeyUrl: 'https://console.anthropic.com/settings/keys',
     modelLabel: 'Claude model',
   },
   gemini: {
+    hint: 'Sends each image with your prompt. Needs a Gemini API key.',
     apiKeyLabel: 'Gemini API key',
     apiKeyPlaceholder: 'AIza...',
     apiKeyUrl: 'https://aistudio.google.com/app/apikey',
     modelLabel: 'Gemini model',
   },
 };
+
+const PROVIDER_RADIO_OPTIONS: RadioGroupOption<ProviderId>[] =
+  PROVIDER_OPTIONS.map(({ value, label }) => ({
+    value,
+    label,
+    hint: PROVIDER_DETAILS[value].hint,
+  }));
 
 function isDirectProvider(provider: ProviderId): provider is DirectProviderId {
   return provider !== 'alttext-ai';
@@ -141,20 +154,6 @@ function withProviderModel(
   }
 }
 
-function optionValue(value: unknown): string | null {
-  if (
-    value &&
-    !Array.isArray(value) &&
-    typeof value === 'object' &&
-    'value' in value &&
-    typeof value.value === 'string'
-  ) {
-    return value.value;
-  }
-
-  return null;
-}
-
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
@@ -206,13 +205,6 @@ function useProviderModels(
   return state;
 }
 
-function providerOption(value: unknown): ProviderId | null {
-  const selectedValue = optionValue(value);
-  return PROVIDER_OPTIONS.some((option) => option.value === selectedValue)
-    ? (selectedValue as ProviderId)
-    : null;
-}
-
 function modelOptions(models: string[], currentModel: string): SelectOption[] {
   return Array.from(new Set([currentModel, ...models].filter(Boolean))).map(
     (model) => ({ label: model, value: model }),
@@ -246,20 +238,33 @@ function modelDiscoveryHint(
   discovery: ModelDiscoveryState,
 ): string {
   if (!apiKey.trim()) {
-    return 'Enter an API key to load models directly from the provider.';
+    return 'Enter the API key to load the models.';
   }
   if (discovery.isLoading) {
-    return 'Loading models directly from the provider…';
+    return 'Loading the models…';
   }
   if (discovery.error) {
     return discovery.error;
   }
   if (discovery.models.length === 0) {
-    return 'The provider returned no models. You can enter a model ID manually.';
+    return 'The provider returned no models. Type a model ID instead.';
   }
 
   const count = discovery.models.length;
-  return `${count} model${count === 1 ? '' : 's'} loaded directly from the provider. Select one that accepts image input and returns text, or enter a model ID manually.`;
+  return `${count} model${count === 1 ? '' : 's'} from the provider. Pick one that reads images and returns text, or type a model ID.`;
+}
+
+function saveDisabledReason(
+  canEdit: boolean,
+  hasExternalChanges: boolean,
+  validationError: string | null,
+  isDirty: boolean,
+): string | null {
+  if (!canEdit) return READ_ONLY_REASON;
+  if (hasExternalChanges) return 'Load the latest settings before you save.';
+  if (validationError) return validationError;
+  if (!isDirty) return 'There are no changes to save.';
+  return null;
 }
 
 export default function ConfigScreen({ ctx }: Props) {
@@ -308,18 +313,25 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const canEdit =
     ctx.currentRole.meta.final_permissions.can_edit_schema === true;
+  const provider = configuration.provider;
   const apiKey = getProviderApiKey(configuration);
   const model = getProviderModel(configuration);
-  const discovery = useProviderModels(configuration.provider, apiKey);
+  const discovery = useProviderModels(provider, apiKey);
   const validationError = activeProviderValidationError(configuration);
-  const details = PROVIDER_DETAILS[configuration.provider];
+  const details = PROVIDER_DETAILS[provider];
   const controlsDisabled = !canEdit || isSaving;
   const fieldErrors = configurationFieldErrors(
-    configuration.provider,
+    provider,
     apiKey,
     model,
     configuration.prompt,
     details,
+  );
+  const saveReason = saveDisabledReason(
+    canEdit,
+    hasExternalChanges,
+    validationError,
+    isDirty,
   );
 
   const availableModelOptions = useMemo(
@@ -358,186 +370,175 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
-  const modelHint = modelDiscoveryHint(apiKey, discovery);
-
   return (
     <Canvas ctx={ctx}>
-      <p className={s.intro}>
-        Choose the service that will inspect your images and generate localized
-        alt text. API requests run directly from the DatoCMS dashboard.
-      </p>
+      <Page>
+        <Page.Content>
+          {!canEdit && <Callout>{READ_ONLY_REASON}</Callout>}
 
-      <p className={s.documentationHint}>
-        Not sure where to find the alt text actions?{' '}
-        <a
-          href={ACTIONS_DOCUMENTATION_URL}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="See where the alt text actions appear in the documentation (opens in a new tab)"
-        >
-          See the illustrated usage guide ↗
-        </a>
-      </p>
-
-      {!canEdit && (
-        <div className={s.readOnlyNotice}>
-          Your role can view these settings but cannot change plugin
-          configuration.
-        </div>
-      )}
-
-      {hasExternalChanges && (
-        <div className={s.externalChangeNotice}>
-          <span>
-            Plugin settings changed elsewhere while you were editing. Load the
-            latest settings to avoid overwriting them.
-          </span>
-          <Button
-            buttonType="muted"
-            buttonSize="s"
-            disabled={isSaving}
-            onClick={() => {
-              setConfiguration(initialConfiguration);
-              setSavedConfiguration(initialConfiguration);
-              setHasExternalChanges(false);
-            }}
-          >
-            Load latest settings
-          </Button>
-        </div>
-      )}
-
-      <Form onSubmit={() => void save()}>
-        <Section title="Provider">
-          <FieldGroup>
-            <SelectField
-              id="provider"
-              name="provider"
-              label="Alt text provider"
-              value={PROVIDER_OPTIONS.find(
-                (option) => option.value === configuration.provider,
-              )}
-              selectInputProps={{
-                isDisabled: controlsDisabled,
-                options: PROVIDER_OPTIONS,
-              }}
-              onChange={(value) => {
-                const provider = providerOption(value);
-                if (provider) {
-                  setConfiguration((current) => ({ ...current, provider }));
-                }
-              }}
-            />
-
-            <div>
-              <TextField
-                required
-                id="providerApiKey"
-                name="providerApiKey"
-                label={details.apiKeyLabel}
-                error={fieldErrors.apiKey}
-                placeholder={details.apiKeyPlaceholder}
-                value={apiKey}
-                textInputProps={{
-                  autoComplete: 'off',
-                  disabled: controlsDisabled,
-                  monospaced: true,
-                  type: 'password',
-                }}
-                onChange={(value) =>
-                  setConfiguration((current) =>
-                    withProviderApiKey(current, value),
-                  )
-                }
-              />
-              <p className={s.fieldHelp}>
-                Create or manage keys in the{' '}
-                <a href={details.apiKeyUrl} target="_blank" rel="noreferrer">
-                  {PROVIDER_LABELS[configuration.provider]} dashboard
-                </a>
-                . The key is stored in this plugin's settings and used by
-                browser requests.
-              </p>
-            </div>
-
-            {isDirectProvider(configuration.provider) && (
-              <CreatableSelectField
-                required
-                id="providerModel"
-                name="providerModel"
-                label={details.modelLabel || 'Model'}
-                error={fieldErrors.model}
-                hint={modelHint}
-                value={model ? { label: model, value: model } : null}
-                selectInputProps={{
-                  formatCreateLabel: (inputValue) =>
-                    `Use model “${inputValue}”`,
-                  isDisabled: controlsDisabled,
-                  isLoading: discovery.isLoading,
-                  options: availableModelOptions,
-                }}
-                onChange={(value) => {
-                  const selectedModel = optionValue(value);
-                  if (selectedModel) {
-                    setConfiguration((current) =>
-                      withProviderModel(current, selectedModel),
-                    );
+          {hasExternalChanges && (
+            <Page.Group
+              title="Settings changed elsewhere"
+              tone="warning"
+              status={<Pill tone="warning">Out of date</Pill>}
+            >
+              <Callout tone="warning">
+                Someone saved these settings while you were editing.
+              </Callout>
+              <SettingsList>
+                <SettingsList.Row
+                  title="Latest settings"
+                  description="Replaces your unsaved changes."
+                  action={
+                    <Button
+                      tone="ghost"
+                      label="Load latest settings"
+                      disabled={isSaving}
+                      onClick={() => {
+                        setConfiguration(initialConfiguration);
+                        setSavedConfiguration(initialConfiguration);
+                        setHasExternalChanges(false);
+                      }}
+                    />
                   }
-                }}
-              />
-            )}
-          </FieldGroup>
-        </Section>
-
-        <Section title="Generation instructions">
-          {configuration.provider === 'alttext-ai' ? (
-            <p className={s.sectionHelp}>
-              AltText.ai applies the generation settings configured in your
-              AltText.ai account. The prompt below is used when you select a
-              direct model provider.
-            </p>
-          ) : (
-            <p className={s.sectionHelp}>
-              The prompt is sent with each image. Keep the output instruction
-              strict so the response contains only usable alt text.
-            </p>
+                />
+              </SettingsList>
+            </Page.Group>
           )}
-          <TextareaField
-            required={configuration.provider !== 'alttext-ai'}
-            id="prompt"
-            name="prompt"
-            label="Prompt template"
-            error={fieldErrors.prompt}
-            hint="Available placeholders: {locale} and {filename}."
-            value={configuration.prompt}
-            textareaInputProps={{
-              disabled: controlsDisabled,
-              rows: 7,
-            }}
-            onChange={(prompt) =>
-              setConfiguration((current) => ({ ...current, prompt }))
-            }
-          />
-        </Section>
 
-        {canEdit && (
-          <Button
-            type="submit"
-            buttonType="primary"
-            buttonSize="l"
-            disabled={
-              !isDirty ||
-              isSaving ||
-              hasExternalChanges ||
-              validationError !== null
-            }
-            fullWidth
+          <form
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              // The Save button stays focusable while disabled, so Enter in a
+              // field can still submit the form
+              if (!canEdit || !isDirty || isSaving) return;
+              void save();
+            }}
           >
-            {isSaving ? 'Saving…' : 'Save settings'}
-            {isSaving && <Spinner size={24} />}
-          </Button>
-        )}
-      </Form>
+            <Page.Group
+              title="Alt text provider"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  label="Save"
+                  expand={false}
+                  busy={isSaving}
+                  disabled={saveReason ? { reason: saveReason } : undefined}
+                />
+              }
+            >
+              <FieldWrapper
+                label="Provider"
+                docs={{
+                  label: 'Where to generate alt text',
+                  to: ACTIONS_DOCUMENTATION_URL,
+                }}
+              >
+                <RadioGroupInput
+                  value={provider}
+                  disabled={controlsDisabled}
+                  options={PROVIDER_RADIO_OPTIONS}
+                  onChange={(next) => {
+                    if (next) {
+                      setConfiguration((current) => ({
+                        ...current,
+                        provider: next,
+                      }));
+                    }
+                  }}
+                />
+              </FieldWrapper>
+
+              <FieldWrapper
+                label={details.apiKeyLabel}
+                required
+                error={fieldErrors.apiKey}
+                hint={
+                  <>
+                    Create one in the{' '}
+                    <a
+                      href={details.apiKeyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {PROVIDER_LABELS[provider]} dashboard
+                    </a>
+                    . It's stored in the plugin settings, and the browser sends
+                    it straight to {PROVIDER_LABELS[provider]}.
+                  </>
+                }
+              >
+                <PasswordInput
+                  value={apiKey}
+                  placeholder={details.apiKeyPlaceholder}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={controlsDisabled}
+                  onChange={(value) =>
+                    setConfiguration((current) =>
+                      withProviderApiKey(current, value ?? ''),
+                    )
+                  }
+                />
+              </FieldWrapper>
+
+              {isDirectProvider(provider) && (
+                <FieldWrapper
+                  label={details.modelLabel || 'Model'}
+                  required
+                  error={fieldErrors.model}
+                  hint={modelDiscoveryHint(apiKey, discovery)}
+                >
+                  <SelectInput
+                    value={model || null}
+                    options={availableModelOptions}
+                    placeholder="Pick a model"
+                    clearable={false}
+                    loading={discovery.isLoading}
+                    disabled={controlsDisabled}
+                    creatable={{
+                      onCreate: (value) =>
+                        setConfiguration((current) =>
+                          withProviderModel(current, value),
+                        ),
+                      formatLabel: (value) => `Use model “${value}”`,
+                    }}
+                    onChange={(next) => {
+                      if (next) {
+                        setConfiguration((current) =>
+                          withProviderModel(current, next),
+                        );
+                      }
+                    }}
+                  />
+                </FieldWrapper>
+              )}
+
+              {isDirectProvider(provider) && (
+                <FieldWrapper
+                  label="Prompt"
+                  required
+                  error={fieldErrors.prompt}
+                  hint="Sent with each image. {locale} and {filename} stand for the locale and the file name. Ask for the alt text alone."
+                >
+                  <TextareaInput
+                    value={configuration.prompt}
+                    disabled={controlsDisabled}
+                    onChange={(prompt) =>
+                      setConfiguration((current) => ({
+                        ...current,
+                        prompt: prompt ?? '',
+                      }))
+                    }
+                  />
+                </FieldWrapper>
+              )}
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

@@ -7,8 +7,8 @@ import {
   normalizeProviderFailure,
 } from './errors';
 import {
-  readBoundedResponseBytes,
   ResponseTooLargeError,
+  readBoundedResponseBytes,
   throwIfAborted,
   withHttpRetries,
 } from './http';

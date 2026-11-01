@@ -1,16 +1,15 @@
 import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
-  FileFieldValue,
   FieldDropdownActionsCtx,
+  FileFieldValue,
   Item,
 } from 'datocms-plugin-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ALT_TEXT_PROMPT } from '../config';
+import { AltTextProviderError } from '../providers/errors';
 import { createAltTextProvider } from '../providers/factory';
 import type { AltTextProvider } from '../providers/types';
-import { observeFieldContext } from './fieldContext';
-import { AltTextProviderError } from '../providers/errors';
 import {
   hasGeneratableFieldValue,
   isFileFieldValue,
@@ -19,6 +18,7 @@ import {
   shouldProcessAsset,
   transformImageUrl,
 } from './altTextGeneration';
+import { observeFieldContext } from './fieldContext';
 
 vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(),
@@ -35,6 +35,7 @@ function asset(uploadId: string, alt: string | null = null): FileFieldValue {
     title: null,
     focal_point: null,
     custom_data: {},
+    poster_time: null,
   };
 }
 
