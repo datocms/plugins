@@ -91,10 +91,13 @@ function whenEligible(
   return evaluation.eligibleCount > 0 ? run : undefined;
 }
 
-function progressLabel(progress: BulkOperationProgress | null) {
-  return progress
-    ? `${progress.completed} of ${progress.requested} processed; ${progress.successful} succeeded; ${progress.failed} failed`
-    : undefined;
+// The numbers have the separators of the locale of the user ("1,234"), as
+// the count of the title bar
+function progressLabel(locale: string, progress: BulkOperationProgress | null) {
+  if (!progress) return undefined;
+  const numbers = new Intl.NumberFormat(locale);
+  const n = (value: number) => numbers.format(value);
+  return `${n(progress.completed)} of ${n(progress.requested)} processed; ${n(progress.successful)} succeeded; ${n(progress.failed)} failed`;
 }
 
 /**
@@ -385,7 +388,7 @@ export function useBulkActions(args: Args) {
     /** The selection, for the stages that the move menu offers */
     selectionInput,
     moveToStage,
-    progressText: progressLabel(progress),
+    progressText: progressLabel(ctx.ui.locale, progress),
     /** Stops the jobs that did not start yet */
     onCancel: () => controllerRef.current?.abort(),
     toggleRow: (row: RecordRow) =>
