@@ -1,15 +1,12 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  SelectField,
-  SwitchField,
-  TextField,
-} from 'datocms-react-ui';
-import { useState } from 'react';
-import type { ActionMeta, GroupBase, MultiValue } from 'react-select';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import InputGroup from 'datocms-react-ui/InputGroup';
+import { Page } from 'datocms-react-ui/Page';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
+import { type FormEvent, useState } from 'react';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -31,11 +28,11 @@ export type PluginParametersType = {
 function ConfigScreen({ ctx }: PropTypes) {
   const pluginParameters = ctx.plugin.attributes
     .parameters as PluginParametersType;
+  const savedModels = pluginParameters.selectedModels || [];
 
-  const [selectedModels, setSelectedModels] = useState(
-    pluginParameters.selectedModels || [],
-  );
-  const [autoSaveInterval, setAutoSaveInterval] = useState(
+  const [selectedModels, setSelectedModels] =
+    useState<ModelOptionType[]>(savedModels);
+  const [autoSaveInterval, setAutoSaveInterval] = useState<string | null>(
     (pluginParameters.autoSaveInterval || 5).toString(),
   );
   const [showNotification, setShowNotification] = useState(
@@ -45,6 +42,7 @@ function ConfigScreen({ ctx }: PropTypes) {
     useState(pluginParameters.startTimerAfterEditingStops || false);
   const [hasAValidationError, setHasAValidationError] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const allModels: ModelOptionType[] = [];
 
@@ -58,117 +56,121 @@ function ConfigScreen({ ctx }: PropTypes) {
     }
   }
 
-  const modelSelectHandler = (
-    newValue: MultiValue<ModelOptionType>,
-    actionMeta: ActionMeta<ModelOptionType>,
-  ) => {
-    setIsFormDirty(true);
-    setSelectedModels((oldSelectedModels: ModelOptionType[]) => {
-      let newSelectedModels = [...oldSelectedModels];
-      switch (actionMeta.action) {
-        case 'select-option':
-          newSelectedModels.push(newValue[selectedModels.length]);
-          break;
-        case 'clear':
-          newSelectedModels = [];
-          break;
-        case 'remove-value':
-          newSelectedModels = newSelectedModels.filter(
-            (item) => item.value !== actionMeta.removedValue?.value,
-          );
-      }
-      return newSelectedModels;
-    });
-  };
+  const submitHandler = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-  const intervalChangeHandler = (newValue: string) => {
-    setAutoSaveInterval(newValue);
-    setIsFormDirty(true);
-    setHasAValidationError(false);
-  };
+    if (!isFormDirty || saving) {
+      return;
+    }
 
-  const showNotificationHandler = (newValue: boolean) => {
-    setShowNotification(newValue);
-    setIsFormDirty(true);
-  };
+    const interval = Number(autoSaveInterval ?? '');
 
-  const startTimerAfterEditingStopsHandler = (newValue: boolean) => {
-    setStartTimerAfterEditingStops(newValue);
-    setIsFormDirty(true);
-  };
-
-  const submitHandler = async () => {
-    if (Number.isNaN(+autoSaveInterval) || +autoSaveInterval < 1) {
+    if (Number.isNaN(interval) || interval < 1) {
       setHasAValidationError(true);
       return;
     }
-    await ctx.updatePluginParameters({
-      selectedModels,
-      autoSaveInterval: +autoSaveInterval,
-      showNotification,
-      startTimerAfterEditingStops,
-      parametersHaveBeenSet: true,
-    });
-    setIsFormDirty(false);
-    await ctx.notice('Settings saved');
-  };
 
-  const errorMessage = hasAValidationError
-    ? 'The interval must be a number greater than one'
-    : null;
+    setSaving(true);
+
+    try {
+      await ctx.updatePluginParameters({
+        selectedModels,
+        autoSaveInterval: interval,
+        showNotification,
+        startTimerAfterEditingStops,
+        parametersHaveBeenSet: true,
+      });
+      setIsFormDirty(false);
+      ctx.notice('Settings saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Canvas ctx={ctx}>
-      <Form onSubmit={submitHandler}>
-        <FieldGroup>
-          <SelectField<ModelOptionType, true, GroupBase<ModelOptionType>>
-            name="modelsWithAutosave"
-            id="modelsWithAutosave"
-            label="Models where auto-save is enabled"
-            hint="Select one of the options"
-            value={selectedModels}
-            selectInputProps={{
-              isMulti: true,
-              options: allModels,
-            }}
-            onChange={modelSelectHandler}
-          />
-          <TextField
-            required
-            name="autoSaveInterval"
-            id="autoSaveInterval"
-            label="Auto-save interval (seconds)"
-            value={autoSaveInterval}
-            textInputProps={{ monospaced: true }}
-            onChange={intervalChangeHandler}
-            error={errorMessage}
-          />
-          <SwitchField
-            name="startTimerAfterEditingStops"
-            id="startTimerAfterEditingStops"
-            label="Only start timer after user stops modifying record (Debounce)"
-            value={startTimerAfterEditingStops}
-            onChange={startTimerAfterEditingStopsHandler}
-          />
-          <SwitchField
-            name="displayNotification"
-            id="displayNotification"
-            label="Recieve a notification for each auto-save"
-            value={showNotification}
-            onChange={showNotificationHandler}
-          />
-        </FieldGroup>
-        <FieldGroup>
-          <Button
-            type="submit"
-            fullWidth
-            buttonType="primary"
-            disabled={!isFormDirty}
-          >
-            Save
-          </Button>
-        </FieldGroup>
-      </Form>
+      <Page>
+        <Page.Content>
+          <form onSubmit={submitHandler}>
+            <Page.Group
+              title="Auto-save"
+              footer={
+                <Button
+                  submit
+                  tone="primary"
+                  expand={false}
+                  label="Save"
+                  busy={saving}
+                  disabled={
+                    isFormDirty
+                      ? undefined
+                      : { reason: 'There are no changes to save.' }
+                  }
+                />
+              }
+            >
+              <FieldWrapper
+                label="Models"
+                hint="Records of these models save automatically when they have unsaved changes."
+              >
+                <SelectInput
+                  multiple
+                  value={selectedModels.map((model) => model.value)}
+                  options={allModels}
+                  acceptValueNotIncludedInOptions={(value) =>
+                    savedModels.find((model) => model.value === value)
+                  }
+                  placeholder="Pick models"
+                  onChange={(_value, options) => {
+                    setSelectedModels(options);
+                    setIsFormDirty(true);
+                  }}
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                label="Interval"
+                required
+                hint="How long a record waits before it saves its changes."
+                error={
+                  hasAValidationError
+                    ? 'Enter a number of seconds, 1 or more.'
+                    : undefined
+                }
+              >
+                <InputGroup
+                  value={autoSaveInterval}
+                  onChange={(value) => {
+                    setAutoSaveInterval(value);
+                    setIsFormDirty(true);
+                    setHasAValidationError(false);
+                  }}
+                  post="seconds"
+                />
+              </FieldWrapper>
+              <FieldWrapper hint="Each change starts the interval again, so the record saves only after a pause in editing.">
+                <SwitchInput
+                  label="Wait until editing stops"
+                  value={startTimerAfterEditingStops}
+                  onChange={(value) => {
+                    setStartTimerAfterEditingStops(Boolean(value));
+                    setIsFormDirty(true);
+                  }}
+                />
+              </FieldWrapper>
+              <FieldWrapper>
+                <SwitchInput
+                  label="Show a notification after each auto-save"
+                  value={showNotification}
+                  onChange={(value) => {
+                    setShowNotification(Boolean(value));
+                    setIsFormDirty(true);
+                  }}
+                />
+              </FieldWrapper>
+            </Page.Group>
+          </form>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

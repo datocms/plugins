@@ -8,6 +8,7 @@ import {
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import AutoSave from './entrypoints/AutoSave';
 import ConfigScreen, {
   type PluginParametersType,
@@ -15,7 +16,7 @@ import ConfigScreen, {
 
 connect({
   async onBoot(ctx: OnBootCtx) {
-    if (ctx.plugin.attributes.parameters.parametersHaveBeenSet) {
+    if (ctx.plugin.attributes.parameters?.parametersHaveBeenSet) {
       return;
     }
     await ctx.updatePluginParameters({
