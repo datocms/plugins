@@ -1,7 +1,9 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, FieldGroup, Form, SwitchField } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useEffect, useState } from 'react';
-import 'datocms-react-ui/styles.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -16,23 +18,25 @@ export default function ConfigScreen({ ctx }: Props) {
   }, [onPublish, ctx.updatePluginParameters]);
   return (
     <Canvas ctx={ctx}>
-      <p>
-        Add it to the slug field you want as a field addon. From then on, all of
-        the changes made to that slug field will be logged and saved with a
-        "source" and "destination" rule on the "Slug Redirects" model.
-      </p>
-      <Form>
-        <FieldGroup>
-          <SwitchField
-            name="onPublish"
-            id="onPublish"
-            label="Add redirect rule only uppon record publication"
-            hint="Ignores record saves, only adds a redirect rule when the record is published for models with the Draft/Publish system"
-            value={onPublish}
-            onChange={() => setOnPublish((previousValue) => !previousValue)}
-          />
-        </FieldGroup>
-      </Form>
+      <Page>
+        <Page.Content>
+          <Page.Section>
+            <Page.SectionTitle>Redirects</Page.SectionTitle>
+            <Page.SectionDescription>
+              Add “Slug Redirects” to a slug field as an add-on. Each change of
+              that slug then adds a redirect rule, with the old slug as source
+              and the new one as destination, to the “Slug Redirects” model.
+            </Page.SectionDescription>
+            <FieldWrapper hint="Saves are ignored: a rule is added when the record is published. For models with the draft/published system.">
+              <SwitchInput
+                label="Add redirect rules only on publish"
+                value={onPublish}
+                onChange={(value) => setOnPublish(Boolean(value))}
+              />
+            </FieldWrapper>
+          </Page.Section>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

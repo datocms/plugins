@@ -1,5 +1,6 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import { connect, type RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import SlugExtension from './entrypoints/SlugExtension';
 import { render } from './utils/render';
