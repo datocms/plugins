@@ -69,6 +69,8 @@ type ToolbarState = {
   fontName: string;
   fontSize: string;
   lineHeight: string;
+  // The list-style-type of the list at the cursor, '' outside a list
+  listStyle: string;
   canUndo: boolean;
   canRedo: boolean;
 };
@@ -87,6 +89,7 @@ const EMPTY_STATE: ToolbarState = {
   fontName: '',
   fontSize: '',
   lineHeight: '',
+  listStyle: '',
   canUndo: false,
   canRedo: false,
 };
@@ -94,6 +97,7 @@ const EMPTY_STATE: ToolbarState = {
 function readState(editor: Editor): ToolbarState {
   const matches = (format: string) => editor.formatter.match(format);
   const fontSize = editor.queryCommandValue('FontSize');
+  const list = editor.dom.getParent(editor.selection.getNode(), 'ol,ul');
 
   return {
     block: BLOCKS.find(({ format }) => matches(format))?.format,
@@ -112,6 +116,9 @@ function readState(editor: Editor): ToolbarState {
       ? `${Math.round(Number.parseFloat(fontSize) * 0.75)}pt`
       : fontSize,
     lineHeight: editor.queryCommandValue('LineHeight'),
+    listStyle: list
+      ? editor.dom.getStyle(list, 'list-style-type') || 'default'
+      : '',
     canUndo: editor.undoManager.hasUndo(),
     canRedo: editor.undoManager.hasRedo(),
   };
@@ -390,6 +397,7 @@ export default function Toolbar({
               {bulletStyles.map((style) => (
                 <Dropdown.Option
                   key={style}
+                  active={state.unorderedList && state.listStyle === style}
                   onPick={run('ApplyUnorderedListStyle', listStyle(style))}
                 >
                   {sentenceCase(style)}
@@ -403,6 +411,7 @@ export default function Toolbar({
               {numberStyles.map((style) => (
                 <Dropdown.Option
                   key={style}
+                  active={state.orderedList && state.listStyle === style}
                   onPick={run('ApplyOrderedListStyle', listStyle(style))}
                 >
                   {sentenceCase(style)}

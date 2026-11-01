@@ -246,6 +246,16 @@ export default function FieldExtension({ ctx }: Props) {
     ? tokens['--color--disabled-field--ink']
     : tokens['--color--ink'];
 
+  // content_style is read only at init: a field that gets disabled or enabled
+  // again (the CMS disables the form during a slow save) keeps its editor and
+  // takes the new colors on its body, which isn't part of the value
+  useEffect(() => {
+    editor?.dom.setStyles(editor.getBody(), {
+      'background-color': surface,
+      color: ink,
+    });
+  }, [editor, surface, ink]);
+
   return (
     <Canvas ctx={ctx}>
       <div className={blockMenuOpen || moreMenuOpen ? s.room : undefined}>
@@ -258,8 +268,8 @@ export default function FieldExtension({ ctx }: Props) {
             onMoreMenuToggle={setMoreMenuOpen}
           />
           <ReactEditor
-            // TinyMCE reads its skin and content_style only at init
-            key={`${ctx.colorScheme}-${ctx.disabled}`}
+            // TinyMCE reads its skin only at init
+            key={ctx.colorScheme}
             disabled={ctx.disabled}
             licenseKey="gpl"
             init={{
