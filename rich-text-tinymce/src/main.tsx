@@ -2,6 +2,7 @@ import { connect, type OnBootCtx } from 'datocms-plugin-sdk';
 import FieldExtension from './entrypoints/FieldExtension';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -32,7 +33,7 @@ connect({
       migratedFromLegacyPlugin: true,
     });
 
-    ctx.notice('Plugin upgraded successfully!');
+    ctx.notice('TinyMCE editor upgraded.');
   },
   manualFieldExtensions() {
     return [

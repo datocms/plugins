@@ -1,16 +1,17 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import { Editor as ReactEditor } from '@tinymce/tinymce-react';
 import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
+import { useEditorToolbarWiring } from 'datocms-react-ui/EditorToolbar';
 import get from 'lodash/get';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from 'tinymce';
 import tinymce from 'tinymce/tinymce';
 import imgixThumbUrl from '../../utils/imgixThumbUrl';
+import s from './styles.module.css';
+import Toolbar from './Toolbar';
 
-(
-  window as unknown as Window & { tinymce: typeof tinymce }
-).tinymce = tinymce;
+(window as unknown as Window & { tinymce: typeof tinymce }).tinymce = tinymce;
 
 import 'tinymce/icons/default';
 import 'tinymce/models/dom';
@@ -104,29 +105,11 @@ async function uploadBlobToClient(
   return upload.url;
 }
 
-function registerEditorImageButtons(
-  editor: Editor,
-  ctx: RenderFieldExtensionCtx,
-) {
-  const handleDatoImages = () => {
-    ctx.selectUpload({ multiple: true }).then((files) => {
-      if (!files) return;
-      for (const file of files) {
-        editor.insertContent(buildImgTagForFile(file, ctx.locale, ctx));
-      }
-    });
-  };
-
-  editor.ui.registry.addButton('customimage', {
-    icon: 'image',
-    tooltip: 'Insert image...',
-    onAction: handleDatoImages,
-  });
-
+function registerEditorImageButtons(editor: Editor, pickImages: () => void) {
   editor.ui.registry.addButton('replaceimage', {
     icon: 'browse',
     tooltip: 'Replace image',
-    onAction: handleDatoImages,
+    onAction: pickImages,
   });
 
   editor.ui.registry.addContextToolbar('imagealignment', {
@@ -150,8 +133,20 @@ export default function FieldExtension({ ctx }: Props) {
 
   const [value, setValue] = useState(externalValue || '');
   const expectedValue = useRef<string | null>(null);
-  const editorContainerRef = useRef<HTMLDivElement>(null);
   const isDarkMode = ctx.colorScheme === 'dark';
+
+  // The editor after its initialization: the toolbar renders when it is ready
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [blockMenuOpen, setBlockMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // A dialog of TinyMCE (link, image, table, source code, emoji)
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const focusEditor = useCallback(() => editor?.focus(), [editor]);
+  const { setFocused, visible } = useEditorToolbarWiring({
+    busy: blockMenuOpen || moreMenuOpen || dialogOpen || picking,
+    focusEditor,
+  });
 
   useEffect(() => {
     log('BEFORE resetExpectedValue', {
@@ -206,59 +201,94 @@ export default function FieldExtension({ ctx }: Props) {
     }
   };
 
-  const initialize = (editor: Editor) => {
-    registerEditorImageButtons(editor, ctx);
-
-    const updateFrameHeight = () => {
-      requestAnimationFrame(() => {
-        const canvas = editorContainerRef.current?.parentElement;
-        if (!canvas) return;
-
-        ctx.updateHeight(Math.ceil(canvas.getBoundingClientRect().height));
-      });
-    };
-
-    editor.on('init ResizeEditor', updateFrameHeight);
-    editor.on('remove', () => {
-      editor.off('init ResizeEditor', updateFrameHeight);
-    });
+  const pickImages = (target: Editor) => {
+    setPicking(true);
+    ctx
+      .selectUpload({ multiple: true })
+      .then((files) => {
+        if (!files) return;
+        for (const file of files) {
+          target.insertContent(buildImgTagForFile(file, ctx.locale, ctx));
+        }
+      })
+      .finally(() => setPicking(false));
   };
 
+  const initialize = (instance: Editor) => {
+    registerEditorImageButtons(instance, () => pickImages(instance));
+
+    instance.on('init', () => setEditor(instance));
+    instance.on('remove', () => {
+      setEditor((current) => (current === instance ? null : current));
+      setFocused(false);
+      setDialogOpen(false);
+    });
+    instance.on('focus', () => setFocused(true));
+    instance.on('blur', () => setFocused(false));
+    instance.on('OpenWindow', () => setDialogOpen(true));
+    instance.on('CloseWindow', () => setDialogOpen(false));
+    // A click in TinyMCE's iframe doesn't reach the frame's document, where
+    // the kit closes an open toolbar menu on a click outside it
+    instance.on('mousedown', () =>
+      document.body.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true }),
+      ),
+    );
+  };
+
+  // TinyMCE's iframe doesn't get the CSS variables: its content takes the
+  // colors of the field from the tokens of the host
+  const tokens = ctx.cssDesignTokens;
+  const surface = ctx.disabled
+    ? tokens['--color--disabled-field--surface']
+    : tokens['--color--surface-raised'];
+  const ink = ctx.disabled
+    ? tokens['--color--disabled-field--ink']
+    : tokens['--color--ink'];
+
   return (
-    <Canvas ctx={ctx} noAutoResizer>
-      <div ref={editorContainerRef}>
-        <ReactEditor
-          key={ctx.colorScheme}
-          disabled={ctx.disabled}
-          licenseKey="gpl"
-          init={{
-            plugins: 'image advlist code emoticons link lists table autoresize',
-            toolbar:
-              'undo redo | formatselect | ' +
-              'bold italic backcolor | link customimage |' +
-              'alignleft aligncenter ' +
-              'alignright alignjustify | bullist numlist outdent indent | ' +
-              'removeformat | emoticons',
-            skin: isDarkMode ? 'oxide-dark' : 'oxide',
-            content_css: isDarkMode ? 'dark' : 'default',
-            content_style:
-              'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
-            setup: initialize,
-            autoresize_bottom_margin: 10,
-            paste_data_images: true,
-            promotion: false,
-            branding: false,
-            async images_upload_handler(blobInfo, progress) {
-              try {
-                return await uploadBlobToClient(ctx, blobInfo, progress);
-              } catch (_e) {
-                throw new Error('Could not upload image');
-              }
-            },
-          }}
-          value={value}
-          onEditorChange={handleChange}
-        />
+    <Canvas ctx={ctx}>
+      <div className={blockMenuOpen || moreMenuOpen ? s.room : undefined}>
+        <div className={ctx.disabled ? `${s.editor} ${s.disabled}` : s.editor}>
+          <Toolbar
+            editor={editor}
+            hidden={!visible || ctx.disabled}
+            onPickImages={() => editor && pickImages(editor)}
+            onBlockMenuToggle={setBlockMenuOpen}
+            onMoreMenuToggle={setMoreMenuOpen}
+          />
+          <ReactEditor
+            // TinyMCE reads its skin and content_style only at init
+            key={`${ctx.colorScheme}-${ctx.disabled}`}
+            disabled={ctx.disabled}
+            licenseKey="gpl"
+            init={{
+              plugins:
+                'image advlist code emoticons link lists table autoresize',
+              // The toolbar is the kit's (see Toolbar)
+              toolbar: false,
+              menubar: false,
+              statusbar: false,
+              skin: isDarkMode ? 'oxide-dark' : 'oxide',
+              content_css: isDarkMode ? 'dark' : 'default',
+              content_style: `body { font-family:Helvetica,Arial,sans-serif; font-size:16px; background-color:${surface}; color:${ink} }`,
+              setup: initialize,
+              autoresize_bottom_margin: 10,
+              paste_data_images: true,
+              promotion: false,
+              branding: false,
+              async images_upload_handler(blobInfo, progress) {
+                try {
+                  return await uploadBlobToClient(ctx, blobInfo, progress);
+                } catch (_e) {
+                  throw new Error('Could not upload image');
+                }
+              },
+            }}
+            value={value}
+            onEditorChange={handleChange}
+          />
+        </div>
       </div>
     </Canvas>
   );

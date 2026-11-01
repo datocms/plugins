@@ -1,0 +1,69 @@
+/* The box of the field around the toolbar and the content, as the CMS draws
+   its own HTML editor */
+.editor {
+  overflow: hidden;
+  background: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+}
+
+.editor:hover {
+  border-color: var(--color--border-hover);
+}
+
+/* One ring around the toolbar and the content, while the focus is in the
+   toolbar or in the content. An iframe whose content has the focus doesn't
+   match :focus-within, thus the content's focus is TinyMCE's class
+   tox-edit-focus, which it sets on its box */
+.editor:focus-within,
+.editor:has(:global(.tox-edit-focus)) {
+  border-color: var(--color--focus--border);
+  box-shadow: var(--focus-ring);
+}
+
+/* A disabled field takes the disabled-field context and never fades */
+.disabled,
+.disabled:hover {
+  background: var(--color--disabled-field--surface);
+  border-color: var(--color--border);
+}
+
+/* A class of TinyMCE, not of the kit: TinyMCE would draw a second border
+   inside the box */
+.editor :global(.tox-tinymce) {
+  border: 0;
+  border-radius: 0;
+}
+
+/* A class of TinyMCE, not of the kit: TinyMCE would draw its own focus
+   outline inside the box */
+.editor :global(.tox-edit-area)::before {
+  display: none;
+}
+
+/* The layer of TinyMCE at the end of the body (its dialogs, context toolbars
+   and their menus) shows over the toolbar of the kit, whose layers start at
+   z-index 10050, as it showed over the toolbar of TinyMCE: a dialog keeps its
+   title and close button. TinyMCE hides its context toolbars while a menu of
+   the kit has the focus. One class more than the rule of TinyMCE's skin */
+:global(.tox.tox-tinymce-aux) {
+  z-index: 20000;
+}
+
+/* While a toolbar menu is open, the frame keeps room for it under the
+   toolbar: the kit fits a menu inside the frame, and a frame as short as an
+   empty editor would make it scroll */
+.room {
+  min-height: 38rem;
+}
+
+/* The color of a text or background color option. The hairline keeps white
+   visible */
+.swatch {
+  display: block;
+  inline-size: 1em;
+  block-size: 1em;
+  border-radius: var(--radius-xs);
+  outline: 1px solid var(--color--border);
+  outline-offset: -1px;
+}
