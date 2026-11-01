@@ -1,29 +1,45 @@
+/* Placement only, plus the whole look of the disclosure (a RawButton has
+   none of its own). The kit components draw themselves. */
+
+/* The "+" that adds a task sits in the gutter at the left of the list. The
+   space at the bottom keeps the focus ring of the toggle and the shadow of
+   the last card inside the frame. */
 .root {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 8px;
+  margin-left: var(--DragHandle-gutter);
+  padding-bottom: var(--spacing-s);
 }
 
-.newRow {
+/* The buttons of a cell, centered in it */
+.buttons {
   display: flex;
-  gap: 8px;
+  justify-content: center;
+  gap: var(--spacing-s);
+}
+
+/* The toggle that shows or hides the completed tasks. Its margin merges with
+   the space that the list keeps under itself, so the gap stays the same when
+   the list shows only its empty slot. */
+.disclosure {
+  display: flex;
+  width: fit-content;
+  margin-top: var(--spacing-l);
   align-items: center;
+  gap: var(--spacing-s);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  font: inherit;
+  color: var(--color--ink);
+  cursor: pointer;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.disclosure:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
-.item {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
-  gap: 6px;
-  align-items: center;
-}
-
+/* The completed tasks, under the toggle */
 .completed {
-  margin-top: 8px;
+  margin-top: var(--spacing-m);
 }

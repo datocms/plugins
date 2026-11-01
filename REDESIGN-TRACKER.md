@@ -53,7 +53,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 39 | field-anchor-menu | 343 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 40 | record-auto-save | 338 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 41 | rich-text-tinymce | 332 | ^19.2.4 | Pending | |
-| 42 | todo-list | 326 | ^19.2.4 | Pending | |
+| 42 | todo-list | 326 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 43 | lorem-ipsum | 316 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 44 | notes | 314 | ^19.2.4 | Pending | |
 | 45 | slug-redirects | 263 | ^19.2.4 | Pending | |
