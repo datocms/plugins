@@ -73,7 +73,10 @@ export function sentence(
 }
 
 // Generates multiple sentences separated by spaces
-export function sentences(count: number, buttons: string[]): Array<Tag | string> {
+export function sentences(
+  count: number,
+  buttons: string[],
+): Array<Tag | string> {
   return times(count).flatMap((_, index) => {
     const parts = sentence(rand(4, 10), buttons);
     return index === 0 ? parts : [' ', ...parts];

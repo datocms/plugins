@@ -1,13 +1,15 @@
 import {
   connect,
-  type ExecuteFieldDropdownActionCtx,
   type DropdownAction,
+  type ExecuteFieldDropdownActionCtx,
   type Field,
   type FieldDropdownActionsCtx,
 } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import generateDummyText from './utils/generateDummyText';
 
 const loremIpsumDropdownAction: DropdownAction[] = [
@@ -58,7 +60,11 @@ function hasLoremIpsumAddon(field: Field) {
 connect({
   // Renders the plugin's config screen in DatoCMS
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    return render(
+      <Canvas ctx={ctx}>
+        <ConfigScreen ctx={ctx} />
+      </Canvas>,
+    );
   },
   // Declares which dropdown actions are available on a field, based on plugin parameters
   fieldDropdownActions(field, ctx: FieldDropdownActionsCtx) {
@@ -88,7 +94,7 @@ connect({
     if (actionId === 'loremIpsum') {
       const generated = generateDummyText(ctx.field);
       await ctx.setFieldValue(ctx.fieldPath, generated);
-      ctx.notice('Dummy text successfully generated!');
+      ctx.notice('Dummy text generated.');
     }
   },
   // Exposes a manual field extension that can be applied to text/string fields
@@ -96,7 +102,7 @@ connect({
     return [
       {
         id: 'loremIpsum',
-        name: 'Lorem Ipsum',
+        name: 'Lorem ipsum',
         type: 'addon',
         fieldTypes: ['text', 'string', 'structured_text'],
         configurable: true,

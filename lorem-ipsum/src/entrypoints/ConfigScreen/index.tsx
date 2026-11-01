@@ -1,187 +1,150 @@
-import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  FieldGroup,
-  Form,
-  Section,
-  SelectField,
-  TextField,
-} from 'datocms-react-ui';
-import arrayMutators from 'final-form-arrays';
-import { Field, Form as FormHandler } from 'react-final-form';
-import { FieldArray } from 'react-final-form-arrays';
-import type { Config } from '../../types';
-import s from './styles.module.css';
+import Button from 'datocms-react-ui/Button';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import TableList, { type TableListColumn } from 'datocms-react-ui/TableList';
+import { type FormEvent, useMemo, useState } from 'react';
+import type { AutoApplyRule, Config, ValidFieldType } from '../../types';
 
-// Props for the ConfigScreen component, receiving DatoCMS context
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-// Basic option interface for the field types
-type Option = { label: string; value: string };
-
-type SelectGroup<OptionType> = {
-  readonly label?: string;
-  readonly options: readonly OptionType[];
-};
-
-// List of valid field types the plugin can handle
-const fieldTypes: Option[] = [
-  {
-    value: 'string',
-    label: 'Single-line string',
-  },
-  {
-    value: 'text',
-    label: 'Multi-line text',
-  },
-  {
-    value: 'structured_text',
-    label: 'Structured text',
-  },
+// The field types the plugin can fill
+const FIELD_TYPES: { value: ValidFieldType; label: string }[] = [
+  { value: 'string', label: 'Single-line string' },
+  { value: 'text', label: 'Multi-line text' },
+  { value: 'structured_text', label: 'Structured text' },
 ];
 
-// Error shape to validate the auto-apply rules
-type Errors = {
-  autoApplyRules?: Array<{ fieldTypes?: string; apiKeyRegexp?: string }>;
-};
-
-// Main ConfigScreen component that handles plugin parameter configuration
 export default function ConfigScreen({ ctx }: Props) {
+  const { autoApplyRules } = ctx.plugin.attributes.parameters as Config;
+  const savedRules = Array.isArray(autoApplyRules) ? autoApplyRules : [];
+
+  const [rules, setRules] = useState<AutoApplyRule[]>(savedRules);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const dirty = JSON.stringify(rules) !== JSON.stringify(savedRules);
+  const errors = rules.map((rule) => ({
+    fieldTypes:
+      rule.fieldTypes.length === 0 ? 'Pick at least one field type' : undefined,
+    apiKeyRegexp: rule.apiKeyRegexp ? undefined : 'Enter an API key pattern',
+  }));
+  const valid = errors.every(
+    (rowErrors) => !rowErrors.fieldTypes && !rowErrors.apiKeyRegexp,
+  );
+
+  const columns = useMemo<TableListColumn<AutoApplyRule>[]>(
+    () => [
+      {
+        id: 'fieldTypes',
+        field: 'fieldTypes',
+        label: 'Field types',
+        grow: 3,
+        // The class of the cell input is for a text input: the select does
+        // not take it
+        render: ({
+          item,
+          index,
+          onChange,
+          onBlur,
+          inputProps: { className: _, ...inputProps },
+        }) => (
+          <SelectInput
+            {...inputProps}
+            multiple
+            name={`fieldTypes-${index}`}
+            value={item.fieldTypes}
+            onChange={(values) => onChange(values ?? [])}
+            onBlur={() => onBlur()}
+            options={FIELD_TYPES}
+            placeholder="Pick field types"
+            variant="embedded"
+            classNamePrefix="TableList__select"
+          />
+        ),
+      },
+      {
+        id: 'apiKeyRegexp',
+        field: 'apiKeyRegexp',
+        label: 'API key pattern',
+        grow: 2,
+        code: true,
+      },
+    ],
+    [],
+  );
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!dirty || saving) {
+      return;
+    }
+
+    if (!valid) {
+      setSubmitAttempted(true);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await ctx.updatePluginParameters({
+        ...ctx.plugin.attributes.parameters,
+        autoApplyRules: rules,
+      });
+      ctx.notice('Settings saved.');
+      setSubmitAttempted(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    // Canvas ensures proper styling and auto-resizing within DatoCMS
-    <Canvas ctx={ctx}>
-      <FormHandler<Config>
-        // Allows array-based form mutations
-        mutators={{
-          ...arrayMutators,
-        }}
-        // Load existing plugin parameters
-        initialValues={ctx.plugin.attributes.parameters}
-        // Custom validation to ensure user input is correct
-        validate={(values) => {
-          const errors: Errors = {};
-
-          if ('autoApplyRules' in values) {
-            errors.autoApplyRules = values.autoApplyRules.map((rule) => {
-              const ruleErrors: Record<string, string> = {};
-
-              if (!rule.apiKeyRegexp) {
-                ruleErrors.apiKeyRegexp = 'Please specify a regexp!';
-              }
-
-              if (rule.fieldTypes.length === 0) {
-                ruleErrors.fieldTypes = 'Please specify at least one!';
-              }
-
-              return ruleErrors;
-            });
-          }
-
-          return errors;
-        }}
-        // Handles form submission, saving parameters back to the plugin
-        onSubmit={async (values) => {
-          await ctx.updatePluginParameters(values);
-          ctx.notice('Settings updated successfully!');
-        }}
-      >
-        {({ handleSubmit, submitting, dirty }) => (
-          <Form onSubmit={handleSubmit}>
-            <Section
-              title="Automatic apply rules"
-              headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+    <Page>
+      <Page.Content>
+        <form onSubmit={handleSubmit}>
+          <Page.Group
+            title="Automatic rules"
+            footer={
+              <Button
+                submit
+                tone="primary"
+                expand={false}
+                label="Save"
+                busy={saving}
+                disabled={
+                  dirty
+                    ? undefined
+                    : { reason: 'There are no changes to save.' }
+                }
+              />
+            }
+          >
+            <FieldWrapper
+              label="Automatic rules"
+              labelExtras={{ hidden: true }}
+              hint="A field that matches one of these rules gets the “Generate dummy text” action, also without the add-on. The pattern is a regular expression tested on the field's API key."
             >
-              <p>Apply automatically on fields matching one of these rules:</p>
-              <FieldArray name="autoApplyRules">
-                {({ fields }) => (
-                  <FieldGroup>
-                    {fields.map((name, index) => (
-                      <FieldGroup key={name}>
-                        <div className={s.grid}>
-                          <div>
-                            {/* SelectField to pick which field types the rule should match */}
-                            <Field name={`${name}.fieldTypes`}>
-                              {({ input, meta: { error } }) => (
-                                <SelectField<Option, true, SelectGroup<Option>>
-                                  {...input}
-                                  id="fieldTypes"
-                                  label="Field types"
-                                  selectInputProps={{
-                                    isMulti: true,
-                                    options: fieldTypes,
-                                  }}
-                                  value={fieldTypes.filter((ft) =>
-                                    input.value.includes(ft.value),
-                                  )}
-                                  onChange={(option) =>
-                                    input.onChange(
-                                      option.map((option) => option.value),
-                                    )
-                                  }
-                                  error={error}
-                                />
-                              )}
-                            </Field>
-                          </div>
-                          <div>
-                            {/* Regex field to match field API keys */}
-                            <Field name={`${name}.apiKeyRegexp`}>
-                              {({ input, meta: { error } }) => (
-                                <TextField
-                                  id="apiKeyRegexp"
-                                  label="API key (regexp)"
-                                  textInputProps={{ monospaced: true }}
-                                  placeholder=".*"
-                                  error={error}
-                                  {...input}
-                                />
-                              )}
-                            </Field>
-                          </div>
-                          {/* Button to remove a rule */}
-                          <Button
-                            type="button"
-                            buttonType="negative"
-                            buttonSize="xxs"
-                            leftIcon={<FontAwesomeIcon icon={faTrash} />}
-                            onClick={() => fields.remove(index)}
-                          />
-                        </div>
-                      </FieldGroup>
-                    ))}
-                    {/* Button to add a new auto-apply rule */}
-                    <Button
-                      type="button"
-                      buttonSize="xxs"
-                      leftIcon={<FontAwesomeIcon icon={faPlus} />}
-                      onClick={() =>
-                        fields.push({ fieldTypes: [], apiKeyRegexp: '' })
-                      }
-                    >
-                      Add new rule
-                    </Button>
-                  </FieldGroup>
-                )}
-              </FieldArray>
-            </Section>
-            {/* Submit button to save the settings */}
-            <Button
-              type="submit"
-              fullWidth
-              buttonSize="xl"
-              buttonType="primary"
-              disabled={submitting || !dirty}
-            >
-              Save settings
-            </Button>
-          </Form>
-        )}
-      </FormHandler>
-    </Canvas>
+              <TableList<AutoApplyRule>
+                value={rules}
+                onChange={setRules}
+                errors={errors}
+                touched={submitAttempted}
+                columns={columns}
+                emptyMessage="No rules yet"
+                add={{
+                  label: 'Add rule',
+                  newItem: () => ({ fieldTypes: [], apiKeyRegexp: '' }),
+                }}
+              />
+            </FieldWrapper>
+          </Page.Group>
+        </form>
+      </Page.Content>
+    </Page>
   );
 }
