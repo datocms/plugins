@@ -8,6 +8,9 @@ import { getValueByPath } from './getValueByPath.ts';
 // Can be anything. We just use this to store data to the browser's session storage.
 const SESSION_KEY = 'datocms-plugin-copy-links';
 
+const linkCount = (count: number) =>
+  count === 1 ? '1 link' : `${count} links`;
+
 async function handleCopyLinks(
   currentValue: string | string[] | undefined,
   fieldLabel: string,
@@ -15,7 +18,7 @@ async function handleCopyLinks(
 ): Promise<void> {
   // Exit early if nothing to copy
   if (!currentValue?.length) {
-    await ctx.alert(`Nothing to copy. Field "${fieldLabel}" is empty.`);
+    await ctx.alert(`Nothing to copy. “${fieldLabel}” is empty.`);
     return;
   }
 
@@ -24,11 +27,9 @@ async function handleCopyLinks(
     const stringified = currentValue.toString(); // Becomes comma-separated IDs
     sessionStorage.setItem(SESSION_KEY, stringified);
     const numberOfIds = stringified.split(',').length; // Length after split
-    await ctx.notice(`Copied ${numberOfIds} link(s).`);
+    await ctx.notice(`Copied ${linkCount(numberOfIds)}.`);
   } catch (e) {
-    await ctx.alert(
-      `Error copying link(s): ${e instanceof Error ? e.message : e}`,
-    );
+    await ctx.alert(`Could not copy: ${e instanceof Error ? e.message : e}`);
   }
 }
 
@@ -41,7 +42,8 @@ async function handlePasteIntoSingleLinkField(
 
     // Exit early if empty
     if (!maybeLink) {
-      throw new Error('There was nothing to paste.');
+      await ctx.alert('Nothing to paste. Copy a link first.');
+      return;
     }
 
     // Try to split it by commas
@@ -55,13 +57,11 @@ async function handlePasteIntoSingleLinkField(
     }
 
     // If the split string has more than one element, error out
-    throw new Error(
-      'You cannot paste multiple links into a single-link field.',
+    await ctx.alert(
+      `Cannot paste ${linkCount(arrayified.length)} into a single-link field.`,
     );
   } catch (e) {
-    await ctx.alert(
-      `Error pasting link: ${e instanceof Error ? e.message : e}`,
-    );
+    await ctx.alert(`Could not paste: ${e instanceof Error ? e.message : e}`);
   }
 }
 
@@ -75,12 +75,8 @@ async function handlePasteIntoMultiLinkField(
 
     // Exit early if empty
     if (!maybeLinks) {
-      await ctx.alert('There was nothing to paste.');
+      await ctx.alert('Nothing to paste. Copy links first.');
       return;
-    }
-
-    if (!maybeLinks.length) {
-      throw new Error('Unable to paste links; not sure why');
     }
 
     // Split it by comma and paste it.
@@ -100,21 +96,17 @@ async function handlePasteIntoMultiLinkField(
       JSON.stringify(uniqueLinks) === JSON.stringify(currentValue);
 
     if (allLinksAlreadyPresent) {
-      await ctx.notice(
-        'No new links pasted. Field already has all the copied links.',
-      );
+      await ctx.notice('This field already has all the copied links.');
       return;
     }
 
     await ctx.setFieldValue(fieldPath, uniqueLinks);
     await ctx.notice(
-      `Pasted ${uniqueLinks.length - (currentValue?.length ?? 0)} new link(s).`,
+      `Pasted ${linkCount(uniqueLinks.length - (currentValue?.length ?? 0))}.`,
     );
   } catch (e) {
     console.error('Error pasting link(s)', e);
-    await ctx.alert(
-      `Error pasting link(s): ${e instanceof Error ? e.message : e}`,
-    );
+    await ctx.alert(`Could not paste: ${e instanceof Error ? e.message : e}`);
   }
 }
 
@@ -152,7 +144,7 @@ connect({
           },
           {
             id: 'pasteIntoMultiLinkField',
-            label: 'Paste link(s)',
+            label: 'Paste links',
             icon: 'paste',
           },
         ];

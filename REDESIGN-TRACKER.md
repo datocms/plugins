@@ -60,4 +60,4 @@ Status: Pending, In progress, Done, or Needs attention.
 | 46 | tree-like-slugs | 204 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 47 | delete-assets-option | 131 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 48 | disabled-field | 91 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
-| 49 | copy-links | 0 | none | Pending | |
+| 49 | copy-links | 0 | none | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
