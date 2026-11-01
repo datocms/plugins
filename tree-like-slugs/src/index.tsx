@@ -10,15 +10,17 @@ import {
   type OnBeforeItemUpsertCtx,
   type RenderFieldExtensionCtx,
 } from 'datocms-plugin-sdk';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import {
   ApiError,
   buildClient,
   type Client,
 } from '@datocms/cma-client-browser';
+import Canvas from 'datocms-react-ui/Canvas';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import SlugExtension from './entrypoints/SlugExtension';
+import { render } from './utils/render';
 import updateAllChildrenSlugs, {
   type SlugValue,
 } from './utils/updateAllChildrenSlugs';
@@ -89,7 +91,13 @@ connect({
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     switch (fieldExtensionId) {
       case 'treeLikeSlugs':
-        return render(<SlugExtension ctx={ctx} />);
+        // The add-on draws nothing: without the auto-resizer, its frame
+        // keeps the height that the CMS gives it
+        return render(
+          <Canvas ctx={ctx} noAutoResizer>
+            <SlugExtension ctx={ctx} />
+          </Canvas>,
+        );
     }
   },
   /**

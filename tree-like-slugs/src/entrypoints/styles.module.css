@@ -1,3 +1,6 @@
-.inspector {
-  margin-top: var(--spacing-l);
+/* The kit's minimum height of a page is for a full-height area: in this
+   frame, which sizes itself to its content, it would keep the frame from
+   shrinking */
+.page {
+  min-height: 0;
 }

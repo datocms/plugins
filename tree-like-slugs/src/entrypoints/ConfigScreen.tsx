@@ -1,6 +1,8 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import 'datocms-react-ui/styles.css';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import { Page } from 'datocms-react-ui/Page';
+import styles from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -10,16 +12,24 @@ type Props = {
 export default function ConfigScreen({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>
-      <p>
-        Add it to the slug field you want as a field addon, the model where that
-        slug is in must be set with a "Tree-like" presentation. From then on,
-        all of the slugs in the tree-like configuration will inherit as a prefix
-        the slug on the parent record.
-      </p>
-      <h4>
-        The slug field must have the "Match a specific pattern" validation
-        disabled! Otherwise the plugin won't be able to insert '/' in the slug.
-      </h4>
+      <Page className={styles.page}>
+        <Page.Content>
+          <Page.Section>
+            <Page.SectionTitle>How to use</Page.SectionTitle>
+            <Page.SectionDescription>
+              Add “Tree-like slugs” to a slug field as an add-on, in a model
+              with hierarchical sorting. When you save a record with a changed
+              slug, the slugs of all the records below it in the tree start with
+              the new one.
+            </Page.SectionDescription>
+            <Callout tone="warning">
+              Turn off the “Match a specific pattern” validation of the slug
+              field, or it rejects the “/” that the plugin puts between the
+              slugs.
+            </Callout>
+          </Page.Section>
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }
