@@ -1,83 +1,24 @@
-.note__footer {
+/* Under the textarea: when the note was written, in the subtle ink of a hint,
+   and its trash at the end */
+.footer {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-}
-
-.note__buttons {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-}
-
-.notes__item__timestamp {
-  font-size: 13px;
-  margin-top: 9px;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-s);
   color: var(--color--ink-subtle);
 }
 
-.notes__item {
-  padding: 15px;
-  padding-bottom: 0;
-  margin-bottom: 40px;
-  background: var(--color--highlight--surface);
-  position: relative;
-}
-
-.notes__item:focus-within {
-  box-shadow: var(--shadow--lifted);
-}
-
-.notes__item textarea {
-  border: none;
-  padding: 0;
-  background: transparent;
-  width: 100%;
-  overflow: auto;
-  outline: none;
-  min-height: 3em;
-  resize: none;
-}
-
-.notes__item textarea:focus {
-  box-shadow: none;
-  border: none;
-}
-
-.notes__item::after {
-  content: "";
-  position: absolute;
-  bottom: -16px;
-  left: 0;
-  right: 15px;
-  border-width: 8px;
-  border-style: solid;
-  border-color: var(--color--highlight--surface);
-}
-
-.notes__item::before {
-  content: "";
-  position: absolute;
-  bottom: -15px;
-  right: 0;
-  border-width: 15px 15px 0 0;
-  border-style: solid;
-  border-color: var(--color--highlight--surface) transparent;
-}
-
-.note__button {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  border-width: 0;
-  background-color: transparent;
-  padding: 0;
-  display: inline-block;
-  font-size: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.note__button:hover {
-  text-decoration: underline;
+/* Holds the "Add note" action, so the line box around the button adds no
+   height. The action pulls its box out by 0.8em (its own font size, which
+   is this one), so its text lines up with the notes; with its 4px focus
+   ring, that goes past the frame's side padding, which NotesSidebar passes
+   in, and the frame's edge would cut the ring. So the box comes back just
+   enough to keep the ring in the frame (Button, "Do not clip the button"). */
+.action {
+  display: flex;
+  padding-inline-start: max(
+    0px,
+    calc(0.8em + 4px - var(--frame-inset-left, 0px))
+  );
 }

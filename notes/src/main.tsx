@@ -5,15 +5,12 @@ import {
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import TimeAgo from 'javascript-time-ago';
-import en from 'javascript-time-ago/locale/en.json';
+import './frame.css';
 import NotesSidebar from './entrypoints/NotesSidebar';
-
-TimeAgo.addDefaultLocale(en);
 
 connect({
   async onBoot(ctx: OnBootCtx) {
-    if (ctx.plugin.attributes.parameters.migratedFromLegacyPlugin) {
+    if (ctx.plugin.attributes.parameters?.migratedFromLegacyPlugin) {
       return;
     }
 
@@ -44,7 +41,7 @@ connect({
     return [
       {
         id: 'sidebarNotes',
-        name: 'Sidebar Notes',
+        name: 'Sidebar notes',
         type: 'editor',
         fieldTypes: ['json'],
         asSidebarPanel: true,

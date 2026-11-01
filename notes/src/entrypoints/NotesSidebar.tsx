@@ -1,8 +1,10 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import Canvas from 'datocms-react-ui/Canvas';
+import SidebarPanel from 'datocms-react-ui/SidebarPanel';
+import { type CSSProperties, useEffect, useState } from 'react';
+import { PlusIcon } from '../icons';
 import Note from './Note';
-import styles from './notesSidebar.module.css';
+import styles from './note.module.css';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -70,6 +72,7 @@ const Notes = ({ ctx }: PropTypes) => {
 
   return (
     <Canvas ctx={ctx}>
+      {savedNotes.length === 0 && <SidebarPanel.Blank message="No notes yet" />}
       {savedNotes?.map((note) => {
         return (
           <Note
@@ -81,9 +84,18 @@ const Notes = ({ ctx }: PropTypes) => {
           />
         );
       })}
-      <button className={styles['add-note-button']} onClick={createNoteHandler}>
-        Add a new note...
-      </button>
+      <div
+        className={styles.action}
+        style={
+          { '--frame-inset-left': `${ctx.bodyPadding[3]}px` } as CSSProperties
+        }
+      >
+        <SidebarPanel.Action
+          icon={PlusIcon}
+          label="Add note"
+          onClick={createNoteHandler}
+        />
+      </div>
     </Canvas>
   );
 };

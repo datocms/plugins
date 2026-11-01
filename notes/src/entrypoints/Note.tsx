@@ -1,7 +1,10 @@
+import Button from 'datocms-react-ui/Button';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import SmartDate from 'datocms-react-ui/SmartDate';
+import TextareaInput from 'datocms-react-ui/TextareaInput';
 import type React from 'react';
 import { useState } from 'react';
-import Textarea from 'react-textarea-autosize';
-import ReactTimeAgo from 'react-time-ago';
+import { TrashIcon } from '../icons';
 import styles from './note.module.css';
 
 type noteProps = {
@@ -16,29 +19,32 @@ const Note: React.FC<noteProps> = (props) => {
   const noteDate = props.date;
 
   return (
-    <div
-      className={styles.notes__item}
-      onBlur={props.editNotes.bind(null, noteDate, textAreaValue)}
+    <FieldWrapper
+      label="Note"
+      labelExtras={{ hidden: true }}
+      container={{
+        trailing: (
+          <div className={styles.footer}>
+            <SmartDate value={noteDate} />
+            <Button
+              tone="ghost-alert"
+              size="micro"
+              iconOnly
+              icon={TrashIcon}
+              label="Delete note"
+              onClick={() => props.deleteNotes(noteDate)}
+            />
+          </div>
+        ),
+      }}
     >
-      <Textarea
-        onChange={(event) => setTextAreaValue(event.target.value)}
-        placeholder="Enter your note..."
+      <TextareaInput
+        placeholder="Check the image credits"
         value={textAreaValue}
+        onChange={(value) => setTextAreaValue(value ?? '')}
+        onBlur={() => props.editNotes(noteDate, textAreaValue)}
       />
-      <div
-        className={`${styles.note__footer} ${styles.notes__item__timestamp}`}
-      >
-        <ReactTimeAgo date={new Date(noteDate)} />
-        <div className={styles.note__buttons}>
-          <button
-            className={styles.note__button}
-            onClick={props.deleteNotes.bind(null, noteDate)}
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
+    </FieldWrapper>
   );
 };
 
