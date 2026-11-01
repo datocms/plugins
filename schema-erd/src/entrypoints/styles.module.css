@@ -1,88 +1,20 @@
-.root {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  color: var(--color--ink);
-  background: var(--color--surface);
-}
-
-.topBar {
-  display: flex;
-  align-items: center;
-  height: 60px;
-  border-bottom: 1px solid var(--color--border);
-}
-
-.title {
-  flex: 1;
-  font-size: var(--font-size-xxl);
-  font-weight: bold;
-  letter-spacing: -0.03em;
-  padding: 10px 20px;
-}
-
-.actions {
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-}
-
-.buttons {
-  margin-left: 20px;
-  display: flex;
-}
-
-.buttons > * {
-  margin: 0 5px;
-}
-
-.wrapper {
-  flex: 1;
-  cursor: move;
-  background: var(--color--surface-muted);
-  position: relative;
-}
-
-.wrapper img {
-  background: transparent;
-}
-
-.controlPanel {
+/* The positioned parent with a height that the pane fills */
+.page {
   position: absolute;
-  z-index: 2;
-  transform: translate(10px, 10px);
-  max-width: calc(100% - 20px);
-}
-.controlBtn {
-  padding: 6px 12px;
-  background: var(--color--surface);
-  color: var(--color--ink);
-  border: 1px solid var(--color--border);
-  border-radius: 5px;
-  margin-right: 10px;
-  font-size: 12px;
-  text-transform: uppercase;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.controlBtn:focus {
-  filter: brightness(90%);
-}
-
-.controlBtn:hover {
-  filter: brightness(120%);
-}
-
-.controlBtn:active {
-  opacity: 0.9;
-}
-
-.progress {
-  position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+/* The measured box of the diagram: it fills the content of the pane */
+.diagram {
+  position: absolute;
+  inset: 0;
+  background: var(--color--surface-muted);
+}
+
+/* The base styles cap images at the width of their box, which would squeeze
+   the diagram inside the zoom content; the transparent background shows the
+   muted canvas in dark mode */
+.diagram img {
+  max-width: none;
+  background: transparent;
 }

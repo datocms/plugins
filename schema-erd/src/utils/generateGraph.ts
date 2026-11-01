@@ -124,9 +124,9 @@ function addFieldEdges(
   let hasLinks = false;
 
   for (const validatorCode of validators) {
-    const validatorEntry = (field.attributes.validators as Record<string, unknown>)[
-      validatorCode
-    ];
+    const validatorEntry = (
+      field.attributes.validators as Record<string, unknown>
+    )[validatorCode];
     const linkedIds = extractLinkedItemTypeIds(validatorEntry);
 
     for (const itemTypeId of linkedIds) {

@@ -26,8 +26,8 @@
     "@types/react-dom": "^19.2.3",
     "@viz-js/viz": "3.31.0",
     "async-scheduler": "^1.4.4",
-    "datocms-plugin-sdk": "^2.2.2",
-    "datocms-react-ui": "^2.2.4",
+    "datocms-plugin-sdk": "^2.6.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-zoom-pan-pinch": "3.7.0",
@@ -52,9 +52,7 @@
   "type": "module",
   "overrides": {
     "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
+      "datocms-plugin-sdk": "$datocms-plugin-sdk"
     }
   },
   "allowScripts": {

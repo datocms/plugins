@@ -1,7 +1,7 @@
+import 'datocms-react-ui/styles.css';
 import { connect } from 'datocms-plugin-sdk';
 import Graphviz from './entrypoints/Graphviz';
 import { render } from './utils/render';
-import 'datocms-react-ui/styles.css';
 
 connect({
   settingsAreaSidebarItemGroups() {

@@ -1,13 +1,27 @@
 import { Scheduler } from 'async-scheduler';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
+import Main from 'datocms-react-ui/Main';
+import Pane from 'datocms-react-ui/Pane';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import { useEffect, useRef, useState } from 'react';
 import {
   type ReactZoomPanPinchContentRef,
   TransformComponent,
   TransformWrapper,
 } from 'react-zoom-pan-pinch';
 import { encode } from 'universal-base64';
+import {
+  ArrowRotateLeftIcon,
+  CircleExclamationIcon,
+  CrosshairsIcon,
+  DiagramIcon,
+  DownloadIcon,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
+} from '../icons';
 import {
   allEntities,
   download,
@@ -23,32 +37,6 @@ type Props = {
   ctx: RenderPageCtx;
 };
 
-const Controls: React.FC<ReactZoomPanPinchContentRef> = ({
-  zoomIn,
-  zoomOut,
-  resetTransform,
-  centerView,
-}: ReactZoomPanPinchContentRef) => (
-  <div className={s.controlPanel}>
-    <button type="button" className={s.controlBtn} onClick={() => zoomIn()}>
-      Zoom In +
-    </button>
-    <button type="button" className={s.controlBtn} onClick={() => zoomOut()}>
-      Zoom Out -
-    </button>
-    <button
-      type="button"
-      className={s.controlBtn}
-      onClick={() => resetTransform()}
-    >
-      Reset
-    </button>
-    <button type="button" className={s.controlBtn} onClick={() => centerView()}>
-      Center
-    </button>
-  </div>
-);
-
 export default function Graphviz({ ctx }: Props) {
   const firstRun = useRef(true);
   const [loadingState, setLoadingState] = useState<
@@ -61,17 +49,10 @@ export default function Graphviz({ ctx }: Props) {
   const [dot, setDot] = useState<undefined | string>();
   const [svg, setSvg] = useState<undefined | string>();
   const [size, setSize] = useState<undefined | [number, number]>();
-  const [containerElement, setContainerElement] =
-    useState<HTMLDivElement | null>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-
-  // A stable re-throw mechanism so errors bubble to the React error boundary
-  const [, setErrorState] = useState<boolean>();
-  const throwAsync = useCallback((error: unknown) => {
-    setErrorState(() => {
-      throw error;
-    });
-  }, []);
+  const [error, setError] = useState<unknown>();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { width, height } = useElementLayout(containerRef);
+  const zoomRef = useRef<ReactZoomPanPinchContentRef>(null);
   const clusterBorderColor = ctx.cssDesignTokens['--color--border'];
 
   useEffect(() => {
@@ -98,8 +79,8 @@ export default function Graphviz({ ctx }: Props) {
       );
     }
 
-    loadFields().catch(throwAsync);
-  }, [ctx.itemTypes, ctx.fields, ctx.loadItemTypeFields, throwAsync]);
+    loadFields().catch(setError);
+  }, [ctx.itemTypes, ctx.fields, ctx.loadItemTypeFields]);
 
   useEffect(() => {
     if (!loadingState || loadingState.completed !== loadingState.total) {
@@ -117,14 +98,13 @@ export default function Graphviz({ ctx }: Props) {
       setDot(generatedDot);
     }
 
-    buildGraph().catch(throwAsync);
+    buildGraph().catch(setError);
   }, [
     loadingState,
     ctx.itemTypes,
     ctx.fields,
     ctx.colorScheme,
     clusterBorderColor,
-    throwAsync,
   ]);
 
   useEffect(() => {
@@ -140,8 +120,8 @@ export default function Graphviz({ ctx }: Props) {
       setSvg(renderedSvg);
     }
 
-    renderSvg().catch(throwAsync);
-  }, [dot, throwAsync]);
+    renderSvg().catch(setError);
+  }, [dot]);
 
   useEffect(() => {
     if (!svg) {
@@ -168,8 +148,8 @@ export default function Graphviz({ ctx }: Props) {
       setSize([width, height]);
     }
 
-    measureSvg().catch(throwAsync);
-  }, [svg, throwAsync]);
+    measureSvg().catch(setError);
+  }, [svg]);
 
   async function downloadAsDotLanguage() {
     if (!dot) {
@@ -190,82 +170,132 @@ export default function Graphviz({ ctx }: Props) {
     download('schema.svg', `data:image/svg+xml;base64,${encode(svg)}`);
   }
 
-  useEffect(() => {
-    if (!containerElement) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      const rect = containerElement.getBoundingClientRect();
-      setContainerSize({ width: rect.width, height: rect.height });
-    });
-
-    observer.observe(containerElement);
-
-    const rect = containerElement.getBoundingClientRect();
-    setContainerSize({ width: rect.width, height: rect.height });
-
-    return () => observer.disconnect();
-  }, [containerElement]);
-
   const minScale =
-    size && containerSize.width && containerSize.height
-      ? Math.min(containerSize.width / size[0], containerSize.height / size[1])
+    size && width && height
+      ? Math.min(width / size[0], height / size[1])
       : undefined;
 
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const progress =
+    loadingState &&
+    `${loadingState.completed} of ${loadingState.total} models and block models loaded`;
+  const isEmpty = allEntities(ctx.itemTypes).length === 0;
+  const ready = !error && !isEmpty && Boolean(svg && minScale);
+
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.root}>
-        <div className={s.topBar}>
-          <div className={s.title}>Schema ERD generator</div>
-          <div className={s.actions}>
-            Download schema as
-            <div className={s.buttons}>
-              <Button buttonSize="xs" onClick={downloadAsDotLanguage}>
-                GraphViz .DOT
-              </Button>{' '}
-              <Button buttonSize="xs" onClick={downloadAsSvg}>
-                .SVG
-              </Button>{' '}
-            </div>
-          </div>
-        </div>
-        <div className={s.wrapper} ref={setContainerElement}>
-          {svg && minScale && (
-            <TransformWrapper
-              initialScale={minScale}
-              minScale={minScale * 0.7}
-              centerOnInit={true}
-              wheel={{ step: 0.04 }}
-            >
-              {(utils) => (
-                <div>
-                  <Controls {...utils} />
-                  <TransformComponent
-                    wrapperStyle={{
-                      width: '100%',
-                      height: 'calc(100vh - 60px)',
-                      maxWidth: '100%',
-                      maxHeight: 'calc(100vh - 60px)',
-                    }}
-                  >
-                    <img
-                      src={`data:image/svg+xml;base64,${encode(svg)}`}
-                      alt="Schema"
-                    />
-                  </TransformComponent>
-                </div>
+    <Canvas ctx={ctx} noAutoResizer>
+      <Main className={s.page}>
+        <Pane
+          header={
+            <Toolbar>
+              <Toolbar.Title
+                level={1}
+                help={
+                  <Toolbar.Help>
+                    A diagram of the models and block models of the project,
+                    with the link fields between them. Drag to move it, and
+                    scroll to zoom.
+                  </Toolbar.Help>
+                }
+              >
+                Schema ERD
+              </Toolbar.Title>
+              <Toolbar.Space />
+              {ready && (
+                <Toolbar.Group>
+                  <Toolbar.Button
+                    iconOnly
+                    icon={MagnifyingGlassPlusIcon}
+                    label="Zoom in"
+                    onClick={() => zoomRef.current?.zoomIn()}
+                  />
+                  <Toolbar.Button
+                    iconOnly
+                    icon={MagnifyingGlassMinusIcon}
+                    label="Zoom out"
+                    onClick={() => zoomRef.current?.zoomOut()}
+                  />
+                  <Toolbar.Button
+                    iconOnly
+                    icon={ArrowRotateLeftIcon}
+                    label="Reset zoom"
+                    onClick={() => zoomRef.current?.resetTransform()}
+                  />
+                  <Toolbar.Button
+                    iconOnly
+                    icon={CrosshairsIcon}
+                    label="Center the diagram"
+                    onClick={() => zoomRef.current?.centerView()}
+                  />
+                </Toolbar.Group>
               )}
-            </TransformWrapper>
-          )}
-          {loadingState && loadingState.completed < loadingState.total && (
-            <div className={s.progress}>
-              <Spinner placement="inline" /> Loading models and block models...
-              ({loadingState.completed}/{loadingState.total})
-            </div>
-          )}
-        </div>
-      </div>
+              {ready && (
+                <Toolbar.PrimaryButton
+                  actions={[
+                    {
+                      label: 'Download SVG',
+                      icon: DownloadIcon,
+                      onPick: downloadAsSvg,
+                    },
+                    {
+                      label: 'Download Graphviz DOT',
+                      onPick: downloadAsDotLanguage,
+                    },
+                  ]}
+                />
+              )}
+            </Toolbar>
+          }
+        >
+          <div ref={containerRef} className={s.diagram}>
+            {error ? (
+              <BlankSlate
+                placement="area"
+                error
+                icon={<CircleExclamationIcon />}
+                title="The diagram failed to load"
+                code={errorMessage}
+                description="Reload the page to try again."
+              />
+            ) : isEmpty ? (
+              <BlankSlate
+                placement="area"
+                icon={<DiagramIcon />}
+                title="No models yet"
+                description="The models and block models of the schema show here, with the links between them."
+              />
+            ) : svg && minScale ? (
+              <TransformWrapper
+                ref={zoomRef}
+                initialScale={minScale}
+                minScale={minScale * 0.7}
+                centerOnInit
+                wheel={{ step: 0.04 }}
+              >
+                <TransformComponent
+                  wrapperStyle={{
+                    width: '100%',
+                    height: '100%',
+                    cursor: 'move',
+                  }}
+                >
+                  <img
+                    src={`data:image/svg+xml;base64,${encode(svg)}`}
+                    alt="Schema"
+                  />
+                </TransformComponent>
+              </TransformWrapper>
+            ) : (
+              <BlankSlate
+                placement="area"
+                loading
+                title="Loading the models and block models"
+                caption={progress}
+              />
+            )}
+          </div>
+        </Pane>
+      </Main>
     </Canvas>
   );
 }
