@@ -1,61 +1,13 @@
-.localeTable {
-  margin: 0 auto;
-  border-collapse: collapse;
-  text-align: left;
-  p:first-child {
-    margin-top: 0;
-  }
-
-  td,
-  th {
-    padding: 10px 15px;
-    vertical-align: top;
-    max-width: 250px;
-    width: 33%;
-  }
-
-  tbody td {
-    /*border: solid var(--color--ink-subtle);*/
-  }
-
-  th {
-    font-weight: bold;
-    text-align: center;
-  }
-
-  .overridden-true {
-    /*color: var(--color--danger-soft--ink);*/
-  }
+/* Places the action next to the status word of a value */
+.action {
+  margin-left: var(--spacing-s);
 }
 
-.snippet {
-  text-overflow: ellipsis;
+/* The small line under a value: long unbroken text wraps instead of
+   widening the frame */
+.note {
+  margin-top: var(--spacing-s);
+  font-size: var(--font-size-xs);
   color: var(--color--ink-subtle);
-  font-style: italic;
-
-  &::before {
-    content: "“";
-  }
-
-  &::after {
-    content: "”";
-  }
-}
-
-.helperText {
-  color: var(--color--ink-subtle);
-  font-weight: normal;
-
-  &.required-true {
-    font-weight: bold;
-  }
-}
-
-.warning {
-  color: var(--color--danger-soft--ink);
-}
-
-code {
-  background: var(--color--surface-muted);
-  padding: 0 5px;
+  overflow-wrap: anywhere;
 }

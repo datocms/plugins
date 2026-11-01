@@ -4,9 +4,14 @@ import type {
   FileFieldValue,
   RenderFieldExtensionCtx,
 } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import FeedbackDot from 'datocms-react-ui/FeedbackDot';
+import InfoList from 'datocms-react-ui/InfoList';
+import Pill from 'datocms-react-ui/Pill';
 import {
-  type MouseEventHandler,
+  type SVGProps,
   useCallback,
   useEffect,
   useMemo,
@@ -42,7 +47,7 @@ export const AssetLocalizationChecker = ({
     fieldPath,
     currentUserAccessToken,
     field: {
-      attributes: { label: fieldLabel, validators },
+      attributes: { validators },
     },
     environment,
     locale: currentLocale,
@@ -50,6 +55,7 @@ export const AssetLocalizationChecker = ({
 
   // All hooks must be declared before any conditional return
   const [fetchedImageData, setFetchedImageData] = useState<ApiTypes.Upload>();
+  const [loadError, setLoadError] = useState<string>();
 
   // Build a stable client reference from token; client is null when token is absent
   const client = useMemo(() => {
@@ -67,8 +73,10 @@ export const AssetLocalizationChecker = ({
   const imageField = getMaybeLocalizedValue(
     formValues,
     fieldPath,
-  ) as FileFieldValue; // Current field the plugin is attached to
-  const { upload_id, alt: fieldLevelAlt, title: fieldLevelTitle } = imageField;
+  ) as FileFieldValue | null; // Current field the plugin is attached to (null when empty)
+  const upload_id = imageField?.upload_id;
+  const fieldLevelAlt = imageField?.alt ?? null;
+  const fieldLevelTitle = imageField?.title ?? null;
   const typedValidators = validators as AltTitleValidators;
   const localesInThisRecord = (formValues?.internalLocales as string[]) ?? null;
   const isTitleRequired: boolean = !!typedValidators?.required_alt_title?.title;
@@ -102,7 +110,7 @@ export const AssetLocalizationChecker = ({
 
   // Function to look up asset metadata from the CMA
   const fetchAsset = useCallback(async () => {
-    if (!client) {
+    if (!client || !upload_id) {
       return;
     }
     try {
@@ -115,6 +123,7 @@ export const AssetLocalizationChecker = ({
         ); // TODO Better handle ApiErrors
       }
     } catch (error) {
+      setLoadError(String(error));
       console.error(error);
       await ctx.alert(`Error: ${error}`);
     }
@@ -125,10 +134,14 @@ export const AssetLocalizationChecker = ({
     fetchAsset();
   }, [fetchAsset]);
 
+  /** Guard: the field has no asset */
+  if (!imageField) {
+    return null;
+  }
+
   // Function to open the image editor (for setting alt & title)
-  const editImage: MouseEventHandler<HTMLAnchorElement> = async (event) => {
-    event.preventDefault();
-    const uploadResult = await ctx.editUpload(upload_id);
+  const editImage = async () => {
+    const uploadResult = await ctx.editUpload(imageField.upload_id);
 
     // If it's changed, we need to update the metadata... we don't get it from the CMS directly
     if (uploadResult) {
@@ -137,10 +150,7 @@ export const AssetLocalizationChecker = ({
   };
 
   // Function to edit the field-level metadata
-  const editFieldMetadata: MouseEventHandler<HTMLAnchorElement> = async (
-    event,
-  ) => {
-    event.preventDefault();
+  const editFieldMetadata = async () => {
     const editResult = await ctx.editUploadMetadata(imageField);
 
     // If it's changed, we need to update the metadata... we don't get it from the CMS directly
@@ -152,122 +162,115 @@ export const AssetLocalizationChecker = ({
   /** Guard: no token available */
   if (!currentUserAccessToken) {
     return (
-      <Canvas ctx={ctx}>
-        <p>
-          Asset Localization Checker error: No `currentUserAccessToken`
-          provided. Please check your plugin settings.
-        </p>
-      </Canvas>
+      <Callout tone="warning" title="API access needed">
+        This plugin needs permission to make API calls on behalf of the current
+        user to read the asset's title and alt text. Ask a project admin to
+        grant it in the plugin settings.
+      </Callout>
     );
   }
 
-  const displayText = ({
-    text,
-    overrideText,
-  }: {
-    text: string | null;
-    overrideText: string | null;
-  }) => {
-    if (!overrideText && !text?.length) {
+  if (!isReady) {
+    return loadError ? (
+      <BlankSlate
+        placement="inline"
+        small
+        error
+        icon={<CircleExclamationIcon />}
+        title="The asset metadata couldn't load"
+        code={loadError}
+        description="Reload the page to try again."
+      />
+    ) : (
+      <BlankSlate
+        placement="inline"
+        small
+        loading
+        title="Loading the asset metadata"
+      />
+    );
+  }
+
+  // Overridden in this field first, then set on the asset, else missing
+  const renderValue = (text: string | null, overrideText: string | null) => {
+    if (overrideText) {
       return (
-        <div>
-          <p className={s.warning}>
-            ❌ Missing, set in{' '}
-            <a href="" onClick={editImage}>
-              {fetchedImageData?.filename ? (
-                <code>{fetchedImageData?.filename}</code>
-              ) : (
-                <span>image metadata</span>
-              )}
-            </a>
-          </p>
-        </div>
+        <>
+          <FeedbackDot tone="warning" /> Overridden in this field
+          <Button
+            tone="ghost"
+            label="Edit field metadata"
+            onClick={editFieldMetadata}
+            className={s.action}
+          />
+          <div className={s.note}>“{overrideText}”</div>
+        </>
       );
     }
 
-    if (overrideText) {
+    if (text?.length) {
       return (
-        <div>
-          <p className={s.overriddenTrue}>
-            ⚠️ Overridden by{' '}
-            <a href="" onClick={editFieldMetadata}>
-              <code>{fieldLabel}</code>
-            </a>{' '}
-            field
-          </p>
-          <p className={s.snippet}>{overrideText}</p>
-        </div>
+        <>
+          <FeedbackDot tone="success" /> Set
+          <div className={s.note}>“{text}”</div>
+        </>
       );
     }
 
     return (
-      <div>
-        <p className={s.ok}>✅ OK</p>
-        <p className={s.snippet}>{text}</p>
-      </div>
+      <>
+        <FeedbackDot tone="danger" /> Missing
+        <Button
+          tone="ghost"
+          label="Edit asset"
+          onClick={editImage}
+          className={s.action}
+        />
+      </>
     );
   };
 
-  if (!isReady) {
-    return (
-      <Canvas ctx={ctx}>
-        <Spinner size={24} /> Asset Localization Checker is loading, please
-        wait...
-      </Canvas>
-    );
-  }
+  const renderRows = (key: 'title' | 'alt', overrideText: string | null) =>
+    localesInThisRecord.map((loc) => (
+      <InfoList.Row
+        key={loc}
+        title={
+          <>
+            {metadataByLocale[loc].label}
+            {loc === currentLocale && <Pill>Current</Pill>}
+          </>
+        }
+      >
+        {renderValue(metadataByLocale[loc][key], overrideText)}
+      </InfoList.Row>
+    ));
 
   return (
-    <Canvas ctx={ctx}>
-      <table className={s.localeTable}>
-        <thead>
-          <tr>
-            <th></th>
-            <th>
-              Title
-              <br />
-              <span className={s.helperText}>
-                ({isTitleRequired ? 'Required' : 'Optional'})
-              </span>
-            </th>
-            <th>
-              Alt Text
-              <br />
-              <span className={s.helperText}>
-                ({isAltRequired ? 'Required' : 'Optional'})
-              </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {localesInThisRecord.map((loc) => {
-            const locName = metadataByLocale[loc].label;
-
-            return (
-              <tr key={loc}>
-                <th scope="row">
-                  {locName}
-                  {loc === currentLocale && (
-                    <p className={s.helperText}>(current)</p>
-                  )}
-                </th>
-                <td>
-                  {displayText({
-                    text: metadataByLocale[loc].title,
-                    overrideText: fieldLevelTitle,
-                  })}
-                </td>
-                <td>
-                  {displayText({
-                    text: metadataByLocale[loc].alt,
-                    overrideText: fieldLevelAlt,
-                  })}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Canvas>
+    <InfoList>
+      <InfoList.Group
+        title={isTitleRequired ? 'Title (required)' : 'Title (optional)'}
+      >
+        {renderRows('title', fieldLevelTitle)}
+      </InfoList.Group>
+      <InfoList.Group
+        title={isAltRequired ? 'Alt text (required)' : 'Alt text (optional)'}
+      >
+        {renderRows('alt', fieldLevelAlt)}
+      </InfoList.Group>
+    </InfoList>
   );
 };
+
+/** The status of an error (Font Awesome circle-exclamation) */
+function CircleExclamationIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm0-384c-13.3 0-24 10.7-24 24v112c0 13.3 10.7 24 24 24s24-10.7 24-24V152c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0-64 0 32 32 0 1 0 64 0z" />
+    </svg>
+  );
+}

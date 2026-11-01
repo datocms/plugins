@@ -1,5 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import { AssetLocalizationChecker } from './components/AssetLocalizationChecker.tsx';
 import { render } from './utils/render';
 
@@ -17,7 +18,11 @@ connect({
   },
   renderFieldExtension(id, ctx) {
     if (id === 'assetLocalizationChecker') {
-      render(<AssetLocalizationChecker ctx={ctx} />);
+      render(
+        <Canvas ctx={ctx}>
+          <AssetLocalizationChecker ctx={ctx} />
+        </Canvas>,
+      );
     }
   },
 });
