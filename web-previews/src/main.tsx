@@ -73,7 +73,10 @@ connect({
   renderItemFormSidebarPanel(_sidebarPanelId, ctx) {
     render(
       <Canvas ctx={ctx} texts={TEXTS}>
-        <SidebarPanel ctx={ctx} />
+        {/* The first save of a record starts the panel again: no frontend
+            answered for the unsaved record, so the links of the saved
+            record load with their spinner */}
+        <SidebarPanel key={ctx.item ? 'saved' : 'new'} ctx={ctx} />
       </Canvas>,
     );
   },
@@ -126,7 +129,8 @@ connect({
   renderItemFormSidebar(_sidebarId, ctx) {
     render(
       <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
-        <SidebarFrame ctx={ctx} />
+        {/* As the panel, it starts again on the first save of the record */}
+        <SidebarFrame key={ctx.item ? 'saved' : 'new'} ctx={ctx} />
       </Canvas>,
     );
   },

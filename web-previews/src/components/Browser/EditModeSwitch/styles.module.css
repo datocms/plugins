@@ -6,3 +6,24 @@
   align-items: center;
   gap: var(--spacing-m);
 }
+
+/* A text and its widest version in one cell: the cell is as wide as the
+   widest, and only the text shows. The widest is hidden from screen readers
+   too */
+.stable {
+  display: grid;
+  align-items: center;
+}
+
+.stable > * {
+  grid-area: 1 / 1;
+}
+
+.widest {
+  visibility: hidden;
+}
+
+/* The hint stays next to the switch: the room is before it */
+.hint {
+  justify-items: end;
+}

@@ -20,6 +20,11 @@ type Props = {
   iconOnly?: boolean;
 };
 
+// Holding Alt changes the label and the hint. Each keeps the width of its
+// widest text, which stays hidden under it, so the bar doesn't move
+const WIDEST_LABEL = 'Visual editing off';
+const WIDEST_HINT = 'Release ⌥ Alt to show';
+
 /**
  * The switch of the click-to-edit overlays, at the right end of the toolbar
  * of a preview, after the hint of the Alt key. A switch, not a toggle
@@ -50,12 +55,33 @@ export function EditModeSwitch({
     <Tooltip label={disabledReason ?? (iconOnly ? label : undefined)}>
       {/* The Tooltip anchors to a span: the switch takes no ref */}
       <span className={styles.root}>
-        {!iconOnly && <Toolbar.Note>{hint}</Toolbar.Note>}
+        {!iconOnly && (
+          <span className={`${styles.stable} ${styles.hint}`}>
+            <Toolbar.Note>{hint}</Toolbar.Note>
+            <span className={styles.widest}>
+              <Toolbar.Note>{WIDEST_HINT}</Toolbar.Note>
+            </span>
+          </span>
+        )}
         <SwitchInput
           id={id}
           name="editMode"
           // In a narrow bar, the label is only for a screen reader
-          label={iconOnly ? <Label htmlFor={id} label={label} hidden /> : label}
+          label={
+            iconOnly ? (
+              <Label htmlFor={id} label={label} hidden />
+            ) : (
+              <Label
+                htmlFor={id}
+                label={
+                  <span className={styles.stable}>
+                    <span>{label}</span>
+                    <span className={styles.widest}>{WIDEST_LABEL}</span>
+                  </span>
+                }
+              />
+            )
+          }
           value={pressed}
           onChange={onToggle}
           disabled={Boolean(disabledReason)}

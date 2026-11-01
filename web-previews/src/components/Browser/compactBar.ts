@@ -15,9 +15,10 @@ const COMPACT_VISUAL_TAB_BAR = '(max-width: 799.98px)';
 /**
  * In a very narrow Visual tab, edit mode shows only its switch, without its
  * label and the hint of the Alt key, so the path of the page keeps a width
- * that shows a path.
+ * that shows a path. The label and the hint keep the width of their longest
+ * text, so the limit includes the 26px that this adds.
  */
-const NARROW_VISUAL_TAB_BAR = '(max-width: 559.98px)';
+const NARROW_VISUAL_TAB_BAR = '(max-width: 585.98px)';
 
 export function useCompactVisualTabBar(): boolean {
   return useMediaQuery(COMPACT_VISUAL_TAB_BAR).matches;

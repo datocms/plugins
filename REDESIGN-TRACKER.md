@@ -21,7 +21,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 7 | broken-link-checker | 6569 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 8 | prompt-dato | 6025 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests none. No open issues. |
 | 9 | find-and-replace | 5803 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 10 | web-previews | 4002 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Config, sidebar preview, record panel, Visual tab and setup guide rebuilt; checked headless in light and dark. Build, typecheck and biome pass (no tests). The icon is picked inline in its cell instead of in the old dialog. 3 minor issues open. |
+| 10 | web-previews | 4002 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Config, sidebar preview, record panel, Visual tab and setup guide rebuilt; checked headless in light and dark. Build, typecheck and biome pass (no tests). The icon is picked inline in its cell instead of in the old dialog. No open issues. |
 | 11 | all-records-viewer | 3919 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 12 | project-wide-stage-viewer | 3864 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 13 | centra | 3619 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |

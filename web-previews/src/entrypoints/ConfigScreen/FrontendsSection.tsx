@@ -46,9 +46,6 @@ export function FrontendsSection({ form }: Props) {
           const path = (field: string) => `${key}.${field}`;
           const switches = form.frontendSwitches[index];
           const errors = form.errors.frontends[index] ?? {};
-          // A card that shows an error can't close until the error is fixed,
-          // as the Viewports section: its closed row wouldn't show the error
-          const locked = form.submitAttempted && hasErrors(errors);
 
           return (
             <CardList.Item
@@ -66,6 +63,12 @@ export function FrontendsSection({ form }: Props) {
                     {featureSummary(switches)}
                   </EntityRow>
                 ),
+                // After a failed save, the row tells which frontend holds an
+                // error, also while its card is closed
+                trailing:
+                  form.submitAttempted && hasErrors(errors) ? (
+                    <Pill tone="danger">Has errors</Pill>
+                  ) : undefined,
                 actions: (
                   <CardList.RemoveButton
                     label="Remove frontend"
@@ -74,12 +77,8 @@ export function FrontendsSection({ form }: Props) {
                 ),
               }}
               expandable={{
-                open: form.openFrontends.has(key) || locked,
-                onToggle: () => {
-                  if (!locked) {
-                    form.toggleFrontend(key);
-                  }
-                },
+                open: form.openFrontends.has(key),
+                onToggle: () => form.toggleFrontend(key),
                 body: (
                   <FrontendFields
                     frontend={frontend}
