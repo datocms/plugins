@@ -1,5 +1,6 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Callout from 'datocms-react-ui/Callout';
+import CodeSnippet from 'datocms-react-ui/CodeSnippet';
 import { useEffect } from 'react';
 import { getUiLabels } from '../i18n/uiLabels';
 
@@ -22,16 +23,21 @@ export const FieldParseError = ({
   // Mount-only: this view never re-parses, so the alert fires exactly once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional one-shot
   useEffect(() => {
-    ctx.startAutoResizer();
-    ctx.alert(labels.parseError).catch(console.error);
+    ctx
+      .alert(`${labels.parseErrorTitle}. ${labels.parseErrorText}`)
+      .catch(console.error);
   }, []);
 
   return (
-    <Canvas ctx={ctx}>
-      <p>{labels.parseError}</p>
-      <pre>
-        <code>{serialized}</code>
-      </pre>
-    </Canvas>
+    <>
+      <Callout tone="danger" title={labels.parseErrorTitle}>
+        {labels.parseErrorText}
+      </Callout>
+      <CodeSnippet
+        code={serialized}
+        ariaLabel={ctx.field.attributes.label}
+        maxHeight={200}
+      />
+    </>
   );
 };

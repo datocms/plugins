@@ -9,7 +9,8 @@ export type UILabels = {
   site: string;
   dateTime: string;
   timeZone: string;
-  parseError: string;
+  parseErrorTitle: string;
+  parseErrorText: string;
 };
 
 /**
@@ -35,8 +36,9 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'This project',
     dateTime: 'Date & time',
     timeZone: 'Time zone',
-    parseError:
-      'The stored value of this field could not be read. This should never happen — please contact support and include a screenshot of this screen.',
+    parseErrorTitle: 'The stored value of this field could not be read',
+    parseErrorText:
+      'This should never happen — please contact support and include a screenshot of this screen.',
   },
   es: {
     suggested: 'Sugeridos',
@@ -44,8 +46,9 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Este proyecto',
     dateTime: 'Fecha y hora',
     timeZone: 'Zona horaria',
-    parseError:
-      'No se pudo leer el valor almacenado de este campo. Esto no debería ocurrir nunca: ponte en contacto con el soporte e incluye una captura de pantalla de esta pantalla.',
+    parseErrorTitle: 'No se pudo leer el valor almacenado de este campo',
+    parseErrorText:
+      'Esto no debería ocurrir nunca: ponte en contacto con el soporte e incluye una captura de pantalla de esta pantalla.',
   },
   it: {
     suggested: 'Suggeriti',
@@ -53,8 +56,10 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Questo progetto',
     dateTime: 'Data e ora',
     timeZone: 'Fuso orario',
-    parseError:
-      "Impossibile leggere il valore memorizzato di questo campo. Non dovrebbe mai succedere: contatta l'assistenza e allega uno screenshot di questa schermata.",
+    parseErrorTitle:
+      'Impossibile leggere il valore memorizzato di questo campo',
+    parseErrorText:
+      "Non dovrebbe mai succedere: contatta l'assistenza e allega uno screenshot di questa schermata.",
   },
   fr: {
     suggested: 'Suggérés',
@@ -62,8 +67,9 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Ce projet',
     dateTime: 'Date et heure',
     timeZone: 'Fuseau horaire',
-    parseError:
-      "La valeur enregistrée de ce champ n'a pas pu être lue. Cela ne devrait jamais arriver : veuillez contacter l'assistance en joignant une capture d'écran de cet écran.",
+    parseErrorTitle: "La valeur enregistrée de ce champ n'a pas pu être lue",
+    parseErrorText:
+      "Cela ne devrait jamais arriver : veuillez contacter l'assistance en joignant une capture d'écran de cet écran.",
   },
   de: {
     suggested: 'Vorgeschlagen',
@@ -71,8 +77,10 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Dieses Projekt',
     dateTime: 'Datum & Uhrzeit',
     timeZone: 'Zeitzone',
-    parseError:
-      'Der gespeicherte Wert dieses Feldes konnte nicht gelesen werden. Das sollte niemals passieren – bitte kontaktieren Sie den Support und fügen Sie einen Screenshot dieses Bildschirms bei.',
+    parseErrorTitle:
+      'Der gespeicherte Wert dieses Feldes konnte nicht gelesen werden',
+    parseErrorText:
+      'Das sollte niemals passieren – bitte kontaktieren Sie den Support und fügen Sie einen Screenshot dieses Bildschirms bei.',
   },
   pt: {
     suggested: 'Sugeridos',
@@ -80,8 +88,9 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Este projeto',
     dateTime: 'Data e hora',
     timeZone: 'Fuso horário',
-    parseError:
-      'Não foi possível ler o valor armazenado deste campo. Isto nunca deveria acontecer: entre em contato com o suporte e inclua uma captura de tela desta tela.',
+    parseErrorTitle: 'Não foi possível ler o valor armazenado deste campo',
+    parseErrorText:
+      'Isto nunca deveria acontecer: entre em contato com o suporte e inclua uma captura de tela desta tela.',
   },
   cs: {
     suggested: 'Doporučené',
@@ -89,8 +98,9 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Tento projekt',
     dateTime: 'Datum a čas',
     timeZone: 'Časové pásmo',
-    parseError:
-      'Uloženou hodnotu tohoto pole se nepodařilo načíst. Toto by se nikdy nemělo stát – kontaktujte prosím podporu a přiložte snímek obrazovky této stránky.',
+    parseErrorTitle: 'Uloženou hodnotu tohoto pole se nepodařilo načíst',
+    parseErrorText:
+      'Toto by se nikdy nemělo stát – kontaktujte prosím podporu a přiložte snímek obrazovky této stránky.',
   },
   nl: {
     suggested: 'Aanbevolen',
@@ -98,8 +108,10 @@ const UILABELS_BY_COUNTRY: Record<RequiredLocale, UILabels> &
     site: 'Dit project',
     dateTime: 'Datum en tijd',
     timeZone: 'Tijdzone',
-    parseError:
-      'De opgeslagen waarde van dit veld kon niet worden gelezen. Dit zou nooit mogen gebeuren – neem contact op met support en voeg een schermafbeelding van dit scherm toe.',
+    parseErrorTitle:
+      'De opgeslagen waarde van dit veld kon niet worden gelezen',
+    parseErrorText:
+      'Dit zou nooit mogen gebeuren – neem contact op met support en voeg een schermafbeelding van dit scherm toe.',
   },
 };
 

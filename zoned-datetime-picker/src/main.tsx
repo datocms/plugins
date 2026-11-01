@@ -1,61 +1,63 @@
-import {connect} from 'datocms-plugin-sdk';
+import { connect } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
+import { DebugModal } from './components/DebugModal';
+import { ZonedDateTimePicker } from './components/ZonedDateTimePicker';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import {DebugModal} from './components/DebugModal';
-import {ZonedDateTimePicker} from './components/ZonedDateTimePicker';
-import {render} from './utils/render';
+import './frame.css';
 
 connect({
-  /* Main component */
-
-  // First we register the field extension with the plugin SDK
   manualFieldExtensions() {
     return [
       {
         id: 'zonedDateTimePicker',
-        name: 'Zoned DateTime Picker',
+        name: 'Zoned datetime picker',
         type: 'editor',
         fieldTypes: ['json'],
         configurable: false,
         helpText:
-          'Saves a JSON object with IXDTF and derived fields (zoned_datetime_ixdtf, datetime_iso8601, zone, offset, date, time_24hr, time_12hr, am_pm, timestamp_epoch_seconds)',
+          'Saves a JSON object with an IXDTF string and derived fields: zonedDateTime, dateTime, zone, offset, date, time_24hr, time_12hr, ampm and timestamp.',
       },
     ];
   },
 
-  // Then we tell it how to render it
   renderFieldExtension(_, ctx) {
-    return render(<ZonedDateTimePicker ctx={ctx} />); // <-- Main component is here!
+    render(
+      <Canvas ctx={ctx}>
+        <ZonedDateTimePicker ctx={ctx} />
+      </Canvas>,
+    );
   },
 
-  /* Debug utils */
-
-  // We'll register a field context menu dropdown (to show a debugging modal)
-  fieldDropdownActions(_) {
-      return [
-        {
-          id: 'showDebug',
-          label: 'Show JSON value',
-          icon: 'code',
-        }
-        ]
+  // A field menu action that opens a modal with the field's raw JSON value
+  fieldDropdownActions() {
+    return [
+      {
+        id: 'showDebug',
+        label: 'Show JSON value',
+        icon: 'code',
+      },
+    ];
   },
 
-  // Tell the plugin SDK what to run when that dropdown item is clicked on
   async executeFieldDropdownAction(actionId, ctx) {
     if (actionId === 'showDebug') {
       await ctx.openModal({
         id: 'debugModal',
         title: `${ctx.fieldPath}`,
         width: 'xl',
-        parameters: { value: ctx.formValues[ctx.fieldPath] }, // Pass the JSON value to the modal
+        parameters: { value: ctx.formValues[ctx.fieldPath] },
       });
     }
   },
 
-  // Actually render the modal
   renderModal(modalId, ctx) {
     if (modalId === 'debugModal') {
-      render(<DebugModal ctx={ctx} />);
+      render(
+        <Canvas ctx={ctx}>
+          <DebugModal ctx={ctx} />
+        </Canvas>,
+      );
     }
   },
 });

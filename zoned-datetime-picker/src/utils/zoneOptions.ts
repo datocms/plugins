@@ -1,17 +1,18 @@
 import { DateTime } from 'luxon';
 import { getZoneLongName, utcOffsetStringForZone } from './datetime';
-import { makeSearchHaystack } from './search';
+import { makeSearchHaystack, normalizeForSearch } from './search';
 import { groupForTimeZone } from './timezones';
 
 /**
- * Option shape consumed by the time zone autocomplete.
+ * Option shape consumed by the time zone select.
  *
+ * - `value`: IANA time zone identifier.
  * - `group`: user-visible grouping header.
  * - `offsetMin`: numeric offset at `now` (used for sorting).
  * - `searchHay`: normalized text used by search filtering.
  */
 export type ZoneOption = {
-  tz: string;
+  value: string;
   group: string;
   label: string;
   offsetMin: number;
@@ -80,14 +81,14 @@ export function makeZoneLabel(
 }
 
 /**
- * Build grouped, searchable options for the time zone autocomplete.
+ * Build grouped, searchable options for the time zone select.
  *
  * - Suggested options are listed first under `suggestedLabel`.
  * - Regular options are grouped by region and sorted by offset then label.
  * - `offsetMin` is precomputed to speed up rendering and sorting.
  *
  * @param params - Full configuration: zones, suggested, i18n, and mapping helpers
- * @returns Array of options ready for MUI Autocomplete
+ * @returns Flat array of options, Suggested first, then by region
  * @example
  * ```ts
  * buildZoneOptions({
@@ -151,7 +152,7 @@ export function buildZoneOptions(params: {
       toFlagEmoji,
     });
     return {
-      tz,
+      value: tz,
       group: suggestedLabel,
       label,
       offsetMin,
@@ -166,7 +167,7 @@ export function buildZoneOptions(params: {
         : tz === browserTimeZone
           ? 2
           : 3;
-  suggested.sort((a, b) => priorityOf(a.tz) - priorityOf(b.tz));
+  suggested.sort((a, b) => priorityOf(a.value) - priorityOf(b.value));
 
   const regular: ZoneOption[] = timeZones.map((tz) => {
     const offsetMin = getOffset(tz);
@@ -180,7 +181,7 @@ export function buildZoneOptions(params: {
       toFlagEmoji,
     });
     return {
-      tz,
+      value: tz,
       group: groupForTimeZone(tz),
       label,
       offsetMin,
@@ -193,4 +194,43 @@ export function buildZoneOptions(params: {
   });
 
   return [...suggested, ...regular];
+}
+
+export type ZoneGroup = { label: string; options: ZoneOption[] };
+
+/**
+ * Fold the flat, already sorted options into the `{ label, options }` groups
+ * of the select, one group for each run of options with the same `group`.
+ */
+export function groupZoneOptions(options: ZoneOption[]): ZoneGroup[] {
+  const groups: ZoneGroup[] = [];
+  for (const option of options) {
+    const last = groups[groups.length - 1];
+    if (last && last.label === option.group) {
+      last.options.push(option);
+    } else {
+      groups.push({ label: option.group, options: [option] });
+    }
+  }
+  return groups;
+}
+
+/**
+ * Forgiving, token-based search for the select's `filterOption`: accents,
+ * punctuation and case are ignored, and every whitespace-separated token of
+ * the query must appear in the option's precomputed haystack.
+ *
+ * @example
+ * ```ts
+ * matchesZoneQuery({ data: romeOption }, 'rome utc 2'); // true
+ * ```
+ */
+export function matchesZoneQuery(
+  option: { data: ZoneOption },
+  inputValue: string,
+): boolean {
+  const norm = normalizeForSearch(inputValue.trim());
+  if (!norm) return true;
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => option.data.searchHay.includes(token));
 }
