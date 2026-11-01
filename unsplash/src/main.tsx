@@ -1,8 +1,8 @@
+import 'datocms-react-ui/styles.css';
 import { connect } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import Canvas from 'datocms-react-ui/Canvas';
 import AssetBrowser from './entrypoints/AssetBrowser';
 import { render } from './utils/render';
-import 'datocms-react-ui/styles.css';
 
 connect({
   assetSources() {

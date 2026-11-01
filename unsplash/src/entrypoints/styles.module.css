@@ -1,117 +1,30 @@
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+
 .search {
-  margin-bottom: var(--spacing-l);
-}
-
-.searchFirstRow {
   display: flex;
-  align-items: stretch;
-  margin-bottom: var(--spacing-m);
-}
-
-.searchSecondRow {
-  display: flex;
-}
-
-.searchFilter {
-  display: flex;
-  margin-right: 30px;
+  flex-wrap: wrap;
   align-items: center;
+  gap: var(--spacing-m);
 }
 
-.searchFilterLabel {
-  margin-right: 10px;
-  color: var(--color--ink-subtle);
-}
-
-.search__input {
-  margin-right: 10px;
+/* The search field takes the free space, and wraps before it gets too narrow */
+.query {
   flex: 1;
-}
-
-.container {
-  position: relative;
-  min-height: 150px;
+  min-width: 240px;
 }
 
 .masonry {
-  grid-column-gap: var(--spacing-m);
-  align-items: start;
   display: grid;
-  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
-  transition: opacity 0.3s var(--material-ease);
+  align-items: start;
+  column-gap: var(--spacing-l);
 }
 
-.masonryLoading {
-  opacity: 0.7;
-}
-
-.masonryCol {
+.column {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  row-gap: var(--spacing-m);
-}
-
-.footer {
-  margin-top: var(--spacing-l);
-}
-
-.colorSample {
-  width: 15px;
-  height: 15px;
-  border-radius: 100%;
-  display: inline-block;
-  vertical-align: middle;
-  margin-right: 10px;
-  border: 1px solid var(--color--border);
-  outline: 1px solid var(--color--border);
-  overflow: hidden;
-  position: relative;
-}
-
-.colorSample.all {
-  background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
-}
-
-.colorSample.white {
-  background-color: var(--color--surface);
-}
-
-.colorSample.black {
-  background-color: var(--color--tooltip--surface);
-}
-
-.colorSample.yellow {
-  background-color: #ffdc00;
-}
-
-.colorSample.orange {
-  background-color: #ff851b;
-}
-
-.colorSample.red {
-  background-color: #ff4136;
-}
-
-.colorSample.purple {
-  background-color: #b10dc9;
-}
-
-.colorSample.magenta {
-  background-color: magenta;
-}
-
-.colorSample.green {
-  background-color: #2ecc40;
-}
-
-.colorSample.teal {
-  background-color: #39cccc;
-}
-
-.colorSample.blue {
-  background-color: var(--color--ink-link);
-}
-
-.colorSample.black_and_white {
-  background: linear-gradient(to left, var(--color--surface-muted) 0%, var(--color--tooltip--surface) 100%);
+  row-gap: var(--spacing-l);
 }

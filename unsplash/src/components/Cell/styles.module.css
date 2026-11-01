@@ -1,96 +1,19 @@
-.cell {
+/* The card neither clips its media nor rounds it: its border is an overlay */
+.media {
   position: relative;
-  cursor: pointer;
+  overflow: hidden;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
 }
 
-.image {
+.media canvas,
+.media img {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+  inset: 0;
   display: block;
-  transition: all 0.3s var(--material-ease);
-}
-
-.cellBlurhash canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   height: 100%;
 }
 
-.hover {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  opacity: 0;
+.media img {
   transition: opacity 0.3s var(--material-ease);
-  background-image: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--color--overlay--surface) 35%, transparent) 0,
-    color-mix(in srgb, var(--color--ink) 34%, transparent) 3.5%,
-    color-mix(in srgb, var(--color--ink) 32%, transparent) 7%,
-    color-mix(in srgb, var(--color--ink) 31%, transparent) 10.35%,
-    color-mix(in srgb, var(--color--ink) 28%, transparent) 13.85%,
-    color-mix(in srgb, var(--color--ink) 26%, transparent) 17.35%,
-    color-mix(in srgb, var(--color--ink) 24%, transparent) 20.85%,
-    color-mix(in srgb, var(--color--ink) 21%, transparent) 24.35%,
-    color-mix(in srgb, var(--color--ink) 19%, transparent) 27.85%,
-    color-mix(in srgb, var(--color--ink) 16%, transparent) 31.35%,
-    color-mix(in srgb, var(--color--ink) 14%, transparent) 34.85%,
-    color-mix(in srgb, var(--color--ink) 13%, transparent) 38.35%,
-    color-mix(in srgb, var(--color--ink) 11%, transparent) 41.85%,
-    color-mix(in srgb, var(--color--ink) 10%, transparent) 45.35%,
-    color-mix(in srgb, var(--color--overlay--surface) 10%, transparent) 48.85%,
-    color-mix(in srgb, var(--color--ink) 10%, transparent) 52.35%,
-    color-mix(in srgb, var(--color--ink) 11%, transparent) 55.85%,
-    color-mix(in srgb, var(--color--ink) 13%, transparent) 59.35%,
-    color-mix(in srgb, var(--color--ink) 14%, transparent) 62.85%,
-    color-mix(in srgb, var(--color--ink) 16%, transparent) 66.35%,
-    color-mix(in srgb, var(--color--ink) 19%, transparent) 69.85%,
-    color-mix(in srgb, var(--color--ink) 21%, transparent) 73.35%,
-    color-mix(in srgb, var(--color--ink) 24%, transparent) 76.85%,
-    color-mix(in srgb, var(--color--ink) 26%, transparent) 80.35%,
-    color-mix(in srgb, var(--color--ink) 28%, transparent) 83.85%,
-    color-mix(in srgb, var(--color--ink) 31%, transparent) 87.35%,
-    color-mix(in srgb, var(--color--ink) 32%, transparent) 90.85%,
-    color-mix(in srgb, var(--color--ink) 34%, transparent) 94.35%,
-    color-mix(in srgb, var(--color--ink) 35%, transparent) 97.85%,
-    color-mix(in srgb, var(--color--overlay--surface) 35%, transparent)
-  );
-}
-
-.cell:hover .hover {
-  opacity: 1;
-}
-
-.author {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  color: var(--color--tooltip--ink);
-  font-size: var(--font-size-xs);
-  padding: var(--spacing-m);
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-}
-
-.authorAvatar {
-  margin-right: 10px;
-}
-
-.authorAvatar img {
-  display: block;
-  border-radius: 100%;
-  width: 30px;
-}
-
-.author:hover .authorName {
-  text-decoration: underline;
 }

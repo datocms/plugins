@@ -1,18 +1,16 @@
-import { faSearch } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import classNames from 'classnames';
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
+import Search from 'datocms-react-ui/Search';
+import Spinner from 'datocms-react-ui/Spinner';
+import StringInput from 'datocms-react-ui/StringInput';
 import {
-  Button,
-  SelectInput,
-  Spinner,
-  TextInput,
-  useCtx,
-  useElementLayout,
-} from 'datocms-react-ui';
-import {
-  type CSSProperties,
   type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -22,6 +20,7 @@ import {
 import { createApi, OrderBy } from 'unsplash-js';
 import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
 import Cell from '../components/Cell';
+import { CircleExclamationIcon, SearchIcon } from '../icons';
 import s from './styles.module.css';
 
 const PER_PAGE = 30;
@@ -76,14 +75,14 @@ function chunkArray<T extends Photo>(array: T[], chunks: number): T[][] {
 }
 
 const orientationOptions: Array<{ value: Orientation; label: string }> = [
-  { value: 'all', label: 'Any orientation' },
+  { value: 'all', label: 'Any' },
   { value: 'landscape', label: 'Landscape' },
   { value: 'portrait', label: 'Portrait' },
   { value: 'squarish', label: 'Square' },
 ];
 
 const colorOptions: Array<{ value: Color; label: string }> = [
-  { value: 'all', label: 'Any color' },
+  { value: 'all', label: 'Any' },
   { value: 'white', label: 'White' },
   { value: 'black', label: 'Black' },
   { value: 'yellow', label: 'Yellow' },
@@ -105,6 +104,7 @@ const AssetBrowser = () => {
   const [page, setPage] = useState(1);
   const [photos, setPhotos] = useState<Response | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const handleSelect = useCallback(
     async (photo: Photo) => {
@@ -182,19 +182,30 @@ const AssetBrowser = () => {
         e.preventDefault();
       }
       setPage(1);
-      setPhotos(await performRequest(1));
+      setFailed(false);
+      try {
+        setPhotos(await performRequest(1));
+      } catch {
+        setLoading(false);
+        setFailed(true);
+      }
     },
     [performRequest],
   );
 
   const handleLoadMore = useCallback(async () => {
     setPage((page) => page + 1);
-    const result = await performRequest(page + 1);
-    setPhotos((oldPhotos) => ({
-      results: [...(oldPhotos?.results || []), ...result.results],
-      total: result.total,
-    }));
-    setLoading(false);
+    try {
+      const result = await performRequest(page + 1);
+      setPhotos((oldPhotos) => ({
+        results: [...(oldPhotos?.results || []), ...result.results],
+        total: result.total,
+      }));
+      setLoading(false);
+    } catch {
+      setLoading(false);
+      setFailed(true);
+    }
   }, [page, performRequest]);
 
   useEffect(() => {
@@ -206,7 +217,7 @@ const AssetBrowser = () => {
   }, [handleSearch]);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const rect = useElementLayout(rootRef as React.MutableRefObject<Element>);
+  const rect = useElementLayout(rootRef);
   const columns = Math.round(rect.width / 370.0);
 
   const colsData = useMemo(() => {
@@ -214,103 +225,132 @@ const AssetBrowser = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, photos]);
 
-  return (
-    <div ref={rootRef}>
-      <form className={s.search} onSubmit={handleSearch}>
-        <div className={s.searchFirstRow}>
-          <TextInput
-            value={query}
-            placeholder="Search free high-resolution photos..."
-            onChange={(newValue) => setQuery(newValue)}
-            className={s.search__input}
-          />
-          <Button
-            type="submit"
-            buttonSize="s"
-            buttonType="primary"
-            leftIcon={<FontAwesomeIcon icon={faSearch} />}
-          >
-            Search
-          </Button>
-        </div>
-        <div className={s.searchFirstRow}>
-          <div className={s.searchFilter}>
-            <div className={s.searchFilterLabel}>Orientation</div>
-            <SelectInput
-              options={orientationOptions}
-              value={orientationOptions.find((o) => o.value === orientation)}
-              isDisabled={!query}
-              onChange={(o) => {
-                setOrientation(o?.value || 'all');
-              }}
-            />
+  let results: ReactNode;
+
+  if (failed) {
+    results = (
+      <BlankSlate
+        placement="section"
+        error
+        icon={<CircleExclamationIcon />}
+        title="The photos could not be loaded"
+        description="Search again in a moment."
+      />
+    );
+  } else if (!photos || !colsData) {
+    results = <BlankSlate placement="section" loading title="Loading photos" />;
+  } else if (photos.results.length === 0) {
+    results = (
+      <BlankSlate
+        placement="section"
+        icon={<SearchIcon />}
+        title="No results"
+        description="No photo matches this search. Try other words or filters."
+      />
+    );
+  } else {
+    results = (
+      <div
+        className={s.masonry}
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
+        {colsData.map((group, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a column is its position
+          <div key={index} className={s.column}>
+            {group.map((photo) => (
+              <Cell
+                key={photo.id}
+                photo={photo}
+                onClick={() => handleSelect(photo)}
+              />
+            ))}
           </div>
-          <div className={s.searchFilter}>
-            <div className={s.searchFilterLabel}>Color</div>
-            <SelectInput
-              options={colorOptions}
-              value={colorOptions.find((o) => o.value === color)}
-              isDisabled={!query}
-              onChange={(o) => {
-                setColor(o?.value || 'all');
-              }}
-              formatOptionLabel={(option) => {
-                return (
-                  <>
-                    <div
-                      className={classNames(s.colorSample, s[option.value])}
-                    />{' '}
-                    {option.label}
-                  </>
-                );
-              }}
-            />
-          </div>
-        </div>
-      </form>
-      <div className={s.container}>
-        {loading && <Spinner size={50} placement="centered" />}
-        {colsData && photos && (
-          <>
-            <div
-              className={classNames(s.masonry, {
-                [s.masonryLoading]: loading,
-              })}
-              style={
-                {
-                  '--columns': columns,
-                } as CSSProperties
-              }
-            >
-              {colsData.map((group) => (
-                <div
-                  className={s.masonryCol}
-                >
-                  {group.map((photo) => (
-                    <Cell
-                      key={photo.id}
-                      photo={photo}
-                      onClick={handleSelect.bind(null, photo)}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-            {photos.total !== photos.results.length && (
-              <div className={s.footer}>
-                <Button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loading}
-                  fullWidth
-                >
-                  Load more...
-                </Button>
-              </div>
-            )}{' '}
-          </>
-        )}
+        ))}
       </div>
+    );
+  }
+
+  return (
+    <div ref={rootRef} className={s.browser}>
+      <Search ariaLabel="Unsplash photos">
+        <form className={s.search} onSubmit={handleSearch}>
+          <StringInput
+            className={s.query}
+            aria-label="Search photos"
+            placeholder="Mountains at sunset"
+            value={query}
+            onChange={(next) => setQuery(next ?? '')}
+          />
+          <Dropdown
+            triggerComponent={ButtonTrigger}
+            tone="ghost"
+            size="field"
+            label={`Orientation: ${
+              orientationOptions.find((option) => option.value === orientation)
+                ?.label
+            }`}
+            disabled={
+              query
+                ? undefined
+                : { reason: 'Type a search to filter by orientation.' }
+            }
+          >
+            <Dropdown.Menu>
+              {orientationOptions.map((option) => (
+                <Dropdown.Option
+                  key={option.value}
+                  active={option.value === orientation}
+                  onPick={() => setOrientation(option.value)}
+                >
+                  {option.label}
+                </Dropdown.Option>
+              ))}
+            </Dropdown.Menu>
+          </Dropdown>
+          <Dropdown
+            triggerComponent={ButtonTrigger}
+            tone="ghost"
+            size="field"
+            label={`Color: ${
+              colorOptions.find((option) => option.value === color)?.label
+            }`}
+            disabled={
+              query
+                ? undefined
+                : { reason: 'Type a search to filter by color.' }
+            }
+          >
+            <Dropdown.Menu>
+              {colorOptions.map((option) => (
+                <Dropdown.Option
+                  key={option.value}
+                  active={option.value === color}
+                  onPick={() => setColor(option.value)}
+                >
+                  {option.label}
+                </Dropdown.Option>
+              ))}
+            </Dropdown.Menu>
+          </Dropdown>
+          {loading && photos && <Spinner inline label="Loading photos" />}
+          <Button
+            submit
+            tone="primary"
+            size="field"
+            icon={SearchIcon}
+            label="Search"
+          />
+        </form>
+      </Search>
+      {results}
+      {photos && !failed && photos.total !== photos.results.length && (
+        <Button
+          label="Load more"
+          expand
+          disabled={loading}
+          onClick={handleLoadMore}
+        />
+      )}
     </div>
   );
 };

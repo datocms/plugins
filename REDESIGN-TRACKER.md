@@ -39,7 +39,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 25 | project-exporter | 797 | ^19.2.4 | Pending | |
 | 26 | content-calendar | 768 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 27 | alt-text-ai | 713 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |
-| 28 | unsplash | 633 | ^19.2.4 | Pending | |
+| 28 | unsplash | 633 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 29 | zoned-datetime-picker | 565 | ^19.2.7 | Pending | |
 | 30 | star-rating-editor | 511 | ^19.2.4 | Pending | |
 | 31 | tag-editor | 510 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. 1 minor issue open. |

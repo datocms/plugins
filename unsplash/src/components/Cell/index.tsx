@@ -1,3 +1,4 @@
+import MediaCard from 'datocms-react-ui/MediaCard';
 import { useEffect, useState } from 'react';
 import { BlurhashCanvas } from 'react-blurhash';
 import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
@@ -13,38 +14,33 @@ const Cell = ({ photo, onClick }: { photo: Photo; onClick: () => void }) => {
   }, [photo.urls.small]);
 
   return (
-    <div className={s.cell} onClick={onClick}>
+    <MediaCard
+      onClick={onClick}
+      caption={
+        <a
+          href={`https://unsplash.com/@${photo.user.username}?utm_source=datocms&utm_medium=referral`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {photo.user.name}
+        </a>
+      }
+    >
       <div
-        className={s.cellBlurhash}
-        style={{ paddingTop: `${(photo.height / photo.width) * 100}%` }}
+        className={s.media}
+        style={{ aspectRatio: `${photo.width} / ${photo.height}` }}
       >
         {photo.blur_hash && (
           <BlurhashCanvas hash={photo.blur_hash} width={32} height={32} />
         )}
+        <img
+          src={photo.urls.small}
+          alt={photo.alt_description || `Image ${photo.id}`}
+          style={{ opacity: loaded ? 1 : 0 }}
+        />
       </div>
-      <img
-        className={s.image}
-        src={photo.urls.small}
-        alt={photo.alt_description || `Image ${photo.id}`}
-        style={{ opacity: loaded ? 1 : 0 }}
-      />
-      <div className={s.hover}>
-        <a
-          className={s.author}
-          href={`https://unsplash.com/@${photo.user.username}?utm_source=datocms&utm_medium=referral`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          <div className={s.authorAvatar}>
-            <img src={photo.user.profile_image.small} alt={photo.user.name} />
-          </div>
-          <div className={s.authorName}>{photo.user.name}</div>
-        </a>
-      </div>
-    </div>
+    </MediaCard>
   );
 };
 
