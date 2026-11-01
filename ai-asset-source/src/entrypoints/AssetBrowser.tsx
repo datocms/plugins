@@ -81,7 +81,7 @@ const variationRadioOptions = variationOptions.map(({ value, label }) => ({
 
 type UserFeedback = {
   kind: 'error' | 'notice';
-  title?: string;
+  title: string;
   message: string;
 };
 
@@ -420,6 +420,7 @@ const AssetBrowser = () => {
       });
       setFeedbackMessage({
         kind: 'error',
+        title: 'Generation failed',
         message: nextErrorMessage,
       });
       setStatus('error');
@@ -469,12 +470,10 @@ const AssetBrowser = () => {
   );
 
   // A missing prompt is the error of the prompt field. A missing key or model
-  // is a problem of the plugin settings, so it shows in the callout.
+  // already shows in the warning callout at the top.
   const showValidationError = useCallback((message: string) => {
     if (message === MISSING_PROMPT_MESSAGE) {
       setPromptError(message);
-    } else {
-      setFeedbackMessage({ kind: 'error', message });
     }
     setStatus('error');
   }, []);
@@ -544,6 +543,7 @@ const AssetBrowser = () => {
         if (result.warnings?.length) {
           setFeedbackMessage({
             kind: 'notice',
+            title: 'More images than requested',
             message: result.warnings.join(' '),
           });
         }
