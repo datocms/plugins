@@ -1,8 +1,7 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import { useState } from 'react';
-import { Button } from '../ui/Button';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
 import downloadRecordsFile from '../utils/downloadRecordsFile';
 import { mapWithConcurrency } from '../utils/exportRuntime';
 import { readRecord } from '../utils/readRecords';
@@ -17,13 +16,8 @@ type PropTypes = {
 };
 
 export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const downloadTxtFile = async () => {
-    if (!ctx.item) {
-      ctx.alert('Save the record before trying to download it!');
-      return;
-    }
+  const downloadRecord = async () => {
+    if (!ctx.item) return;
 
     const selectedFormat =
       (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON';
@@ -32,8 +26,6 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
       ctx.alert('A user access token is required to export this record.');
       return;
     }
-
-    setIsLoading(true);
 
     try {
       const client = buildClient({
@@ -76,16 +68,21 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
       await ctx.alert(
         error instanceof Error ? error.message : 'The record export failed.',
       );
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
     <Canvas ctx={ctx}>
-      <Button onClick={downloadTxtFile} disabled={isLoading}>
-        {isLoading ? 'Preparing file...' : 'Download this record'}
-      </Button>
+      <Button
+        expand
+        label="Download this record"
+        onClick={downloadRecord}
+        disabled={
+          ctx.item
+            ? undefined
+            : { reason: 'Save the record before you download it.' }
+        }
+      />
     </Canvas>
   );
 }

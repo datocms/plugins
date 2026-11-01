@@ -1,12 +1,18 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, Section, SelectField, TextField } from 'datocms-react-ui';
+import Button from 'datocms-react-ui/Button';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { Page } from 'datocms-react-ui/Page';
+import ProgressBar from 'datocms-react-ui/ProgressBar';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import SettingsList from 'datocms-react-ui/SettingsList';
+import StringInput from 'datocms-react-ui/StringInput';
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '../ui/Button';
 import downloadAllAssets from '../utils/downloadAllAssets';
 import downloadAllRecords from '../utils/downloadAllRecords';
 import { exportProjectDump } from '../utils/projectDump';
-import LoadingOverlay from './LoadingOverlay';
 import s from './styles.module.css';
 
 type Props = {
@@ -26,14 +32,14 @@ const CLI_README_URL = 'https://github.com/datocms/cli#readme';
 
 const ASSET_OPTIONS = [
   {
-    includeAssets: false,
+    value: 'without',
     label: 'Without asset files',
-    hint: "Asset metadata and URLs only, so a deleted asset can't be brought back",
+    hint: "Asset metadata and URLs only, so a deleted asset can't be brought back.",
   },
   {
-    includeAssets: true,
+    value: 'with',
     label: 'With asset files',
-    hint: "Every asset's file too, so the dump can bring back deleted assets",
+    hint: "Every asset's file too, so the dump can bring back deleted assets.",
   },
 ];
 
@@ -48,6 +54,32 @@ function exportErrorMessage(error: unknown): string {
     : 'The export failed. Please try again.';
 }
 
+type ExportProgressProps = {
+  status: string;
+  progress?: number;
+  onCancel: () => void;
+};
+
+function ExportProgress({ status, progress, onCancel }: ExportProgressProps) {
+  return (
+    <Page.Group
+      title="Export in progress"
+      footer={
+        <Button expand={false} label="Cancel export" onClick={onCancel} />
+      }
+    >
+      <div className={s.readout}>
+        <ProgressBar value={(progress ?? 0) / 100} ariaLabel="Export" />
+        <p className={s.line}>
+          <span>{status}</span>
+          <span className={s.meta}>{Math.round(progress ?? 0)}%</span>
+        </p>
+        <p className={s.meta}>Keep this page open until the download starts.</p>
+      </div>
+    </Page.Group>
+  );
+}
+
 export default function ConfigScreen({ ctx }: Props) {
   const [isLoading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -56,7 +88,7 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const [includeAssets, setIncludeAssets] = useState(false);
   const [isOtherFormatsOpen, setOtherFormatsOpen] = useState(false);
-  const [selectedModels, setSelectedModels] = useState<Option[]>([]);
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [allModels, setAllModels] = useState<Option[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<AvailableFormats>(
     (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON',
@@ -91,7 +123,7 @@ export default function ConfigScreen({ ctx }: Props) {
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          ctx.alert('Could not load models. Reload the plugin to try again.');
+          ctx.alert("The models didn't load. Reload the page to try again.");
       });
     return () => controller.abort();
   }, [
@@ -174,7 +206,7 @@ export default function ConfigScreen({ ctx }: Props) {
       setLoadingStatus('');
       setLoadingProgress(undefined);
     }
-    // The overlay closes as the download starts; the toast follows it.
+    // The progress view closes as the download starts; the toast follows it.
     if (completion) await ctx.notice(completion);
     if (failure) await ctx.alert(failure);
   };
@@ -183,164 +215,145 @@ export default function ConfigScreen({ ctx }: Props) {
     setSelectedFormat(format);
     ctx
       .updatePluginParameters({ format })
-      .then(() => ctx.notice('Format successfully updated!'));
+      .then(() => ctx.notice('Record format saved.'));
   };
 
   return (
     <Canvas ctx={ctx}>
-      {isLoading && (
-        <LoadingOverlay
-          status={loadingStatus}
-          progress={loadingProgress}
-          onCancel={() => {
-            activeExport.current?.abort();
-            setLoadingStatus('Cancelling export...');
-          }}
-        />
-      )}
-      <div className={`${s.screen} dl-kit-form-parity`}>
-        <div className={s.stack}>
-          <p className={s.intro}>
-            Export the <code className={s.code}>{ctx.environment}</code>{' '}
-            environment as a project dump: one zip with every record, asset and
-            asset folder, which the DatoCMS CLI can compare with any environment
-            and restore from.
-          </p>
-          <fieldset className={s.options} aria-label="Asset files">
-            {ASSET_OPTIONS.map((option) => (
-              <label
-                key={option.label}
-                className={`${s.option} ${includeAssets === option.includeAssets ? s.optionChecked : ''}`}
-              >
-                <span className={s.optionRadio}>
-                  <input
-                    type="radio"
-                    name="includeAssets"
-                    checked={includeAssets === option.includeAssets}
-                    onChange={() => setIncludeAssets(option.includeAssets)}
-                  />
-                </span>
-                <span className={s.optionBody}>
-                  <span className={s.optionLabel}>{option.label}</span>
-                  <span className={s.optionHint}>{option.hint}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <div className={s.action}>
-            <Button
-              buttonType="primary"
-              buttonSize="l"
-              fullWidth
-              disabled={isLoading}
-              onClick={() => runExport({ kind: 'dump' })}
-            >
-              Export project dump
-            </Button>
-            <p className={s.hint}>
-              To compare or restore content with it, see the{' '}
-              <a
-                className={s.link}
-                href={CLI_README_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                DatoCMS CLI readme
-              </a>
-            </p>
-          </div>
-        </div>
-
-        <Section
-          title="Other export formats"
-          titleClassName="dl-section-parity"
-          headerStyle={{ marginBottom: 'var(--spacing-m)' }}
-          collapsible={{
-            isOpen: isOtherFormatsOpen,
-            onToggle: () => setOtherFormatsOpen((isOpen) => !isOpen),
-          }}
-        >
-          <div className={s.stack}>
-            <p className={s.note}>
-              For reading your content in other tools. The DatoCMS CLI cannot
-              import these files: to restore or compare content, export a
-              project dump.
-            </p>
-            <SelectField
-              id="format"
-              name="format"
-              label="Record format"
-              hint="Also used by Download this record in the record sidebar"
-              value={{ label: selectedFormat, value: selectedFormat }}
-              selectInputProps={{
-                isMulti: false,
-                options: FORMATS.map((format) => ({
-                  label: format,
-                  value: format,
-                })),
-              }}
-              onChange={(option) => {
-                if (option) changeFormat(option.value as AvailableFormats);
+      <Page className={s.page}>
+        <Page.Content>
+          {isLoading ? (
+            <ExportProgress
+              status={loadingStatus}
+              progress={loadingProgress}
+              onCancel={() => {
+                activeExport.current?.abort();
+                setLoadingStatus('Cancelling export...');
               }}
             />
-            <div className={s.buttonRow}>
-              <Button
-                fullWidth
-                disabled={isLoading}
-                onClick={() => runExport({ kind: 'records' })}
+          ) : (
+            <>
+              <Page.Section>
+                <Page.SectionTitle>Project dump</Page.SectionTitle>
+                <Page.SectionDescription>
+                  One zip with every record, asset and asset folder of the{' '}
+                  <code>{ctx.environment}</code> environment, which the DatoCMS
+                  CLI can compare with any environment and restore from. See the{' '}
+                  <a href={CLI_README_URL} target="_blank" rel="noreferrer">
+                    DatoCMS CLI readme
+                  </a>
+                  .
+                </Page.SectionDescription>
+                <FieldWrapper label="Asset files">
+                  <RadioGroupInput
+                    value={includeAssets ? 'with' : 'without'}
+                    onChange={(value) => setIncludeAssets(value === 'with')}
+                    options={ASSET_OPTIONS}
+                  />
+                </FieldWrapper>
+                <div>
+                  <Button
+                    tone="primary"
+                    expand={false}
+                    label="Export project dump"
+                    onClick={() => runExport({ kind: 'dump' })}
+                  />
+                </div>
+              </Page.Section>
+
+              <Page.Group
+                title="Other export formats"
+                collapse={{
+                  open: isOtherFormatsOpen,
+                  onToggle: () => setOtherFormatsOpen((open) => !open),
+                }}
+                footer="For reading your content in other tools. The DatoCMS CLI can't import these files: to restore or compare content, export a project dump."
               >
-                Download all records
-              </Button>
-              <Button
-                fullWidth
-                disabled={isLoading}
-                onClick={() => runExport({ kind: 'assets' })}
-              >
-                Download all assets
-              </Button>
-            </div>
-            <div className={s.action}>
-              <SelectField
-                id="models"
-                name="models"
-                label="Records of some models"
-                placeholder="Select models"
-                value={selectedModels}
-                selectInputProps={{ isMulti: true, options: allModels }}
-                onChange={(options) => setSelectedModels([...options])}
-              />
-              <Button
-                fullWidth
-                disabled={isLoading || !selectedModels.length}
-                onClick={() =>
-                  runExport({
-                    kind: 'records',
-                    modelIDs: selectedModels.map((model) => model.value),
-                  })
-                }
-              >
-                Download records of the selected models
-              </Button>
-            </div>
-            <div className={s.action}>
-              <TextField
-                id="textQuery"
-                name="textQuery"
-                label="Records matching a text search"
-                value={textQuery}
-                onChange={setTextQuery}
-              />
-              <Button
-                fullWidth
-                disabled={isLoading || !textQuery}
-                onClick={() => runExport({ kind: 'records', textQuery })}
-              >
-                Download matching records
-              </Button>
-            </div>
-          </div>
-        </Section>
-      </div>
+                <FieldWrapper
+                  label="Record format"
+                  hint="Also used by “Download this record” in the record sidebar."
+                >
+                  <RadioGroupInput
+                    small
+                    value={selectedFormat}
+                    onChange={(value) => {
+                      if (value) changeFormat(value);
+                    }}
+                    options={FORMATS.map((format) => ({
+                      value: format,
+                      label: format,
+                    }))}
+                  />
+                </FieldWrapper>
+                <SettingsList className={s.block}>
+                  <SettingsList.Row
+                    title="All records"
+                    description="One file with every record, in the record format."
+                    action={
+                      <Button
+                        tone="ghost"
+                        label="Download records"
+                        onClick={() => runExport({ kind: 'records' })}
+                      />
+                    }
+                  />
+                  <SettingsList.Row
+                    title="All assets"
+                    description="One zip with every asset file."
+                    action={
+                      <Button
+                        tone="ghost"
+                        label="Download assets"
+                        onClick={() => runExport({ kind: 'assets' })}
+                      />
+                    }
+                  />
+                </SettingsList>
+                <FieldWrapper label="Records of some models">
+                  <SelectInput
+                    multiple
+                    value={selectedModelIds}
+                    onChange={(ids) => setSelectedModelIds(ids ?? [])}
+                    options={allModels}
+                    placeholder="Pick one or more models"
+                  />
+                </FieldWrapper>
+                <div className={s.block}>
+                  <Button
+                    label="Download records of the selected models"
+                    disabled={
+                      selectedModelIds.length === 0
+                        ? { reason: 'Pick at least one model.' }
+                        : undefined
+                    }
+                    onClick={() =>
+                      runExport({ kind: 'records', modelIDs: selectedModelIds })
+                    }
+                  />
+                </div>
+                <FieldWrapper label="Records matching a text search">
+                  <StringInput
+                    value={textQuery}
+                    onChange={(value) => setTextQuery(value ?? '')}
+                    placeholder="Summer sale"
+                  />
+                </FieldWrapper>
+                <div className={s.block}>
+                  <Button
+                    label="Download matching records"
+                    disabled={
+                      textQuery
+                        ? undefined
+                        : { reason: 'Type the text to search for.' }
+                    }
+                    onClick={() => runExport({ kind: 'records', textQuery })}
+                  />
+                </div>
+              </Page.Group>
+            </>
+          )}
+        </Page.Content>
+      </Page>
     </Canvas>
   );
 }

@@ -36,7 +36,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 22 | table-editor | 1148 | ^17.0.2 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 23 | tile-picker | 1110 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests none. No open issues. |
 | 24 | bulk-change-author | 974 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 25 | project-exporter | 797 | ^19.2.4 | Pending | |
+| 25 | project-exporter | 797 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint none, tests pass. No open issues. |
 | 26 | content-calendar | 768 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 27 | alt-text-ai | 713 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |
 | 28 | unsplash | 633 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |

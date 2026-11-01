@@ -2,11 +2,11 @@ import {
   connect,
   type RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import './kit-fixes.css';
+import './frame.css';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import RecordDownloaderSidebar from './entrypoints/RecordDownloaderSidebar';
+import { render } from './utils/render';
 
 connect({
   renderConfigScreen(ctx) {
@@ -16,7 +16,7 @@ connect({
     return [
       {
         id: 'recordDownloader',
-        label: 'Record Downloader',
+        label: 'Record downloader',
         startOpen: true,
       },
     ];
