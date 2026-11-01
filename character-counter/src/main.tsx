@@ -1,7 +1,8 @@
 import { connect, type FieldType } from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
+import './frame.css';
 import FieldExtension from './entrypoints/FieldExtension';
 import { render } from './utils/render';
-import 'datocms-react-ui/styles.css';
 
 const FIELDS_TYPES: FieldType[] = ['slug', 'string', 'text', 'structured_text'];
 

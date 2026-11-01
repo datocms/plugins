@@ -1,11 +1,10 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  CaretDownIcon,
-  CaretUpIcon,
-  SwitchInput,
-} from 'datocms-react-ui';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Canvas from 'datocms-react-ui/Canvas';
+import { DisclosureChevron } from 'datocms-react-ui/Chevron';
+import InfoList from 'datocms-react-ui/InfoList';
+import RawButton from 'datocms-react-ui/RawButton';
+import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { get } from 'lodash-es';
 import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react';
 import {
@@ -20,13 +19,6 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type ToggleRowProps = {
-  id: string;
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-};
-
 const DETAILED_FIELD_TYPES = new Set<AnalyticsFieldType>([
   'string',
   'text',
@@ -37,40 +29,12 @@ function formatMetric(value: number): string {
   return value.toLocaleString();
 }
 
-function formatSummaryLabel(label: string, value: number): string {
-  if (label === 'special char') {
-    return value === 1 ? label : 'special chars';
-  }
-
-  if (label === 'sentence') {
-    return value === 1 ? label : 'sentences';
-  }
-
-  if (label === 'paragraph') {
-    return value === 1 ? label : 'paragraphs';
-  }
-
-  if (label === 'word') {
-    return value === 1 ? label : 'words';
-  }
-
-  return value === 1 ? label : `${label}s`;
-}
-
-function ToggleRow({ id, label, checked, onChange }: ToggleRowProps) {
+function Metric({ value, noun }: { value: number; noun: string }) {
   return (
-    <div className={s.toggleRow}>
-      <SwitchInput
-        id={id}
-        name={id}
-        value={checked}
-        aria-labelledby={`${id}-label`}
-        onChange={onChange}
-      />
-      <span id={`${id}-label`} className={s.toggleLabel}>
-        {label}
-      </span>
-    </div>
+    <span>
+      <span className={s.value}>{formatMetric(value)}</span>{' '}
+      {value === 1 ? noun : `${noun}s`}
+    </span>
   );
 }
 
@@ -79,6 +43,7 @@ export default function FieldExtension({ ctx }: Props) {
   const rawFieldValue = get(ctx.formValues, ctx.fieldPath);
   const deferredFieldValue = useDeferredValue(rawFieldValue);
   const isDetailedField = DETAILED_FIELD_TYPES.has(fieldType);
+  const detailsId = useId();
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [includeSpaces, setIncludeSpaces] = useState(true);
@@ -136,125 +101,77 @@ export default function FieldExtension({ ctx }: Props) {
     ? analysis.charactersWithSpaces
     : analysis.charactersWithoutSpaces;
 
-  const includeSpacesId = useId();
-  const filterStopwordsId = useId();
-
   return (
     <Canvas ctx={ctx}>
-      <div className={s.wrapper}>
-        <div className={s.summaryBar}>
-          <div className={s.summaryMetrics}>
-            <span className={s.summaryMetric}>
-              <span className={s.summaryValue}>
-                {formatMetric(characterCount)}
-              </span>{' '}
-              <span className={s.summaryLabel}>chars</span>
-            </span>
-            {isDetailedField && (
-              <>
-                <span className={s.summaryMetric}>
-                  <span className={s.summaryValue}>
-                    {formatMetric(analysis.words)}
-                  </span>{' '}
-                  <span className={s.summaryLabel}>
-                    {formatSummaryLabel('word', analysis.words)}
-                  </span>
-                </span>
-                <span className={s.summaryMetric}>
-                  <span className={s.summaryValue}>
-                    {formatMetric(analysis.specialCharacters)}
-                  </span>{' '}
-                  <span className={s.summaryLabel}>
-                    {formatSummaryLabel(
-                      'special char',
-                      analysis.specialCharacters,
-                    )}
-                  </span>
-                </span>
-                <span className={s.summaryMetric}>
-                  <span className={s.summaryValue}>
-                    {formatMetric(analysis.sentences)}
-                  </span>{' '}
-                  <span className={s.summaryLabel}>
-                    {formatSummaryLabel('sentence', analysis.sentences)}
-                  </span>
-                </span>
-                <span className={s.summaryMetric}>
-                  <span className={s.summaryValue}>
-                    {formatMetric(analysis.paragraphs)}
-                  </span>{' '}
-                  <span className={s.summaryLabel}>
-                    {formatSummaryLabel('paragraph', analysis.paragraphs)}
-                  </span>
-                </span>
-              </>
-            )}
-          </div>
-
-          <Button
-            buttonSize="xxs"
-            buttonType="muted"
-            onClick={() => setDetailsOpen((open) => !open)}
-            rightIcon={
-              detailsOpen ? (
-                <CaretUpIcon width={10} height={10} />
-              ) : (
-                <CaretDownIcon width={10} height={10} />
-              )
-            }
-          >
-            {detailsOpen ? 'Hide details' : 'Show details'}
-          </Button>
-        </div>
-
-        {detailsOpen && (
-          <div className={s.details}>
-            <div className={s.controls}>
-              <ToggleRow
-                id={includeSpacesId}
-                label="Include spaces"
-                checked={includeSpaces}
-                onChange={setIncludeSpaces}
+      <RawButton
+        className={s.summary}
+        expandable={{ open: detailsOpen, controls: detailsId }}
+        onClick={() => setDetailsOpen((open) => !open)}
+      >
+        <DisclosureChevron open={detailsOpen} />
+        <span className={s.metrics}>
+          <Metric value={characterCount} noun="character" />
+          {isDetailedField && (
+            <>
+              <Metric value={analysis.words} noun="word" />
+              <Metric
+                value={analysis.specialCharacters}
+                noun="special character"
               />
-              {isDetailedField && supportsStopwords && (
-                <ToggleRow
-                  id={filterStopwordsId}
-                  label="Filter stopwords"
-                  checked={filterStopwords}
-                  onChange={setFilterStopwords}
-                />
-              )}
-            </div>
+              <Metric value={analysis.sentences} noun="sentence" />
+              <Metric value={analysis.paragraphs} noun="paragraph" />
+            </>
+          )}
+        </span>
+      </RawButton>
 
-            {isDetailedField && (
-              <section className={s.wordSection}>
-                <div className={s.sectionTitle}>
-                  Common words ({formatMetric(commonWordsSummary.uniqueWords)})
-                </div>
-
-                {commonWordsSummary.topWords.length > 0 ? (
-                  <div className={s.wordList} role="list">
-                    {commonWordsSummary.topWords.map((word) => (
-                      <div
-                        className={s.wordRow}
-                        role="listitem"
-                        key={word.word}
-                      >
-                        <span className={s.word}>{word.word}</span>
-                        <span className={s.wordCount}>
-                          {formatMetric(word.count)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className={s.emptyState}>No words to display yet.</div>
-                )}
-              </section>
+      {detailsOpen && (
+        <div id={detailsId} className={s.details}>
+          <div className={s.switches}>
+            <SwitchInput
+              label="Include spaces"
+              value={includeSpaces}
+              onChange={(value) => setIncludeSpaces(!!value)}
+            />
+            {isDetailedField && supportsStopwords && (
+              <SwitchInput
+                label="Filter stopwords"
+                value={filterStopwords}
+                onChange={(value) => setFilterStopwords(!!value)}
+              />
             )}
           </div>
-        )}
-      </div>
+
+          {isDetailedField &&
+            (commonWordsSummary.topWords.length > 0 ? (
+              <InfoList>
+                <InfoList.Row title="Unique words">
+                  {formatMetric(commonWordsSummary.uniqueWords)}
+                </InfoList.Row>
+                <InfoList.Group title="Most common words">
+                  {commonWordsSummary.topWords.map((word) => (
+                    <InfoList.Row key={word.word} title={word.word}>
+                      {formatMetric(word.count)}
+                    </InfoList.Row>
+                  ))}
+                </InfoList.Group>
+              </InfoList>
+            ) : filterStopwords && analysis.words > 0 ? (
+              <BlankSlate
+                placement="section"
+                small
+                title="Every word is a stopword"
+              />
+            ) : (
+              <BlankSlate
+                placement="section"
+                small
+                title="No words yet"
+                description="The most common words show here as you type."
+              />
+            ))}
+        </div>
+      )}
     </Canvas>
   );
 }

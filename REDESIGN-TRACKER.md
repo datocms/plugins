@@ -44,7 +44,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | 30 | star-rating-editor | 511 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 31 | tag-editor | 510 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. 1 minor issue open. |
 | 32 | delete-asset-from-other-environments | 467 | ^18.3.1 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 33 | character-counter | 448 | ^19.2.4 | Pending | |
+| 33 | character-counter | 448 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 34 | yandex-translate | 424 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests none. No open issues. |
 | 35 | schema-erd | 401 | ^19.2.4 | Pending | |
 | 36 | asset-localization-checker | 381 | ^19.2.4 | Pending | |

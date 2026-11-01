@@ -1,121 +1,49 @@
-.wrapper {
-  color: var(--color--ink);
-  display: grid;
-  gap: var(--spacing-m);
-  font-size: var(--font-size-m);
-}
-
-.summaryBar {
-  align-items: center;
-  background: var(--color--surface-muted);
-  border: 1px solid var(--color--border);
-  border-radius: 4px;
+/* The summary line is the disclosure of the details: a RawButton, drawn here
+   with the size and ink of a field hint */
+.summary {
   display: flex;
-  gap: var(--spacing-m);
-  justify-content: space-between;
-  padding: var(--spacing-s);
-  padding-left: var(--spacing-m);
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--color--ink-subtle);
+  cursor: pointer;
 }
 
-.summaryMetrics {
-  align-items: center;
+.summary:hover {
+  color: var(--color--ink);
+}
+
+.summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-l);
-  min-width: 0;
-}
-
-.summaryMetric {
-  color: var(--color--ink-subtle);
-  font-size: var(--font-size-s);
-  line-height: 1.3;
+  column-gap: var(--spacing-m);
   white-space: nowrap;
 }
 
-.summaryDivider {
-  margin-right: var(--spacing-s);
-}
-
-.summaryValue {
+.value {
   color: var(--color--ink);
-  font-family: var(--monospaced-font-family);
-  font-weight: var(--font-weight-bold);
-}
-
-.summaryLabel {
-  color: var(--color--ink-subtle);
+  font-weight: var(--font-weight-strong);
+  font-variant-numeric: tabular-nums;
 }
 
 .details {
   display: grid;
   gap: var(--spacing-m);
+  margin-top: var(--spacing-m);
 }
 
-.controls {
+.switches {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-m) var(--spacing-l);
-}
-
-.toggleRow {
-  align-items: center;
-  display: inline-flex;
-  gap: var(--spacing-m);
-}
-
-.toggleLabel {
-  color: var(--color--ink);
-  font-size: var(--font-size-s);
-  line-height: 20px;
-}
-
-.wordSection {
-  display: grid;
-  gap: var(--spacing-m);
-  padding-top: var(--spacing-m);
-  border-top: 1px solid var(--color--border);
-}
-
-.sectionTitle {
-  color: var(--color--ink);
-  font-size: var(--font-size-m);
-  font-weight: var(--font-weight-bold);
-  line-height: 1.3;
-}
-
-.wordList {
-  border: 1px solid var(--color--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.wordRow {
-  align-items: center;
-  background: var(--color--surface-muted);
-  display: grid;
-  gap: var(--spacing-m);
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 10px 12px;
-}
-
-.wordRow + .wordRow {
-  border-top: 1px solid var(--color--border);
-}
-
-.word {
-  color: var(--color--ink);
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.wordCount {
-  color: var(--color--ink-subtle);
-  font-size: var(--font-size-s);
-}
-
-.emptyState {
-  color: var(--color--ink-subtle);
-  font-size: var(--font-size-s);
+  gap: var(--spacing-s) var(--spacing-l);
 }
