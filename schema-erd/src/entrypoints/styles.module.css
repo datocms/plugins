@@ -8,7 +8,6 @@
 .diagram {
   position: absolute;
   inset: 0;
-  background: var(--color--surface-muted);
 }
 
 /* The base styles cap images at the width of their box, which would squeeze

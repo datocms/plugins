@@ -277,6 +277,7 @@ export default function Graphviz({ ctx }: Props) {
                     width: '100%',
                     height: '100%',
                     cursor: 'move',
+                    background: 'var(--color--surface-muted)',
                   }}
                 >
                   <img
@@ -289,7 +290,7 @@ export default function Graphviz({ ctx }: Props) {
               <BlankSlate
                 placement="area"
                 loading
-                title="Loading the models and block models"
+                title="Loading the diagram"
                 caption={progress}
               />
             )}
