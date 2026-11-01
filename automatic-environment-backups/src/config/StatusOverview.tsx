@@ -108,6 +108,7 @@ export const StatusOverview = ({
   return (
     <Page.Group
       title="Backup status"
+      tone={isConfiguredAndReady ? undefined : 'warning'}
       status={
         isConfiguredAndReady ? (
           <Pill tone="success">Active</Pill>
