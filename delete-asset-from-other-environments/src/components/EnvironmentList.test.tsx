@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Environment } from '../utils/assetEnvironmentOperations';
 import { EnvironmentList } from './EnvironmentList';
 
@@ -23,82 +25,67 @@ function fixtures(count: number) {
   return Array.from({ length: count }, (_, index) => environment(index));
 }
 
-const props = {
-  currentEnv: 'current-environment',
-  uploadId: 'upload-00009999',
-  projectDomain: 'synthetic.admin.datocms.com',
-};
+const ctx = {
+  cssDesignTokens: {},
+  colorScheme: 'light',
+  bodyPadding: [0, 0, 0, 0],
+  ui: { locale: 'en' },
+  site: {
+    id: 'synthetic-site',
+    attributes: { internal_domain: 'synthetic.admin.datocms.com' },
+  },
+  navigateTo: vi.fn(),
+  notice: vi.fn(),
+  alert: vi.fn(),
+  customToast: vi.fn(),
+  openConfirm: vi.fn(),
+} as unknown as RenderUploadSidebarPanelCtx;
+
+function list(count: number) {
+  return (
+    <Canvas ctx={ctx} noAutoResizer>
+      <EnvironmentList
+        environments={fixtures(count)}
+        uploadId="upload-00009999"
+      />
+    </Canvas>
+  );
+}
 
 afterEach(cleanup);
 
 describe('environment list rendering', () => {
-  it('preserves the complete ordinary list and existing links up to 100 environments', () => {
-    const view = render(
-      <EnvironmentList environments={fixtures(100)} {...props} />,
-    );
+  it('links each environment to its copy of the asset and marks the primary one', () => {
+    render(list(3));
 
-    expect(view.container.querySelectorAll('li')).toHaveLength(100);
-    expect(view.container.querySelector('[role="region"]')).toBeNull();
+    expect(screen.getAllByRole('link')).toHaveLength(3);
     expect(
-      screen.getByText('environment-0').getAttribute('href'),
+      screen.getByRole('link', { name: /^environment-0/ }).getAttribute('href'),
     ).toBe('https://synthetic.admin.datocms.com/media/assets/upload-00009999');
-    expect(screen.getByText('(primary)')).toBeTruthy();
+    expect(screen.getByText('Primary')).toBeTruthy();
     expect(
-      screen.getByText('environment-99').getAttribute('href'),
+      screen.getByRole('link', { name: /^environment-2/ }).getAttribute('href'),
     ).toBe(
-      'https://synthetic.admin.datocms.com/environments/environment-99/media/assets/upload-00009999',
+      'https://synthetic.admin.datocms.com/environments/environment-2/media/assets/upload-00009999',
     );
-    expect(
-      screen.getByText('environment-99').getAttribute('target'),
-    ).toBe('_top');
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: /^environment-2/ }));
+    expect(ctx.navigateTo).toHaveBeenCalledWith(
+      '/environments/environment-2/media/assets/upload-00009999',
+    );
   });
 
-  it.each([101, 1_200])(
-    'bounds rendered rows for %i environments and makes the final copy accessible by scrolling',
-    (count) => {
-      const view = render(
-        <EnvironmentList environments={fixtures(count)} {...props} />,
-      );
-      const region = screen.getByRole('region', {
-        name: 'Other environments containing this asset',
-        hidden: true,
-      });
+  it('shows 100 environments at a time and keeps every one reachable', () => {
+    const view = render(list(150));
 
-      expect(region.getAttribute('tabindex')).toBe('0');
-      expect(view.container.querySelectorAll('li').length).toBeLessThanOrEqual(20);
-      expect(screen.getByText('environment-0').tagName).toBe('A');
-      expect(screen.queryByText(`environment-${count - 1}`)).toBeNull();
-      fireEvent.scroll(region, { target: { scrollTop: count * 28 } });
-
-      expect(view.container.querySelectorAll('li').length).toBeLessThanOrEqual(20);
-      expect(
-        screen.getByText(`environment-${count - 1}`).getAttribute('href'),
-      ).toBe(
-        `https://synthetic.admin.datocms.com/environments/environment-${count - 1}/media/assets/upload-00009999`,
-      );
-      expect(screen.queryByText('environment-0')).toBeNull();
-      expect(
-        Number(view.container.querySelector('ol')?.getAttribute('start')),
-      ).toBeGreaterThan(1);
-    },
-  );
-
-  it('keeps the final remaining environment reachable after the list shrinks during deletion', () => {
-    const view = render(
-      <EnvironmentList environments={fixtures(1_200)} {...props} />,
+    expect(screen.getAllByRole('link')).toHaveLength(100);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show 50 more environments' }),
     );
-    fireEvent.scroll(screen.getByRole('region', { hidden: true }), {
-      target: { scrollTop: 1_200 * 28 },
-    });
-    expect(screen.getByText('environment-1199').tagName).toBe('A');
-    view.rerender(<EnvironmentList environments={fixtures(150)} {...props} />);
+    expect(screen.getAllByRole('link')).toHaveLength(150);
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
 
-    expect(view.container.querySelectorAll('li').length).toBeLessThanOrEqual(20);
-    expect(screen.getByText('environment-149').tagName).toBe('A');
-    expect(screen.queryByText('environment-1199')).toBeNull();
-    view.rerender(<EnvironmentList environments={fixtures(3)} {...props} />);
-    expect(view.container.querySelectorAll('li')).toHaveLength(3);
-    expect(view.container.querySelector('[role="region"]')).toBeNull();
-    expect(screen.getByText('environment-2').tagName).toBe('A');
+    view.rerender(list(3));
+    expect(screen.getAllByRole('link')).toHaveLength(3);
   });
 });

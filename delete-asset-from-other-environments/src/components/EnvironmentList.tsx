@@ -1,70 +1,71 @@
-import { useState } from 'react';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import Pill from 'datocms-react-ui/Pill';
+import RowList from 'datocms-react-ui/RowList';
+import { type CSSProperties, useState } from 'react';
 import type { Environment } from '../utils/assetEnvironmentOperations';
-import { EnvItem } from './EnvItem';
+import styles from './styles.module.css';
 
-const ROW_HEIGHT = 28;
-const VISIBLE_ROWS = 12;
-const OVERSCAN = 4;
+const PAGE_SIZE = 100;
 
+/**
+ * The environments that have a copy of the asset, each opening that copy.
+ * The frame already has an inset (its body padding), so the box of the list
+ * goes out into it: the text of the rows stays in line with the text of the
+ * panel (RowList, "The inset row"). A long list shows 100 rows at a time.
+ */
 export function EnvironmentList({
   environments,
-  ...props
+  uploadId,
 }: {
   environments: Environment[];
-  currentEnv: string;
   uploadId: string;
-  projectDomain: string | null;
 }) {
-  const [scrollTop, setScrollTop] = useState(0);
-  if (environments.length <= 100) {
-    return (
-      <ol>
-        {environments.map((env) => (
-          <EnvItem key={env.id} env={env} {...props} />
-        ))}
-      </ol>
-    );
-  }
-  const start = Math.max(
-    0,
-    Math.min(
-      environments.length - VISIBLE_ROWS,
-      Math.floor(scrollTop / ROW_HEIGHT),
-    ) - OVERSCAN,
-  );
-  const visible = environments.slice(
-    start,
-    start + VISIBLE_ROWS + 2 * OVERSCAN,
-  );
+  const { bodyPadding } = useCtx();
+  const [, right = 0, , left = 0] = bodyPadding;
+  const [shown, setShown] = useState(PAGE_SIZE);
+  const more = Math.min(PAGE_SIZE, environments.length - shown);
+
   return (
-    <div
-      style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS, overflow: 'auto' }}
-      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-      tabIndex={0}
-      role="region"
-      aria-label="Other environments containing this asset"
-    >
+    <>
       <div
-        style={{
-          height: environments.length * ROW_HEIGHT,
-          position: 'relative',
-        }}
+        className={styles.rows}
+        style={
+          {
+            '--frame-inset-left': `${left}px`,
+            '--frame-inset-right': `${right}px`,
+          } as CSSProperties
+        }
       >
-        <ol
-          start={start + 1}
-          style={{
-            position: 'absolute',
-            top: start * ROW_HEIGHT,
-            margin: 0,
-            lineHeight: `${ROW_HEIGHT}px`,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {visible.map((env) => (
-            <EnvItem key={env.id} env={env} {...props} />
+        <RowList>
+          {environments.slice(0, shown).map((env) => (
+            <RowList.Item
+              key={env.id}
+              to={
+                env.meta.primary
+                  ? `/media/assets/${uploadId}`
+                  : `/environments/${env.id}/media/assets/${uploadId}`
+              }
+            >
+              <EntityRow
+                layout="row"
+                title={env.id}
+                afterTitle={env.meta.primary ? <Pill>Primary</Pill> : undefined}
+              />
+            </RowList.Item>
           ))}
-        </ol>
+        </RowList>
       </div>
-    </div>
+      {more > 0 && (
+        <div className={styles.actions}>
+          <Button
+            tone="ghost"
+            label={`Show ${more} more ${more === 1 ? 'environment' : 'environments'}`}
+            onClick={() => setShown((count) => count + PAGE_SIZE)}
+          />
+        </div>
+      )}
+    </>
   );
 }

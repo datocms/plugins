@@ -8,23 +8,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
-import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAssetEnvironmentOperations,
   type Environment,
 } from '../utils/assetEnvironmentOperations';
 import { AssetDeletionSidebar } from './AssetDeletionSidebar';
-
-vi.mock('datocms-react-ui', () => ({
-  Canvas: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  ),
-  Spinner: () => <span data-testid="loading-spinner" />,
-}));
 
 vi.mock('../utils/assetEnvironmentOperations', async (importOriginal) => ({
   ...(await importOriginal<
@@ -86,6 +75,13 @@ function context({
       id: 'synthetic-site',
       attributes: { internal_domain: 'synthetic.admin.datocms.com' },
     },
+    cssDesignTokens: {},
+    colorScheme: 'light',
+    bodyPadding: [0, 0, 0, 0],
+    ui: { locale: 'en' },
+    navigateTo: vi.fn(),
+    alert: vi.fn(),
+    customToast: vi.fn(),
     openConfirm,
     notice,
   } as unknown as RenderUploadSidebarPanelCtx;
@@ -117,7 +113,14 @@ function deferred<T>() {
 }
 
 function deleteButton() {
-  return screen.getByRole('button', { name: /^Delete this asset from/ });
+  return screen.getByRole('button', { name: /^Delete \d+ other cop/ });
+}
+
+/** The loading blank slate, while the panel checks or deletes */
+function loadingState() {
+  return screen.queryByText(
+    /^(Looking for other copies|Deleting the other copies)$/,
+  );
 }
 
 const createOperations = vi.mocked(createAssetEnvironmentOperations);
@@ -137,11 +140,9 @@ describe('environment discovery feedback', () => {
     const { ctx, openConfirm } = context();
     render(<AssetDeletionSidebar ctx={ctx} />);
 
-    expect(screen.getByTestId('loading-spinner')).toBeTruthy();
-    expect(
-      await screen.findByText(/This is the last remaining copy/),
-    ).toBeTruthy();
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(screen.getByText('Looking for other copies')).toBeTruthy();
+    expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
+    expect(loadingState()).toBeNull();
     expect(service.checkEnvironments).toHaveBeenCalledWith(
       [environment('current-environment')],
       ctx.upload.id,
@@ -149,7 +150,7 @@ describe('environment discovery feedback', () => {
       expect.any(Function),
     );
     expect(
-      screen.queryByRole('button', { name: /^Delete this asset from/ }),
+      screen.queryByRole('button', { name: /^Delete \d+ other cop/ }),
     ).toBeNull();
     expect(openConfirm).not.toHaveBeenCalled();
   });
@@ -170,11 +171,11 @@ describe('environment discovery feedback', () => {
       render(<AssetDeletionSidebar ctx={context().ctx} />);
 
       expect(
-        await screen.findByText(/Could not check every environment/),
+        await screen.findByText(/The environments weren't checked/),
       ).toBeTruthy();
-      expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
-      expect(screen.queryByTestId('loading-spinner')).toBeNull();
-      expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
+      expect(screen.queryByText(/This is the last copy/)).toBeNull();
+      expect(loadingState()).toBeNull();
+      expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
       if (stage === 'list')
         expect(service.checkEnvironments).not.toHaveBeenCalled();
     },
@@ -197,8 +198,9 @@ describe('environment discovery feedback', () => {
     expect(
       await screen.findByText(/inaccessible: INSUFFICIENT_PERMISSIONS/),
     ).toBeTruthy();
-    expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(screen.getByText(/Some environments weren't checked/)).toBeTruthy();
+    expect(screen.queryByText(/This is the last copy/)).toBeNull();
+    expect(loadingState()).toBeNull();
   });
 
   it('shows only the first five lookup errors initially and exposes every remaining error on demand', async () => {
@@ -216,17 +218,11 @@ describe('environment discovery feedback', () => {
 
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
     expect(screen.queryByText('failed-11: HTTP 403')).toBeNull();
-    const summary = screen.getByText('Show 7 more environment errors');
-    const details = summary.closest('details');
-    if (!details) throw new Error('Expected expandable error details');
-    await act(async () => {
-      details.open = true;
-      fireEvent(details, new Event('toggle'));
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Show 7 more errors' }));
 
     expect(await screen.findByText('failed-11: HTTP 403')).toBeTruthy();
     expect(screen.getAllByRole('listitem')).toHaveLength(12);
-    expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
+    expect(screen.queryByText(/This is the last copy/)).toBeNull();
   });
 
   it('automatically shows exact completed progress for many environments', async () => {
@@ -242,11 +238,11 @@ describe('environment discovery feedback', () => {
     render(<AssetDeletionSidebar ctx={context().ctx} />);
 
     expect(
-      await screen.findByText('Checking 3 of 1200 environments...'),
+      await screen.findByText('3 of 1200 environments checked'),
     ).toBeTruthy();
     await act(async () => pending.resolve({ matches: [], failures: [] }));
-    expect(screen.getByText(/This is the last remaining copy/)).toBeTruthy();
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(screen.getByText(/This is the last copy/)).toBeTruthy();
+    expect(loadingState()).toBeNull();
   });
 
   it('rechecks after failure, replaces stale errors, and completes the new loading state', async () => {
@@ -262,14 +258,14 @@ describe('environment discovery feedback', () => {
     render(<AssetDeletionSidebar ctx={context().ctx} />);
     await screen.findByText('inaccessible: HTTP 403');
     const oldSignal = createOperations.mock.calls[0][0].signal;
-    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
 
     expect(
-      await screen.findByRole('link', { name: 'now-accessible' }),
+      await screen.findByRole('link', { name: /^now-accessible/ }),
     ).toBeTruthy();
     expect(oldSignal.aborted).toBe(true);
     expect(screen.queryByText('inaccessible: HTTP 403')).toBeNull();
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(loadingState()).toBeNull();
     expect(oldService.checkEnvironments).toHaveBeenCalledTimes(1);
     expect(newService.checkEnvironments).toHaveBeenCalledTimes(1);
   });
@@ -287,11 +283,9 @@ describe('environment discovery feedback', () => {
       const { ctx } = context({ apiToken, environmentsAccess });
       render(<AssetDeletionSidebar ctx={ctx} />);
 
-      expect(
-        screen.getByText(/You do not have the right permissions/),
-      ).toBeTruthy();
+      expect(screen.getByText(/No access to all environments/)).toBeTruthy();
       expect(createOperations).not.toHaveBeenCalled();
-      expect(screen.queryByTestId('loading-spinner')).toBeNull();
+      expect(loadingState()).toBeNull();
     },
   );
 
@@ -308,13 +302,9 @@ describe('environment discovery feedback', () => {
         />,
       );
 
-      expect(
-        await screen.findByText(/This is the last remaining copy/),
-      ).toBeTruthy();
+      expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
       expect(createOperations).toHaveBeenCalledTimes(1);
-      expect(
-        screen.queryByText(/You do not have the right permissions/),
-      ).toBeNull();
+      expect(screen.queryByText(/No access to all environments/)).toBeNull();
     },
   );
 
@@ -330,9 +320,7 @@ describe('environment discovery feedback', () => {
       />,
     );
 
-    expect(
-      screen.getByText(/You do not have the right permissions/),
-    ).toBeTruthy();
+    expect(screen.getByText(/No access to all environments/)).toBeTruthy();
     expect(createOperations).not.toHaveBeenCalled();
   });
 });
@@ -357,7 +345,7 @@ describe('single-asset deletion results and confirmation', () => {
     createOperations.mockReturnValue(service);
     const { ctx, notice, openConfirm } = context();
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'deleted-copy' });
+    await screen.findByRole('link', { name: /^deleted-copy/ });
     fireEvent.click(deleteButton());
 
     await waitFor(() => expect(notice).toHaveBeenCalledTimes(1));
@@ -370,18 +358,18 @@ describe('single-asset deletion results and confirmation', () => {
       ctx.environment,
       expect.any(Function),
     );
-    expect(screen.queryByRole('link', { name: 'deleted-copy' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^deleted-copy/ })).toBeNull();
     expect(
-      screen.queryByRole('link', { name: 'already-absent-copy' }),
+      screen.queryByRole('link', { name: /^already-absent-copy/ }),
     ).toBeNull();
-    expect(screen.getByRole('link', { name: 'failed-copy' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^failed-copy/ })).toBeTruthy();
     expect(
       screen.getByText(/failed-copy: Asset is used by records/),
     ).toBeTruthy();
-    expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
-    expect(deleteButton().textContent).toContain('1 other env(s)');
+    expect(screen.queryByText(/This is the last copy/)).toBeNull();
+    expect(deleteButton().textContent).toContain('Delete 1 other copy');
     expect(notice).toHaveBeenCalledWith(
-      'Deleted 1 other copies. 1 copies confirmed already absent. Some environments could not be completed. See the remaining copies and errors in this panel.',
+      'Deleted 1 other copy. 1 other copy was already gone. Some environments failed: see the panel for details.',
     );
     expect(service.listEnvironments).toHaveBeenCalledTimes(1);
     expect(service.checkEnvironments).toHaveBeenCalledTimes(1);
@@ -398,20 +386,18 @@ describe('single-asset deletion results and confirmation', () => {
     createOperations.mockReturnValue(service);
     const { ctx, notice } = context();
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     fireEvent.click(deleteButton());
 
-    expect(
-      await screen.findByText(/This is the last remaining copy/),
-    ).toBeTruthy();
+    expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
     expect(notice).toHaveBeenCalledWith(
-      'Deleted 1 other copies. You must delete the last copy in the current environment manually.',
+      'Deleted 1 other copy. Now delete the last copy yourself, in this environment.',
     );
     expect(service.deleteCopies.mock.calls[0][0].map((env) => env.id)).toEqual([
       'other-copy',
     ]);
     expect(
-      screen.queryByRole('button', { name: /^Delete this asset from/ }),
+      screen.queryByRole('button', { name: /^Delete \d+ other cop/ }),
     ).toBeNull();
   });
 
@@ -425,14 +411,12 @@ describe('single-asset deletion results and confirmation', () => {
     createOperations.mockReturnValue(service);
     const { ctx, notice } = context();
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     fireEvent.click(deleteButton());
 
-    expect(
-      await screen.findByText(/This is the last remaining copy/),
-    ).toBeTruthy();
+    expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
     expect(notice).toHaveBeenCalledWith(
-      'Deleted 0 other copies. 1 copies confirmed already absent. You must delete the last copy in the current environment manually.',
+      'Deleted 0 other copies. 1 other copy was already gone. Now delete the last copy yourself, in this environment.',
     );
   });
 
@@ -450,15 +434,15 @@ describe('single-asset deletion results and confirmation', () => {
     createOperations.mockReturnValue(service);
     const { ctx, notice } = context();
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'known-copy' });
+    await screen.findByRole('link', { name: /^known-copy/ });
     fireEvent.click(deleteButton());
 
     await waitFor(() => expect(notice).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('link', { name: 'known-copy' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^known-copy/ })).toBeNull();
     expect(screen.getByText('unknown-copy: HTTP 403')).toBeTruthy();
-    expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
+    expect(screen.queryByText(/This is the last copy/)).toBeNull();
     expect(notice).toHaveBeenCalledWith(
-      'Deleted 1 other copies. Some environments could not be completed. See the remaining copies and errors in this panel.',
+      'Deleted 1 other copy. Some environments failed: see the panel for details.',
     );
   });
 
@@ -473,14 +457,12 @@ describe('single-asset deletion results and confirmation', () => {
     const { ctx, notice } = context();
     notice.mockRejectedValue(new Error('Synthetic notice failure'));
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     fireEvent.click(deleteButton());
 
-    expect(
-      await screen.findByText(/This is the last remaining copy/),
-    ).toBeTruthy();
-    expect(screen.queryByText(/Could not check every environment/)).toBeNull();
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
+    expect(screen.queryByText(/weren't checked/)).toBeNull();
+    expect(loadingState()).toBeNull();
     expect(service.deleteCopies).toHaveBeenCalledTimes(1);
   });
 
@@ -496,14 +478,51 @@ describe('single-asset deletion results and confirmation', () => {
     const { ctx, notice } = context();
     notice.mockReturnValue(pendingNotice.promise);
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'failed-copy' });
+    await screen.findByRole('link', { name: /^failed-copy/ });
     fireEvent.click(deleteButton());
 
     await screen.findByText('failed-copy: HTTP 403');
     expect((deleteButton() as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByTestId('loading-spinner')).toBeNull();
+    expect(loadingState()).toBeNull();
     expect(notice).toHaveBeenCalledTimes(1);
     await act(async () => pendingNotice.resolve());
+  });
+
+  it('shows the deletion progress until the copies are deleted', async () => {
+    const pendingDeletion = deferred<DeleteResult>();
+    const service = operations([environment('other-copy')]);
+    service.deleteCopies.mockImplementation(
+      async (_environments, _uploadId, _currentEnv, onProgress) => {
+        onProgress?.({ completed: 0, total: 1 });
+        return pendingDeletion.promise;
+      },
+    );
+    createOperations.mockReturnValue(service);
+    const { ctx, openConfirm } = context();
+    render(<AssetDeletionSidebar ctx={ctx} />);
+    await screen.findByRole('link', { name: /^other-copy/ });
+    fireEvent.click(deleteButton());
+
+    expect(await screen.findByText('Deleting the other copies')).toBeTruthy();
+    expect(screen.getByText('0 of 1 environment done')).toBeTruthy();
+    expect(openConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Delete 1 other copy?',
+        choices: [
+          { label: 'Delete all', value: 'deleteAll', intent: 'negative' },
+        ],
+        cancel: { label: 'Cancel', value: 'cancel' },
+      }),
+    );
+    await act(async () =>
+      pendingDeletion.resolve({
+        deletedEnvIds: ['other-copy'],
+        absentEnvIds: [],
+        failures: [],
+      }),
+    );
+    expect(screen.getByText(/This is the last copy/)).toBeTruthy();
+    expect(loadingState()).toBeNull();
   });
 
   it('does not create duplicate confirmations or deletions on a double click', async () => {
@@ -513,7 +532,7 @@ describe('single-asset deletion results and confirmation', () => {
     const { ctx, openConfirm } = context();
     openConfirm.mockReturnValue(pendingConfirmation.promise);
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     const button = deleteButton();
     fireEvent.click(button);
     fireEvent.click(button);
@@ -531,7 +550,7 @@ describe('single-asset deletion results and confirmation', () => {
     const { ctx, openConfirm } = context();
     openConfirm.mockResolvedValueOnce('cancel');
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     fireEvent.click(deleteButton());
     await waitFor(() =>
       expect((deleteButton() as HTMLButtonElement).disabled).toBe(false),
@@ -555,21 +574,19 @@ describe('single-asset deletion results and confirmation', () => {
       new Error('Synthetic confirmation failure'),
     );
     render(<AssetDeletionSidebar ctx={ctx} />);
-    await screen.findByRole('link', { name: 'other-copy' });
+    await screen.findByRole('link', { name: /^other-copy/ });
     fireEvent.click(deleteButton());
 
     const errorMessage =
       'Could not complete the request. Check your connection and access permissions.';
     expect(await screen.findByText(errorMessage)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'other-copy' })).toBeTruthy();
-    expect(screen.queryByText(/Could not check every environment/)).toBeNull();
+    expect(screen.getByRole('link', { name: /^other-copy/ })).toBeTruthy();
+    expect(screen.queryByText(/weren't checked/)).toBeNull();
     expect(service.deleteCopies).not.toHaveBeenCalled();
     expect((deleteButton() as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(deleteButton());
 
-    expect(
-      await screen.findByText(/This is the last remaining copy/),
-    ).toBeTruthy();
+    expect(await screen.findByText(/This is the last copy/)).toBeTruthy();
     expect(screen.queryByText(errorMessage)).toBeNull();
     expect(service.deleteCopies).toHaveBeenCalledTimes(1);
     expect(openConfirm).toHaveBeenCalledTimes(2);
@@ -601,7 +618,7 @@ describe.each(contextChanges)(
       );
       const oldSignal = createOperations.mock.calls[0][0].signal;
       view.rerender(<AssetDeletionSidebar ctx={newContext.ctx} />);
-      await screen.findByRole('link', { name: 'fresh-copy' });
+      await screen.findByRole('link', { name: /^fresh-copy/ });
 
       expect(oldSignal.aborted).toBe(true);
       await act(async () => {
@@ -614,10 +631,10 @@ describe.each(contextChanges)(
           failures: [{ envId: 'stale-error', message: 'Late failure' }],
         });
       });
-      expect(screen.getByRole('link', { name: 'fresh-copy' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: /^fresh-copy/ })).toBeTruthy();
       expect(screen.queryByText(/stale-error/)).toBeNull();
-      expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
-      expect(screen.queryByTestId('loading-spinner')).toBeNull();
+      expect(screen.queryByText(/This is the last copy/)).toBeNull();
+      expect(loadingState()).toBeNull();
       expect(newService.checkEnvironments).toHaveBeenCalledWith(
         [environment('fresh-copy')],
         newContext.ctx.upload.id,
@@ -637,19 +654,19 @@ describe.each(contextChanges)(
       oldContext.openConfirm.mockReturnValue(pendingConfirmation.promise);
       const newContext = context(options);
       const view = render(<AssetDeletionSidebar ctx={oldContext.ctx} />);
-      await screen.findByRole('link', { name: 'shared-copy' });
+      await screen.findByRole('link', { name: /^shared-copy/ });
       fireEvent.click(deleteButton());
       expect(oldContext.openConfirm).toHaveBeenCalledTimes(1);
       const oldSignal = createOperations.mock.calls[0][0].signal;
       view.rerender(<AssetDeletionSidebar ctx={newContext.ctx} />);
-      await screen.findByRole('link', { name: 'shared-copy' });
+      await screen.findByRole('link', { name: /^shared-copy/ });
       await act(async () => pendingConfirmation.resolve('deleteAll'));
 
       expect(oldSignal.aborted).toBe(true);
       expect(oldService.deleteCopies).not.toHaveBeenCalled();
       expect(newService.deleteCopies).not.toHaveBeenCalled();
       expect(oldContext.notice).not.toHaveBeenCalled();
-      expect(screen.getByRole('link', { name: 'shared-copy' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: /^shared-copy/ })).toBeTruthy();
       expect((deleteButton() as HTMLButtonElement).disabled).toBe(false);
     });
 
@@ -664,14 +681,14 @@ describe.each(contextChanges)(
       const oldContext = context();
       const newContext = context(options);
       const view = render(<AssetDeletionSidebar ctx={oldContext.ctx} />);
-      await screen.findByRole('link', { name: 'shared-copy' });
+      await screen.findByRole('link', { name: /^shared-copy/ });
       fireEvent.click(deleteButton());
       await waitFor(() =>
         expect(oldService.deleteCopies).toHaveBeenCalledTimes(1),
       );
       const oldSignal = createOperations.mock.calls[0][0].signal;
       view.rerender(<AssetDeletionSidebar ctx={newContext.ctx} />);
-      await screen.findByRole('link', { name: 'shared-copy' });
+      await screen.findByRole('link', { name: /^shared-copy/ });
       await act(async () => {
         oldService.deleteCopies.mock.calls[0][3]?.({
           completed: 1,
@@ -685,9 +702,9 @@ describe.each(contextChanges)(
       });
 
       expect(oldSignal.aborted).toBe(true);
-      expect(screen.getByRole('link', { name: 'shared-copy' })).toBeTruthy();
-      expect(screen.queryByText(/This is the last remaining copy/)).toBeNull();
-      expect(screen.queryByTestId('loading-spinner')).toBeNull();
+      expect(screen.getByRole('link', { name: /^shared-copy/ })).toBeTruthy();
+      expect(screen.queryByText(/This is the last copy/)).toBeNull();
+      expect(loadingState()).toBeNull();
       expect(oldContext.notice).not.toHaveBeenCalled();
       expect(newContext.notice).not.toHaveBeenCalled();
       expect(newService.deleteCopies).not.toHaveBeenCalled();

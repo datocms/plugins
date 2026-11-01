@@ -1,6 +1,10 @@
 import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner } from 'datocms-react-ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import Callout from 'datocms-react-ui/Callout';
+import Canvas from 'datocms-react-ui/Canvas';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { CircleExclamationIcon } from '../icons';
 import {
   createAssetEnvironmentOperations,
   describeError,
@@ -10,6 +14,7 @@ import {
 } from '../utils/assetEnvironmentOperations';
 import { sortByEnvUpdateTime } from '../utils/sortByEnvUpdateTime';
 import { EnvironmentList } from './EnvironmentList';
+import styles from './styles.module.css';
 
 type Scope = {
   apiToken: string | null | undefined;
@@ -20,9 +25,11 @@ type Scope = {
   checkVersion: number;
 };
 
+type Loading = { title: string; caption?: string };
+
 type View = {
   scope: Scope | null;
-  loadingMessage: string | null;
+  loading: Loading | null;
   matches: Environment[];
   lookupFailures: EnvironmentFailure[];
   deletionFailures: EnvironmentFailure[];
@@ -31,9 +38,12 @@ type View = {
   busy: boolean;
 };
 
+const CHECKING = 'Looking for other copies';
+const DELETING = 'Deleting the other copies';
+
 const initialView: View = {
   scope: null,
-  loadingMessage: 'Loading...',
+  loading: { title: CHECKING },
   matches: [],
   lookupFailures: [],
   deletionFailures: [],
@@ -49,37 +59,62 @@ type Session = {
   busy: boolean;
 };
 
-function progressMessage(action: string, { completed, total }: Progress) {
-  return total > 10
-    ? `${action} ${completed} of ${total} environments...`
-    : `${action} ${total} environment(s)...`;
+/** "1 other copy", "3 other copies" */
+function plural(count: number, one: string, other: string) {
+  return `${count} ${count === 1 ? one : other}`;
 }
 
-function Failures({ failures }: { failures: EnvironmentFailure[] }) {
+function progressCaption(done: string, { completed, total }: Progress) {
+  return `${completed} of ${plural(total, 'environment', 'environments')} ${done}`;
+}
+
+/**
+ * The environments that failed, in a callout: the first five, and the rest
+ * on demand. The buttons go right after the callout, never in it.
+ */
+function Failures({
+  tone,
+  title,
+  text,
+  failures,
+  action,
+}: {
+  tone: 'warning' | 'danger';
+  title: string;
+  text: string;
+  failures: EnvironmentFailure[];
+  action?: ReactNode;
+}) {
   const [expanded, setExpanded] = useState(false);
   if (failures.length === 0) return null;
+  const hidden = failures.length - 5;
   return (
     <>
-      <ul>
-        {failures.slice(0, 5).map((failure) => (
-          <li key={failure.envId}>
-            {failure.envId}: {failure.message}
-          </li>
-        ))}
-      </ul>
-      {failures.length > 5 && (
-        <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
-          <summary>Show {failures.length - 5} more environment errors</summary>
-          {expanded && (
-            <ul style={{ maxHeight: 240, overflow: 'auto' }}>
-              {failures.slice(5).map((failure) => (
-                <li key={failure.envId}>
-                  {failure.envId}: {failure.message}
-                </li>
-              ))}
-            </ul>
+      <Callout tone={tone} title={title} className={styles.callout}>
+        <p>{text}</p>
+        <ul className={expanded ? styles.more : undefined}>
+          {(expanded ? failures : failures.slice(0, 5)).map((failure) => (
+            <li key={failure.envId}>
+              {failure.envId}: {failure.message}
+            </li>
+          ))}
+        </ul>
+      </Callout>
+      {(hidden > 0 || action) && (
+        <div className={styles.actions}>
+          {hidden > 0 && (
+            <Button
+              tone="ghost"
+              label={
+                expanded
+                  ? 'Show fewer errors'
+                  : `Show ${plural(hidden, 'more error', 'more errors')}`
+              }
+              onClick={() => setExpanded((value) => !value)}
+            />
           )}
-        </details>
+          {action}
+        </div>
       )}
     </>
   );
@@ -89,18 +124,97 @@ function deletionNotice(
   result: Awaited<ReturnType<Session['operations']['deleteCopies']>>,
   hasLookupFailures: boolean,
 ) {
-  const parts = [`Deleted ${result.deletedEnvIds.length} other copies.`];
+  const parts = [
+    `Deleted ${plural(result.deletedEnvIds.length, 'other copy', 'other copies')}.`,
+  ];
   if (result.absentEnvIds.length > 0) {
     parts.push(
-      `${result.absentEnvIds.length} copies confirmed already absent.`,
+      `${plural(result.absentEnvIds.length, 'other copy was', 'other copies were')} already gone.`,
     );
   }
   parts.push(
     result.failures.length > 0 || hasLookupFailures
-      ? 'Some environments could not be completed. See the remaining copies and errors in this panel.'
-      : 'You must delete the last copy in the current environment manually.',
+      ? 'Some environments failed: see the panel for details.'
+      : 'Now delete the last copy yourself, in this environment.',
   );
   return parts.join(' ');
+}
+
+/** The checked environments: what failed, the other copies, or the last one */
+function Results({
+  view,
+  uploadId,
+  onRecheck,
+  onDelete,
+}: {
+  view: View;
+  uploadId: string;
+  onRecheck: () => void;
+  onDelete: () => void;
+}) {
+  const count = view.matches.length;
+  return (
+    <div className={styles.panel}>
+      <Failures
+        tone="warning"
+        title="Some environments weren't checked"
+        text="Other copies of this asset may still exist there."
+        failures={view.lookupFailures}
+        action={
+          <Button
+            label="Check again"
+            onClick={onRecheck}
+            disabled={
+              view.busy
+                ? {
+                    reason:
+                      "You can't check again while copies are being deleted.",
+                  }
+                : undefined
+            }
+          />
+        }
+      />
+      {view.actionError && (
+        <Callout
+          tone="danger"
+          title="The copies weren't deleted"
+          className={styles.callout}
+        >
+          {view.actionError}
+        </Callout>
+      )}
+      <Failures
+        tone="danger"
+        title="Some copies weren't deleted"
+        text="They're still listed below."
+        failures={view.deletionFailures}
+      />
+      {count > 0 && (
+        <>
+          <p>
+            This asset is also in{' '}
+            {plural(count, 'other environment', 'other environments')}.
+          </p>
+          <EnvironmentList environments={view.matches} uploadId={uploadId} />
+          <div className={styles.actions}>
+            <Button
+              tone="alert"
+              label={`Delete ${plural(count, 'other copy', 'other copies')}`}
+              busy={view.busy}
+              onClick={onDelete}
+            />
+          </div>
+        </>
+      )}
+      {count === 0 && view.lookupFailures.length === 0 && (
+        <Callout title="This is the last copy" className={styles.callout}>
+          Delete it with the “Delete” action at the top of this sidebar. Within
+          24 hours it then leaves our CDN (datocms-assets.com).
+        </Callout>
+      )}
+    </div>
+  );
 }
 
 export const AssetDeletionSidebar = ({
@@ -163,15 +277,20 @@ export const AssetDeletionSidebar = ({
           scope.uploadId,
           scope.currentEnv,
           (progress) =>
-            patch({ loadingMessage: progressMessage('Checking', progress) }),
+            patch({
+              loading: {
+                title: CHECKING,
+                caption: progressCaption('checked', progress),
+              },
+            }),
         );
         patch({
           matches: result.matches.sort(sortByEnvUpdateTime),
           lookupFailures: result.failures,
-          loadingMessage: null,
+          loading: null,
         });
       } catch (error) {
-        patch({ discoveryError: describeError(error), loadingMessage: null });
+        patch({ discoveryError: describeError(error), loading: null });
       }
     };
     void discover();
@@ -200,12 +319,12 @@ export const AssetDeletionSidebar = ({
     };
     try {
       const userConfirmed = await ctx.openConfirm({
-        title: `Delete ${targets.length} other copies?`,
-        content: `Are you sure? This will delete the asset from ${targets.length} other environments. Then you'll still have to manually delete this last copy in the current environment.`,
+        title: `Delete ${plural(targets.length, 'other copy', 'other copies')}?`,
+        content: `This deletes the asset from ${plural(targets.length, 'other environment', 'other environments')}. The copy in this environment stays: delete it yourself afterwards.`,
         choices: [
           { label: 'Delete all', value: 'deleteAll', intent: 'negative' },
         ],
-        cancel: { label: 'Go back', value: 'cancel' },
+        cancel: { label: 'Cancel', value: 'cancel' },
       });
       if (userConfirmed !== 'deleteAll' || !active()) return;
       const result = await session.operations.deleteCopies(
@@ -213,7 +332,12 @@ export const AssetDeletionSidebar = ({
         scope.uploadId,
         scope.currentEnv,
         (progress) => {
-          patch({ loadingMessage: progressMessage('Deleting from', progress) });
+          patch({
+            loading: {
+              title: DELETING,
+              caption: progressCaption('done', progress),
+            },
+          });
         },
       );
       if (!active()) return;
@@ -234,91 +358,60 @@ export const AssetDeletionSidebar = ({
       patch({ actionError: describeError(error) });
     } finally {
       session.busy = false;
-      patch({ busy: false, loadingMessage: null });
+      patch({ busy: false, loading: null });
     }
   };
 
+  const loading = view.scope !== scope ? initialView.loading : view.loading;
+  const recheck = () => setCheckVersion((version) => version + 1);
+
+  let content: ReactNode;
   if (!allowed) {
-    return (
-      <Canvas ctx={ctx}>
-        <p>
-          You do not have the right permissions to run this plugin. Please check
-          with your admin.
-        </p>
-      </Canvas>
+    content = (
+      <BlankSlate
+        placement="inline"
+        small
+        error
+        icon={<CircleExclamationIcon />}
+        title="No access to all environments"
+        description="Your role needs access to every environment to find and delete the other copies of this asset. Ask a project admin."
+      />
+    );
+  } else if (loading) {
+    content = (
+      <BlankSlate
+        placement="inline"
+        small
+        loading
+        title={loading.title}
+        caption={loading.caption}
+      />
+    );
+  } else if (view.discoveryError) {
+    content = (
+      <BlankSlate
+        placement="inline"
+        small
+        error
+        icon={<CircleExclamationIcon />}
+        title="The environments weren't checked"
+        code={view.discoveryError}
+        description="Other copies of this asset may still exist. Check again in a moment."
+        actions={<Button label="Check again" onClick={recheck} />}
+      />
+    );
+  } else {
+    content = (
+      <Results
+        view={view}
+        uploadId={scope.uploadId}
+        onRecheck={recheck}
+        onDelete={() => {
+          void deleteFromAllEnvs();
+        }}
+      />
     );
   }
 
-  const loadingMessage =
-    view.scope !== scope ? 'Loading...' : view.loadingMessage;
-  if (loadingMessage) {
-    return (
-      <Canvas ctx={ctx}>
-        <strong>
-          <Spinner size={20} />
-          {loadingMessage}
-        </strong>
-        <p>Please wait...</p>
-      </Canvas>
-    );
-  }
-
-  const incomplete = Boolean(
-    view.discoveryError || view.lookupFailures.length > 0,
-  );
-  return (
-    <Canvas ctx={ctx}>
-      {incomplete && (
-        <>
-          <p>
-            Could not check every environment. Other copies may still exist.
-          </p>
-          {view.discoveryError && <p>{view.discoveryError}</p>}
-          <Failures failures={view.lookupFailures} />
-          <Button
-            onClick={() => setCheckVersion((version) => version + 1)}
-            disabled={view.busy}
-          >
-            Retry check
-          </Button>
-        </>
-      )}
-      {view.actionError && <p>{view.actionError}</p>}
-      <Failures failures={view.deletionFailures} />
-      {view.matches.length > 0 ? (
-        <>
-          <p>Asset found in {view.matches.length} other environment(s):</p>
-          <EnvironmentList
-            environments={view.matches}
-            currentEnv={scope.currentEnv}
-            uploadId={scope.uploadId}
-            projectDomain={
-              ctx.site.attributes.internal_domain ??
-              `${ctx.site.id}.admin.datocms.com`
-            }
-          />
-          <Button onClick={deleteFromAllEnvs} disabled={view.busy}>
-            Delete this asset from {view.matches.length} other env(s)
-          </Button>
-        </>
-      ) : !incomplete ? (
-        <>
-          <p>
-            This is the last remaining copy of this asset.{' '}
-            <strong>
-              You must delete it manually using the regular "Delete" link at the
-              top of this sidebar.
-            </strong>
-          </p>
-          <p>This is a safety measure, sorry!</p>
-          <p>
-            <strong>
-              Once you delete this final copy, the asset should disappear from
-              our CDN (datocms-assets.com) within 24 hours.
-            </strong>
-          </p>
-        </>
-      ) : null}
-    </Canvas>
-  );
+  return <Canvas ctx={ctx}>{content}</Canvas>;
 };
