@@ -3,21 +3,27 @@ import {
   type FieldAppearanceChange,
   type RenderManualFieldExtensionConfigScreenCtx,
 } from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
+import './frame.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import { FieldExtension } from './entrypoints/FieldExtension';
 import { PerFieldConfigScreen } from './entrypoints/PerFieldConfigScreen';
 import {
-  GlobalParameters,
+  type GlobalParameters,
   isValidGlobalParameters,
   isValidParameters,
   type ValidGlobalParameters,
 } from './types';
 import normalizeParams from './utils/normalizeParams';
 import { render } from './utils/render';
-import "datocms-react-ui/styles.css";
 
 connect({
   async onBoot(ctx) {
-    if (isValidGlobalParameters(ctx.plugin.attributes.parameters as GlobalParameters)) {
+    if (
+      isValidGlobalParameters(
+        ctx.plugin.attributes.parameters as GlobalParameters,
+      )
+    ) {
       return;
     }
 
@@ -58,7 +64,7 @@ connect({
     ).some((x) => x);
 
     if (upgraded) {
-      ctx.notice('Plugin upgraded successfully!');
+      ctx.notice('Conditional fields settings upgraded.');
     }
 
     ctx.updatePluginParameters({
@@ -78,7 +84,12 @@ connect({
     ];
   },
   renderFieldExtension(_id, ctx) {
-    render(<FieldExtension ctx={ctx} />);
+    // The addon draws nothing, so its frame keeps its initial height of 0
+    render(
+      <Canvas ctx={ctx} noAutoResizer>
+        <FieldExtension ctx={ctx} />
+      </Canvas>,
+    );
   },
   renderManualFieldExtensionConfigScreen(
     _fieldExtensionId: string,

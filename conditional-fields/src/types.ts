@@ -58,7 +58,9 @@ export function isScalarTriggerParameters(
 export function isValidParameters(
   params: Record<string, unknown>,
 ): params is ValidManualExtensionParameters {
-  return isBooleanTriggerParameters(params) || isScalarTriggerParameters(params);
+  return (
+    isBooleanTriggerParameters(params) || isScalarTriggerParameters(params)
+  );
 }
 
 export function isValidGlobalParameters(

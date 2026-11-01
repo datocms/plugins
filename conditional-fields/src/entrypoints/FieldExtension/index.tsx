@@ -13,7 +13,10 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-function shouldShow(params: ValidManualExtensionParameters, value: unknown): boolean {
+function shouldShow(
+  params: ValidManualExtensionParameters,
+  value: unknown,
+): boolean {
   if (isScalarTriggerParameters(params)) {
     return params.showWhenValues.includes(String(value ?? ''));
   }

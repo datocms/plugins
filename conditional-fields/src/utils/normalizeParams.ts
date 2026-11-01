@@ -8,6 +8,9 @@ export default function normalizeParams(
       'slaveFields' in params && typeof params.slaveFields === 'string'
         ? params.slaveFields.trim().split(/\s*,\s*/)
         : [],
-    invert: 'invert' in params && typeof params.invert === 'boolean' ? params.invert : false,
+    invert:
+      'invert' in params && typeof params.invert === 'boolean'
+        ? params.invert
+        : false,
   };
 }

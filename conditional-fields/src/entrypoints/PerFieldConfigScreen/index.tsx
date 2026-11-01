@@ -1,9 +1,12 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, CreatableSelectField, Form, SelectField } from 'datocms-react-ui';
-import { useCallback, useState } from 'react';
+import Canvas from 'datocms-react-ui/Canvas';
+import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SelectInput from 'datocms-react-ui/SelectInput';
+import { useState } from 'react';
 import {
-  isValidParameters,
   type BooleanTriggerParameters,
+  isValidParameters,
   type ScalarTriggerParameters,
   type ValidManualExtensionParameters,
 } from '../../types';
@@ -14,7 +17,14 @@ type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
-function defaultParams(isBooleanField: boolean): ValidManualExtensionParameters {
+const CONDITIONS = [
+  { value: 'checked', label: 'Checked' },
+  { value: 'unchecked', label: 'Unchecked' },
+] as const;
+
+function defaultParams(
+  isBooleanField: boolean,
+): ValidManualExtensionParameters {
   return isBooleanField
     ? { targetFieldsApiKey: [], invert: false }
     : { targetFieldsApiKey: [], showWhenValues: [] };
@@ -23,7 +33,9 @@ function defaultParams(isBooleanField: boolean): ValidManualExtensionParameters 
 export function PerFieldConfigScreen({ ctx }: PropTypes) {
   const isBooleanField = ctx.pendingField.attributes.field_type === 'boolean';
 
-  const [formValues, setFormValues] = useState<Partial<ValidManualExtensionParameters>>(
+  const [formValues, setFormValues] = useState<
+    Partial<ValidManualExtensionParameters>
+  >(
     isValidParameters(ctx.parameters)
       ? ctx.parameters
       : isBooleanField
@@ -31,14 +43,11 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
         : defaultParams(false),
   );
 
-  const update = useCallback(
-    (field: string, value: unknown) => {
-      const newParameters = { ...formValues, [field]: value };
-      setFormValues(newParameters);
-      ctx.setParameters(newParameters);
-    },
-    [formValues, ctx],
-  );
+  function update(field: string, value: unknown) {
+    const newParameters = { ...formValues, [field]: value };
+    setFormValues(newParameters);
+    ctx.setParameters(newParameters);
+  }
 
   const fieldOptions = Object.values(ctx.fields)
     .filter(isDefined)
@@ -52,71 +61,58 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
       value: field.attributes.api_key,
     }));
 
+  const showWhenValues =
+    (formValues as Partial<ScalarTriggerParameters>).showWhenValues ?? [];
+
   return (
     <Canvas ctx={ctx}>
-      <Form>
-        {isBooleanField ? (
-          <SelectField
-            id="invert"
-            name="invert"
-            label="When this field is"
-            selectInputProps={{
-              options: [
-                { label: 'checked', value: 'false' },
-                { label: 'unchecked', value: 'true' },
-              ],
-            }}
+      {isBooleanField ? (
+        <FieldWrapper label="When this field is">
+          <RadioGroupInput
+            options={CONDITIONS}
             value={
               (formValues as Partial<BooleanTriggerParameters>).invert
-                ? { label: 'unchecked', value: 'true' }
-                : { label: 'checked', value: 'false' }
+                ? 'unchecked'
+                : 'checked'
             }
-            onChange={(option) => {
-              const single = Array.isArray(option) ? option[0] : option;
-              update('invert', single?.value === 'true');
+            onChange={(value) => update('invert', value === 'unchecked')}
+          />
+        </FieldWrapper>
+      ) : (
+        <FieldWrapper
+          label="When this field's value is one of"
+          hint="Type a value and press Enter to add it."
+        >
+          <SelectInput
+            multiple
+            clearable
+            options={showWhenValues.map((value) => ({ value, label: value }))}
+            value={showWhenValues}
+            onChange={(values) => update('showWhenValues', values ?? [])}
+            creatable={{
+              onCreate: (value) =>
+                update('showWhenValues', [...showWhenValues, value]),
             }}
           />
-        ) : (
-          <CreatableSelectField
-            id="showWhenValues"
-            name="showWhenValues"
-            label="When the value of this field is one of"
-            hint="Type a value and press Enter to add it"
-            selectInputProps={{ isMulti: true }}
-            value={
-              ((formValues as Partial<ScalarTriggerParameters>).showWhenValues || []).map(
-                (v) => ({ label: v, value: v }),
-              )
-            }
-            onChange={(selected) => {
-              update(
-                'showWhenValues',
-                selected ? selected.filter(isDefined).map((o) => o.value) : [],
-              );
-            }}
-          />
-        )}
-        <SelectField
-          id="targetFieldsApiKey"
-          name="targetFieldsApiKey"
-          label="Then show these fields"
-          required
-          selectInputProps={{ isMulti: true, options: fieldOptions }}
-          value={
-            formValues.targetFieldsApiKey
-              ? formValues.targetFieldsApiKey.map((apiKey) =>
-                  fieldOptions.find((o) => o.value === apiKey),
-                )
-              : []
-          }
-          onChange={(selectedOptions) => {
-            update(
-              'targetFieldsApiKey',
-              selectedOptions.filter(isDefined).map((o) => o.value),
-            );
-          }}
+        </FieldWrapper>
+      )}
+      <FieldWrapper
+        label="Show these fields"
+        required
+        hint="They're hidden when the condition isn't met."
+      >
+        <SelectInput
+          multiple
+          clearable
+          placeholder="Pick fields"
+          options={fieldOptions}
+          // Saved fields that are no longer in the model don't show
+          value={(formValues.targetFieldsApiKey ?? []).filter((apiKey) =>
+            fieldOptions.some((option) => option.value === apiKey),
+          )}
+          onChange={(apiKeys) => update('targetFieldsApiKey', apiKeys ?? [])}
         />
-      </Form>
+      </FieldWrapper>
     </Canvas>
   );
 }
