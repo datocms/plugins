@@ -1234,7 +1234,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   return (
-    <Page className={styles.page}>
+    <Page>
       <Page.Content>
         {/* One form spans every group, so Save follows the last one. Enter
             in a select never saves it. */}

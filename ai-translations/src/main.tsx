@@ -9,6 +9,7 @@
 // The kit stylesheet loads first, thus the CSS modules of the plugin come
 // after it and win at the same specificity
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import type {
   DropdownAction,
   DropdownActionGroup,
@@ -113,9 +114,34 @@ function isTranslationProgressModalParams(
     typeof p.fromLocale === 'string' &&
     Array.isArray(p.toLocales) &&
     typeof p.accessToken === 'string' &&
-    p.pluginParams !== undefined &&
+    typeof p.pluginParams === 'object' &&
+    p.pluginParams !== null &&
     Array.isArray(p.itemIds)
   );
+}
+
+/**
+ * The closing notice of "Translate to → All locales". A locale that failed
+ * has had its own alert, so the notice counts only the translated locales,
+ * and there is none when no locale was translated.
+ *
+ * @param ctx - The ctx of the field dropdown action.
+ * @param translatedLocales - The locales that were translated.
+ * @param targetLocales - The locales that the action translated to.
+ */
+function noticeTranslatedLocales(
+  ctx: ExecuteFieldDropdownActionCtx,
+  translatedLocales: number,
+  targetLocales: number,
+) {
+  const label = ctx.field.attributes.label;
+  if (translatedLocales === targetLocales) {
+    ctx.notice(`Translated "${label}" to all locales`);
+  } else if (translatedLocales > 0) {
+    ctx.notice(
+      `Translated "${label}" to ${translatedLocales} of ${targetLocales} locales`,
+    );
+  }
 }
 
 /**
@@ -784,6 +810,7 @@ connect({
       if (locale === 'allLocales') {
         const targetLocales = locales.filter((loc) => loc !== ctx.locale);
         let processedLocales = 0;
+        let translatedLocales = 0;
         const progressMessage = `Translating "${ctx.field.attributes.label}" to all locales...`;
         const stopProgressToasts = startTranslationProgressToasts(
           (toast) => ctx.customToast(toast),
@@ -840,6 +867,7 @@ connect({
             value: translatedValue,
           });
           await ctx.setFieldValue(fieldPath, translatedValue);
+          translatedLocales += 1;
         };
 
         try {
@@ -856,7 +884,7 @@ connect({
           stopProgressToasts();
         }
 
-        ctx.notice(`Translated "${ctx.field.attributes.label}" to all locales`);
+        noticeTranslatedLocales(ctx, translatedLocales, targetLocales.length);
         return;
       }
 

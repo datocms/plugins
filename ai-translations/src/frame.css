@@ -1,0 +1,17 @@
+/*
+ * Imported right after 'datocms-react-ui/styles.css', for every frame.
+ *
+ * The kit's styles.css gives html and body `height: 100%`. The SDK's
+ * auto-resizer measures the body (its scroll and offset heights, and the
+ * height of html), so with that rule the measure is never less than the
+ * current frame height: a frame that sizes itself to its content (the
+ * settings, the sidebar panel, the dialogs) could grow but never shrink, for
+ * example after the Exclusions group closes. Neither of the frames that set
+ * their own height depends on the rule: the bulk translations page fills its
+ * frame with a box placed on the frame itself, and the progress dialog
+ * measures its Canvas box.
+ */
+html,
+body {
+  height: auto;
+}

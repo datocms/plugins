@@ -134,6 +134,7 @@ function FailedFields({
           error
           icon={<CircleExclamationIcon />}
           title="Couldn't load the fields of this model"
+          description="Try again, or reload the page if it keeps failing."
           actions={
             onRetry && (
               <Button
