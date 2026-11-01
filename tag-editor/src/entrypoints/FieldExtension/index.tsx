@@ -4,23 +4,76 @@ import CodeSnippet from 'datocms-react-ui/CodeSnippet';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import get from 'lodash-es/get';
 import type { ClipboardEvent } from 'react';
-import {
-  deserialize,
-  type FieldType,
-  mergeTags,
-  serialize,
-} from '../../utils/tags';
+import type { ValidFieldType } from '../../types';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-const EXPECTED_FORMAT: Record<FieldType, string> = {
+const EXPECTED_FORMAT: Record<ValidFieldType, string> = {
   json: 'It needs a JSON array of strings, like ["news", "sport"].',
   string: 'It needs a comma-separated text, like news, sport.',
 };
 
-function readTags(value: unknown, fieldType: FieldType): string[] | null {
+function isValidJson(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
+
+// Throws when the value has a shape that the editor can't read
+function deserialize(value: unknown, fieldType: ValidFieldType): string[] {
+  if (!value) {
+    return [];
+  }
+
+  if (fieldType === 'json') {
+    const parsed = JSON.parse(String(value));
+
+    if (!isValidJson(parsed)) {
+      throw new Error('Incompatible value!');
+    }
+
+    return parsed;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().split(/\s*,\s*/);
+  }
+
+  throw new Error('Incompatible value!');
+}
+
+function serialize(tags: string[], fieldType: ValidFieldType): string {
+  if (fieldType === 'json') {
+    return JSON.stringify(tags);
+  }
+
+  return tags.join(', ');
+}
+
+// Appends the texts to the tags. Each text is trimmed; empty texts and texts
+// that match a tag, or an earlier text, case-insensitively, are skipped
+function mergeTags(existing: string[], texts: string[]): string[] {
+  const seen = new Set(existing.map((tag) => tag.trim().toLowerCase()));
+  const added: string[] = [];
+
+  for (const text of texts) {
+    const tag = text.trim();
+    const key = tag.toLowerCase();
+
+    if (!tag || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    added.push(tag);
+  }
+
+  return [...existing, ...added];
+}
+
+function readTags(value: unknown, fieldType: ValidFieldType): string[] | null {
   try {
     return deserialize(value, fieldType);
   } catch (_e) {
@@ -39,7 +92,7 @@ type CreateGuard = {
 };
 
 export default function FieldExtension({ ctx }: Props) {
-  const fieldType = ctx.field.attributes.field_type as FieldType;
+  const fieldType = ctx.field.attributes.field_type as ValidFieldType;
   const value: unknown = get(ctx.formValues, ctx.fieldPath);
   const tags = readTags(value, fieldType);
 
