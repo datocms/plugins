@@ -222,7 +222,7 @@ const CONNECTION_CAUSES: Partial<Record<ShopifyErrorCode, string>> = {
 /** What to do in the plugin settings, after the link that opens them. */
 const SETTINGS_STEPS: Partial<Record<ShopifyErrorCode, string>> = {
   unauthorized: 'to update it',
-  forbidden: 'to check its permissions',
+  forbidden: 'to check the connection again',
   'store-locked': 'to add one',
   'shop-not-found': 'to check the address',
 };

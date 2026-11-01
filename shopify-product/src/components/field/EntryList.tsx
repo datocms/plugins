@@ -68,7 +68,9 @@ export default function EntryList({
   return (
     <div
       {...{ [FIELD_ACTION_ATTRIBUTE]: 'add' }}
-      className={reorderable ? styles.gutter : undefined}
+      // The gutter stays while the list can get handles, so the card doesn't
+      // move when a second item arrives or leaves.
+      className={multiple && !readOnly ? styles.gutter : undefined}
     >
       {/* Always the same tree, so rows don't remount when reordering
           becomes available: the list is only disabled. */}

@@ -8,13 +8,25 @@
 }
 
 /* The scope and filter pills wrap onto more lines in a narrow frame instead
-   of running under Clear filters and the sort. */
+   of running under Clear filters and the sort, which line up with their first
+   line (first baseline). The block padding makes the pills, not the bar's
+   minimum height, set the height of the bar, so a single line stays centered. */
 .filters {
   flex-wrap: wrap;
   gap: var(--spacing-s);
   align-items: center;
+  align-self: first baseline;
   min-width: 0;
-  padding-block: var(--spacing-s);
+  padding-block: var(--spacing-m);
+}
+
+/* Clear filters and the sort sit on the first line of pills, also when the
+   pills wrap. */
+.filterActions {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  align-self: first baseline;
 }
 
 /* The part of the footer that holds the staged selection: the free width,

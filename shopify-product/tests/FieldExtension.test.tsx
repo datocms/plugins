@@ -1661,6 +1661,23 @@ describe('FieldExtension: recovery', () => {
     );
   });
 
+  it('tells admins which Shopify permission a forbidden token needs', async () => {
+    client.loadNodes.mockRejectedValue(
+      new ShopifyClientError('forbidden', 'HTTP 403', { status: 403 }),
+    );
+    const { ctx } = createCtx({
+      parameters: multiple(),
+      value: THREE_PRODUCTS,
+    });
+    render(<FieldExtension ctx={ctx} />);
+    const link = await screen.findByRole('link', {
+      name: 'Open the plugin settings',
+    });
+    expect(link.parentElement).toHaveTextContent(
+      /Storefront API permissions, enable "Read products, variants, and collections"\. Open the plugin settings to check the connection again\.$/,
+    );
+  });
+
   it('asks other roles to contact an administrator about the token', async () => {
     client.loadNodes.mockRejectedValue(
       new ShopifyClientError('unauthorized', 'HTTP 401', { status: 401 }),

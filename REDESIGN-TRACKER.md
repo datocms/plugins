@@ -13,7 +13,7 @@ Status: Pending, In progress, Done, or Needs attention.
 | # | Plugin | UI code (lines) | React → target | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 1 | dato-agent | 20107 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
-| 2 | shopify-product | 12006 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 3 minor issues open. |
+| 2 | shopify-product | 12006 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 3 | record-comments | 9491 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. No open issues. |
 | 4 | ai-translations | 9239 | ^19.2.7 | Done | On 3.1.0-next.1 and the updated skill. Sidebar panel, config, picker, confirm and progress dialogs, and bulk page rebuilt; checked headless in light and dark. Build, lint and 980 tests pass. The help popover of the bulk page is cut off in frames under about 590px wide and its ARIA attributes are off; both need a fix in datocms-react-ui. |
 | 5 | import-export-schema | 7122 | ^19.2.4 | Done | On 3.1.0-next.1 and the updated skill. Build pass, lint pass, tests pass. 1 minor issue open. |

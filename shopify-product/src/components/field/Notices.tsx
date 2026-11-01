@@ -36,8 +36,8 @@ export const SETTINGS_LINK_LABEL = 'Open the plugin settings';
 type LoadErrorProps = {
   title: string;
   /**
-   * What went wrong. With `settings`, only the cause: the link to the
-   * settings is the next step.
+   * What went wrong. With `settings`, it never sends to the settings itself:
+   * the link to them follows it.
    */
   message: string;
   /** Loading again: "Try again" is busy. */

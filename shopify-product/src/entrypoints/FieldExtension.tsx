@@ -67,6 +67,7 @@ import {
   resolveFieldStore,
 } from '../lib/parameters';
 import { parseStoredValue } from '../lib/references';
+import { ShopifyClientError } from '../lib/shopifyClient';
 import { TEXTS } from '../texts';
 import type {
   FieldParametersV1,
@@ -364,11 +365,15 @@ function LoadError({
   const settingsPath = isConnectionProblem(error)
     ? settingsPathFor(ctx)
     : undefined;
+  // Admins keep the full message (what to enable in Shopify), except for a
+  // rejected token, whose full message already sends them to the settings.
+  const rejectedToken =
+    error instanceof ShopifyClientError && error.code === 'unauthorized';
   return (
     <LoadErrorNotice
       title={loadErrorTitle(params.kind, rows.length)}
       message={
-        settingsPath
+        settingsPath && rejectedToken
           ? connectionProblemCause(error)
           : loadErrorMessage(error, canEditSchema(ctx))
       }

@@ -744,16 +744,18 @@ export default function FilterBar(props: FilterBarProps) {
         />
         <EditorFilters {...props} />
       </Toolbar.Search>
-      {props.filtersActive && (
-        <Toolbar.Button label="Clear filters" onClick={props.clearFilters} />
-      )}
-      <SortMenu
-        sort={props.sort}
-        sortContext={props.sortContext}
-        onChange={(sort) =>
-          props.setFilters((current) => ({ ...current, sort }))
-        }
-      />
+      <div className={styles.filterActions}>
+        {props.filtersActive && (
+          <Toolbar.Button label="Clear filters" onClick={props.clearFilters} />
+        )}
+        <SortMenu
+          sort={props.sort}
+          sortContext={props.sortContext}
+          onChange={(sort) =>
+            props.setFilters((current) => ({ ...current, sort }))
+          }
+        />
+      </div>
     </Toolbar>
   );
 }
