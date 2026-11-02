@@ -93,7 +93,10 @@ type FormatMismatchProps = {
   onConvert: () => void;
 };
 
-/** A valid value in another format than the field's settings. */
+/**
+ * A valid value in another format than the field's settings: one sentence in
+ * the editor's words, and Convert under it.
+ */
 export function FormatMismatchNotice({
   message,
   problem,
@@ -106,11 +109,10 @@ export function FormatMismatchNotice({
   return (
     <Notice
       tone="neutral"
-      title="Saved in another format"
       action={
         readOnly ? undefined : (
           <Button
-            label="Convert to new format"
+            label="Convert"
             busy={pending}
             disabled={reason ? { reason } : undefined}
             onClick={onConvert}
@@ -131,7 +133,10 @@ type LegacyDriftProps = {
   onRefresh: () => void;
 };
 
-/** A 1.x JSON value whose saved copy no longer matches Shopify. */
+/**
+ * A value saved as product JSON (the first version's format) whose saved
+ * copy no longer matches Shopify. One sentence: no title.
+ */
 export function LegacyDriftNotice({
   summary,
   readOnly,
@@ -142,7 +147,6 @@ export function LegacyDriftNotice({
   return (
     <Notice
       tone="warning"
-      title="Shopify data changed since this was saved"
       action={
         readOnly ? undefined : (
           <Button

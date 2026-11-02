@@ -12,14 +12,15 @@ import {
   useRef,
 } from 'react';
 import {
-  BagShoppingIcon,
   CircleExclamationIcon,
   LayerGroupIcon,
   MagnifyingGlassIcon,
+  TagIcon,
 } from '../../icons';
+import { isConnectionProblem, loadErrorMessage } from '../../lib/fieldValue';
 import { pluralize } from '../../lib/format';
 import type { PickerLabels } from '../../lib/pickerSearch';
-import { describeError } from '../../lib/shopifyClient';
+import { SETTINGS_LINK_LABEL } from '../field/Notices';
 import styles from './ResultsPane.module.css';
 import { useGridColumns } from './useGridColumns';
 import { useInView } from './useInView';
@@ -34,10 +35,14 @@ import { CollectionNotVisibleError } from './usePickerData';
 /** Infinite scroll stops after this many loaded items; "Load more" goes on. */
 const AUTO_LOAD_LIMIT = 500;
 
-export function errorMessage(error: unknown): string {
+/**
+ * What went wrong, in the words of the field editor: roles that can't open
+ * the plugin settings are sent to an administrator.
+ */
+export function errorMessage(error: unknown, canEditSettings: boolean): string {
   return error instanceof CollectionNotVisibleError
     ? error.message
-    : describeError(error);
+    : loadErrorMessage(error, canEditSettings);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +97,7 @@ export function ItemGrid<T extends { id: string }>({
 // Sections
 // ---------------------------------------------------------------------------
 
-/** A titled part of the results: the SKU matches, then all the results. */
+/** A titled part of the results: the SKU matches, then the other results. */
 export function ResultSection({
   title,
   icon,
@@ -146,11 +151,13 @@ export type ResultsState = {
 function LoadMore({
   state,
   labels,
+  canEditSettings,
   areaRef,
   keepFocus,
 }: {
   state: ResultsState;
   labels: PickerLabels;
+  canEditSettings: boolean;
   areaRef: RefObject<HTMLDivElement | null>;
   /** Called before loading, so focus can move to the first new item. */
   keepFocus: () => void;
@@ -167,7 +174,7 @@ function LoadMore({
           error
           icon={<CircleExclamationIcon />}
           title={`Couldn't load more ${labels.resultMany}`}
-          description={errorMessage(state.loadMoreError)}
+          description={errorMessage(state.loadMoreError, canEditSettings)}
           actions={
             <Button
               label="Try again"
@@ -193,8 +200,10 @@ function LoadMore({
 }
 
 /**
- * Nothing to show: no match for the search, the filters or the field's
- * limits, or nothing at all (the storefront shows nothing).
+ * Nothing to show. When the search, the filters or the field's limits narrow
+ * the results, the title says no match, alone (with Clear filters for the
+ * editor's filters). When nothing narrows them, the storefront shows nothing
+ * at all, and one sentence says why.
  */
 function EmptyState({
   labels,
@@ -211,21 +220,22 @@ function EmptyState({
 }) {
   const narrowed = searching || filtersActive || scoped;
   const EntityIcon =
-    labels.resultOne === 'collection' ? LayerGroupIcon : BagShoppingIcon;
+    labels.resultOne === 'collection' ? LayerGroupIcon : TagIcon;
+  if (!narrowed) {
+    return (
+      <BlankSlate
+        placement="area"
+        icon={<EntityIcon />}
+        title={`No ${labels.resultMany} visible to this storefront`}
+        description={labels.emptyHint}
+      />
+    );
+  }
   return (
     <BlankSlate
       placement="area"
-      icon={narrowed ? <MagnifyingGlassIcon /> : <EntityIcon />}
-      title={
-        narrowed
-          ? labels.emptyTitle
-          : `No ${labels.resultMany} visible to this storefront`
-      }
-      description={
-        searching
-          ? `Check the spelling, or try fewer words. ${labels.emptyHint}`
-          : labels.emptyHint
-      }
+      icon={<MagnifyingGlassIcon />}
+      title={labels.emptyTitle}
       actions={
         filtersActive ? (
           <Button label="Clear filters" onClick={onClearFilters} />
@@ -239,6 +249,13 @@ export type ResultsPaneProps = {
   labels: PickerLabels;
   /** `ctx.ui.locale`, for the numbers of the announcements. */
   locale: string;
+  /** The role can open the plugin settings: errors don't send it elsewhere. */
+  canEditSettings: boolean;
+  /**
+   * Opens the plugin settings, for the roles that can: the first step of a
+   * load error that only the settings fix, before Try again.
+   */
+  onOpenSettings?: () => void;
   state: ResultsState;
   /** True when no loaded item passes the filters. */
   isEmpty: boolean;
@@ -257,9 +274,9 @@ export type ResultsPaneProps = {
   /** Title over the main results while something is pinned. */
   mainTitle: string;
   /**
-   * Why the prices and titles are in another language than the one asked
-   * for (Shopify fell back), or null. Shown above the results as a warning
-   * Callout.
+   * Why the titles are in another language than the one asked for (Shopify
+   * fell back), or null. Shown above the results as a neutral Callout:
+   * nothing is wrong with the items, and nothing here changes it.
    */
   marketNotice?: string | null;
   /**
@@ -300,6 +317,11 @@ function MainResults(props: MainResultsProps) {
     );
 
   if (state.status === 'error') {
+    // A connection problem: the plugin settings come first, and Try again
+    // stays for a fix made in Shopify.
+    const openSettings = isConnectionProblem(state.error)
+      ? props.onOpenSettings
+      : undefined;
     return inSection(
       <BlankSlate
         placement={placement}
@@ -307,13 +329,18 @@ function MainResults(props: MainResultsProps) {
         error
         icon={<CircleExclamationIcon />}
         title={`Couldn't load the ${labels.resultMany}`}
-        description={errorMessage(state.error)}
+        description={errorMessage(state.error, props.canEditSettings)}
         actions={
-          <Button
-            ref={props.retryRef}
-            label="Try again"
-            onClick={props.onRetry}
-          />
+          <>
+            {openSettings && (
+              <Button label={SETTINGS_LINK_LABEL} onClick={openSettings} />
+            )}
+            <Button
+              ref={props.retryRef}
+              label="Try again"
+              onClick={props.onRetry}
+            />
+          </>
         }
       />,
     );
@@ -333,16 +360,8 @@ function MainResults(props: MainResultsProps) {
     );
   }
   if (isEmpty && !state.hasNextPage) {
-    return pinnedCount > 0 ? (
-      inSection(
-        <BlankSlate
-          placement="section"
-          small
-          icon={<MagnifyingGlassIcon />}
-          title={`No other ${labels.resultMany} match`}
-        />,
-      )
-    ) : (
+    // The SKU matches answered the search: no second, empty section.
+    return pinnedCount > 0 ? null : (
       <EmptyState
         labels={labels}
         searching={props.searching}
@@ -368,6 +387,7 @@ function MainResults(props: MainResultsProps) {
       <LoadMore
         state={state}
         labels={labels}
+        canEditSettings={props.canEditSettings}
         areaRef={areaRef}
         keepFocus={keepFocus}
       />
@@ -449,9 +469,7 @@ export default function ResultsPane(
       >
         {announcement(props, props.visibleCount)}
       </div>
-      {props.marketNotice && (
-        <Callout tone="warning">{props.marketNotice}</Callout>
-      )}
+      {props.marketNotice && <Callout>{props.marketNotice}</Callout>}
       {props.filtersNotice && (
         <Callout tone="warning">{props.filtersNotice}</Callout>
       )}

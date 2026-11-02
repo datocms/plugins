@@ -1,16 +1,12 @@
 import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
 import type { Message } from 'datocms-react-ui/Message';
 import SettingsList from 'datocms-react-ui/SettingsList';
 import SmartDate from 'datocms-react-ui/SmartDate';
-import Spinner from 'datocms-react-ui/Spinner';
 import type { ReactNode } from 'react';
-import { SHOPIFY_STOREFRONT_API_VERSION } from '../../constants';
-import type { ConnectionTestResult, StoreCapabilities } from '../../types';
+import type { StoreCapabilities } from '../../types';
 import CapabilityList from './CapabilityList';
 import { SAVING_REASON, useFocusAfterBusy } from './focus';
-import styles from './Settings.module.css';
 import type { ConnectionStatus as Status } from './useConnectionChecks';
 
 type Props = {
@@ -24,35 +20,17 @@ type Props = {
   onTest: () => void;
 };
 
-/**
- * The pinned version, flagged when Shopify reports it expired. Shopify then
- * answers with the oldest version it still serves: name it when known.
- */
-export function apiVersionText(result: ConnectionTestResult): string {
-  const pinned = SHOPIFY_STOREFRONT_API_VERSION;
-  if (!result.apiVersionOutdated) return `API ${pinned}`;
-  const responded = result.respondedApiVersion;
-  return responded && responded !== pinned
-    ? `API ${pinned} (expired; Shopify answered with ${responded})`
-    : `API ${pinned} (expired)`;
-}
-
 function statusValue(
   status: Status | undefined,
   hasCapabilities: boolean,
 ): ReactNode {
   switch (status?.kind) {
     case 'checking':
-      return (
-        <>
-          <Spinner inline label={false} /> Checking the connection…
-        </>
-      );
+      return 'Checking the connection…';
     case 'connected':
       return (
         <>
-          <FeedbackDot tone="success" /> Connected to{' '}
-          <strong>{status.result.shopName}</strong>
+          <FeedbackDot tone="success" /> Connected
         </>
       );
     case 'failed':
@@ -72,41 +50,55 @@ function readableDate(iso: string): string | null {
 }
 
 /**
- * The row's one-sentence description. Once connected, it names the API
- * version the plugin targets (flagged when Shopify says it expired).
+ * The row's one-sentence description: why a check failed (where a failed
+ * save moves focus), else the connected store's name, and when the saved
+ * abilities were checked. The value stays short, so Re-check keeps its
+ * place at the right. The API version shows only once it expired, in its
+ * own group at the top.
  */
 function statusDescription(
   status: Status | undefined,
   capabilities: StoreCapabilities | null,
 ): Message | undefined {
+  if (status?.kind === 'failed') {
+    // An alert: after Re-check, focus stays on the button, and the value
+    // alone says only "Not connected".
+    return (
+      <span role="alert" data-connection-failed="true" tabIndex={-1}>
+        {status.message}
+      </span>
+    );
+  }
   const connected = status?.kind === 'connected' ? status : null;
   // The date belongs to saved capabilities, not to ones detected just now.
   const checkedAt =
     capabilities && !connected?.detected
       ? readableDate(capabilities.checkedAt)
       : null;
-  const version = connected ? apiVersionText(connected.result) : null;
-  if (checkedAt) {
+  const date = checkedAt ? <SmartDate show="date" value={checkedAt} /> : null;
+  if (!connected) {
+    return date ? <>Checked on {date}.</> : undefined;
+  }
+  const shop = <strong>{connected.result.shopName}</strong>;
+  if (date) {
     return (
       <>
-        Checked on <SmartDate show="date" value={checkedAt} />
-        {version && ` with ${version}`}.
+        {shop}, checked on {date}.
       </>
     );
   }
-  if (connected && !capabilities) {
-    return `Connected with ${version}: re-check to detect tags and inventory.`;
+  if (!capabilities) {
+    return <>{shop}. Re-check to detect stock levels and tag filters.</>;
   }
-  if (version) return `Connected with ${version}.`;
-  if (!status && !capabilities) {
-    return 'Test the connection, or save the settings to check it.';
-  }
-  return undefined;
+  return shop;
 }
 
 /**
- * The connection of a store: a failed check's message, then the status, the
- * check button and what the token can read.
+ * The connection of a store: the status (with why a check failed), the
+ * check button and what the token can't read. A check shows one spinner: on
+ * the button, or on Save while a save checks (the button then waits,
+ * disabled). After a failed check the abilities aren't known, so they don't
+ * show.
  */
 export default function ConnectionStatus({
   status,
@@ -120,43 +112,32 @@ export default function ConnectionStatus({
   const focus = useFocusAfterBusy(checking);
 
   return (
-    <>
-      {status?.kind === 'failed' && (
-        // Where a failed save moves focus: no buttons in it. The callout
-        // takes no attributes, so the focus target wraps it.
-        <div data-connection-failed="true" tabIndex={-1}>
-          <Callout tone="danger" title="Couldn't connect to Shopify">
-            {status.message}
-          </Callout>
-        </div>
+    <SettingsList>
+      <SettingsList.Row
+        title="Connection"
+        value={
+          <span aria-live="polite">
+            {statusValue(status, capabilities !== null)}
+          </span>
+        }
+        description={statusDescription(status, capabilities)}
+        action={
+          <Button
+            ref={focus.ref}
+            tone="ghost"
+            label={status || capabilities ? 'Re-check' : 'Test connection'}
+            busy={checking && !saving}
+            disabled={saving ? { reason: SAVING_REASON } : undefined}
+            onClick={() => {
+              focus.follow();
+              onTest();
+            }}
+          />
+        }
+      />
+      {capabilities && !failed && (
+        <CapabilityList capabilities={capabilities} tokenless={tokenless} />
       )}
-      <SettingsList className={failed ? styles.afterCallout : undefined}>
-        <SettingsList.Row
-          title="Connection"
-          value={
-            <span aria-live="polite">
-              {statusValue(status, capabilities !== null)}
-            </span>
-          }
-          description={statusDescription(status, capabilities)}
-          action={
-            <Button
-              ref={focus.ref}
-              tone="ghost"
-              label={status || capabilities ? 'Re-check' : 'Test connection'}
-              busy={checking}
-              disabled={saving ? { reason: SAVING_REASON } : undefined}
-              onClick={() => {
-                focus.follow();
-                onTest();
-              }}
-            />
-          }
-        />
-        {capabilities && (
-          <CapabilityList capabilities={capabilities} tokenless={tokenless} />
-        )}
-      </SettingsList>
-    </>
+    </SettingsList>
   );
 }

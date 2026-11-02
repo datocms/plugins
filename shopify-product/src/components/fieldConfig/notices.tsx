@@ -10,13 +10,11 @@ import styles from './FieldSettings.module.css';
  */
 export function fieldNotice(
   notice: string | null,
-  /** For a warning of more than one sentence: the problem in a few words. */
-  title?: string,
 ): { trailing: ReactNode } | undefined {
   if (!notice) return undefined;
   return {
     trailing: (
-      <Callout tone="warning" title={title} className={styles.fieldNotice}>
+      <Callout tone="warning" className={styles.fieldNotice}>
         {notice}
       </Callout>
     ),

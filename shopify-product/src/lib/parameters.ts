@@ -60,7 +60,7 @@ export const INVALID_SHOP_DOMAIN_ERROR =
   'Enter a valid shop domain, like acme.myshopify.com';
 
 export const ADMIN_TOKEN_ERROR =
-  "This is an Admin API token. Never paste it here: every editor's browser can read plugin settings. Use the public token from the Headless channel.";
+  "This is an Admin API token, which every editor's browser could read. Paste the Public access token of your Headless storefront instead.";
 export const EMPTY_TOKEN_ERROR =
   'Enter the Storefront access token, or connect without a token';
 export const TOKEN_WHITESPACE_ERROR =

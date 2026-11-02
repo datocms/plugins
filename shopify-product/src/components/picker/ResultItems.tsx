@@ -1,3 +1,4 @@
+import { DisclosureChevron } from 'datocms-react-ui/Chevron';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import IdText from 'datocms-react-ui/IdText';
 import MediaCard from 'datocms-react-ui/MediaCard';
@@ -10,9 +11,12 @@ import type {
 } from 'datocms-react-ui/Table';
 import StatusCell from 'datocms-react-ui/Table/cells/StatusCell';
 import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
+import { KindIcon } from '../../icons';
 import {
   availability,
+  formatCount,
   nodeImage,
+  nodeKind,
   nodeTitle,
   pluralize,
 } from '../../lib/format';
@@ -167,7 +171,10 @@ function Note({ note }: { note: ItemNote }) {
   );
 }
 
-/** A fact about the product, "2 variants selected": the neutral tone. */
+/**
+ * A fact about the product, "2 selected", under its variant count: the
+ * neutral tone.
+ */
 function SelectedVariantsPill({
   count,
   locale,
@@ -175,11 +182,8 @@ function SelectedVariantsPill({
   count: number;
   locale: string;
 }) {
-  return count > 0 ? (
-    <Pill>
-      {pluralize(count, 'variant selected', 'variants selected', locale)}
-    </Pill>
-  ) : null;
+  if (count <= 0) return null;
+  return <Pill>{`${formatCount(count, locale)} selected`}</Pill>;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +218,15 @@ type CardProps = {
 
 /**
  * The card around an item's media. Multiple fields: a checkbox in the
- * caption. Single fields: a click on the card resolves the picker. Items that
- * can't be picked show their state only, with the subtle caption. `onOpen` (a
- * product that opens its variants) replaces the selection: the product itself
- * is never picked, so its card isn't selectable, and it tells it's open
- * through `aria-expanded` and the panel under its row (its pill counts the
- * selected variants). While the results are stale, only an open product's
- * card still acts: it closes.
+ * caption, except on the cards a full selection blocks. Single fields: a
+ * click on the card resolves the picker. Items that can't be picked show
+ * their state only, with the subtle caption; items already in the field
+ * (Replace) are disabled cards, never selected, so only the current choice
+ * has the selected border. `onOpen` (a product that opens its variants)
+ * replaces the selection: the product itself is never picked, so its card
+ * isn't selectable, and it tells it's open through `aria-expanded` and the
+ * panel under its row (its pill counts the selected variants). While the
+ * results are stale, only an open product's card still acts: it closes.
  */
 function PickCard({
   cardRef,
@@ -239,23 +245,36 @@ function PickCard({
   if (open) {
     const waits = state.stale === true && !open.expanded;
     return waits ? (
-      <MediaCard ref={cardRef} caption={caption} captionDisabled>
+      <MediaCard ref={cardRef} caption={{ text: caption, muted: true }}>
         {children}
       </MediaCard>
     ) : (
-      <MediaCard ref={cardRef} caption={caption} onClick={open.onOpen}>
+      <MediaCard
+        ref={cardRef}
+        caption={{ text: caption }}
+        onClick={open.onOpen}
+      >
+        {children}
+      </MediaCard>
+    );
+  }
+  if (state.locked) {
+    return (
+      <MediaCard
+        ref={cardRef}
+        caption={{ text: caption, muted: true }}
+        disabled
+      >
         {children}
       </MediaCard>
     );
   }
   const disabled = isItemDisabled(state);
-  const common = {
-    ref: cardRef,
-    caption,
-    captionDisabled: disabled && !state.locked,
-  };
+  const common = { ref: cardRef, caption: { text: caption, muted: disabled } };
   const onSelect = disabled ? undefined : onActivate;
-  if (state.multiple) {
+  // The selection is full: the cards it blocks show no empty checkbox.
+  const full = !state.selected && state.disabledReason !== null;
+  if (state.multiple && !full) {
     return (
       <MediaCard
         {...common}
@@ -296,11 +315,14 @@ export type ProductCardProps = CardProps & {
  * A product in the grid. An accepted deviation from MediaCard, whose
  * children are only the media (the redesign brief keeps it on purpose): a
  * strip under the picture keeps what the editor compares before picking
- * (vendor and type, the matched code, price, availability, the variant
- * count) and the states the card can't show itself ("2 variants selected",
- * "In this field"). The grid is the picker's default view, and its cards showed these
- * before the redesign: with the media alone, they would only be in the list
- * view.
+ * (the matched code, price, availability, the variant count) and the states
+ * the card can't show itself ("2 selected", "In this field"). The grid is
+ * the picker's default view, and its cards showed these before the
+ * redesign: with the media alone, they would only be in the list view. The
+ * vendor and type stay in the list view and the filters. The name is the
+ * caption alone, and the cards are wide enough for long names. A product
+ * that opens its variants says so with its count after a disclosure
+ * chevron.
  */
 export function ProductCard(props: ProductCardProps) {
   const { product, state, expandable, busy } = props;
@@ -313,7 +335,6 @@ export function ProductCard(props: ProductCardProps) {
     'aria-busy': busy ? 'true' : undefined,
   });
   const price = nodePrice(product);
-  const details = productDetails(product);
   const variants = variantsLabel(product, props.locale);
 
   return (
@@ -334,7 +355,6 @@ export function ProductCard(props: ProductCardProps) {
           className={styles.media}
         />
         <div className={styles.details}>
-          {details && <span className={styles.subtle}>{details}</span>}
           {props.note && (
             <span className={styles.subtle}>
               <Note note={props.note} />
@@ -349,8 +369,16 @@ export function ProductCard(props: ProductCardProps) {
               locale={props.locale}
               inventory={props.inventory}
             />
-            {variants && <span className={styles.subtle}> · {variants}</span>}
+            {variants && !expandable && (
+              <span className={styles.subtle}> · {variants}</span>
+            )}
           </span>
+          {variants && expandable && (
+            <span className={styles.line}>
+              <DisclosureChevron open={expandable.expanded} />
+              {variants}
+            </span>
+          )}
           {(props.selectedVariants > 0 || state.locked) && (
             <span className={styles.pills}>
               <SelectedVariantsPill
@@ -379,6 +407,8 @@ export type CollectionCardProps = CardProps & {
    * cards aren't mostly empty swatches.
    */
   withMedia: boolean;
+  /** Another collection has the same title: the handle tells them apart. */
+  showHandle: boolean;
 };
 
 export function CollectionCard(props: CollectionCardProps) {
@@ -394,14 +424,18 @@ export function CollectionCard(props: CollectionCardProps) {
         {props.withMedia && (
           <Thumbnail image={collection.image} className={styles.mediaWide} />
         )}
-        <div className={styles.details}>
-          <span className={styles.subtle}>{collection.handle}</span>
-          {state.locked && (
-            <span className={styles.pills}>
-              <Pill>{IN_FIELD_LABEL}</Pill>
-            </span>
-          )}
-        </div>
+        {(props.showHandle || state.locked) && (
+          <div className={styles.details}>
+            {props.showHandle && (
+              <span className={styles.subtle}>{collection.handle}</span>
+            )}
+            {state.locked && (
+              <span className={styles.pills}>
+                <Pill>{IN_FIELD_LABEL}</Pill>
+              </span>
+            )}
+          </div>
+        )}
       </PickCard>
     </div>
   );
@@ -423,6 +457,8 @@ export type ResultRow = {
   selectedVariants: number;
   /** SKU matches name each variant with its product. */
   showProduct: boolean;
+  /** A collection whose title another one shares: its handle shows. */
+  showHandle: boolean;
   /**
    * Why the row can't be picked, when nothing else says it: a sold-out
    * variant while "Available for sale" applies. A full selection is told
@@ -438,61 +474,67 @@ function rowTitle(row: ResultRow): string {
   return row.showProduct ? nodeTitle(node) : variantLabel(node);
 }
 
-function rowDetails(node: ShopifyNode): string {
+function rowDetails(row: ResultRow): string {
+  const { node } = row;
   if (node.__typename === 'Product') return productDetails(node);
-  return node.__typename === 'Collection' ? node.handle : '';
+  return node.__typename === 'Collection' && row.showHandle ? node.handle : '';
 }
 
 function NameCell({ row }: { row: ResultRow }) {
-  const details = rowDetails(row.node);
+  const details = rowDetails(row);
   const before = Boolean(details || row.note);
   return (
-    <EntityRow
-      layout="row"
-      image={<Thumbnail image={nodeImage(row.node)} />}
-      title={rowTitle(row)}
-      afterTitle={row.inField ? <Pill>{IN_FIELD_LABEL}</Pill> : undefined}
-    >
-      {before || row.reason ? (
-        <>
-          {details}
-          {details && row.note && ' · '}
-          {row.note && <Note note={row.note} />}
-          {before && row.reason && ' · '}
-          {row.reason}
-        </>
-      ) : undefined}
-    </EntityRow>
+    <span className={styles.name}>
+      <EntityRow
+        layout="row"
+        image={
+          <Thumbnail
+            image={nodeImage(row.node)}
+            fallback={<KindIcon kind={nodeKind(row.node)} />}
+          />
+        }
+        // Similar products differ at the end of their names: they wrap.
+        multilineTitle
+        title={rowTitle(row)}
+        afterTitle={row.inField ? <Pill>{IN_FIELD_LABEL}</Pill> : undefined}
+      >
+        {before || row.reason ? (
+          <>
+            {details}
+            {details && row.note && ' · '}
+            {row.note && <Note note={row.note} />}
+            {before && row.reason && ' · '}
+            {row.reason}
+          </>
+        ) : undefined}
+      </EntityRow>
+    </span>
   );
 }
 
 /**
- * The SKU (or barcode) of a variant, or of a product's only variant ("No
- * SKU" when it has none). Products with several variants leave it empty:
- * the Variants column counts them.
+ * The SKU (or barcode) of a variant, or of a product's only variant; empty
+ * without one. Products with several variants leave it empty too: the
+ * Variants column counts them.
  */
 function SkuCell({ node }: { node: ShopifyNode }) {
-  let code: string | null = null;
+  let code = '';
   if (node.__typename === 'ProductVariant') {
     code = node.sku?.trim() || node.barcode?.trim() || '';
   } else if (node.__typename === 'Product' && node.variantsCount?.count === 1) {
     code = node.sku?.trim() ?? '';
   }
-  if (code === null) return null;
-  return code ? (
-    <IdText id={code} />
-  ) : (
-    <span className={styles.subtle}>No SKU</span>
-  );
+  return code ? <IdText id={code} /> : null;
 }
 
+/** The count, and under it how many of them are selected. */
 function VariantsCell({ row }: { row: ResultRow }) {
   if (row.node.__typename !== 'Product') return null;
   const label = variantsLabel(row.node, row.locale);
   return (
-    <span className={styles.line}>
-      <SelectedVariantsPill count={row.selectedVariants} locale={row.locale} />
+    <span className={styles.stack}>
       {label}
+      <SelectedVariantsPill count={row.selectedVariants} locale={row.locale} />
     </span>
   );
 }
@@ -553,18 +595,22 @@ export const PRODUCT_COLUMNS: TableColumn<ResultRow>[] = [
   {
     name: 'variants',
     label: 'Variants',
+    // The count, and the pill of the selected ones under it.
+    truncate: false,
     renderCell: (row) => <VariantsCell row={row} />,
   },
   PRICE_COLUMN,
   AVAILABILITY_COLUMN,
 ];
 
+// The price column fits a range ("€10.00 – €100.00"), and the SKU column a
+// whole SKU: related ones differ only at the end ("sku-managed-1").
 export const PRODUCT_LAYOUT = {
   columns: [
-    { name: 'name', width: 4 },
-    { name: 'sku', width: 1.6 },
-    { name: 'variants', width: 1.4 },
-    { name: 'price', width: 1.4 },
+    { name: 'name', width: 3.2 },
+    { name: 'sku', width: 1.8 },
+    { name: 'variants', width: 1.2 },
+    { name: 'price', width: 2.2 },
     { name: 'availability', width: 1.6 },
   ],
 };
@@ -579,8 +625,8 @@ export const VARIANT_COLUMNS: TableColumn<ResultRow>[] = [
 
 export const VARIANT_LAYOUT = {
   columns: [
-    { name: 'name', width: 3 },
-    { name: 'sku', width: 1.6 },
+    { name: 'name', width: 2.6 },
+    { name: 'sku', width: 2 },
     { name: 'price', width: 1.4 },
     { name: 'availability', width: 1.6 },
   ],
@@ -600,15 +646,18 @@ export const PRODUCT_COLUMNS_STORAGE_KEY =
 // List: how a row picks
 // ---------------------------------------------------------------------------
 
-const noop = () => {};
-
 export function resultRow(
   node: ShopifyNode,
   env: Pick<ItemEnv, 'locale' | 'inventory'>,
   extra: Partial<
     Pick<
       ResultRow,
-      'inField' | 'note' | 'selectedVariants' | 'showProduct' | 'reason'
+      | 'inField'
+      | 'note'
+      | 'selectedVariants'
+      | 'showProduct'
+      | 'showHandle'
+      | 'reason'
     >
   > = {},
 ): ResultRow {
@@ -620,6 +669,7 @@ export function resultRow(
     note: extra.note ?? null,
     selectedVariants: extra.selectedVariants ?? 0,
     showProduct: extra.showProduct ?? false,
+    showHandle: extra.showHandle ?? false,
     reason: extra.reason ?? null,
   };
 }
@@ -635,13 +685,18 @@ export type RowBehavior = {
   | { onOpen?: never; active?: never }
 );
 
+/** What a click on a checkbox that can't change does: nothing. */
+const noop = () => {};
+
 /**
  * Multiple fields: the row's checkbox (a click on the row toggles it).
  * Single fields: a click, Enter or Space picks the row, and the current
  * choice is the active row. Items already in the field are muted, with their
- * pill; a product with several variants (variant mode) opens them instead.
- * While the results are stale, the rows can't be picked, and only an open
- * product can close.
+ * pill. A product with several variants (variant mode) opens them instead,
+ * from the row or the chevron: in a multiple field its checkbox can't be
+ * changed, and is ticked while some of its variants are selected. While the
+ * results are stale, the rows can't be picked, and only an open product can
+ * close.
  */
 export function rowBehavior(
   state: ItemSelectionState,
@@ -653,33 +708,24 @@ export function rowBehavior(
 ): RowBehavior {
   const { expandable } = options;
   if (expandable) {
-    // Its variants are picked, not the product: the checkbox stays off.
-    const selection = state.multiple
-      ? { selected: false, onSelect: noop, disabled: true }
-      : undefined;
-    if (state.stale && !expandable.open) {
-      return {
-        selection,
-        firstCell: {
-          expandable: {
-            open: false,
+    const waits = state.stale === true && !expandable.open;
+    const firstCell: TableFirstCell = {
+      expandable: waits
+        ? { open: false, onToggle: expandable.onToggle, disabled: true }
+        : {
+            open: expandable.open,
             onToggle: expandable.onToggle,
-            disabled: true,
+            busy: expandable.busy,
           },
-        },
-      };
-    }
-    return {
-      selection,
-      onOpen: expandable.onToggle,
-      firstCell: {
-        expandable: {
-          open: expandable.open,
-          onToggle: expandable.onToggle,
-          busy: expandable.busy,
-        },
-      },
     };
+    // Its variants are picked, not the product: the checkbox only shows
+    // whether some of them are.
+    const selection = state.multiple
+      ? { selected: state.selected, onSelect: noop, disabled: true }
+      : undefined;
+    return waits
+      ? { selection, firstCell }
+      : { selection, onOpen: expandable.onToggle, firstCell };
   }
   const disabled = isItemDisabled(state);
   const shared = { muted: state.locked === true, fetching: options.busy };

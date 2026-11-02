@@ -190,6 +190,17 @@ export function ProductList(props: ProductListProps) {
 // Collections
 // ---------------------------------------------------------------------------
 
+/** The titles that more than one collection has: their handles show. */
+function sharedTitles(collections: CollectionSummary[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const { title } of collections) {
+    if (seen.has(title)) shared.add(title);
+    seen.add(title);
+  }
+  return shared;
+}
+
 function CollectionTable({
   env,
   collections,
@@ -197,6 +208,7 @@ function CollectionTable({
   env: ItemEnv;
   collections: CollectionSummary[];
 }) {
+  const shared = sharedTitles(collections);
   const [layout, setLayout] = useInMemoryTableLayout(COLLECTION_LAYOUT);
   return (
     <Table
@@ -215,6 +227,7 @@ function CollectionTable({
               key={collection.id}
               row={resultRow(collection, env, {
                 inField: state.locked === true,
+                showHandle: shared.has(collection.title),
               })}
               {...rowBehavior(state, () => env.pick(collection))}
               wrapperProps={ITEM_PROPS}
@@ -237,6 +250,7 @@ export function CollectionList({
     return <CollectionTable env={env} collections={collections} />;
   }
   const withMedia = collections.some((collection) => collection.image);
+  const shared = sharedTitles(collections);
   return (
     <ItemGrid
       items={collections}
@@ -247,6 +261,7 @@ export function CollectionList({
           state={selectionState(env, collection)}
           hasSelection={env.hasSelection}
           withMedia={withMedia}
+          showHandle={shared.has(collection.title)}
           onActivate={() => env.pick(collection)}
         />
       )}

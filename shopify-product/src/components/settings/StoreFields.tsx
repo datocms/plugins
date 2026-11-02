@@ -17,8 +17,6 @@ import type { ConnectionStatus as Status } from './useConnectionChecks';
 
 export type StoreFieldsProps = {
   store: StoreDraft;
-  /** 1-based position; 1 is the default store. */
-  position: number;
   /** With two or more stores each store gets a label. */
   multiple: boolean;
   errors: StoreErrors;
@@ -66,18 +64,11 @@ function isRequired({ store, demoStore }: StoreFieldsProps): boolean {
   return !(demoStore && isBlankStore(store));
 }
 
+/** The "Default" pill of the first store says which one fields use. */
 function LabelField(props: StoreFieldsProps) {
-  const { store, position, onChange } = props;
+  const { store, onChange } = props;
   return (
-    <FieldWrapper
-      id={`${store.key}-label`}
-      label="Label"
-      hint={
-        position === 1
-          ? "Fields that don't pick a store use this one."
-          : undefined
-      }
-    >
+    <FieldWrapper id={`${store.key}-label`} label="Label">
       <StringInput
         name={`${store.key}-label`}
         placeholder="EU store"
@@ -118,7 +109,7 @@ function TokenlessSwitch({ store, locked, onChange }: StoreFieldsProps) {
   return (
     <FieldWrapper
       id={`${store.key}-tokenless`}
-      hint="Public stores only, without tags or inventory."
+      hint="Public stores only, without tag filters or stock levels."
     >
       <SwitchInput
         name={`${store.key}-tokenless`}
@@ -169,6 +160,8 @@ export default function StoreFields(props: StoreFieldsProps) {
       <DomainField {...props} />
       <TokenlessSwitch {...props} />
       {!store.tokenless && <TokenField {...props} />}
+      {/* While the connection is checked again, the last markets stay,
+          disabled, so the form doesn't jump. */}
       {localization && (
         <MarketFields
           idPrefix={store.key}
@@ -176,7 +169,7 @@ export default function StoreFields(props: StoreFieldsProps) {
           country={store.defaultCountry}
           language={store.defaultLanguage}
           locale={props.locale}
-          disabled={locked}
+          disabled={locked || status?.kind === 'checking'}
           onChange={props.onChange}
         />
       )}

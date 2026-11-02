@@ -37,11 +37,14 @@ type SetFilters = (update: (current: PickerFilters) => PickerFilters) => void;
 const LOCKED_HINT = 'Set in the field settings.';
 
 const TAGS_UNSUPPORTED_HINT =
-  "Set in the field settings. Shopify can't apply it inside this collection until the tag filter is enabled in Search & Discovery.";
+  "Set in the field settings. This collection can't be filtered by tags.";
+
+/** The tag menu while the field settings limit the tags. */
+const LOCKED_TAGS_NOTE = 'Set in the field settings. Pick one to narrow.';
 
 /** Why a filter the editor set isn't applied inside the browsed collection. */
 const NOT_APPLIED_HINT =
-  'Not applied inside this collection. Enable this filter in Shopify Search & Discovery to use it inside a collection.';
+  "Not applied: this collection can't be filtered by it.";
 
 /** The availability filter, named as in the field settings (`availableForSale`). */
 const AVAILABLE_LABEL = 'Available for sale';
@@ -60,9 +63,10 @@ function shortTagsLabel(tags: readonly string[]): string {
 /**
  * A filter the field settings fixed: visible and explained, not editable. A
  * static pill, without the chevron of the filter menus next to it, and no
- * icon (a pill's icon only repeats what its text says). The tooltip says
- * where it's set, and never repeats the pill: only a value the pill
- * shortens ("Tags: Accessory +2") leads it in full.
+ * icon (a pill's icon only repeats what its text says). The "Limited to:"
+ * before the pills says they're fixed; the tooltip adds where they're set,
+ * and never repeats the pill: only a value the pill shortens ("Tags:
+ * Accessory +2") leads it in full.
  */
 function LockedPill({
   text,
@@ -97,14 +101,25 @@ function ScopePills({
   scope,
   collectionTitle,
   tagsUnsupported,
+  tagsInMenu,
 }: {
   scope: FieldScope;
   collectionTitle: string | null;
   tagsUnsupported: boolean;
+  /** The tag menu shows the field's tags: no pill repeats them. */
+  tagsInMenu: boolean;
 }) {
-  const tags = scope.tags ?? [];
+  const tags = tagsInMenu ? [] : (scope.tags ?? []);
+  const any =
+    scope.collectionId ||
+    scope.productType ||
+    scope.vendor ||
+    tags.length > 0 ||
+    scope.availableOnly;
+  if (!any) return null;
   return (
-    <>
+    <span className={styles.scope}>
+      <span className={styles.scopeLabel}>Limited to:</span>
       {scope.collectionId && (
         <LockedPill text={`Collection: ${collectionTitle ?? 'Loading…'}`} />
       )}
@@ -120,7 +135,7 @@ function ScopePills({
         />
       )}
       {scope.availableOnly && <LockedPill text={AVAILABLE_LABEL} />}
-    </>
+    </span>
   );
 }
 
@@ -323,15 +338,21 @@ function ClearTagsButton({ onClear }: { onClear: () => void }) {
   );
 }
 
-/** A menu of many values: the checkboxes keep it open. */
+/**
+ * A menu of many values: the checkboxes keep it open. While the field
+ * settings limit the tags, the pill says them until the editor narrows them.
+ */
 function TagsFilter({
   value,
+  locked,
   options,
   values,
   onToggle,
   onClear,
 }: {
   value: string[];
+  /** The tags the field settings limit the picker to, or none. */
+  locked: readonly string[];
   /** The tags to offer: the scope's tags when locked, else the store's. */
   options: string[];
   values: AsyncValue<unknown>;
@@ -342,10 +363,15 @@ function TagsFilter({
     <FilterMenu
       label="Tags"
       value={value.length > 0 ? shortTagsLabel(value) : null}
+      anyValue={locked.length > 0 ? shortTagsLabel(locked) : undefined}
     >
       {(choose) => (
         <>
-          <Dropdown.Text>Shows products with any of these tags.</Dropdown.Text>
+          <Dropdown.Text>
+            {locked.length > 0
+              ? LOCKED_TAGS_NOTE
+              : 'Shows products with any of these tags.'}
+          </Dropdown.Text>
           {options.length > 0 && <Dropdown.Separator />}
           {options.map((tag) => (
             <Dropdown.Option
@@ -507,7 +533,7 @@ function SortMenu({
         tone="ghost"
         label={`Sort: ${current}`}
       >
-        <Dropdown.Menu placement="bottom-end">
+        <Dropdown.Menu placement="bottom-end" contextualSearch={false}>
           {options.map((option) => (
             <Dropdown.Option
               key={option.value}
@@ -601,6 +627,18 @@ function showsTags(props: FilterBarProps): boolean {
   );
 }
 
+/**
+ * The field settings limit the picker to several tags, and the tag menu
+ * applies: the menu carries them, instead of a "Limited to:" pill next to it.
+ */
+function tagsInMenu(props: FilterBarProps): boolean {
+  return (
+    showsTags(props) &&
+    props.controls.tags &&
+    (props.scope?.tags?.length ?? 0) > 1
+  );
+}
+
 /** Inside a collection whose Search & Discovery settings lack the tag filter. */
 function tagsUnsupportedIn(props: FilterBarProps): boolean {
   return props.inCollection && props.support !== null && !props.support.tag;
@@ -636,33 +674,28 @@ function notAppliedFilters(props: FilterBarProps): string[] {
     .map(([name]) => name);
 }
 
-/** How the sentence ends: what Search & Discovery has to enable. */
-function untilEnabled(filters: readonly string[], tagLimit: boolean): string {
-  if (tagLimit) {
-    return filters.length === 0
-      ? 'the tag filter is enabled'
-      : 'their filters are enabled';
-  }
-  return filters.length === 1 ? "it's enabled" : "they're enabled";
-}
-
 /**
  * What the browsed collection keeps but can't apply, in a sentence for the
  * results: the editor's filters that show as warning pills, and the tag
- * limit of the field settings. Null when everything applies.
+ * limit of the field settings. It names the next step the editor can take
+ * (the field settings explain the Search & Discovery setup). Null when
+ * everything applies.
  */
 export function notAppliedNotice(props: FilterBarProps): string | null {
   const filters = notAppliedFilters(props);
   const tagLimit =
     tagsUnsupportedIn(props) && (props.scope?.tags?.length ?? 0) > 0;
   const parts: string[] = [];
-  if (tagLimit) parts.push("the field's tag limit");
-  if (filters.length > 0) {
-    const noun = filters.length === 1 ? 'filter' : 'filters';
-    parts.push(`the ${joinWithAnd(filters)} ${noun}`);
-  }
+  if (tagLimit) parts.push("the field's tags");
+  if (filters.length > 0) parts.push(joinWithAnd(filters));
   if (parts.length === 0) return null;
-  return `Shopify can't apply ${parts.join(' and ')} inside this collection until ${untilEnabled(filters, tagLimit)} in Search & Discovery.`;
+  const problem = `This collection can't be filtered by ${parts.join(' or by ')}`;
+  if (filters.length > 0) {
+    return `${problem}: clear the filters, or choose another collection.`;
+  }
+  return props.scope?.collectionId
+    ? `${problem}.`
+    : `${problem}: choose another collection to apply them.`;
 }
 
 /** The editor's filters, for what the scope leaves open. */
@@ -696,6 +729,7 @@ function EditorFilters(props: FilterBarProps) {
         <Applicable applies={controls.tags} kept={kept.tags}>
           <TagsFilter
             value={filters.tags}
+            locked={tagsInMenu(props) ? (scope.tags ?? []) : []}
             options={tagOptions(scope, props.filterValues)}
             values={props.filterValues}
             onToggle={(tag) =>
@@ -741,6 +775,7 @@ export default function FilterBar(props: FilterBarProps) {
           scope={scope}
           collectionTitle={props.lockedCollectionTitle}
           tagsUnsupported={tagsUnsupportedIn(props)}
+          tagsInMenu={tagsInMenu(props)}
         />
         <EditorFilters {...props} />
       </Toolbar.Search>

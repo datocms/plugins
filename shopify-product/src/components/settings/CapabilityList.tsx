@@ -4,8 +4,10 @@ import type { StoreCapabilities } from '../../types';
 import { PERMISSIONS } from './permissions';
 
 /*
- * Only what the plugin uses. Metafields aren't listed: nothing reads them in
- * 2.0, and Shopify answers the probe the same way with or without the scope.
+ * Only what the plugin uses, named after what editors get: the picker's tag
+ * filters, and the stock levels of products and variants. Metafields aren't
+ * listed: nothing reads them in 2.0, and Shopify answers the probe the same
+ * way with or without the scope.
  *
  * Detection can't tell a missing scope from missing data: Shopify answers an
  * empty tag list (or no product at all) either way. Each hint covers both,
@@ -19,15 +21,15 @@ const CAPABILITIES: Array<{
 }> = [
   {
     name: 'tags',
-    label: 'Tags',
+    label: 'Tag filters',
     hint: `Enable "${PERMISSIONS.tags.label}" in Headless → Storefront API permissions, or tag some products.`,
-    tokenlessHint: 'Tags need a Storefront access token.',
+    tokenlessHint: 'Tag filters need a Storefront access token.',
   },
   {
     name: 'inventory',
-    label: 'Inventory',
+    label: 'Stock levels',
     hint: `Enable "${PERMISSIONS.inventory.label}" in Headless → Storefront API permissions, or publish some products to this storefront.`,
-    tokenlessHint: 'Inventory needs a Storefront access token.',
+    tokenlessHint: 'Stock levels need a Storefront access token.',
   },
 ];
 
@@ -37,28 +39,26 @@ type Props = {
 };
 
 /**
- * One `SettingsList` row per capability: available or not, and how to get
- * what's missing.
+ * A `SettingsList` row per missing capability, with how to get it. What's
+ * available needs nothing from anyone, so it doesn't show.
  */
 export default function CapabilityList({ capabilities, tokenless }: Props) {
   return (
     <>
-      {CAPABILITIES.map(({ name, label, hint, tokenlessHint }) => {
-        const granted = capabilities[name];
-        return (
+      {CAPABILITIES.filter(({ name }) => !capabilities[name]).map(
+        ({ name, label, hint, tokenlessHint }) => (
           <SettingsList.Row
             key={name}
             title={label}
             value={
               <>
-                <FeedbackDot tone={granted ? 'success' : 'neutral'} />{' '}
-                {granted ? 'Available' : 'Not available'}
+                <FeedbackDot tone="neutral" /> Not available
               </>
             }
-            description={granted ? undefined : tokenless ? tokenlessHint : hint}
+            description={tokenless ? tokenlessHint : hint}
           />
-        );
-      })}
+        ),
+      )}
     </>
   );
 }

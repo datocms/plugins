@@ -62,14 +62,16 @@ export const FORMAT_OPTIONS: Record<FieldType, FormatOption[]> = {
     {
       value: 'legacyProductJson',
       label: 'Legacy product JSON',
-      description: 'The product data 1.x stored, one product per field.',
+      description:
+        'The product data as the first version of this plugin saved it, one product per field.',
     },
   ],
   string: [
     {
       value: 'handle',
       label: 'Handle',
-      description: 'The product or collection handle, as 1.x stored it.',
+      description:
+        'The product or collection handle, as the first version of this plugin saved it.',
     },
     {
       value: 'gid',
@@ -102,35 +104,29 @@ export function cardinalityHint(
  * few words (Callout).
  */
 
-export const LEGACY_NOTICE_TITLE = '1.x settings';
+/** The field still has the settings of the plugin's first version (1.x). */
+export const LEGACY_NOTICE_TITLE = 'Older settings';
 
-export const LEGACY_NOTICE: Record<FieldType, string> = {
-  string:
-    'This field uses the 1.x settings (product handle). Existing values keep working; change the options below to opt in to the new formats.',
-  json: 'This field uses the 1.x settings (product JSON). Existing values keep working; change the options below to opt in to the new formats.',
-};
+export const LEGACY_NOTICE =
+  'Existing values keep working. Change an option below to switch to the new formats.';
 
 export const UNSUPPORTED_NOTICE_TITLE = 'Unknown settings version';
 
 export const UNSUPPORTED_NOTICE =
-  "These field settings come from an unknown plugin version, so they haven't been changed. The options below show the 1.x defaults: change any of them to replace the saved settings.";
-
-export const FORMAT_CHANGE_TITLE = 'Existing values stay as saved';
+  "These field settings come from an unknown plugin version, so they haven't been changed. The options below show the defaults of the first version of this plugin: change any of them to replace the saved settings.";
 
 export const FORMAT_CHANGE_NOTICE =
-  'Existing records keep their current value until an editor converts or replaces it. Make sure your frontend reads both formats during the transition.';
-
-export const STORE_CHANGE_TITLE = 'Existing values use another store';
+  'Existing records keep their current value until an editor converts or replaces it, so make sure your frontend reads both formats meanwhile.';
 
 export function storeChangeNotice(previousStore: string): string {
-  return `Existing records point to items in ${previousStore}. Editors have to pick them again from the new store.`;
+  return `Existing records point to items in ${previousStore}, so editors have to pick them again from the new store.`;
 }
 
 export const CARDINALITY_CHANGE_NOTICE =
   'Records that already hold several items show an error until an editor picks a single one again.';
 
 export const REPAIR_NOTICE =
-  'The options below show the closest valid settings. Use them as they are, or change any option.';
+  'The options below are the closest valid ones: use them, or change any option.';
 
 export const TAGS_IN_COLLECTION_WARNING =
   "Shopify can't apply tag limits inside this collection until the Tag filter is enabled in the Search & Discovery app.";
@@ -147,11 +143,9 @@ export function exampleHint(params: FieldParametersV1): string {
     case 'gid':
       return `The Shopify ID of the selected ${noun}, as a plain string.`;
     case 'legacyProductJson':
-      return 'The same product JSON 1.x stored, so existing frontends keep working.';
+      return 'The same product JSON as the first version of this plugin, so existing frontends keep working.';
     case 'reference':
-      return params.snapshot
-        ? 'Snapshots are display hints captured at selection time: Shopify stays the source of truth.'
-        : 'Resolve the IDs with the Storefront API to render live data.';
+      return 'Resolve the IDs with the Storefront API to render live data.';
   }
 }
 

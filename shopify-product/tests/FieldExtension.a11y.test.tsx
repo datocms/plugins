@@ -386,7 +386,7 @@ describe('FieldExtension with the real kit: focus after actions', () => {
     );
     const view = render(<FieldExtension ctx={ctx} />);
     const update = await screen.findByRole('button', {
-      name: 'Update handle',
+      name: 'Update address',
     });
     update.focus();
     await userEvent.setup().keyboard('{Enter}');
@@ -395,7 +395,7 @@ describe('FieldExtension with the real kit: focus after actions', () => {
       <FieldExtension ctx={withValue(ctx, setFieldValue.mock.calls[0]?.[1])} />,
     );
     await settle();
-    expect(screen.queryByRole('button', { name: 'Update handle' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Update address' })).toBeNull();
     expect(document.activeElement).toBe(trigger('Bravo board'));
   });
 

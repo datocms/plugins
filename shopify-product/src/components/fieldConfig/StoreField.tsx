@@ -5,7 +5,6 @@ import SelectInput from 'datocms-react-ui/SelectInput';
 import { storeLabel } from '../../lib/parameters';
 import type { StoreConnection } from '../../types';
 import { MAX_RADIO_OPTIONS } from '../shared/choices';
-import { STORE_CHANGE_TITLE } from './copy';
 import { fieldNotice } from './notices';
 
 /** `domain`: the store has a label of its own, so the menu adds its domain. */
@@ -85,9 +84,8 @@ export default function StoreField({
     <FieldWrapper
       id="store"
       label="Store"
-      hint="Editors browse this store. The default is the first store in the plugin settings."
       error={error ?? missing}
-      container={fieldNotice(notice, STORE_CHANGE_TITLE)}
+      container={fieldNotice(notice)}
     >
       {options.length <= MAX_RADIO_OPTIONS ? (
         <RadioGroupInput

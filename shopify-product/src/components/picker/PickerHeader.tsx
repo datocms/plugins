@@ -25,6 +25,11 @@ const VIEW_OPTIONS = [
 type Props = {
   text: string;
   onTextChange: (text: string) => void;
+  /**
+   * Only the plugin settings can fix the load: the error and the search are
+   * the screen, without controls that can't bring results.
+   */
+  blocked: boolean;
   view: PickerView;
   onViewChange: (view: PickerView) => void;
   /** New results load while the last ones still show. */
@@ -40,11 +45,14 @@ type Props = {
  * the results (named by the Pane, focused when the picker opens, with its ✕
  * while it has text), the spinner while new results load over the last ones,
  * the layout and the market, then (products and variants) the filter bar.
- * The Pane draws the line under each toolbar.
+ * While only the plugin settings can fix the load, the layout, the market
+ * and the filter bar stay out: the search keeps its focus. The Pane draws
+ * the line under each toolbar.
  */
 export default function PickerHeader({
   text,
   onTextChange,
+  blocked,
   view,
   onViewChange,
   reloading,
@@ -65,15 +73,17 @@ export default function PickerHeader({
           />
         </div>
         <Toolbar.Spinner show={reloading} />
-        <SegmentedControl
-          ariaLabel="Layout"
-          options={VIEW_OPTIONS}
-          value={view}
-          onChange={onViewChange}
-        />
-        {market}
+        {!blocked && (
+          <SegmentedControl
+            ariaLabel="Layout"
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={onViewChange}
+          />
+        )}
+        {!blocked && market}
       </Toolbar>
-      {filterBar}
+      {!blocked && filterBar}
     </>
   );
 }

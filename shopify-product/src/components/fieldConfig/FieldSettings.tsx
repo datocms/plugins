@@ -1,7 +1,10 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
 import Callout from 'datocms-react-ui/Callout';
+import Link from 'datocms-react-ui/Link';
+import { pluginSettingsPath } from '../../lib/fieldValue';
 import {
   getActiveStores,
+  isPluginConfigured,
   normalizePluginParameters,
   resolveFieldStore,
 } from '../../lib/parameters';
@@ -10,6 +13,7 @@ import type {
   PluginParametersV3,
   StoreConnection,
 } from '../../types';
+import { SETTINGS_LINK_LABEL } from '../field/Notices';
 import { changesSinceSaved, NO_CHANGES, type SavedChanges } from './changes';
 import {
   CARDINALITY_CHANGE_NOTICE,
@@ -80,14 +84,25 @@ export default function FieldSettings({ ctx, fieldType }: Props) {
   };
   const allErrors = readErrors(ctx.errors);
   const errors = controlErrors(allErrors, placement);
+  const settingsPath = pluginSettingsPath({
+    pluginId: ctx.plugin.id,
+    environment: ctx.environment,
+    isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+  });
+  const pluginConfigured = isPluginConfigured(plugin);
 
   return (
     <>
       <Notices
         config={config}
-        fieldType={fieldType}
         stray={strayErrors(allErrors, visible, placement)}
       />
+      {!pluginConfigured && (
+        <Callout>
+          No Shopify store is connected yet.{' '}
+          <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link> to connect one.
+        </Callout>
+      )}
       <ValueSettings
         config={config}
         fieldType={fieldType}
@@ -104,6 +119,8 @@ export default function FieldSettings({ ctx, fieldType }: Props) {
         visible={visible}
         errors={errors}
         changes={changes}
+        pluginConfigured={pluginConfigured}
+        settingsPath={settingsPath}
       />
       <StoredValueExample
         fieldType={fieldType}
@@ -116,14 +133,17 @@ export default function FieldSettings({ ctx, fieldType }: Props) {
   );
 }
 
+/** The validation errors have no period: here they are sentences. */
+function asSentence(message: string): string {
+  return message.endsWith('.') ? message : `${message}.`;
+}
+
 /** Notices about the saved settings, plus errors no visible control can show. */
 function Notices({
   config,
-  fieldType,
   stray,
 }: {
   config: FieldConfigState;
-  fieldType: FieldType;
   stray: string[];
 }) {
   return (
@@ -134,9 +154,7 @@ function Notices({
         </Callout>
       )}
       {config.isLegacy && (
-        <Callout title={LEGACY_NOTICE_TITLE}>
-          {LEGACY_NOTICE[fieldType]}
-        </Callout>
+        <Callout title={LEGACY_NOTICE_TITLE}>{LEGACY_NOTICE}</Callout>
       )}
       {stray.length > 0 && (
         <CalloutWithAction
@@ -148,10 +166,10 @@ function Notices({
               : undefined
           }
         >
-          {stray.map((message) => (
-            <p key={message}>{message}</p>
-          ))}
-          {config.needsRepair && <p>{REPAIR_NOTICE}</p>}
+          {[
+            ...stray.map(asSentence),
+            ...(config.needsRepair ? [REPAIR_NOTICE] : []),
+          ].join(' ')}
         </CalloutWithAction>
       )}
     </>
@@ -245,10 +263,14 @@ function StoreSettings({
   visible,
   errors,
   changes,
+  pluginConfigured,
+  settingsPath,
 }: SectionProps & {
   plugin: PluginParametersV3;
   stores: StoreConnection[];
   store: StoreConnection | null;
+  pluginConfigured: boolean;
+  settingsPath: string;
 }) {
   const { params } = config.draft;
   const { update } = config;
@@ -287,6 +309,8 @@ function StoreSettings({
           kind={params.kind}
           scope={params.scope}
           store={store}
+          pluginConfigured={pluginConfigured}
+          settingsPath={settingsPath}
           error={errors.scope}
           onChange={(patch) => update((p) => withScope(p, patch, fieldType))}
         />

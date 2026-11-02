@@ -5,15 +5,6 @@
   margin-bottom: var(--form-field-gap);
 }
 
-/*
- * The connection rows under a failed connection's callout. The callout is
- * the only child of its focus target, so it drops its bottom margin (the
- * kit's `.Callout:last-child`): the rows keep the space after it.
- */
-.afterCallout {
-  margin-top: var(--spacing-l);
-}
-
 /* Save, and Save anyway after a failed connection check. */
 .actions {
   display: flex;

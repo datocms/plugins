@@ -42,7 +42,9 @@ type Props = {
  * (not at the maximum, nor when read-only), and the same action fills the
  * empty slot that stands for the card while the field is empty. With several
  * rows they reorder by drag and drop from the handle in the gutter, or with
- * "Move up" and "Move down" in each row's menu.
+ * "Move up" and "Move down" in each row's menu. The limits line and its
+ * warning follow the card, on its left edge. The field editor gives a
+ * multiple field the gutter of the handles (`styles.gutter`).
  */
 export default function EntryList({
   params,
@@ -66,12 +68,7 @@ export default function EntryList({
   };
 
   return (
-    <div
-      {...{ [FIELD_ACTION_ATTRIBUTE]: 'add' }}
-      // The gutter stays while the list can get handles, so the card doesn't
-      // move when a second item arrives or leaves.
-      className={multiple && !readOnly ? styles.gutter : undefined}
-    >
+    <div {...{ [FIELD_ACTION_ATTRIBUTE]: 'add' }}>
       {/* Always the same tree, so rows don't remount when reordering
           becomes available: the list is only disabled. */}
       <SortableList disabled={!reorderable} onDrop={handleDrop}>
@@ -111,6 +108,14 @@ export default function EntryList({
           ))}
         </CardList>
       </SortableList>
+      {multiple && (
+        <FieldLimits
+          limits={limits}
+          count={rows.length}
+          readOnly={readOnly}
+          busy={actions.busy}
+        />
+      )}
     </div>
   );
 }
@@ -127,9 +132,12 @@ function addWaitsFor(busy: ActionName | null): boolean {
 }
 
 /**
- * "3 of 10 products"; at the maximum, also why "Add …" is gone ("3 of 3
- * products. You can't add more products: …"), and while a slow action runs,
- * why "Add …" waits; while empty, the minimum.
+ * "3 of 10 products" while the field can change and has a maximum; at the
+ * maximum, also why "Add …" is gone ("3 of 3 products. The field is
+ * full."), and while a slow action runs, why "Add …" waits; while empty,
+ * the minimum. A read-only field shows no line: nobody can act on it.
+ * Above the maximum, or below the minimum, the warning says it all ("Remove
+ * 1 product: …"): a counter would read "3 of 2".
  */
 function limitsLine(
   limits: LimitsSummary,
@@ -137,11 +145,11 @@ function limitsLine(
   readOnly: boolean,
   busy: ActionName | null,
 ): Message | null {
-  if (count === 0) return readOnly ? null : limits.belowMin;
-  const atMaxReason =
-    limits.atMax && !limits.aboveMax && !readOnly ? limits.atMaxReason : null;
-  const waiting =
-    !readOnly && !limits.atMax && addWaitsFor(busy) ? BUSY_REASON : null;
+  if (readOnly) return null;
+  if (count === 0) return limits.belowMin;
+  if (limits.aboveMax) return null;
+  const atMaxReason = limits.atMax ? limits.atMaxReason : null;
+  const waiting = !limits.atMax && addWaitsFor(busy) ? BUSY_REASON : null;
   // The counter has no period; the at-max reason and the wait (never both)
   // are sentences, after it.
   const note = atMaxReason ?? waiting;
@@ -161,7 +169,7 @@ type LimitsProps = {
  * is gone at the maximum, or waits), or the minimum while empty; with items,
  * a value below the minimum or above the maximum is a warning.
  */
-export function FieldLimits({ limits, count, readOnly, busy }: LimitsProps) {
+function FieldLimits({ limits, count, readOnly, busy }: LimitsProps) {
   const line = limitsLine(limits, count, readOnly, busy);
   const warning =
     count > 0 && !readOnly ? (limits.aboveMax ?? limits.belowMin) : null;

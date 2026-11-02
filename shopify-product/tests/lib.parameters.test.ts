@@ -204,7 +204,7 @@ describe('validateStorefrontToken', () => {
 
   it('uses the exact Admin token copy', () => {
     expect(ADMIN_TOKEN_ERROR).toBe(
-      "This is an Admin API token. Never paste it here: every editor's browser can read plugin settings. Use the public token from the Headless channel.",
+      "This is an Admin API token, which every editor's browser could read. Paste the Public access token of your Headless storefront instead.",
     );
   });
 

@@ -764,11 +764,9 @@ describe('describeStoredValueError', () => {
     const messages = codes.map(describeStoredValueError);
     expect(new Set(messages).size).toBe(codes.length);
     for (const message of messages) {
-      expect(message).toMatch(/^The saved value .+\.$/);
+      expect(message).toMatch(/^(The saved value|It's) .+\.$/);
     }
-    expect(describeStoredValueError('invalid-json')).toBe(
-      "The saved value isn't valid JSON.",
-    );
+    expect(describeStoredValueError('invalid-json')).toBe("It's damaged.");
   });
 });
 

@@ -523,7 +523,7 @@ export function ProductTreeRows({
   const variants = useVariants(env, product, open);
   const selectedVariants = env.selectedVariants(product.id);
   const state: ItemSelectionState = {
-    selected: !expandable && selectedVariants > 0,
+    selected: selectedVariants > 0,
     multiple: env.multiple,
     disabledReason: env.disabledReason,
     stale: env.stale,

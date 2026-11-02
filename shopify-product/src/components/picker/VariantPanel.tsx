@@ -2,7 +2,11 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import { type RefObject, useEffect, useRef } from 'react';
-import { CircleExclamationIcon, MagnifyingGlassIcon } from '../../icons';
+import {
+  CircleExclamationIcon,
+  KindIcon,
+  MagnifyingGlassIcon,
+} from '../../icons';
 import type { ProductSummary } from '../../types';
 import Thumbnail from '../shared/Thumbnail';
 import type { ItemEnv } from './ResultItems';
@@ -194,7 +198,12 @@ export default function VariantPanel({
     >
       <EntityRow
         layout="row"
-        image={<Thumbnail image={product.featuredImage} />}
+        image={
+          <Thumbnail
+            image={product.featuredImage}
+            fallback={<KindIcon kind="product" />}
+          />
+        }
         title={product.title}
       >
         {countLabel ?? undefined}

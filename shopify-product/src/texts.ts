@@ -10,32 +10,24 @@ export const TEXTS = {
   // "3 of 10 products"; the noun follows the maximum ("0 of 1 product").
   'shopifyProduct.counterOfMax':
     '{count, number} of {max, plural, one {# {one}} other {# {many}}}{note, select, none {} other {. {note}}}',
-  // "3 products · at least 2"
-  'shopifyProduct.counterAtLeast':
-    '{count, plural, one {# {one}} other {# {many}}} · at least {min, number}{note, select, none {} other {. {note}}}',
 };
 
 /**
  * The counter line of a multiple field: the counter, then the sentence that
- * explains it, if any ("3 of 3 products. You can't add more products: …").
+ * explains it, if any ("3 of 3 products. The field is full.").
  */
 export function counterMessage(
   counter: LimitsCounter,
   note: string | null,
 ): IntlMessage {
-  const values = {
-    count: counter.count,
-    one: counter.one,
-    many: counter.many,
-    note: note ?? 'none',
+  return {
+    id: 'shopifyProduct.counterOfMax',
+    values: {
+      count: counter.count,
+      max: counter.max,
+      one: counter.one,
+      many: counter.many,
+      note: note ?? 'none',
+    },
   };
-  return counter.max !== null
-    ? {
-        id: 'shopifyProduct.counterOfMax',
-        values: { ...values, max: counter.max },
-      }
-    : {
-        id: 'shopifyProduct.counterAtLeast',
-        values: { ...values, min: counter.min ?? 0 },
-      };
 }

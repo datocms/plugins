@@ -6,8 +6,9 @@ import EmptySlot from 'datocms-react-ui/EmptySlot';
 import Link from 'datocms-react-ui/Link';
 import get from 'lodash-es/get';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import EntryList, { FieldLimits } from '../components/field/EntryList';
+import EntryList from '../components/field/EntryList';
 import type { ActionEnv } from '../components/field/editorActions';
+import fieldStyles from '../components/field/FieldParts.module.css';
 import InvalidValue from '../components/field/InvalidValue';
 import {
   FormatMismatchNotice,
@@ -40,6 +41,7 @@ import {
   buildRowModel,
   CLEAR_FAILED_MESSAGE,
   connectionProblemCause,
+  convertBlocked,
   convertProblem,
   emptyLabel,
   formatMismatchMessage,
@@ -57,6 +59,7 @@ import {
   type RowModel,
   settingsStep,
   storedDocumentShop,
+  unresolvedSummary,
 } from '../lib/fieldValue';
 import type { LegacyDrift } from '../lib/legacy';
 import {
@@ -144,22 +147,6 @@ function settingsPathFor(ctx: RenderFieldExtensionCtx): string | undefined {
   });
 }
 
-/** The next step of a setup problem: the plugin settings, or an administrator. */
-function SetupNextStep({
-  settingsPath,
-  askAdministrator,
-}: {
-  settingsPath: string | undefined;
-  askAdministrator: string;
-}) {
-  if (!settingsPath) return <>{askAdministrator}</>;
-  return (
-    <>
-      <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link>.
-    </>
-  );
-}
-
 function SetupProblem({
   ctx,
   setup,
@@ -179,20 +166,29 @@ function SetupProblem({
     return (
       <Callout tone="warning" title="Store not connected">
         This field uses {setup.shopDomain}, which isn't connected to the plugin.{' '}
-        <SetupNextStep
-          settingsPath={settingsPath}
-          askAdministrator="Ask an administrator to connect it again."
-        />
+        {settingsPath ? (
+          <>
+            <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link> to connect it
+            again.
+          </>
+        ) : (
+          'Ask an administrator to connect it again.'
+        )}
+      </Callout>
+    );
+  }
+  // A role that can't open the settings gets only its next step.
+  if (!settingsPath) {
+    return (
+      <Callout tone="warning">
+        Ask an administrator to connect a Shopify store in the plugin settings.
       </Callout>
     );
   }
   return (
-    <Callout tone="warning" title="No Shopify store connected">
-      Connect a Shopify store to start picking from your catalog.{' '}
-      <SetupNextStep
-        settingsPath={settingsPath}
-        askAdministrator="Ask an administrator to connect one."
-      />
+    <Callout tone="warning">
+      No Shopify store is connected yet.{' '}
+      <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link> to connect one.
     </Callout>
   );
 }
@@ -399,6 +395,13 @@ function ValueNotices({
   onRetry,
 }: NoticesProps) {
   const busy = actions.busy !== null;
+  // Rows that don't show carry their pill and Replace; the reason is said
+  // once, above the card.
+  const unresolved = unresolvedSummary(
+    rows.filter((row) => row.state === 'unresolved').map((row) => row.entry),
+    rows.length,
+    ctx.ui.locale,
+  );
   return (
     <>
       {hydration.status === 'error' && (
@@ -410,16 +413,22 @@ function ValueNotices({
           onRetry={onRetry}
         />
       )}
-      {isFormatMismatch(parsed.format, params.format) && (
-        <FormatMismatchNotice
-          message={formatMismatchMessage(parsed.format, params.format)}
-          problem={convertProblem(params, rows)}
-          readOnly={ctx.disabled}
-          busy={busy}
-          pending={actions.busy === 'convert'}
-          onConvert={actions.convert}
-        />
-      )}
+      {unresolved && <Callout tone="warning">{unresolved}</Callout>}
+      {isFormatMismatch(parsed.format, params.format) &&
+        !convertBlocked(rows) && (
+          <FormatMismatchNotice
+            message={formatMismatchMessage(
+              parsed.format,
+              params.kind,
+              rows.length,
+            )}
+            problem={convertProblem(params, rows)}
+            readOnly={ctx.disabled}
+            busy={busy}
+            pending={actions.busy === 'convert'}
+            onConvert={actions.convert}
+          />
+        )}
       {drift && (
         <LegacyDriftNotice
           summary={legacyDriftSummary(drift.fields)}
@@ -544,20 +553,22 @@ function ValueEditor({ ctx, setup, parsed, feedback }: ValueEditorProps) {
     inventory,
   };
 
+  // An editable multiple field keeps the gutter of the drag handles at its
+  // left, also while it can't drag yet, so nothing moves when a second item
+  // arrives: the notices, the card and its limits share its left edge.
+  const gutter = params.cardinality === 'multiple' && !ctx.disabled;
   return (
     <>
       <LoadingStatus hydration={hydration} />
-      <ValueNotices {...view} parsed={parsed} drift={drift} onRetry={onRetry} />
-      <Rows {...view} />
-      {params.cardinality === 'multiple' &&
-        !showsFirstLoad(rows, hydration) && (
-          <FieldLimits
-            limits={limits}
-            count={rows.length}
-            readOnly={ctx.disabled}
-            busy={actions.busy}
-          />
-        )}
+      <div className={gutter ? fieldStyles.gutter : undefined}>
+        <ValueNotices
+          {...view}
+          parsed={parsed}
+          drift={drift}
+          onRetry={onRetry}
+        />
+        <Rows {...view} />
+      </div>
     </>
   );
 }

@@ -20,17 +20,17 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-/** The message under the last group; one with more than a sentence gets a title. */
-const FORM_MESSAGES: Record<FormMessage, { title?: string; text: string }> = {
-  invalid: { text: 'Fix the errors above before saving.' },
-  connection: {
-    title: 'Settings not saved',
-    text: 'Fix the connection above, or save anyway.',
-  },
+/**
+ * The message under the last group: one sentence, the cause is above. Field
+ * errors have none: each shows under its field, which takes the focus.
+ */
+const FORM_MESSAGES: Record<FormMessage, string> = {
+  connection:
+    "The settings weren't saved: fix the connection above, or save anyway.",
 };
 
 const API_VERSION_MESSAGE =
-  'This plugin version targets an expired Shopify API version. Update the plugin to keep it working.';
+  'Shopify no longer supports the version this plugin uses. Update the plugin from the plugins list to keep it working.';
 
 /** Nothing to save, a save running, or a read-only role. */
 function isSaveUnavailable(form: SettingsForm): boolean {
@@ -113,9 +113,9 @@ function SettingsScreen({ ctx }: Props) {
             </Callout>
           )}
           {form.draft.useDemoStore && (
-            <Callout title="Demo store on">
-              Editors browse sample products until you switch it off in Advanced
-              settings.
+            <Callout>
+              The demo store is on: editors browse sample products until you
+              switch it off in Advanced settings.
             </Callout>
           )}
           <StoreList form={form} locale={ctx.ui.locale} />
@@ -125,12 +125,7 @@ function SettingsScreen({ ctx }: Props) {
             onToggle={() => setAdvancedOpen(!advancedShown)}
           />
           {form.formMessage && (
-            <Callout
-              tone="danger"
-              title={FORM_MESSAGES[form.formMessage].title}
-            >
-              {FORM_MESSAGES[form.formMessage].text}
-            </Callout>
+            <Callout tone="danger">{FORM_MESSAGES[form.formMessage]}</Callout>
           )}
           {/* One form spans every group, so Save follows the last one. A
               role that can't change the settings has nothing to save (the
@@ -148,6 +143,7 @@ function SettingsScreen({ ctx }: Props) {
               {canSaveAnyway(form) && (
                 <Button
                   ref={saveAnyway.ref}
+                  tone="ghost"
                   label="Save anyway"
                   busy={savingAnyway}
                   disabled={

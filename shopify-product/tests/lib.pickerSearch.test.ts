@@ -628,21 +628,43 @@ describe('markets', () => {
     ],
   };
 
-  it('labels the applied market', () => {
-    expect(contextLabel(localization)).toBe('MX · MXN · EN');
+  it('labels the applied market by name', () => {
+    expect(contextLabel(localization)).toBe('Mexico · MXN · English');
+    expect(contextLabel(localization, { currency: false })).toBe(
+      'Mexico · English',
+    );
     expect(languageOptionLabel(localization, 'ES')).toBe('español (ES)');
-    expect(languageOptionLabel(localization, 'FR')).toBe('FR');
+    // A language the market doesn't list: its own name, from the browser.
+    expect(languageOptionLabel(localization, 'FR')).toBe('français (FR)');
   });
 
-  it('explains a language fallback', () => {
-    expect(languageFallbackNotice({ language: 'FR' }, { language: 'EN' })).toBe(
-      "FR isn't published for this market, so Shopify answered in EN.",
+  it('explains a language fallback by name', () => {
+    expect(
+      languageFallbackNotice(
+        { country: 'IT', language: 'ES' },
+        { country: 'MX', language: 'EN' },
+        localization,
+      ),
+    ).toBe("Español isn't available in Mexico, so titles show in English.");
+    // Unlisted languages get their own name; an unknown country stays vague.
+    expect(
+      languageFallbackNotice({ language: 'DE' }, { language: 'EN' }, null),
+    ).toBe(
+      "Deutsch isn't available in this country, so titles show in English.",
     );
-    expect(languageFallbackNotice({ language: 'EN' }, { language: 'EN' })).toBe(
+    expect(
+      languageFallbackNotice(
+        { language: 'EN' },
+        { language: 'EN' },
+        localization,
+      ),
+    ).toBe(null);
+    expect(languageFallbackNotice({}, { language: 'EN' }, localization)).toBe(
       null,
     );
-    expect(languageFallbackNotice({}, { language: 'EN' })).toBe(null);
-    expect(languageFallbackNotice({ language: 'FR' }, null)).toBe(null);
+    expect(languageFallbackNotice({ language: 'FR' }, null, localization)).toBe(
+      null,
+    );
   });
 
   it('sorts countries by name in the UI locale', () => {

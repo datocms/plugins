@@ -377,14 +377,6 @@ function rowTitles() {
   );
 }
 
-/** Disabled with a reason: it says so with aria-disabled and keeps focus. */
-async function expectUnavailable(button: HTMLElement, reason: string) {
-  expect(button).toHaveAttribute('aria-disabled', 'true');
-  expect(button).toBeEnabled();
-  act(() => button.focus());
-  expect(await screen.findByRole('tooltip')).toHaveTextContent(reason);
-}
-
 /**
  * The empty slot's button: "Browse Shopify" for a single field, the card's
  * own "Add …" for a multiple one.
@@ -438,9 +430,7 @@ describe('FieldExtension: setup states', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     expect(
-      screen.getByText(
-        /^Connect a Shopify store to start picking from your catalog\./,
-      ),
+      screen.getByText(/^No Shopify store is connected yet\./),
     ).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'Open the plugin settings' });
     expect(link).toHaveAttribute(
@@ -462,7 +452,7 @@ describe('FieldExtension: setup states', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       screen.getByText(
-        'Connect a Shopify store to start picking from your catalog. Ask an administrator to connect one.',
+        'Ask an administrator to connect a Shopify store in the plugin settings.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -487,11 +477,14 @@ describe('FieldExtension: setup states', () => {
       },
     });
     render(<FieldExtension ctx={ctx} />);
+    // The link says where it goes, and the sentence what to do there.
     expect(
       screen.getByText(
         /^This field uses acme-outlet\.myshopify\.com, which isn't connected to the plugin\./,
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(
+      /This field uses acme-outlet\.myshopify\.com, which isn't connected to the plugin\. Open the plugin settings to connect it again\.$/,
+    );
     fireEvent.click(
       screen.getByRole('link', { name: 'Open the plugin settings' }),
     );
@@ -573,7 +566,7 @@ describe('FieldExtension: legacy values', () => {
     );
     await waitFor(() => expect(client.legacyProduct).toHaveBeenCalled());
     expect(
-      screen.queryByText('Shopify data changed since this was saved'),
+      screen.queryByText(/no longer match(es)? Shopify\.$/),
     ).not.toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
@@ -614,7 +607,7 @@ describe('FieldExtension: legacy values', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(client.legacyProduct).toHaveBeenCalled());
     expect(
-      screen.queryByText('Shopify data changed since this was saved'),
+      screen.queryByText(/no longer match(es)? Shopify\.$/),
     ).not.toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
@@ -631,7 +624,7 @@ describe('FieldExtension: legacy values', () => {
     const { ctx, setFieldValue } = createCtx({ value: stale });
     render(<FieldExtension ctx={ctx} />);
     expect(
-      await screen.findByText('Shopify data changed since this was saved'),
+      await screen.findByText(/no longer match(es)? Shopify\.$/),
     ).toBeInTheDocument();
     expect(
       screen.getByText('The saved title and price no longer match Shopify.'),
@@ -740,7 +733,7 @@ describe('FieldExtension: legacy values', () => {
       await act(async () => {});
       expect(client.withContext).toHaveBeenCalledWith({});
       expect(
-        screen.queryByText('Shopify data changed since this was saved'),
+        screen.queryByText(/no longer match(es)? Shopify\.$/),
       ).not.toBeInTheDocument();
       expect(setFieldValue).not.toHaveBeenCalled();
     });
@@ -923,9 +916,7 @@ describe('FieldExtension: reference documents', () => {
     await screen.findByText('The Complete Snowboard');
     expect(screen.queryByRole('button', { name: 'Add products' })).toBeNull();
     expect(
-      screen.getByText(
-        "3 of 3 products. You can't add more products: this field holds up to 3.",
-      ),
+      screen.getByText('3 of 3 products. The field is full.'),
     ).toBeInTheDocument();
   });
 
@@ -949,9 +940,10 @@ describe('FieldExtension: reference documents', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('1 product · at least 2')).toBeInTheDocument();
+    // The warning says it all: no counter.
+    expect(screen.queryByText(/needed/)).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Add at least 2 products.',
+      'Add 1 more product: this field needs at least 2.',
     );
   });
 
@@ -969,7 +961,8 @@ describe('FieldExtension: reference documents', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('3 of 2 products')).toBeInTheDocument();
+    // The warning says it all: no "3 of 2" counter.
+    expect(screen.queryByText('3 of 2 products')).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Remove 1 product: this field holds up to 2.',
     );
@@ -1294,24 +1287,23 @@ describe('FieldExtension: recovery', () => {
     const { ctx, setFieldValue } = createCtx({ parameters: multiple(), value });
     render(<FieldExtension ctx={ctx} />);
     expect(await screen.findByText('retired-board')).toBeInTheDocument();
+    // The reason is said once, above the card; the row has its pill.
     expect(
       screen.getByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, archived, or deleted.',
+        "1 product isn't visible in your store: it may have been unpublished, archived or deleted in Shopify.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(MISSING_ID)).toBeInTheDocument();
+    expect(screen.queryByText(MISSING_ID)).toBeNull();
     expect(screen.getByText('Not visible')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
 
-    // Replace is the row's fix action, always visible right under the
-    // issue (not among the row's hover actions), so the menu doesn't
-    // repeat it.
+    // Replace is the row's fix action, always visible at the end of the
+    // row (not among the row's hover actions), so the menu doesn't repeat
+    // it.
     const replace = screen.getByRole('button', { name: 'Replace' });
     expect(
-      screen
-        .getByText(/^Not visible to the storefront/)
-        .compareDocumentPosition(replace) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.getByText('retired-board').closest('li')?.contains(replace),
+    ).toBe(true);
     expect(await rowActionNames(user, 'retired-board')).toEqual([
       'Open in Shopify admin',
       'Move up',
@@ -1332,7 +1324,7 @@ describe('FieldExtension: recovery', () => {
     const user = userEvent.setup();
     render(<FieldExtension ctx={ctx} />);
     expect(
-      await screen.findByText(/^No product with this handle is visible/),
+      await screen.findByText(/its web address may have changed/),
     ).toBeInTheDocument();
     const menu = await openRowMenu(user, 'retired-board');
     const search = within(
@@ -1391,16 +1383,14 @@ describe('FieldExtension: recovery', () => {
     ]);
     const { ctx, setFieldValue } = createCtx({ parameters: single(), value });
     render(<FieldExtension ctx={ctx} />);
-    expect(
-      await screen.findByText(/The Shopify handle changed to/),
-    ).toBeInTheDocument();
+    // A pill after the title, and the fix at the end of the row (visible
+    // without hovering it).
+    expect(await screen.findByText('Address changed')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
-    const update = screen.getByRole('button', { name: 'Update handle' });
-    // Right under the issue, visible without hovering the row.
+    const update = screen.getByRole('button', { name: 'Update address' });
     expect(
-      screen
-        .getByText(/The Shopify handle changed to/)
-        .compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING,
+      screen.getByText('Address changed').compareDocumentPosition(update) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     fireEvent.click(update);
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
@@ -1422,14 +1412,12 @@ describe('FieldExtension: recovery', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       await screen.findByText(
-        'Saved as a Shopify handle. This field now saves a Shopify ID.',
+        'This product was saved in an older format: convert it to the one this field uses now.',
       ),
     ).toBeInTheDocument();
     await screen.findByText('The Complete Snowboard');
     expect(setFieldValue).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Convert to new format' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
     await waitFor(() =>
       expect(setFieldValue).toHaveBeenCalledWith(
         'shopify_product',
@@ -1445,9 +1433,7 @@ describe('FieldExtension: recovery', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Convert to new format' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue)).toEqual({
       version: 1,
@@ -1468,9 +1454,7 @@ describe('FieldExtension: recovery', () => {
     expect(
       screen.queryByText('Wait until the current change is saved.'),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Convert to new format' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
     await waitFor(() => expect(setFieldValue).toHaveBeenCalledOnce());
     // The card's add button can't be disabled: the line under it says why.
     expect(
@@ -1480,7 +1464,7 @@ describe('FieldExtension: recovery', () => {
     expect(ctx.openModal).not.toHaveBeenCalled();
   });
 
-  it('explains why converting is not possible yet', async () => {
+  it('hides the format notice while an item that does not show blocks it', async () => {
     const { ctx } = createCtx({
       fieldType: 'string',
       parameters: single({ format: 'gid' }),
@@ -1488,12 +1472,12 @@ describe('FieldExtension: recovery', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText(
-      'No product with this handle is visible to the storefront: the handle may have changed in Shopify, or the product may be unpublished from the Headless channel, archived, or deleted.',
+      "This product isn't visible in your store: its web address may have changed, or it may have been unpublished, archived or deleted in Shopify.",
     );
-    await expectUnavailable(
-      screen.getByRole('button', { name: 'Convert to new format' }),
-      "You can't convert the value while a product isn't visible to the storefront.",
-    );
+    // The row's Replace is the only next step.
+    expect(screen.getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Convert' })).toBeNull();
+    expect(screen.queryByText(/saved in an older format/)).toBeNull();
   });
 
   it('shows an invalid value as saved and clears it only after confirmation', async () => {
@@ -1504,9 +1488,7 @@ describe('FieldExtension: recovery', () => {
       screen.getByText("Couldn't read the saved value"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "The saved value isn't valid JSON. It's kept exactly as saved until you clear it.",
-      ),
+      screen.getByText("It's damaged. It's kept as it is until you clear it."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Saved value').textContent).toBe(raw);
     expect(getShopifyClient).toHaveBeenCalledTimes(0);
@@ -1690,7 +1672,7 @@ describe('FieldExtension: recovery', () => {
     render(<FieldExtension ctx={ctx} />);
     expect(
       await screen.findByText(
-        'Shopify rejected the Storefront access token. Ask an administrator to check the Shopify connection.',
+        'Shopify refused the connection. Ask an administrator to check the plugin settings.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -1732,7 +1714,7 @@ describe('FieldExtension: disabled and localized fields', () => {
     ]);
     expect(view.container.querySelector('.DragHandle')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add products' })).toBeNull();
-    expect(screen.getByText('3 of 5 products')).toBeInTheDocument();
+    expect(screen.queryByText('3 of 5 products')).toBeNull();
     expect(openModal).not.toHaveBeenCalled();
   });
 
@@ -1763,8 +1745,8 @@ describe('FieldExtension: disabled and localized fields', () => {
     });
     const view = render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.queryByText(/Add at least 2 products/)).toBeNull();
-    expect(screen.getByText('1 product · at least 2')).toBeInTheDocument();
+    expect(screen.queryByText(/Add 1 more product/)).toBeNull();
+    expect(screen.queryByText(/needed/)).toBeNull();
     expect(view.container.querySelector('.DragHandle')).toBeNull();
   });
 
@@ -1845,7 +1827,7 @@ describe('FieldExtension: handles in a language', () => {
       ),
     );
     await act(async () => {});
-    expect(screen.queryByText(/The Shopify handle changed/)).toBeNull();
+    expect(screen.queryByText('Address changed')).toBeNull();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
@@ -1858,10 +1840,8 @@ describe('FieldExtension: handles in a language', () => {
       localized: true,
     });
     render(<FieldExtension ctx={ctx} />);
-    expect(
-      await screen.findByText('the-complete-snowboard'),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Update handle' }));
+    expect(await screen.findByText('Address changed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update address' }));
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
@@ -1921,9 +1901,7 @@ describe('FieldExtension: handles in a language', () => {
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('Lo snowboard completo');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Convert to new format' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }));
     await waitFor(() => expect(setFieldValue).toHaveBeenCalled());
     expect(writtenDocument(setFieldValue).references).toEqual([
       { id: COMPLETE_ID, handle: 'the-complete-snowboard' },
@@ -2030,14 +2008,14 @@ describe('FieldExtension: picking keeps the rest of the value', () => {
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
-  it('shows the count against a minimum', async () => {
+  it('shows no count once the minimum is met', async () => {
     const { ctx } = createCtx({
       parameters: multiple({ min: 2 }),
       value: THREE_PRODUCTS,
     });
     render(<FieldExtension ctx={ctx} />);
     await screen.findByText('The Complete Snowboard');
-    expect(screen.getByText('3 products · at least 2')).toBeInTheDocument();
+    expect(screen.queryByText(/3 products/)).toBeNull();
   });
 });
 
@@ -2057,12 +2035,26 @@ describe('FieldExtension: values saved for another store', () => {
     // The two shops say what's wrong: the generic sentence doesn't repeat it.
     expect(
       screen.getByText(
-        "It was saved for acme-outlet.myshopify.com, and this field uses datocms-demo.myshopify.com. It's kept exactly as saved until you pick again or clear it.",
+        "It was saved for acme-outlet.myshopify.com, and this field uses datocms-demo.myshopify.com. It's kept as it is until you pick again or clear it.",
       ),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/points to a different Shopify store/),
     ).toBeNull();
+  });
+
+  it('keeps the saved value in a closed card that opens from its header', () => {
+    const { ctx } = createCtx({ parameters: multiple(), value: OTHER_STORE });
+    render(<FieldExtension ctx={ctx} />);
+    const header = screen.getByRole('button', { name: 'Saved value' });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'Saved value' })).toBeNull();
+    fireEvent.click(header);
+    expect(
+      JSON.parse(
+        screen.getByRole('region', { name: 'Saved value' }).textContent ?? '',
+      ).shop,
+    ).toBe('acme-outlet.myshopify.com');
   });
 
   it('picks again from this store, replacing the value without a confirmation', async () => {

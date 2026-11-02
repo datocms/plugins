@@ -28,7 +28,11 @@ function connectionView(form: SettingsForm, store: StoreDraft) {
     status,
     capabilities: trusted ? store.capabilities : null,
     localization:
-      status?.kind === 'connected' ? status.result.localization : null,
+      status?.kind === 'connected'
+        ? status.result.localization
+        : status?.kind === 'checking'
+          ? status.localization
+          : null,
   };
 }
 
@@ -67,7 +71,6 @@ export default function StoreList({ form, locale }: Props) {
           >
             <StoreFields
               store={store}
-              position={position}
               multiple={multiple}
               errors={form.errors.stores[index] ?? {}}
               status={view.status}

@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -195,6 +196,8 @@ function setup({
       theme: {},
       ui: { locale: 'en' },
       site: { attributes: { internal_domain: null } },
+      environment: 'main',
+      isEnvironmentPrimary: true,
       startAutoResizer: vi.fn(),
       stopAutoResizer: vi.fn(),
       notice: vi.fn(async () => undefined),
@@ -246,7 +249,17 @@ function setup({
  * What the example shows: the readable view of a JSON value in its code box,
  * or a string value in its read-only field.
  */
+/** Opens the card of a JSON field's example, closed at first. */
+function openExample() {
+  const toggle = screen.queryByRole('button', {
+    name: /^Stored value example/,
+  });
+  if (toggle?.getAttribute('aria-expanded') === 'false')
+    fireEvent.click(toggle);
+}
+
 function example(): string {
+  openExample();
   const box = screen.queryByRole('region', { name: 'Stored value example' });
   if (box) return box.textContent as string;
   return (
@@ -341,7 +354,7 @@ describe('FieldConfigScreen: new and 1.x fields', () => {
     expect(setParameters).toHaveBeenCalledTimes(1);
     expect(setParameters).toHaveBeenCalledWith(REFERENCE);
     expect(radio('Reference document')).toBeChecked();
-    expect(screen.queryByText(/uses the 1.x settings/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Older settings')).not.toBeInTheDocument();
 
     rerenderWith({ ...REFERENCE });
     expect(setParameters).toHaveBeenCalledTimes(1);
@@ -359,9 +372,7 @@ describe('FieldConfigScreen: new and 1.x fields', () => {
     const { setParameters } = setup();
 
     expect(setParameters).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/uses the 1.x settings \(product JSON\)/),
-    ).toBeVisible();
+    expect(screen.getByText('Older settings')).toBeVisible();
     expect(radio('Legacy product JSON')).toBeChecked();
     expect(radio('Products')).toBeChecked();
     expect(radio('Product variants')).toBeDisabled();
@@ -382,7 +393,7 @@ describe('FieldConfigScreen: new and 1.x fields', () => {
 
     expect(setParameters).toHaveBeenCalledTimes(1);
     expect(lastWrite()).toEqual(REFERENCE);
-    expect(screen.queryByText(/uses the 1.x settings/)).toBeNull();
+    expect(screen.queryByText('Older settings')).toBeNull();
     // The warning sits under the format it is about.
     expect(
       alertWith(/Existing records keep their current value/),
@@ -397,9 +408,7 @@ describe('FieldConfigScreen: new and 1.x fields', () => {
     const { setParameters } = setup({ fieldType: 'string' });
 
     expect(setParameters).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/uses the 1.x settings \(product handle\)/),
-    ).toBeVisible();
+    expect(screen.getByText('Older settings')).toBeVisible();
     expect(radio('Handle')).toBeChecked();
     // A kind the format can't store says why, in place of its hint.
     expect(radio('Product variants')).toBeDisabled();
@@ -505,7 +514,7 @@ describe('FieldConfigScreen: kinds and formats', () => {
     // saving: the host hands back the pending settings, the saved field has none.
     setup({ parameters: { ...REFERENCE }, saved: {} });
     expect(screen.getByText(/Existing records keep/)).toBeVisible();
-    expect(screen.queryByText(/uses the 1.x settings/)).toBeNull();
+    expect(screen.queryByText('Older settings')).toBeNull();
   });
 
   it('loads the saved settings when the field is not loaded yet', async () => {
@@ -690,7 +699,7 @@ describe('FieldConfigScreen: limit choices', () => {
     });
     expect(
       await screen.findByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, or deleted.',
+        'Not visible in your store: it may have been unpublished or deleted in Shopify.',
       ),
     ).toBeVisible();
   });
@@ -881,7 +890,9 @@ describe('FieldConfigScreen: limit choices', () => {
 
     const alert = await screen.findByRole('alert');
     expect(
-      within(alert).getByText("Couldn't load the lists from Shopify"),
+      within(alert).getByText(
+        "Couldn't load collections, product types and tags",
+      ),
     ).toBeVisible();
     expect(alert).toHaveTextContent(/Couldn't reach Shopify/);
     // The retry sits under the callout, never inside it.
@@ -897,13 +908,36 @@ describe('FieldConfigScreen: limit choices', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 
-  it('shows a hint instead of the store lists when the plugin is not configured', async () => {
+  it('sends to the plugin settings when only they can fix the store', async () => {
+    client.filterValues.mockRejectedValueOnce(
+      new ShopifyClientError('shop-not-found', 'HTTP 404', {
+        userMessage: 'No Shopify store found at acme-eu.myshopify.com.',
+      }),
+    );
+    const { user } = setup({ parameters: { ...REFERENCE } });
+    await user.click(limitsToggle());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'No Shopify store found at acme-eu.myshopify.com. Open the plugin settings to check the address.',
+    );
+    expect(
+      within(alert).getByRole('link', { name: 'Open the plugin settings' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('says once, above the options, that the plugin has no store', async () => {
     const { user } = setup({ parameters: { ...REFERENCE }, stores: [] });
+    expect(screen.getByText(/No Shopify store is connected yet/)).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: 'Open the plugin settings' }),
+    ).toHaveAttribute('href', '/configuration/plugins/shopify-plugin-id/edit');
     await user.click(limitsToggle());
 
     expect(
-      screen.getByText(/Connect a Shopify store in the plugin settings/),
-    ).toBeVisible();
+      screen.queryByText(/Connect a Shopify store in the plugin settings/),
+    ).toBeNull();
     expect(screen.queryByLabelText('Collection')).toBeNull();
     expect(screen.getByLabelText('Vendor')).toBeVisible();
     expect(getShopifyClient).not.toHaveBeenCalled();
@@ -1054,6 +1088,30 @@ describe('FieldConfigScreen: tag access', () => {
     expect(client.detectCapabilities).not.toHaveBeenCalled();
   });
 
+  it('asks for the token once when a store without one is locked', async () => {
+    client.effectiveCapabilities.mockReturnValue({
+      tags: false,
+      inventory: false,
+      metafields: false,
+    });
+    client.filterValues.mockRejectedValueOnce(
+      new ShopifyClientError('store-locked', 'HTTP 403'),
+    );
+    const { user } = setup({
+      parameters: { ...REFERENCE },
+      stores: [
+        { ...UNCHECKED_STORE, storefrontAccessToken: '', tokenless: true },
+      ],
+    });
+    await openLimits(user);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /needs a Storefront access token\. Open the plugin settings to add one\./,
+    );
+    expect(screen.queryByText(/To limit choices by tag/)).toBeNull();
+    expect(screen.getByLabelText('Tags')).toBeDisabled();
+  });
+
   it('offers tags in demo mode without checking', async () => {
     client.effectiveCapabilities.mockImplementation(() => ({
       tags: DEMO_STORE.capabilities?.tags === true,
@@ -1084,13 +1142,11 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
     const min = screen.getByLabelText('Minimum items');
     expect(min).toHaveAttribute('aria-invalid', 'true');
     expect(min).toHaveAccessibleDescription(
-      "Minimum can't be greater than maximum Optional. Below it, editors see a warning.",
+      "Minimum can't be greater than maximum Below it, editors see a warning.",
     );
     const max = screen.getByLabelText('Maximum items');
     expect(max).not.toHaveAttribute('aria-invalid');
-    expect(max).toHaveAccessibleDescription(
-      "Optional. Editors can't add more items.",
-    );
+    expect(max).toHaveAccessibleDescription("Editors can't add more items.");
   });
 
   it('marks each radio group invalid with its error', () => {
@@ -1131,12 +1187,12 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
     const stores = group('Store');
     expect(stores).toHaveAttribute('aria-invalid', 'true');
     expect(stores).toHaveAccessibleDescription(
-      /^gone\.myshopify\.com isn't in the plugin settings anymore\. Choose another store\. Editors browse this store\./,
+      "gone.myshopify.com isn't in the plugin settings anymore. Choose another store.",
     );
 
     await user.click(storeRadio(/^EU store \(default\)/));
-    expect(group('Store')).toHaveAccessibleDescription(
-      /^Editors browse this store\./,
+    expect(group('Store')).not.toHaveAccessibleDescription(
+      /isn't in the plugin settings/,
     );
     expect(group('Store')).not.toHaveAttribute('aria-invalid');
   });
@@ -1144,16 +1200,13 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
   it('describes a select by its hint, with or without a value', async () => {
     const { user } = setup({ parameters: { ...REFERENCE } });
     await user.click(limitsToggle());
-    const hint = 'Editors only see products from this collection.';
-    expect(screen.getByLabelText('Collection')).toHaveAccessibleDescription(
-      hint,
-    );
+    const hint =
+      'With several tags, editors see products that have any of them.';
+    expect(screen.getByLabelText('Tags')).toHaveAccessibleDescription(hint);
 
-    await user.click(screen.getByLabelText('Collection'));
-    await user.click(await screen.findByRole('option', { name: /Hydrogen/ }));
-    expect(screen.getByLabelText('Collection')).toHaveAccessibleDescription(
-      hint,
-    );
+    await user.click(screen.getByLabelText('Tags'));
+    await user.click(await screen.findByRole('option', { name: /Premium/ }));
+    expect(screen.getByLabelText('Tags')).toHaveAccessibleDescription(hint);
   });
 
   it('keeps the limits open with the error the host flags', async () => {
@@ -1173,31 +1226,31 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
       errors: { scope: 'Limits apply to products and variants only' },
     });
 
-    // No toggle while the error shows: the fields can't be hidden.
-    expect(screen.queryByRole('button', { name: /^Limit choices/ })).toBeNull();
+    // The toggle is disabled while the error shows: the fields can't be
+    // hidden.
+    expect(limitsToggle()).toBeDisabled();
     expect(
       alertWith('Limits apply to products and variants only'),
     ).toBeVisible();
     expect(
       await screen.findByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, or deleted.',
+        'Not visible in your store: it may have been unpublished or deleted in Shopify.',
       ),
     ).toBeVisible();
-    expect(screen.getByLabelText('Collection')).toHaveAccessibleDescription(
-      'Editors only see products from this collection.',
-    );
-    expect(screen.getByLabelText('Product type')).toHaveAccessibleDescription(
-      'Editors only see products of this type.',
+    // Only the hints that add something: the section's lead says the rest.
+    expect(screen.getByLabelText('Collection')).not.toHaveAccessibleDescription(
+      /Editors only see/,
     );
     expect(screen.getByLabelText('Tags')).toHaveAccessibleDescription(
       'With several tags, editors see products that have any of them.',
     );
     expect(screen.getByLabelText('Vendor')).toHaveAccessibleDescription(
-      'Editors only see products from this vendor. Shopify matches whole words, so "Acme" also matches "Acme Outlet".',
+      'Shopify matches whole words, so "Acme" also matches "Acme Outlet".',
     );
+    // The switch's label says it all.
     expect(
       screen.getByLabelText('Only show products available for sale'),
-    ).toHaveAccessibleDescription('The picker hides sold-out products.');
+    ).not.toHaveAccessibleDescription();
   });
 
   it('closes the limits once the host error is fixed', async () => {
@@ -1206,7 +1259,7 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
       parameters,
       errors: { scope: 'Limits apply to products and variants only' },
     });
-    expect(screen.queryByRole('button', { name: /^Limit choices/ })).toBeNull();
+    expect(limitsToggle()).toBeDisabled();
 
     rerenderWith(parameters, {});
     expect(limitsToggle()).toHaveAttribute('aria-expanded', 'true');
@@ -1225,7 +1278,7 @@ describe('FieldConfigScreen: errors and hints for assistive tech', () => {
     });
     expect(toggle).toHaveAttribute('aria-invalid', 'true');
     expect(toggle).toHaveAccessibleDescription(
-      /^Snapshots need the reference document format Each reference/,
+      /^Snapshots need the reference document format Also stores the title/,
     );
   });
 });
@@ -1270,15 +1323,13 @@ describe('FieldConfigScreen: stores and example', () => {
       parameters: { ...REFERENCE, scope },
       stores: [EU_STORE, US_STORE],
     });
-    await screen.findByText(/Editors only see products from this collection/);
+    expect(await screen.findByLabelText('Collection')).toBeVisible();
 
     // The store shown is the checked radio: picking it again changes nothing.
     await user.click(storeRadio(/^EU store \(default\)/));
 
     expect(setParameters).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/Editors only see products from this collection/),
-    ).toBeVisible();
+    expect(screen.getByLabelText('Collection')).toBeVisible();
     expect(screen.queryByText(/Existing records point to/)).toBeNull();
     expect(usClient.collections).not.toHaveBeenCalled();
   });
@@ -1318,7 +1369,7 @@ describe('FieldConfigScreen: stores and example', () => {
     await user.click(storeRadio(/^US store/));
     expect(
       alertWith(
-        'Existing records point to items in EU store. Editors have to pick them again from the new store.',
+        'Existing records point to items in EU store, so editors have to pick them again from the new store.',
       ),
     ).toBeVisible();
   });
@@ -1350,6 +1401,9 @@ describe('FieldConfigScreen: stores and example', () => {
   it('copies the exact stored value', async () => {
     const { user } = setup({ parameters: { ...REFERENCE } });
 
+    await user.click(
+      screen.getByRole('button', { name: /^Stored value example/ }),
+    );
     await user.click(screen.getByRole('button', { name: 'Copy' }));
     const exact = buildExampleStoredValue(
       'json',
@@ -1392,10 +1446,30 @@ describe('FieldConfigScreen: stores and example', () => {
     );
   });
 
-  it('shortens long strings in the example, not in the copied value', async () => {
+  it('shows a reference document exactly as saved, in a box that scrolls', async () => {
     const { user } = setup({ parameters: { ...REFERENCE, snapshot: true } });
+    // Closed at first.
+    expect(
+      screen.getByRole('button', { name: 'Stored value example' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByRole('region', { name: 'Stored value example' }),
+    ).toBeNull();
 
     const shown: string = JSON.parse(example()).references[0].snapshot.imageUrl;
+    expect(shown).toMatch(/^https:\/\/cdn\.shopify\.com\/[^…]+$/);
+    expect(
+      screen.getByRole('region', { name: 'Stored value example' }),
+    ).toHaveStyle({ '--CodeSnippet-max-height': '200px' });
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(vi.mocked(copyToClipboard).mock.lastCall?.[0]).toBe(example());
+  });
+
+  it('shortens long strings in the product JSON example, not in the copied value', async () => {
+    const { user } = setup();
+
+    const shown: string = JSON.parse(example()).imageUrl;
     expect(shown).toContain('…');
     expect(shown.length).toBeLessThanOrEqual(44);
 
@@ -1403,9 +1477,7 @@ describe('FieldConfigScreen: stores and example', () => {
     const copied = JSON.parse(
       vi.mocked(copyToClipboard).mock.lastCall?.[0] ?? '{}',
     );
-    expect(copied.references[0].snapshot.imageUrl).toMatch(
-      /^https:\/\/cdn\.shopify\.com\/[^…]+$/,
-    );
+    expect(copied.imageUrl).toMatch(/^https:\/\/cdn\.shopify\.com\/[^…]+$/);
   });
 
   it('uses a placeholder shop in the example without a store', () => {
@@ -1425,7 +1497,9 @@ describe('FieldConfigScreen: invalid saved settings', () => {
     });
 
     const alert = alertWith(errors.kind ?? 'missing error');
-    expect(alert).toHaveTextContent(/closest valid settings/);
+    expect(alert).toHaveTextContent(
+      'Variants can only be stored as a Shopify ID or a reference document. The options below are the closest valid ones: use them, or change any option.',
+    );
     expect(radio('Products')).toBeChecked();
     // The error is about the saved combination, not the corrected control.
     expect(group('Editors pick')).not.toHaveAttribute('aria-invalid');

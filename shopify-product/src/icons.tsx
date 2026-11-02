@@ -1,4 +1,5 @@
 import type { SVGProps } from 'react';
+import type { ShopifyKind } from './types';
 
 // Font Awesome 6 glyphs (free-regular where it has one, else free-solid). Like
 // the kit's own icons they are 1em, the size of the text around them: a
@@ -292,8 +293,8 @@ export function XmarkIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Products (solid bag-shopping) */
-export function BagShoppingIcon(props: SVGProps<SVGSVGElement>) {
+/** Products and variants (solid tag, as in Shopify's admin) */
+export function TagIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
       viewBox="0 0 448 512"
@@ -303,7 +304,7 @@ export function BagShoppingIcon(props: SVGProps<SVGSVGElement>) {
       aria-hidden="true"
       {...props}
     >
-      <path d="M160 112c0-35.3 28.7-64 64-64s64 28.7 64 64l0 48-128 0 0-48zm-48 48l-64 0c-26.5 0-48 21.5-48 48L0 416c0 53 43 96 96 96l256 0c53 0 96-43 96-96l0-208c0-26.5-21.5-48-48-48l-64 0 0-48C336 50.1 285.9 0 224 0S112 50.1 112 112l0 48zm24 48a24 24 0 1 1 0 48 24 24 0 1 1 0-48zm152 24a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z" />
+      <path d="M0 80L0 229.5c0 17 6.7 33.3 18.7 45.3l176 176c25 25 65.5 25 90.5 0L418.7 317.3c25-25 25-65.5 0-90.5l-176-176c-12-12-28.3-18.7-45.3-18.7L48 32C21.5 32 0 53.5 0 80zm112 32a32 32 0 1 1 0 64 32 32 0 1 1 0-64z" />
     </svg>
   );
 }
@@ -322,4 +323,12 @@ export function LayerGroupIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M264.5 5.2c14.9-6.9 32.1-6.9 47 0l218.6 101c8.5 3.9 13.9 12.4 13.9 21.8s-5.4 17.9-13.9 21.8l-218.6 101c-14.9 6.9-32.1 6.9-47 0L45.9 149.8C37.4 145.8 32 137.3 32 128s5.4-17.9 13.9-21.8L264.5 5.2zM476.9 209.6l53.2 24.6c8.5 3.9 13.9 12.4 13.9 21.8s-5.4 17.9-13.9 21.8l-218.6 101c-14.9 6.9-32.1 6.9-47 0L45.9 277.8C37.4 273.8 32 265.3 32 256s5.4-17.9 13.9-21.8l53.2-24.6 152 70.2c23.4 10.8 50.4 10.8 73.8 0l152-70.2zm-152 198.2l152-70.2 53.2 24.6c8.5 3.9 13.9 12.4 13.9 21.8s-5.4 17.9-13.9 21.8l-218.6 101c-14.9 6.9-32.1 6.9-47 0L45.9 405.8C37.4 401.8 32 393.3 32 384s5.4-17.9 13.9-21.8l53.2-24.6 152 70.2c23.4 10.8 50.4 10.8 73.8 0z" />
     </svg>
   );
+}
+
+/**
+ * The icon of an item without a picture: the tag for products and variants,
+ * the layer group for collections.
+ */
+export function KindIcon({ kind }: { kind: ShopifyKind }) {
+  return kind === 'collection' ? <LayerGroupIcon /> : <TagIcon />;
 }

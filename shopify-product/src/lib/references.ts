@@ -7,8 +7,8 @@
  * - JSON field, `reference`: the versioned reference document.
  *
  * The parser recognizes every format regardless of the field's configured
- * format, which is what lets the editor offer "Convert to new format". Nothing
- * here writes a value on its own: callers pass the serialized result to
+ * format, which is what lets the editor offer "Convert". Nothing here
+ * writes a value on its own: callers pass the serialized result to
  * `ctx.setFieldValue` only when an editor acts.
  */
 
@@ -56,7 +56,8 @@ import { variantDisplayTitle } from './titles';
 // ---------------------------------------------------------------------------
 
 const STORED_VALUE_ERROR_MESSAGES: Record<StoredValueErrorCode, string> = {
-  'invalid-json': "The saved value isn't valid JSON.",
+  // Under the title "Couldn't read the saved value".
+  'invalid-json': "It's damaged.",
   'invalid-shape': "The saved value isn't in a format this field recognizes.",
   'unsupported-version':
     'The saved value was written by a newer version of this plugin. Update the plugin to edit it.',

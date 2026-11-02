@@ -12,6 +12,8 @@ import { useTriggerFocus } from './useTriggerFocus';
 
 type Props = {
   localization: AsyncValue<LocalizationInfo>;
+  /** Collections have no prices: the trigger leaves the currency out. */
+  prices: boolean;
   /** The editor's UI locale, for sorting countries by name. */
   locale: string;
   onChange: (context: ShopifyContext) => void;
@@ -59,9 +61,14 @@ function MarketOptions({
   );
 }
 
-function triggerLabel(localization: AsyncValue<LocalizationInfo>): string {
-  if (localization.value) return contextLabel(localization.value);
-  return localization.status === 'error' ? 'Market' : 'Loading…';
+function triggerLabel(
+  localization: AsyncValue<LocalizationInfo>,
+  prices: boolean,
+): string {
+  if (localization.value) {
+    return contextLabel(localization.value, { currency: prices });
+  }
+  return localization.status === 'error' ? 'Country and language' : 'Loading…';
 }
 
 /**
@@ -72,6 +79,7 @@ function triggerLabel(localization: AsyncValue<LocalizationInfo>): string {
  */
 export default function MarketSwitcher({
   localization,
+  prices,
   locale,
   onChange,
 }: Props) {
@@ -87,8 +95,12 @@ export default function MarketSwitcher({
         triggerComponent={ButtonTrigger}
         tone="ghost"
         icon={GlobeIcon}
-        label={triggerLabel(localization)}
-        tooltip="Market for prices and translations"
+        label={triggerLabel(localization, prices)}
+        tooltip={
+          prices
+            ? 'Country and language for prices and titles'
+            : 'Country and language for titles'
+        }
       >
         {() => (
           <Dropdown.Menu placement="bottom-end" minWidth={240}>
@@ -101,8 +113,8 @@ export default function MarketSwitcher({
             ) : (
               <Dropdown.Text>
                 {localization.status === 'error'
-                  ? "Couldn't load the markets."
-                  : 'Loading the markets…'}
+                  ? "Couldn't load the countries and languages."
+                  : 'Loading the countries and languages…'}
               </Dropdown.Text>
             )}
           </Dropdown.Menu>

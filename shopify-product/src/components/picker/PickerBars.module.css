@@ -20,6 +20,21 @@
   padding-block: var(--spacing-m);
 }
 
+/* The limits of the field settings, after "Limited to:", set apart from the
+   editor's filters by a wider gap. */
+.scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  align-items: center;
+  margin-right: var(--spacing-m);
+}
+
+.scopeLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
 /* Clear filters and the sort sit on the first line of pills, also when the
    pills wrap. */
 .filterActions {
@@ -30,23 +45,26 @@
 }
 
 /* The part of the footer that holds the staged selection: the free width,
-   down to a third of it (its chips then scroll sideways). */
+   down to a third of it. */
 .trayPart {
   min-width: 33%;
 }
 
-/* The staged selection: one row of chips that scrolls sideways. The block
-   padding keeps the focus ring of the crosses inside the scroll box. */
+/* The staged selection: chips that wrap, every one whole with its cross.
+   Past two rows of chips (30px each, the height of their micro cross and
+   border) the list scrolls down; the block padding keeps the focus ring of
+   the crosses inside the scroll box. */
 .tray {
   display: flex;
   flex: 1 1 0;
+  flex-wrap: wrap;
   gap: var(--spacing-s);
   min-width: 0;
+  max-height: calc(2 * 30px + 3 * var(--spacing-s));
   padding: var(--spacing-s) 0;
   margin: 0;
-  overflow-x: auto;
+  overflow-y: auto;
   list-style: none;
-  scrollbar-width: thin;
 }
 
 .chip {

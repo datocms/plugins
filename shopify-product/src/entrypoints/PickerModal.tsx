@@ -1,11 +1,13 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import { type ReactNode, useEffect, useMemo } from 'react';
-import PickerApp from '../components/picker/PickerApp';
+import { SETTINGS_LINK_LABEL } from '../components/field/Notices';
+import PickerApp, { settingsOpener } from '../components/picker/PickerApp';
 import { useDeepStable } from '../components/shared/useDeepStable';
 import { PICKER_MODAL_HEIGHT } from '../constants';
-import { CircleExclamationIcon } from '../icons';
+import { CircleExclamationIcon, KindIcon } from '../icons';
 import {
   getActiveStores,
   isStoreUsable,
@@ -23,9 +25,22 @@ type Props = {
   ctx: RenderModalCtx;
 };
 
+type Problem = {
+  ok: false;
+  title: string;
+  /** Without one, the title and the way to the settings say it all. */
+  message?: string;
+  /**
+   * Nothing failed: the plugin settings miss this field's store. The frame
+   * shows the icon of what the field picks, and the way to the settings (or,
+   * for the roles that can't open them, `askAdministrator`).
+   */
+  notSetUp?: { kind: ShopifyKind; askAdministrator: string };
+};
+
 type Setup =
   | { ok: true; params: PickerModalParameters; store: StoreConnection }
-  | { ok: false; title: string; message: string };
+  | Problem;
 
 function resolveSetup(rawParameters: unknown, rawPlugin: unknown): Setup {
   const params = readPickerParameters(rawParameters);
@@ -37,13 +52,17 @@ function resolveSetup(rawParameters: unknown, rawPlugin: unknown): Setup {
         "The field sent settings the picker doesn't understand. Close this window and open it again from the field.",
     };
   }
+  const kind = params.fieldParameters.kind;
   const stores = getActiveStores(normalizePluginParameters(rawPlugin));
   if (!stores.some(isStoreUsable)) {
     return {
       ok: false,
-      title: "The plugin isn't set up yet",
-      message:
-        'Add a Shopify shop domain and a Storefront access token in the plugin settings to browse products.',
+      title: 'No Shopify store connected yet',
+      notSetUp: {
+        kind,
+        askAdministrator:
+          'Ask an administrator to connect one in the plugin settings.',
+      },
     };
   }
   const store = stores.find(
@@ -53,30 +72,61 @@ function resolveSetup(rawParameters: unknown, rawPlugin: unknown): Setup {
     return {
       ok: false,
       title: 'Store not connected',
-      message: `This field browses ${params.shopDomain}, which isn't connected in the plugin settings anymore. Add it back there, or choose another store in the field settings.`,
+      message: `This field uses ${params.shopDomain}, which isn't connected to the plugin.`,
+      notSetUp: {
+        kind,
+        askAdministrator: 'Ask an administrator to connect it again.',
+      },
     };
   }
   return { ok: true, params, store };
 }
 
-/** Problems get a short self-resizing frame instead of the tall picker. */
+/**
+ * Problems get a short self-resizing frame instead of the tall picker. A
+ * store missing from the plugin settings is not an error: the icon of what
+ * the field picks, and the way to the settings for the roles that can open
+ * them (the others are sent to an administrator).
+ */
 function ProblemFrame({
   ctx,
-  title,
-  message,
+  problem,
 }: {
   ctx: RenderModalCtx;
-  title: string;
-  message: string;
+  problem: Problem;
 }) {
+  if (problem.notSetUp) {
+    const openSettings = settingsOpener(ctx);
+    return (
+      <Canvas ctx={ctx}>
+        <BlankSlate
+          placement="inline"
+          icon={<KindIcon kind={problem.notSetUp.kind} />}
+          title={problem.title}
+          description={
+            openSettings
+              ? problem.message
+              : [problem.message, problem.notSetUp.askAdministrator]
+                  .filter(Boolean)
+                  .join(' ')
+          }
+          actions={
+            openSettings ? (
+              <Button label={SETTINGS_LINK_LABEL} onClick={openSettings} />
+            ) : undefined
+          }
+        />
+      </Canvas>
+    );
+  }
   return (
     <Canvas ctx={ctx}>
       <BlankSlate
         placement="inline"
         error
         icon={<CircleExclamationIcon />}
-        title={title}
-        description={message}
+        title={problem.title}
+        description={problem.message}
       />
     </Canvas>
   );
@@ -135,11 +185,7 @@ export default function PickerModal({ ctx }: Props) {
     [rawParameters, rawPlugin],
   );
 
-  if (!setup.ok) {
-    return (
-      <ProblemFrame ctx={ctx} title={setup.title} message={setup.message} />
-    );
-  }
+  if (!setup.ok) return <ProblemFrame ctx={ctx} problem={setup} />;
 
   return (
     <PickerFrame ctx={ctx} kind={setup.params.fieldParameters.kind}>

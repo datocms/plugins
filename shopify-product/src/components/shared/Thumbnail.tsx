@@ -8,7 +8,8 @@ type Props = {
   fit?: 'cover' | 'contain';
   /**
    * Shown centered on the swatch when there is no image, or it fails to
-   * load: for example an icon for an item the storefront doesn't show.
+   * load: the icon of the item's kind (`KindIcon`), or the eye-slash of an
+   * item the storefront doesn't show.
    */
   fallback?: ReactNode;
   className?: string;

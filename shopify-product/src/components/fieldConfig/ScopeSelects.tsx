@@ -67,7 +67,6 @@ export function CollectionField({
     <FieldWrapper
       id="scope-collection"
       label="Collection"
-      hint="Editors only see products from this collection."
       container={fieldNotice(missing ? COLLECTION_MISSING_WARNING : null)}
     >
       <SelectInput
@@ -109,11 +108,7 @@ type FilterProps = {
 export function ProductTypeField({ filters, scope, onChange }: FilterProps) {
   const current = scope?.productType;
   return (
-    <FieldWrapper
-      id="scope-product-type"
-      label="Product type"
-      hint="Editors only see products of this type."
-    >
+    <FieldWrapper id="scope-product-type" label="Product type">
       <SelectInput
         name="scope-product-type"
         value={current ?? null}
@@ -183,6 +178,11 @@ function unavailableReason(
 type TagsProps = FilterProps & {
   access: TagsAccess;
   support: TagFilterSupport;
+  /**
+   * The error above the lists already asks for a token (a store connected
+   * without one is password-protected): the disabled select needs no hint.
+   */
+  tokenAskedAbove: boolean;
 };
 
 /**
@@ -196,15 +196,19 @@ export function TagsField({
   onChange,
   access,
   support,
+  tokenAskedAbove,
 }: TagsProps) {
   const current = scope?.tags ?? [];
   const unavailable = unavailableReason(access, current);
   const ignored = current.length > 0 && support === 'ignored';
+  // Without a token, the error above already says what to do.
+  const quiet =
+    unavailable !== null && access === 'tokenless' && tokenAskedAbove;
   return (
     <FieldWrapper
       id="scope-tags"
       label="Tags"
-      hint={unavailable ?? tagsHint(current, support)}
+      hint={quiet ? undefined : (unavailable ?? tagsHint(current, support))}
       container={fieldNotice(ignored ? TAGS_IN_COLLECTION_WARNING : null)}
     >
       <SelectInput

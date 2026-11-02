@@ -2,22 +2,37 @@ import Button from 'datocms-react-ui/Button';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { type RefObject, useLayoutEffect, useRef } from 'react';
-import { EyeSlashIcon, XmarkIcon } from '../../icons';
-import { nodeImage, nodeTitle } from '../../lib/format';
-import { type PickerLabels, selectionCountLabel } from '../../lib/pickerSearch';
+import { EyeSlashIcon, KindIcon, XmarkIcon } from '../../icons';
+import { nodeImage, nodeKind, nodeTitle } from '../../lib/format';
+import {
+  type PickerLabels,
+  selectionCountLabel,
+  VARIANTS_OPEN_HINT,
+} from '../../lib/pickerSearch';
 import type { PickerSelectedEntry, ShopifyKind } from '../../types';
 import Thumbnail from '../shared/Thumbnail';
 import styles from './PickerBars.module.css';
+import { variantLabel } from './ResultItems';
 import type { Selection } from './useSelection';
 
+/**
+ * A variant leads with its options ("Ice · The Complete Snowboard"), so a
+ * chip cut short loses the end of the product's name, not the variant.
+ */
 function entryLabel(entry: PickerSelectedEntry): string {
-  return entry.node ? nodeTitle(entry.node) : entry.fallbackLabel;
+  const { node } = entry;
+  if (!node) return entry.fallbackLabel;
+  if (node.__typename !== 'ProductVariant') return nodeTitle(node);
+  const variant = variantLabel(node);
+  return variant === node.product.title
+    ? variant
+    : `${variant} · ${node.product.title}`;
 }
 
 /**
- * One selected item: its image (the eye-slash for an item the storefront
- * can't see, as in the field's rows), its title and the cross that removes
- * it from the selection.
+ * One selected item: its image (the icon of its kind without one, the
+ * eye-slash for an item the storefront can't see, as in the field's rows),
+ * its title and the cross that removes it from the selection.
  */
 function TrayChip({
   entry,
@@ -34,7 +49,13 @@ function TrayChip({
         image={
           <Thumbnail
             image={entry.node ? nodeImage(entry.node) : null}
-            fallback={entry.node ? undefined : <EyeSlashIcon />}
+            fallback={
+              entry.node ? (
+                <KindIcon kind={nodeKind(entry.node)} />
+              ) : (
+                <EyeSlashIcon />
+              )
+            }
           />
         }
         title={label}
@@ -102,9 +123,11 @@ type Props = {
  * The fixed bottom of a multiple field's picker: the count first, with the
  * limits ("· at least 2" below the minimum; once the selection is full, why
  * nothing else can be picked: "3 of 3 products selected. You can't select
- * more."), the staged selection in the free width, then Clear and
- * the one primary action. A single field's footer is only its hint: its
- * first pick resolves the picker.
+ * more."), the staged selection in the free width (its chips wrap), then
+ * Clear and the one primary action, which waits for a change to the field's
+ * selection. A single field's footer is only its hint: its
+ * first pick resolves the picker. A variant picker says, until the first
+ * pick, that a product with several variants opens.
  */
 export default function SelectionFooter({
   selection,
@@ -151,7 +174,12 @@ export default function SelectionFooter({
           </ul>
         </Toolbar.Fill>
       ) : (
-        <Toolbar.Space />
+        <>
+          <Toolbar.Space />
+          {kind === 'variant' && (
+            <Toolbar.Note>{VARIANTS_OPEN_HINT}</Toolbar.Note>
+          )}
+        </>
       )}
       <Toolbar.Button
         label="Clear"
@@ -162,6 +190,9 @@ export default function SelectionFooter({
         ref={applyRef}
         tone="primary"
         label="Apply selection"
+        disabled={
+          selection.changed ? undefined : { reason: 'Nothing has changed yet.' }
+        }
         onClick={onApply}
       />
     </Toolbar>

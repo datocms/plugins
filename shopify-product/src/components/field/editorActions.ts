@@ -350,7 +350,10 @@ export async function reorder(
   }
 }
 
-/** "Update": writes only the new handle, in the format the value is saved in. */
+/**
+ * "Update address": writes only the new handle, in the format the value is
+ * saved in.
+ */
 export async function updateHandle(
   env: ActionEnv,
   key: string,
@@ -399,7 +402,7 @@ async function nodesToConvert(
   }
 }
 
-/** "Convert to new format": re-saves the resolved items in the configured format. */
+/** "Convert": re-saves the resolved items in the configured format. */
 export async function convert(env: ActionEnv): Promise<void> {
   const nodes = await nodesToConvert(env);
   if (!nodes) return;

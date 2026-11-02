@@ -148,7 +148,7 @@ export default function MarketFields({
         <FieldWrapper
           id={`${idPrefix}-country`}
           label="Default country"
-          hint="Prices and currencies in the record editor and the picker follow it."
+          hint="Sets prices and currency."
         >
           <ChoiceInput
             name={`${idPrefix}-country`}
@@ -163,7 +163,7 @@ export default function MarketFields({
         <FieldWrapper
           id={`${idPrefix}-language`}
           label="Default language"
-          hint="Product titles in the record editor and the picker follow it."
+          hint="Sets product titles."
         >
           <ChoiceInput
             name={`${idPrefix}-language`}

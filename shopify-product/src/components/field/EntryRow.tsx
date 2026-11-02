@@ -1,5 +1,4 @@
 import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
 import CardList from 'datocms-react-ui/CardList';
 import { DragHandle, type SortableItemApi } from 'datocms-react-ui/dnd';
 import EntityRow from 'datocms-react-ui/EntityRow';
@@ -7,12 +6,8 @@ import IdText from 'datocms-react-ui/IdText';
 import Pill from 'datocms-react-ui/Pill';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import type { ReactNode } from 'react';
-import { EyeSlashIcon } from '../../icons';
-import {
-  type RowModel,
-  rowMeta,
-  unresolvedMessage,
-} from '../../lib/fieldValue';
+import { EyeSlashIcon, KindIcon } from '../../icons';
+import { kindNoun, type RowModel, rowMeta } from '../../lib/fieldValue';
 import { availability, nodeImage, nodeTitle } from '../../lib/format';
 import type { ShopifyImage } from '../../types';
 import AvailabilityBadge from '../shared/AvailabilityBadge';
@@ -74,7 +69,10 @@ function RowTitle({ row }: { row: RowModel }) {
   );
 }
 
-/** `vendor · type` (or the SKU of a variant) and the availability. */
+/**
+ * `vendor · type` (or the SKU of a variant) and the availability. Without
+ * live data, the handle under a saved title.
+ */
 function RowDetails({
   row,
   locale,
@@ -106,35 +104,14 @@ function RowDetails({
 }
 
 /**
- * Why the row needs attention, under it. With a fix, the callout keeps the
- * room of the button that goes right under it.
+ * The fix of a row's status, at the end of the row, always visible (the
+ * row's actions show only on hover or focus), ghost like every action next
+ * to a value: Replace for a row that doesn't show (its "Not visible" pill;
+ * the callout above the card says why, once for every such row), Update
+ * address for a changed web address (its "Address changed" pill). Null for
+ * a read-only field.
  */
-function rowIssue(row: RowModel, withFix: boolean): ReactNode {
-  const className = withFix ? styles.calloutWithAction : undefined;
-  if (row.state === 'unresolved') {
-    return (
-      <Callout tone="warning" className={className}>
-        {unresolvedMessage(row.entry)}
-      </Callout>
-    );
-  }
-  if (row.handleDrift) {
-    return (
-      <Callout tone="warning" className={className}>
-        The Shopify handle changed to <IdText id={row.handleDrift} />.
-      </Callout>
-    );
-  }
-  return null;
-}
-
-/**
- * The action that fixes the row's issue: a button right under the issue,
- * always visible (the row's actions show only on hover or focus, and a
- * callout holds no buttons). Null when there is nothing to fix, or the field
- * is read-only.
- */
-function fixAction({
+function rowFix({
   row,
   index,
   readOnly,
@@ -145,6 +122,8 @@ function fixAction({
   if (row.state === 'unresolved') {
     return (
       <Button
+        tone="ghost"
+        size="milli"
         label="Replace"
         disabled={disabled}
         onClick={() => actions.replace(index)}
@@ -155,25 +134,43 @@ function fixAction({
   if (!handle) return null;
   return (
     <Button
-      label="Update handle"
+      tone="ghost"
+      size="milli"
+      label="Update address"
       disabled={disabled}
       onClick={() => actions.updateHandle(row.key, handle)}
     />
   );
 }
 
+/** The state of the row, next to its title. */
+function rowPill(row: RowModel): ReactNode {
+  if (row.state === 'unresolved') {
+    return <Pill tone="warning">Not visible</Pill>;
+  }
+  if (!row.handleDrift) return undefined;
+  return (
+    <Pill
+      tone="warning"
+      tooltip={`This ${kindNoun(row.entry.kind)}'s web address changed in Shopify.`}
+    >
+      Address changed
+    </Pill>
+  );
+}
+
 /**
  * One product, variant or collection of the field, as an item of the card:
  * thumbnail, title, details, availability and price, then the ⋮ with the
- * links and the changes. An issue shows under the row, with the button that
- * fixes it. A row that still loads shows a progress line on its bottom edge.
+ * links and the changes. A row that doesn't show, or whose web address
+ * changed, has a pill after its title and ends with the button that fixes
+ * it. A row that still loads shows a progress line on its bottom edge.
  */
 export default function EntryItem(props: EntryItemProps) {
   const { row, index, readOnly, actions, sortable } = props;
   const title = rowTitle(row);
   const price = row.node ? nodePrice(row.node) : null;
-  const fix = fixAction({ row, index, readOnly, actions });
-  const issue = rowIssue(row, fix !== null);
+  const fix = rowFix({ row, index, readOnly, actions });
 
   const summary = (
     <>
@@ -185,15 +182,17 @@ export default function EntryItem(props: EntryItemProps) {
         image={
           <Thumbnail
             image={rowImage(row)}
-            fallback={row.state === 'unresolved' ? <EyeSlashIcon /> : null}
+            fallback={
+              row.state === 'unresolved' ? (
+                <EyeSlashIcon />
+              ) : (
+                <KindIcon kind={row.entry.kind} />
+              )
+            }
           />
         }
         title={<RowTitle row={row} />}
-        afterTitle={
-          row.state === 'unresolved' ? (
-            <Pill tone="warning">Not visible</Pill>
-          ) : undefined
-        }
+        afterTitle={rowPill(row)}
         trailing={
           price ? <PriceTag price={price} locale={props.locale} /> : undefined
         }
@@ -208,7 +207,7 @@ export default function EntryItem(props: EntryItemProps) {
         <ProgressBar placement="edge" ariaLabel={`Loading ${title}`} />
       )}
       {/* The row is positioned: the drop line goes on its edges. */}
-      {!issue && sortable.dropIndicator}
+      {sortable.dropIndicator}
     </>
   );
 
@@ -238,18 +237,7 @@ export default function EntryItem(props: EntryItemProps) {
       ref={sortable.ref}
       {...{ [ROW_ATTRIBUTE]: row.key }}
       className={styles.item}
-      row={{ summary, actions: menu }}
-      body={
-        issue ? (
-          <>
-            {/* The item is positioned: the drop line goes on its edges,
-                under the issue too. */}
-            {sortable.dropIndicator}
-            {issue}
-            {fix && <div className={styles.actions}>{fix}</div>}
-          </>
-        ) : undefined
-      }
+      row={{ summary, trailing: fix, actions: menu }}
     />
   );
 }

@@ -153,7 +153,7 @@ function createCtx(parameters: unknown, options: Setup = {}) {
     theme: {},
     cssDesignTokens: {},
     colorScheme: 'light',
-    // English dates in a fixed time zone: "Checked on" reads 09/28/2026.
+    // English dates in a fixed time zone: "checked on" reads 09/28/2026.
     ui: { locale: 'en', timezone: 'UTC' },
     site: { attributes: { internal_domain: null } },
     plugin: { id: 'plugin', attributes: { parameters } },
@@ -245,7 +245,7 @@ async function openAdvanced(user: User) {
   expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The settings row (Connection, Tags, Inventory) with this title. */
+/** The settings row (Connection, Tag filters, Stock levels) with this title. */
 function settingsRow(title: string): HTMLElement {
   return screen.getByText(title).closest('li') as HTMLElement;
 }
@@ -258,7 +258,7 @@ function storeGroup(title: string): HTMLElement {
 }
 
 const DEMO_STORE_NOTICE =
-  'Editors browse sample products until you switch it off in Advanced settings.';
+  'The demo store is on: editors browse sample products until you switch it off in Advanced settings.';
 
 /**
  * A default market choice: radios, since the fixtures' stores sell in a few
@@ -268,10 +268,10 @@ function marketGroup(name: string): HTMLElement {
   return screen.getByRole('radiogroup', { name });
 }
 
-/** The demo store notice, by its title. */
+/** The demo store notice, by its text. */
 function demoStoreNote(): HTMLElement {
   const note = screen.getByRole('note');
-  expect(note).toHaveTextContent('Demo store on');
+  expect(note).toHaveTextContent('The demo store is on');
   return note;
 }
 
@@ -452,6 +452,10 @@ describe('ConfigScreen: fresh install', () => {
 
     expectBusy(saveButton());
     expect(screen.getByText('Checking the connection…')).toBeInTheDocument();
+    // One spinner: Save's. Re-check waits, disabled.
+    expect(
+      screen.getByRole('button', { name: /Re-check|Test connection/ }),
+    ).not.toHaveAttribute('aria-busy');
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
 
@@ -498,16 +502,15 @@ describe('ConfigScreen: validation', () => {
     expect(screen.getByText(ADMIN_TOKEN_ERROR)).toBeInTheDocument();
   });
 
-  it('shows every error and a form message on a failed submit, without testing', async () => {
+  it('shows every error on a failed submit, under its field, without testing', async () => {
     const { user, updatePluginParameters } = setup({});
 
     await user.type(domainInputs()[0], 'acme');
     await user.click(saveButton());
 
     expect(screen.getByText(EMPTY_TOKEN_ERROR)).toBeInTheDocument();
-    expect(
-      screen.getByText('Fix the errors above before saving.'),
-    ).toBeInTheDocument();
+    // No second message for the same errors above Save.
+    expect(screen.queryByText(/before saving/)).toBeNull();
     expect(client.connectionTest).not.toHaveBeenCalled();
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
@@ -556,11 +559,13 @@ describe('ConfigScreen: saved settings', () => {
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
     // Saved without capabilities: the mount check detects them.
     expect(client.detectCapabilities).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('Tags')).toBeInTheDocument();
-    expect(
-      within(settingsRow('Inventory')).getByText('Available'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/to detect tags/)).not.toBeInTheDocument();
+    // Both abilities are there: their rows don't show.
+    await waitFor(() =>
+      expect(client.detectCapabilities).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.queryByText('Tag filters')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stock levels')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Re-check to detect/)).not.toBeInTheDocument();
 
     await user.click(saveButton());
 
@@ -579,18 +584,17 @@ describe('ConfigScreen: saved settings', () => {
 
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
     const connection = settingsRow('Connection');
-    expect(connection).toHaveTextContent('Connected to DatoCMS Demo');
-    // The API version the plugin targets shows once the store answered.
+    expect(connection).toHaveTextContent('Connected');
+    // The API version shows only once it expired, in its own group.
     expect(connection).toHaveTextContent(
-      'Checked on 09/28/2026 with API 2026-10.',
+      'DatoCMS Demo, checked on 09/28/2026.',
     );
-    expect(connection).not.toHaveTextContent('expired');
+    expect(connection).not.toHaveTextContent('API');
     expect(
-      within(settingsRow('Inventory')).getByText('Not available'),
+      within(settingsRow('Stock levels')).getByText('Not available'),
     ).toBeInTheDocument();
-    expect(
-      within(settingsRow('Tags')).getByText('Available'),
-    ).toBeInTheDocument();
+    // What's available needs nothing: no row.
+    expect(screen.queryByText('Tag filters')).not.toBeInTheDocument();
     expectUnavailable(saveButton());
   });
 
@@ -631,10 +635,10 @@ describe('ConfigScreen: saved settings', () => {
     await user.click(screen.getByRole('button', { name: 'Re-check' }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/Checked on/)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/checked on/i)).not.toBeInTheDocument(),
     );
     expect(
-      within(settingsRow('Inventory')).getByText(
+      within(settingsRow('Stock levels')).getByText(
         'Enable "Read product inventory" in Headless → Storefront API permissions, or publish some products to this storefront.',
       ),
     ).toBeInTheDocument();
@@ -653,10 +657,11 @@ describe('ConfigScreen: saved settings', () => {
     await user.click(screen.getByRole('button', { name: 'Re-check' }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/Checked on/)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/checked on/i)).not.toBeInTheDocument(),
     );
+    // Connection, then the one missing ability (tags are there: no row).
     const rows = within(settingsRow('Connection').parentElement as HTMLElement);
-    expect(rows.getAllByRole('listitem')).toHaveLength(3);
+    expect(rows.getAllByRole('listitem')).toHaveLength(2);
     expect(screen.queryByText(/metafield/i)).not.toBeInTheDocument();
     // Only metafields changed: nothing worth saving.
     expectUnavailable(saveButton());
@@ -668,12 +673,12 @@ describe('ConfigScreen: saved settings', () => {
     );
     const { user } = setup(v3([SAVED_STORE]));
 
+    // The cause is announced: focus stays where it was.
     expect(
       await screen.findByText(
-        "Couldn't reach Shopify. Check your connection or ad-blocker.",
+        "Couldn't reach Shopify: check your internet connection or ad blocker.",
       ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Couldn't connect to Shopify")).toBeInTheDocument();
+    ).toHaveAttribute('role', 'alert');
     expect(settingsRow('Connection')).toHaveTextContent('Not connected');
     expect(
       screen.queryByRole('button', { name: 'Save anyway' }),
@@ -683,7 +688,7 @@ describe('ConfigScreen: saved settings', () => {
 
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
     expect(
-      screen.queryByText("Couldn't connect to Shopify"),
+      screen.queryByText(/Couldn't reach Shopify/),
     ).not.toBeInTheDocument();
   });
 
@@ -695,14 +700,15 @@ describe('ConfigScreen: saved settings', () => {
 
     expect(
       await screen.findByText(
-        'This plugin version targets an expired Shopify API version. Update the plugin to keep it working.',
+        'Shopify no longer supports the version this plugin uses. Update the plugin from the plugins list to keep it working.',
       ),
     ).toBeInTheDocument();
     const problem = screen
       .getByRole('heading', { name: 'Shopify API version' })
       .closest('.Page__group') as HTMLElement;
     expect(within(problem).getByText('Expired')).toBeInTheDocument();
-    expect(screen.getByText(/\(expired\)/)).toBeInTheDocument();
+    // Said once: the Connection row doesn't repeat it.
+    expect(settingsRow('Connection')).not.toHaveTextContent('expired');
   });
 
   it('shows the API version problem when the client warns', async () => {
@@ -717,7 +723,7 @@ describe('ConfigScreen: saved settings', () => {
     });
 
     expect(
-      screen.getByText(/targets an expired Shopify API version/),
+      screen.getByText(/no longer supports the version this plugin uses/),
     ).toBeInTheDocument();
   });
 
@@ -826,13 +832,14 @@ describe('ConfigScreen: tokenless and failures', () => {
 
     expect(
       await screen.findByText(
-        'This store is password-protected, so the plugin needs a Storefront access token.',
+        'This store is password-protected: switch off "Connect without a token" and paste a Storefront access token.',
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Fix the connection above, or save anyway.'),
+      screen.getByText(
+        "The settings weren't saved: fix the connection above, or save anyway.",
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Settings not saved')).toBeInTheDocument();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expectAvailable(saveButton());
 
@@ -1059,7 +1066,7 @@ describe('ConfigScreen: saving edge cases', () => {
   it('keeps what was typed while the save was running', async () => {
     const { user, saved } = hostSetup(v3([SAVED_STORE, SECOND]));
     await waitFor(() =>
-      expect(screen.getAllByText(/Connected to/)).toHaveLength(2),
+      expect(screen.getAllByText('Connected')).toHaveLength(2),
     );
     const checks: Array<() => void> = [];
     client.connectionTest.mockImplementation(
@@ -1146,9 +1153,9 @@ describe('ConfigScreen: errors and focus', () => {
 
     await user.click(saveButton());
 
-    const failed = (
-      await screen.findByText("Couldn't connect to Shopify")
-    ).closest('[data-connection-failed="true"]') as HTMLElement;
+    const failed = (await screen.findByText(/Couldn't reach Shopify/)).closest(
+      '[data-connection-failed="true"]',
+    ) as HTMLElement;
     await waitFor(() => expect(failed).toHaveFocus());
     expect(within(failed).queryByRole('button')).not.toBeInTheDocument();
   });
@@ -1161,7 +1168,9 @@ describe('ConfigScreen: errors and focus', () => {
     await user.type(domainInputs()[0], 'acme');
     await user.type(tokenInputs()[0], 'public-token');
     await user.click(saveButton());
-    await screen.findByText('Fix the connection above, or save anyway.');
+    await screen.findByText(
+      "The settings weren't saved: fix the connection above, or save anyway.",
+    );
 
     await openAdvanced(user);
     await user.click(screen.getByRole('button', { name: 'Add another store' }));
@@ -1185,11 +1194,11 @@ describe('ConfigScreen: errors and focus', () => {
     await user.type(tokenInputs()[0], 'b');
     await act(async () => pending.resolve(connectionResult()));
 
-    expect(screen.queryByText(/Connected to/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
     expect(screen.getByText('Not checked yet')).toBeInTheDocument();
   });
 
-  it('names the expired pinned version and the one that answered', async () => {
+  it('says an expired version once, in its own group', async () => {
     client.connectionTest.mockResolvedValue(
       connectionResult({
         apiVersionOutdated: true,
@@ -1200,9 +1209,10 @@ describe('ConfigScreen: errors and focus', () => {
 
     expect(
       await screen.findByText(
-        /API 2026-10 \(expired; Shopify answered with 2027-01\)/,
+        /no longer supports the version this plugin uses/,
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/2026-10/)).not.toBeInTheDocument();
   });
 
   it('lets read-only roles re-check the connection', async () => {
@@ -1269,16 +1279,17 @@ describe('ConfigScreen: removing stores', () => {
     );
   });
 
-  it('explains the default store on the first label only', () => {
+  it('marks the default store with its pill, not with a label hint', () => {
     setup(v3([SAVED_STORE, SECOND]));
 
-    const hint = "Fields that don't pick a store use this one.";
-    expect(screen.getAllByText(hint)).toHaveLength(1);
     const first = storeGroup('acme.myshopify.com');
     const second = storeGroup('Europe');
-    expect(within(first).getByText(hint)).toBeInTheDocument();
+    expect(within(first).getByText('Default')).toBeInTheDocument();
+    expect(within(second).queryByText('Default')).not.toBeInTheDocument();
     expect(within(second).getByLabelText('Label')).toHaveValue('Europe');
-    expect(within(second).queryByText(hint)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Fields that don't pick a store use this one."),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -1547,7 +1558,7 @@ describe('ConfigScreen: keeping keyboard focus', () => {
       new ShopifyClientError('network', 'Failed to fetch'),
     );
     const { user } = setup(v3([SAVED_STORE]));
-    await screen.findByText("Couldn't connect to Shopify");
+    await screen.findByText(/Couldn't reach Shopify/);
     const recheck = screen.getByRole('button', { name: 'Re-check' });
     recheck.focus();
     const pending = deferred<ConnectionTestResult>();
@@ -1565,7 +1576,7 @@ describe('ConfigScreen: keeping keyboard focus', () => {
     );
     await user.keyboard('{Enter}');
 
-    await screen.findByText("Couldn't connect to Shopify");
+    await screen.findByText(/Couldn't reach Shopify/);
     expect(recheck).toHaveFocus();
     expectAvailable(recheck);
   });
@@ -1604,7 +1615,7 @@ describe('ConfigScreen: connection copy', () => {
 
     expect(
       await screen.findByText(
-        'Shopify rejected this token. Check that it\'s the "Public access token" of a Headless storefront in this store.',
+        'Shopify rejected this token: use the Public access token of a Headless storefront in this store.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/plugin settings/)).not.toBeInTheDocument();
@@ -1617,9 +1628,9 @@ describe('ConfigScreen: connection copy', () => {
     );
     const { user, updatePluginParameters } = setup(v3([withoutCapabilities]));
 
-    await screen.findByText('Inventory');
+    await screen.findByText('Stock levels');
     expect(
-      within(settingsRow('Inventory')).getByText('Not available'),
+      within(settingsRow('Stock levels')).getByText('Not available'),
     ).toBeInTheDocument();
     expect(client.connectionTest).toHaveBeenCalledTimes(1);
     expectAvailable(saveButton());
@@ -1646,14 +1657,9 @@ describe('ConfigScreen: connection copy', () => {
     await user.type(tokenInputs()[0], '{Backspace}');
 
     expect(settingsRow('Connection')).toHaveTextContent(
-      'Connected to DatoCMS Demo',
+      'DatoCMS Demo. Re-check to detect stock levels and tag filters.',
     );
-    expect(
-      screen.getByText(
-        'Connected with API 2026-10: re-check to detect tags and inventory.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Tags')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tag filters')).not.toBeInTheDocument();
   });
 
   it('says what a tokenless store is missing', async () => {
@@ -1667,10 +1673,10 @@ describe('ConfigScreen: connection copy', () => {
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
 
     expect(
-      await screen.findByText('Tags need a Storefront access token.'),
+      await screen.findByText('Tag filters need a Storefront access token.'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Inventory needs a Storefront access token.'),
+      screen.getByText('Stock levels need a Storefront access token.'),
     ).toBeInTheDocument();
   });
 });
@@ -1814,7 +1820,9 @@ describe('ConfigScreen: collapsed groups', () => {
     ).not.toBeInTheDocument();
     expect(tokenlessSwitch()).not.toBeChecked();
     expect(
-      screen.getByText('Public stores only, without tags or inventory.'),
+      screen.getByText(
+        'Public stores only, without tag filters or stock levels.',
+      ),
     ).toBeInTheDocument();
     // The market comes from the connection: it shows once connected.
     expect(

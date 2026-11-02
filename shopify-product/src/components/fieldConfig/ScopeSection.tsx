@@ -1,15 +1,21 @@
 import Callout from 'datocms-react-ui/Callout';
 import CardList from 'datocms-react-ui/CardList';
-import EntityRow from 'datocms-react-ui/EntityRow';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Link from 'datocms-react-ui/Link';
 import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useState } from 'react';
+import {
+  connectionProblemCause,
+  isConnectionProblem,
+  settingsStep,
+} from '../../lib/fieldValue';
 import { isStoreUsable } from '../../lib/parameters';
 import {
   describeError,
   getShopifyClient,
   type ShopifyClient,
+  ShopifyClientError,
 } from '../../lib/shopifyClient';
 import type {
   FieldScope,
@@ -17,6 +23,7 @@ import type {
   StoreCapabilities,
   StoreConnection,
 } from '../../types';
+import { SETTINGS_LINK_LABEL } from '../field/Notices';
 import type { AsyncValue } from '../shared/useAsyncValue';
 import { scopeSummary } from './draft';
 import styles from './FieldSettings.module.css';
@@ -43,6 +50,13 @@ type Props = {
   scope: FieldScope | undefined;
   /** The field's store, or null when the plugin has no usable connection. */
   store: StoreConnection | null;
+  /**
+   * Some store is connected. Without one, the notice above the options says
+   * so, and this section doesn't repeat it.
+   */
+  pluginConfigured: boolean;
+  /** The plugin settings, where a store's connection is fixed. */
+  settingsPath: string;
   error?: string;
   onChange: ScopeChange;
 };
@@ -54,15 +68,18 @@ function sectionHint(kind: ShopifyKind): string {
 }
 
 /**
- * 5. "Limit choices": one item of a card that opens on its fields (open when
- * limits are set). While the host flags the limits, the item stays open so
- * the error can't hide. The collection, product type and tag lists load from
- * the field's store only once the item is open.
+ * 5. "Limit choices": a card whose header opens and closes it, with its
+ * disclosure chevron and the current limits as the aside (open when limits
+ * are set). While the host flags the limits, the card stays open so the
+ * error can't hide. The collection, product type and tag lists load from the
+ * field's store only once the card is open.
  */
 export default function ScopeSection({
   kind,
   scope,
   store,
+  pluginConfigured,
+  settingsPath,
   error,
   onChange,
 }: Props) {
@@ -73,35 +90,32 @@ export default function ScopeSection({
     if (error) setOpen(true);
   }
   const summary = scopeSummary(scope);
-  const row = {
-    summary: (
-      <EntityRow layout="row" title="Limit choices">
-        {summary.length > 0 ? summary.join(' · ') : 'No limits'}
-      </EntityRow>
-    ),
-  };
-  const body = (
-    <>
-      <p className={styles.block}>{sectionHint(kind)}</p>
-      {error && <Callout tone="danger">{error}</Callout>}
-      <ScopeFields store={store} scope={scope} onChange={onChange} />
-    </>
-  );
   return (
     <div className={styles.block}>
-      <CardList>
-        {error ? (
-          <CardList.Item row={row} body={body} />
-        ) : (
-          <CardList.Item
-            row={row}
-            expandable={{
-              open,
-              onToggle: () => setOpen((value) => !value),
-              body,
-            }}
-          />
-        )}
+      <CardList
+        header={{
+          title: 'Limit choices',
+          aside: summary.length > 0 ? summary.join(' · ') : 'No limits',
+          collapse: error
+            ? { open: true }
+            : { open, onToggle: () => setOpen((value) => !value) },
+        }}
+      >
+        <CardList.Item
+          body={
+            <>
+              <p className={styles.block}>{sectionHint(kind)}</p>
+              {error && <Callout tone="danger">{error}</Callout>}
+              <ScopeFields
+                store={store}
+                scope={scope}
+                pluginConfigured={pluginConfigured}
+                settingsPath={settingsPath}
+                onChange={onChange}
+              />
+            </>
+          }
+        />
       </CardList>
     </div>
   );
@@ -110,12 +124,13 @@ export default function ScopeSection({
 function ScopeFields({
   store,
   scope,
+  pluginConfigured,
+  settingsPath,
   onChange,
-}: {
-  store: StoreConnection | null;
-  scope: FieldScope | undefined;
-  onChange: ScopeChange;
-}) {
+}: Pick<
+  Props,
+  'store' | 'scope' | 'pluginConfigured' | 'settingsPath' | 'onChange'
+>) {
   const client = store && isStoreUsable(store) ? getShopifyClient(store) : null;
   return (
     <>
@@ -124,13 +139,16 @@ function ScopeFields({
           client={client}
           store={store}
           scope={scope}
+          settingsPath={settingsPath}
           onChange={onChange}
         />
       ) : (
-        <Callout>
-          Connect a Shopify store in the plugin settings to limit choices by
-          collection, product type or tag.
-        </Callout>
+        pluginConfigured && (
+          <Callout>
+            Connect a Shopify store in the plugin settings to limit choices by
+            collection, product type or tag.
+          </Callout>
+        )
       )}
       <VendorField value={scope?.vendor} onChange={onChange} />
       <AvailableOnlyField
@@ -149,10 +167,7 @@ function AvailableOnlyField({
   onChange: ScopeChange;
 }) {
   return (
-    <FieldWrapper
-      id="scope-available"
-      hint="The picker hides sold-out products."
-    >
+    <FieldWrapper id="scope-available">
       <SwitchInput
         name="scope-available"
         label="Only show products available for sale"
@@ -165,12 +180,51 @@ function AvailableOnlyField({
   );
 }
 
-/** The first failed lookup's message, if any. */
-function loadError(...results: Array<AsyncValue<unknown>>): string | null {
+/** The first failed lookup's error, if any. */
+function loadError(...results: Array<AsyncValue<unknown>>): unknown {
   for (const result of results) {
-    if (result.status === 'error') return describeError(result.error);
+    if (result.status === 'error') return result.error;
   }
   return null;
+}
+
+const LOAD_ERROR_TITLE = "Couldn't load collections, product types and tags";
+
+/**
+ * The lists couldn't load. When only the plugin settings can fix it (the
+ * token, its permissions, the store address), the next step is a link to
+ * them in the text, instead of a "Try again" that can't help.
+ */
+function StoreLoadError({
+  error,
+  settingsPath,
+  onRetry,
+}: {
+  error: unknown;
+  settingsPath: string;
+  onRetry: () => void;
+}) {
+  if (!isConnectionProblem(error)) {
+    return (
+      <CalloutWithAction
+        tone="danger"
+        title={LOAD_ERROR_TITLE}
+        action={{ label: 'Try again', onClick: onRetry }}
+      >
+        {describeError(error)}
+      </CalloutWithAction>
+    );
+  }
+  // A rejected token's full message already sends to the settings.
+  const rejectedToken =
+    error instanceof ShopifyClientError && error.code === 'unauthorized';
+  return (
+    <CalloutWithAction tone="danger" title={LOAD_ERROR_TITLE}>
+      {rejectedToken ? connectionProblemCause(error) : describeError(error)}{' '}
+      <Link to={settingsPath}>{SETTINGS_LINK_LABEL}</Link> {settingsStep(error)}
+      .
+    </CalloutWithAction>
+  );
 }
 
 /** The check for the collection limited now (a stale one is ignored). */
@@ -212,11 +266,13 @@ function StoreScopeFields({
   client,
   store,
   scope,
+  settingsPath,
   onChange,
 }: {
   client: ShopifyClient;
   store: StoreConnection;
   scope: FieldScope | undefined;
+  settingsPath: string;
   onChange: ScopeChange;
 }) {
   const capabilityCheck = useCapabilityCheck(client);
@@ -237,14 +293,12 @@ function StoreScopeFields({
   };
   return (
     <>
-      {error && (
-        <CalloutWithAction
-          tone="danger"
-          title="Couldn't load the lists from Shopify"
-          action={{ label: 'Try again', onClick: retry }}
-        >
-          {error}
-        </CalloutWithAction>
+      {error !== null && (
+        <StoreLoadError
+          error={error}
+          settingsPath={settingsPath}
+          onRetry={retry}
+        />
       )}
       <CollectionField
         collections={collections}
@@ -265,6 +319,9 @@ function StoreScopeFields({
           capabilityCheck,
         )}
         support={tagFilterSupport(collectionId, check)}
+        tokenAskedAbove={
+          error instanceof ShopifyClientError && error.code === 'store-locked'
+        }
       />
     </>
   );
@@ -275,7 +332,7 @@ function StoreScopeFields({
  * whole words case-insensitively, not the exact name.
  */
 const VENDOR_HINT =
-  'Editors only see products from this vendor. Shopify matches whole words, so "Acme" also matches "Acme Outlet".';
+  'Shopify matches whole words, so "Acme" also matches "Acme Outlet".';
 
 /** Free text (Shopify has no vendor list); keeps what's typed, writes it trimmed. */
 function VendorField({

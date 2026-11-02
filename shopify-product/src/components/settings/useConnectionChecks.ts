@@ -8,6 +8,7 @@ import {
 } from '../../lib/shopifyClient';
 import type {
   ConnectionTestResult,
+  LocalizationInfo,
   StoreCapabilities,
   StoreConnection,
 } from '../../types';
@@ -21,7 +22,15 @@ import type {
  *   on mount for saved stores without capabilities).
  */
 export type ConnectionStatus =
-  | { kind: 'checking' }
+  | {
+      kind: 'checking';
+      /**
+       * The markets of the last check of the same connection: the market
+       * fields keep them on screen meanwhile, instead of leaving and coming
+       * back.
+       */
+      localization: LocalizationInfo | null;
+    }
   | {
       kind: 'connected';
       result: ConnectionTestResult;
@@ -50,16 +59,32 @@ export type ConnectionChecks = {
   ) => Promise<CheckOutcome>;
 };
 
-/**
+/*
+ * Under "Not connected", one sentence each: the cause, then what to check.
  * The editor-facing copy sends people to the plugin settings; here the
- * developer already is, so say what to check instead.
+ * developer already is.
  */
 export const SETTINGS_UNAUTHORIZED_MESSAGE =
-  'Shopify rejected this token. Check that it\'s the "Public access token" of a Headless storefront in this store.';
+  'Shopify rejected this token: use the Public access token of a Headless storefront in this store.';
 
-function describeCheckError(error: unknown): string {
-  if (error instanceof ShopifyClientError && error.code === 'unauthorized') {
-    return SETTINGS_UNAUTHORIZED_MESSAGE;
+const SETTINGS_FORBIDDEN_MESSAGE =
+  'This token can\'t read products: enable "Read products, variants, and collections" in Shopify → Headless → Storefront API permissions.';
+
+const SETTINGS_NETWORK_MESSAGE =
+  "Couldn't reach Shopify: check your internet connection or ad blocker.";
+
+/** The token field hides while the store connects without a token. */
+const SETTINGS_TOKENLESS_LOCKED_MESSAGE =
+  'This store is password-protected: switch off "Connect without a token" and paste a Storefront access token.';
+
+function describeCheckError(error: unknown, store: StoreConnection): string {
+  if (error instanceof ShopifyClientError) {
+    if (error.code === 'unauthorized') return SETTINGS_UNAUTHORIZED_MESSAGE;
+    if (error.code === 'forbidden') return SETTINGS_FORBIDDEN_MESSAGE;
+    if (error.code === 'network') return SETTINGS_NETWORK_MESSAGE;
+    if (error.code === 'store-locked' && store.tokenless) {
+      return SETTINGS_TOKENLESS_LOCKED_MESSAGE;
+    }
   }
   return describeError(error);
 }
@@ -88,6 +113,19 @@ export function useConnectionChecks(): ConnectionChecks {
     [],
   );
 
+  const startChecking = useCallback((signature: string) => {
+    setStatuses((current) => {
+      const last = current[signature];
+      const localization =
+        last?.kind === 'connected'
+          ? last.result.localization
+          : last?.kind === 'checking'
+            ? last.localization
+            : null;
+      return { ...current, [signature]: { kind: 'checking', localization } };
+    });
+  }, []);
+
   const settle = useCallback(
     (signature: string, result: ConnectionTestResult, detected: boolean) => {
       if (result.apiVersionOutdated) setApiVersionOutdated(true);
@@ -98,7 +136,7 @@ export function useConnectionChecks(): ConnectionChecks {
 
   const verify = useCallback(
     async (store: StoreConnection, signature: string, signal?: AbortSignal) => {
-      setStatus(signature, { kind: 'checking' });
+      startChecking(signature);
       try {
         const result = await getShopifyClient(store).connectionTest({ signal });
         settle(signature, result, false);
@@ -106,11 +144,11 @@ export function useConnectionChecks(): ConnectionChecks {
         if (isAbortError(error)) return;
         setStatus(signature, {
           kind: 'failed',
-          message: describeCheckError(error),
+          message: describeCheckError(error, store),
         });
       }
     },
-    [setStatus, settle],
+    [setStatus, settle, startChecking],
   );
 
   const check = useCallback(
@@ -124,7 +162,7 @@ export function useConnectionChecks(): ConnectionChecks {
       if (signal?.aborted) abort();
       signal?.addEventListener('abort', abort, { once: true });
       controllers.current.add(controller);
-      setStatus(signature, { kind: 'checking' });
+      startChecking(signature);
       try {
         const client = getShopifyClient(store);
         const [result, capabilities] = await Promise.all([
@@ -137,7 +175,7 @@ export function useConnectionChecks(): ConnectionChecks {
         if (!isAbortError(error)) {
           setStatus(signature, {
             kind: 'failed',
-            message: describeCheckError(error),
+            message: describeCheckError(error, store),
           });
         }
         return { ok: false };
@@ -146,7 +184,7 @@ export function useConnectionChecks(): ConnectionChecks {
         controllers.current.delete(controller);
       }
     },
-    [setStatus, settle],
+    [setStatus, settle, startChecking],
   );
 
   return { statuses, apiVersionOutdated, verify, check };

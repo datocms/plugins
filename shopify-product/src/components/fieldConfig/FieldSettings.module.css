@@ -20,11 +20,6 @@
   margin-bottom: var(--form-field-gap);
 }
 
-/* The text above the box of the stored value example, spaced as a label. */
-.caption {
-  margin-bottom: var(--spacing-s);
-}
-
 /* The readable view in the code box: the box's own padding, room for the copy
    button on the first line, and the indentation kept. */
 .readable {

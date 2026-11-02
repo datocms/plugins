@@ -19,6 +19,8 @@ export type Selection = {
   /** `Infinity` without a limit (and 1 for single fields). */
   max: number;
   atMax: boolean;
+  /** The entries or their order differ from what the field holds. */
+  changed: boolean;
   isSelected: (node: ShopifyNode) => boolean;
   /** Adds or removes; adding at the max does nothing. */
   toggle: (node: ShopifyNode) => void;
@@ -42,9 +44,8 @@ export function useSelection(
   fieldParameters: FieldParametersV1,
   initial: readonly PickerSelectedEntry[],
 ): Selection {
-  const [entries, setEntries] = useState<PickerSelectedEntry[]>(() =>
-    dedupeSelection(initial),
-  );
+  const [start] = useState(() => dedupeSelection(initial));
+  const [entries, setEntries] = useState<PickerSelectedEntry[]>(start);
   const multiple = fieldParameters.cardinality === 'multiple';
   const max = maxFor(fieldParameters);
 
@@ -79,6 +80,9 @@ export function useSelection(
       multiple,
       max,
       atMax: multiple && entries.length >= max,
+      changed:
+        entries.length !== start.length ||
+        entries.some((entry, index) => entry.key !== start[index]?.key),
       isSelected,
       toggle,
       select,
@@ -88,6 +92,7 @@ export function useSelection(
     }),
     [
       entries,
+      start,
       multiple,
       max,
       isSelected,

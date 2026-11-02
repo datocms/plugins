@@ -42,7 +42,7 @@ import {
   toPickerSelected,
   UNRESOLVED_COLLECTION_MESSAGE,
   UNRESOLVED_MESSAGE,
-  unresolvedMessage,
+  unresolvedSummary,
   type WriteTarget,
   withEntryHandle,
   withPrimaryHandle,
@@ -192,11 +192,14 @@ describe('copy', () => {
     expect(isFormatMismatch(null, 'reference')).toBe(false);
     expect(isFormatMismatch('reference', 'reference')).toBe(false);
     expect(isFormatMismatch('handle', 'gid')).toBe(true);
-    expect(formatMismatchMessage('handle', 'reference')).toBe(
-      'Saved as a Shopify handle. This field now saves a reference document.',
+    expect(formatMismatchMessage('handle', 'product', 1)).toBe(
+      'This product was saved in an older format: convert it to the one this field uses now.',
     );
-    expect(formatMismatchMessage('legacyProductJson', 'gid')).toBe(
-      'Saved as legacy product JSON. This field now saves a Shopify ID.',
+    expect(formatMismatchMessage('legacyProductJson', 'product', 1)).toBe(
+      'This product was saved in an older format: convert it to the one this field uses now.',
+    );
+    expect(formatMismatchMessage('gid', 'collection', 2)).toBe(
+      'These collections were saved in a different format: convert them to the one this field uses now.',
     );
   });
 
@@ -232,7 +235,6 @@ describe('limitsSummary', () => {
     expect(limitsSummary(params({ max: 10 }), 3).counter).toEqual({
       count: 3,
       max: 10,
-      min: null,
       one: 'product',
       many: 'products',
     });
@@ -241,14 +243,18 @@ describe('limitsSummary', () => {
     ).toMatchObject({ count: 1, max: 1, one: 'variant', many: 'variants' });
     const full = limitsSummary(params({ max: 3 }), 3);
     expect(full.atMax).toBe(true);
-    expect(full.atMaxReason).toBe(
-      "You can't add more products: this field holds up to 3.",
-    );
+    expect(full.atMaxReason).toBe('The field is full.');
   });
 
   it('asks for the minimum while below it', () => {
-    expect(limitsSummary(params({ min: 2 }), 1).belowMin).toBe(
+    expect(limitsSummary(params({ min: 2 }), 0).belowMin).toBe(
       'Add at least 2 products.',
+    );
+    expect(limitsSummary(params({ min: 2 }), 1).belowMin).toBe(
+      'Add 1 more product: this field needs at least 2.',
+    );
+    expect(limitsSummary(params({ min: 5 }), 2).belowMin).toBe(
+      'Add 3 more products: this field needs at least 5.',
     );
     expect(limitsSummary(params({ min: 1, kind: 'variant' }), 0).belowMin).toBe(
       'Add at least 1 variant.',
@@ -257,16 +263,13 @@ describe('limitsSummary', () => {
     expect(limitsSummary(params(), 0).counter).toBeNull();
   });
 
-  it('counts against the minimum when the field sets no maximum', () => {
-    expect(limitsSummary(params({ min: 2 }), 1).counter).toMatchObject({
-      count: 1,
-      max: null,
-      min: 2,
-    });
-    expect(limitsSummary(params({ min: 2, max: 5 }), 4).counter).toMatchObject({
+  it('counts only against a maximum', () => {
+    expect(limitsSummary(params({ min: 2 }), 1).counter).toBeNull();
+    expect(limitsSummary(params({ min: 2, max: 5 }), 4).counter).toEqual({
       count: 4,
       max: 5,
-      min: null,
+      one: 'product',
+      many: 'products',
     });
   });
 
@@ -275,7 +278,7 @@ describe('limitsSummary', () => {
     expect(over.aboveMax).toBe(
       'Remove 2 products: this field holds up to 1.000.',
     );
-    expect(limitsSummary(params({ min: 1500 }), 1, 'en').belowMin).toBe(
+    expect(limitsSummary(params({ min: 1500 }), 0, 'en').belowMin).toBe(
       'Add at least 1,500 products.',
     );
   });
@@ -321,11 +324,11 @@ describe('entryFallback', () => {
     expect(fallback.imageUrl).toBe('https://cdn.shopify.com/board_200x200.jpg');
   });
 
-  it('falls back to the handle, then the GID, in monospace', () => {
+  it('falls back to the handle, then the GID, in monospace, without a GID line', () => {
     expect(entryFallback(entry())).toMatchObject({
       label: 'the-complete-snowboard',
       labelIsCode: true,
-      identity: PRODUCT_ID,
+      identity: null,
     });
     expect(entryFallback(entry({ handle: null }))).toMatchObject({
       label: PRODUCT_ID,
@@ -344,7 +347,20 @@ describe('entryFallback', () => {
           productId: PRODUCT_ID,
         }),
       ),
-    ).toMatchObject({ label: VARIANT_ID, identity: 'the-complete-snowboard' });
+    ).toMatchObject({ label: VARIANT_ID, identity: null });
+    expect(
+      entryFallback(
+        entry({
+          key: VARIANT_ID,
+          kind: 'variant',
+          id: VARIANT_ID,
+          snapshot: {
+            title: 'Board — Ice',
+            capturedAt: '2026-06-01T12:00:00Z',
+          },
+        }),
+      ),
+    ).toMatchObject({ label: 'Board — Ice', identity: null });
   });
 });
 
@@ -460,7 +476,7 @@ describe('rowMeta', () => {
     expect(rowMeta(variant())).toBe('Snowboard Vendor · SKU BOARD-ICE');
     expect(rowMeta(variant({ sku: null }))).toBe('Snowboard Vendor');
     expect(rowMeta(product())).toBe('Snowboard Vendor · snowboard');
-    expect(rowMeta(collection())).toBe(collection().handle);
+    expect(rowMeta(collection())).toBe('');
   });
 });
 
@@ -917,30 +933,32 @@ describe('editor feedback', () => {
     expect(escapeHtml('Tee <XL> & Co')).toBe('Tee &lt;XL&gt; &amp; Co');
   });
 
-  it('describes unresolved entries, leading with a renamed handle', () => {
-    expect(unresolvedMessage(entry())).toBe(UNRESOLVED_MESSAGE);
+  it('says once why items are missing, leading with a renamed handle', () => {
+    expect(unresolvedSummary([], 2)).toBeNull();
+    expect(unresolvedSummary([entry()], 1)).toBe(
+      "This product isn't visible in your store: it may have been unpublished, archived or deleted in Shopify.",
+    );
+    expect(unresolvedSummary([entry(), entry({ key: 'x', id: 'x' })], 3)).toBe(
+      "2 products aren't visible in your store: they may have been unpublished, archived or deleted in Shopify.",
+    );
     expect(
-      unresolvedMessage(entry({ key: 'handle:x', id: null, handle: 'x' })),
+      unresolvedSummary([entry({ key: 'handle:x', id: null, handle: 'x' })], 3),
     ).toBe(
-      'No product with this handle is visible to the storefront: the handle may have changed in Shopify, or the product may be unpublished from the Headless channel, archived, or deleted.',
+      "1 product isn't visible in your store: its web address may have changed, or it may have been unpublished, archived or deleted in Shopify.",
     );
   });
 
   it("doesn't say collections may be archived, which only products can be", () => {
     expect(
-      unresolvedMessage(
-        entry({ key: COLLECTION_ID, id: COLLECTION_ID, kind: 'collection' }),
-      ),
-    ).toBe(UNRESOLVED_COLLECTION_MESSAGE);
-    expect(UNRESOLVED_COLLECTION_MESSAGE).toBe(
-      'Not visible to the storefront: it may be unpublished from the Headless channel, or deleted.',
-    );
-    expect(
-      unresolvedMessage(
-        entry({ key: 'handle:x', id: null, handle: 'x', kind: 'collection' }),
+      unresolvedSummary(
+        [entry({ key: COLLECTION_ID, id: COLLECTION_ID, kind: 'collection' })],
+        1,
       ),
     ).toBe(
-      'No collection with this handle is visible to the storefront: the handle may have changed in Shopify, or the collection may be unpublished from the Headless channel, or deleted.',
+      "This collection isn't visible in your store: it may have been unpublished or deleted in Shopify.",
+    );
+    expect(UNRESOLVED_COLLECTION_MESSAGE).toBe(
+      'Not visible in your store: it may have been unpublished or deleted in Shopify.',
     );
     expect(notVisibleMessage('variant')).toBe(UNRESOLVED_MESSAGE);
     expect(notVisibleMessage('collection')).toBe(UNRESOLVED_COLLECTION_MESSAGE);
@@ -964,7 +982,7 @@ describe('editor feedback', () => {
       'Shopify rejected the Storefront access token. Update it in the plugin settings.',
     );
     expect(loadErrorMessage(rejected, false)).toBe(
-      'Shopify rejected the Storefront access token. Ask an administrator to check the Shopify connection.',
+      'Shopify refused the connection. Ask an administrator to check the plugin settings.',
     );
     expect(
       loadErrorMessage(
@@ -974,7 +992,7 @@ describe('editor feedback', () => {
         false,
       ),
     ).toBe(
-      'No Shopify store found at acme.myshopify.com. Ask an administrator to check the Shopify connection.',
+      'No Shopify store found at acme.myshopify.com. Ask an administrator to check the plugin settings.',
     );
     expect(loadErrorMessage(offline, false)).toBe(
       "Couldn't reach Shopify. Check your connection or ad-blocker.",

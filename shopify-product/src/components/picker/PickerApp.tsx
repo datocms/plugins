@@ -2,6 +2,7 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import Pane from 'datocms-react-ui/Pane';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isConnectionProblem, pluginSettingsPath } from '../../lib/fieldValue';
 import {
   entryForNode,
   isNodeUnavailable,
@@ -65,6 +66,25 @@ const NOTHING_UNAVAILABLE: readonly PickerUnavailableEntry[] = [];
 
 /** What a pick does while the results reload: nothing. */
 const ignore = () => {};
+
+/**
+ * For the roles that can open the plugin settings: goes there, and closes
+ * the picker without a change. Undefined for the other roles.
+ */
+export function settingsOpener(ctx: RenderModalCtx): (() => void) | undefined {
+  if (ctx.currentRole.meta.final_permissions.can_edit_schema !== true) {
+    return undefined;
+  }
+  const path = pluginSettingsPath({
+    pluginId: ctx.plugin.id,
+    environment: ctx.environment,
+    isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+  });
+  return () => {
+    void ctx.navigateTo(path);
+    void ctx.resolve(null);
+  };
+}
 
 /**
  * Variant mode: open products, and pick single-variant products directly.
@@ -148,6 +168,16 @@ function resultsState(
     retry: query.retry,
     loadedCount: query.items.length,
   };
+}
+
+/**
+ * The first load failed, and only the plugin settings can fix it (the token,
+ * its permissions, the store address).
+ */
+function settingsOnly(
+  query: ReturnType<typeof usePickerResults>['query'],
+): boolean {
+  return query.status === 'error' && isConnectionProblem(query.error);
 }
 
 function isPresent<T>(value: T | null | undefined): value is T {
@@ -240,6 +270,7 @@ export default function PickerApp({ ctx, params, store }: Props) {
   const marketNotice = languageFallbackNotice(
     market.context ?? {},
     market.client.appliedContext() ?? localizationContext(localization.value),
+    localization.value,
   );
   const browsesProducts = kind !== 'collection';
   // One request, once detection says whether it can include the tags.
@@ -389,12 +420,14 @@ export default function PickerApp({ ctx, params, store }: Props) {
         <PickerHeader
           text={search.text}
           onTextChange={search.setText}
+          blocked={settingsOnly(results.query)}
           view={view}
           onViewChange={setView}
           reloading={results.query.reloading}
           market={
             <MarketSwitcher
               localization={localization}
+              prices={kind !== 'collection'}
               locale={ctx.ui.locale}
               onChange={market.setContext}
             />
@@ -425,6 +458,10 @@ export default function PickerApp({ ctx, params, store }: Props) {
       <ResultsPane
         labels={labels}
         locale={ctx.ui.locale}
+        canEditSettings={
+          ctx.currentRole.meta.final_permissions.can_edit_schema === true
+        }
+        onOpenSettings={settingsOpener(ctx)}
         state={resultsState(results.query)}
         isEmpty={mainItems.length === 0}
         visibleCount={mainItems.length}
@@ -439,7 +476,7 @@ export default function PickerApp({ ctx, params, store }: Props) {
         }
         pinned={<SkuMatches env={liveEnv} matches={skuMatches} />}
         pinnedCount={skuMatches.length}
-        mainTitle={`All ${labels.resultMany}`}
+        mainTitle={`Other ${labels.resultMany}`}
       >
         {kind === 'collection' ? (
           <CollectionList

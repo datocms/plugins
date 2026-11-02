@@ -47,8 +47,11 @@ import {
   useConnectionChecks,
 } from './useConnectionChecks';
 
-/** Shown in one line right above Save after a failed attempt. */
-export type FormMessage = 'invalid' | 'connection';
+/**
+ * Shown in one line right above Save after a save that a failed connection
+ * check stopped (it explains "Save anyway").
+ */
+export type FormMessage = 'connection';
 
 /**
  * A store whose domain input should take focus: a new object per request, so
@@ -552,7 +555,8 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx): SettingsForm {
       // Blocks added after this attempt follow the usual touch rule.
       touch(...allErrorKeys(snapshot));
       if (hasDraftErrors(validateDraft(snapshot))) {
-        setFormMessage('invalid');
+        // Each error shows under its field: the first one takes the focus.
+        setFormMessage(null);
         focusFirstProblem('[aria-invalid="true"]');
         return;
       }
@@ -656,7 +660,6 @@ export function useSettingsForm(ctx: RenderConfigScreenCtx): SettingsForm {
     fieldsLocked: fieldsLocked || readOnly,
     readOnly,
     formMessage: currentFormMessage(formMessage, {
-      invalid: hasDraftErrors(allErrors),
       connection: hasFailedSave(draft, checks, saveAnywaySignatures),
     }),
     checks,

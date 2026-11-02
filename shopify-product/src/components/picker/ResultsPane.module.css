@@ -22,9 +22,11 @@
 
 /* ---- Grid ---------------------------------------------------------------- */
 
+/* Wide cards: the caption is the only place of the name, and similar
+   products differ at its end. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--spacing-l);
 }
 
@@ -47,8 +49,9 @@
   border-radius: var(--radius-s) var(--radius-s) 0 0;
 }
 
-/* What the editor compares before picking: price, availability, variants.
-   It is the body of the card, on the surface of a card like the caption. */
+/* What the editor compares before picking: vendor and type, price,
+   availability, variants. It is the body of the card, on the surface of a
+   card like the caption. */
 .details {
   display: flex;
   flex-direction: column;
@@ -80,6 +83,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The name of a row. A grid track from zero lets it shrink with its column,
+   also in the first cell of a tree, so a long line ends with an ellipsis
+   instead of being cut. */
+.name {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A table cell of two lines: the variant count, then its pill. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  align-items: flex-start;
 }
 
 .pills {

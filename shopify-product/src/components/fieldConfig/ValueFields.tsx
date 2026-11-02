@@ -16,7 +16,6 @@ import type {
 import {
   CARDINALITY_OPTIONS,
   cardinalityHint,
-  FORMAT_CHANGE_TITLE,
   FORMAT_OPTIONS,
   KIND_OPTIONS,
   kindUnavailableReason,
@@ -84,7 +83,7 @@ export function FormatField({
     value: option.value,
     label: option.badge ? (
       <>
-        {option.label} <Pill tone="accent">{option.badge}</Pill>
+        {option.label} <Pill>{option.badge}</Pill>
       </>
     ) : (
       option.label
@@ -96,7 +95,7 @@ export function FormatField({
       id="format"
       label="Stored value"
       error={error}
-      container={fieldNotice(notice, FORMAT_CHANGE_TITLE)}
+      container={fieldNotice(notice)}
     >
       <RadioGroupInput
         value={format}
@@ -163,7 +162,7 @@ export function LimitsFields({
         <FieldWrapper
           id="min"
           label="Minimum items"
-          hint="Optional. Below it, editors see a warning."
+          hint="Below it, editors see a warning."
           error={errors.min}
         >
           <StringInput
@@ -179,7 +178,7 @@ export function LimitsFields({
         <FieldWrapper
           id="max"
           label="Maximum items"
-          hint="Optional. Editors can't add more items."
+          hint="Editors can't add more items."
           error={errors.max}
         >
           <StringInput
@@ -208,7 +207,7 @@ export function SnapshotField({
   return (
     <FieldWrapper
       id="snapshot"
-      hint="Each reference also stores the title, image and price captured at selection time, so frontends can render without calling Shopify. Shopify stays the source of truth."
+      hint="Also stores the title, image and price, so frontends can render without calling Shopify."
       error={error}
     >
       <SwitchInput

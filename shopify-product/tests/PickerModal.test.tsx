@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  configure,
   fireEvent,
   render,
   screen,
@@ -31,6 +32,9 @@ import type {
   ShopifyFilter,
   VariantSummary,
 } from '../src/types';
+
+// Text queries skip the copy that screen readers skip.
+configure({ defaultIgnore: 'script, style, [aria-hidden="true"]' });
 
 // ---------------------------------------------------------------------------
 // Fake Shopify client
@@ -291,6 +295,7 @@ const DEMO_PLUGIN_PARAMETERS = {
 function createCtx(
   parameters: unknown,
   pluginParameters: Record<string, unknown> = DEMO_PLUGIN_PARAMETERS,
+  canEditSchema = true,
 ) {
   const resolve = vi.fn(async (_value: unknown) => {});
   const setHeight = vi.fn(async () => {});
@@ -304,7 +309,12 @@ function createCtx(
       attributes: { parameters: pluginParameters },
     },
     ui: { locale: 'en' },
+    currentRole: {
+      meta: { final_permissions: { can_edit_schema: canEditSchema } },
+    },
     site: { attributes: { internal_domain: null } },
+    environment: 'main',
+    isEnvironmentPrimary: true,
     bodyPadding: [20, 20, 20, 20],
     cssDesignTokens: {},
     colorScheme: 'light',
@@ -568,7 +578,12 @@ describe('PickerModal: frame and setup', () => {
       useDemoStore: false,
     });
     render(<PickerModal ctx={ctx} />);
-    expect(screen.getByText("The plugin isn't set up yet")).toBeInTheDocument();
+    expect(
+      screen.getByText('No Shopify store connected yet'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open the plugin settings' }),
+    ).toBeVisible();
     expect(api.browseProducts).not.toHaveBeenCalled();
   });
 
@@ -576,8 +591,27 @@ describe('PickerModal: frame and setup', () => {
     renderPicker(modalParameters({ shopDomain: 'gone.myshopify.com' }));
     expect(screen.getByText('Store not connected')).toBeInTheDocument();
     expect(
-      screen.getByText(/This field browses gone\.myshopify\.com/),
+      screen.getByText(
+        "This field uses gone.myshopify.com, which isn't connected to the plugin.",
+      ),
     ).toBeInTheDocument();
+  });
+
+  it('asks other roles to reconnect a store that is no longer connected', () => {
+    const { ctx } = createCtx(
+      modalParameters({ shopDomain: 'gone.myshopify.com' }),
+      DEMO_PLUGIN_PARAMETERS,
+      false,
+    );
+    render(<PickerModal ctx={ctx} />);
+    expect(
+      screen.getByText(
+        "This field uses gone.myshopify.com, which isn't connected to the plugin. Ask an administrator to connect it again.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open the plugin settings' }),
+    ).toBeNull();
   });
 });
 
@@ -736,9 +770,31 @@ describe('PickerModal: search', () => {
     ).toHaveTextContent('SKU sku-managed-1');
     expect(lastCall(api.skuMatches)[0]).toBe('sku-managed-1');
     // The pinned product isn't repeated in the main results.
-    const main = await screen.findByRole('group', { name: 'All products' });
+    const main = await screen.findByRole('group', { name: 'Other products' });
     expect(within(main).queryByText('Managed board')).toBeNull();
     expect(within(main).getByText('Alpha board')).toBeInTheDocument();
+  });
+
+  it('shows the SKU matches alone when nothing else matches', async () => {
+    const pinned = product(9, { title: 'Managed board' });
+    api.skuMatches.mockResolvedValue([
+      {
+        product: pinned,
+        variants: [
+          variant(91, pinned, 'Default Title', { sku: 'sku-managed-1' }),
+        ],
+      },
+    ]);
+    api.browseProducts.mockImplementation(async (args: { query?: string }) =>
+      page(args.query ? [pinned] : [P1, P2, P3]),
+    );
+    renderPicker();
+    await screen.findByText('Alpha board');
+    await userEvent.type(searchField(), 'sku-managed-1');
+    await screen.findByRole('group', { name: 'SKU and barcode matches' });
+    await waitFor(() => expect(screen.queryByText('Alpha board')).toBeNull());
+    expect(screen.queryByRole('group', { name: 'Other products' })).toBeNull();
+    expect(screen.queryByText('No other products match')).toBeNull();
   });
 
   it('does not run the SKU lookup for text with spaces', async () => {
@@ -955,7 +1011,7 @@ describe('PickerModal: pages and states', () => {
     ).toBeNull();
   });
 
-  it('shows the empty state with the storefront hint and clears filters', async () => {
+  it('shows the empty state as a title alone and clears filters', async () => {
     renderPicker();
     await screen.findByText('Alpha board');
     api.browseProducts.mockResolvedValue(page([]));
@@ -963,9 +1019,7 @@ describe('PickerModal: pages and states', () => {
     expect(
       await screen.findByText('No products match', VISIBLE_TEXT),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Only products published to the Headless storefront/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Only published products show here.')).toBeNull();
     const clear = screen.getAllByRole('button', { name: 'Clear filters' });
     expect(clear).toHaveLength(2);
     await userEvent.click(clear[clear.length - 1]);
@@ -983,7 +1037,7 @@ describe('PickerModal: pages and states', () => {
       await screen.findByText('No products visible to this storefront'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Only products published to the Headless storefront/),
+      screen.getByText('Only published products show here.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
   });
@@ -1005,7 +1059,7 @@ describe('PickerModal: pages and states', () => {
     expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
   });
 
-  it('adds the spelling tip while searching', async () => {
+  it('says no match, alone, while searching', async () => {
     renderPicker();
     await screen.findByText('Alpha board');
     api.browseProducts.mockResolvedValue(page([]));
@@ -1013,31 +1067,87 @@ describe('PickerModal: pages and states', () => {
       target: { value: 'two words' },
     });
     expect(
-      await screen.findByText(/^Check the spelling, or try fewer words\./),
-    ).toBeInTheDocument();
-    expect(screen.getByText('No products match', VISIBLE_TEXT)).toBeVisible();
+      await screen.findByText('No products match', VISIBLE_TEXT),
+    ).toBeVisible();
+    expect(screen.queryByText(/Check the spelling/)).toBeNull();
   });
 
   it('shows actionable errors and retries', async () => {
-    api.browseProducts.mockRejectedValueOnce(
-      new ShopifyClientError('unauthorized', 'HTTP 401'),
-    );
+    const error = new ShopifyClientError('network', 'offline');
+    api.browseProducts.mockRejectedValueOnce(error);
     renderPicker();
     expect(
       await screen.findByText("Couldn't load the products"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Shopify rejected the Storefront access token. Update it in the plugin settings.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(describeError(error))).toBeInTheDocument();
     expect(
       screen.getByText("Couldn't load the products.", {
         selector: '[role="status"]',
       }),
     ).toBeInTheDocument();
+    // Trying again can help: the search, the market and the filters stay.
+    expect(searchField()).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^Sort:/ })).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: /^(Italy|Country and language|Loading…)/,
+      }),
+    ).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Alpha board')).toBeInTheDocument();
+  });
+
+  it('sends administrators to the plugin settings when only they can fix it', async () => {
+    api.browseProducts.mockRejectedValueOnce(
+      new ShopifyClientError('unauthorized', 'HTTP 401'),
+    );
+    const { ctx, resolve } = createCtx(modalParameters());
+    render(<PickerModal ctx={ctx} />);
+    expect(
+      await screen.findByText(
+        'Shopify rejected the Storefront access token. Update it in the plugin settings.',
+      ),
+    ).toBeInTheDocument();
+    // The settings come first; Try again stays, for a fix made in Shopify.
+    const settings = screen.getByRole('button', {
+      name: 'Open the plugin settings',
+    });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    expect(settings.compareDocumentPosition(retry)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // The search keeps its focus; the market and the filters can't help.
+    expect(searchField()).toHaveFocus();
+    expect(screen.queryByRole('button', { name: /^Sort:/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: /^(Italy|Country and language|Loading…)/,
+      }),
+    ).toBeNull();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open the plugin settings' }),
+    );
+    expect(ctx.navigateTo).toHaveBeenCalledWith(
+      '/configuration/plugins/plugin/edit',
+    );
+    expect(resolve).toHaveBeenCalledWith(null);
+  });
+
+  it('sends roles that cannot change the settings to an administrator', async () => {
+    api.browseProducts.mockRejectedValueOnce(
+      new ShopifyClientError('unauthorized', 'HTTP 401'),
+    );
+    const { ctx } = createCtx(modalParameters(), DEMO_PLUGIN_PARAMETERS, false);
+    render(<PickerModal ctx={ctx} />);
+    expect(
+      await screen.findByText(
+        'Shopify refused the connection. Ask an administrator to check the plugin settings.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open the plugin settings' }),
+    ).toBeNull();
   });
 
   it('explains the market fallback above the results', async () => {
@@ -1046,10 +1156,11 @@ describe('PickerModal: pages and states', () => {
       modalParameters({ context: { country: 'IT', language: 'DE' } }),
     );
     await screen.findByText('Alpha board');
-    const notice = screen.getByText(
-      "DE isn't published for this market, so Shopify answered in EN.",
+    // Neutral: nothing is wrong with the items, so it doesn't interrupt.
+    const notice = await screen.findByText(
+      "Deutsch isn't available in Italy, so titles show in English.",
     );
-    expect(notice.closest('[role="alert"]')).not.toBeNull();
+    expect(notice.closest('[role="alert"]')).toBeNull();
   });
 });
 
@@ -1103,7 +1214,8 @@ describe('PickerModal: selection', () => {
       selectionCount("3 of 3 products selected. You can't select more."),
     ).toBeInTheDocument();
     expect(card('Bravo board')).toBeChecked();
-    expect(card('Charlie board')).toBeDisabled();
+    // The cards the full selection blocks have no checkbox to click.
+    expect(within(item('Charlie board')).queryByRole('checkbox')).toBeNull();
     expect(
       within(item('Charlie board')).queryByRole('button', {
         name: 'Charlie board',
@@ -1279,9 +1391,7 @@ describe('PickerModal: variants', () => {
     await userEvent.click(first);
     expect(first).toBeChecked();
     expect(selectionCount('1 variant selected')).toBeInTheDocument();
-    expect(
-      within(item('Multi board')).getByText('1 variant selected'),
-    ).toBeVisible();
+    expect(within(item('Multi board')).getByText('1 selected')).toBeVisible();
     await userEvent.click(
       screen.getByRole('button', { name: 'Apply selection' }),
     );
@@ -1348,10 +1458,11 @@ describe('PickerModal: variants', () => {
         screen.getAllByRole('checkbox', { name: /^(Black|White)/ }),
       ).toHaveLength(8),
     );
-    // The product itself isn't picked: its variants are.
-    expect(
-      screen.getByRole('checkbox', { name: /^Multi board/ }),
-    ).toBeDisabled();
+    // The product itself isn't picked, its variants are: its checkbox can't
+    // change, and is ticked while some of them are selected.
+    const productBox = screen.getByRole('checkbox', { name: /^Multi board/ });
+    expect(productBox).toBeDisabled();
+    expect(productBox).not.toBeChecked();
     expect(within(item('Multi board')).getByText('8 variants')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: /^Color: Any/ }));
     await userEvent.click(
@@ -1366,6 +1477,9 @@ describe('PickerModal: variants', () => {
     await userEvent.click(first);
     expect(first).toBeChecked();
     expect(selectionCount('1 variant selected')).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: /^Multi board/ }),
+    ).toBeChecked();
     // A product with one variant picks it straight from its row.
     await userEvent.click(
       screen.getByRole('checkbox', { name: /^Alpha board/ }),
@@ -1413,13 +1527,13 @@ describe("PickerModal: Replace and the field's other items", () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  it('checks and locks them in multiple fields', async () => {
+  it('shows them as disabled cards in multiple fields, never checked', async () => {
     renderPicker(replaceParameters({ cardinality: 'multiple' }));
-    const bravo = await findCard('Bravo board');
-    expect(bravo).toBeChecked();
-    expect(bravo).toBeDisabled();
-    await userEvent.click(within(item('Bravo board')).getByText('Bravo board'));
-    expect(bravo).toBeChecked();
+    const bravo = await findItem('Bravo board');
+    // Only the current choice has the selected look: these have no checkbox.
+    expect(within(bravo).queryByRole('checkbox')).toBeNull();
+    expect(within(bravo).getByText('In this field')).toBeInTheDocument();
+    await userEvent.click(within(bravo).getByText('Bravo board'));
     expect(selectionCount('1 product selected')).toBeInTheDocument();
   });
 
@@ -1560,7 +1674,8 @@ describe('PickerModal: collections', () => {
       }),
     );
     const frontpage = await findItem('Frontpage');
-    expect(within(frontpage).getByText('frontpage')).toBeInTheDocument();
+    // The title alone: the handle is an internal name.
+    expect(within(frontpage).queryByText('frontpage')).toBeNull();
     await userEvent.click(within(frontpage).getByText('Frontpage'));
     expect(lastResult(resolve).selected[0]).toMatchObject({
       id: COLLECTIONS[1].id,
@@ -1608,7 +1723,7 @@ describe('PickerModal: keyboard, view and market', () => {
       }),
     );
     const trigger = await screen.findByRole('button', {
-      name: 'IT · EUR · EN',
+      name: 'Italy · EUR · English',
     });
     await userEvent.click(trigger);
     await userEvent.click(
@@ -1621,7 +1736,7 @@ describe('PickerModal: keyboard, view and market', () => {
       }),
     );
     expect(
-      await screen.findByRole('button', { name: 'MX · MXN · EN' }),
+      await screen.findByRole('button', { name: 'Mexico · MXN · English' }),
     ).toBeInTheDocument();
     await userEvent.click(await findCard('Alpha board'));
     expect(lastResult(resolve).context).toEqual({
@@ -1751,7 +1866,7 @@ describe('PickerModal: infinite scroll and later pages', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, or deleted.',
+        'Not visible in your store: it may have been unpublished or deleted in Shopify.',
       ),
     ).toBeInTheDocument();
   });
@@ -1813,13 +1928,15 @@ describe('PickerModal: filters a collection cannot apply', () => {
     expect(
       screen
         .getByText(
-          "Shopify can't apply the product type filter inside this collection until it's enabled in Search & Discovery.",
+          "This collection can't be filtered by product type: clear the filters, or choose another collection.",
         )
         .closest('[role="alert"]'),
     ).not.toBeNull();
     await userEvent.hover(screen.getByText('Product type: giftcard'));
     expect(
-      await screen.findByText(/^Not applied inside this collection\./),
+      await screen.findByText(
+        "Not applied: this collection can't be filtered by it.",
+      ),
     ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: 'Clear filters' }),
@@ -1832,7 +1949,7 @@ describe('PickerModal: filters a collection cannot apply', () => {
     expect(
       screen.getByRole('button', { name: /^Product type: Any/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^Shopify can't apply/)).toBeNull();
+    expect(screen.queryByText(/^This collection can't be filtered/)).toBeNull();
   });
 });
 
@@ -1937,12 +2054,12 @@ describe('PickerModal: unresolved selected variants', () => {
     await userEvent.click(alpha);
     await waitFor(() => expect(alpha).toBeChecked());
     expect(selectionCount('1 variant selected')).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Apply selection' }),
-    );
-    expect(lastResult(resolve).selected).toEqual([
-      { ...unresolvedVariant, node: onlyVariant },
-    ]);
+    // The field already holds it: nothing to apply.
+    const apply = screen.getByRole('button', { name: 'Apply selection' });
+    expect(apply).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(apply);
+    expect(resolve).not.toHaveBeenCalled();
+    expect(screen.queryByText('Not visible')).toBeNull();
   });
 });
 
@@ -1993,7 +2110,7 @@ describe('PickerModal: variant panel pages and errors', () => {
     const panel = await findPanel('Multi board');
     expect(
       await within(panel).findByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, archived, or deleted.',
+        'Not visible in your store: it may have been unpublished, archived or deleted in Shopify.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -2017,7 +2134,7 @@ describe('PickerModal: variant panel pages and errors', () => {
     );
     expect(
       await screen.findByText(
-        'Not visible to the storefront: it may be unpublished from the Headless channel, archived, or deleted.',
+        'Not visible in your store: it may have been unpublished, archived or deleted in Shopify.',
       ),
     ).toBeInTheDocument();
     // The same error state as the grid's panel, in a row of the tree.
@@ -2154,7 +2271,7 @@ describe('PickerModal: market menu', () => {
   it('lists countries by name', async () => {
     renderPicker();
     await userEvent.click(
-      await screen.findByRole('button', { name: 'IT · EUR · EN' }),
+      await screen.findByRole('button', { name: 'Italy · EUR · English' }),
     );
     const names = [
       'Australia (AUD)',
@@ -2228,10 +2345,10 @@ describe('PickerModal: menus from the keyboard', () => {
     await screen.findByText('Alpha board');
     const trigger = await openMenuWithKeyboard(/^Sort:/);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    // More than 5 sorts: the menu opens on its search field.
+    // A short, fixed list: no search field.
     expect(
-      within(screen.getByRole('menu')).getByPlaceholderText('Search...'),
-    ).toHaveFocus();
+      within(screen.getByRole('menu')).queryByPlaceholderText('Search...'),
+    ).toBeNull();
     highlight('Newest');
     press('Enter');
     await waitFor(() =>
@@ -2286,8 +2403,8 @@ describe('PickerModal: menus from the keyboard', () => {
 
   it('switches the market from the keyboard', async () => {
     renderPicker();
-    await screen.findByRole('button', { name: 'IT · EUR · EN' });
-    const trigger = await openMenuWithKeyboard('IT · EUR · EN');
+    await screen.findByRole('button', { name: 'Italy · EUR · English' });
+    const trigger = await openMenuWithKeyboard('Italy · EUR · English');
     expect(screen.getByText('Country')).toBeInTheDocument();
     highlight('Mexico (MXN)');
     press('Enter');
@@ -2298,7 +2415,9 @@ describe('PickerModal: menus from the keyboard', () => {
       }),
     );
     await settle();
-    expect(screen.getByRole('button', { name: 'MX · MXN · EN' })).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Mexico · MXN · English' }),
+    ).toHaveFocus();
     expect(trigger).toBeInTheDocument();
   });
 
@@ -2336,6 +2455,24 @@ describe('PickerModal: menus from the keyboard', () => {
 // ---------------------------------------------------------------------------
 
 describe('PickerModal: focus stays in the picker', () => {
+  it('enables Apply once the selection differs from the field', async () => {
+    const { resolve } = renderPicker(
+      modalParameters({ selected: [selectedEntry(P1, 'Alpha board')] }),
+    );
+    await screen.findByText('Charlie board');
+    const apply = () => screen.getByRole('button', { name: 'Apply selection' });
+    expect(apply()).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(await findCard('Bravo board'));
+    expect(apply()).not.toHaveAttribute('aria-disabled');
+    await userEvent.click(await findCard('Bravo board'));
+    expect(apply()).toHaveAttribute('aria-disabled', 'true');
+    // Removing what the field holds is a change too.
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(apply()).not.toHaveAttribute('aria-disabled');
+    await userEvent.click(apply());
+    expect(lastResult(resolve)).toEqual({ selected: [] });
+  });
+
   it('moves focus to the search after Clear empties the tray', async () => {
     renderPicker(
       modalParameters({ selected: [selectedEntry(P1, 'Alpha board')] }),
@@ -2646,16 +2783,16 @@ describe('PickerModal: items look the same everywhere', () => {
     expect(
       within(item('Echo board')).getByText('BOARD-ECHO'),
     ).toBeInTheDocument();
-    expect(within(item('Alpha board')).getByText('No SKU')).toBeVisible();
-    // Several variants: the Variants column already counts them.
-    expect(within(item('Multi board')).queryByText('No SKU')).toBeNull();
+    // No SKU: an empty cell, as for products with several variants (the
+    // Variants column counts them).
+    expect(within(item('Alpha board')).queryByText('No SKU')).toBeNull();
     expect(within(item('Multi board')).getByText('8 variants')).toBeVisible();
   });
 
-  it('shows vendor and product type on grid cards, as in list rows', async () => {
+  it('shows vendor and product type in list rows, not on grid cards', async () => {
     renderPicker();
-    expect(await findItem('Alpha board')).toHaveTextContent(
-      'Snowboard Vendor · snowboard',
+    expect(await findItem('Alpha board')).not.toHaveTextContent(
+      'Snowboard Vendor',
     );
     cleanup();
     startInListView();
@@ -2683,7 +2820,7 @@ describe('PickerModal: items look the same everywhere', () => {
     expect(screen.queryByText('In stock')).toBeNull();
   });
 
-  it('shortens locked tags on the pill and names them all in its tooltip', async () => {
+  it('shows locked tags on the tag menu, which offers only them', async () => {
     renderPicker(
       modalParameters({
         fieldParameters: fieldParameters({
@@ -2692,11 +2829,27 @@ describe('PickerModal: items look the same everywhere', () => {
       }),
     );
     await screen.findByText('Alpha board');
-    await userEvent.hover(screen.getByText('Tags: Accessory +2'));
+    // One Tags control: no "Limited to:" pill repeats it.
+    expect(screen.queryByText('Limited to:')).toBeNull();
+    const trigger = screen.getByRole('button', { name: /^Tags/ });
+    expect(trigger).toHaveTextContent('Tags: Accessory +2');
+    await userEvent.click(trigger);
+    const menu = await screen.findByRole('menu');
     expect(
-      await screen.findByText(
-        'Accessory, Premium or Snow. Set in the field settings.',
-      ),
+      within(menu).getByText('Set in the field settings. Pick one to narrow.'),
     ).toBeInTheDocument();
+    expect(within(menu).getAllByRole('menuitemcheckbox')).toHaveLength(3);
+  });
+
+  it('keeps one locked tag as a pill', async () => {
+    renderPicker(
+      modalParameters({
+        fieldParameters: fieldParameters({ scope: { tags: ['Premium'] } }),
+      }),
+    );
+    await screen.findByText('Alpha board');
+    expect(screen.getByText('Limited to:')).toBeInTheDocument();
+    expect(screen.getByText('Tags: Premium')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Tags/ })).toBeNull();
   });
 });

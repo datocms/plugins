@@ -105,12 +105,29 @@ export function isFormatMismatch(
   return stored !== null && stored !== configured;
 }
 
-/** "Saved as a Shopify handle. This field now saves a reference document." */
+/** The formats the first version of the plugin saved. */
+const OLDER_FORMATS: ReadonlySet<StorageFormat> = new Set([
+  'handle',
+  'legacyProductJson',
+]);
+
+/**
+ * "This product was saved in an older format: convert it to the one this
+ * field uses now." In the editor's words: the format names stay in the
+ * field settings.
+ */
 export function formatMismatchMessage(
   stored: StorageFormat,
-  configured: StorageFormat,
+  kind: ShopifyKind,
+  count: number,
 ): string {
-  return `Saved as ${FORMAT_LABELS[stored]}. This field now saves ${FORMAT_LABELS[configured]}.`;
+  const subject =
+    count > 1
+      ? `These ${kindNoun(kind, count)} were`
+      : `This ${kindNoun(kind)} was`;
+  const format = OLDER_FORMATS.has(stored) ? 'an older' : 'a different';
+  const them = count > 1 ? 'them' : 'it';
+  return `${subject} saved in ${format} format: convert ${them} to the one this field uses now.`;
 }
 
 /** "title", "title and price", "title, price and image". */
@@ -137,11 +154,11 @@ export function legacyDriftSummary(
 }
 
 export const UNRESOLVED_MESSAGE =
-  'Not visible to the storefront: it may be unpublished from the Headless channel, archived, or deleted.';
+  'Not visible in your store: it may have been unpublished, archived or deleted in Shopify.';
 
 /** `UNRESOLVED_MESSAGE` for collections, which can't be archived. */
 export const UNRESOLVED_COLLECTION_MESSAGE =
-  'Not visible to the storefront: it may be unpublished from the Headless channel, or deleted.';
+  'Not visible in your store: it may have been unpublished or deleted in Shopify.';
 
 /**
  * Why an item can't be shown. The field editor, the picker and the field
@@ -154,20 +171,40 @@ export function notVisibleMessage(kind: ShopifyKind): string {
 }
 
 /**
- * Why an entry doesn't resolve. Entries saved only as a handle (1.x string
- * fields, handles in Shopify ID fields) most often broke because the handle
- * was renamed in Shopify, so their copy leads with that.
+ * Why some of the field's items can't be shown, said once above the card
+ * (each row carries its "Not visible" pill): "2 products aren't visible in
+ * your store: they may have been unpublished, archived or deleted in
+ * Shopify." Entries saved only as a handle most often broke because the
+ * handle (the web address) was renamed in Shopify, so their copy leads with
+ * that. `total` is how many items the field holds: the only one is "This
+ * product". Null when every item shows.
  */
-export function unresolvedMessage(entry: StoredEntry): string {
-  if (entry.id !== null || !isNonEmptyString(entry.handle)) {
-    return notVisibleMessage(entry.kind);
-  }
-  const noun = kindNoun(entry.kind);
+export function unresolvedSummary(
+  entries: readonly StoredEntry[],
+  total: number,
+  locale?: string,
+): string | null {
+  const [first] = entries;
+  if (!first) return null;
+  const count = entries.length;
+  const one = count === 1;
+  const noun = kindNoun(first.kind, count);
+  const subject =
+    one && total === 1
+      ? `This ${noun}`
+      : `${formatCount(count, locale)} ${noun}`;
   const states =
-    entry.kind === 'collection'
-      ? 'unpublished from the Headless channel, or deleted'
-      : 'unpublished from the Headless channel, archived, or deleted';
-  return `No ${noun} with this handle is visible to the storefront: the handle may have changed in Shopify, or the ${noun} may be ${states}.`;
+    first.kind === 'collection'
+      ? 'unpublished or deleted'
+      : 'unpublished, archived or deleted';
+  const pronoun = one ? 'it' : 'they';
+  const renamed = entries.some(
+    (entry) => entry.id === null && isNonEmptyString(entry.handle),
+  );
+  const cause = renamed
+    ? `${one ? 'its' : 'their'} web address may have changed, or ${pronoun} may have been ${states} in Shopify`
+    : `${pronoun} may have been ${states} in Shopify`;
+  return `${subject} ${one ? "isn't" : "aren't"} visible in your store: ${cause}.`;
 }
 
 export const PERSIST_FAILED_MESSAGE = "Couldn't save the Shopify selection.";
@@ -252,6 +289,13 @@ export function settingsStep(error: unknown): string {
   return step ?? 'to check the Shopify connection';
 }
 
+/** The cause of a connection problem for roles that can't fix it: no token talk. */
+const EDITOR_CONNECTION_CAUSES: Partial<Record<ShopifyErrorCode, string>> = {
+  unauthorized: 'Shopify refused the connection.',
+  forbidden: 'Shopify refused the connection.',
+  'store-locked': 'The Shopify store is password-protected.',
+};
+
 /**
  * A load error in plain words. Roles that can't open the plugin settings
  * are asked to contact an administrator instead of being told to fix them.
@@ -263,7 +307,11 @@ export function loadErrorMessage(
   if (canEditSchema || !isConnectionProblem(error)) {
     return describeError(error);
   }
-  return `${connectionProblemCause(error)} Ask an administrator to check the Shopify connection.`;
+  const cause =
+    (error instanceof ShopifyClientError &&
+      EDITOR_CONNECTION_CAUSES[error.code]) ||
+    connectionProblemCause(error);
+  return `${cause} Ask an administrator to check the plugin settings.`;
 }
 
 // Screen-reader announcements after an editor action (a `role="status"` region).
@@ -307,16 +355,13 @@ export function countKept(
 // ---------------------------------------------------------------------------
 
 /**
- * The counter of a multiple field: "3 of 10 products" with a maximum, "3
- * products · at least 2" with only a minimum. The field editor shows it
- * through the ICU texts of `src/texts.ts`, which give its numbers the
- * separators of the editor's locale.
+ * The counter of a multiple field with a maximum: "3 of 10 products". The
+ * field editor shows it through the ICU texts of `src/texts.ts`, which give
+ * its numbers the separators of the editor's locale.
  */
 export type LimitsCounter = {
   count: number;
-  max: number | null;
-  /** Shown only without a maximum. */
-  min: number | null;
+  max: number;
   /** The nouns of the kind: `product`, `products`. */
   one: string;
   many: string;
@@ -324,7 +369,10 @@ export type LimitsCounter = {
 
 export type LimitsSummary = {
   counter: LimitsCounter | null;
-  /** "Add at least 2 products." while below the minimum. */
+  /**
+   * "Add at least 2 products." while empty, "Add 1 more product: this field
+   * needs at least 2." while below the minimum with items.
+   */
   belowMin: string | null;
   /**
    * "Remove 2 products: this field holds up to 3." when the value holds more
@@ -332,7 +380,7 @@ export type LimitsSummary = {
    */
   aboveMax: string | null;
   atMax: boolean;
-  /** Why "Add" is unavailable at the maximum. */
+  /** Why "Add" is unavailable at the maximum: "The field is full." */
   atMaxReason: string | null;
 };
 
@@ -345,11 +393,9 @@ function positiveLimit(value: number | undefined): number | null {
 function limitsCounter(
   kind: ShopifyKind,
   count: number,
-  min: number | null,
   max: number | null,
 ): LimitsCounter | null {
-  if (max === null && min === null) return null;
-  return { count, max, min: max === null ? min : null, ...KIND_NOUNS[kind] };
+  return max === null ? null : { count, max, ...KIND_NOUNS[kind] };
 }
 
 /**
@@ -374,20 +420,24 @@ export function limitsSummary(
   const atMax = max !== null && count >= max;
   const extra = max !== null ? count - max : 0;
   const number = (value: number | null) => formatCount(value ?? 0, locale);
+  // Empty: the minimum. With items: the gap, as the sentence above the
+  // maximum says it.
+  const belowMinText = (limit: number) => {
+    if (count === 0) {
+      return `Add at least ${number(limit)} ${kindNoun(params.kind, limit)}.`;
+    }
+    const missing = limit - count;
+    return `Add ${number(missing)} more ${kindNoun(params.kind, missing)}: this field needs at least ${number(limit)}.`;
+  };
   return {
-    counter: limitsCounter(params.kind, count, min, max),
-    belowMin:
-      min !== null && count < min
-        ? `Add at least ${number(min)} ${kindNoun(params.kind, min)}.`
-        : null,
+    counter: limitsCounter(params.kind, count, max),
+    belowMin: min !== null && count < min ? belowMinText(min) : null,
     aboveMax:
       extra > 0
         ? `Remove ${number(extra)} ${kindNoun(params.kind, extra)}: this field holds up to ${number(max)}.`
         : null,
     atMax,
-    atMaxReason: atMax
-      ? `You can't add more ${kindNoun(params.kind, 2)}: this field holds up to ${number(max)}.`
-      : null,
+    atMaxReason: atMax ? 'The field is full.' : null,
   };
 }
 
@@ -400,7 +450,10 @@ export type EntryFallback = {
   label: string;
   /** The label is a handle or an ID: render it in monospace. */
   labelIsCode: boolean;
-  /** A secondary identity line (handle or GID) when the label is a title. */
+  /**
+   * The handle, as a second line under a title. Never a GID: it means
+   * nothing to an editor, and the row's menu links to the item in Shopify.
+   */
   identity: string | null;
   imageUrl: string | null;
 };
@@ -434,17 +487,13 @@ export function entryFallback(
     nonEmpty(legacyProduct?.imageUrl);
   const [primary, secondary] = identities(entry);
   if (title) {
-    return {
-      label: title,
-      labelIsCode: false,
-      identity: primary ?? secondary,
-      imageUrl,
-    };
+    const handle = entry.kind === 'variant' ? null : nonEmpty(entry.handle);
+    return { label: title, labelIsCode: false, identity: handle, imageUrl };
   }
   return {
     label: primary ?? secondary ?? entry.key,
     labelIsCode: true,
-    identity: primary ? secondary : null,
+    identity: null,
     imageUrl,
   };
 }
@@ -568,10 +617,11 @@ export function buildRowModel(
 /**
  * The row's meta line. Variant titles already carry their option values
  * ("Classic Tee — Black / M"), so variants show the vendor and SKU instead;
- * products show `vendor · product type` and collections their handle, as
- * the picker does (`nodeMeta`).
+ * products show `vendor · product type` (`nodeMeta`). Collections show their
+ * title alone: their handle is an internal name.
  */
 export function rowMeta(node: ShopifyNode): string {
+  if (node.__typename === 'Collection') return '';
   if (node.__typename !== 'ProductVariant') return nodeMeta(node);
   const sku = node.sku?.trim();
   return [node.product.vendor.trim(), sku ? `SKU ${sku}` : '']
@@ -691,10 +741,10 @@ function findCurrent(
 
 /**
  * A picked item as a stored entry. Items that were already selected keep
- * what was saved for them: their handle (only "Update" changes it) and any
- * snapshot, whatever the field's snapshot setting is now. Their other parts
- * come from the node, so an item saved as a bare handle or ID gains an ID or
- * handle when the configured format needs one.
+ * what was saved for them: their handle (only "Update address" changes it)
+ * and any snapshot, whatever the field's snapshot setting is now. Their other
+ * parts come from the node, so an item saved as a bare handle or ID gains an
+ * ID or handle when the configured format needs one.
  */
 function entryFromPicked(
   node: ShopifyNode,
@@ -862,8 +912,18 @@ export function entriesFromNodes(
 }
 
 /**
- * Why "Convert to new format" can't run yet, or null when it can: the field's
- * structural limits first, then live data for every entry.
+ * Converting can't happen while an item doesn't show: its row says so, with
+ * Replace, the only next step. The format notice then hides: its button
+ * could never run. Other problems keep the notice, with Convert disabled and
+ * the reason (`convertProblem`).
+ */
+export function convertBlocked(rows: readonly RowModel[]): boolean {
+  return rows.some((row) => row.state === 'unresolved');
+}
+
+/**
+ * Why "Convert" can't run yet, or null when it can: the field's structural
+ * limits first, then live data for every entry.
  */
 export function convertProblem(
   params: FieldParametersV1,

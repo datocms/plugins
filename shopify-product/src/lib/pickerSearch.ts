@@ -138,8 +138,12 @@ export type PickerLabels = {
   emptyHint: string;
 };
 
-const STOREFRONT_PRODUCTS_HINT =
-  'Only products published to the Headless storefront this token belongs to are visible. Drafts, archived and unpublished products never show up.';
+/** Why the storefront shows nothing, when nothing narrows the results. */
+const STOREFRONT_PRODUCTS_HINT = 'Only published products show here.';
+
+/** How a variant picker's products behave: the footer says it until a pick. */
+export const VARIANTS_OPEN_HINT =
+  'A product with several variants opens to show them.';
 
 const LABELS: Record<ShopifyKind, PickerLabels> = {
   product: {
@@ -156,8 +160,7 @@ const LABELS: Record<ShopifyKind, PickerLabels> = {
     many: 'variants',
     resultOne: 'product',
     resultMany: 'products',
-    singleHint:
-      'Click a variant to choose it. A product with several variants opens to show them.',
+    singleHint: `Click a variant to choose it. ${VARIANTS_OPEN_HINT}`,
     emptyTitle: 'No products match',
     emptyHint: STOREFRONT_PRODUCTS_HINT,
   },
@@ -168,8 +171,7 @@ const LABELS: Record<ShopifyKind, PickerLabels> = {
     resultMany: 'collections',
     singleHint: 'Click a collection to choose it.',
     emptyTitle: 'No collections match',
-    emptyHint:
-      'Only collections published to the Headless storefront this token belongs to are visible.',
+    emptyHint: 'Only published collections show here.',
   },
 };
 
@@ -493,37 +495,76 @@ export function variantDisabledReason(
 // Markets
 // ---------------------------------------------------------------------------
 
-/** `"US · USD · EN"`: the market Shopify applied. */
-export function contextLabel(localization: LocalizationInfo): string {
-  const country = localization.country.isoCode;
-  const currency = localization.availableCountries.find(
-    (candidate) => candidate.isoCode === country,
-  )?.currency.isoCode;
-  return [country, currency, localization.language.isoCode]
+/**
+ * `"United States · USD · English"`: the market Shopify applied, by name.
+ * Collections have no prices: `{ currency: false }` leaves the currency out.
+ */
+export function contextLabel(
+  localization: LocalizationInfo,
+  { currency = true }: { currency?: boolean } = {},
+): string {
+  const code = localization.country.isoCode;
+  const country = localization.availableCountries.find(
+    (candidate) => candidate.isoCode === code,
+  );
+  const language = localization.language.isoCode;
+  return [
+    country?.name ?? code,
+    currency ? country?.currency.isoCode : undefined,
+    language ? languageName(localization, language) : undefined,
+  ]
     .filter(Boolean)
     .join(' · ');
 }
 
-function languageName(localization: LocalizationInfo, code: string): string {
-  return (
-    localization.availableLanguages.find(
-      (language) => language.isoCode === code,
-    )?.endonymName ?? code
-  );
+/**
+ * The language's own name (`"Deutsch"` for `DE`): Shopify's for the
+ * languages of the market, else the browser's, else the code.
+ */
+function languageName(
+  localization: LocalizationInfo | null,
+  code: string,
+): string {
+  const listed = localization?.availableLanguages.find(
+    (language) => language.isoCode === code,
+  )?.endonymName;
+  if (listed) return listed;
+  try {
+    const tag = code.replace('_', '-');
+    return new Intl.DisplayNames([tag], { type: 'language' }).of(tag) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+function countryName(
+  localization: LocalizationInfo | null,
+  code: string | undefined,
+): string | undefined {
+  return localization?.availableCountries.find(
+    (country) => country.isoCode === code,
+  )?.name;
 }
 
 /**
  * When Shopify answered in another language than the one asked for (it falls
- * back silently), a short explanation; otherwise null.
+ * back silently), what it means, by name: `"Deutsch isn't available in Italy,
+ * so titles show in English."`; otherwise null.
  */
 export function languageFallbackNotice(
   requested: ShopifyContext,
   applied: ShopifyContext | null,
+  localization: LocalizationInfo | null,
 ): string | null {
   const wanted = requested.language;
   const got = applied?.language;
   if (!wanted || !got || wanted === got) return null;
-  return `${wanted} isn't published for this market, so Shopify answered in ${got}.`;
+  const name = languageName(localization, wanted);
+  const country = countryName(
+    localization,
+    applied?.country ?? localization?.country.isoCode,
+  );
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} isn't available in ${country ?? 'this country'}, so titles show in ${languageName(localization, got)}.`;
 }
 
 /** Countries in name order for the given UI locale (Shopify sends ISO order). */

@@ -22,7 +22,8 @@
   margin-top: var(--spacing-m);
 }
 
-/* The card, with the drag handles in the gutter at its left. */
+/* A multiple field: its notices and card, with the drag handles in the
+   gutter at their left. */
 .gutter {
   margin-left: var(--DragHandle-gutter);
 }
