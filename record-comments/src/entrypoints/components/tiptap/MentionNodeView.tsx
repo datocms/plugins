@@ -32,7 +32,6 @@ function createMentionNodeView(
           <MentionChip
             mention={mention}
             onClick={onMentionClick}
-            isInComposer
             {...(needsProjectUsers && { projectUsers })}
           />
         ) : (

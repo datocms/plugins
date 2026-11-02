@@ -19,6 +19,8 @@ export type ResolvedAuthor = {
   email: string;
   name: string;
   avatarUrl: string | null;
+  /** The person is not a collaborator of the project any more */
+  removed?: boolean;
 };
 
 /** Resolved comment with full display data for rendering */

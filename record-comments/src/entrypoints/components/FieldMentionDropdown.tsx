@@ -44,6 +44,11 @@ type FieldMentionDropdownProps = {
   isLoading?: boolean;
   errorMessage?: string | null;
   onRetry?: () => void;
+  /**
+   * The search field of the panel opened from the Mention menu. It shows
+   * above the list of the fields: a step further has its own title.
+   */
+  searchSlot?: ReactNode;
 };
 
 function stepLabel(step: NavigationStep): string {
@@ -124,6 +129,7 @@ const FieldMentionDropdown = ({
   isLoading = false,
   errorMessage = null,
   onRetry,
+  searchSlot,
 }: FieldMentionDropdownProps) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -200,16 +206,30 @@ const FieldMentionDropdown = ({
     selectedRef,
     justClickedInsideRef,
   };
-  // The counts of the options (locales, blocks) in the language of the user
+  // The counts and the names of the languages, in the language of the user
   const uiLocale = ctx?.ui.locale;
 
-  const panel = (title: string | ReactElement, body: ReactNode) => (
+  // The search field and a state of the list come only with the fields of
+  // the record. While the user searches, the kit hides a group with no
+  // option: the state follows the group, so that it shows.
+  const panel = (
+    title: string | ReactElement,
+    body: ReactNode,
+    search?: ReactNode,
+    listState?: ReactNode,
+  ) => (
     <MentionPanel
       position={position}
       onClose={handleClickOutside}
       panelRef={panelRef}
     >
-      <Dropdown.MenuGroup title={title}>{body}</Dropdown.MenuGroup>
+      {search}
+      {/* As in the kit menu, the options are in a box after the search
+          field: the field has its own line, the group adds none */}
+      <div>
+        <Dropdown.MenuGroup title={title}>{body}</Dropdown.MenuGroup>
+        {listState}
+      </div>
     </MentionPanel>
   );
 
@@ -225,11 +245,12 @@ const FieldMentionDropdown = ({
   // Pending locale selection mode (from keyboard navigation)
   if (pendingFieldForLocale?.availableLocales && navigationStack.length === 0) {
     return panel(
-      header(`${pendingFieldForLocale.label} · Locale`, () =>
+      header(`${pendingFieldForLocale.label} · Language`, () =>
         onClearPendingField?.(),
       ),
       <LocalePickerView
         {...viewProps}
+        uiLocale={uiLocale}
         locales={pendingFieldForLocale.availableLocales}
         selectedIndex={localSelectedIndex}
         onSelect={handlePendingLocaleSelection}
@@ -244,6 +265,8 @@ const FieldMentionDropdown = ({
   ) {
     return panel(
       'Fields',
+      null,
+      searchSlot,
       <FieldListState
         isLoading={isLoading}
         errorMessage={errorMessage}
@@ -257,9 +280,10 @@ const FieldMentionDropdown = ({
   // Locale picker view (drill-down mode)
   if (viewMode === 'locales' && currentField?.availableLocales) {
     return panel(
-      header(displayPath(navigationStack, 'Locale'), handleBack),
+      header(displayPath(navigationStack, 'Language'), handleBack),
       <LocalePickerView
         {...viewProps}
+        uiLocale={uiLocale}
         locales={currentField.availableLocales}
         selectedIndex={localSelectedIndex}
         onSelect={handleLocaleClick}
@@ -273,7 +297,6 @@ const FieldMentionDropdown = ({
       header(displayPath(navigationStack, 'Blocks'), handleBack),
       <BlockPickerView
         {...viewProps}
-        uiLocale={uiLocale}
         blocks={currentBlocks}
         selectedIndex={localSelectedIndex}
         isLoading={isLoadingBlocks}
@@ -310,6 +333,7 @@ const FieldMentionDropdown = ({
       onSelect={handleFieldClick}
       onHover={onHover}
     />,
+    searchSlot,
   );
 };
 

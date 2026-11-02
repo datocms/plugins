@@ -134,6 +134,56 @@ describe('useOperationQueue', () => {
     expect(ctx.alert).not.toHaveBeenCalled();
   });
 
+  it('reports a new comment that was not saved, and says that Send tries again', async () => {
+    const ctx = createCtx();
+    const onOperationFailed = vi.fn();
+    const client = {
+      items: {
+        find: vi.fn().mockRejectedValue(new Error('boom')),
+        update: vi.fn(),
+        list: vi.fn(),
+        create: vi.fn(),
+      },
+    };
+
+    const { result, unmount } = renderHook(() =>
+      useOperationQueue({
+        client: client as unknown as QueueParams['client'],
+        commentRecordId: 'comment-record-1',
+        commentsModelId: 'comments-model',
+        modelId: 'model-1',
+        recordId: 'record-1',
+        ctx: ctx as unknown as QueueParams['ctx'],
+        onRecordCreated: vi.fn(),
+        resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
+        onOperationFailed,
+      }),
+    );
+
+    const operation = {
+      type: 'ADD_COMMENT' as const,
+      comment: {
+        id: 'comment-1',
+        dateISO: '2024-01-01T00:00:00.000Z',
+        content: [{ type: 'text' as const, content: 'Hello' }],
+        authorId: 'user-1',
+        upvoterIds: [],
+        replies: [],
+      },
+    };
+    act(() => {
+      result.current?.enqueue(operation);
+    });
+    await flushPromises();
+
+    expect(ctx.alert).toHaveBeenCalledWith(
+      "The comment wasn't saved. Click Send to try again.",
+    );
+    expect(onOperationFailed).toHaveBeenCalledWith(operation);
+    expect(result.current?.pendingCount).toBe(0);
+    unmount();
+  });
+
   it('resolves the comments model ID lazily before creating the first comment record', async () => {
     const ctx = createCtx();
     const resolveCommentsModelId = vi.fn().mockResolvedValue('comments-model');

@@ -7,11 +7,11 @@ export type SlashCommandDefinition = {
 };
 
 export const SLASH_COMMANDS: SlashCommandDefinition[] = [
-  { name: 'user', label: 'Mention a collaborator' },
-  { name: 'field', label: 'Mention a field' },
-  { name: 'record', label: 'Mention a record' },
-  { name: 'asset', label: 'Mention an asset' },
-  { name: 'model', label: 'Mention a model' },
+  { name: 'user', label: 'Collaborator' },
+  { name: 'field', label: 'Field' },
+  { name: 'record', label: 'Record' },
+  { name: 'asset', label: 'Asset' },
+  { name: 'model', label: 'Model' },
 ];
 
 export type ActiveSlashCommand = {
@@ -22,4 +22,9 @@ export type ActiveSlashCommand = {
   selectedType: SlashCommandType | null;
   range: { from: number; to: number };
   clientRect: (() => DOMRect | null) | null;
+  /**
+   * Opened from the Mention menu, with no typed command: the panel has its
+   * own search field, and searchQuery is its text
+   */
+  fromMenu?: boolean;
 };

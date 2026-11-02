@@ -1,12 +1,7 @@
 import type { BlockInfo } from '@ctypes/mentions';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import type { MutableRefObject, ReactNode, Ref } from 'react';
-import { formatCount } from '@/utils/format';
-import {
-  MentionItemMeta,
-  MentionMenuItem,
-  MentionPanelLoading,
-} from '../shared/MentionPanel';
+import { MentionMenuItem, MentionPanelLoading } from '../shared/MentionPanel';
 
 type BlockPickerViewProps = {
   blocks: BlockInfo[];
@@ -17,8 +12,6 @@ type BlockPickerViewProps = {
   onHover: (index: number) => void;
   selectedRef: Ref<HTMLDivElement>;
   justClickedInsideRef: MutableRefObject<boolean>;
-  /** The language of the user, for the separators of the numbers */
-  uiLocale?: string;
 };
 
 /** The whole field first, then each of its blocks (the index 0 is the field) */
@@ -31,7 +24,6 @@ export function BlockPickerView({
   onHover,
   selectedRef,
   justClickedInsideRef,
-  uiLocale,
 }: BlockPickerViewProps): ReactNode {
   if (isLoading) {
     return <MentionPanelLoading>Loading blocks…</MentionPanelLoading>;
@@ -49,11 +41,6 @@ export function BlockPickerView({
         onPress={markClick}
         onPick={onSelectEntireField}
         onHighlight={() => onHover(0)}
-        after={
-          <MentionItemMeta>
-            {formatCount(blocks.length, 'block', 'blocks', uiLocale)}
-          </MentionItemMeta>
-        }
       >
         Entire field
       </MentionMenuItem>

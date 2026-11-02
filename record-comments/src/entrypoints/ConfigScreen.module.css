@@ -1,22 +1,9 @@
 /* The body of a group is a block flow: each piece keeps the space of a
    Callout (spacing-l) under it, and the last one none. */
 
-/* The count line sits close to the list it counts */
+/* The line above the records that failed sits close to their list */
 .lead {
   margin: 0 0 var(--spacing-s);
-  font-weight: var(--font-weight-strong);
-}
-
-.models {
-  display: grid;
-  gap: var(--spacing-s);
-  padding: 0;
-  margin: 0 0 var(--spacing-l);
-  list-style: none;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
 }
 
 .block {
@@ -44,8 +31,8 @@
   color: var(--color--ink-subtle);
 }
 
-/* The details of a callout (the models not inspected, the records that
-   failed): a list under it, in the flow of the group */
+/* The records that failed: a list under the results, in the flow of the
+   group */
 .list {
   display: grid;
   gap: var(--spacing-s);

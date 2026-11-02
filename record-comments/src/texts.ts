@@ -7,10 +7,6 @@
  * use formatCount.
  */
 export const TEXTS = {
-  'recordComments.modelsNotInspected':
-    "{count, plural, one {# model wasn't inspected} other {# models weren't inspected}}",
-  'recordComments.recordsFailed':
-    '{count, plural, one {# record failed} other {# records failed}}',
   'recordComments.deleteLegacyFieldsDescription':
     'Checks every comment again, then deletes the comment_log field from {count, plural, one {# model} other {# models}} for good.',
 } as const satisfies Record<string, string>;

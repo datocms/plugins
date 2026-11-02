@@ -10,6 +10,7 @@ import type {
 import type {
   ActiveSlashCommand,
   SlashCommandDefinition,
+  SlashCommandType,
 } from '@ctypes/slashCommands';
 import { SLASH_COMMANDS } from '@ctypes/slashCommands';
 import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
@@ -37,12 +38,16 @@ import {
   tipTapDocToFullSegments,
 } from '@utils/tipTapSerializer';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
 import {
   type FieldInputProps,
   useFieldInput,
 } from 'datocms-react-ui/FieldWrapper';
 import {
+  type ChangeEvent,
   forwardRef,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -89,6 +94,21 @@ function getEditorAttributes(
     attributes['aria-label'] = ariaLabel;
   }
   return attributes;
+}
+
+/** The search field of a panel opened from the Mention menu, by kind */
+const MENU_SEARCH_LABELS: Partial<Record<SlashCommandType, string>> = {
+  user: 'Search collaborators',
+  field: 'Search fields',
+  model: 'Search models',
+};
+
+/** The focus moves to an element of the composer: the editor or a panel */
+function isInside(
+  root: HTMLElement | null,
+  target: EventTarget | null,
+): boolean {
+  return target instanceof Node && Boolean(root?.contains(target));
 }
 
 export type TipTapComposerProps = {
@@ -318,6 +338,8 @@ export const TipTapComposer = forwardRef<
     }, [selectedItemIndex]);
 
     const editorRef = useRef<Editor | null>(null);
+    // The editor and its mention panels
+    const rootRef = useRef<HTMLDivElement>(null);
 
     const registerFieldKeyHandler = useCallback(
       (handler: (key: string) => boolean) => {
@@ -329,6 +351,15 @@ export const TipTapComposer = forwardRef<
     const clearPendingFieldForLocale = useCallback(() => {
       setPendingFieldForLocale(null);
     }, []);
+
+    // The languages of a field picked with Enter in the search of the
+    // Mention menu: the search field left with the list, thus the editor
+    // takes the keys of this step
+    useEffect(() => {
+      if (pendingFieldForLocale && activeSlashCommandRef.current?.fromMenu) {
+        editorRef.current?.view.focus();
+      }
+    }, [pendingFieldForLocale]);
 
     const handleMentionClick = useCallback(
       (mention: Mention) => {
@@ -943,6 +974,16 @@ export const TipTapComposer = forwardRef<
       editorProps: {
         attributes: () => editorAttributesRef.current,
         handleKeyDown: (_view, event) => {
+          // The languages of a field picked from the search of the Mention
+          // menu: no command is typed, thus the editor gives the keys to them
+          if (
+            activeSlashCommandRef.current?.fromMenu &&
+            fieldKeyHandlerRef.current?.(event.key)
+          ) {
+            event.preventDefault();
+            return true;
+          }
+
           // Submit on Enter (when not in slash command mode)
           if (
             event.key === 'Enter' &&
@@ -972,7 +1013,10 @@ export const TipTapComposer = forwardRef<
       onFocus: () => {
         onFocusRef.current?.();
       },
-      onBlur: () => {
+      onBlur: ({ event }) => {
+        // The search field of a mention panel takes the focus while the user
+        // picks: the user is still in the comment
+        if (isInside(rootRef.current, event.relatedTarget)) return;
         onBlurRef.current?.();
       },
     });
@@ -1080,8 +1124,65 @@ export const TipTapComposer = forwardRef<
     );
 
     const handleCloseDropdown = useCallback(() => {
+      // A panel of the Mention menu has the focus in its search field: the
+      // editor gets it back before the panel goes, and a click out of the
+      // panel then takes it from the editor as usual
+      if (activeSlashCommandRef.current?.fromMenu) {
+        editorRef.current?.view.focus();
+      }
       setActiveSlashCommand(null);
     }, []);
+
+    // The search field of a panel opened from the Mention menu filters its
+    // list, as the text after a typed command does
+    const handleMenuSearchChange = useCallback(
+      (event: ChangeEvent<HTMLInputElement>) => {
+        const searchQuery = event.target.value;
+        setActiveSlashCommand((prev) =>
+          prev ? { ...prev, searchQuery } : null,
+        );
+        setSelectedItemIndex(0);
+      },
+      [],
+    );
+
+    // The keys of a typed command, from the search field: Backspace only
+    // edits the search
+    const handleMenuSearchKeyDown = useCallback(
+      (event: ReactKeyboardEvent<HTMLInputElement>) => {
+        const currentCommand = activeSlashCommandRef.current;
+        if (currentCommand?.phase !== 'type_selection') return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          handleCloseDropdown();
+          return;
+        }
+        if (event.key === 'Backspace') return;
+        if (
+          handleTypeSelectionKeyDown(
+            event.nativeEvent,
+            { ...currentCommand, phase: 'type_selection' },
+            currentCommand.range,
+          )
+        ) {
+          event.preventDefault();
+        }
+      },
+      [handleCloseDropdown, handleTypeSelectionKeyDown],
+    );
+
+    // The search field is part of the comment, as the editor is
+    const handleMenuSearchFocus = useCallback(() => {
+      onFocusRef.current?.();
+    }, []);
+
+    const handleMenuSearchBlur = useCallback(
+      (event: ReactFocusEvent<HTMLInputElement>) => {
+        if (isInside(rootRef.current, event.relatedTarget)) return;
+        onBlurRef.current?.();
+      },
+      [],
+    );
 
     // Update editor text when field navigation path changes
     const handleFieldPathChange = useCallback((breadcrumb: string) => {
@@ -1199,8 +1300,8 @@ export const TipTapComposer = forwardRef<
             onFieldMentionIntentRef.current?.();
           }
 
-          // Focus editor and get current cursor position
-          editor.chain().focus().run();
+          // The current cursor position. The search field of the panel takes
+          // the focus: the editor keeps its caret for the mention.
           const cursorPos = editor.state.selection.from;
 
           // Create a range at the current cursor position (nothing to replace)
@@ -1215,6 +1316,7 @@ export const TipTapComposer = forwardRef<
             selectedType: type,
             range,
             clientRect: null,
+            fromMenu: true,
           });
           setSelectedItemIndex(0);
         },
@@ -1223,6 +1325,25 @@ export const TipTapComposer = forwardRef<
     );
 
     const segmentsRef = useRef(segments);
+
+    // A panel opened from the Mention menu has its own search field, as the
+    // panel of a record mention: no typed command filters it. It takes the
+    // focus, thus it owns the keys of the panel.
+    const menuSearchLabel = activeSlashCommand?.fromMenu
+      ? MENU_SEARCH_LABELS[activeSlashCommand.selectedType ?? 'user']
+      : undefined;
+    const menuSearch = menuSearchLabel ? (
+      <Dropdown.MenuSearch
+        autoFocus
+        aria-label={menuSearchLabel}
+        placeholder={`${menuSearchLabel}…`}
+        value={activeSlashCommand?.searchQuery ?? ''}
+        onChange={handleMenuSearchChange}
+        onKeyDown={handleMenuSearchKeyDown}
+        onFocus={handleMenuSearchFocus}
+        onBlur={handleMenuSearchBlur}
+      />
+    ) : undefined;
 
     useEffect(() => {
       if (!editor) return;
@@ -1251,7 +1372,7 @@ export const TipTapComposer = forwardRef<
     return (
       <MentionClickContext.Provider value={mentionClickContextValue}>
         {/* Positioned: the mention panels open under (or above) the editor */}
-        <div className={styles.root}>
+        <div ref={rootRef} className={styles.root}>
           <div className={styles.editor}>
             <EditorContent editor={editor} />
           </div>
@@ -1265,6 +1386,7 @@ export const TipTapComposer = forwardRef<
               onClose={handleCloseDropdown}
               onHover={setSelectedCommandIndex}
               position={dropdownPosition}
+              query={activeSlashCommand.commandPart}
             />
           )}
 
@@ -1282,6 +1404,7 @@ export const TipTapComposer = forwardRef<
                 isLoading={usersLoading}
                 loadFailed={usersLoadFailed}
                 onRetry={onUsersRetry}
+                searchSlot={menuSearch}
               />
             )}
 
@@ -1304,6 +1427,7 @@ export const TipTapComposer = forwardRef<
                 isLoading={fieldMentionsLoading}
                 errorMessage={fieldMentionsError}
                 onRetry={onFieldMentionsRetry}
+                searchSlot={menuSearch}
               />
             )}
 
@@ -1318,6 +1442,7 @@ export const TipTapComposer = forwardRef<
                 onClose={handleCloseDropdown}
                 onHover={setSelectedItemIndex}
                 position={dropdownPosition}
+                searchSlot={menuSearch}
               />
             )}
         </div>

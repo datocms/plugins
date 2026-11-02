@@ -44,7 +44,7 @@ import {
   CommentComposer,
   type CommentComposerVariant,
 } from './composer/CommentComposer';
-import { UpvoteIcon } from './Icons';
+import { ReplyIcon, UpvoteIcon } from './Icons';
 import { LoadMoreButton } from './shared/LoadMoreButton';
 import { RelativeTime } from './shared/RelativeTime';
 import type { TipTapComposerRef } from './tiptap/TipTapComposer';
@@ -168,9 +168,44 @@ type Replier = {
   name: string;
   email: string;
   avatarUrl: string | null;
+  removed?: boolean;
 };
 
-/** The upvotes of a comment: the count, and who upvoted in the tooltip */
+/**
+ * The name that gives the initials of an avatar. A person who left the
+ * project has none: the avatar shows a person on a neutral surface, not the
+ * initials of "Removed collaborator".
+ */
+function avatarName(person: { name: string; removed?: boolean }): string {
+  return person.removed ? '' : person.name;
+}
+
+/** Who upvoted, for the tooltip: "You" first, then the others */
+function formatUpvoterNames(
+  upvoters: { id: string; name: string }[],
+  currentUserId: string,
+): string {
+  const others = upvoters
+    .filter((upvoter) => upvoter.id !== currentUserId)
+    .map((upvoter) => upvoter.name);
+  const names = others.length < upvoters.length ? ['You', ...others] : others;
+  return names.join(', ');
+}
+
+/** The text of the delete confirm: the replies of a comment go with it */
+function getDeleteConfirmContent(replyCount: number, locale: string): string {
+  if (replyCount === 0) return 'This cannot be undone.';
+  const replies =
+    replyCount === 1
+      ? 'Its reply is'
+      : `Its ${formatCount(replyCount, 'reply', 'replies', locale)} are`;
+  return `${replies} deleted too. This cannot be undone.`;
+}
+
+/**
+ * The upvote of a comment. Without upvotes it is a quiet icon; with some, it
+ * has the count, and who upvoted in the tooltip.
+ */
 function CommentUpvoteButton({
   upvoterCount,
   userUpvoted,
@@ -184,7 +219,19 @@ function CommentUpvoteButton({
   onUpvote: () => void;
   locale: string;
 }) {
-  if (upvoterCount === 0) return null;
+  if (upvoterCount === 0) {
+    return (
+      <Button
+        tone="ghost"
+        size="micro"
+        iconOnly
+        icon={UpvoteIcon}
+        label="Upvote"
+        pressed={false}
+        onClick={onUpvote}
+      />
+    );
+  }
 
   return (
     <Tooltip label={upvoterNames}>
@@ -237,7 +284,7 @@ function CommentReplyToggle({
           <Avatar
             key={replier.id}
             size="small"
-            name={replier.name}
+            name={avatarName(replier)}
             email={replier.email || null}
             {...getAvatarImage(replier)}
           />
@@ -249,14 +296,15 @@ function CommentReplyToggle({
 }
 
 /**
- * Under the text: the upvotes and the replies toggle, only when the comment
- * has some (a reply has no replies of its own)
+ * Under the text: the upvote, Reply (a reply has no replies of its own) and
+ * the replies toggle, always in sight
  */
 function CommentFooter({
   upvoterCount,
   userUpvoted,
   upvoterNames,
   onUpvote,
+  onReply,
   replyCount,
   repliesExpanded,
   repliesId,
@@ -268,6 +316,8 @@ function CommentFooter({
   userUpvoted: boolean;
   upvoterNames: string;
   onUpvote: () => void;
+  /** Only on a comment of the record, not on a reply */
+  onReply?: () => void;
   replyCount: number;
   repliesExpanded: boolean;
   repliesId: string;
@@ -276,8 +326,6 @@ function CommentFooter({
   /** The language of the user, for the separators of the counts */
   locale: string;
 }) {
-  if (upvoterCount === 0 && replyCount === 0) return null;
-
   return (
     <div className={styles.footer}>
       <CommentUpvoteButton
@@ -287,6 +335,15 @@ function CommentFooter({
         onUpvote={onUpvote}
         locale={locale}
       />
+      {onReply && (
+        <Button
+          tone="ghost"
+          size="micro"
+          icon={ReplyIcon}
+          label="Reply"
+          onClick={onReply}
+        />
+      )}
       <CommentReplyToggle
         replyCount={replyCount}
         repliesExpanded={repliesExpanded}
@@ -411,8 +468,10 @@ const Comment = memo(function Comment({
   const userIsAuthor = commentObject.author.id === currentUserId;
 
   const replies = isTopLevel ? (commentObject.replies ?? []) : [];
-  const replyCount = replies.length;
-  const hasNewReply = replies.some((r) => isContentEmpty(r.content));
+  // A draft reply is not a reply yet: the count and the faces leave it out
+  const sentReplies = replies.filter((r) => !isContentEmpty(r.content));
+  const replyCount = sentReplies.length;
+  const hasNewReply = sentReplies.length < replies.length;
   const [hiddenReplyIds, setHiddenReplyIds] = useState(() =>
     replies.slice(100).map((reply) => reply.id),
   );
@@ -466,8 +525,8 @@ const Comment = memo(function Comment({
 
   // Upvoter names are pre-resolved
   const upvoterNames = useMemo(
-    () => commentObject.upvoters.map((u) => u.name).join(', '),
-    [commentObject.upvoters],
+    () => formatUpvoterNames(commentObject.upvoters, currentUserId),
+    [commentObject.upvoters, currentUserId],
   );
 
   const isSegmentsEmpty = useMemo(() => isContentEmpty(segments), [segments]);
@@ -481,6 +540,7 @@ const Comment = memo(function Comment({
     const result: Replier[] = [];
 
     for (const reply of replies) {
+      if (isContentEmpty(reply.content)) continue;
       const userKey = normalizeForComparison(reply.author.email) || reply.id;
 
       if (seenUsers.has(userKey)) continue;
@@ -491,6 +551,7 @@ const Comment = memo(function Comment({
         name: reply.author.name,
         email: reply.author.email,
         avatarUrl: reply.author.avatarUrl,
+        removed: reply.author.removed,
       });
 
       if (result.length >= UI.MAX_VISIBLE_REPLIER_AVATARS) break;
@@ -523,7 +584,7 @@ const Comment = memo(function Comment({
   const handleDelete = async () => {
     const confirmed = await ctx.openConfirm({
       title: 'Delete this comment?',
-      content: 'This cannot be undone.',
+      content: getDeleteConfirmContent(replyCount, ctx.ui.locale),
       choices: [{ label: 'Delete', value: true, intent: 'negative' }],
       cancel: { label: 'Cancel', value: false },
     });
@@ -674,7 +735,7 @@ const Comment = memo(function Comment({
     >
       <Avatar
         size={avatarSize}
-        name={authorName}
+        name={avatarName(author)}
         email={author.email || null}
         {...getAvatarImage(author)}
       />
@@ -682,18 +743,18 @@ const Comment = memo(function Comment({
       <div className={styles.main}>
         <div className={styles.header}>
           <span className={styles.author}>{authorName}</span>
-          <RelativeTime className={styles.time} value={commentObject.dateISO} />
-          {!isEditing && (
+          {/* A draft has no time: nothing is sent yet */}
+          {!isNewComment && (
+            <RelativeTime
+              className={styles.time}
+              value={commentObject.dateISO}
+            />
+          )}
+          {!isEditing && userIsAuthor && (
             <div className={styles.actions}>
               <CommentActions
-                onUpvote={handleUpvote}
-                onReply={isTopLevel ? handleReply : undefined}
                 onEdit={handleStartEditing}
                 onDelete={handleDelete}
-                userUpvoted={userUpvotedThisComment}
-                userIsAuthor={userIsAuthor}
-                isTopLevel={isTopLevel}
-                hasUpvotes={commentObject.upvoters.length > 0}
               />
             </div>
           )}
@@ -752,6 +813,7 @@ const Comment = memo(function Comment({
             userUpvoted={userUpvotedThisComment}
             upvoterNames={upvoterNames}
             onUpvote={handleUpvote}
+            onReply={isTopLevel ? handleReply : undefined}
             replyCount={replyCount}
             repliesExpanded={repliesExpanded}
             repliesId={repliesId}
@@ -762,7 +824,7 @@ const Comment = memo(function Comment({
         )}
       </div>
 
-      {replyCount > 0 && (
+      {replies.length > 0 && (
         <CommentReplies
           id={repliesId}
           open={repliesExpanded}

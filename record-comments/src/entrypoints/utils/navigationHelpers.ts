@@ -38,6 +38,15 @@ export function buildRecordEditPath(
   return `${getEnvironmentPrefix(ctx)}/editor/item_types/${modelId}/items/${recordId}/edit`;
 }
 
+/** The CMS path of the schema of a model, for a `to` link. */
+export function buildModelSchemaPath(
+  ctx: ContextWithEnv,
+  modelId: string,
+  isBlockModel: boolean,
+): string {
+  return `${getEnvironmentPrefix(ctx)}${buildModelPath(modelId, isBlockModel)}`;
+}
+
 /** The CMS path of this plugin's settings, for a `to` link. */
 export function buildPluginSettingsPath(ctx: ContextWithPluginAndEnv): string {
   return `${getEnvironmentPrefix(ctx)}/configuration/plugins/${ctx.plugin.id}/edit`;

@@ -6,7 +6,6 @@ import { MentionDisplay } from './shared/MentionDisplay';
 type MentionChipProps = {
   mention: Mention;
   onClick?: (mention: Mention, event: React.MouseEvent) => void;
-  isInComposer?: boolean;
   /** Optional project users for resolving user mention name overrides */
   projectUsers?: UserInfo[];
 };
@@ -15,7 +14,6 @@ type MentionChipProps = {
 const MentionChipComponent = ({
   mention,
   onClick,
-  isInComposer = false,
   projectUsers,
 }: MentionChipProps) => {
   const handleClick = (e: React.MouseEvent) => {
@@ -26,7 +24,6 @@ const MentionChipComponent = ({
     <MentionDisplay
       mention={mention}
       onClick={handleClick}
-      tabIndex={isInComposer ? -1 : 0}
       projectUsers={projectUsers}
     />
   );

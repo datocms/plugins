@@ -217,7 +217,7 @@ describe('dropdown interactions', () => {
       slashRender.container.querySelectorAll('div'),
     ).find(
       (element) =>
-        element.childElementCount === 0 && element.textContent === 'Insert',
+        element.childElementCount === 0 && element.textContent === 'Mention',
     );
     if (!insertTitle) throw new Error('Missing group title');
     const titlePress = new MouseEvent('mousedown', {
@@ -267,7 +267,7 @@ describe('dropdown interactions', () => {
     });
     expect(mousedown.defaultPrevented).toBe(true);
     expect(onSelect).not.toHaveBeenCalled();
-    expect(view.container.textContent).toContain('Title · Locale');
+    expect(view.container.textContent).toContain('Title · Language');
     expect(onClose).not.toHaveBeenCalled();
 
     act(() => {
@@ -398,14 +398,6 @@ function renderCommentTree(
   );
 }
 
-function getActionsGroup(container: HTMLElement): HTMLElement {
-  const group = container.querySelector<HTMLElement>(
-    '[role="group"][aria-label="Comment actions"]',
-  );
-  if (!group) throw new Error('Comment actions missing');
-  return group;
-}
-
 function mouseDown(element: Element) {
   act(() => {
     element.dispatchEvent(
@@ -415,9 +407,10 @@ function mouseDown(element: Element) {
 }
 
 // The kit menu opens, and picks an option, on mouse down, as in the CMS
+// The "⋮" of the author, with Edit and Delete
 function openActionsMenu(container: HTMLElement) {
-  const trigger = getActionsGroup(container).querySelector<HTMLButtonElement>(
-    'button[aria-expanded]',
+  const trigger = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Actions"][aria-expanded]',
   );
   if (!trigger) throw new Error('Actions menu trigger missing');
   mouseDown(trigger);
@@ -441,25 +434,42 @@ function changeInputValue(input: HTMLInputElement, value: string) {
   });
 }
 
-// The record mention of the toolbar is a menu of the models: its trigger
-// tells that it opens one
-function findRecordMentionTrigger(container: HTMLElement) {
-  return Array.from(
+// The Mention menu of the toolbar: its options are the kinds of mention
+function openMentionMenu(container: HTMLElement) {
+  const trigger = Array.from(
     container.querySelectorAll<HTMLElement>(
       '[role="toolbar"] [aria-haspopup="true"]',
     ),
-  ).find((trigger) => trigger.textContent === 'Record');
-}
-
-function openRecordMentionMenu(container: HTMLElement) {
-  const trigger = findRecordMentionTrigger(container);
-  if (!trigger) throw new Error('Record mention trigger missing');
+  ).find((element) => element.textContent === 'Mention');
+  if (!trigger) throw new Error('Mention menu trigger missing');
   // The kit menu opens on mouse down, as in the CMS
   mouseDown(trigger);
-  // The menu renders at the end of the body
-  const menu = document.querySelector<HTMLElement>('[role="menu"]');
-  if (!menu) throw new Error('Model menu missing');
-  return { trigger, menu };
+  // The menu renders at the end of the body, after a menu that closes
+  const menus = document.querySelectorAll<HTMLElement>('[role="menu"]');
+  const menu = menus[menus.length - 1];
+  if (!menu) throw new Error('Mention menu missing');
+  const options = () =>
+    Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  return { trigger, menu, options };
+}
+
+function findMenuOption(options: HTMLElement[], label: string) {
+  return options.find((option) => option.textContent === label);
+}
+
+// Record in the Mention menu opens the model panel at the text: its search
+// takes the focus
+function openRecordModelPanel(container: HTMLElement) {
+  const { options } = openMentionMenu(container);
+  const record = findMenuOption(options(), 'Record');
+  if (!record) throw new Error('Record option missing');
+  mouseDown(record);
+  const search = container.querySelector<HTMLInputElement>(
+    'input[placeholder="Search models…"]',
+  );
+  if (!search) throw new Error('Model panel missing');
+  const panel = search.closest<HTMLElement>('.Dropdown__menu') ?? container;
+  return { search, panel };
 }
 
 // The editor scrolls the caret into view when it takes the focus: jsdom has
@@ -612,74 +622,80 @@ describe('comment accessibility and semantics', () => {
   }
 
   it('offers a record mention in an edit only when the user can read a model', () => {
+    const optionLabels = (view: ReturnType<typeof startEditing>) => {
+      const { options } = openMentionMenu(view.container);
+      return options().map((option) => option.textContent);
+    };
+
     const withoutModels = startEditing([]);
-    expect(
-      withoutModels.container.querySelector(
-        '[aria-label="Mention a collaborator"]',
-      ),
-    ).not.toBeNull();
-    expect(findRecordMentionTrigger(withoutModels.container)).toBeUndefined();
+    // An edit without the asset picker has no asset mention
+    expect(optionLabels(withoutModels)).toEqual([
+      'Collaborator',
+      'Field',
+      'Model',
+    ]);
     withoutModels.unmount();
 
     // Blocks are never records of their own: they don't count
     const onlyBlocks = startEditing([HERO_BLOCK]);
-    expect(findRecordMentionTrigger(onlyBlocks.container)).toBeUndefined();
+    expect(optionLabels(onlyBlocks)).not.toContain('Record');
     onlyBlocks.unmount();
 
     const withModels = startEditing([ARTICLE_MODEL]);
-    expect(findRecordMentionTrigger(withModels.container)).toBeDefined();
+    expect(optionLabels(withModels)).toContain('Record');
     withModels.unmount();
   });
 
-  it('picks the model of a record mention in the menu of the toolbar', () => {
-    const onRecordModelSelect = vi.fn();
-    const view = startEditing(
-      [ARTICLE_MODEL, HERO_BLOCK, PAGE_MODEL],
-      onRecordModelSelect,
-    );
-    const { trigger, menu } = openRecordMentionMenu(view.container);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
-
-    const optionTexts = () =>
-      Array.from(menu.querySelectorAll('[role="menuitem"]')).map(
-        (option) => option.textContent,
-      );
-    expect(menu.textContent).toContain('Pick a model');
-    expect(optionTexts()).toEqual(['Articlearticle', 'Pagelanding_page']);
-
-    // The search of the menu finds a model by its name or its API key
-    const search = menu.querySelector('input');
-    if (!search) throw new Error('Model search missing');
-    changeInputValue(search, 'zzz');
-    expect(optionTexts()).toEqual([]);
-    expect(menu.textContent).toContain('No models match “zzz”');
-    changeInputValue(search, 'LANDING');
-    expect(optionTexts()).toEqual(['Pagelanding_page']);
-
-    const option = menu.querySelector('[role="menuitem"]');
-    if (!option) throw new Error('Model option missing');
-    mouseDown(option);
-    expect(onRecordModelSelect).toHaveBeenCalledTimes(1);
-    expect(onRecordModelSelect.mock.calls[0]?.[0]).toBe(PAGE_MODEL);
-    // The pick closes the menu
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    view.unmount();
-  });
-
-  it('gives the focus back to the text when Escape closes the model menu', async () => {
+  it('picks the model of a record mention from the Mention menu', async () => {
     await withRangeLayout(async () => {
       const onRecordModelSelect = vi.fn();
-      const view = startEditing([ARTICLE_MODEL], onRecordModelSelect);
+      const view = startEditing(
+        [ARTICLE_MODEL, HERO_BLOCK, PAGE_MODEL],
+        onRecordModelSelect,
+      );
       try {
-        const { trigger, menu } = openRecordMentionMenu(view.container);
-        // The search of the menu has the focus
-        const search = menu.querySelector('input');
-        if (!search) throw new Error('Model search missing');
+        const { search, panel } = openRecordModelPanel(view.container);
         expect(document.activeElement).toBe(search);
+
+        // The models show by name: the API key only matches the search
+        const optionTexts = () =>
+          Array.from(panel.querySelectorAll('[data-mention-row]')).map(
+            (option) => option.textContent,
+          );
+        expect(panel.textContent).toContain('Model of the record');
+        expect(optionTexts()).toEqual(['Article', 'Page']);
+
+        changeInputValue(search, 'zzz');
+        expect(optionTexts()).toEqual([]);
+        expect(panel.textContent).toContain('No models match “zzz”');
+        changeInputValue(search, 'LANDING');
+        expect(optionTexts()).toEqual(['Page']);
+
+        const option = panel.querySelector('[data-mention-row]');
+        if (!option) throw new Error('Model option missing');
+        act(() => {
+          option.dispatchEvent(
+            new MouseEvent('click', { bubbles: true, cancelable: true }),
+          );
+        });
+        expect(onRecordModelSelect).toHaveBeenCalledTimes(1);
+        expect(onRecordModelSelect.mock.calls[0]?.[0]).toBe(PAGE_MODEL);
+      } finally {
+        view.unmount();
+      }
+    });
+  });
+
+  it('gives the focus back to the text when Escape closes the Mention menu', async () => {
+    await withRangeLayout(async () => {
+      const view = startEditing([ARTICLE_MODEL]);
+      try {
+        const { trigger } = openMentionMenu(view.container);
+        const focused = document.activeElement ?? document.body;
 
         // The kit menu reads the code of the key
         act(() => {
-          search.dispatchEvent(
+          focused.dispatchEvent(
             new KeyboardEvent('keydown', {
               key: 'Escape',
               keyCode: 27,
@@ -691,7 +707,6 @@ describe('comment accessibility and semantics', () => {
         });
 
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
-        expect(onRecordModelSelect).not.toHaveBeenCalled();
         // The editor takes the focus on the next frame
         await nextFrame();
         expect(document.activeElement).toBe(
@@ -735,9 +750,9 @@ describe('comment accessibility and semantics', () => {
         if (!editor) throw new Error('Reply editor missing');
         act(() => editor.focus());
 
-        // The search of the menu takes the focus from the empty reply
-        const { menu } = openRecordMentionMenu(view.container);
-        expect(document.activeElement).toBe(menu.querySelector('input'));
+        // The search of the model panel takes the focus from the empty reply
+        const { search } = openRecordModelPanel(view.container);
+        expect(document.activeElement).toBe(search);
         await act(
           () =>
             new Promise<void>((resolve) => {
@@ -751,32 +766,19 @@ describe('comment accessibility and semantics', () => {
     });
   });
 
-  it('exposes comment actions as a labeled group instead of a fake menu', () => {
-    const onDelete = vi.fn();
+  it('keeps Edit and Delete in the "⋮" of the author, Delete last', () => {
     const view = renderInCanvas(
-      <CommentActions
-        onUpvote={vi.fn()}
-        onEdit={vi.fn()}
-        onDelete={onDelete}
-        onReply={vi.fn()}
-        userUpvoted={false}
-        userIsAuthor={true}
-        isTopLevel={true}
-        hasUpvotes={false}
-      />,
+      <CommentActions onEdit={vi.fn()} onDelete={vi.fn()} />,
       createCanvasCtx(),
     );
 
-    const group = getActionsGroup(view.container);
     expect(
-      Array.from(group.querySelectorAll('button')).map((button) =>
+      Array.from(view.container.querySelectorAll('button')).map((button) =>
         button.getAttribute('aria-label'),
       ),
-    ).toEqual(['Upvote', 'Reply', 'Actions']);
+    ).toEqual(['Actions']);
     expect(document.querySelector('[role="menu"]')).toBeNull();
-    expect(document.querySelector('[role="menuitem"]')).toBeNull();
 
-    // Edit and Delete live in the "⋮" menu, Delete last
     openActionsMenu(view.container);
     const options = Array.from(
       document.querySelectorAll('[role="menuitem"]'),
@@ -785,22 +787,23 @@ describe('comment accessibility and semantics', () => {
     view.unmount();
   });
 
-  it('shows only the actions that apply to the comment', () => {
-    const view = renderInCanvas(
-      <CommentActions
-        onUpvote={vi.fn()}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        userUpvoted={false}
-        userIsAuthor={false}
-        isTopLevel={false}
-        hasUpvotes={true}
-      />,
-      createCanvasCtx(),
+  it('shows the upvote and Reply under every comment, and no "⋮" to others', () => {
+    const ctx = createCanvasCtx<RenderItemFormSidebarCtx>(
+      createSidebarFields(),
     );
+    const comment = createResolvedCommentWithReplies(0, {
+      id: 'comment-1',
+      author: createResolvedAuthor({ id: 'user-2', name: 'Someone Else' }),
+    });
+    const view = renderInCanvas(renderCommentTree(ctx, comment), ctx);
 
-    // A reply of someone else with upvotes: nothing to do from the header
-    expect(view.container.querySelector('[role="group"]')).toBeNull();
+    expect(
+      view.container.querySelector('button[aria-label="Upvote"]'),
+    ).not.toBeNull();
+    expect(findButtonByText(view.container, 'Reply')).toBeDefined();
+    expect(view.container.querySelector('button[aria-label="Actions"]')).toBe(
+      null,
+    );
     view.unmount();
   });
 
@@ -903,7 +906,7 @@ describe('comment accessibility and semantics', () => {
 
     // A CMS link: a middle click opens the field in a new tab
     const link = Array.from(view.container.querySelectorAll('a')).find(
-      (anchor) => anchor.textContent === '#title',
+      (anchor) => anchor.textContent === 'Title',
     );
     if (!link) throw new Error('Field link missing');
     expect(link.getAttribute('href')).toBe(
@@ -915,7 +918,7 @@ describe('comment accessibility and semantics', () => {
     );
 
     // A localized field also scrolls the form to its locale: an action
-    const localized = findButtonByText(view.container, '#body · IT');
+    const localized = findButtonByText(view.container, 'Body · IT');
     if (!localized) throw new Error('Localized field mention missing');
     act(() => localized.click());
     expect(ctx.scrollToField).toHaveBeenCalledWith('body', 'it');
@@ -948,7 +951,7 @@ describe('comment accessibility and semantics', () => {
 
     // No link: its URL would point to the plugin, not to the CMS
     expect(view.container.querySelector('a')).toBeNull();
-    const mention = findButtonByText(view.container, '#title');
+    const mention = findButtonByText(view.container, 'Title');
     if (!mention) throw new Error('Field mention missing');
     act(() => mention.click());
     expect(ctx.navigateTo).toHaveBeenCalledWith(

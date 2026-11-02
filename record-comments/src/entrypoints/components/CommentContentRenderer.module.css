@@ -1,0 +1,4 @@
+/* A mention and the punctuation right after it, on one line */
+.keepTogether {
+  white-space: nowrap;
+}

@@ -16,9 +16,9 @@
   min-width: 0;
 }
 
-/* The name, the time and the actions, on one line */
+/* The name, the time and the "⋮", on one line. The name gives way first:
+   the time and the "⋮" keep their room. */
 .header {
-  position: relative;
   display: flex;
   gap: var(--spacing-s);
   align-items: center;
@@ -48,19 +48,15 @@
   box-shadow: var(--focus-ring);
 }
 
-/* The actions show while the pointer is on the comment, while one of them
-   has the focus and while the menu is open. They float at the end of the
-   header, so the name and the time keep the whole line while they are
-   hidden. Opacity, not visibility, so the keyboard reaches them. */
+/* The "⋮" of the author shows while the pointer is on the comment, while it
+   has the focus and while its menu is open. It keeps its place at the end of
+   the line, so it never covers the time. Opacity, not visibility, so the
+   keyboard reaches it. */
 .actions {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-end: 0;
-  padding-inline-start: var(--spacing-s);
-  background: var(--color--surface);
+  flex: none;
+  margin-inline-start: auto;
   opacity: 0;
   transition: opacity 0.15s var(--ease-out);
-  transform: translateY(-50%);
 }
 
 .main:hover .actions,
@@ -69,16 +65,10 @@
   opacity: 1;
 }
 
-/* A touch device has no hover: there the actions always show, in the line */
+/* A touch device has no hover: there the "⋮" always shows */
 @media (hover: none) {
   .actions {
-    position: static;
-    flex: none;
-    padding: 0;
-    margin-inline-start: auto;
-    background: none;
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -90,7 +80,7 @@
   white-space: pre-wrap;
 }
 
-/* The upvotes and the replies toggle */
+/* The upvote, Reply and the replies toggle */
 .footer {
   display: flex;
   flex-wrap: wrap;

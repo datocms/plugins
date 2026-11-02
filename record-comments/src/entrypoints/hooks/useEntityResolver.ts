@@ -105,12 +105,13 @@ function resolveAuthorById(
     }
   }
 
-  // Fallback for unresolvable user ID
+  // A person who left the project: the same words as a mention of them
   return {
     id: userId,
     email: '',
-    name: 'Unknown user',
+    name: 'Removed collaborator',
     avatarUrl: null,
+    removed: true,
   };
 }
 
@@ -165,14 +166,17 @@ function resolveFieldMention(
     };
   }
 
-  // Fallback: extract apiKey from fieldPath
+  // Fallback while the fields load (or when they fail): the API key from
+  // fieldPath, in words for the label ("seo_title" is "Seo title"); the
+  // tooltip keeps the key
   const pathParts = stored.fieldPath.split('.');
   const apiKey = pathParts[pathParts.length - 1] || stored.fieldPath;
+  const words = apiKey.replace(/_/g, ' ');
 
   return {
     type: 'field',
     apiKey,
-    label: apiKey,
+    label: words.charAt(0).toUpperCase() + words.slice(1),
     localized: !!stored.locale,
     fieldPath: stored.fieldPath,
     locale: stored.locale,
@@ -520,8 +524,15 @@ export function useEntityResolver(
 
       const mention = resolveMention(segment.mention);
       if (!mention) {
-        // Fallback for unresolvable mentions
-        return { type: 'text', content: '[deleted mention]' };
+        // A collaborator or a model that is not in the project any more:
+        // the sentence names it in plain words
+        return {
+          type: 'text',
+          content:
+            segment.mention.type === 'user'
+              ? 'a removed collaborator'
+              : 'a deleted model',
+        };
       }
 
       return { type: 'mention', mention };

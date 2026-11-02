@@ -7,11 +7,24 @@ import {
   useNavigationContext,
 } from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
+import styles from './CommentContentRenderer.module.css';
 import { MentionDisplay } from './shared/MentionDisplay';
 
 type CommentContentRendererProps = {
   segments: CommentSegment[];
 };
+
+/** The closing punctuation at the start of a text */
+const LEADING_PUNCTUATION = /^[.,;:!?)\]}…]+/;
+
+/**
+ * The punctuation right after a mention ("?" in "check the Title?"): it
+ * stays on the line of the pill, so a line never starts with it
+ */
+function getLeadingPunctuation(segment: CommentSegment | undefined): string {
+  if (segment?.type !== 'text') return '';
+  return segment.content.match(LEADING_PUNCTUATION)?.[0] ?? '';
+}
 
 function arePropsEqual(
   prev: CommentContentRendererProps,
@@ -99,7 +112,12 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
       {segments.map((segment, index) => {
         if (segment.type === 'text') {
           const key = `text-${index}`;
-          return <span key={key}>{segment.content}</span>;
+          // The mention before it already shows its punctuation
+          const taken =
+            segments[index - 1]?.type === 'mention'
+              ? getLeadingPunctuation(segment).length
+              : 0;
+          return <span key={key}>{segment.content.slice(taken)}</span>;
         }
 
         const { mention } = segment;
@@ -122,7 +140,7 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
           isClickable = !isProjectOwner;
         }
 
-        return (
+        const display = (
           <MentionDisplay
             key={mentionKey}
             mention={mention}
@@ -132,6 +150,16 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
             isProjectOwner={isProjectOwner}
             projectUsers={projectUsers}
           />
+        );
+        const punctuation = getLeadingPunctuation(segments[index + 1]);
+
+        if (!punctuation) return display;
+
+        return (
+          <span key={mentionKey} className={styles.keepTogether}>
+            {display}
+            {punctuation}
+          </span>
         );
       })}
     </>

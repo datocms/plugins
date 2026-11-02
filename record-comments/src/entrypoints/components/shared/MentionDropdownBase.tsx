@@ -138,8 +138,8 @@ export function MentionDropdownBase<T>({
     if (!offset) return;
     const { panel, listTop } = offset;
 
-    // The first row brings back the top of the panel: the search field of the
-    // models scrolls with the options, and a new search starts from it.
+    // The first row brings back the top of the panel, with the title of the
+    // group: a new search starts from it.
     if (selectedIndex <= 0) {
       panel.scrollTop = 0;
       if (windowed) setScrollOffset(0);
@@ -171,10 +171,16 @@ export function MentionDropdownBase<T>({
     [readListOffset],
   );
 
-  const options =
-    items.length === 0 ? (
+  // While the user searches, the kit hides a group with no option: a state
+  // or the message of no match follows the group, so that it shows
+  const message =
+    state ??
+    (items.length === 0 ? (
       <Dropdown.MenuEmpty>{emptyMessage}</Dropdown.MenuEmpty>
-    ) : (
+    ) : null);
+
+  const options =
+    message !== null ? null : (
       <div ref={listRef}>
         {windowed && firstIndex > 0 && (
           <div aria-hidden="true" style={{ height: firstIndex * rowHeight }} />
@@ -214,9 +220,12 @@ export function MentionDropdownBase<T>({
       onScroll={windowed ? handleScroll : undefined}
     >
       {searchSlot}
-      <Dropdown.MenuGroup title={headerText}>
-        {state ?? options}
-      </Dropdown.MenuGroup>
+      {/* As in the kit menu, the options are in a box after the search
+          field: the field has its own line, the group adds none */}
+      <div>
+        <Dropdown.MenuGroup title={headerText}>{options}</Dropdown.MenuGroup>
+        {message}
+      </div>
     </MentionPanel>
   );
 }

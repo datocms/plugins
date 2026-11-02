@@ -53,11 +53,3 @@
   display: inline;
   user-select: all;
 }
-
-/* The preview tile of an asset stays on the line of the text, within the
-   width of the editor */
-.editor [data-mention-node="asset"] {
-  display: inline-block;
-  max-width: 100%;
-  vertical-align: bottom;
-}

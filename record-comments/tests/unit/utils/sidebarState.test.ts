@@ -70,9 +70,10 @@ describe('getSidebarView', () => {
     expect(later.syncProblem).toBe(true);
   });
 
-  it('tells about an error even while the connection retries by itself', () => {
+  it('tells about an error in the callout, and shows only a real reconnection', () => {
     // A fatal channel error (a token that is not valid any more) closes the
-    // connection, and the hook keeps reconnecting: the problem shows anyway
+    // connection, and the hook keeps reconnecting: the problem shows, and the
+    // header does not say that it fixes itself
     const failing = getSidebarView(
       input({
         realTimeEnabled: true,
@@ -82,8 +83,21 @@ describe('getSidebarView', () => {
       }),
     );
     expect(failing.syncProblem).toBe(true);
-    expect(failing.busy).toBe(true);
-    expect(failing.activity).toBe('Reconnecting…');
+    expect(failing.busy).toBe(false);
+    expect(failing.activity).toBeNull();
+
+    // A click on Reconnect is a real attempt: it shows while the error stays
+    // (the error clears only when new data comes)
+    const manualRetry = getSidebarView(
+      input({
+        realTimeEnabled: true,
+        status: 'connecting',
+        hasError: true,
+      }),
+    );
+    expect(manualRetry.syncProblem).toBe(true);
+    expect(manualRetry.busy).toBe(true);
+    expect(manualRetry.activity).toBe('Connecting…');
 
     // A connection that closed with no error and reconnects by itself is
     // only background work
@@ -95,6 +109,7 @@ describe('getSidebarView', () => {
       }),
     );
     expect(reconnecting.syncProblem).toBe(false);
+    expect(reconnecting.busy).toBe(true);
     expect(reconnecting.activity).toBe('Reconnecting…');
 
     const closed = getSidebarView(
@@ -104,21 +119,15 @@ describe('getSidebarView', () => {
     expect(closed.busy).toBe(false);
   });
 
-  it('names the save in progress, and why and how often it retries', () => {
+  it('names the save in progress, and tells screen readers why it retries', () => {
     const saving = getSidebarView(input({ pendingCount: 1 }));
     expect(saving.activity).toBe('Saving…');
     expect(saving.announcement).toBe('Saving…');
 
+    // The subtitle stays "Saving…" while the save retries: the reason and
+    // the attempt are only for screen readers
     const retryMessage = 'Someone else saved the comments at the same time.';
-    const firstRetry = getSidebarView(
-      input({ pendingCount: 1, isRetrying: true, retryCount: 1, retryMessage }),
-    );
-    expect(firstRetry.activity).toBe('Retrying…');
-    expect(firstRetry.announcement).toBe(`${retryMessage} Retrying…`);
-
-    // The subtitle stays short, thus the title of a narrow sidebar keeps its
-    // room; screen readers also hear the reason
-    const laterRetry = getSidebarView(
+    const retry = getSidebarView(
       input({
         pendingCount: 1,
         isRetrying: true,
@@ -127,10 +136,9 @@ describe('getSidebarView', () => {
         locale: 'en',
       }),
     );
-    expect(laterRetry.activity).toBe('Retrying, attempt 1,204');
-    expect(laterRetry.announcement).toBe(
-      `${retryMessage} Retrying, attempt 1,204`,
-    );
+    expect(retry.activity).toBe('Saving…');
+    expect(retry.busy).toBe(true);
+    expect(retry.announcement).toBe(`${retryMessage} Saving, attempt 1,204.`);
 
     const idle = getSidebarView(input());
     expect(idle.activity).toBeNull();

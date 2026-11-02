@@ -61,29 +61,39 @@ export type SidebarView = {
   announcement: string | null;
 };
 
-function getRetryActivity(input: SidebarViewInput): string {
-  if (input.retryCount <= 1) return 'Retrying…';
-  return `Retrying, attempt ${formatNumber(input.retryCount, input.locale)}`;
-}
-
+/**
+ * The same state for screen readers. A save that retries also tells why and
+ * which attempt runs: the subtitle stays at "Saving…".
+ */
 function getAnnouncement(
   input: SidebarViewInput,
   activity: string | null,
 ): string | null {
-  if (activity && input.isRetrying && input.retryMessage) {
-    return `${input.retryMessage} ${activity}`;
+  if (activity && input.isRetrying) {
+    const attempt = `Saving, attempt ${formatNumber(input.retryCount, input.locale)}.`;
+    return input.retryMessage ? `${input.retryMessage} ${attempt}` : attempt;
   }
   return activity;
 }
 
+/**
+ * A connection attempt runs, or the real-time connection comes back by
+ * itself. After a channel error (a token that is not valid any more) the
+ * automatic loop never fixes it, thus only a real attempt (a click on
+ * Reconnect) shows: the error stays until new data comes.
+ */
+function isReconnecting(input: SidebarViewInput): boolean {
+  return (
+    input.realTimeEnabled &&
+    (input.status === 'connecting' ||
+      (input.isAutoReconnecting && !input.hasError))
+  );
+}
+
 function getActivity(input: SidebarViewInput): string | null {
-  if (input.isRetrying) return getRetryActivity(input);
-  if (input.pendingCount > 0) return 'Saving…';
-  if (input.isAutoReconnecting) return 'Reconnecting…';
-  if (input.realTimeEnabled && input.status === 'connecting') {
-    return 'Connecting…';
-  }
-  return null;
+  if (input.isRetrying || input.pendingCount > 0) return 'Saving…';
+  if (!isReconnecting(input)) return null;
+  return input.isAutoReconnecting ? 'Reconnecting…' : 'Connecting…';
 }
 
 /**
@@ -102,9 +112,6 @@ export function getSidebarView(input: SidebarViewInput): SidebarView {
     };
   }
 
-  const isReloading = input.realTimeEnabled
-    ? input.status === 'connecting'
-    : input.isLoading;
   const activity = getActivity(input);
 
   return {
@@ -119,8 +126,8 @@ export function getSidebarView(input: SidebarViewInput): SidebarView {
     busy:
       input.pendingCount > 0 ||
       input.isRetrying ||
-      input.isAutoReconnecting ||
-      isReloading,
+      isReconnecting(input) ||
+      (!input.realTimeEnabled && input.isLoading),
     activity,
     announcement: getAnnouncement(input, activity),
   };

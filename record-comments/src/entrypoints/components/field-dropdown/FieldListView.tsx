@@ -1,5 +1,4 @@
 import type { FieldInfo } from '@hooks/useMentions';
-import ApiKey from 'datocms-react-ui/ApiKey';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import type { CSSProperties, MutableRefObject, ReactNode, Ref } from 'react';
 import { formatCount } from '@/utils/format';
@@ -23,8 +22,8 @@ type FieldMenuItemProps = {
 };
 
 /**
- * A field to mention: its label and API key, the number of its locales, and a
- * chevron when picking it opens a further step (a locale, a block).
+ * A field to mention: its label, the number of its locales, and a chevron
+ * when picking it opens a further step (a locale, a block).
  */
 export function FieldMenuItem({
   field,
@@ -68,19 +67,28 @@ export function FieldMenuItem({
         hasMultipleLocales || drillsDown ? (
           <MentionItemMeta>
             {hasMultipleLocales &&
-              formatCount(localeCount, 'locale', 'locales', uiLocale)}
+              formatCount(localeCount, 'language', 'languages', uiLocale)}
             {drillsDown && <ChevronRightIcon />}
           </MentionItemMeta>
         ) : undefined
       }
     >
-      <EntityRow
-        layout="row"
-        title={label}
-        afterTitle={<ApiKey>{field.apiKey}</ApiKey>}
-      />
+      {/* The label, as the form names the field: the API key only matches
+          the search */}
+      <EntityRow layout="row" title={label} />
     </MentionMenuItem>
   );
+}
+
+/**
+ * The path of a field inside blocks without its parent field, which the
+ * indent shows: "Hero section #1 · Heading", not "Content · Hero section #1 ·
+ * Heading". The dot joins a path as in the titles of the drill-downs: a ">"
+ * would read as one more chevron.
+ */
+function nestedLabel(field: FieldInfo): string {
+  const [, ...rest] = field.displayLabel.split(' > ');
+  return rest.length > 0 ? rest.join(' · ') : field.label;
 }
 
 type FieldListViewProps = {
@@ -108,7 +116,9 @@ export function FieldListView({
     <FieldMenuItem
       key={field.fieldPath}
       field={field}
-      label={field.depth > 0 ? field.displayLabel : field.label}
+      // A field inside blocks is indented under its parent field: its block
+      // and its label say the rest
+      label={field.depth > 0 ? nestedLabel(field) : field.label}
       selected={index === selectedIndex}
       selectedRef={selectedRef}
       justClickedInsideRef={justClickedInsideRef}

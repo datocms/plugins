@@ -1,5 +1,6 @@
-/* The thumbnail of a record, in the place of the icon of its pill */
-.recordThumbnail {
+/* The thumbnail of a record or of an image, in the place of the icon of its
+   pill */
+.thumbnail {
   flex: none;
   width: 1.25em;
   height: 1.25em;
@@ -11,81 +12,4 @@
 .emoji {
   flex: none;
   line-height: 1;
-}
-
-/* The preview of an image or a video. A RawButton has no look: this class is
-   its whole look, a framed thumbnail with the file name under it. It is a
-   card: it rests on the page, with its shadow. */
-.tile {
-  box-sizing: border-box;
-  display: inline-flex;
-  flex-direction: column;
-  max-width: min(220px, 100%);
-  padding: 0;
-  margin-block: var(--spacing-s);
-  overflow: hidden;
-  font: inherit;
-  color: var(--color--ink);
-  text-align: start;
-  vertical-align: bottom;
-  cursor: pointer;
-  background: var(--color--surface-raised);
-  border: 1px solid var(--color--border);
-  border-radius: var(--radius-s);
-  box-shadow: var(--shadow--resting);
-}
-
-.tile:hover {
-  border-color: var(--color--border-hover);
-}
-
-/* In the composer the tile is inside the frame of a field: nothing there has
-   a shadow of its own (only the composer's mentions have this attribute) */
-[data-mention-node] .tile {
-  box-shadow: none;
-}
-
-.tile:focus-visible {
-  outline: none;
-  border-color: var(--color--focus--border);
-  box-shadow: var(--focus-ring);
-}
-
-/* While the image loads, the tile keeps a muted area of its size */
-.tileMedia {
-  display: block;
-  min-width: 120px;
-  min-height: 80px;
-  background: var(--color--surface-muted);
-}
-
-.tileMediaLoaded {
-  min-width: 0;
-  min-height: 0;
-  background: none;
-}
-
-/* A narrow image sits in the middle, under a wider file name */
-.tileImage {
-  display: block;
-  width: auto;
-  margin-inline: auto;
-  max-width: 100%;
-  height: auto;
-  max-height: 300px;
-  opacity: 0;
-}
-
-.tileMediaLoaded .tileImage {
-  opacity: 1;
-}
-
-.tileCaption {
-  padding: var(--spacing-s) var(--spacing-m);
-  overflow: hidden;
-  font-size: var(--font-size-xs);
-  color: var(--color--ink-subtle);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-top: 1px solid var(--color--border);
 }

@@ -7,15 +7,18 @@ import {
 } from '@components/Icons';
 import { CommentErrorBoundary } from '@components/shared/CommentErrorBoundary';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
-import { isContentEmpty } from '@ctypes/comments';
+import { type CommentType, isContentEmpty } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentOperation } from '@ctypes/operations';
+import { ApiError } from '@datocms/cma-client-browser';
 import { useCommentActions } from '@hooks/useCommentActions';
 import { useCommentPagination } from '@hooks/useCommentPagination';
 import { useCommentsData } from '@hooks/useCommentsData';
-import type {
-  CommentsStorageProblem,
-  SubscriptionErrorInfo,
-  SubscriptionStatus,
+import {
+  type CommentsStorageProblem,
+  DUPLICATE_AGGREGATES_MESSAGE,
+  type SubscriptionErrorInfo,
+  type SubscriptionStatus,
 } from '@hooks/useCommentsSubscription';
 import { useEntityResolver } from '@hooks/useEntityResolver';
 import { useChangeCount, useHasLoadedOnce } from '@hooks/useHasLoadedOnce';
@@ -32,6 +35,7 @@ import {
 } from '@utils/errorCategorization';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { buildPluginSettingsPath } from '@utils/navigationHelpers';
+import { canEditSchema } from '@utils/permissions';
 import {
   getCommentsModelIdForEnvironment,
   parsePluginParams,
@@ -59,7 +63,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ERROR_MESSAGES } from '@/constants';
+import { COMMENTS_MODEL_API_KEY, ERROR_MESSAGES } from '@/constants';
 import { createApiClient } from '@/utils/cmaClient';
 import { ensureCommentsModelExistsWithClient } from '@/utils/commentsStorage';
 import { logDebug, logError, logWarn } from '@/utils/errorLogger';
@@ -73,13 +77,6 @@ type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
 
-const HELP = (
-  <Toolbar.Help>
-    Discuss this record with your team. Type / in a comment to mention people,
-    fields, records, assets and models.
-  </Toolbar.Help>
-);
-
 /** An unsaved record has no comments yet: nothing else applies */
 const UNSAVED_RECORD_VIEW: SidebarView = {
   phase: 'ready',
@@ -89,23 +86,41 @@ const UNSAVED_RECORD_VIEW: SidebarView = {
   announcement: null,
 };
 
+/** A comment, or one of its replies, mentions a field */
+function hasFieldMention(comment: CommentType): boolean {
+  return (
+    comment.content.some(
+      (segment) =>
+        segment.type === 'mention' && segment.mention.type === 'field',
+    ) || (comment.replies ?? []).some(hasFieldMention)
+  );
+}
+
 type SidebarCalloutsProps = {
-  /** Real-time updates are on in the settings, but there is no CDA token */
+  /**
+   * Real-time updates are on in the settings, but there is no CDA token.
+   * Only the people who can change the settings hear about it: the comments
+   * work without it.
+   */
   missingCdaToken: boolean;
   syncProblem: boolean;
   /** The comments come from the real-time connection (else from the CMA) */
   realTimeEnabled: boolean;
   errorType: SubscriptionErrorType | undefined;
+  /** The user can change the settings of the plugin (the schema) */
+  canEditSettings: boolean;
   settingsPath: string;
 };
 
 /**
  * The comments stopped updating. In real time, the connection is lost; else
- * the load of the latest comments failed, and only the header reloads them.
+ * the load of the latest comments failed. The labeled button of the header
+ * loads them again.
  */
 function SyncProblemCallout({
   realTimeEnabled,
   errorType,
+  canEditSettings,
   settingsPath,
 }: Omit<SidebarCalloutsProps, 'missingCdaToken' | 'syncProblem'>) {
   if (!realTimeEnabled) {
@@ -115,7 +130,28 @@ function SyncProblemCallout({
         title="Comments didn't reload"
         className={styles.callout}
       >
-        The list can miss the latest changes. Reload it from the header.
+        The list may be missing the latest changes. Click Reload at the top to
+        load it again.
+      </Callout>
+    );
+  }
+
+  if (errorType === 'token_expired') {
+    return (
+      <Callout
+        tone="warning"
+        title="Comments stopped updating"
+        className={styles.callout}
+      >
+        {canEditSettings ? (
+          <>
+            The Content Delivery API token isn't valid any more. Add a new one
+            in the <Link to={settingsPath}>plugin settings</Link>, then click
+            Reconnect at the top.
+          </>
+        ) : (
+          "New comments from others don't show up until an administrator replaces the Content Delivery API token in the plugin settings. Then click Reconnect at the top."
+        )}
       </Callout>
     );
   }
@@ -126,14 +162,8 @@ function SyncProblemCallout({
       title="Comments stopped updating"
       className={styles.callout}
     >
-      {errorType === 'token_expired' ? (
-        <>
-          The Content Delivery API token is not valid any more. Add a new one in
-          the <Link to={settingsPath}>plugin settings</Link>.
-        </>
-      ) : (
-        'New comments from other people show up again once the connection is back.'
-      )}
+      New comments from others don't show up. Click Reconnect at the top to try
+      again.
     </Callout>
   );
 }
@@ -148,10 +178,11 @@ function SidebarCallouts({
       {missingCdaToken && (
         <Callout
           tone="warning"
-          title="Real-time updates are off"
+          title="Real-time updates need a token"
           className={styles.callout}
         >
-          The plugin has no Content Delivery API token. Add one in the{' '}
+          Comments from others show up only after a reload. Add a Content
+          Delivery API token in the{' '}
           <Link to={syncProblemProps.settingsPath}>plugin settings</Link>.
         </Callout>
       )}
@@ -165,36 +196,55 @@ function SidebarCallouts({
  * words of the plugin, as the collaborators list says it
  */
 function describeFieldsLoadError(type: GeneralErrorType): string {
-  switch (type) {
-    case 'permission_denied':
-      return "Your role can't read the fields of this model.";
-    case 'network_error':
-      return "The fields didn't load. Check your connection.";
-    default:
-      return "The fields didn't load.";
-  }
+  return type === 'permission_denied'
+    ? "Your role can't read the fields of this model."
+    : "The fields didn't load.";
 }
 
-function describeLoadError(error: Error): string {
-  switch (categorizeGeneralError(error).type) {
+/** Why the first load failed, for the words of the blank slate */
+type LoadErrorReason = 'token_expired' | GeneralErrorType;
+
+function describeLoadError(
+  reason: LoadErrorReason,
+  canEditSettings: boolean,
+): string {
+  switch (reason) {
+    case 'token_expired':
+      return canEditSettings
+        ? "The Content Delivery API token isn't valid any more. Add a new one in the plugin settings."
+        : "Comments can't load until an administrator replaces the Content Delivery API token in the plugin settings.";
     case 'permission_denied':
-      return "Your role can't read the comments of this record.";
+      return "Your role can't read the comments of this record. Ask an administrator for access.";
     case 'network_error':
       return 'Check your connection, then try again.';
     default:
-      return 'Try again. If it keeps failing, reload the record.';
+      return 'If it keeps failing, reload the page.';
   }
 }
 
 /**
- * A blank slate is the only content of the column, or it has a callout
- * above it (then it is a section of the column)
+ * The raw error in one short line: the code and the status of an API error
+ * (not the request and its body), else the first line of the message
  */
-type SlatePlacement = 'inline' | 'section';
+function getErrorCode(error: Error): string {
+  if (error instanceof ApiError) {
+    const code = error.errors[0]?.attributes.code;
+    return `${code ?? error.response.statusText} (${error.response.status})`;
+  }
+  return error.message.split('\n')[0] ?? error.message;
+}
+
+/**
+ * A blank slate is the only content of the pane (it fills it, as the loading
+ * one), or it has a callout above it (then it is a section of the column)
+ */
+type SlatePlacement = 'area' | 'section';
 
 type LoadErrorSlateProps = {
-  error: Error;
-  errorType: SubscriptionErrorType | undefined;
+  reason: LoadErrorReason;
+  /** The raw error, when it adds something to the description */
+  code: string | undefined;
+  canEditSettings: boolean;
   settingsPath: string;
   onRetry: () => void;
   placement: SlatePlacement;
@@ -202,15 +252,20 @@ type LoadErrorSlateProps = {
 
 /**
  * The first load failed: there is nothing to keep on screen. Try again is
- * always there: a token error can also be a passing problem of the API.
+ * there unless the role cannot read the comments (a retry never helps); a
+ * token error can also be a passing problem of the API.
  */
 function LoadErrorSlate({
-  error,
-  errorType,
+  reason,
+  code,
+  canEditSettings,
   settingsPath,
   onRetry,
   placement,
 }: LoadErrorSlateProps) {
+  const opensSettings = reason === 'token_expired' && canEditSettings;
+  const canRetry = reason !== 'permission_denied';
+
   return (
     <BlankSlate
       placement={placement}
@@ -218,19 +273,24 @@ function LoadErrorSlate({
       error
       icon={<CircleExclamationIcon />}
       title="Comments didn't load"
-      code={error.message}
-      description={
-        errorType === 'token_expired' ? (
-          <>
-            The Content Delivery API token is not valid any more. Add a new one
-            in the <Link to={settingsPath}>plugin settings</Link>.
-          </>
-        ) : (
-          describeLoadError(error)
-        )
-      }
+      code={code}
+      description={describeLoadError(reason, canEditSettings)}
       actions={
-        <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+        opensSettings || canRetry ? (
+          <>
+            {/* A new token is the fix: a retry with the same one rarely helps */}
+            {opensSettings && (
+              <Button
+                tone="primary"
+                label="Open plugin settings"
+                to={settingsPath}
+              />
+            )}
+            {canRetry && (
+              <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+            )}
+          </>
+        ) : undefined
       }
     />
   );
@@ -238,27 +298,46 @@ function LoadErrorSlate({
 
 type StorageProblemSlateProps = {
   problem: CommentsStorageProblem;
+  /** The name of the model that keeps the comments */
+  commentsModelName: string;
+  canEditSettings: boolean;
   settingsPath: string;
   placement: SlatePlacement;
 };
 
-/** The stored comments need the migration of the settings first */
+/**
+ * The stored comments need the migration of the settings first, or they
+ * cannot be read: then only a fix of the stored record helps, not the
+ * migration
+ */
 function StorageProblemSlate({
   problem,
+  commentsModelName,
+  canEditSettings,
   settingsPath,
   placement,
 }: StorageProblemSlateProps) {
-  const actions = <Button label="Open plugin settings" to={settingsPath} />;
-
   if (problem.type === 'migration_required') {
     return (
       <BlankSlate
         placement={placement}
         small
         icon={<CommentsIcon />}
-        title="Comments need a migration"
-        description="This project keeps comments in an older format. Run the migration in the plugin settings before adding new comments."
-        actions={actions}
+        title="Comments need to be moved"
+        description={
+          canEditSettings
+            ? 'This project keeps comments in an older format. Open Legacy comments in the plugin settings and click Move comments.'
+            : 'This project keeps comments in an older format. Ask an administrator to move them in the plugin settings.'
+        }
+        actions={
+          canEditSettings ? (
+            <Button
+              tone="primary"
+              label="Open plugin settings"
+              to={settingsPath}
+            />
+          ) : undefined
+        }
       />
     );
   }
@@ -270,9 +349,11 @@ function StorageProblemSlate({
       error
       icon={<CircleExclamationIcon />}
       title="Comments can't be read"
-      code={problem.message}
-      description="Run the migration in the plugin settings before adding new comments."
-      actions={actions}
+      description={
+        problem.message === DUPLICATE_AGGREGATES_MESSAGE
+          ? `This record has more than one comments record in the ${commentsModelName} model. Ask a developer to keep only one.`
+          : `The stored comments of this record are damaged. Ask a developer to fix them in the ${commentsModelName} model.`
+      }
     />
   );
 }
@@ -335,14 +416,18 @@ function getCdaErrorType(
   return realTimeEnabled ? errorInfo?.type : undefined;
 }
 
-/** The background work while there is some, else the count of the comments */
+/**
+ * The background work while there is some, else the count of the comments.
+ * While the comments stopped updating, the labeled button of the header
+ * takes the room of the count.
+ */
 function getSubtitle(
   view: SidebarView,
   commentCount: number,
   locale: string,
 ): string | null {
   if (view.activity) return view.activity;
-  if (commentCount === 0) return null;
+  if (commentCount === 0 || view.syncProblem) return null;
   return formatCount(commentCount, 'comment', 'comments', locale);
 }
 
@@ -375,16 +460,15 @@ function renderSidebarHeader({
 }: SidebarHeaderParams) {
   return (
     <Pane.Header>
-      <Pane.Header.Title help={HELP}>Comments</Pane.Header.Title>
+      <Pane.Header.Title>Comments</Pane.Header.Title>
       {subtitle ? (
         <Pane.Header.Subtitle>{subtitle}</Pane.Header.Subtitle>
       ) : null}
       {view.busy ? <Pane.Header.Spinner /> : null}
       {view.syncProblem ? (
         <Pane.Header.Button>
-          {/* Icon only: the title of a narrow sidebar keeps its room */}
+          {/* Labeled: the callout tells the user to click it */}
           <Toolbar.Button
-            iconOnly
             icon={RefreshIcon}
             label={realTimeEnabled ? 'Reconnect' : 'Reload'}
             onClick={onReconnect}
@@ -395,6 +479,14 @@ function renderSidebarHeader({
   );
 }
 
+/** The collaborators: the comments show once they load, for their names */
+type UsersLoadState = {
+  loading: boolean;
+  /** The kind of the failure of their load, null when it did not fail */
+  failure: GeneralErrorType | null;
+  onRetry: () => void;
+};
+
 type SidebarBodyProps = {
   hasRecord: boolean;
   view: SidebarView;
@@ -402,13 +494,33 @@ type SidebarBodyProps = {
   error: Error | null;
   errorType: SubscriptionErrorType | undefined;
   storageProblem: CommentsStorageProblem | null;
+  users: UsersLoadState;
+  /** The name of the model that keeps the comments */
+  commentsModelName: string;
   /** Real-time updates are on in the settings, but there is no CDA token */
   missingCdaToken: boolean;
+  /** The user can change the settings of the plugin (the schema) */
+  canEditSettings: boolean;
   settingsPath: string;
   onRetry: () => void;
   /** The composer and the comments, when they apply */
   children: ReactNode;
 };
+
+/** Why the first load of the comments failed, and its raw error */
+function getLoadFailure(
+  error: Error,
+  errorType: SubscriptionErrorType | undefined,
+): { reason: LoadErrorReason; code: string | undefined } {
+  const reason: LoadErrorReason =
+    errorType === 'token_expired'
+      ? 'token_expired'
+      : categorizeGeneralError(error).type;
+  // The descriptions of the known reasons already tell the problem and what
+  // to do: only an unknown error shows its raw message
+  const code = reason === 'unknown' ? getErrorCode(error) : undefined;
+  return { reason, code };
+}
 
 /** The content of the pane: the callouts, then a state or the comments */
 function SidebarBody({
@@ -418,51 +530,69 @@ function SidebarBody({
   error,
   errorType,
   storageProblem,
+  users,
+  commentsModelName,
   missingCdaToken,
+  canEditSettings,
   settingsPath,
   onRetry,
   children,
 }: SidebarBodyProps) {
-  if (hasRecord && view.phase === 'loading') {
+  // The names of the authors and of the mentions come with the
+  // collaborators: the comments wait for them
+  if (hasRecord && (view.phase === 'loading' || users.loading)) {
     return (
       <BlankSlate placement="area" small loading title="Loading comments" />
     );
   }
 
-  let content = children;
-  // Under a callout, a blank slate is no longer alone in the column
-  const slatePlacement: SlatePlacement =
-    missingCdaToken || view.syncProblem ? 'section' : 'inline';
+  let slate: ReactNode = null;
+  // Under a callout, a blank slate is no longer alone in the pane
+  const hasCallout = missingCdaToken || view.syncProblem;
+  const slatePlacement: SlatePlacement = hasCallout ? 'section' : 'area';
+  const settings = { canEditSettings, settingsPath };
 
   if (!hasRecord) {
-    content = (
+    slate = (
       <BlankSlate
         placement={slatePlacement}
         small
         icon={<CommentsIcon />}
         title="Save the record to comment"
-        description="Comments belong to a saved record."
       />
     );
   } else if (view.phase === 'failed' && error) {
-    content = (
+    slate = (
       <LoadErrorSlate
-        error={error}
-        errorType={errorType}
-        settingsPath={settingsPath}
+        {...getLoadFailure(error, errorType)}
+        {...settings}
         onRetry={onRetry}
         placement={slatePlacement}
       />
     );
+  } else if (users.failure) {
+    slate = (
+      <LoadErrorSlate
+        reason={users.failure === 'network_error' ? 'network_error' : 'unknown'}
+        code={undefined}
+        {...settings}
+        onRetry={users.onRetry}
+        placement={slatePlacement}
+      />
+    );
   } else if (storageProblem) {
-    content = (
+    slate = (
       <StorageProblemSlate
         problem={storageProblem}
-        settingsPath={settingsPath}
+        commentsModelName={commentsModelName}
+        {...settings}
         placement={slatePlacement}
       />
     );
   }
+
+  // Alone, the blank slate takes the place of the loading one
+  if (slate && !hasCallout) return slate;
 
   return (
     <div className={styles.content}>
@@ -471,9 +601,9 @@ function SidebarBody({
         syncProblem={view.syncProblem}
         realTimeEnabled={realTimeEnabled}
         errorType={errorType}
-        settingsPath={settingsPath}
+        {...settings}
       />
-      {content}
+      {slate ?? children}
     </div>
   );
 }
@@ -540,8 +670,15 @@ const CommentsBar = ({ ctx }: Props) => {
     fieldsRequestKey: fieldMentionsRequestKey,
     loadFields: fieldMentionsRequestKey > 0,
   });
+  // The model that keeps the comments is the plugin's own: nobody mentions
+  // it, nor picks its records
+  const mentionableModels = useMemo(
+    () =>
+      projectModels.filter((model) => model.apiKey !== COMMENTS_MODEL_API_KEY),
+    [projectModels],
+  );
   const { canMentionAssets, canMentionModels, readableModels } =
-    useMentionPermissions(ctx, projectModels);
+    useMentionPermissions(ctx, mentionableModels);
 
   const handleFieldMentionIntent = useCallback(() => {
     setFieldMentionsRequestKey((previous) => (previous === 0 ? 1 : previous));
@@ -700,6 +837,16 @@ const CommentsBar = ({ ctx }: Props) => {
   // Updated by subscription (existing) or queue (new). 8-second cooldown prevents race conditions.
   const [commentRecordId, setCommentRecordId] = useState<string | null>(null);
 
+  // A new comment that was not saved leaves the list and goes back into the
+  // composer. The queue comes before the comments (useCommentsData), thus it
+  // reaches the handler through a ref.
+  const operationFailedRef = useRef<(op: CommentOperation) => void>(
+    () => undefined,
+  );
+  const handleOperationFailed = useCallback((op: CommentOperation) => {
+    operationFailedRef.current(op);
+  }, []);
+
   // Must be called BEFORE useCommentsData so isSyncAllowed is available
   const { enqueue, pendingCount, isSyncAllowed, retryState } =
     useOperationQueue({
@@ -711,6 +858,7 @@ const CommentsBar = ({ ctx }: Props) => {
       ctx,
       onRecordCreated: setCommentRecordId,
       resolveCommentsModelId,
+      onOperationFailed: handleOperationFailed,
     });
 
   const handleOrphanedDraft = useCallback(() => {
@@ -739,6 +887,18 @@ const CommentsBar = ({ ctx }: Props) => {
     onOrphanedDraft: handleOrphanedDraft,
   });
 
+  operationFailedRef.current = (op) => {
+    if (op.type !== 'ADD_COMMENT') return;
+    setComments((previous) =>
+      previous.filter((comment) => comment.id !== op.comment.id),
+    );
+    // Send tries again: the text is back, unless the user wrote a new one
+    const [unsent] = resolveComments([op.comment]);
+    setComposerSegments((current) =>
+      unsent && isContentEmpty(current) ? unsent.content : current,
+    );
+  };
+
   // The comments of one record in one environment: the pagination and the
   // first load start again when it changes
   const scopeKey = JSON.stringify([
@@ -762,6 +922,16 @@ const CommentsBar = ({ ctx }: Props) => {
   useEffect(() => {
     prefetchEntities(visibleStoredComments);
   }, [visibleStoredComments, prefetchEntities]);
+
+  // A field mention shows the label of the field, as the form names it: the
+  // fields load once a comment mentions one
+  const mentionsField = useMemo(
+    () => visibleStoredComments.some(hasFieldMention),
+    [visibleStoredComments],
+  );
+  useEffect(() => {
+    if (mentionsField) handleFieldMentionIntent();
+  }, [mentionsField, handleFieldMentionIntent]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Async cache mutations require re-resolution even when the comment array is unchanged.
   const visibleComments = useMemo(
@@ -927,7 +1097,13 @@ const CommentsBar = ({ ctx }: Props) => {
   );
 
   const settingsPath = buildPluginSettingsPath(ctx);
-  const showsComments = !!ctx.item && view.phase === 'ready' && !storageProblem;
+  const canEditSettings = canEditSchema(ctx);
+  const showsComments =
+    !!ctx.item &&
+    view.phase === 'ready' &&
+    !isLoadingUsers &&
+    !usersLoadError &&
+    !storageProblem;
   const announcement = showsComments ? view.announcement : null;
 
   const header = renderSidebarHeader({
@@ -966,13 +1142,25 @@ const CommentsBar = ({ ctx }: Props) => {
               error={error}
               errorType={getCdaErrorType(realTimeEnabled, errorInfo)}
               storageProblem={storageProblem}
-              missingCdaToken={realTimeRequested && !cdaToken}
+              users={{
+                loading: isLoadingUsers,
+                failure: usersLoadError?.type ?? null,
+                onRetry: retryUsers,
+              }}
+              commentsModelName={
+                findCommentsModel(ctx.itemTypes)?.attributes.name ??
+                'Project comment'
+              }
+              missingCdaToken={
+                canEditSettings && realTimeRequested && !cdaToken
+              }
+              canEditSettings={canEditSettings}
               settingsPath={settingsPath}
               onRetry={retrySubscription}
             >
               <CommentErrorBoundary
                 fallbackTitle="The editor didn't load"
-                fallbackMessage="Reload the record to try again."
+                fallbackMessage="Reload the page to try again."
                 fallbackClassName={styles.callout}
               >
                 <CommentComposer
@@ -986,7 +1174,7 @@ const CommentsBar = ({ ctx }: Props) => {
                   usersLoadFailed={!!usersLoadError}
                   onUsersRetry={retryUsers}
                   modelFields={modelFields}
-                  projectModels={projectModels}
+                  projectModels={mentionableModels}
                   canMentionAssets={canMentionAssets}
                   canMentionModels={canMentionModels}
                   canMentionFields={true}
@@ -1030,7 +1218,7 @@ const CommentsBar = ({ ctx }: Props) => {
                 usersLoading={isLoadingUsers}
                 usersLoadFailed={!!usersLoadError}
                 onUsersRetry={retryUsers}
-                projectModels={projectModels}
+                projectModels={mentionableModels}
                 deleteComment={deleteComment}
                 editComment={editComment}
                 upvoteComment={upvoteComment}

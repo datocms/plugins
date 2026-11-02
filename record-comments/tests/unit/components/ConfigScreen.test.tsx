@@ -224,9 +224,9 @@ const oldComment = {
 async function scanAndMigrate(state: ReturnType<typeof setupMigration>) {
   // The group starts closed: its title opens it
   click(state.button('Legacy comments'));
-  click(state.button('Scan for legacy comments'));
+  click(state.button('Find'));
   await settle();
-  click(state.button('Migrate comments'));
+  click(state.button('Move comments'));
   await settle();
 }
 
@@ -235,17 +235,25 @@ describe('ConfigScreen', () => {
     const state = setupMigration([oldComment, {}]);
     await scanAndMigrate(state);
     expect(state.create).not.toHaveBeenCalled();
+    // The record that failed, as a link to it, under a line in plain words
     expect(state.view.container.textContent).toContain(
-      'complete record was preserved',
+      'Open these records to check their old comments, then click Move comments again:',
     );
-    expect(state.view.container.textContent).toContain('1 record failed');
+    const failed = state.view.container.querySelector(
+      'ul[aria-label="Records not moved"] li',
+    );
+    expect(failed?.querySelector('a')).not.toBeNull();
+    // And why it failed: some reasons never clear on a retry
+    expect(failed?.textContent).toContain(
+      'A legacy comment or reply is malformed',
+    );
     expect(state.hasButton('Delete fields')).toBe(false);
     // Records that failed are an error, not a success
     expect(state.alert).toHaveBeenCalledWith(
-      'The migration ended with 1 error. Check the details in the settings.',
+      "The comments of 1 record weren't moved.",
     );
     expect(state.notice).not.toHaveBeenCalledWith(
-      expect.stringContaining('The migration ended'),
+      expect.stringContaining("weren't moved"),
     );
     state.view.unmount();
   });
@@ -267,29 +275,21 @@ describe('ConfigScreen', () => {
     const view = renderInCanvas(<ConfigScreen ctx={ctx as never} />, ctx);
 
     click(findButton(view.container, 'Legacy comments') as HTMLElement);
-    click(
-      findButton(view.container, 'Scan for legacy comments') as HTMLElement,
-    );
+    click(findButton(view.container, 'Find') as HTMLElement);
     await settle();
 
-    expect(customToast).toHaveBeenCalledWith({
-      type: 'warning',
-      message:
-        "The scan couldn't inspect 1 model. Check the list before migrating.",
-      dismissOnPageChange: true,
-    });
+    // The group says it: no toast repeats it
+    expect(customToast).not.toHaveBeenCalled();
     expect(notice).not.toHaveBeenCalled();
-    expect(view.container.textContent).toContain("1 model wasn't inspected");
-    // The model that failed shows with its API key, as the found models do
-    const failedModel = Array.from(view.container.querySelectorAll('li')).find(
-      (item) => item.textContent?.startsWith('Article'),
+    expect(view.container.textContent).toContain(
+      "Article couldn't be checked: click Find again before moving the comments.",
     );
-    expect(failedModel?.textContent).toBe('Article article');
+    // The callout names the model: no separate list
     expect(
-      Array.from(failedModel?.querySelectorAll('*') ?? []).some(
-        (element) => element.textContent === 'article',
+      Array.from(view.container.querySelectorAll('li')).some((item) =>
+        item.textContent?.startsWith('Article'),
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     view.unmount();
   });
@@ -307,8 +307,11 @@ describe('ConfigScreen', () => {
     );
     expect(state.destroy).not.toHaveBeenCalled();
     expect(state.alert).toHaveBeenCalledWith(
-      expect.stringContaining('failed verification'),
+      "The fields weren't deleted: the comments of 1 record changed after they were moved. Click Move comments again to see which one.",
     );
+    // The move is the next step again: the Danger zone waits for it
+    expect(state.hasButton('Move comments')).toBe(true);
+    expect(state.hasButton('Delete fields')).toBe(false);
     state.view.unmount();
   });
 
@@ -343,15 +346,11 @@ describe('ConfigScreen', () => {
     const state = setupMigration([oldComment]);
     await scanAndMigrate(state);
     expect(state.hasButton('Delete fields')).toBe(true);
-    expect(state.view.container.textContent).toContain(
-      '1 model with a comment_log field',
-    );
+    expect(state.view.container.textContent).toContain('Records moved');
     state.changeEnvironment('sandbox');
     await settle();
     expect(state.hasButton('Delete fields')).toBe(false);
-    expect(state.view.container.textContent).not.toContain(
-      '1 model with a comment_log field',
-    );
+    expect(state.view.container.textContent).not.toContain('Records moved');
     expect(state.destroy).not.toHaveBeenCalled();
     state.view.unmount();
   });
@@ -371,7 +370,7 @@ describe('ConfigScreen', () => {
     pending.resolve?.();
     await settle();
     expect(state.hasButton('Delete fields')).toBe(false);
-    expect(state.notice).not.toHaveBeenCalledWith('Comments migrated');
+    expect(state.notice).not.toHaveBeenCalledWith('Comments moved');
     expect(state.destroy).not.toHaveBeenCalled();
     state.view.unmount();
   });
@@ -391,14 +390,15 @@ describe('ConfigScreen', () => {
     view.unmount();
   });
 
-  it('gives the missing token as the error of its field once it blocks the save', () => {
+  it('gives the missing token as the error of its field, also right after the install', () => {
     const ctx = createCtx();
     const view = renderInCanvas(<ConfigScreen ctx={ctx as never} />, ctx);
     const token = () =>
       inputByLabel(view.container, 'Content Delivery API token');
 
-    // Nothing changed yet: no error on load
-    expect(token().getAttribute('aria-invalid')).toBeNull();
+    // Real-time updates are on and nothing changed yet: the field already
+    // says what to fill
+    expect(token().getAttribute('aria-invalid')).toBe('true');
 
     click(inputByLabel(view.container, 'Debug logging'));
 

@@ -185,6 +185,10 @@ export type CommentsStorageProblem = {
   message: string;
 };
 
+/** The problem of a record with more than one comments record */
+export const DUPLICATE_AGGREGATES_MESSAGE =
+  'More than one comments record exists for this record.';
+
 export type UseCommentsSubscriptionReturn = {
   comments: CommentType[];
   setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
@@ -552,7 +556,7 @@ export function useCommentsSubscription({
     setComments([]);
     setStorageProblem({
       type: 'malformed_aggregate',
-      message: 'More than one comments record exists for this record.',
+      message: DUPLICATE_AGGREGATES_MESSAGE,
     });
   }, [setCommentRecordId]);
 

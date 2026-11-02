@@ -111,7 +111,7 @@ describe('record model selector selection', () => {
     const title = Array.from(view.container.querySelectorAll('div')).find(
       (element) =>
         element.childElementCount === 0 &&
-        element.textContent === 'Pick a model',
+        element.textContent === 'Model of the record',
     );
     if (!title) throw new Error('Missing group title');
     const option = view.container.querySelectorAll('button')[1];

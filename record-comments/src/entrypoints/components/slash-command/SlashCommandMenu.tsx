@@ -35,6 +35,8 @@ type SlashCommandMenuProps = {
   /** Moves the highlight to the command below the pointer */
   onHover?: (index: number) => void;
   position?: MentionPanelPosition;
+  /** What the user typed after the slash */
+  query?: string;
 };
 
 export const SlashCommandMenu = memo(function SlashCommandMenu({
@@ -44,12 +46,15 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
   onClose,
   onHover,
   position = 'below',
+  query = '',
 }: SlashCommandMenuProps) {
   return (
     <MentionDropdownBase
       items={commands}
-      emptyMessage="No matching commands"
-      headerText="Insert"
+      emptyMessage={
+        query ? `Nothing to mention for “${query}”` : 'Nothing to mention'
+      }
+      headerText="Mention"
       selectedIndex={selectedIndex}
       onClose={onClose}
       onHighlight={onHover}

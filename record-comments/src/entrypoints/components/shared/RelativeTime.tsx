@@ -10,6 +10,28 @@ import { memo, useEffect, useReducer } from 'react';
 /** How often the text is written again, so "3 minutes ago" stays true */
 const REFRESH_INTERVAL_MS = 60_000;
 
+/** Under a minute, the time is "now" */
+const NOW_THRESHOLD_MS = 60_000;
+
+/**
+ * The relative time of something that already happened. A time a little
+ * ahead of the clock of the browser (a comment just sent) is now, never "in
+ * 2 seconds"; under a minute it is "now", not "0 seconds ago".
+ */
+function formatPastTime(
+  value: string,
+  dateSettings: ReturnType<typeof useDateSettings>,
+): string {
+  const now = Date.now();
+  const time = Math.min(Date.parse(value), now);
+  if (now - time < NOW_THRESHOLD_MS) {
+    return new Intl.RelativeTimeFormat(dateSettings.locale, {
+      numeric: 'auto',
+    }).format(0, 'second');
+  }
+  return formatRelativeTime(new Date(time), dateSettings);
+}
+
 type RelativeTimeProps = {
   /** An ISO 8601 instant, as the comments store it */
   value: string;
@@ -45,7 +67,7 @@ export const RelativeTime = memo(function RelativeTime({
   return (
     <Tooltip label={formatFullDateTime(value, dateSettings)}>
       <time className={className} dateTime={dateTime} tabIndex={0}>
-        {formatRelativeTime(value, dateSettings)}
+        {formatPastTime(value, dateSettings)}
       </time>
     </Tooltip>
   );

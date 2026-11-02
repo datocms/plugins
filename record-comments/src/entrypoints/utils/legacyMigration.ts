@@ -20,13 +20,42 @@ export type LegacyModel = {
   localized?: boolean;
 };
 
+/** A record whose legacy comments were not moved (they stay where they are) */
+export type MigrationError = {
+  recordId: string;
+  modelId: string;
+  modelName: string;
+  /** Why: it shows under the record, and goes to the debug log */
+  message: string;
+};
+
 export type MigrationResults = {
   success: number;
   skipped: number;
   empty: number;
   failed: number;
-  errors: string[];
+  errors: MigrationError[];
 };
+
+/**
+ * The comments model lost a setting that the storage needs (someone changed
+ * its field): the settings name the field and the model
+ */
+export class CommentStorageError extends Error {
+  /** The API key of the field of the comments model */
+  readonly fieldApiKey: string;
+  /** What the field must be, as the end of a sentence about it */
+  readonly requirement: string;
+
+  constructor(fieldApiKey: string, requirement: string) {
+    super(
+      `The ${fieldApiKey} field of the comments model ${requirement}. Change it back, then migrate again.`,
+    );
+    this.name = 'CommentStorageError';
+    this.fieldApiKey = fieldApiKey;
+    this.requirement = requirement;
+  }
+}
 
 export type MigrationProgress = {
   currentModel: string;
@@ -381,9 +410,12 @@ async function processPageRecord(
     if (isQuotaOrBillingError(error)) throw error;
     results.failed++;
     if (results.errors.length < MAX_MIGRATION_DETAILS)
-      results.errors.push(
-        `Record ${raw.id} in ${model.modelName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+      results.errors.push({
+        recordId: raw.id,
+        modelId: model.modelId,
+        modelName: model.modelName,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
   }
 }
 
@@ -395,38 +427,37 @@ function requireStorageField(
   fields: StorageField[],
   apiKey: string,
   fieldType: string,
-  message: string,
+  requirement: string,
 ): StorageField {
   const field = fields.find((entry) => entry.api_key === apiKey);
   if (!field || field.localized || field.field_type !== fieldType)
-    throw new Error(message);
+    throw new CommentStorageError(apiKey, requirement);
   return field;
 }
 
 async function validateCommentStorage(options: MigrationOptions) {
   const { client, commentsModelId } = options;
   const fields = await client.fields.list(commentsModelId);
-  const identityMessage =
-    'Comment storage requires a non-localized unique record_id field.';
+  const identityRequirement = 'must be unique and not localized';
   const identity = requireStorageField(
     fields,
     'record_id',
     'string',
-    identityMessage,
+    identityRequirement,
   );
   if (!('unique' in identity.validators) || !identity.validators.unique)
-    throw new Error(identityMessage);
+    throw new CommentStorageError('record_id', identityRequirement);
   requireStorageField(
     fields,
     'content',
     'json',
-    'Comment storage requires a non-localized JSON content field.',
+    'must be a JSON field that is not localized',
   );
   requireStorageField(
     fields,
     'model_id',
     'string',
-    'Comment storage requires a non-localized string model_id field.',
+    'must be a single-line string field that is not localized',
   );
 }
 

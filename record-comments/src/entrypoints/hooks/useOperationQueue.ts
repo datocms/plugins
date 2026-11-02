@@ -311,6 +311,16 @@ async function processQueueSequentially(
   }
 }
 
+/**
+ * The message of a save that failed. A new comment goes back into the
+ * composer (the sidebar takes it out of the list), thus Send tries again.
+ */
+function saveFailedMessage(op: CommentOperation): string {
+  return op.type === 'ADD_COMMENT'
+    ? ERROR_MESSAGES.COMMENT_NOT_SENT
+    : ERROR_MESSAGES.SAVE_FAILED;
+}
+
 function sanitizeOperationForLogging(
   op: CommentOperation,
 ): Record<string, unknown> {
@@ -357,6 +367,11 @@ type UseOperationQueueParams = {
   ctx: RenderItemFormSidebarCtx;
   onRecordCreated: (recordId: string) => void;
   resolveCommentsModelId: () => Promise<string | null>;
+  /**
+   * An operation of the current record that was not saved (the user already
+   * got the error). The sidebar takes a new comment out of the list.
+   */
+  onOperationFailed?: (op: CommentOperation) => void;
 };
 
 export function useOperationQueue({
@@ -368,7 +383,10 @@ export function useOperationQueue({
   ctx,
   onRecordCreated,
   resolveCommentsModelId,
+  onOperationFailed,
 }: UseOperationQueueParams) {
+  const onOperationFailedRef = useRef(onOperationFailed);
+  onOperationFailedRef.current = onOperationFailed;
   const queue = useRef<CommentOperation[]>([]);
   const validatedStorageRef = useRef(new WeakMap<Client, Set<string>>());
   const activeTargetRef = useRef({ client, modelId, recordId });
@@ -555,7 +573,7 @@ export function useOperationQueue({
           undefined,
           { modelId, op: sanitizeOperationForLogging(op), recordId },
         );
-        alertIfMounted(ERROR_MESSAGES.SAVE_FAILED);
+        alertIfMounted(saveFailedMessage(op));
         clearRetryState();
         return false;
       }
@@ -691,7 +709,7 @@ export function useOperationQueue({
           logError('Failed to save comment operation:', e, {
             op: sanitizeOperationForLogging(op),
           });
-          alertIfMounted(ERROR_MESSAGES.SAVE_FAILED);
+          alertIfMounted(saveFailedMessage(op));
           clearRetryState();
           return false;
         }
@@ -762,13 +780,15 @@ export function useOperationQueue({
         },
       };
 
-      return executeWithVersionConflictRetry(
+      const persisted = await executeWithVersionConflictRetry(
         op,
         opCtx,
         callbacks,
         0,
         Date.now(),
       );
+      if (!persisted && isActive()) onOperationFailedRef.current?.(op);
+      return persisted;
     },
     [
       alertIfMounted,

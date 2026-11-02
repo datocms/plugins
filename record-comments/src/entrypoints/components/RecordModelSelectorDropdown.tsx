@@ -1,9 +1,7 @@
 import type { ModelInfo } from '@hooks/useMentions';
 import { getRecordMentionModels } from '@utils/permissions';
-import ApiKey from 'datocms-react-ui/ApiKey';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
 import EntityRow from 'datocms-react-ui/EntityRow';
-import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import StringInput from 'datocms-react-ui/StringInput';
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
 import type { MentionPanelPosition } from './shared/MentionPanel';
@@ -39,11 +37,10 @@ export function getRecordModelsEmptyMessage(
 }
 
 /**
- * The first step of a record mention typed as /record: the model of the
- * record. The command has no trigger, thus the panel opens at the caret, as
- * the other mention panels do, and renders the parts of the kit menu (the
- * record mention of the toolbar is a real Dropdown). Its search field has
- * the focus, thus it owns the keys (the editor waits).
+ * The first step of a record mention (/record, or Record in the Mention
+ * menu): the model of the record. The panel opens at the caret, as the other
+ * mention panels do, and renders the parts of the kit menu. Its search field
+ * has the focus, thus it owns the keys (the editor waits).
  */
 const RecordModelSelectorDropdown = ({
   models,
@@ -106,25 +103,26 @@ const RecordModelSelectorDropdown = ({
     }
   };
 
+  // The search of the kit menu. It takes the focus when the panel opens,
+  // thus it also owns the keys of the panel: it shows with few models too.
   const searchSlot = (
-    <div className="Dropdown__menu__body" onKeyDown={handleKeyDown}>
-      <FieldWrapper label="Search models" labelExtras={{ hidden: true }}>
-        <StringInput
-          // The search field takes the focus when the panel opens
-          autoFocus
-          placeholder="Search models…"
-          value={query}
-          onChange={(value) => setQuery(value ?? '')}
-        />
-      </FieldWrapper>
-    </div>
+    <Dropdown.MenuSearch
+      autoFocus
+      aria-label="Search models"
+      placeholder="Search models…"
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      onKeyDown={handleKeyDown}
+    />
   );
 
   return (
     <MentionDropdownBase
       items={filteredModels}
       emptyMessage={getRecordModelsEmptyMessage(query, nonBlockModels.length)}
-      headerText="Pick a model"
+      // The model of the record to mention: the Model option of the
+      // Mention menu mentions a model itself
+      headerText="Model of the record"
       selectedIndex={selectedIndex}
       onClose={onClose}
       onHighlight={setSelectedIndex}
@@ -133,11 +131,9 @@ const RecordModelSelectorDropdown = ({
       searchSlot={searchSlot}
       renderItem={(model) => ({
         label: (
-          <EntityRow
-            layout="row"
-            title={model.name}
-            afterTitle={<ApiKey>{model.apiKey}</ApiKey>}
-          />
+          // The name, as the editors know the model: the API key only
+          // matches the search
+          <EntityRow layout="row" title={model.name} />
         ),
         onPick: () => onSelect(model),
       })}

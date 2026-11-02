@@ -16,7 +16,6 @@ export const TIMING = {
 export const COMMENTS_PAGE_SIZE = 30;
 
 export const UI = {
-  MENTION_CHIP_MAX_NAME_LENGTH: 8,
   MAX_VISIBLE_REPLIER_AVATARS: 3,
 } as const;
 
@@ -31,11 +30,13 @@ export const PLUGIN_IDS = {
 } as const;
 
 export const ERROR_MESSAGES = {
-  SAVE_FAILED: "The comment wasn't saved. Reload the record and try again.",
+  SAVE_FAILED: "The comment wasn't saved. Reload the page and try again.",
+  // A new comment that failed goes back into the composer
+  COMMENT_NOT_SENT: "The comment wasn't saved. Click Send to try again.",
   SAVE_RECORD_FIRST: 'Save the record before adding comments.',
   ASSET_PICKER_FAILED: "The asset picker didn't open. Try again.",
   RECORD_PICKER_FAILED: "The record picker didn't open. Try again.",
-  COMMENTS_LOAD_FAILED: "The comments didn't load. Reload the record.",
+  COMMENTS_LOAD_FAILED: "The comments didn't load. Reload the page.",
   // Why a save runs again. The sidebar adds that it retries, and how often.
   VERSION_CONFLICT_RETRYING:
     'Someone else saved the comments at the same time.',

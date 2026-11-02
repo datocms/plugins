@@ -26,6 +26,8 @@ type UserMentionDropdownProps = {
   loadFailed?: boolean;
   /** Loads the collaborators again */
   onRetry?: () => void;
+  /** The search field of the panel opened from the Mention menu */
+  searchSlot?: ReactNode;
 };
 
 /** The list while the collaborators load, or after their load failed */
@@ -73,6 +75,7 @@ const UserMentionDropdown = ({
   isLoading = false,
   loadFailed = false,
   onRetry,
+  searchSlot,
 }: UserMentionDropdownProps) => {
   const emptyMessage = query
     ? `No collaborators match “${query}”`
@@ -87,6 +90,7 @@ const UserMentionDropdown = ({
       onClose={onClose}
       onHighlight={onHover}
       position={position}
+      searchSlot={searchSlot}
       state={getUsersState(isLoading, loadFailed, onRetry)}
       keyExtractor={(user) => user.id}
       renderItem={(user) => ({

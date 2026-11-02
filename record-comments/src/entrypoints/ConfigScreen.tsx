@@ -1,11 +1,17 @@
 import {
   buildLegacyUserIdsByEmail,
+  CommentStorageError,
   emptyMigrationResults,
+  type MigrationError,
   type MigrationProgress,
   type MigrationResults,
   type LegacyModel as ModelWithCommentLog,
   runLegacyMigration,
 } from '@utils/legacyMigration';
+import {
+  buildModelSchemaPath,
+  buildRecordEditPath,
+} from '@utils/navigationHelpers';
 import { hasUnrestrictedModelReadPermission } from '@utils/permissions';
 import { buildPluginParams, parsePluginParams } from '@utils/pluginParams';
 import {
@@ -19,6 +25,7 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InfoList from 'datocms-react-ui/InfoList';
+import Link from 'datocms-react-ui/Link';
 import { Page } from 'datocms-react-ui/Page';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SettingsList from 'datocms-react-ui/SettingsList';
@@ -64,23 +71,15 @@ function assertMigrationReadPermissions(
   for (const modelId of modelIds) {
     if (!hasUnrestrictedModelReadPermission(ctx, modelId))
       throw new Error(
-        'The migration needs read access to every record of the models with legacy comments and of the comments model. Restricted access can hide legacy comments.',
+        'Moving the comments needs read access to every record of the models with legacy comments and of the comments model. Restricted access can hide legacy comments.',
       );
   }
 }
 
-function buildScanMessage(
-  foundCount: number,
-  failedCount: number,
-  locale: string,
-): string {
-  if (failedCount > 0) {
-    return `The scan couldn't inspect ${formatCount(failedCount, 'model', 'models', locale)}. Check the list before migrating.`;
-  }
-  if (foundCount === 0) {
-    return 'No model has a comment_log field, so there is nothing to migrate.';
-  }
-  return `Found ${formatCount(foundCount, 'model', 'models', locale)} with a comment_log field.`;
+/** Names in a sentence: "Author", "Author and Page", "Author, Page and Blog" */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 type MigrationStatus =
@@ -102,7 +101,6 @@ type ScanProgress = {
   currentModel?: string;
   scannedModels: number;
   totalModels: number;
-  foundCount: number;
 };
 
 async function deleteVerifiedLegacyField(
@@ -136,22 +134,17 @@ function ScanProgressView({
   progress: ScanProgress;
   locale: string;
 }) {
-  const caption = [
-    progress.currentModel ? `Checking ${progress.currentModel}` : 'Checking',
-    `${formatNumber(progress.scannedModels, locale)} of ${formatCount(progress.totalModels, 'model', 'models', locale)}`,
-    formatCount(
-      progress.foundCount,
-      'legacy field found',
-      'legacy fields found',
-      locale,
-    ),
-  ].join(' · ');
+  const models = formatCount(progress.totalModels, 'model', 'models', locale);
+  // One line that tells the task: the bar has the same name
+  const caption = progress.currentModel
+    ? `Checking ${progress.currentModel} (${formatNumber(progress.scannedModels, locale)} of ${models})`
+    : `Checking ${models}`;
 
   return (
     <div className={styles.progress}>
       <ProgressBar
         value={fraction(progress.scannedModels, progress.totalModels)}
-        ariaLabel="Checking model fields"
+        ariaLabel={caption}
       />
       <p className={styles.caption}>{caption}</p>
     </div>
@@ -167,120 +160,149 @@ function MigrationProgressView({
   verifying: boolean;
   locale: string;
 }) {
-  const caption = [
-    progress.currentModel,
-    `model ${formatNumber(progress.processedModels + 1, locale)} of ${formatNumber(progress.totalModels, locale)}`,
-    `record ${formatNumber(progress.currentRecord, locale)} of ${formatNumber(progress.totalRecords, locale)}`,
-  ].join(' · ');
+  // The check before the fields are deleted reads the records too: the line
+  // says that it only checks them
+  const task = verifying
+    ? `Checking the moved comments of ${progress.currentModel}`
+    : `Moving the comments of ${progress.currentModel}`;
+  const caption = `${task}: ${formatNumber(progress.currentRecord, locale)} of ${formatCount(progress.totalRecords, 'record', 'records', locale)}`;
 
   return (
     <div className={styles.progress}>
       <ProgressBar
         value={fraction(progress.currentRecord, progress.totalRecords)}
-        ariaLabel={verifying ? 'Verifying comments' : 'Migrating comments'}
+        ariaLabel={caption}
       />
       <p className={styles.caption}>{caption}</p>
     </div>
   );
 }
 
-/**
- * The models that the scan could not inspect: the callout tells the problem
- * in one sentence, and the list follows it as content of the group.
- */
+/** The models that the scan could not inspect, named in the callout */
 function ScanErrors({ scanErrors }: { scanErrors: ScanFailure[] }) {
   return (
-    <>
-      <Callout
-        tone="danger"
-        title={countMessage(
-          'recordComments.modelsNotInspected',
-          scanErrors.length,
-        )}
-      >
-        Scan again before migrating.
-      </Callout>
-      <ul className={styles.models}>
-        {scanErrors.map((failure) => (
-          <li key={failure.modelId}>
-            {failure.modelName} <ApiKey>{failure.modelApiKey}</ApiKey>
-          </li>
-        ))}
-      </ul>
-    </>
+    <Callout tone="danger">
+      {joinNames(scanErrors.map((failure) => failure.modelName))} couldn't be
+      checked: click Find again before moving the comments.
+    </Callout>
   );
 }
 
-function FoundModels({
-  models,
-  locale,
-}: {
-  models: ModelWithCommentLog[];
-  locale: string;
-}) {
-  return (
-    <>
-      <p className={styles.lead}>
-        {formatCount(models.length, 'model', 'models', locale)} with a{' '}
-        <ApiKey>comment_log</ApiKey> field
-      </p>
-      <ul className={styles.models}>
-        {models.map((model) => (
-          <li key={model.modelId}>
-            {model.modelName} <ApiKey>{model.modelApiKey}</ApiKey>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
+/** The models that have legacy comments, in a sentence */
+function nameModels(models: ModelWithCommentLog[]): string {
+  return joinNames(models.map((model) => model.modelName));
 }
 
 /** The migration lists only its first errors */
 const MAX_LISTED_ERRORS = 10;
 
+/** Something ran: a migration that stopped before any record has no results */
+function hasMigrationRun(results: MigrationResults): boolean {
+  return results.success + results.skipped + results.failed > 0;
+}
+
+/**
+ * A record that failed, as a link to it, and why: some reasons never clear
+ * on a retry, thus the admin reads what to fix in the record
+ */
+function MigrationErrorItem({
+  error,
+  ctx,
+}: {
+  error: MigrationError;
+  ctx: RenderConfigScreenCtx;
+}) {
+  return (
+    <li>
+      <Link to={buildRecordEditPath(ctx, error.modelId, error.recordId)}>
+        {error.modelName} record {error.recordId}
+      </Link>
+      <p className={styles.caption}>{error.message}</p>
+    </li>
+  );
+}
+
 function MigrationResultsView({
   results,
   locale,
+  ctx,
 }: {
   results: MigrationResults;
   locale: string;
+  ctx: RenderConfigScreenCtx;
 }) {
   return (
     <>
-      <InfoList className={styles.block}>
-        <InfoList.Row title="Migrated">
-          {formatNumber(results.success, locale)}
-        </InfoList.Row>
-        <InfoList.Row title="Already migrated">
-          {formatNumber(results.skipped, locale)}
-        </InfoList.Row>
-        <InfoList.Row title="Failed">
-          {formatNumber(results.failed, locale)}
-        </InfoList.Row>
-      </InfoList>
+      {/* The kit sets no margin on the list: the box gives it the space of
+          the other blocks of the group. A count of 0 is no news: only the
+          records moved always show. */}
+      <div className={styles.block}>
+        <InfoList>
+          <InfoList.Row title="Records moved">
+            {formatNumber(results.success, locale)}
+          </InfoList.Row>
+          {results.skipped > 0 && (
+            <InfoList.Row title="Records already moved">
+              {formatNumber(results.skipped, locale)}
+            </InfoList.Row>
+          )}
+          {results.failed > 0 && (
+            <InfoList.Row title="Records not moved">
+              {formatNumber(results.failed, locale)}
+            </InfoList.Row>
+          )}
+        </InfoList>
+      </div>
+      {/* The toast and the row of the records not moved tell what happened:
+          the line says only the next step, and the list names the records
+          and why each one failed */}
       {results.errors.length > 0 && (
-        <>
-          <Callout
-            tone="danger"
-            title={countMessage('recordComments.recordsFailed', results.failed)}
-          >
-            {results.failed > MAX_LISTED_ERRORS
-              ? `The first ${formatNumber(MAX_LISTED_ERRORS, locale)} errors are listed below.`
-              : 'The errors are listed below.'}
-          </Callout>
-          <ul className={styles.list}>
-            {results.errors.slice(0, MAX_LISTED_ERRORS).map((err) => (
-              <li key={err}>{err}</li>
-            ))}
-            {results.failed > MAX_LISTED_ERRORS && (
-              <li>
-                …and {formatNumber(results.failed - MAX_LISTED_ERRORS, locale)}{' '}
-                more
-              </li>
-            )}
-          </ul>
-        </>
+        <p className={styles.lead}>
+          Open these records to check their old comments, then click Move
+          comments again:
+        </p>
       )}
+      {results.errors.length > 0 && (
+        <ul className={styles.list} aria-label="Records not moved">
+          {results.errors.slice(0, MAX_LISTED_ERRORS).map((error) => (
+            <MigrationErrorItem key={error.recordId} error={error} ctx={ctx} />
+          ))}
+          {results.failed > MAX_LISTED_ERRORS && (
+            <li>
+              …and {formatNumber(results.failed - MAX_LISTED_ERRORS, locale)}{' '}
+              more
+            </li>
+          )}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/**
+ * Why the scan or the migration stopped. A field of the comments model that
+ * changed is named, with a link to the model.
+ */
+function StopReason({
+  error,
+  ctx,
+}: {
+  error: StopError;
+  ctx: RenderConfigScreenCtx;
+}) {
+  const commentsModel = Object.values(ctx.itemTypes).find(
+    (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY,
+  );
+  if (!error.storage || !commentsModel) return error.message;
+
+  return (
+    <>
+      The <ApiKey>{error.storage.fieldApiKey}</ApiKey> field of the{' '}
+      <Link to={buildModelSchemaPath(ctx, commentsModel.id, false)}>
+        {commentsModel.attributes.name}
+      </Link>{' '}
+      model {error.storage.requirement}. Change it back, then move the comments
+      again.
     </>
   );
 }
@@ -297,15 +319,14 @@ function getSaveDisabledReason(
 }
 
 /**
- * The error of the token field: it shows when the missing token is what keeps
- * the changes from being saved (thus not before the user changes anything).
+ * The error of the token field: real-time updates need a token, also right
+ * after the install, when nothing is changed yet
  */
 function getCdaTokenError(
-  hasChanges: boolean,
   realTimeEnabled: boolean,
   trimmedCdaToken: string,
 ): string | undefined {
-  return hasChanges && realTimeEnabled && !trimmedCdaToken
+  return realTimeEnabled && !trimmedCdaToken
     ? 'Enter a Content Delivery API token'
     : undefined;
 }
@@ -352,7 +373,7 @@ function SyncGroup({
           />
         }
       >
-        <FieldWrapper hint="Comments from other people show up without reloading the record. Needs a Content Delivery API token.">
+        <FieldWrapper hint="Comments from other people show up without reloading the record.">
           <SwitchInput
             label="Real-time updates"
             value={realTimeEnabled}
@@ -363,7 +384,12 @@ function SyncGroup({
           <FieldWrapper
             label="Content Delivery API token"
             required
-            hint="Create a token with read access in Project settings, API tokens."
+            hint={
+              <>
+                Create a token with read access in{' '}
+                <Link to="/project_settings/access_tokens">API tokens</Link>.
+              </>
+            }
             error={cdaTokenError}
           >
             <StringInput
@@ -387,29 +413,49 @@ function SyncGroup({
   );
 }
 
+/** Why the scan or the migration stopped */
+type StopError = {
+  message: string;
+  /** A field of the comments model that the storage needs changed */
+  storage?: CommentStorageError;
+};
+
 type LegacyState = {
   migrationStatus: MigrationStatus;
   modelsWithComments: ModelWithCommentLog[];
   scanProgress: ScanProgress | null;
   scanErrors: ScanFailure[];
+  /** A scan ended (it can find nothing) */
+  hasScanned: boolean;
   migrationProgress: MigrationProgress | null;
-  migrationError: string | null;
+  migrationError: StopError | null;
   migrationResults: MigrationResults | null;
   isCleaningUp: boolean;
 };
+
+function toMigrationStopError(error: unknown): StopError {
+  return {
+    message:
+      error instanceof Error ? error.message : 'Unknown error during migration',
+    storage: error instanceof CommentStorageError ? error : undefined,
+  };
+}
 
 const WAIT_FOR_TASK = { reason: 'Wait until the current task ends.' };
 
 function getMigrateDisabled(state: LegacyState) {
   if (state.scanErrors.length > 0)
-    return { reason: "Some models weren't inspected. Scan again first." };
+    return {
+      reason: "Some models couldn't be checked. Click Find again first.",
+    };
   if (state.isCleaningUp) return WAIT_FOR_TASK;
   return false;
 }
 
 /**
- * The two steps of the migration, as rows of settings under what they found:
- * each one tells what it does, with its action always at the right
+ * The two steps of the migration, as rows of settings: each one tells what it
+ * does, with its action always at the right. The row of the scan shows what
+ * it found as its value.
  */
 function LegacyTasks({
   state,
@@ -427,9 +473,21 @@ function LegacyTasks({
   if (!showScan && !showMigrate) return null;
 
   const hasScanned =
+    state.hasScanned ||
     state.modelsWithComments.length > 0 ||
     state.scanErrors.length > 0 ||
     state.migrationResults !== null;
+  // After a scan that found nothing, the row keeps its answer
+  const foundNothing =
+    state.hasScanned &&
+    state.migrationStatus === 'idle' &&
+    state.modelsWithComments.length === 0 &&
+    state.scanErrors.length === 0 &&
+    state.migrationResults === null;
+  let scanValue: string | undefined;
+  if (foundNothing) scanValue = 'None found';
+  else if (state.modelsWithComments.length > 0)
+    scanValue = `Found in ${nameModels(state.modelsWithComments)}`;
   const otherTaskRunning =
     state.migrationStatus === 'migrating' || state.isCleaningUp;
 
@@ -438,16 +496,12 @@ function LegacyTasks({
       {showScan && (
         <SettingsList.Row
           title="Find legacy comments"
-          description={
-            <>
-              Looks for the <ApiKey>comment_log</ApiKey> field that older
-              versions of the plugin added to the models.
-            </>
-          }
+          description="Looks for comments saved by older versions of the plugin."
+          value={scanValue}
           action={
             <Button
               tone="ghost"
-              label={hasScanned ? 'Scan again' : 'Scan for legacy comments'}
+              label={hasScanned ? 'Find again' : 'Find'}
               busy={state.migrationStatus === 'scanning'}
               disabled={otherTaskRunning ? WAIT_FOR_TASK : false}
               onClick={onScan}
@@ -458,16 +512,11 @@ function LegacyTasks({
       {showMigrate && (
         <SettingsList.Row
           title="Move legacy comments"
-          description={
-            <>
-              Moves the comments of the <ApiKey>comment_log</ApiKey> fields to
-              the new storage.
-            </>
-          }
+          description="Moves the old comments into the comments sidebar of their records."
           action={
             <Button
               tone="ghost"
-              label="Migrate comments"
+              label="Move comments"
               busy={state.migrationStatus === 'migrating'}
               disabled={getMigrateDisabled(state)}
               onClick={onMigrate}
@@ -482,10 +531,12 @@ function LegacyTasks({
 function LegacyBody({
   state,
   locale,
+  ctx,
   tasks,
 }: {
   state: LegacyState;
   locale: string;
+  ctx: RenderConfigScreenCtx;
   /** The rows of the scan and the migration */
   tasks: ReactNode;
 }) {
@@ -503,8 +554,8 @@ function LegacyBody({
   const showMigrationProgress = migrationStatus === 'migrating' || isCleaningUp;
   // A failed scan leaves no results: only a migration has them
   const errorTitle = migrationResults
-    ? 'The migration stopped'
-    : 'The scan stopped';
+    ? 'Moving the comments stopped'
+    : 'Finding the comments stopped';
 
   return (
     <>
@@ -512,15 +563,15 @@ function LegacyBody({
         <ScanProgressView progress={scanProgress} locale={locale} />
       )}
       {scanErrors.length > 0 && <ScanErrors scanErrors={scanErrors} />}
-      {hasModels && migrationStatus !== 'migrating' && (
-        <FoundModels models={modelsWithComments} locale={locale} />
-      )}
-      {hasModels && migrationStatus === 'idle' && (
-        <Callout tone="warning">
-          Ask your team not to edit comments while the migration runs, or some
-          changes can be lost.
-        </Callout>
-      )}
+      {/* While the migration can start, and while it runs */}
+      {hasModels &&
+        (migrationStatus === 'idle' || migrationStatus === 'migrating') &&
+        !getMigrateDisabled(state) && (
+          <Callout tone="warning">
+            Ask your team not to edit comments while they're being moved, or
+            some changes could be lost.
+          </Callout>
+        )}
       {showMigrationProgress && migrationProgress && (
         <MigrationProgressView
           progress={migrationProgress}
@@ -530,18 +581,17 @@ function LegacyBody({
       )}
       {migrationStatus === 'error' && migrationError && (
         <Callout tone="danger" title={errorTitle}>
-          {migrationError}
+          <StopReason error={migrationError} ctx={ctx} />
         </Callout>
       )}
-      {migrationResults && (
-        <MigrationResultsView results={migrationResults} locale={locale} />
+      {migrationResults && hasMigrationRun(migrationResults) && (
+        <MigrationResultsView
+          results={migrationResults}
+          locale={locale}
+          ctx={ctx}
+        />
       )}
-      {migrationStatus === 'completed' && !hasModels && (
-        <Callout tone="success">
-          All legacy comments are migrated, and the old fields are deleted.
-        </Callout>
-      )}
-      {/* What the scan and the migration found, then the actions */}
+      {/* What the migration did, then the actions */}
       {tasks}
     </>
   );
@@ -550,6 +600,7 @@ function LegacyBody({
 function LegacyGroup({
   state,
   locale,
+  ctx,
   open,
   onOpenChange,
   onScan,
@@ -557,6 +608,7 @@ function LegacyGroup({
 }: {
   state: LegacyState;
   locale: string;
+  ctx: RenderConfigScreenCtx;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onScan: () => Promise<void>;
@@ -584,6 +636,7 @@ function LegacyGroup({
       <LegacyBody
         state={state}
         locale={locale}
+        ctx={ctx}
         tasks={
           <LegacyTasks
             state={state}
@@ -621,7 +674,11 @@ function DangerZoneGroup({
               tone="ghost-alert"
               label="Delete fields"
               busy={isCleaningUp}
-              onClick={onDelete}
+              // The question comes first: the button is busy only once the
+              // fields are being deleted, not while the user decides
+              onClick={() => {
+                void onDelete();
+              }}
             />
           }
         />
@@ -660,7 +717,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     useState<MigrationProgress | null>(null);
   const [migrationResults, setMigrationResults] =
     useState<MigrationResults | null>(null);
-  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationError, setMigrationError] = useState<StopError | null>(null);
+  const [hasScanned, setHasScanned] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isLegacyOpen, setIsLegacyOpen] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
@@ -703,6 +761,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     setMigrationError(null);
     setScanProgress(null);
     setScanErrors([]);
+    setHasScanned(false);
     setIsCleaningUp(false);
   }, [operationScope]);
 
@@ -758,7 +817,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       ctx.notice('Settings saved');
     } catch (error) {
       if (!isCurrentScope()) return;
-      ctx.alert(`The settings weren't saved: ${errorMessage(error)}`);
+      ctx.alert(`The settings weren't saved. ${errorMessage(error)}`);
     } finally {
       if (isCurrentScope()) {
         setIsSaving(false);
@@ -790,7 +849,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   const scanSingleModel = useCallback(
     async (
       model: NonNullable<(typeof ctx.itemTypes)[string]>,
-      foundModels: ModelWithCommentLog[],
       _failedModels: ScanFailure[],
       scannedCount: number,
       totalModels: number,
@@ -803,7 +861,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         currentModel: model.attributes.name,
         scannedModels: scannedCount,
         totalModels,
-        foundCount: foundModels.length,
       });
 
       try {
@@ -856,7 +913,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         // biome-ignore lint/performance/noAwaitInLoops: Bound schema reads while scanning many models.
         const result = await scanSingleModel(
           model,
-          foundModels,
           failedModels,
           scannedCount,
           modelsToScan.length,
@@ -870,7 +926,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           currentModel: model.attributes.name,
           scannedModels: scannedCount,
           totalModels: modelsToScan.length,
-          foundCount: foundModels.length,
         });
       }
       return { foundModels, failedModels };
@@ -901,7 +956,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       phase: 'scanning-fields',
       scannedModels: 0,
       totalModels: nonCommentModels.length,
-      foundCount: 0,
     });
 
     try {
@@ -917,23 +971,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         inspectionErrors: failedModels.length,
       });
 
+      // What the scan found shows in the group: the models, the models it
+      // couldn't check, or "None found" in its row. No toast repeats it.
+      setHasScanned(true);
       setMigrationStatus('idle');
-      const scanMessage = buildScanMessage(
-        foundModels.length,
-        failedModels.length,
-        ctx.ui.locale,
-      );
-      // Models that weren't inspected are a warning, not a success. Nothing
-      // waits for the toast: its promise gives the button picked in it.
-      if (failedModels.length > 0) {
-        void ctx.customToast({
-          type: 'warning',
-          message: scanMessage,
-          dismissOnPageChange: true,
-        });
-      } else {
-        await ctx.notice(scanMessage);
-      }
     } catch (error) {
       if (!isCurrentScope()) return;
       logDebug('Legacy comment scan failed', {
@@ -942,9 +983,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       });
       setMigrationStatus('error');
       setScanProgress(null);
-      setMigrationError(
-        error instanceof Error ? error.message : 'Unknown error during scan',
-      );
+      setMigrationError({
+        message:
+          error instanceof Error ? error.message : 'Unknown error during scan',
+      });
     }
   }, [ctx, inspectModels, isCurrentScope]);
 
@@ -968,7 +1010,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     });
     setCdaToken(trimmedCdaToken);
     setMigrationCompleted(true);
-    await ctx.notice('Comments migrated');
+    await ctx.notice('Comments moved');
   }, [
     ctx,
     isCurrentScope,
@@ -1031,6 +1073,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       setMigrationResults(results);
       setMigrationProgress(null);
       logDebug('Legacy comment migration completed', {
+        errors: results.errors,
         failed: results.failed,
         skipped: results.skipped,
         success: results.success,
@@ -1043,7 +1086,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       } else {
         // Records that failed are an error, not a success
         await ctx.alert(
-          `The migration ended with ${formatCount(results.failed, 'error', 'errors', ctx.ui.locale)}. Check the details in the settings.`,
+          `The comments of ${formatCount(results.failed, 'record', 'records', ctx.ui.locale)} weren't moved.`,
         );
       }
     },
@@ -1058,14 +1101,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     }
 
     if (scanErrors.length > 0) {
-      ctx.alert("Some models weren't inspected. Scan again before migrating.");
+      ctx.alert("Some models couldn't be checked. Click Find again first.");
       return;
     }
 
     if (modelsWithComments.length === 0) {
-      ctx.alert(
-        'There are no models to migrate. Scan for legacy comments first.',
-      );
+      ctx.alert('There are no comments to move. Find legacy comments first.');
       return;
     }
 
@@ -1085,15 +1126,15 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       await completeMigration(results);
     } catch (error) {
       if (!isCurrentScope()) return;
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Unknown error during migration';
-      logDebug('Legacy comment migration failed', { message: errorMessage });
+      const stopError = toMigrationStopError(error);
+      logDebug('Legacy comment migration failed', {
+        errors: results.errors,
+        message: stopError.message,
+      });
       setMigrationResults(results);
       setMigrationCompleted(false);
       setMigrationStatus('error');
-      setMigrationError(errorMessage);
+      setMigrationError(stopError);
       setMigrationProgress(null);
     }
   }, [
@@ -1119,10 +1160,15 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         await deleteVerifiedLegacyField(client, model, signal);
         removed.add(model.fieldId);
       });
-      if (verified.failed > 0)
+      if (verified.failed > 0) {
+        // The details of each record go to the debug log, not to the toast
+        logDebug('Legacy comments changed after the move', {
+          errors: verified.errors,
+        });
         throw new Error(
-          `${formatCount(verified.failed, 'record', 'records', ctx.ui.locale)} failed verification, so the legacy fields were kept. ${verified.errors.join(' ')}`,
+          `the comments of ${formatCount(verified.failed, 'record', 'records', ctx.ui.locale)} changed after they were moved. Click Move comments again to see which ${verified.failed === 1 ? 'one' : 'ones'}.`,
         );
+      }
     },
     [runMigration, ctx.ui.locale],
   );
@@ -1150,7 +1196,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     }
     if (!canCleanup) {
       await ctx.alert(
-        'Delete the legacy fields only after a complete scan and migration.',
+        'Delete the legacy fields only after all the comments are found and moved.',
       );
       return;
     }
@@ -1165,7 +1211,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       if (!isCurrentScope()) return;
       await ctx.notice('Legacy fields deleted');
     } catch (error) {
-      if (isCurrentScope()) await ctx.alert(cleanupErrorMessage(error));
+      if (!isCurrentScope()) return;
+      // Records changed after the move: the move is the next step again
+      if (verified.failed > 0) setMigrationStatus('idle');
+      await ctx.alert(cleanupErrorMessage(error));
     } finally {
       finishCleanup(removed);
     }
@@ -1182,7 +1231,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     const count = modelsWithComments.length;
     const confirmed = await ctx.openConfirm({
       title: `Delete ${formatCount(count, 'legacy field', 'legacy fields', locale)}?`,
-      content: `The comment_log field is deleted from ${formatCount(count, 'model', 'models', locale)}. This cannot be undone.`,
+      content: `The comment_log field is deleted from ${nameModels(modelsWithComments)}. This cannot be undone.`,
       choices: [{ label: 'Delete fields', value: true, intent: 'negative' }],
       cancel: { label: 'Cancel', value: false },
     });
@@ -1209,11 +1258,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           onDebugLoggingEnabledChange={setDebugLoggingEnabledState}
           isSaving={isSaving}
           saveDisabledReason={saveDisabledReason}
-          cdaTokenError={getCdaTokenError(
-            hasChanges,
-            realTimeEnabled,
-            trimmedCdaToken,
-          )}
+          cdaTokenError={getCdaTokenError(realTimeEnabled, trimmedCdaToken)}
           onSubmit={handleSubmit}
         />
         <LegacyGroup
@@ -1222,12 +1267,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             modelsWithComments,
             scanProgress,
             scanErrors,
+            hasScanned,
             migrationProgress,
             migrationError,
             migrationResults,
             isCleaningUp,
           }}
           locale={locale}
+          ctx={ctx}
           open={isLegacyOpen}
           onOpenChange={setIsLegacyOpen}
           onScan={handleScan}

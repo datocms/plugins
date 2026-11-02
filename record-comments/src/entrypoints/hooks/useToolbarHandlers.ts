@@ -22,24 +22,18 @@ export function useToolbarHandlers({
   handleAssetTrigger,
   handleRecordTrigger,
 }: UseToolbarHandlersParams): UseToolbarHandlersReturn {
+  // The panel opens with its search field, which takes the focus
   const handleUserToolbarClick = useCallback(() => {
-    if (composerRef.current) {
-      composerRef.current.triggerMentionType('user');
-      composerRef.current.focus();
-    }
+    composerRef.current?.triggerMentionType('user');
   }, [composerRef]);
 
   const handleFieldToolbarClick = useCallback(() => {
-    if (composerRef.current) {
-      composerRef.current.triggerMentionType('field');
-      composerRef.current.focus();
-    }
+    composerRef.current?.triggerMentionType('field');
   }, [composerRef]);
 
   const handleModelToolbarClick = useCallback(() => {
-    if (canMentionModels && composerRef.current) {
-      composerRef.current.triggerMentionType('model');
-      composerRef.current.focus();
+    if (canMentionModels) {
+      composerRef.current?.triggerMentionType('model');
     }
   }, [composerRef, canMentionModels]);
 
