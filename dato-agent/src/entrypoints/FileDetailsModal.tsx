@@ -10,7 +10,7 @@ type Props = {
   ctx: RenderModalCtx;
 };
 
-// A filename or a type with no spaces breaks anywhere, so it stays in its row
+// A filename with no spaces breaks anywhere, so it stays in its row
 const BREAK_ANYWHERE: CSSProperties = { overflowWrap: 'anywhere' };
 
 function stringParameter(value: unknown, fallback: string): string {
@@ -23,8 +23,7 @@ function nonNegativeNumberParameter(value: unknown): number | undefined {
     : undefined;
 }
 
-function formatFileSize(size: number | undefined): string {
-  if (size === undefined) return 'Unknown';
+function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let value = size / 1024;
@@ -44,10 +43,6 @@ function lastModifiedDate(timestamp: number | undefined): Date | undefined {
 
 export default function FileDetailsModal({ ctx }: Props) {
   const filename = stringParameter(ctx.parameters.filename, 'Untitled file');
-  const mimeType = stringParameter(
-    ctx.parameters.mimeType,
-    'application/octet-stream',
-  );
   const size = nonNegativeNumberParameter(ctx.parameters.size);
   const lastModified = lastModifiedDate(
     nonNegativeNumberParameter(ctx.parameters.lastModified),
@@ -56,26 +51,25 @@ export default function FileDetailsModal({ ctx }: Props) {
 
   return (
     <Canvas ctx={ctx} texts={TEXTS}>
-      <Callout title="Not a DatoCMS asset yet" tone="warning">
+      {/* A file that is gone is a problem; one still on this page isn't */}
+      <Callout tone={bytesAvailable ? 'neutral' : 'warning'}>
         {bytesAvailable
-          ? 'Its content is available only in this browser session.'
-          : 'Its content is no longer available. Only its details remain.'}
+          ? 'The agent can read this file while this page is open, but it isn’t saved in the Media Area.'
+          : 'This file is no longer available: attach it again if the agent needs it.'}
       </Callout>
       <InfoList>
         <InfoList.Row title="Filename">
           <span style={BREAK_ANYWHERE}>{filename}</span>
         </InfoList.Row>
-        <InfoList.Row title="Type">
-          <span style={BREAK_ANYWHERE}>{mimeType}</span>
-        </InfoList.Row>
-        <InfoList.Row title="Size">{formatFileSize(size)}</InfoList.Row>
-        <InfoList.Row title="Last modified">
-          {lastModified ? (
+        {/* An unknown fact tells nothing: its row stays out */}
+        {size !== undefined && (
+          <InfoList.Row title="Size">{formatFileSize(size)}</InfoList.Row>
+        )}
+        {lastModified && (
+          <InfoList.Row title="Last modified">
             <SmartDate show="dateTime" value={lastModified} />
-          ) : (
-            'Unknown'
-          )}
-        </InfoList.Row>
+          </InfoList.Row>
+        )}
       </InfoList>
     </Canvas>
   );

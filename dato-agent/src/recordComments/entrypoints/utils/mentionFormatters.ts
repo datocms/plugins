@@ -28,3 +28,14 @@ export function formatFieldType(fieldType: string | undefined): string | null {
   const formatted = fieldType.replace(/_/g, ' ');
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
+
+/** The name of a locale in English ("English" for "en"), else its code */
+export function formatLocale(locale: string): string {
+  try {
+    return (
+      new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale
+    );
+  } catch {
+    return locale;
+  }
+}

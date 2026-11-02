@@ -18,16 +18,16 @@ describe('SlashCommandMenu', () => {
       />,
     );
 
-    const menu = screen.getByRole('menu', { name: 'References' });
+    const menu = screen.getByRole('menu', { name: 'Mention' });
     const items = within(menu).getAllByRole('menuitem');
 
     expect(items).toHaveLength(5);
     expect(items.map((item) => item.textContent)).toEqual([
-      'UserMention a team member',
-      'FieldReference a field',
-      'RecordLink to a record',
-      'AssetLink to an asset',
-      'ModelReference a model',
+      'User',
+      'Field',
+      'Record',
+      'Asset',
+      'Model',
     ]);
     for (const item of items) {
       expect(item.querySelector('svg')).toBeInTheDocument();
@@ -53,9 +53,7 @@ describe('SlashCommandMenu', () => {
     fireEvent.mouseEnter(model);
     expect(onSelectedIndexChange).toHaveBeenLastCalledWith(4);
 
-    await user.click(
-      screen.getByRole('menuitem', { name: /RecordLink to a record/ }),
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Record' }));
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(SLASH_COMMANDS[2]);
   });

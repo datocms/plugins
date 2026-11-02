@@ -280,7 +280,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const summary = screen.getByRole('button', { name: 'DatoCMS activity' });
+    const summary = screen.getByRole('button', { name: '2 steps' });
     expect(summary).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText('Reading the content model')).not.toBeVisible();
     expect(screen.queryByText('1 DatoCMS step failed')).not.toBeInTheDocument();
@@ -289,6 +289,15 @@ describe('AgentSurface', () => {
     expect(summary).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Reading the content model')).toBeVisible();
     expect(screen.getByText('Not completed')).toBeVisible();
+    // The detail of a step is technical: it waits behind its own disclosure
+    expect(
+      screen.getByText('Replacement 1: String not found'),
+    ).not.toBeVisible();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Show the details of Reading CMS content',
+      }),
+    );
     expect(screen.getByText('Replacement 1: String not found')).toBeVisible();
   });
 
@@ -321,7 +330,7 @@ describe('AgentSurface', () => {
       screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Copy diagnostics' }),
+      screen.queryByRole('button', { name: 'Copy error details' }),
     ).not.toBeInTheDocument();
 
     rerender(
@@ -386,14 +395,14 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('DatoCMS activity')).toBeVisible();
+    expect(screen.getByText('1 step')).toBeVisible();
     expect(screen.getByText('Working…')).toBeVisible();
     expect(
       screen.queryByText('Trying another approach…'),
     ).not.toBeInTheDocument();
   });
 
-  it('reserves terminal failure copy for a failed overall turn', () => {
+  it('keeps the summary of a failed turn neutral: its error says it once', () => {
     renderInCanvas(
       <AgentSurface
         connection={connected}
@@ -415,7 +424,10 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('Couldn’t complete this request')).toBeVisible();
+    expect(screen.getByRole('button', { name: '1 step' })).toBeVisible();
+    expect(
+      screen.queryByText('Couldn’t complete this request'),
+    ).not.toBeInTheDocument();
   });
 
   it('requires explicit approval and keeps TypeScript in the details modal', async () => {
@@ -528,6 +540,12 @@ describe('AgentSurface', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Approval could not be recorded.',
     );
+    // The card still says which change it was
+    expect(
+      screen.getByRole('group', { name: 'Delete old drafts' }),
+    ).toHaveAccessibleDescription(
+      'This will delete old draft records. Approval could not be recorded.',
+    );
     expect(
       screen.queryByRole('button', { name: 'Approve' }),
     ).not.toBeInTheDocument();
@@ -589,9 +607,11 @@ describe('AgentSurface', () => {
     );
 
     expect(screen.getByText('Change didn’t run')).toBeVisible();
-    expect(screen.getByText('No project content was changed.')).toBeVisible();
+    expect(screen.getByText('Nothing was changed.')).toBeVisible();
     expect(screen.queryByText('Approved.')).not.toBeInTheDocument();
-    const repair = screen.getByRole('button', { name: 'Fix and review' });
+    const repair = screen.getByRole('button', {
+      name: 'Ask the agent to fix it',
+    });
     await user.click(repair);
     expect(onRepair).toHaveBeenCalledWith(approval);
     expect(
@@ -599,7 +619,7 @@ describe('AgentSurface', () => {
     ).toBeVisible();
   });
 
-  it('makes Auto explicit for repairable automatic failures', () => {
+  it('says in view that auto-approve can run the fix of an automatic failure', () => {
     renderInCanvas(
       <AgentSurface
         autoApproveEnabled
@@ -625,24 +645,26 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const repair = screen.getByRole('button', {
-      name: /Fix with Auto.*Auto is on.*may run automatically/i,
-    });
-    expect(repair).toHaveTextContent(
-      'Fix with Auto. Auto is on. The corrected operation may run automatically.',
-    );
+    expect(
+      screen.getByRole('button', { name: 'Ask the agent to fix it' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Auto-approve is on, so the fix can run without asking you.',
+      ),
+    ).toBeVisible();
   });
 
   it.each([
     [
       'failed_after_execution' as const,
       'Change may be incomplete',
-      'Some project content may have changed. Check DatoCMS before trying again.',
+      'Some content may have changed. Ask the agent to check, or look at the content yourself.',
     ],
     [
       'unknown' as const,
-      'Outcome needs checking',
-      'The change may have run. Check DatoCMS before trying again.',
+      'Not sure the change ran',
+      'Ask the agent to check, or look at the content yourself.',
     ],
   ])('does not offer repair for %s outcomes', (kind, title, description) => {
     renderInCanvas(
@@ -670,7 +692,7 @@ describe('AgentSurface', () => {
     expect(screen.getByText(title)).toBeVisible();
     expect(screen.getByText(description)).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: /Fix/i }),
+      screen.queryByRole('button', { name: /fix/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -1112,7 +1134,11 @@ describe('AgentSurface', () => {
     const agentTurns = screen.getAllByRole('article', { name: 'Dato Agent' });
     expect(agentTurns).toHaveLength(1);
     const agentTurn = agentTurns[0];
-    expect(within(agentTurn).getByText('Waiting for approval')).toBeVisible();
+    // The card asks for the decision: the summary only counts the steps
+    expect(within(agentTurn).getByText('1 step')).toBeVisible();
+    expect(
+      within(agentTurn).queryByText('Waiting for approval'),
+    ).not.toBeInTheDocument();
     expect(within(agentTurn).getByLabelText('Homepage')).toBeVisible();
     expect(
       within(agentTurn).getByRole('group', { name: 'Publish Homepage' }),
@@ -1257,7 +1283,7 @@ describe('AgentSurface', () => {
     );
 
     const fields = screen.getByRole('group', { name: 'Relevant fields' });
-    expect(within(fields).getByText('en')).toBeVisible();
+    expect(within(fields).getByText('English')).toBeVisible();
     await user.click(within(fields).getByRole('button', { name: /Title/ }));
     expect(onOpenField).toHaveBeenCalledWith(
       { fieldPath: 'title', title: 'Title', locale: 'en' },
@@ -1407,7 +1433,7 @@ describe('AgentSurface', () => {
       screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Copy diagnostics' }),
+      screen.queryByRole('button', { name: 'Copy error details' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1452,7 +1478,7 @@ describe('AgentSurface', () => {
 
     const retryButton = screen.getByRole('button', { name: 'Try again' });
     const copyButton = screen.getByRole('button', {
-      name: 'Copy diagnostics',
+      name: 'Copy error details',
     });
     expect(retryButton.querySelector('svg')).not.toBeNull();
     expect(copyButton.querySelector('svg')).not.toBeNull();
@@ -1460,7 +1486,7 @@ describe('AgentSurface', () => {
       1,
     );
     expect(
-      screen.getAllByRole('button', { name: 'Copy diagnostics' }),
+      screen.getAllByRole('button', { name: 'Copy error details' }),
     ).toHaveLength(1);
 
     await user.click(retryButton);
@@ -1469,11 +1495,13 @@ describe('AgentSurface', () => {
     // Copying waits for the new attempt to start
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Copy diagnostics' }),
+        screen.getByRole('button', { name: 'Copy error details' }),
       ).not.toHaveAttribute('aria-disabled'),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Copy error details' }),
+    );
     expect(onCopyFailureDiagnostics).toHaveBeenCalledOnce();
     expect(onCopyFailureDiagnostics).toHaveBeenCalledWith('failure-1');
   });
@@ -1502,7 +1530,7 @@ describe('AgentSurface', () => {
       screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).toBeVisible();
   });
 
@@ -1540,7 +1568,7 @@ describe('AgentSurface', () => {
     expect(retry).toBeDisabled();
     expect(retry).toHaveAttribute('aria-busy', 'true');
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
@@ -1550,7 +1578,7 @@ describe('AgentSurface', () => {
 
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).not.toHaveAttribute('aria-disabled');
   });
 
@@ -1580,31 +1608,35 @@ describe('AgentSurface', () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Copy error details' }),
+      );
       await Promise.resolve();
     });
 
     expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
-    expect(screen.getByText('Diagnostics copied')).toHaveRole('status');
+    expect(screen.getByText('Error details copied')).toHaveRole('status');
 
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).toBeVisible();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Copy error details' }),
+      );
       await Promise.resolve();
     });
 
     const failed = screen.getByRole('button', {
-      name: 'Couldn’t copy diagnostics',
+      name: 'Couldn’t copy error details',
     });
     expect(failed).toBeEnabled();
     expect(
-      screen.getByText('Couldn’t copy diagnostics', {
+      screen.getByText('Couldn’t copy error details', {
         selector: '[role="alert"]',
       }),
     ).toHaveRole('alert');
@@ -1766,8 +1798,15 @@ describe('AgentSurface', () => {
       />,
     );
 
-    // Before DatoCMS is connected, the chats view is the whole frame
-    expect(screen.getByText('Dato Agent')).toBeVisible();
+    // Before DatoCMS is connected, the connection is the whole frame, with
+    // what the agent is for in the help of its title
+    expect(screen.getByText('Connect your DatoCMS account')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'About this page' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Back to chat' }),
     ).not.toBeInTheDocument();
@@ -1776,7 +1815,9 @@ describe('AgentSurface', () => {
     expect(provider).toHaveTextContent('Setup required');
     // Who sets it up is visible text, not only a tooltip
     expect(
-      screen.getByText('A project admin sets it up in the plugin settings.'),
+      screen.getByText(
+        'Ask a project admin to set it up in the plugin settings.',
+      ),
     ).toBeVisible();
     expect(screen.getByText('Not connected')).toBeVisible();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
@@ -1787,6 +1828,22 @@ describe('AgentSurface', () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(
       'select only the project where this plugin is installed',
+    );
+    // The connection is the whole view: no panel that could hide it
+    expect(
+      screen.queryByRole('button', { name: 'Connection' }),
+    ).not.toBeInTheDocument();
+    rerender(
+      <AgentSurface
+        connection={{ ...setupConnection, projectName: 'Acme Magazine' }}
+        entries={[]}
+        onConnectDatoCms={onConnectDatoCms}
+        onSubmit={vi.fn()}
+      />,
+    );
+    // The project to allow is named
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'When DatoCMS asks which projects to allow, select only Acme Magazine.',
     );
 
     // The action that changes the connection is in its row
@@ -1815,10 +1872,13 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
-    // The focus goes to the title of the first panel
+    // Without chats, the focus goes to the title of the Connection panel. A
+    // connection where all is well starts closed: the chats come first.
     const connectionTitle = screen.getByRole('button', { name: 'Connection' });
     expect(connectionTitle).toHaveFocus();
     expect(connectionTitle.closest('h2')).not.toBeNull();
+    expect(connectionTitle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(connectionTitle);
     expect(
       screen.getByText('Marketing website').nextElementSibling,
     ).toHaveTextContent('Connected');
@@ -1828,42 +1888,74 @@ describe('AgentSurface', () => {
     expect(
       screen.queryByRole('button', { name: 'Connect' }),
     ).not.toBeInTheDocument();
-    const disconnectButton = screen.getByRole('button', {
-      name: 'Disconnect',
-    });
-    expect(screen.getByText('Connected').closest('dd')).toContainElement(
-      disconnectButton,
-    );
-    await user.click(disconnectButton);
+    // Disconnect changes the value: it is in the menu of the value, not a
+    // standing button
+    expect(
+      screen.queryByRole('button', { name: 'Disconnect' }),
+    ).not.toBeInTheDocument();
+    const connectedValue = screen.getByRole('button', { name: 'Connected' });
+    expect(connectedValue.closest('dd')).not.toBeNull();
+    await user.click(connectedValue);
+    await user.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
     expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
   });
 
-  it('shows only six provided recent chats on the connection page', async () => {
+  it('shows only six provided recent chats, and none before DatoCMS is connected', async () => {
     const user = userEvent.setup();
-    const onSelectConversation = vi.fn();
-    const onStartNewChat = vi.fn();
     const setupConnection: AgentConnectionViewModel = {
       status: 'setup',
       openAiConfigStatus: 'configured',
       datoCmsStatus: 'disconnected',
     };
 
-    renderInCanvas(
+    const { rerender } = renderInCanvas(
       <AgentSurface
         connection={setupConnection}
         entries={[]}
         onConnectDatoCms={vi.fn()}
-        onSelectConversation={onSelectConversation}
-        onStartNewChat={onStartNewChat}
+        onSelectConversation={vi.fn()}
+        onStartNewChat={vi.fn()}
         onSubmit={vi.fn()}
         recentConversations={recentConversations}
       />,
     );
 
-    // The panel counts the chats it shows
-    expect(screen.getByRole('heading', { name: /^Chats/ })).toHaveTextContent(
-      'Chats6',
+    // A chat can't open before DatoCMS is connected: only the connection
+    // shows
+    expect(
+      screen.queryByRole('heading', { name: /^Chats/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
+
+    rerender(
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        onSelectConversation={vi.fn()}
+        onStartNewChat={vi.fn()}
+        onSubmit={vi.fn()}
+        recentConversations={recentConversations}
+      />,
     );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    // The focus goes to the first chat: the list comes before the connection
+    expect(chatRow('Describe this project')).toHaveFocus();
+
+    // The title of the toolbar already says Chats: no panel says it again,
+    // and the chats come first, before the connection
+    expect(
+      screen.queryByRole('heading', { name: /^Chats/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByText('Describe this project')
+        .compareDocumentPosition(
+          screen.getByRole('heading', { name: 'Connection' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(chatRow('Describe this project')).toHaveAttribute(
       'aria-current',
       'true',
@@ -1882,16 +1974,9 @@ describe('AgentSurface', () => {
     expect(
       screen.queryByText('This chat is outside the six-item limit'),
     ).not.toBeInTheDocument();
-
-    await user.click(chatRow('Update the homepage') as HTMLElement);
-    expect(onSelectConversation).toHaveBeenCalledWith(recentConversations[1]);
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
-
-    const newChatButton = screen.getByRole('button', { name: 'New chat' });
-    expect(newChatButton).toHaveTextContent('New chat');
-    await user.click(newChatButton);
-    expect(onStartNewChat).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'New chat' })).toHaveTextContent(
+      'New chat',
+    );
   });
 
   it('closes connected settings after selecting or starting a chat', async () => {
@@ -2035,7 +2120,7 @@ describe('AgentSurface', () => {
     expect(document.querySelector('.Toolbar__spinner')).toBeNull();
   });
 
-  it('disables chat history actions while the connection is in progress', () => {
+  it('hides chat history actions while the connection is in progress', () => {
     const connecting: AgentConnectionViewModel = {
       status: 'connecting',
       openAiConfigStatus: 'configured',
@@ -2053,13 +2138,11 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const newChat = screen.getByRole('button', { name: 'New chat' });
-    expect(newChat).toHaveAttribute('aria-disabled', 'true');
-    expect(tooltipOf(newChat)).toHaveTextContent(
-      'Wait for DatoCMS to connect.',
-    );
-    // The chats only show while the connection runs
-    expect(chatRow('Describe this project')).toBeNull();
+    // A chat can't open while the connection runs: no chats, no New chat
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Describe this project')).not.toBeInTheDocument();
     expect(screen.getByText('Connecting…')).toHaveRole('status');
     expect(
       screen.queryByRole('button', { name: 'Connect' }),
@@ -2092,7 +2175,10 @@ describe('AgentSurface', () => {
     expect(enableButton).toHaveAttribute('aria-pressed', 'false');
     expect(enableButton).toHaveTextContent('Auto');
     expect(enableButton).not.toHaveTextContent('On');
-    expect(tooltipOf(enableButton)).toHaveTextContent('Turn on auto-approve');
+    // The hint says what auto-approve does, not the label again
+    expect(tooltipOf(enableButton)).toHaveTextContent(
+      'When on, changes run without asking you first.',
+    );
     await user.click(enableButton);
     expect(onAutoApproveChange).toHaveBeenCalledWith(true);
 
@@ -2123,7 +2209,9 @@ describe('AgentSurface', () => {
     expect(within(disableButton).getByText('On').closest('.Pill')).toHaveClass(
       'Pill--warning',
     );
-    expect(tooltipOf(disableButton)).toHaveTextContent('Turn off auto-approve');
+    expect(tooltipOf(disableButton)).toHaveTextContent(
+      'When on, changes run without asking you first.',
+    );
     await user.click(disableButton);
     expect(onAutoApproveChange).toHaveBeenLastCalledWith(false);
   });
@@ -2346,27 +2434,37 @@ describe('AgentSurface', () => {
 
   it('offers reconnection after confirmed MCP authentication failure', async () => {
     const onConnectDatoCms = vi.fn();
+    const onRestartDatoCmsConnection = vi.fn();
     renderInCanvas(
       <AgentSurface
         connection={{
           ...connected,
           status: 'setup',
           datoCmsStatus: 'mcp_auth_required',
-          datoCmsError: 'Reconnect your DatoCMS connection.',
+          projectName: 'Acme Magazine',
         }}
         entries={[]}
         onSubmit={vi.fn()}
         onConnectDatoCms={onConnectDatoCms}
+        onRestartDatoCmsConnection={onRestartDatoCmsConnection}
       />,
     );
+    // The row says it, so no error repeats it: the hint helps the next
+    // sign-in
     expect(screen.getByText('Sign-in expired')).toBeVisible();
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Reconnect your DatoCMS connection.',
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'When DatoCMS asks which projects to allow, select only Acme Magazine.',
     );
+    // A new sign-in that keeps the saved registration
+    expect(
+      screen.queryByRole('button', { name: 'More ways to connect' }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Reconnect DatoCMS' }),
+      screen.getByRole('button', { name: 'Connect again' }),
     );
     expect(onConnectDatoCms).toHaveBeenCalledOnce();
+    expect(onRestartDatoCmsConnection).not.toHaveBeenCalled();
   });
 
   it('keeps reads available with a visible access retry when access is unknown', async () => {
@@ -2384,9 +2482,9 @@ describe('AgentSurface', () => {
     ).not.toHaveAttribute('aria-disabled', 'true');
     // A short title says the problem, the text what it means
     const notice = screen.getByRole('alert');
-    expect(notice).toHaveTextContent('DatoCMS access isn’t verified');
+    expect(notice).toHaveTextContent('Couldn’t check your DatoCMS access');
     expect(notice).toHaveTextContent(
-      'Read-only work is available; changes are paused.',
+      'The agent can read content, but won’t make changes until you check again.',
     );
     await userEvent.click(
       screen.getByRole('button', { name: 'Check access again' }),
@@ -2394,7 +2492,7 @@ describe('AgentSurface', () => {
     expect(onCheckDatoCmsAccess).toHaveBeenCalledOnce();
   });
 
-  it('shows OAuth access separately from plugin Read Only and explains how to change it', async () => {
+  it('says once what the agent can do, and how to give it more access', async () => {
     renderInCanvas(
       <AgentSurface
         connection={{
@@ -2403,37 +2501,76 @@ describe('AgentSurface', () => {
           pluginReadOnly: true,
         }}
         entries={[]}
+        onCheckDatoCmsAccess={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: 'Open chats' }));
-    expect(screen.getByText('Access').nextElementSibling).toHaveTextContent(
-      'Read and edit content',
+    // Read-only mode of the plugin wins, in the row of the access: the panel
+    // is open, since the access is limited
+    const access = screen.getByText('Access').nextElementSibling;
+    expect(access).toHaveTextContent('Read content only');
+    expect(access).toHaveTextContent(
+      'Read-only mode is on in the plugin settings.',
     );
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Read-only mode is on, so the agent can’t change anything.',
       ),
-    ).toBeVisible();
+    ).not.toBeInTheDocument();
+    // Read-only mode is the one note: no way to allow more, no callout
     expect(
-      screen.getByText(/Schema and management changes are unavailable/),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('link', { name: 'Account settings' }),
-    ).toHaveAttribute(
-      'href',
-      'https://dashboard.datocms.com/personal-account/account',
-    );
-    expect(
-      screen.getByRole('link', { name: 'Account settings' }).parentElement,
-    ).toHaveTextContent(
-      'To change it, revoke the authorization in Account settings, then reconnect. This affects all MCP clients of your account, and your project role can still limit access.',
+      screen.queryByRole('link', { name: 'Account settings' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Limited access')).not.toBeInTheDocument();
+    expect(access).toContainElement(
+      screen.getByRole('button', { name: 'Check access again' }),
     );
   });
-  it('names the chat in the bar and shows auto-approve errors above the composer', () => {
+
+  it.each([
+    [
+      'content_only' as const,
+      'Read and edit content',
+      'The agent can’t change models or settings. To allow more, remove its access in Account settings, then check access again.',
+    ],
+    [
+      'content_view_only' as const,
+      'Read content only',
+      'To let the agent make changes, remove its access in Account settings, then check access again.',
+    ],
+  ])(
+    'says in the access row how to allow more than %s',
+    async (oauthAccessLevel, value, note) => {
+      renderInCanvas(
+        <AgentSurface
+          connection={{ ...connected, oauthAccessLevel }}
+          entries={[]}
+          onCheckDatoCmsAccess={vi.fn()}
+          onSubmit={vi.fn()}
+        />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Open chats' }));
+
+      // The limit is said once, in its row, with the button that follows
+      const access = screen.getByText('Access').nextElementSibling;
+      expect(access).toHaveTextContent(value);
+      const link = screen.getByRole('link', { name: 'Account settings' });
+      expect(link).toHaveAttribute(
+        'href',
+        'https://dashboard.datocms.com/personal-account/account',
+      );
+      expect(access).toContainElement(link);
+      expect(link.parentElement).toHaveTextContent(note);
+      expect(access).toContainElement(
+        screen.getByRole('button', { name: 'Check access again' }),
+      );
+      expect(screen.queryByText('Limited access')).not.toBeInTheDocument();
+    },
+  );
+  it('names the chat in the bar', () => {
     renderInCanvas(
       <AgentSurface
-        autoApproveError="Auto-approve could not be turned on."
         connection={connected}
         entries={[]}
         onAutoApproveChange={vi.fn()}
@@ -2447,9 +2584,6 @@ describe('AgentSurface', () => {
 
     expect(screen.getByText('Untitled chat')).toBeVisible();
     expect(screen.queryByText('Another chat')).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Auto-approve could not be turned on.',
-    );
   });
 
   it('explains on Send why the composer waits for a pending change', () => {
@@ -2507,8 +2641,9 @@ describe('AgentSurface', () => {
     );
   });
 
-  it('offers a new sign-in after a connection error', async () => {
+  it('offers one new sign-in after a connection error', async () => {
     const user = userEvent.setup();
+    const onConnectDatoCms = vi.fn();
     const onRestartDatoCmsConnection = vi.fn();
 
     renderInCanvas(
@@ -2521,51 +2656,61 @@ describe('AgentSurface', () => {
           datoCmsError: 'The sign-in window was closed.',
         }}
         entries={[]}
-        onConnectDatoCms={vi.fn()}
+        onConnectDatoCms={onConnectDatoCms}
         onRestartDatoCmsConnection={onRestartDatoCmsConnection}
         onSubmit={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Connection failed')).toBeVisible();
-    expect(
-      screen.getByText('Model provider').nextElementSibling,
-    ).toHaveTextContent('Anthropic (Claude)');
-    expect(screen.queryByText('Setup required')).not.toBeInTheDocument();
+    // A provider that is set up needs no row
+    expect(screen.queryByText('Model provider')).not.toBeInTheDocument();
+    // The error is the one message: the authorization hint waits for the
+    // next sign-in
     const error = screen.getByRole('alert');
     expect(error).toHaveTextContent('The sign-in window was closed.');
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    // One button, a new sign-in that keeps the saved registration. Its menu
+    // can start over with a new registration.
+    expect(
+      screen.queryByRole('button', { name: 'Connect' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Start sign-in again' }),
+    ).not.toBeInTheDocument();
+    const connectAgain = screen.getByRole('button', { name: 'Connect again' });
     // The problem comes first, then the rows with the actions that fix it
     expect(
-      error.compareDocumentPosition(
-        screen.getByRole('button', { name: 'Start sign-in again' }),
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      error.compareDocumentPosition(connectAgain) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       screen.getByText('Connection failed').closest('dd'),
-    ).toContainElement(
-      screen.getByRole('button', { name: 'Start sign-in again' }),
+    ).toContainElement(connectAgain);
+    await user.click(connectAgain);
+    expect(onConnectDatoCms).toHaveBeenCalledOnce();
+    expect(onRestartDatoCmsConnection).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole('button', { name: 'More ways to connect' }),
     );
     await user.click(
-      screen.getByRole('button', { name: 'Start sign-in again' }),
+      screen.getByRole('menuitem', { name: 'Start over with a new sign-in' }),
     );
     expect(onRestartDatoCmsConnection).toHaveBeenCalledOnce();
+    expect(onConnectDatoCms).toHaveBeenCalledOnce();
   });
 
-  it('says when there are no chats yet', () => {
+  it('says when there are no chats yet', async () => {
     renderInCanvas(
       <AgentSurface
-        connection={{
-          ...connected,
-          status: 'setup',
-          datoCmsStatus: 'disconnected',
-        }}
+        connection={connected}
         entries={[]}
         onStartNewChat={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
 
+    await userEvent.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByText('No chats yet')).toBeVisible();
   });
 
@@ -2585,7 +2730,7 @@ describe('AgentSurface', () => {
     );
 
     expect(screen.getByText('Access').nextElementSibling).toHaveTextContent(
-      'Access not verified',
+      'Not checked',
     );
     const check = screen.getByRole('button', { name: 'Check access again' });
     // The re-check is in the row of the access

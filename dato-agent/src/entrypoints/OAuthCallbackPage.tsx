@@ -13,11 +13,8 @@ export default function OAuthCallbackPage({ error = false, message }: Props) {
   return (
     <Main className={styles.page}>
       <div className={styles.content} role={error ? 'alert' : 'status'}>
-        <Heading
-          level={1}
-          className={error ? `${styles.title} ${styles.error}` : styles.title}
-        >
-          {error ? 'Connection could not be completed' : 'DatoCMS connected'}
+        <Heading level={1} className={styles.title}>
+          {error ? 'Connection could not be completed' : 'Finishing sign-in'}
         </Heading>
         <p className={styles.message}>{message}</p>
       </div>

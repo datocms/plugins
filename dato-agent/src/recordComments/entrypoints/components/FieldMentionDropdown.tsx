@@ -1,4 +1,5 @@
 import type { FieldInfo } from '@hooks/useMentions';
+import { formatLocale } from '@utils/mentionFormatters';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import ApiKey from 'datocms-react-ui/ApiKey';
 import Button from 'datocms-react-ui/Button';
@@ -8,6 +9,7 @@ import {
   keepEditorFocus,
   MentionDropdownBase,
 } from './shared/MentionDropdownBase';
+import { repeatedTitles } from './shared/MentionDropdownOptionContent';
 
 type FieldMentionDropdownProps = {
   fields: FieldInfo[];
@@ -134,7 +136,7 @@ export default function FieldMentionDropdown({
     const locales = localeField.availableLocales ?? [];
     return (
       <MentionDropdownBase
-        emptyMessage="No locales available"
+        emptyMessage="No languages available"
         headerIcon={
           <Button
             tone="ghost"
@@ -146,18 +148,24 @@ export default function FieldMentionDropdown({
             onMouseDown={keepEditorFocus}
           />
         }
-        headerText={`Locale · ${localeField.label}`}
+        headerText={`Language · ${localeField.label}`}
         items={locales}
         keyExtractor={(locale) => locale}
         onClose={onClose}
         onSelect={(locale) => onSelect(localeField, locale)}
         onSelectedIndexChange={onSelectedIndexChange}
         position={position}
-        renderOption={(locale) => ({ title: locale })}
+        renderOption={(locale) => ({
+          title: `${formatLocale(locale)} (${locale})`,
+        })}
         selectedIndex={Math.min(selectedIndex, Math.max(0, locales.length - 1))}
       />
     );
   }
+
+  const sharedLabels = repeatedTitles(
+    fields.map((field) => field.displayLabel),
+  );
 
   return (
     <MentionDropdownBase
@@ -180,7 +188,9 @@ export default function FieldMentionDropdown({
       position={position}
       renderOption={(field) => ({
         title: field.displayLabel,
-        afterTitle: <ApiKey>{field.apiKey}</ApiKey>,
+        afterTitle: sharedLabels.has(field.displayLabel) ? (
+          <ApiKey>{field.apiKey}</ApiKey>
+        ) : undefined,
       })}
       selectedIndex={selectedIndex}
       status={statusText(isLoading, errorMessage)}

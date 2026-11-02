@@ -22,7 +22,18 @@ export async function openApprovalDetailsModal(
     parameters: {
       details: approval.details ?? [],
       ...(approval.script ? { script: approval.script } : {}),
-      ...(approval.outcome ? { outcome: approval.outcome } : {}),
+      ...(approval.outcome
+        ? {
+            outcome: approval.outcome,
+            ...(approval.error ? { error: approval.error } : {}),
+          }
+        : {}),
+      // The decision of the editor. A change that ended with an error (the
+      // access changed) was not decided by the editor: the card tells why.
+      ...((approval.status === 'approved' || approval.status === 'rejected') &&
+      !approval.error
+        ? { decision: approval.status }
+        : {}),
       canDecide,
     },
   });

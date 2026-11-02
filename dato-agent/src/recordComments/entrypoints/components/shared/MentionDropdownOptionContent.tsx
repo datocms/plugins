@@ -13,6 +13,20 @@ type MentionDropdownOptionContentProps = {
 };
 
 /**
+ * The titles that more than one option of a menu has. An option shows its
+ * API key only then: the title alone names the others.
+ */
+export function repeatedTitles(titles: readonly string[]): Set<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const title of titles) {
+    if (seen.has(title)) repeated.add(title);
+    seen.add(title);
+  }
+  return repeated;
+}
+
+/**
  * The text of an option of a mention menu. The menu option draws the
  * surface, the highlight and the glyph; the entity row (the row layout of a
  * menu option) lays out the picture, the title, what follows it and its

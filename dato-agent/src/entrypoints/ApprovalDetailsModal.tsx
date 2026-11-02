@@ -188,35 +188,50 @@ function HighlightedCode({
   );
 }
 
+/**
+ * The code of the change, behind a disclosure: the summary is what an editor
+ * reads. It starts open only when there is no summary to read.
+ */
 function TypeScriptCode({
   colorScheme,
   source,
+  startOpen,
 }: {
   colorScheme: 'light' | 'dark';
   source: string;
+  startOpen: boolean;
 }) {
+  const [open, setOpen] = useState(startOpen);
+  const codeId = useId();
   const highlighted = source.length <= MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS;
 
   return (
     <div className={styles.block}>
-      <Heading className={styles.title} level={2}>
-        TypeScript
-      </Heading>
-      <CodeSnippet
-        ariaLabel="Generated TypeScript"
-        code={source}
-        maxHeight={360}
+      <RawButton
+        className={styles.disclosure}
+        expandable={{ open, controls: codeId }}
+        onClick={() => setOpen((current) => !current)}
       >
-        {highlighted ? (
-          <HighlightedCode colorScheme={colorScheme} source={source} />
-        ) : (
-          <pre className={styles.code} data-highlighted="false">
-            <code data-language="typescript">
-              <PlainCodeLines source={source} />
-            </code>
-          </pre>
-        )}
-      </CodeSnippet>
+        <DisclosureChevron open={open} />
+        Show the code
+      </RawButton>
+      <div hidden={!open} id={codeId}>
+        <CodeSnippet
+          ariaLabel="Code of the change"
+          code={source}
+          maxHeight={360}
+        >
+          {highlighted ? (
+            <HighlightedCode colorScheme={colorScheme} source={source} />
+          ) : (
+            <pre className={styles.code} data-highlighted="false">
+              <code data-language="typescript">
+                <PlainCodeLines source={source} />
+              </code>
+            </pre>
+          )}
+        </CodeSnippet>
+      </div>
     </div>
   );
 }
@@ -228,11 +243,17 @@ type SummaryProps = {
   state: SummaryState;
 };
 
+// Without a summary, the editor who can't read the code can still deny
 function SummaryContent({
+  canDecide,
   onRetry,
   retryDisabledReason,
   state,
-}: Omit<SummaryProps, 'canDecide'>) {
+}: SummaryProps) {
+  const codeHint = canDecide
+    ? 'Check the code below, or deny the change if you’re not sure what it does.'
+    : 'Check the code below.';
+
   if (state.status === 'loading') {
     return (
       <BlankSlate
@@ -253,11 +274,11 @@ function SummaryContent({
               retryDisabledReason ? { reason: retryDisabledReason } : undefined
             }
             icon={RetryIcon}
-            label="Retry"
+            label="Try again"
             onClick={onRetry}
           />
         }
-        description="Review the TypeScript below."
+        description={codeHint}
         error
         icon={<WarningIcon />}
         placement="section"
@@ -273,7 +294,7 @@ function SummaryContent({
         className={styles.callout}
         title="This change is too large to summarize"
       >
-        Review the TypeScript below.
+        {codeHint}
       </Callout>
     );
   }
@@ -282,8 +303,9 @@ function SummaryContent({
 }
 
 // The live region holds the state of the summary. The caveat stays out of
-// it: a warning callout announces itself, so it is not read twice.
-function Summary({ canDecide, ...props }: SummaryProps) {
+// it: it is a standing note about every summary, not news. It shows only
+// while the user decides: after the decision it can't help.
+function Summary(props: SummaryProps) {
   return (
     <div className={styles.block}>
       <Heading className={styles.title} level={2}>
@@ -296,34 +318,30 @@ function Summary({ canDecide, ...props }: SummaryProps) {
       >
         <SummaryContent {...props} />
       </div>
-      {props.state.status === 'success' && (
-        <Callout
-          className={styles.callout}
-          title="Summaries can be wrong"
-          tone="warning"
-        >
-          {canDecide
-            ? 'Review the TypeScript before approving.'
-            : 'Review the TypeScript to verify this summary.'}
+      {props.canDecide && props.state.status === 'success' && (
+        <Callout className={styles.callout}>
+          This summary is written automatically and can be wrong: if anything
+          looks unexpected, deny the change.
         </Callout>
       )}
     </div>
   );
 }
 
+// The same words as the card of the change in the chat
 const OUTCOME_PRESENTATION = {
   failed_before_execution: {
     title: 'Change didn’t run',
-    description: 'No project content was changed.',
+    description: 'Nothing was changed.',
   },
   failed_after_execution: {
     title: 'Change may be incomplete',
     description:
-      'Some project content may have changed. Check DatoCMS before trying again.',
+      'Some content may have changed. Ask the agent to check, or look at the content yourself.',
   },
   unknown: {
-    title: 'Outcome needs checking',
-    description: 'The change may have run. Check DatoCMS before trying again.',
+    title: 'Not sure the change ran',
+    description: 'Ask the agent to check, or look at the content yourself.',
   },
 } satisfies Record<
   UnsafeApprovalOutcomeViewModel['kind'],
@@ -331,43 +349,67 @@ const OUTCOME_PRESENTATION = {
 >;
 
 function ApprovalOutcomeNotice({
+  error,
   outcome,
 }: {
+  /** Why the change failed, in plain words, as the card says it */
+  error: string | undefined;
   outcome: UnsafeApprovalOutcomeViewModel;
 }) {
-  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
-  const diagnosticId = useId();
   const presentation = OUTCOME_PRESENTATION[outcome.kind];
 
   return (
+    <Callout
+      className={styles.callout}
+      title={presentation.title}
+      tone="warning"
+    >
+      {error
+        ? `${presentation.description} ${error}`
+        : presentation.description}
+    </Callout>
+  );
+}
+
+/**
+ * The raw error of a failed change, behind a disclosure and last: the
+ * outcome, the summary and the code come first
+ */
+function TechnicalError({ diagnostic }: { diagnostic: string }) {
+  const [open, setOpen] = useState(false);
+  const diagnosticId = useId();
+
+  return (
     <div className={styles.block}>
-      <Callout
-        className={styles.callout}
-        title={presentation.title}
-        tone="warning"
+      <RawButton
+        className={styles.disclosure}
+        expandable={{ open, controls: diagnosticId }}
+        onClick={() => setOpen((current) => !current)}
       >
-        {presentation.description}
-      </Callout>
-      {outcome.diagnostic && (
-        <>
-          <RawButton
-            className={styles.disclosure}
-            expandable={{ open: diagnosticOpen, controls: diagnosticId }}
-            onClick={() => setDiagnosticOpen((open) => !open)}
-          >
-            <DisclosureChevron open={diagnosticOpen} />
-            Technical error
-          </RawButton>
-          <div hidden={!diagnosticOpen} id={diagnosticId}>
-            <CodeSnippet
-              ariaLabel="Technical error"
-              code={outcome.diagnostic}
-              maxHeight={180}
-            />
-          </div>
-        </>
-      )}
+        <DisclosureChevron open={open} />
+        Show the technical error
+      </RawButton>
+      <div hidden={!open} id={diagnosticId}>
+        <CodeSnippet
+          ariaLabel="Technical error"
+          code={diagnostic}
+          maxHeight={180}
+        />
+      </div>
     </div>
+  );
+}
+
+/** The decision already taken on a change that has no outcome to tell */
+function DecisionNotice({ value }: { value: unknown }) {
+  if (value !== 'approved' && value !== 'rejected') {
+    return null;
+  }
+
+  return (
+    <Callout className={styles.callout}>
+      {value === 'approved' ? 'Approved.' : 'Denied. No action was taken.'}
+    </Callout>
   );
 }
 
@@ -430,6 +472,10 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
   const outcome = isApprovalOutcome(ctx.parameters.outcome)
     ? ctx.parameters.outcome
     : undefined;
+  const outcomeError =
+    typeof ctx.parameters.error === 'string' && ctx.parameters.error.trim()
+      ? ctx.parameters.error
+      : undefined;
   const scriptSource = script?.source;
   const sourceTooLarge = Boolean(
     scriptSource && scriptSource.length > MAX_CHANGE_SUMMARY_SOURCE_CHARACTERS,
@@ -520,7 +566,11 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
   return (
     <Canvas ctx={ctx} texts={TEXTS}>
       <div className={styles.root}>
-        {outcome && <ApprovalOutcomeNotice outcome={outcome} />}
+        {outcome ? (
+          <ApprovalOutcomeNotice error={outcomeError} outcome={outcome} />
+        ) : (
+          <DecisionNotice value={ctx.parameters.decision} />
+        )}
 
         {scriptSource && (
           <Summary
@@ -544,7 +594,15 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
         )}
 
         {scriptSource && (
-          <TypeScriptCode colorScheme={ctx.colorScheme} source={scriptSource} />
+          <TypeScriptCode
+            colorScheme={ctx.colorScheme}
+            source={scriptSource}
+            startOpen={sourceTooLarge}
+          />
+        )}
+
+        {outcome?.diagnostic && (
+          <TechnicalError diagnostic={outcome.diagnostic} />
         )}
 
         {canDecide && (

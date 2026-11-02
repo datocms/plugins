@@ -5,11 +5,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import type {
-  RenderInspectorCtx,
-  RenderInspectorPanelCtx,
-  RenderModalCtx,
-} from 'datocms-plugin-sdk';
+import type { RenderInspectorCtx, RenderModalCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeCtx } from '../test/canvas';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
@@ -35,14 +31,18 @@ afterEach(cleanup);
 function approvalModalCtx({
   canDecide = false,
   colorScheme = 'light',
+  decision,
   details = [{ label: 'Environment', value: 'Primary' }],
+  error,
   outcome,
   resolve = vi.fn().mockResolvedValue(undefined),
   script = 'const title: string = "Hello";',
 }: {
   canDecide?: boolean;
   colorScheme?: 'light' | 'dark';
+  decision?: 'approved' | 'rejected';
   details?: Array<{ label: string; value: string }>;
+  error?: string;
   outcome?: {
     kind: 'failed_before_execution' | 'failed_after_execution' | 'unknown';
     diagnostic?: string;
@@ -56,6 +56,8 @@ function approvalModalCtx({
     parameters: {
       canDecide,
       details,
+      ...(decision ? { decision } : {}),
+      ...(error ? { error } : {}),
       ...(outcome ? { outcome } : {}),
       ...(script === null
         ? {}
@@ -78,8 +80,12 @@ function fileModalCtx(parameters: Record<string, unknown>): RenderModalCtx {
   return fakeCtx<RenderModalCtx>({ mode: 'renderModal', parameters });
 }
 
+// The code is behind its disclosure: closed, it is in the page but hidden
 function codeRegion() {
-  return screen.getByRole('region', { name: 'Generated TypeScript' });
+  return screen.getByRole('region', {
+    name: 'Code of the change',
+    hidden: true,
+  });
 }
 
 function firstStringColor(container: HTMLElement): string {
@@ -96,7 +102,7 @@ describe('auxiliary surfaces', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading Dato Agent');
   });
 
-  it('sizes the unavailable message by its place', () => {
+  it('announces the unavailable message in the narrow chat column', () => {
     const title = 'Dato Agent isn’t available for your role';
     // The chat column of the inspector is narrow
     render(<AgentUnavailableFrame ctx={fakeCtx<RenderInspectorCtx>()} />);
@@ -107,17 +113,6 @@ describe('auxiliary surfaces', () => {
     expect(screen.getByRole('status')).toHaveTextContent(title);
     expect(screen.getByRole('status')).toHaveTextContent(
       'Ask a project admin to add your role in the plugin settings.',
-    );
-    cleanup();
-
-    // The inspector panel is the wide record pane
-    render(
-      <AgentUnavailableFrame
-        ctx={fakeCtx<RenderInspectorPanelCtx>({ mode: 'renderInspectorPanel' })}
-      />,
-    );
-    expect(screen.getByText(title).closest('.blank-slate')).not.toHaveClass(
-      'blank-slate--small',
     );
   });
 
@@ -139,7 +134,13 @@ describe('auxiliary surfaces', () => {
     expect(
       screen.getByText('Summarizing this change').closest('[aria-busy]'),
     ).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByRole('heading', { name: 'TypeScript' })).toBeVisible();
+    // The summary is what an editor reads: the code waits behind a disclosure
+    const showCode = screen.getByRole('button', { name: 'Show the code' });
+    expect(showCode).toHaveAttribute('aria-expanded', 'false');
+    expect(codeRegion()).not.toBeVisible();
+    fireEvent.click(showCode);
+    expect(showCode).toHaveAttribute('aria-expanded', 'true');
+    expect(codeRegion()).toBeVisible();
     const code = codeRegion().querySelector('pre code');
     expect(code?.textContent).toBe(source);
     expect(code?.closest('pre')).toHaveAttribute('data-highlighted', 'true');
@@ -201,6 +202,8 @@ describe('auxiliary surfaces', () => {
     const source = 'x'.repeat(100_001);
     render(<ApprovalDetailsModal ctx={approvalModalCtx({ script: source })} />);
 
+    // Without a summary, the code is the content: it starts open
+    expect(codeRegion()).toBeVisible();
     const code = codeRegion().querySelector('pre code');
     expect(code?.textContent).toBe(source);
     expect(code?.closest('pre')).toHaveAttribute('data-highlighted', 'false');
@@ -211,10 +214,10 @@ describe('auxiliary surfaces', () => {
     );
     expect(tooLarge).toBeVisible();
     expect(tooLarge.closest('.Callout')).toHaveTextContent(
-      'Review the TypeScript below.',
+      'Check the code below.',
     );
     expect(
-      screen.queryByRole('button', { name: 'Retry' }),
+      screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
     expect(generateChangeSummary).not.toHaveBeenCalled();
   });
@@ -257,10 +260,22 @@ describe('auxiliary surfaces', () => {
 
     const notice = screen.getByText('Change didn’t run').closest('.Callout');
     expect(notice).toHaveAttribute('role', 'alert');
-    expect(notice).toHaveTextContent('No project content was changed.');
+    expect(notice).toHaveTextContent('Nothing was changed.');
+    // The outcome is the one warning: no second caveat after the decision
+    expect(
+      screen.queryByText(/This summary is written automatically/),
+    ).not.toBeInTheDocument();
 
-    const toggle = screen.getByRole('button', { name: 'Technical error' });
+    const toggle = screen.getByRole('button', {
+      name: 'Show the technical error',
+    });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // The raw error comes last, after the code
+    expect(
+      screen
+        .getByRole('button', { name: 'Show the code' })
+        .compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       screen.queryByRole('region', { name: 'Technical error' }),
     ).not.toBeInTheDocument();
@@ -270,11 +285,12 @@ describe('auxiliary surfaces', () => {
       screen.getByRole('region', { name: 'Technical error' }).textContent,
     ).toBe(diagnostic);
     expect(container.querySelector('img')).not.toBeInTheDocument();
-    const caveat = await screen.findByText('Summaries can be wrong');
-    expect(caveat).toBeVisible();
-    expect(caveat.closest('.Callout')).toHaveTextContent(
-      'Review the TypeScript to verify this summary.',
-    );
+    expect(
+      await screen.findByText('Attempts to update one record.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/This summary is written automatically/),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Fix/i }),
     ).not.toBeInTheDocument();
@@ -284,12 +300,12 @@ describe('auxiliary surfaces', () => {
     [
       'failed_after_execution' as const,
       'Change may be incomplete',
-      'Some project content may have changed. Check DatoCMS before trying again.',
+      'Some content may have changed. Ask the agent to check, or look at the content yourself.',
     ],
     [
       'unknown' as const,
-      'Outcome needs checking',
-      'The change may have run. Check DatoCMS before trying again.',
+      'Not sure the change ran',
+      'Ask the agent to check, or look at the content yourself.',
     ],
   ])('renders the %s outcome without approval actions', (kind, title, copy) => {
     render(
@@ -299,7 +315,7 @@ describe('auxiliary surfaces', () => {
     expect(screen.getByText(title)).toBeVisible();
     expect(screen.getByText(copy)).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: 'Technical error' }),
+      screen.queryByRole('button', { name: 'Show the technical error' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Approve' }),
@@ -307,6 +323,30 @@ describe('auxiliary surfaces', () => {
     expect(
       screen.queryByRole('button', { name: 'Deny' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('says why a change failed, in the words of its card', () => {
+    render(
+      <ApprovalDetailsModal
+        ctx={approvalModalCtx({
+          error: 'The Italian title is required.',
+          outcome: {
+            kind: 'failed_after_execution',
+            diagnostic: 'ApiError: 422 INVALID_FIELD',
+          },
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText('Change may be incomplete').closest('.Callout'),
+    ).toHaveTextContent(
+      'Some content may have changed. Ask the agent to check, or look at the content yourself. The Italian title is required.',
+    );
+    // The raw error stays behind its disclosure
+    expect(
+      screen.getByRole('button', { name: 'Show the technical error' }),
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('omits code and summary UI when no valid script was provided', () => {
@@ -318,10 +358,13 @@ describe('auxiliary surfaces', () => {
 
     expect(generateChangeSummary).not.toHaveBeenCalled();
     expect(
-      screen.queryByRole('heading', { name: 'TypeScript' }),
+      screen.queryByRole('button', { name: 'Show the code' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('region', { name: 'Generated TypeScript' }),
+      screen.queryByRole('region', {
+        name: 'Code of the change',
+        hidden: true,
+      }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Summary' }),
@@ -345,19 +388,21 @@ describe('auxiliary surfaces', () => {
       await screen.findByText('Updates the title of one existing record.'),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Summary' })).toBeVisible();
-    expect(screen.getByText('Summaries can be wrong')).toBeVisible();
-    expect(
-      screen.getByText('Summaries can be wrong').closest('.Callout'),
-    ).toHaveTextContent('Review the TypeScript before approving.');
-    // The live region announces the summary; the warning announces itself
+    // One neutral sentence: a standing caveat, not a warning about this change
+    const caveat = screen
+      .getByText(/This summary is written automatically/)
+      .closest('.Callout');
+    expect(caveat).toHaveTextContent(
+      'This summary is written automatically and can be wrong: if anything looks unexpected, deny the change.',
+    );
+    expect(caveat).not.toHaveAttribute('role', 'alert');
+    // The live region announces the summary, not the caveat
     expect(
       screen
         .getByText('Updates the title of one existing record.')
         .closest('[aria-live="polite"]'),
     ).not.toBeNull();
-    expect(
-      screen.getByText('Summaries can be wrong').closest('[aria-live]'),
-    ).toBeNull();
+    expect(caveat?.closest('[aria-live]')).toBeNull();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
 
@@ -368,19 +413,43 @@ describe('auxiliary surfaces', () => {
     expect(generateChangeSummary).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['approved' as const, 'Approved.'],
+    ['rejected' as const, 'Denied. No action was taken.'],
+  ])(
+    'tells the decision of a %s change, without the caveat',
+    async (decision, text) => {
+      generateChangeSummary.mockResolvedValue('Publishes one record.');
+      render(<ApprovalDetailsModal ctx={approvalModalCtx({ decision })} />);
+
+      expect(screen.getByText(text)).toBeVisible();
+      expect(await screen.findByText('Publishes one record.')).toBeVisible();
+      expect(
+        screen.queryByText(/This summary is written automatically/),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('offers a compact retry when summary generation fails', async () => {
     generateChangeSummary
       .mockRejectedValueOnce(new Error('Provider unavailable'))
       .mockResolvedValueOnce('Creates one draft article.');
-    render(<ApprovalDetailsModal ctx={approvalModalCtx()} />);
+    render(
+      <ApprovalDetailsModal ctx={approvalModalCtx({ canDecide: true })} />,
+    );
 
     // A failed load is a blank slate with an error, inside the live region
     const failure = await screen.findByText('Couldn’t summarize this change');
     expect(failure).toBeVisible();
     expect(failure.closest('.blank-slate')).not.toBeNull();
     expect(failure.closest('[aria-live="polite"]')).not.toBeNull();
-    expect(screen.getByText('Review the TypeScript below.')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    // The editor who can't read the code can still deny
+    expect(
+      screen.getByText(
+        'Check the code below, or deny the change if you’re not sure what it does.',
+      ),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByText('Creates one draft article.')).toBeVisible();
     expect(generateChangeSummary).toHaveBeenCalledTimes(2);
@@ -454,10 +523,10 @@ describe('auxiliary surfaces', () => {
     expect(screen.getByRole('button', { name: 'Deny' })).not.toHaveAttribute(
       'aria-disabled',
     );
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Retry' })).not.toHaveAttribute(
-      'aria-disabled',
-    );
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Try again' }),
+    ).not.toHaveAttribute('aria-disabled');
   });
 
   it('does not allow summary retries while a decision is being saved', async () => {
@@ -476,7 +545,7 @@ describe('auxiliary surfaces', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
-    const retry = screen.getByRole('button', { name: 'Retry' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(retry);
     expect(generateChangeSummary).toHaveBeenCalledTimes(1);
@@ -498,14 +567,16 @@ describe('auxiliary surfaces', () => {
     );
 
     expect(screen.getByText('brief.pdf')).toBeVisible();
-    expect(screen.getByText('application/pdf')).toBeVisible();
+    // The filename tells the kind: no MIME type
+    expect(screen.queryByText('application/pdf')).not.toBeInTheDocument();
     expect(screen.getByText('2.0 KB')).toBeVisible();
     const notice = screen
-      .getByText('Not a DatoCMS asset yet')
+      .getByText(
+        'The agent can read this file while this page is open, but it isn’t saved in the Media Area.',
+      )
       .closest('.Callout');
-    expect(notice).toHaveTextContent(
-      'Its content is available only in this browser session.',
-    );
+    // Nothing is wrong yet: a neutral note
+    expect(notice).not.toHaveAttribute('role', 'alert');
     const lastModified = screen
       .getByText('Last modified')
       .closest('.InfoList__row');
@@ -518,11 +589,13 @@ describe('auxiliary surfaces', () => {
         ctx={fileModalCtx({ ...parameters, bytesAvailable: false })}
       />,
     );
-    expect(
-      screen.getByText(
-        'Its content is no longer available. Only its details remain.',
-      ),
-    ).toBeVisible();
+    const expired = screen
+      .getByText(
+        'This file is no longer available: attach it again if the agent needs it.',
+      )
+      .closest('.Callout');
+    expect(expired).toBeVisible();
+    expect(expired).toHaveAttribute('role', 'alert');
   });
 
   it('falls back to defaults for missing file details', () => {
@@ -531,15 +604,11 @@ describe('auxiliary surfaces', () => {
     const rows = Array.from(document.querySelectorAll('.InfoList__row')).map(
       (row) => row.textContent,
     );
-    expect(rows).toEqual([
-      'FilenameUntitled file',
-      'Typeapplication/octet-stream',
-      'SizeUnknown',
-      'Last modifiedUnknown',
-    ]);
+    // An unknown size or date tells nothing: their rows stay out
+    expect(rows).toEqual(['FilenameUntitled file']);
     expect(
       within(document.body).getByText(
-        'Its content is no longer available. Only its details remain.',
+        'This file is no longer available: attach it again if the agent needs it.',
       ),
     ).toBeVisible();
   });
@@ -549,7 +618,7 @@ describe('auxiliary surfaces', () => {
       <OAuthCallbackPage message="Return to the agent." />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('DatoCMS connected');
+    expect(screen.getByRole('status')).toHaveTextContent('Finishing sign-in');
     expect(screen.getByRole('status')).toHaveTextContent(
       'Return to the agent.',
     );

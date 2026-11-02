@@ -888,7 +888,7 @@ describe('AgentRuntime', () => {
     expect(activities[0]).toMatchObject({
       id: callId,
       status: 'in_progress',
-      label: 'Reading CMS content',
+      label: 'Reading content',
       arguments: '',
     });
     expect(activities).toContainEqual(
@@ -4242,14 +4242,14 @@ describe('AgentRuntime', () => {
       'Incorrect API key provided.',
       'api_error',
       false,
-      'OpenAI rejected the configured API key. Update it in plugin settings.',
+      'OpenAI didn’t accept the API key: ask a project admin to update it in the plugin settings.',
     ],
     [
       403,
       'This key cannot access the selected model.',
       'api_error',
       false,
-      'OpenAI denied access. Check the API key and model access in plugin settings.',
+      'OpenAI refused access to this model: ask a project admin to check the plugin settings.',
     ],
     [
       400,
@@ -4270,28 +4270,28 @@ describe('AgentRuntime', () => {
       'Request timed out.',
       'api_error',
       true,
-      'OpenAI timed out. Try again.',
+      'OpenAI didn’t answer in time.',
     ],
     [
       409,
       'A temporary conflict occurred.',
       'api_error',
       true,
-      'OpenAI reported a temporary conflict. Try again.',
+      'OpenAI had a temporary problem.',
     ],
     [
       429,
       'Rate limit reached.',
       'api_error',
       true,
-      'OpenAI is temporarily rate limited. Try again shortly.',
+      'OpenAI is busy right now.',
     ],
     [
       500,
       'Internal server error.',
       'api_error',
       true,
-      'OpenAI is temporarily unavailable. Try again shortly.',
+      'OpenAI had a temporary problem.',
     ],
   ] satisfies Array<[number, string, string, boolean, string]>)(
     'classifies OpenAI HTTP %i failures before offering a retry',
@@ -4321,7 +4321,7 @@ describe('AgentRuntime', () => {
         code: 'api_error',
         retryable: false,
         message:
-          'OpenAI rejected the configured API key. Update it in plugin settings.',
+          'OpenAI didn’t accept the API key: ask a project admin to update it in the plugin settings.',
       },
     ],
     [
@@ -4337,7 +4337,7 @@ describe('AgentRuntime', () => {
       {
         code: 'api_error',
         retryable: true,
-        message: 'OpenAI is temporarily rate limited. Try again shortly.',
+        message: 'OpenAI is busy right now.',
       },
     ],
     [
@@ -4345,8 +4345,7 @@ describe('AgentRuntime', () => {
       {
         code: 'api_error',
         retryable: true,
-        message:
-          'OpenAI could not be reached. Check your connection and try again.',
+        message: 'OpenAI couldn’t be reached: check your internet connection.',
       },
     ],
   ])(
@@ -4380,7 +4379,7 @@ describe('AgentRuntime', () => {
       'The provider failed.',
       'api_error',
       true,
-      'OpenAI is temporarily unavailable. Try again shortly.',
+      'OpenAI had a temporary problem.',
     ],
   ] as const)(
     'classifies a terminal OpenAI %s response',
@@ -4419,7 +4418,7 @@ describe('AgentRuntime', () => {
       error: {
         code: 'incomplete',
         retryable: true,
-        message: 'OpenAI response was interrupted. Try again.',
+        message: 'OpenAI’s answer was interrupted.',
       },
     });
   });
@@ -4733,7 +4732,9 @@ describe('OpenAI MCP authentication and access', () => {
           .mockRejectedValue(providerError(status, 'Provider failure')),
       };
       const result = await runtimeWith(client, { verifyMcpConnection }).runTurn(
-        { message: 'Read' },
+        {
+          message: 'Read',
+        },
       );
       expect(verifyMcpConnection).not.toHaveBeenCalled();
       expect(result.error?.code).not.toBe('mcp_auth_required');

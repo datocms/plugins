@@ -2628,11 +2628,11 @@ function isInterruptedProviderStream(message: string): boolean {
 }
 
 function authenticationMessage(provider: ProviderRuntimeName): string {
-  return `${providerLabel(provider)} rejected the configured API key. Update it in plugin settings.`;
+  return `${providerLabel(provider)} didn’t accept the API key: ask a project admin to update it in the plugin settings.`;
 }
 
 function permissionMessage(provider: ProviderRuntimeName): string {
-  return `${providerLabel(provider)} denied access. Check the API key and model access in plugin settings.`;
+  return `${providerLabel(provider)} refused access to this model: ask a project admin to check the plugin settings.`;
 }
 
 function transientProviderMessage(
@@ -2648,24 +2648,22 @@ function transientProviderMessage(
     code === 'timeout' ||
     code === 'timeout_error'
   ) {
-    return `${label} timed out. Try again.`;
-  }
-  if (status === 409) {
-    return `${label} reported a temporary conflict. Try again.`;
+    return `${label} didn’t answer in time.`;
   }
   if (
     status === 429 ||
     code === 'rate_limit_error' ||
-    code === 'rate_limit_exceeded'
+    code === 'rate_limit_exceeded' ||
+    code === 'overloaded_error'
   ) {
-    return `${label} is temporarily rate limited. Try again shortly.`;
+    return `${label} is busy right now.`;
   }
   if (
+    status === 409 ||
     (status !== undefined && status >= 500) ||
-    code === 'overloaded_error' ||
     code === 'server_error'
   ) {
-    return `${label} is temporarily unavailable. Try again shortly.`;
+    return `${label} had a temporary problem.`;
   }
   return fallback;
 }
@@ -2769,15 +2767,15 @@ function classifyProviderErrorMessage(
       code: 'api_error',
       message:
         provider === 'anthropic'
-          ? 'Anthropic could not be reached from this browser. ZDR organizations require a server-side provider proxy.'
-          : 'OpenAI could not be reached. Check your connection and try again.',
+          ? 'Anthropic couldn’t be reached from this browser: ask a project admin to check the plugin settings.'
+          : 'OpenAI couldn’t be reached: check your internet connection.',
       retryable: true,
     };
   }
   if (isInterruptedProviderStream(message)) {
     return {
       code: 'incomplete',
-      message: `${providerLabel(provider)} response was interrupted. Try again.`,
+      message: `${providerLabel(provider)}’s answer was interrupted.`,
       retryable: true,
     };
   }

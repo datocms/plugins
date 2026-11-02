@@ -3702,7 +3702,7 @@ describe('AnthropicAgentRuntime', () => {
       error: {
         code: 'api_error',
         retryable: true,
-        message: expect.stringContaining('server-side provider proxy'),
+        message: expect.stringContaining('check the plugin settings'),
       },
     });
     expect(failed.result.error?.code).not.toBe('unsafe_outcome_unknown');
@@ -3821,7 +3821,7 @@ describe('AnthropicAgentRuntime', () => {
         code: 'api_error',
         retryable: true,
         message:
-          'Anthropic could not be reached from this browser. ZDR organizations require a server-side provider proxy.',
+          'Anthropic couldn’t be reached from this browser: ask a project admin to check the plugin settings.',
       },
     });
     expect(mcp.close).toHaveBeenCalledOnce();
@@ -3833,14 +3833,14 @@ describe('AnthropicAgentRuntime', () => {
       'Invalid API key.',
       'api_error',
       false,
-      'Anthropic rejected the configured API key. Update it in plugin settings.',
+      'Anthropic didn’t accept the API key: ask a project admin to update it in the plugin settings.',
     ],
     [
       403,
       'The key cannot access this model.',
       'api_error',
       false,
-      'Anthropic denied access. Check the API key and model access in plugin settings.',
+      'Anthropic refused access to this model: ask a project admin to check the plugin settings.',
     ],
     [
       400,
@@ -3861,28 +3861,28 @@ describe('AnthropicAgentRuntime', () => {
       'Request timed out.',
       'api_error',
       true,
-      'Anthropic timed out. Try again.',
+      'Anthropic didn’t answer in time.',
     ],
     [
       409,
       'Temporary conflict.',
       'api_error',
       true,
-      'Anthropic reported a temporary conflict. Try again.',
+      'Anthropic had a temporary problem.',
     ],
     [
       429,
       'Rate limit reached.',
       'api_error',
       true,
-      'Anthropic is temporarily rate limited. Try again shortly.',
+      'Anthropic is busy right now.',
     ],
     [
       529,
       'Overloaded.',
       'api_error',
       true,
-      'Anthropic is temporarily unavailable. Try again shortly.',
+      'Anthropic had a temporary problem.',
     ],
   ] satisfies Array<[number, string, string, boolean, string]>)(
     'classifies Anthropic HTTP %i failures before offering a retry',
@@ -3916,7 +3916,7 @@ describe('AnthropicAgentRuntime', () => {
         code: 'api_error',
         retryable: false,
         message:
-          'Anthropic rejected the configured API key. Update it in plugin settings.',
+          'Anthropic didn’t accept the API key: ask a project admin to update it in the plugin settings.',
       },
     ],
     [
@@ -3925,7 +3925,7 @@ describe('AnthropicAgentRuntime', () => {
         code: 'api_error',
         retryable: false,
         message:
-          'Anthropic denied access. Check the API key and model access in plugin settings.',
+          'Anthropic refused access to this model: ask a project admin to check the plugin settings.',
       },
     ],
     [
@@ -3941,7 +3941,7 @@ describe('AnthropicAgentRuntime', () => {
       {
         code: 'api_error',
         retryable: true,
-        message: 'Anthropic is temporarily unavailable. Try again shortly.',
+        message: 'Anthropic is busy right now.',
       },
     ],
   ])('classifies Anthropic provider codes', async (cause, expectedError) => {
@@ -3973,7 +3973,7 @@ describe('AnthropicAgentRuntime', () => {
       error: {
         code: 'incomplete',
         retryable: true,
-        message: 'Anthropic response was interrupted. Try again.',
+        message: 'Anthropic’s answer was interrupted.',
       },
     });
     expect(mcp.close).toHaveBeenCalledOnce();

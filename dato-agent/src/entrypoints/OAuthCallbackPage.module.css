@@ -1,13 +1,13 @@
 /* The sign-in popup is not a frame of the plugin: the host's color tokens
    never reach it. These local colors stand in for --color--surface,
-   --color--ink, --color--ink-subtle and --color--ink-danger, with a light
-   and a dark value each (light-dark() follows the color scheme of the
-   user). The sizes come from datocms-react-ui/styles.css. */
+   --color--ink and --color--ink-subtle, with a light and a dark value each
+   (light-dark() follows the color scheme of the user). The sizes come from
+   datocms-react-ui/styles.css. The title keeps the normal ink, also for an
+   error. */
 .page {
   --callback-surface: light-dark(#fff, #18181c);
   --callback-ink: light-dark(#34363a, #f5f5f7);
   --callback-ink-subtle: light-dark(#727378, #b6b6bf);
-  --callback-ink-danger: light-dark(#a21d32, #ff9aaa);
 
   box-sizing: border-box;
   display: flex;
@@ -40,8 +40,4 @@
   color: var(--callback-ink-subtle);
   font-size: var(--font-size-m);
   line-height: 1.5;
-}
-
-.error {
-  color: var(--callback-ink-danger);
 }

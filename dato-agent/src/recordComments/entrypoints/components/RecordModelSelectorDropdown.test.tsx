@@ -99,8 +99,8 @@ describe('RecordModelPanel', () => {
       within(screen.getByRole('menu', { name: 'Records' }))
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Articlearticle', 'Pagepage', 'Productproduct']);
-    expect(highlightedName()).toBe('Articlearticle');
+    ).toEqual(['Article', 'Page', 'Product']);
+    expect(highlightedName()).toBe('Article');
   });
 
   it('filters by name or API key', async () => {
@@ -122,7 +122,7 @@ describe('RecordModelPanel', () => {
       within(screen.getByRole('menu', { name: 'Records' }))
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Press releasenews_item']);
+    ).toEqual(['Press release']);
   });
 
   it('picks the first match with Enter after a search', async () => {
@@ -130,7 +130,7 @@ describe('RecordModelPanel', () => {
     const { onSelect } = renderPanel();
 
     await user.type(panelSearch(), 'PROD');
-    expect(highlightedName()).toBe('Productproduct');
+    expect(highlightedName()).toBe('Product');
     await user.keyboard('{Enter}');
 
     expect(onSelect).toHaveBeenCalledWith(models[2]);
@@ -141,11 +141,11 @@ describe('RecordModelPanel', () => {
     const { onSelect } = renderPanel();
 
     await user.keyboard('{ArrowDown}{ArrowDown}');
-    expect(highlightedName()).toBe('Productproduct');
+    expect(highlightedName()).toBe('Product');
 
     // "a" keeps Article and Page: the highlight goes back to the first one
     await user.type(panelSearch(), 'a');
-    expect(highlightedName()).toBe('Articlearticle');
+    expect(highlightedName()).toBe('Article');
     await user.keyboard('{Enter}');
 
     expect(onSelect).toHaveBeenCalledWith(models[0]);
@@ -156,10 +156,10 @@ describe('RecordModelPanel', () => {
     const { onSelect } = renderPanel();
 
     await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowUp}');
-    expect(highlightedName()).toBe('Pagepage');
+    expect(highlightedName()).toBe('Page');
 
     fireEvent.mouseEnter(screen.getByRole('menuitem', { name: /^Product/ }));
-    expect(highlightedName()).toBe('Productproduct');
+    expect(highlightedName()).toBe('Product');
 
     await user.keyboard('{Tab}');
     expect(onSelect).toHaveBeenCalledWith(models[2]);
@@ -284,7 +284,7 @@ describe('RecordMentionDropdown', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Articlearticle', 'Pagepage', 'Productproduct']);
+    ).toEqual(['Article', 'Page', 'Product']);
 
     await user.click(within(menu).getByRole('menuitem', { name: /^Page/ }));
 

@@ -17,6 +17,7 @@ type CapturedHooks = {
   mainNavigationTabs(ctx: TestContext): unknown[];
   itemFormSidebars(itemType: unknown, ctx: TestContext): unknown[];
   renderInspector(inspectorId: string, ctx: TestContext): void;
+  renderInspectorPanel(panelId: string, ctx: TestContext): void;
   renderItemFormSidebar(sidebarId: string, ctx: TestContext): void;
 };
 
@@ -102,5 +103,11 @@ describe('Dato Agent role-gated plugin surfaces', () => {
     hooks?.renderItemFormSidebar('dato-agent', denied);
     expect(mocks.render).toHaveBeenCalledOnce();
     expect(renderedComponentName()).toBe('AgentUnavailableFrame');
+
+    // The chat pane already says it: the record pane next to it stays empty
+    mocks.render.mockClear();
+    hooks?.renderInspectorPanel('dato-agent-empty', denied);
+    expect(mocks.render).toHaveBeenCalledOnce();
+    expect(renderedComponentName()).toBe('Canvas');
   });
 });

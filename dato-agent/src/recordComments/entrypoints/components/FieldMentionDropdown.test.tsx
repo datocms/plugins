@@ -42,12 +42,8 @@ describe('FieldMentionDropdown', () => {
 
     const menu = screen.getByRole('menu', { name: 'Fields' });
     const items = within(menu).getAllByRole('menuitem');
-    // The API key is the key alone, next to the name
-    expect(items.map((item) => item.textContent)).toEqual([
-      'Titletitle',
-      'Summarysummary',
-    ]);
-    expect(within(items[0]).getByText('title')).toBeVisible();
+    // The label alone names a field: no API key
+    expect(items.map((item) => item.textContent)).toEqual(['Title', 'Summary']);
     // Every option is a field: the glyph of the kind is on the group title
     const title = screen.getByText('Fields');
     expect(title).toBeVisible();
@@ -94,9 +90,12 @@ describe('FieldMentionDropdown', () => {
       />,
     );
 
-    const menu = screen.getByRole('menu', { name: 'Locale · Title' });
+    const menu = screen.getByRole('menu', { name: 'Language · Title' });
     const locales = within(menu).getAllByRole('menuitem');
-    expect(locales.map((item) => item.textContent)).toEqual(['en', 'it']);
+    expect(locales.map((item) => item.textContent)).toEqual([
+      'English (en)',
+      'Italian (it)',
+    ]);
 
     await user.click(locales[1]);
     expect(onSelect).toHaveBeenCalledWith(titleField, 'it');

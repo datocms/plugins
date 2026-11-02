@@ -256,10 +256,11 @@ describe('ConfigScreen', () => {
       'password',
     );
     expect(combobox('OpenAI model*')).toBeRequired();
-    expect(screen.getByText('1 compatible model')).toBeVisible();
+    // Loaded models need no word under the select
+    expect(combobox('OpenAI model*')).not.toHaveAccessibleDescription();
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
     expect(
-      screen.getByText(/premium processing.*increase API costs/i),
+      screen.getByText('Faster answers at a higher cost from the provider.'),
     ).toBeVisible();
     expect(saveButton('Model provider')).toHaveAttribute(
       'aria-disabled',
@@ -326,12 +327,12 @@ describe('ConfigScreen', () => {
     await finishModelDiscovery();
 
     expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
-    // Three levels: radios, each with what it does under its name
+    // Three levels: radios, each with what it trades under its name
     expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
     expect(effortRadios()).toEqual([
-      'LowFaster responses',
-      'High (Recommended)Deeper reasoning',
-      'MaxMaximum reasoning',
+      'LowFaster answers',
+      'High (Recommended)More careful, slower',
+      'MaxSlowest, highest cost',
     ]);
   });
 
@@ -347,7 +348,7 @@ describe('ConfigScreen', () => {
 
     const effort = screen.getByLabelText('Reasoning effort');
     expect(effort.tagName).toBe('OUTPUT');
-    expect(effort).toHaveTextContent('High — deeper reasoning');
+    expect(effort).toHaveTextContent('High — more careful, slower');
     expect(effort).toHaveAccessibleDescription(
       'The selected model supports only this level.',
     );
@@ -461,7 +462,9 @@ describe('ConfigScreen', () => {
     await finishModelDiscovery();
 
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeDisabled();
-    expect(screen.getByText(/requires a supported Opus model/i)).toBeVisible();
+    expect(
+      screen.getByText('Not available for the selected Claude model.'),
+    ).toBeVisible();
 
     await pickOption(combobox('Claude model*'), CLAUDE_OPUS.label);
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
@@ -516,11 +519,11 @@ describe('ConfigScreen', () => {
       screen.queryByRole('combobox', { name: 'Reasoning effort' }),
     ).toBeNull();
     expect(effortRadios()).toEqual([
-      'LowFaster responses',
+      'LowFaster answers',
       'Medium (Recommended)Balanced',
-      'HighDeeper reasoning',
-      'X-highIntensive reasoning',
-      'MaxMaximum reasoning',
+      'HighMore careful, slower',
+      'X-highSlower, higher cost',
+      'MaxSlowest, highest cost',
     ]);
     expect(checkedEffort()).toHaveAccessibleName(/^High/);
 
@@ -560,7 +563,6 @@ describe('ConfigScreen', () => {
     const model = combobox('OpenAI model*');
     expect(shownValue(model)).toBe(OPENAI_MODEL.label);
     expect(await menuOptions(model)).toContain('gpt-6.1-sol');
-    expect(screen.getByText('2 compatible models')).toBeVisible();
     expect(saveButton('Model provider')).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -581,7 +583,9 @@ describe('ConfigScreen', () => {
     await refreshModels(combobox('OpenAI model*'));
     await finishModelDiscovery();
     expect(shownValue(combobox('OpenAI model*'))).toBe(OPENAI_MODEL.label);
-    expect(screen.getByText('1 compatible model')).toBeVisible();
+    expect(
+      screen.queryByText('No compatible models for this API key.'),
+    ).not.toBeInTheDocument();
   });
 
   it('saves the active Anthropic model selected from discovery', async () => {
@@ -650,6 +654,26 @@ describe('ConfigScreen', () => {
     );
   });
 
+  it('does not count the output limit filled in on load as a change', async () => {
+    modelMocks.listProviderModels.mockResolvedValue([CLAUDE_SONNET]);
+    const { ctx } = createCtx({
+      parameters: {
+        ...PARAMETERS,
+        provider: 'anthropic',
+        anthropicApiKey: 'sk-ant-project',
+        anthropicModel: CLAUDE_SONNET.id,
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    expect(saveButton('Model provider')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
   it('offers a retry against the same active provider', async () => {
     modelMocks.listProviderModels
       .mockRejectedValueOnce(new Error('Temporary OpenAI error'))
@@ -658,10 +682,20 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
 
     await finishModelDiscovery();
+    // The error is on the key, which must change, not on the model
     expect(
-      screen.getByText('Couldn’t load models: Temporary OpenAI error'),
+      screen.getByText(
+        'Couldn’t load models with this API key: Temporary OpenAI error',
+      ),
     ).toBeVisible();
-    expect(combobox('OpenAI model*')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('OpenAI API key*')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(combobox('OpenAI model*')).not.toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
     // Retry is an action in the footer of the menu, not a button under the
     // field: the select still opens
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
@@ -678,7 +712,7 @@ describe('ConfigScreen', () => {
       'sk-project',
       expect.any(AbortSignal),
     );
-    expect(screen.getByText('1 compatible model')).toBeVisible();
+    expect(screen.queryByText(/Couldn’t load models/)).not.toBeInTheDocument();
     await openMenu(combobox('OpenAI model*'));
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(
@@ -781,7 +815,12 @@ describe('ConfigScreen', () => {
       'aria-invalid',
       'true',
     );
-    expect(screen.getByText('Claude model is required.')).toBeVisible();
+    // Without a key no model can be picked: only the key has an error, and
+    // the hint of the model says why it is empty
+    expect(screen.queryByText('Claude model is required.')).toBeNull();
+    expect(
+      screen.getByText('Enter an API key to load compatible models.'),
+    ).toBeVisible();
     expect(screen.queryByText('OpenAI API key is required.')).toBeNull();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();
@@ -822,7 +861,7 @@ describe('ConfigScreen', () => {
     expect(settingsForm('Access')).toContainElement(group as HTMLElement);
     expect(
       screen.getByText(
-        'Project owners always have access. New roles must be added here.',
+        'Project owners always have access. Roles you create later must be added here.',
       ),
     ).toBeVisible();
     expect(
@@ -843,6 +882,12 @@ describe('ConfigScreen', () => {
     await finishRoleDiscovery();
 
     expect(chosenRoles()).toEqual(['Editor', 'Reviewer']);
+    // Save is on before any edit: the hint says why
+    expect(
+      screen.getByText(
+        'Project owners always have access. These roles aren’t saved yet: save to confirm them.',
+      ),
+    ).toBeVisible();
     expect(saveButton('Access')).toBeEnabled();
     expect(saveButton('Access')).not.toHaveAttribute('aria-disabled');
     expect(cmaMocks.buildClient).toHaveBeenCalledWith({
@@ -914,7 +959,7 @@ describe('ConfigScreen', () => {
     expect(screen.getByText('Pick roles')).toBeVisible();
     expect(
       screen.getByText(
-        'Project owners always have access. New roles must be added here.',
+        'Project owners always have access. Roles you create later must be added here.',
       ),
     ).toBeVisible();
     await clickSave('Access');
@@ -964,11 +1009,14 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    expect(
-      screen.getByText('Couldn’t load project roles: Temporary CMA error'),
-    ).toBeVisible();
+    // A plain sentence: the response of the API stays out of the page, and
+    // a saved role is no "unavailable" role while the list is unknown
+    expect(screen.getByText('Couldn’t load the project roles.')).toBeVisible();
+    expect(screen.queryByText(/Temporary CMA error/)).not.toBeInTheDocument();
     expect(combobox(ROLES_LABEL)).toHaveAttribute('aria-invalid', 'true');
     expect(combobox(ROLES_LABEL)).toBeDisabled();
+    expect(screen.getByText('editor-role')).toBeVisible();
+    expect(screen.queryByText(/Unavailable role/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
     await clickSave('Access');
@@ -998,10 +1046,10 @@ describe('ConfigScreen', () => {
 
     expect(cmaMocks.buildClient).not.toHaveBeenCalled();
     expect(cmaMocks.listRoles).not.toHaveBeenCalled();
-    expect(combobox(ROLES_LABEL)).toBeDisabled();
-    expect(
-      screen.getByText(/Only users who can manage collaborators/i),
-    ).toBeVisible();
+    // The role names can't load: the list would show bare IDs, so it stays
+    // out, and the saved roles stay as they are
+    expect(screen.queryByText(ROLES_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText('editor-role')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Read-only mode' }));
     await clickSave('Access');
@@ -1020,7 +1068,7 @@ describe('ConfigScreen', () => {
     const notice = screen.getByText('You can only view these settings');
     expect(notice).toBeVisible();
     expect(notice.closest('.Callout')).toHaveTextContent(
-      'Only roles that can edit the schema can change them.',
+      'Ask a project admin if something needs to change.',
     );
     expect(
       screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }),
@@ -1046,7 +1094,7 @@ describe('ConfigScreen', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Show in record sidebars' }),
     ).toBeDisabled();
-    expect(combobox(ROLES_LABEL)).toBeDisabled();
+    expect(screen.queryByText(ROLES_LABEL)).not.toBeInTheDocument();
     expect(screen.queryAllByRole('button', { name: 'Save' })).toHaveLength(0);
   });
 

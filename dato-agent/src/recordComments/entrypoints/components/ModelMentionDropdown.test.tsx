@@ -15,7 +15,7 @@ const hero = {
 afterEach(cleanup);
 
 describe('ModelMentionDropdown', () => {
-  it('lists models and blocks with their API keys and picks the clicked one', async () => {
+  it('lists models and blocks by name and picks the clicked one', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     renderInCanvas(
@@ -30,19 +30,37 @@ describe('ModelMentionDropdown', () => {
 
     const menu = screen.getByRole('menu', { name: 'Models' });
     const items = within(menu).getAllByRole('menuitem');
-    // The API key is the key alone, next to the name
+    // The name alone names a model: no API key, and the pill of a block
     expect(items.map((item) => item.textContent)).toEqual([
-      'Pagepage',
-      'Herohero_blockBlock',
+      'Page',
+      'HeroBlock',
     ]);
-    expect(within(items[0]).getByText('page')).toBeVisible();
-    expect(within(items[1]).getByText('hero_block')).toBeVisible();
     // Every option is a model: the glyph of the kind is on the group title
     expect(screen.getByText('Models').querySelector('svg')).toBeInTheDocument();
     expect(items.some((item) => item.querySelector('svg'))).toBe(false);
 
     await user.click(items[1]);
     expect(onSelect).toHaveBeenCalledWith(hero);
+  });
+
+  it('tells two models with the same name apart by their API keys', () => {
+    const landingPage = { ...page, id: 'landing', apiKey: 'landing_page' };
+    renderInCanvas(
+      <ModelMentionDropdown
+        models={[page, landingPage, hero]}
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        query=""
+        selectedIndex={0}
+      />,
+    );
+
+    const menu = screen.getByRole('menu', { name: 'Models' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Pagepage', 'Pagelanding_page', 'HeroBlock']);
   });
 
   it('says when no model matches', () => {

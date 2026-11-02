@@ -19,7 +19,10 @@ import {
   MentionDropdownBase,
   mentionOptionId,
 } from './shared/MentionDropdownBase';
-import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
+import {
+  MentionDropdownOptionContent,
+  repeatedTitles,
+} from './shared/MentionDropdownOptionContent';
 
 /** The example of the search fields: the name of a model */
 const SEARCH_PLACEHOLDER = 'Blog post';
@@ -83,6 +86,7 @@ export function RecordModelPanel({
     () => readable.filter((model) => matchesQuery(model, query.toLowerCase())),
     [query, readable],
   );
+  const sharedNames = repeatedTitles(readable.map((model) => model.name));
   // The highlight stays on a match while the list narrows or grows
   const highlighted = Math.max(
     0,
@@ -165,7 +169,9 @@ export function RecordModelPanel({
         position={position}
         renderOption={(model) => ({
           title: model.name,
-          afterTitle: <ApiKey>{model.apiKey}</ApiKey>,
+          afterTitle: sharedNames.has(model.name) ? (
+            <ApiKey>{model.apiKey}</ApiKey>
+          ) : undefined,
         })}
         search={
           // Content of the panel that is not an option. The search has a
@@ -220,6 +226,7 @@ function RecordModelOptions({ models, onSelect }: RecordModelOptionsProps) {
   const matchingModels = readable.filter((model) =>
     matchesQuery(model, searchTerm.toLowerCase()),
   );
+  const sharedNames = repeatedTitles(readable.map((model) => model.name));
   // The search term re-renders this list with each render of the menu, and
   // an option registers its handler in the menu again whenever it changes:
   // the handlers stay the same between renders
@@ -254,7 +261,11 @@ function RecordModelOptions({ models, onSelect }: RecordModelOptionsProps) {
           onPick={pickHandlers.get(model.id)}
         >
           <MentionDropdownOptionContent
-            afterTitle={<ApiKey>{model.apiKey}</ApiKey>}
+            afterTitle={
+              sharedNames.has(model.name) ? (
+                <ApiKey>{model.apiKey}</ApiKey>
+              ) : undefined
+            }
             title={model.name}
           />
         </Dropdown.Option>

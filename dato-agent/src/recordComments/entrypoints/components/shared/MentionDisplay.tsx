@@ -4,6 +4,7 @@ import { areMentionsEqual } from '@utils/comparisonHelpers';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
 import {
   formatFieldType,
+  formatLocale,
   getTruncatedFilename,
 } from '@utils/mentionFormatters';
 import Avatar from 'datocms-react-ui/Avatar';
@@ -146,11 +147,11 @@ function PreviewCard({
   return (
     <div className={styles.preview}>
       {canOpen ? (
-        <MediaCard caption={filename} isCompact onClick={onClick}>
+        <MediaCard caption={{ text: filename }} compact onClick={onClick}>
           {image}
         </MediaCard>
       ) : (
-        <MediaCard caption={filename} isCompact>
+        <MediaCard caption={{ text: filename }} compact>
           {image}
         </MediaCard>
       )}
@@ -291,14 +292,17 @@ function userView(
   };
 }
 
-// The '#' of the text is the glyph of a field: the pill has no icon.
+// The '#' of the text is the glyph of a field: the pill has no icon. The
+// field shows by its label and the locale by its language, as the editor
+// knows them.
 function fieldView(
   mention: Extract<Mention, { type: 'field' }>,
 ): ReferenceView {
+  const name = mention.label.trim() || mention.apiKey;
   const locale = mention.localized && mention.locale ? mention.locale : null;
 
   return {
-    text: locale ? `#${mention.apiKey} · ${locale}` : `#${mention.apiKey}`,
+    text: locale ? `#${name} · ${formatLocale(locale)}` : `#${name}`,
     hint: formatFieldType(mention.fieldType) ?? undefined,
   };
 }

@@ -1,4 +1,5 @@
 import { connect } from 'datocms-plugin-sdk';
+import Canvas from 'datocms-react-ui/Canvas';
 import 'datocms-react-ui/styles.css';
 import { lazy, Suspense } from 'react';
 import AgentUnavailableFrame from './entrypoints/AgentUnavailableFrame';
@@ -15,6 +16,7 @@ import { inspectorRecordPaneWidth } from './lib/inspectorLayout';
 import { handleOAuthCallbackIfPresent } from './lib/oauth';
 import { canRoleUseDatoAgent } from './lib/permissions';
 import { DEFAULT_SIDEBAR_WIDTH, readSidebarWidth } from './lib/persistedWidth';
+import { TEXTS } from './texts';
 import { render } from './utils/render';
 
 const AgentInspector = lazy(() => import('./entrypoints/AgentInspector'));
@@ -30,15 +32,13 @@ try {
   handledOAuthCallback = handleOAuthCallbackIfPresent();
   if (handledOAuthCallback) {
     renderOAuthCallbackPage(
-      'Completing sign-in. This window will close when your connection is ready.',
+      'This window closes by itself when your connection is ready.',
     );
   }
-} catch (error) {
+} catch {
   handledOAuthCallback = true;
-  renderOAuthCallbackPage(
-    error instanceof Error ? error.message : 'The OAuth callback was invalid.',
-    true,
-  );
+  // The title says that it failed. The error is written for developers.
+  renderOAuthCallbackPage('Close this window and connect again.', true);
 }
 
 if (!handledOAuthCallback) {
@@ -130,11 +130,15 @@ if (!handledOAuthCallback) {
     renderInspectorPanel(panelId, ctx) {
       if (panelId === 'dato-agent-empty') {
         const config = normalizeConfig(ctx.plugin.attributes.parameters);
+        // For a role that may not use the agent, the chat pane next to it
+        // already says so: this pane stays empty
         render(
           canRoleUseDatoAgent(config, ctx.currentRole?.id) ? (
             <InspectorEmptyPanel ctx={ctx} />
           ) : (
-            <AgentUnavailableFrame ctx={ctx} />
+            <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
+              {null}
+            </Canvas>
           ),
         );
       }

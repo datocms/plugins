@@ -122,34 +122,16 @@ export function createAutoApprovalStore(
 }
 
 /**
- * Uses two CMS-owned confirms so activation looks native and cannot complete
- * through a single accidental click.
+ * Uses one CMS-owned confirm, after the click on the switch, so activation
+ * looks native and cannot complete through a single accidental click.
  */
 export async function confirmEnableAutoApproval(
   host: AutoApprovalConfirmHost,
   context: AutoApprovalConfirmationContext,
 ): Promise<boolean> {
-  const first = await host.openConfirm({
-    title: 'Auto-approve is dangerous',
-    content:
-      'The Remote MCP can access the whole DatoCMS project through your account. It is not confined to the record or environment currently open in the CMS, and can perform destructive operations anywhere your permissions allow. Auto-approve runs those operations without review.',
-    choices: [
-      {
-        label: 'Continue',
-        value: 'continue',
-        intent: 'negative',
-      },
-    ],
-    cancel: { label: 'Cancel', value: 'cancel' },
-  });
-
-  if (first !== 'continue') {
-    return false;
-  }
-
-  const second = await host.openConfirm({
-    title: 'Accept the risk?',
-    content: `This is dangerous: Dato Agent may create, update, publish, unpublish, delete, or otherwise modify data anywhere in the ${context.siteName} project, including other environments, without asking. Changes may be difficult or impossible to undo, and the result may differ from what you intended.`,
+  const choice = await host.openConfirm({
+    title: 'Turn on auto-approve?',
+    content: `The agent will change, publish or delete anything your role allows in ${context.siteName}, in every environment, without asking you. Some changes can’t be undone.`,
     choices: [
       {
         label: 'Turn on auto-approve',
@@ -160,5 +142,5 @@ export async function confirmEnableAutoApproval(
     cancel: { label: 'Cancel', value: 'cancel' },
   });
 
-  return second === 'enable';
+  return choice === 'enable';
 }

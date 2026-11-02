@@ -16,10 +16,10 @@ function fullScriptArguments(
 describe('mcpActivityLabel', () => {
   it('uses concise labels for discovery operations', () => {
     expect(mcpActivityLabel('get_api_methods', {}, 'in_progress')).toBe(
-      'Looking up relevant API methods',
+      'Planning the steps',
     );
     expect(mcpActivityLabel('get_schema', {}, 'in_progress')).toBe(
-      'Reading the content model',
+      'Checking the models',
     );
     expect(mcpActivityLabel('whoami', {}, 'completed')).toBe(
       'Checking the DatoCMS connection',
@@ -100,7 +100,7 @@ describe('mcpActivityLabel', () => {
         ]),
         'completed',
       ),
-    ).toBe('Reading the content model');
+    ).toBe('Checking the models');
   });
 
   it('requires coordinates in both source and method tokens', () => {
@@ -112,14 +112,14 @@ describe('mcpActivityLabel', () => {
         fullScriptArguments(source, []),
         'in_progress',
       ),
-    ).toBe('Reading CMS content');
+    ).toBe('Reading content');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_safe_script',
         fullScriptArguments(source, ['m.uploads.rawList.signature']),
         'in_progress',
       ),
-    ).toBe('Reading CMS content');
+    ).toBe('Reading content');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_safe_script',
@@ -128,7 +128,7 @@ describe('mcpActivityLabel', () => {
         ]),
         'in_progress',
       ),
-    ).toBe('Reading CMS content');
+    ).toBe('Reading content');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_safe_script',
@@ -137,7 +137,7 @@ describe('mcpActivityLabel', () => {
         ]),
         'in_progress',
       ),
-    ).toBe('Reading CMS content');
+    ).toBe('Reading content');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_unsafe_script',
@@ -146,7 +146,7 @@ describe('mcpActivityLabel', () => {
         ]),
         'waiting',
       ),
-    ).toBe('Preparing a CMS change');
+    ).toBe('Preparing changes');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_unsafe_script',
@@ -156,7 +156,7 @@ describe('mcpActivityLabel', () => {
         ),
         'waiting',
       ),
-    ).toBe('Preparing a CMS change');
+    ).toBe('Preparing changes');
   });
 
   it('falls back for mixed, unknown, patched, oversized, and malformed scripts', () => {
@@ -185,7 +185,7 @@ describe('mcpActivityLabel', () => {
           parsedArguments,
           'in_progress',
         ),
-      ).toBe('Reading CMS content');
+      ).toBe('Reading content');
     }
   });
 
@@ -201,7 +201,7 @@ describe('mcpActivityLabel', () => {
         fullScriptArguments(repeatedCalls, ['m.items.rawList.signature']),
         'in_progress',
       ),
-    ).toBe('Reading CMS content');
+    ).toBe('Reading content');
   });
 
   it('does not expose unknown tool names or arbitrary arguments', () => {
@@ -211,7 +211,7 @@ describe('mcpActivityLabel', () => {
       'in_progress',
     );
 
-    expect(label).toBe('Running a DatoCMS operation');
+    expect(label).toBe('Working in DatoCMS');
     expect(label).not.toMatch(/secret|private|prose/i);
   });
 
@@ -251,21 +251,21 @@ describe('mcpActivityLabel', () => {
         bulkUpdate,
         'waiting',
       ),
-    ).toBe('Preparing bulk record processing');
+    ).toBe('Preparing to update many records');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_unsafe_script',
         bulkUpdate,
         'in_progress',
       ),
-    ).toBe('Bulk processing records');
+    ).toBe('Updating many records');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_unsafe_script',
         bulkUpdate,
         'completed',
       ),
-    ).toBe('Bulk processing records');
+    ).toBe('Updating many records');
   });
 
   it('ignores known reads while classifying the literal write operation', () => {
@@ -337,7 +337,7 @@ describe('mcpActivityLabel', () => {
         ),
         'waiting',
       ),
-    ).toBe('Preparing a CMS change');
+    ).toBe('Preparing changes');
   });
 
   it('never implies execution when no_execute is literal true', () => {
@@ -349,17 +349,17 @@ describe('mcpActivityLabel', () => {
 
     expect(
       mcpActivityLabel('upsert_and_execute_unsafe_script', stored, 'waiting'),
-    ).toBe('Saving a CMS operation');
+    ).toBe('Preparing the change');
     expect(
       mcpActivityLabel(
         'upsert_and_execute_unsafe_script',
         stored,
         'in_progress',
       ),
-    ).toBe('Saving a CMS operation');
+    ).toBe('Preparing the change');
     expect(
       mcpActivityLabel('upsert_and_execute_unsafe_script', stored, 'completed'),
-    ).toBe('CMS operation saved');
+    ).toBe('Change prepared');
   });
 });
 

@@ -34,6 +34,12 @@
   gap: var(--spacing-m);
 }
 
+/* The connection as the whole view, before the agent is ready: the inset
+   of a form in a pane */
+.setup {
+  padding: var(--spacing-l);
+}
+
 /* A state word after its dot or its spinner */
 .status {
   display: inline-flex;
@@ -67,4 +73,10 @@
   align-items: center;
   justify-content: flex-end;
   margin-top: var(--spacing-s);
+}
+
+/* No chats yet: the blank slate in its own box, at the inset of the panel
+   under it */
+.noChats {
+  padding: var(--spacing-l);
 }

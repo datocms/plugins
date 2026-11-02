@@ -8,9 +8,9 @@ import styles from './Transcript.module.css';
 const COPY_FEEDBACK_MS = 2_000;
 
 const COPY_LABELS = {
-  idle: 'Copy diagnostics',
+  idle: 'Copy error details',
   copied: 'Copied',
-  error: 'Couldn’t copy diagnostics',
+  error: 'Couldn’t copy error details',
 } as const;
 
 type CopyState = 'idle' | 'copied' | 'error';
@@ -23,7 +23,7 @@ type Props = {
 
 /**
  * The actions under a failed response: try the turn again (only when the
- * failure allows it) and copy the diagnostics. Both buttons are busy while
+ * failure allows it) and copy the error details. Both buttons are busy while
  * their promise runs, and nothing else starts while a retry starts. The copy
  * feedback stays in the button: "Copied" for a moment (announced), and a
  * failure until the next attempt (announced as an alert).
@@ -117,7 +117,7 @@ export function FailureActions({ failure, onRetry, onCopyDiagnostics }: Props) {
         )}
       </div>
       <span aria-live="polite" className="visually-hidden" role="status">
-        {copyState === 'copied' ? 'Diagnostics copied' : ''}
+        {copyState === 'copied' ? 'Error details copied' : ''}
       </span>
       <span className="visually-hidden" role="alert">
         {copyState === 'error' ? COPY_LABELS.error : ''}

@@ -13,7 +13,7 @@
   min-width: 0;
 }
 
-/* The look of the "Summary" and "TypeScript" headings */
+/* The look of the "Summary" heading */
 .title {
   font-size: var(--font-size-m);
   font-weight: var(--font-weight-strong);
@@ -44,8 +44,8 @@
   justify-content: flex-end;
 }
 
-/* The toggle of the technical error: a line of quiet text with its chevron
-   (RawButton, on the kit's button reset) */
+/* The toggles of the technical error and of the code: a line of quiet text
+   with its chevron (RawButton, on the kit's button reset) */
 .disclosure {
   display: inline-flex;
   align-items: center;

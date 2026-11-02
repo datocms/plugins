@@ -184,7 +184,7 @@ describe('Transcript', () => {
       },
     ]);
 
-    const toggle = screen.getByRole('button', { name: 'DatoCMS activity' });
+    const toggle = screen.getByRole('button', { name: '2 steps' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText('Not completed')).not.toBeVisible();
 
@@ -193,6 +193,17 @@ describe('Transcript', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Reading the content model')).toBeVisible();
     expect(screen.getByText('Not completed')).toBeVisible();
+    // The detail of a step waits behind its own disclosure, named by its
+    // step
+    const detailToggle = screen.getByRole('button', {
+      name: 'Show the details of Reading CMS content',
+    });
+    expect(detailToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByRole('region', { name: 'Reading CMS content details' }),
+    ).not.toBeInTheDocument();
+    await user.click(detailToggle);
+    expect(detailToggle).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByRole('region', { name: 'Reading CMS content details' }),
     ).toHaveTextContent('Replacement 1: String not found');
@@ -331,7 +342,7 @@ describe('Transcript', () => {
     );
 
     const fields = screen.getByRole('group', { name: 'Relevant fields' });
-    expect(within(fields).getByText('en')).toBeVisible();
+    expect(within(fields).getByText('English')).toBeVisible();
     await user.click(within(fields).getByRole('button', { name: /Title/ }));
     expect(onOpenField).toHaveBeenCalledWith(
       { fieldPath: 'title', title: 'Title', locale: 'en' },
@@ -512,9 +523,12 @@ describe('Transcript', () => {
     );
 
     const outcome = screen.getByRole('group', { name: 'Change didn’t run' });
-    expect(outcome).toHaveTextContent('No project content was changed.');
+    expect(outcome).toHaveTextContent('Nothing was changed.');
     expect(outcome).not.toHaveTextContent('Approved.');
-    await user.click(screen.getByRole('button', { name: 'Fix and review' }));
+    expect(outcome).not.toHaveTextContent('Auto-approve is on');
+    await user.click(
+      screen.getByRole('button', { name: 'Ask the agent to fix it' }),
+    );
     expect(onRepair).toHaveBeenCalledWith(approval);
     expect(
       screen.getByRole('button', { name: 'Review details' }),
@@ -523,10 +537,14 @@ describe('Transcript', () => {
     rerenderTranscript([{ id: 'outcome', kind: 'approval', approval }], {
       autoApproveEnabled: true,
     });
+    // The label stays; what auto-approve does to the fix is said in view
     expect(
-      screen.getByRole('button', {
-        name: /Fix with Auto.*Auto is on.*may run automatically/,
-      }),
+      screen.getByRole('button', { name: 'Ask the agent to fix it' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Auto-approve is on, so the fix can run without asking you.',
+      ),
     ).toBeVisible();
 
     rerenderTranscript([
@@ -558,17 +576,12 @@ describe('Transcript', () => {
     const outcome = screen.getByRole('group', {
       name: 'Change may be incomplete',
     });
-    // Two callouts: the outcome with its title and description, then the
-    // error alone
-    const [outcomeCallout, errorCallout] =
-      within(outcome).getAllByRole('alert');
-    expect(outcomeCallout).toHaveTextContent(
+    // One callout: the outcome with its title, what happened and why
+    const callouts = within(outcome).getAllByRole('alert');
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0]).toHaveTextContent(
       'Change may be incomplete' +
-        'Some project content may have changed. Check DatoCMS before trying again.',
-    );
-    expect(outcomeCallout).not.toHaveTextContent('The connection dropped');
-    expect(errorCallout).toHaveTextContent(
-      'The connection dropped while the change ran.',
+        'Some content may have changed. Ask the agent to check, or look at the content yourself. The connection dropped while the change ran.',
     );
   });
 
@@ -586,11 +599,11 @@ describe('Transcript', () => {
     ]);
 
     const outcome = screen.getByRole('group', {
-      name: 'Outcome needs checking',
+      name: 'Not sure the change ran',
     });
     expect(within(outcome).getByRole('alert')).toHaveTextContent(
-      'Outcome needs checking' +
-        'The change may have run. Check DatoCMS before trying again.',
+      'Not sure the change ran' +
+        'Ask the agent to check, or look at the content yourself.',
     );
   });
 
@@ -629,7 +642,7 @@ describe('Transcript', () => {
     expect(onRetry).toHaveBeenCalledWith('failure');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeDisabled();
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
@@ -638,7 +651,7 @@ describe('Transcript', () => {
 
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
     expect(
-      screen.getByRole('button', { name: 'Copy diagnostics' }),
+      screen.getByRole('button', { name: 'Copy error details' }),
     ).not.toHaveAttribute('aria-disabled');
   });
 
@@ -667,11 +680,13 @@ describe('Transcript', () => {
     ).not.toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Copy error details' }),
+      );
     });
 
     expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
-    expect(screen.getByText('Diagnostics copied')).toHaveRole('status');
+    expect(screen.getByText('Error details copied')).toHaveRole('status');
 
     act(() => {
       vi.advanceTimersByTime(1_999);
@@ -682,31 +697,33 @@ describe('Transcript', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Copy error details' }),
+      );
     });
 
     // The failure is the label of the button, and it is announced as an alert
     expect(
-      screen.getByRole('button', { name: 'Couldn’t copy diagnostics' }),
+      screen.getByRole('button', { name: 'Couldn’t copy error details' }),
     ).toBeVisible();
     expect(
-      screen.getByText('Couldn’t copy diagnostics', {
+      screen.getByText('Couldn’t copy error details', {
         selector: '[role="alert"]',
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('');
     // Only the button and its announcement say it, no message under them
-    expect(screen.getAllByText('Couldn’t copy diagnostics')).toHaveLength(2);
+    expect(screen.getAllByText('Couldn’t copy error details')).toHaveLength(2);
 
     // A failure stays until the next attempt
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
     expect(
-      screen.getByRole('button', { name: 'Couldn’t copy diagnostics' }),
+      screen.getByRole('button', { name: 'Couldn’t copy error details' }),
     ).toBeVisible();
     expect(
-      screen.getByText('Couldn’t copy diagnostics', {
+      screen.getByText('Couldn’t copy error details', {
         selector: '[role="alert"]',
       }),
     ).toBeInTheDocument();
@@ -728,7 +745,7 @@ describe('Transcript', () => {
     expect(screen.getByText('The request stopped.')).toBeVisible();
     for (const name of [
       'Try again',
-      'Copy diagnostics',
+      'Copy error details',
       'Deny',
       'Approve',
       'Review details',

@@ -92,7 +92,8 @@
    button reset): a quiet line of subtle text, with the surface of an inset
    row on hover and keyboard focus. The kit's focus ring shows on it. The
    negative margin keeps its text on the edge of the column. */
-.activityToggle {
+.activityToggle,
+.stepToggle {
   display: inline-flex;
   gap: var(--spacing-s);
   align-items: center;
@@ -111,13 +112,9 @@
   }
 }
 
-.activityFailed {
-  color: var(--color--ink-danger);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--color--ink-danger);
-  }
+/* The disclosure of the detail of a step, in the small text of the step */
+.stepToggle {
+  font-size: var(--font-size-xs);
 }
 
 .working {
@@ -229,24 +226,6 @@
   box-shadow: var(--shadow--resting);
 }
 
-.approvalHeader {
-  display: flex;
-  gap: var(--spacing-m);
-  align-items: flex-start;
-}
-
-.approvalIcon {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 1.5em;
-  color: var(--color--ink-subtle);
-
-  svg {
-    fill: currentColor;
-  }
-}
-
 .approvalText {
   display: flex;
   flex-direction: column;
@@ -299,4 +278,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-s);
+}
+
+.approvalNote {
+  margin: 0;
+  color: var(--color--ink-subtle);
 }

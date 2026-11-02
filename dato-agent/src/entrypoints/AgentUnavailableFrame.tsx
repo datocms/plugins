@@ -1,6 +1,5 @@
 import type {
   RenderInspectorCtx,
-  RenderInspectorPanelCtx,
   RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
@@ -10,14 +9,11 @@ import { ChatIcon } from '../icons';
 import { TEXTS } from '../texts';
 
 type Props = {
-  ctx: RenderInspectorCtx | RenderInspectorPanelCtx | RenderItemFormSidebarCtx;
+  ctx: RenderInspectorCtx | RenderItemFormSidebarCtx;
 };
 
+/** The chat column of the inspector or the record sidebar: both narrow */
 export default function AgentUnavailableFrame({ ctx }: Props) {
-  // The inspector and the record sidebar are narrow; the inspector panel is
-  // the wide record pane
-  const small = ctx.mode !== 'renderInspectorPanel';
-
   return (
     <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       <FullFrame>
@@ -26,7 +22,7 @@ export default function AgentUnavailableFrame({ ctx }: Props) {
         <div role="status">
           <BlankSlate
             placement="area"
-            small={small}
+            small
             icon={<ChatIcon />}
             title="Dato Agent isn’t available for your role"
             description="Ask a project admin to add your role in the plugin settings."

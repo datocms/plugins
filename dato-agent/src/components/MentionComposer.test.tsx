@@ -195,7 +195,7 @@ describe('MentionComposer', () => {
     // from the computer can still be attached
     expect(
       within(toolbar).getByRole('button', {
-        name: 'Mentioning assets needs the upload permission.',
+        name: 'Your role can’t mention assets.',
       }),
     ).toHaveAttribute('aria-disabled', 'true');
     const sendButton = screen.getByRole('button', { name: 'Send' });
@@ -538,7 +538,7 @@ describe('MentionComposer', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Pagepage', 'Press releasenews_item']);
+    ).toEqual(['Page', 'Press release']);
 
     // The search of the menu finds a model by its API key too
     await user.type(within(menu).getByPlaceholderText('Search...'), 'NEWS_');
@@ -546,7 +546,7 @@ describe('MentionComposer', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Press releasenews_item']);
+    ).toEqual(['Press release']);
     await user.type(within(menu).getByPlaceholderText('Search...'), 'x');
     expect(within(menu).getByRole('status')).toHaveTextContent(
       'No models match “NEWS_x”',
@@ -633,16 +633,16 @@ describe('MentionComposer', () => {
     ).toEqual([
       'Mention a user',
       'Record',
-      'Mentioning assets needs the upload permission.',
-      'Mentioning models needs schema access.',
+      'Your role can’t mention assets.',
+      'Your role can’t mention models.',
       'Attach files',
     ]);
 
     const asset = within(toolbar).getByRole('button', {
-      name: 'Mentioning assets needs the upload permission.',
+      name: 'Your role can’t mention assets.',
     });
     const model = within(toolbar).getByRole('button', {
-      name: 'Mentioning models needs schema access.',
+      name: 'Your role can’t mention models.',
     });
     expect(asset).toHaveAttribute('aria-disabled', 'true');
     expect(model).toHaveAttribute('aria-disabled', 'true');
@@ -773,10 +773,10 @@ describe('MentionComposer', () => {
     expect(screen.queryByText('Summary')).not.toBeInTheDocument();
     fireEvent.keyDown(editor, { key: 'Enter' });
 
-    expect(screen.getByText('Locale · Title')).toBeVisible();
+    expect(screen.getByText('Language · Title')).toBeVisible();
     fireEvent.keyDown(editor, { key: 'ArrowDown' });
     fireEvent.keyDown(editor, { key: 'Enter' });
-    expect(screen.queryByText('Locale · Title')).not.toBeInTheDocument();
+    expect(screen.queryByText('Language · Title')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Send' }));
     const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;

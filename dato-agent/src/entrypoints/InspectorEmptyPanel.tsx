@@ -14,6 +14,7 @@ export default function InspectorEmptyPanel({ ctx }: Props) {
     <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
       <FullFrame>
         <BlankSlate
+          description="Records you open from the chat show here."
           icon={<RecordIcon />}
           placement="area"
           title="No record open"

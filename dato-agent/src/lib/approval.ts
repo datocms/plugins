@@ -82,20 +82,30 @@ function invalid(
   };
 }
 
+/** Why an action for another project or environment is blocked */
+export const OTHER_SCOPE_REASONS = {
+  project:
+    'This action targets a different DatoCMS project and has been blocked.',
+  primaryEnvironment:
+    'This action specifies an environment while the primary environment is open.',
+  environment:
+    'This action targets a different environment and has been blocked.',
+} as const;
+
 function validateExactProjectScope(
   args: Record<string, unknown>,
   scope: ProjectScope,
 ): string | undefined {
   if (args.site_id !== scope.siteId) {
-    return 'This action targets a different DatoCMS project and has been blocked.';
+    return OTHER_SCOPE_REASONS.project;
   }
 
   if (scope.isEnvironmentPrimary) {
     if (Object.hasOwn(args, 'environment')) {
-      return 'This action specifies an environment while the primary environment is open.';
+      return OTHER_SCOPE_REASONS.primaryEnvironment;
     }
   } else if (args.environment !== scope.environment) {
-    return 'This action targets a different environment and has been blocked.';
+    return OTHER_SCOPE_REASONS.environment;
   }
 
   return undefined;

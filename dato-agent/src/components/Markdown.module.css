@@ -79,8 +79,11 @@
     border-collapse: collapse;
   }
 
+  /* A cell breaks only between words: a table that doesn't fit scrolls in
+     its box (.tableScroll) instead of splitting its words */
   :is(th, td) {
     padding: var(--spacing-s) var(--spacing-m);
+    overflow-wrap: normal;
     text-align: left;
     vertical-align: top;
     border: 1px solid var(--color--border);
@@ -116,14 +119,14 @@
   margin: 0 0 var(--spacing-m);
 }
 
-/* A wide table scrolls in its box, the text of its cells on one line. The
-   box scrolls, not the table: a table shown as a block loses its table
-   semantics in some screen readers. */
+/* The text of the cells wraps, thus a table of a few columns fits a
+   sidebar. A table still too wide scrolls in its box. The box scrolls, not
+   the table: a table shown as a block loses its table semantics in some
+   screen readers. */
 .tableScroll {
   max-width: 100%;
   margin: 0 0 var(--spacing-m);
   overflow-x: auto;
-  white-space: nowrap;
 }
 
 .imageLink {

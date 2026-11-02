@@ -994,7 +994,7 @@ describe('AgentFrame', () => {
 
     await waitFor(() => {
       expect(mocks.surfaceProps?.persistenceWarning).toBe(
-        'This chat could not be saved in this browser.',
+        'This chat can’t be saved in this browser, so it will be lost when you leave.',
       );
     });
   });
@@ -1007,7 +1007,7 @@ describe('AgentFrame', () => {
         scope: { type: 'custom' as const, id: 'new:article' },
       },
       expectedSurface: 'record',
-      expectedPlaceholder: 'Ask about this…',
+      expectedPlaceholder: 'Which fields are still empty?',
     },
     {
       name: 'project surface even when record metadata is present',
@@ -1017,7 +1017,7 @@ describe('AgentFrame', () => {
         scope: { type: 'project' as const },
       },
       expectedSurface: 'project',
-      expectedPlaceholder: 'Ask about this project…',
+      expectedPlaceholder: 'Which records were published this week?',
     },
   ])(
     'propagates the explicit $name',
@@ -2046,6 +2046,66 @@ describe('AgentFrame', () => {
     });
   });
 
+  it('says to check the content, not to try again, after a change started', async () => {
+    render(<AgentFrame {...props()} />);
+    await startApprovalTurn();
+    const failure = {
+      code: 'api_error' as const,
+      message: 'OpenAI timed out. Try again.',
+      retryable: true,
+    };
+    const failed = completedResult({
+      status: 'failed',
+      responseId: 'resp_failed',
+      error: failure,
+    });
+    if (!mocks.runtime) {
+      throw new Error('Expected a runtime.');
+    }
+    vi.mocked(mocks.runtime.submitApprovals).mockImplementation(
+      async (
+        args: ContinueApprovalsArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        // The change is sent, then the answer fails
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          unsafeApproval.approvalRequestId,
+        ]);
+        await onEvent?.({
+          type: 'error',
+          responseId: 'resp_failed',
+          error: failure,
+        });
+        await onEvent?.({ type: 'turn_completed', result: failed });
+        return failed;
+      },
+    );
+
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    act(() => {
+      if (approvalEntry?.kind === 'approval') {
+        mocks.surfaceProps?.onApproveUnsafeAction?.(approvalEntry.approval);
+      }
+    });
+
+    // Sending the request again could repeat the change: no Try again
+    await waitFor(() => {
+      const message = mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'message' &&
+          entry.role === 'assistant' &&
+          entry.failure,
+      );
+      expect(message).toMatchObject({
+        error:
+          'The agent stopped after a change started: check the content before you ask again.',
+        failure: { retryable: false },
+      });
+    });
+  });
+
   it('offers a repairable pre-execution failure and starts a fresh repair turn', async () => {
     const outcome = repairableApprovalOutcome();
     const { runTurn, submitApprovals } = configureApprovalOutcomeRuntime({
@@ -2097,7 +2157,7 @@ describe('AgentFrame', () => {
     await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
     expect(runTurn.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
-        message: 'Fix and review',
+        message: 'Please fix it.',
         previousResponseId: undefined,
         repairContext: {
           failureCode: 'script_validation',
@@ -2113,7 +2173,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.role === 'user' &&
-          entry.content === 'Fix and review',
+          entry.content === 'Please fix it.',
       ),
     ).toBe(true);
   });
@@ -2199,8 +2259,7 @@ describe('AgentFrame', () => {
         ),
       ).toBe(true),
     );
-    const durableNotice =
-      'This operation didn’t run. It made no project content changes.';
+    const durableNotice = 'The change didn’t run, so it changed nothing.';
     expect(
       mocks.surfaceProps?.entries.some(
         (entry) =>
@@ -2373,7 +2432,7 @@ describe('AgentFrame', () => {
         store
           .list()[0]
           ?.messages.some((message) =>
-            message.text.includes('Outcome needs checking.'),
+            message.text.includes('The change may have run'),
           ),
       ).toBe(true);
     },
@@ -2503,7 +2562,7 @@ describe('AgentFrame', () => {
       'error',
     );
     expect(blocked?.kind === 'approval' && blocked.approval.error).toContain(
-      'was not sent because an earlier change may be incomplete',
+      'wasn’t sent because an earlier change may be incomplete',
     );
     expect(
       blocked?.kind === 'approval' && blocked.approval.outcome,
@@ -2513,7 +2572,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.content.includes(
-            'A later approved operation was not sent because an earlier change may be incomplete.',
+            'A later change wasn’t sent because an earlier change may be incomplete.',
           ),
       ),
     ).toBe(true);
@@ -2560,11 +2619,10 @@ describe('AgentFrame', () => {
       .list()[0]
       ?.messages.find((message) => message.role === 'assistant')?.text;
     expect(assistantText).toContain(
-      'This operation didn’t run. It made no project content changes.',
+      'The change didn’t run, so it changed nothing.',
     );
-    expect(assistantText).not.toContain(
-      'The change didn’t run. No project content was changed.',
-    );
+    // Another change of the answer ran: the notice is about this one only
+    expect(assistantText).not.toContain('nothing was changed');
   });
 
   it('preserves repair context when a transient repair turn is retried', async () => {
@@ -2670,7 +2728,7 @@ describe('AgentFrame', () => {
     ).toBe(false);
   });
 
-  it('keeps session Auto enabled and starts the repair as Fix with Auto', async () => {
+  it('keeps session Auto enabled and starts the repair', async () => {
     const frameProps = props();
     seedDatoConnection(frameProps);
     enableAutoApproval(frameProps);
@@ -2706,7 +2764,7 @@ describe('AgentFrame', () => {
 
     await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
     expect(runTurn.mock.calls[1]?.[0]).toMatchObject({
-      message: 'Fix with Auto',
+      message: 'Please fix it.',
       repairContext: {
         failureCode: 'script_validation',
         scriptName: 'script://dato-agent/site/primary/update-title.ts',
@@ -2808,8 +2866,8 @@ describe('AgentFrame', () => {
           entry.kind === 'approval' &&
           entry.approval.id === failedApproval.approval.id,
       );
-      expect(current?.kind === 'approval' && current.approval.error).toContain(
-        'Save or discard',
+      expect(current?.kind === 'approval' && current.approval.error).toMatch(
+        /save or discard/i,
       );
       expect(
         current?.kind === 'approval' && current.approval.recovery?.status,
@@ -2869,7 +2927,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.role === 'assistant' &&
-          entry.content.includes('may already have run'),
+          entry.content.includes('while an approved change was running'),
       ),
     ).toBeTruthy();
     expect(replacementRuntime.runTurn).not.toHaveBeenCalled();
@@ -2886,7 +2944,7 @@ describe('AgentFrame', () => {
     expect(store.list()[0]?.previousResponseId).toBeUndefined();
     expect(store.list()[0]?.messages.map((message) => message.text)).toEqual([
       'Update the title',
-      expect.stringContaining('may already have run'),
+      expect.stringContaining('while an approved change was running'),
     ]);
 
     await act(async () => {
@@ -2919,9 +2977,9 @@ describe('AgentFrame', () => {
     const journalStore = createUnsafeDispatchJournalStore(storageContext);
     const createdAt = '2026-08-11T08:00:00.000Z';
     const persistedNotice =
-      'Outcome needs checking. The change may have run. Check DatoCMS before trying again.';
+      'The change may have run: check the content before you ask again.';
     const recoveryNotice =
-      'The approved DatoCMS operation returned a result, but the chat closed before that result could be safely restored. Check DatoCMS before trying it again.';
+      'The approved change ran, but the page closed before the answer: check the content before you ask again.';
     conversationStore.save({
       id: 'conversation-durable-outcome',
       title: 'Update the homepage',
@@ -3075,7 +3133,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.role === 'assistant' &&
-          entry.content.includes('may already have run'),
+          entry.content.includes('while an approved change was running'),
       ),
     ).toBeTruthy();
     expect(replacementRuntime.runTurn).not.toHaveBeenCalled();
@@ -3401,8 +3459,8 @@ describe('AgentFrame', () => {
       expect(entry?.kind === 'approval' && entry.approval.status).toBe(
         'pending',
       );
-      expect(entry?.kind === 'approval' && entry.approval.error).toContain(
-        'Save or discard',
+      expect(entry?.kind === 'approval' && entry.approval.error).toMatch(
+        /save or discard/i,
       );
     });
     expect(mocks.runtime?.submitApprovals).not.toHaveBeenCalled();
@@ -3576,16 +3634,73 @@ describe('AgentFrame', () => {
       language: 'typescript',
       source: 'await client.items.update("item", { title: "New" });',
     });
+    // The project by its name, and the change by the name of its script
+    // as an editor reads it, not by its path
     expect(approvalEntry.approval.details).toEqual([
-      { label: 'Project', value: 'site' },
+      { label: 'Project', value: 'Marketing site' },
       { label: 'Environment', value: 'Primary' },
-      { label: 'Operation', value: 'upsert_and_execute_unsafe_script' },
-      {
-        label: 'Saved script',
-        value: 'script://dato-agent/site/primary/update-title.ts',
-      },
+      { label: 'Change', value: 'Update title' },
     ]);
+    expect(approvalEntry.approval.description).toBe(
+      'Update title in Marketing site.',
+    );
   });
+
+  it.each([
+    [
+      'for another project',
+      { site_id: 'other-site' },
+      'This change is for another project, so nothing was changed: ask the agent to make it in this project.',
+    ],
+    [
+      'with a name out of its namespace',
+      { name: 'script://elsewhere/update-title.ts' },
+      'The agent asked for a change it can’t make here, so nothing was changed: ask it to try again.',
+    ],
+  ])(
+    'tells in plain words why a change %s can’t run',
+    async (_case, override, message) => {
+      const blockedApproval = {
+        ...unsafeApproval,
+        arguments: JSON.stringify({
+          ...JSON.parse(unsafeApproval.arguments),
+          ...override,
+        }),
+      };
+      const result = completedResult({
+        status: 'approval_required',
+        responseId: 'resp_blocked_approval',
+        approvals: [blockedApproval],
+      });
+      mocks.runtime = {
+        runTurn: vi.fn(async (_args, onEvent) => {
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_blocked_approval',
+            approval: blockedApproval,
+          });
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        }),
+        submitApprovals: vi.fn(),
+      } as unknown as AgentRuntime;
+
+      render(<AgentFrame {...props()} />);
+      await act(async () => {
+        mocks.surfaceProps?.onSubmit('Update the title.');
+      });
+
+      const approvalEntry = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'approval',
+      );
+      if (approvalEntry?.kind !== 'approval') {
+        throw new Error('Expected an approval entry.');
+      }
+      // The reason of the validation is for the agent, not the editor
+      expect(approvalEntry.approval.status).toBe('error');
+      expect(approvalEntry.approval.error).toBe(message);
+    },
+  );
 
   it('previews the exact raw approval arguments instead of a divergent parsed copy', async () => {
     const rawSource =
@@ -3640,11 +3755,11 @@ describe('AgentFrame', () => {
     expect(approvalEntry.approval.script?.source).toBe(rawSource);
     expect(approvalEntry.approval.details).toContainEqual({
       label: 'Project',
-      value: 'site',
+      value: 'Marketing site',
     });
     expect(approvalEntry.approval.details).toContainEqual({
-      label: 'Saved script',
-      value: 'script://dato-agent/site/primary/raw-request.ts',
+      label: 'Change',
+      value: 'Raw request',
     });
     expect(JSON.stringify(approvalEntry.approval)).not.toContain(
       'record-hidden-from-preview',
@@ -4244,8 +4359,8 @@ describe('AgentFrame', () => {
       expect(entry?.kind === 'approval' && entry.approval.automatic).toBe(
         false,
       );
-      expect(entry?.kind === 'approval' && entry.approval.error).toContain(
-        'Save or discard',
+      expect(entry?.kind === 'approval' && entry.approval.error).toMatch(
+        /save or discard/i,
       );
     });
     expect(submitApprovals).not.toHaveBeenCalled();
@@ -4477,9 +4592,7 @@ describe('AgentFrame', () => {
       store
         .list()[0]
         ?.messages.some((message) =>
-          message.text.includes(
-            'The approved DatoCMS operation completed, but the agent’s final reply was interrupted.',
-          ),
+          message.text.includes('The change ran, but the answer was cut off.'),
         ),
     ).toBe(true);
   });
@@ -4576,7 +4689,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.role === 'assistant' &&
-          entry.content.includes('returned a result'),
+          entry.content.includes('page closed before the answer'),
       ),
     ).toBeTruthy();
     expect(replacementRuntime.runTurn).not.toHaveBeenCalled();
@@ -7449,7 +7562,7 @@ describe('AgentFrame', () => {
       );
       expect(
         approvalEntry?.kind === 'approval' && approvalEntry.approval.error,
-      ).toContain('Close the open DatoCMS dialog');
+      ).toContain('close the open DatoCMS dialog');
     });
     expect(submitApprovals).not.toHaveBeenCalled();
 
@@ -7541,7 +7654,7 @@ describe('AgentFrame', () => {
       );
       expect(
         approvalEntry?.kind === 'approval' && approvalEntry.approval.error,
-      ).toContain('was not sent');
+      ).toContain('wasn’t sent');
     });
 
     closeRecord?.();
@@ -7790,7 +7903,7 @@ describe('AgentFrame', () => {
     expect(mocks.surfaceProps?.autoApproveEnabled).toBe(false);
     expect(mocks.surfaceProps?.onAutoApproveChange).toBeUndefined();
     expect(mocks.surfaceProps?.autoApproveDisabledReason).toBe(
-      'Auto-approve is unavailable in Read Only mode.',
+      'Auto-approve is off while read-only mode is on.',
     );
     expect(
       createAutoApprovalStore({
@@ -8264,9 +8377,58 @@ describe('AgentFrame', () => {
         currentUserId: frameProps.currentUserId,
       }).load(),
     ).toBeNull();
-    expect(mocks.surfaceProps?.connection.datoCmsError).toContain(
-      'Invalid client',
+    // The error of the sign-in is written for developers: the editor reads
+    // one plain sentence
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'Couldn’t connect to DatoCMS.',
     );
+  });
+
+  it.each([
+    [
+      'the browser blocks the sign-in window',
+      () => {
+        mocks.openPopup.mockImplementationOnce(() => {
+          throw new RemoteMcpOAuthError('The sign-in popup was blocked.');
+        });
+      },
+      'Your browser blocked the sign-in window: allow pop-ups, then connect again.',
+    ],
+    [
+      'the editor closes the sign-in window',
+      () => {
+        const popup = { closed: false, close: vi.fn() };
+        mocks.openPopup.mockImplementationOnce(() => popup);
+        mocks.callback.mockImplementationOnce(async () => {
+          popup.closed = true;
+          throw new RemoteMcpOAuthError(
+            'The sign-in popup was closed before authorization completed',
+          );
+        });
+      },
+      'The sign-in window was closed before DatoCMS finished connecting.',
+    ],
+    [
+      'the editor denies the access',
+      () => {
+        mocks.callback.mockRejectedValueOnce(
+          new RemoteMcpOAuthError(
+            'OAuth authorization failed (access_denied)',
+            {
+              code: 'access_denied',
+            },
+          ),
+        );
+      },
+      'Access wasn’t allowed in DatoCMS.',
+    ],
+  ])('says in one plain sentence when %s', async (_case, arrange, message) => {
+    arrange();
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(message);
   });
 
   it('requires a fresh authorization after invalid_grant without replaying the consumed code', async () => {
@@ -8279,8 +8441,8 @@ describe('AgentFrame', () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
     expect(mocks.exchange).toHaveBeenCalledOnce();
-    expect(mocks.surfaceProps?.connection.datoCmsError).toContain(
-      'Start sign-in again',
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'This sign-in expired.',
     );
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();

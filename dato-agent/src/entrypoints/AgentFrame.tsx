@@ -37,6 +37,7 @@ import {
   repairPolicyViolation,
 } from '../lib/agentRuntime';
 import {
+  OTHER_SCOPE_REASONS,
   READ_ONLY_REJECTION_MESSAGE,
   validateApprovalScope,
 } from '../lib/approval';
@@ -194,6 +195,8 @@ export type AgentFrameProps = {
     approval: UnsafeApprovalViewModel,
   ) => Promise<ApprovalDetailsDecision | null>;
   onConfirmEnableAutoApprove: () => Promise<boolean>;
+  /** Tells the user, in a toast, about an action that just failed */
+  onAlert?: (message: string) => void;
 };
 
 export type AgentHostContextSnapshot = {
@@ -553,14 +556,12 @@ function withoutApprovalRecovery(
 }
 
 const DURABLE_UNSAFE_OUTCOME_NOTICES = {
-  unknown:
-    'Outcome needs checking. The change may have run. Check DatoCMS before trying again.',
+  unknown: 'The change may have run: check the content before you ask again.',
   failedAfterExecution:
-    'Change may be incomplete. Some project content may have changed. Check DatoCMS before trying again.',
-  failedBeforeExecution:
-    'This operation didn’t run. It made no project content changes.',
-  successfulInterruption:
-    'The approved DatoCMS operation completed, but the agent’s final reply was interrupted.',
+    'The change may be incomplete: check the content before you ask again.',
+  // About this change only: another change of the same answer may have run
+  failedBeforeExecution: 'The change didn’t run, so it changed nothing.',
+  successfulInterruption: 'The change ran, but the answer was cut off.',
 } as const;
 
 function durableUnsafeOutcomeNotice(
@@ -811,6 +812,98 @@ function assetResultChangesReceipt(
   return Boolean(result?.deleted || result?.uploadId || result?.title);
 }
 
+/**
+ * Why a change can't run, in the words of the editor: the reason of the
+ * validation is written for the agent
+ */
+function blockedChangeMessage(reason: string): string {
+  if (reason === READ_ONLY_REJECTION_MESSAGE) {
+    return 'Read-only mode is on, so nothing was changed.';
+  }
+  if (reason === OTHER_SCOPE_REASONS.project) {
+    return 'This change is for another project, so nothing was changed: ask the agent to make it in this project.';
+  }
+  if (
+    reason === OTHER_SCOPE_REASONS.environment ||
+    reason === OTHER_SCOPE_REASONS.primaryEnvironment
+  ) {
+    return 'This change is for another environment, so nothing was changed: ask the agent to make it in this environment.';
+  }
+  return 'The agent asked for a change it can’t make here, so nothing was changed: ask it to try again.';
+}
+
+/** Why DatoCMS can't disconnect now, in the words of the locked chat */
+function disconnectBlockedReason(approvalPending: boolean): string {
+  return approvalPending
+    ? 'Approve or deny the proposed change first.'
+    : 'Wait for the agent to finish.';
+}
+
+/**
+ * Why connecting DatoCMS failed, in one plain sentence: the errors of the
+ * sign-in are written for developers. `popup` is missing when the browser
+ * blocked it.
+ */
+function connectionErrorMessage(
+  error: unknown,
+  popup: Window | undefined,
+  popupClosed: boolean,
+): string {
+  if (!popup) {
+    return 'Your browser blocked the sign-in window: allow pop-ups, then connect again.';
+  }
+  if (error instanceof RemoteMcpOAuthError && error.code === 'access_denied') {
+    return 'Access wasn’t allowed in DatoCMS.';
+  }
+  if (error instanceof RemoteMcpOAuthError && error.code === 'invalid_grant') {
+    return 'This sign-in expired.';
+  }
+  if (popupClosed) {
+    return 'The sign-in window was closed before DatoCMS finished connecting.';
+  }
+  return 'Couldn’t connect to DatoCMS.';
+}
+
+/**
+ * Whether a failed turn can be sent again, and the error that replaces the
+ * one it shows. A retryable error says "Try again", but sending the turn
+ * again after a change started could repeat the change: then the error says
+ * what to do instead. A turn that the user stopped keeps its error.
+ */
+function terminalFailureRetry(
+  turn: Pick<ActiveTurn, 'userStopped' | 'unsafeOperationDispatched'>,
+  source: 'turn' | 'runtime_exception' | 'approval_exception',
+  result: AgentTurnResult | undefined,
+): { retryable: boolean; error?: string } {
+  const requestRetryable =
+    source === 'turn' &&
+    (result?.status === 'failed' || result?.status === 'incomplete') &&
+    result.error?.retryable === true;
+
+  if (!requestRetryable) return { retryable: false };
+  if (turn.unsafeOperationDispatched) {
+    return {
+      retryable: false,
+      error:
+        'The agent stopped after a change started: check the content before you ask again.',
+    };
+  }
+  return { retryable: !turn.userStopped };
+}
+
+/**
+ * The name of a saved script as the editor reads it:
+ * "script://dato-agent/…/fix-titles.ts" is "Fix titles"
+ */
+function scriptTitle(name: string): string {
+  const title = (name.split('/').at(-1) ?? '')
+    .replace(/\.ts$/, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+
+  return title ? `${title.charAt(0).toUpperCase()}${title.slice(1)}` : name;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Approval details deliberately normalize several optional MCP argument shapes in one review model.
 function approvalViewModel(
   pending: PendingApproval,
@@ -847,16 +940,18 @@ function approvalViewModel(
 
   return {
     id: pending.request.approvalRequestId,
-    title: 'Review this change',
-    description: validation.allowed
-      ? typeof parsed.name === 'string'
-        ? `Run “${parsed.name}” in ${scope.siteName ?? 'this project'}.`
-        : `Run this operation in ${scope.siteName ?? 'this project'}.`
-      : validation.reason,
+    title: validation.allowed ? 'Review this change' : 'This change can’t run',
+    // What the change is. Why a change can't run is its error, said once.
+    description:
+      typeof parsed.name === 'string'
+        ? `${scriptTitle(parsed.name)} in ${scope.siteName ?? 'this project'}.`
+        : `A change in ${scope.siteName ?? 'this project'}.`,
     actionLabel: 'Approve',
     status,
     automatic: pending.automatic,
-    ...(validation.allowed ? {} : { error: validation.reason }),
+    ...(validation.allowed
+      ? {}
+      : { error: blockedChangeMessage(validation.reason) }),
     ...(typeof body.content === 'string'
       ? {
           script: {
@@ -866,16 +961,22 @@ function approvalViewModel(
         }
       : {}),
     details: [
-      { label: 'Project', value: String(parsed.site_id ?? 'Not provided') },
+      {
+        label: 'Project',
+        // A change that can run targets the open project: its name
+        value:
+          validation.allowed && scope.siteName
+            ? scope.siteName
+            : String(parsed.site_id ?? 'Not provided'),
+      },
       {
         label: 'Environment',
         value: scope.isEnvironmentPrimary
           ? 'Primary'
           : String(parsed.environment ?? 'Not provided'),
       },
-      { label: 'Operation', value: pending.request.name },
       ...(typeof parsed.name === 'string'
-        ? [{ label: 'Saved script', value: parsed.name }]
+        ? [{ label: 'Change', value: scriptTitle(parsed.name) }]
         : []),
     ],
   };
@@ -1754,13 +1855,13 @@ function unsafeDispatchRecoveryMessage(journal: UnsafeDispatchJournal): string {
     (operation) => operation.state === 'confirmed',
   );
   if (hasUnknownOutcome) {
-    return 'An approved DatoCMS change may already have run, but the chat closed before its result was confirmed. Check the affected content before trying the same change again.';
+    return 'The page closed while an approved change was running, so it may be incomplete: check the content before you ask again.';
   }
   if (hasConfirmedOutcome) {
-    return 'The approved DatoCMS operation returned a result, but the chat closed before that result could be safely restored. Check DatoCMS before trying it again.';
+    return 'The approved change ran, but the page closed before the answer: check the content before you ask again.';
   }
 
-  return 'The chat closed before this approved DatoCMS change was sent. No change was made.';
+  return 'The page closed before the approved change was sent, so nothing was changed.';
 }
 
 function recoverUnsafeDispatchJournal(
@@ -2008,7 +2109,6 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   });
   const [autoApproveChanging, setAutoApproveChanging] = useState(false);
-  const [autoApproveError, setAutoApproveError] = useState<string>();
   const [conversationPersistenceError, setConversationPersistenceError] =
     useState<string>();
   const [running, setRunning] = useState(false);
@@ -2130,7 +2230,6 @@ export default function AgentFrame(props: AgentFrameProps) {
       }
       autoApproveEnabledRef.current = enabled;
       setAutoApproveEnabled(enabled);
-      setAutoApproveError(undefined);
     };
 
     window.addEventListener('storage', synchronizeAutoApproval);
@@ -2464,7 +2563,6 @@ export default function AgentFrame(props: AgentFrameProps) {
 
     autoApproveEnabledRef.current = false;
     setAutoApproveEnabled(false);
-    setAutoApproveError(undefined);
     try {
       autoApprovalStore.setEnabled(false);
     } catch {
@@ -2618,7 +2716,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     } catch {
       if (updateState && mountedRef.current) {
         setConversationPersistenceError(
-          'This chat could not be saved in this browser.',
+          'This chat can’t be saved in this browser, so it will be lost when you leave.',
         );
       }
     }
@@ -2643,7 +2741,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     } catch {
       if (mountedRef.current) {
         setConversationPersistenceError(
-          'This chat could not be saved in this browser.',
+          'This chat can’t be saved in this browser, so it will be lost when you leave.',
         );
       }
     }
@@ -2769,7 +2867,8 @@ export default function AgentFrame(props: AgentFrameProps) {
     setOauthCredentials(next);
     accessPolicyGenerationRef.current += 1;
     setMcpAuthRequired(true);
-    setOauthError(new DatoMcpAuthenticationError().message);
+    // "Sign-in expired" in the row of the connection says it: no error
+    setOauthError(undefined);
     accessSession.setToken('');
     accessRef.current = { token: '', snapshot: accessSession.snapshot };
     setAccessState(accessRef.current);
@@ -2815,7 +2914,7 @@ export default function AgentFrame(props: AgentFrameProps) {
                   ...entry.approval,
                   status: 'rejected' as const,
                   error:
-                    'DatoCMS access changed. Start a new request with the current access level.',
+                    'Your DatoCMS access changed, so nothing was changed: ask the agent again.',
                 },
               }
             : entry,
@@ -2898,7 +2997,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       accessNarrowed(levelBefore, snapshot.level)
     )
       throw new Error(
-        'DatoCMS access changed. Start a new request before making changes.',
+        'Your DatoCMS access changed, so nothing was changed: ask the agent again.',
       );
   }
 
@@ -2968,9 +3067,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     setMcpAuthRequired(lostAuthentication);
     oauthCredentialsRef.current = nextCredentials;
     setOauthCredentials(nextCredentials);
-    setOauthError(
-      lostAuthentication ? new DatoMcpAuthenticationError().message : undefined,
-    );
+    setOauthError(undefined);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: OAuth storage identity is the sole external trigger; recovery invalidation uses the current ref-backed helper.
@@ -3169,12 +3266,10 @@ export default function AgentFrame(props: AgentFrameProps) {
     },
   ): void => {
     const failureId = turn.assistantEntryId;
-    const retryable = Boolean(
-      source === 'turn' &&
-        (result?.status === 'failed' || result?.status === 'incomplete') &&
-        result.error?.retryable === true &&
-        !turn.userStopped &&
-        !turn.unsafeOperationDispatched,
+    const { retryable, error: retryError } = terminalFailureRetry(
+      turn,
+      source,
+      result,
     );
     const message =
       result?.error?.message ||
@@ -3187,9 +3282,10 @@ export default function AgentFrame(props: AgentFrameProps) {
           ? {
               ...entry,
               error:
-                typeof entry.error === 'string' && entry.error.trim()
+                retryError ??
+                (typeof entry.error === 'string' && entry.error.trim()
                   ? entry.error
-                  : message,
+                  : message),
               failure: { id: failureId, retryable },
             }
           : entry,
@@ -4163,7 +4259,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         turn.mcpPolicyGeneration !== accessPolicyGenerationRef.current
       )
         throw new Error(
-          'DatoCMS access changed. Start a new request before preparing a fix.',
+          'Your DatoCMS access changed, so the fix wasn’t prepared: ask the agent again.',
         );
       turn.mcpPolicyGeneration = accessPolicyGenerationRef.current;
       const hostContext = props.loadHostContext
@@ -4627,7 +4723,7 @@ export default function AgentFrame(props: AgentFrameProps) {
                   ...entry.approval,
                   status: 'error',
                   error:
-                    'This approval has expired. Start a new request to try again.',
+                    'This change expired, so nothing was changed: ask the agent again.',
                 },
               }
             : entry,
@@ -4816,7 +4912,7 @@ export default function AgentFrame(props: AgentFrameProps) {
                         turn,
                         unsafeJournalId,
                         dispatchedApprovalIds,
-                        'The change was not sent because the editor state changed. Close the open dialog and save or discard any unsaved changes before reviewing it again.',
+                        'This change wasn’t sent because something changed while it waited: close any open dialog and save or discard unsaved changes first.',
                       );
                     }
                     unsafeDispatchJournalStore.markDispatched(
@@ -4940,8 +5036,8 @@ export default function AgentFrame(props: AgentFrameProps) {
     ) {
       const cancellationNotice =
         turn.cancelledBeforeDispatchReason === 'prior_outcome_uncertain'
-          ? 'A later approved operation was not sent because an earlier change may be incomplete. Check DatoCMS before trying again.'
-          : 'A later approved change was not sent because the editor state changed.';
+          ? 'A later change wasn’t sent because an earlier change may be incomplete. Check the content before you try again.'
+          : 'A later change wasn’t sent because something changed while it waited. Ask the agent to try again.';
       updateEntries((current) =>
         current.map((entry) =>
           entry.id === turn.assistantEntryId &&
@@ -5023,8 +5119,8 @@ export default function AgentFrame(props: AgentFrameProps) {
               status: 'error' as const,
               error:
                 turn.cancelledBeforeDispatchReason === 'prior_outcome_uncertain'
-                  ? 'This operation was not sent because an earlier change may be incomplete.'
-                  : 'This operation was not sent because the editor state changed.',
+                  ? 'This change wasn’t sent because an earlier change may be incomplete: check the content first.'
+                  : 'This change wasn’t sent because something changed while it waited: ask the agent to try again.',
             },
           };
         }
@@ -5154,7 +5250,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     if (editorDirtyRef.current) {
       pauseAutomaticApproval(
         responseId,
-        'Auto-approve paused. Save or discard the unsaved record changes first.',
+        'Auto-approve didn’t run this change: save or discard your record changes first.',
       );
       return;
     }
@@ -5162,7 +5258,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     if (hostActionPendingRef.current) {
       pauseAutomaticApproval(
         responseId,
-        'Auto-approve paused. Close the open DatoCMS dialog before continuing.',
+        'Auto-approve didn’t run this change: close the open DatoCMS dialog first.',
       );
       return;
     }
@@ -5178,7 +5274,10 @@ export default function AgentFrame(props: AgentFrameProps) {
         { readOnly: readOnlyRef.current },
       );
       if (!validation.allowed) {
-        pauseAutomaticApproval(responseId, validation.reason);
+        pauseAutomaticApproval(
+          responseId,
+          blockedChangeMessage(validation.reason),
+        );
         return;
       }
     }
@@ -5191,7 +5290,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     ) {
       pauseAutomaticApproval(
         responseId,
-        'Auto-approve paused. Review this operation to continue.',
+        'Auto-approve didn’t run this change: approve or deny it.',
       );
       return;
     }
@@ -5294,8 +5393,9 @@ export default function AgentFrame(props: AgentFrameProps) {
                 ...entry,
                 approval: {
                   ...entry.approval,
+                  title: 'This change can’t run',
                   status: 'error',
-                  error: validation.reason,
+                  error: blockedChangeMessage(validation.reason),
                 },
               }
             : entry,
@@ -5360,13 +5460,12 @@ export default function AgentFrame(props: AgentFrameProps) {
     if (!nextEnabled) {
       autoApproveEnabledRef.current = false;
       setAutoApproveEnabled(false);
-      setAutoApproveError(undefined);
       try {
         autoApprovalStore.setEnabled(false);
         return true;
       } catch {
-        setAutoApproveError(
-          'Auto-approve is off here, but this browser session could not be updated.',
+        props.onAlert?.(
+          'Auto-approve is off here, but this browser couldn’t save the change.',
         );
         return false;
       }
@@ -5387,9 +5486,10 @@ export default function AgentFrame(props: AgentFrameProps) {
 
     autoApproveChangeRef.current = true;
     setAutoApproveChanging(true);
-    setAutoApproveError(undefined);
+    // The user confirmed: a failure after it is the browser's storage
+    let confirmed = false;
     try {
-      const confirmed = await props.onConfirmEnableAutoApprove();
+      confirmed = await props.onConfirmEnableAutoApprove();
       if (
         !mountedRef.current ||
         !confirmed ||
@@ -5405,7 +5505,11 @@ export default function AgentFrame(props: AgentFrameProps) {
       setAutoApproveEnabled(true);
       return true;
     } catch {
-      setAutoApproveError('Auto-approve could not be turned on.');
+      props.onAlert?.(
+        confirmed
+          ? 'Auto-approve couldn’t be turned on, because this browser doesn’t let the agent save the setting.'
+          : 'Auto-approve couldn’t be turned on. Try again.',
+      );
       return false;
     } finally {
       autoApproveChangeRef.current = false;
@@ -5515,18 +5619,14 @@ export default function AgentFrame(props: AgentFrameProps) {
     } catch (error) {
       if (pendingState)
         discardPendingAuthorization(credentialScope, pendingState);
+      // Read before this flow closes the window itself
+      const popupClosed = popup?.closed === true;
       if (popup && !popup.closed) popup.close();
       if (
         mountedRef.current &&
         oauthFlowGenerationRef.current === flowGeneration
       ) {
-        setOauthError(
-          error instanceof RemoteMcpOAuthError && error.code === 'invalid_grant'
-            ? 'This sign-in code is no longer valid. Start sign-in again to get a new code.'
-            : error instanceof Error
-              ? error.message
-              : 'Could not connect to DatoCMS.',
-        );
+        setOauthError(connectionErrorMessage(error, popup, popupClosed));
       }
     } finally {
       if (oauthFlowGenerationRef.current === flowGeneration) {
@@ -5544,7 +5644,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       approvalDispatchRef.current.size > 0
     ) {
       setOauthError(
-        'Finish or deny the pending operation before disconnecting.',
+        disconnectBlockedReason(pendingApprovalsRef.current.size > 0),
       );
       return;
     }
@@ -5883,14 +5983,12 @@ export default function AgentFrame(props: AgentFrameProps) {
       }
       try {
         if (unsafeDispatchJournalStore.read()) {
-          showGuardMessage(
-            'Check the previous change outcome before preparing another change.',
-          );
+          showGuardMessage('Check the content of the earlier change first.');
           return;
         }
       } catch {
         showGuardMessage(
-          'The previous change outcome could not be verified. Check DatoCMS before preparing another change.',
+          'Couldn’t check how the earlier change ended: look at the content first.',
         );
         return;
       }
@@ -5909,12 +6007,12 @@ export default function AgentFrame(props: AgentFrameProps) {
         !activeModel(props.config).trim()
       ) {
         showGuardMessage(
-          'Configure the AI provider before preparing this fix.',
+          'Ask a project admin to set up the model provider first.',
         );
         return;
       }
       if (!oauthCredentialsRef.current?.token?.accessToken || oauthConnecting) {
-        showGuardMessage('Reconnect DatoCMS before preparing this fix.');
+        showGuardMessage('Connect DatoCMS again first.');
         return;
       }
 
@@ -5957,8 +6055,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         return;
       }
 
-      const fixWithAuto = autoApproveEnabledRef.current;
-      const visibleMessage = fixWithAuto ? 'Fix with Auto' : 'Fix and review';
+      const visibleMessage = 'Please fix it.';
       const repairContext: AgentRepairContext = {
         failureCode: remoteOutcome.failureCode,
         scriptName: remoteOutcome.scriptName,
@@ -6061,17 +6158,17 @@ export default function AgentFrame(props: AgentFrameProps) {
         accessChecking,
         datoCmsAccountLabel: hasDatoCmsConnection ? 'DatoCMS' : undefined,
         datoCmsError: oauthError,
+        projectName: props.siteName,
       }}
       entries={entries}
       mentionHost={mentionHost}
       isRunning={running}
       autoApproveEnabled={autoApproveEnabled}
       autoApproveChanging={autoApproveChanging}
-      autoApproveError={autoApproveError}
       autoApproveDisabledReason={
         effectiveReadOnly
           ? props.config.readOnly
-            ? 'Auto-approve is unavailable in Read Only mode.'
+            ? 'Auto-approve is off while read-only mode is on.'
             : accessRestrictionReason()
           : undefined
       }
@@ -6088,8 +6185,8 @@ export default function AgentFrame(props: AgentFrameProps) {
             ? 'Running the DatoCMS change…'
             : 'Review the proposed change before continuing'
           : surface === 'record'
-            ? 'Ask about this…'
-            : 'Ask about this project…'
+            ? 'Which fields are still empty?'
+            : 'Which records were published this week?'
       }
       onSubmit={(message) => void submit(message)}
       onRetryFailedTurn={retryFailedTurn}

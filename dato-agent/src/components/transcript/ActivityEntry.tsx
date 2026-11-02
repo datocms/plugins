@@ -12,10 +12,12 @@ import type {
 } from '../AgentSurface';
 import styles from './Transcript.module.css';
 
-const ACTIVITY_LABELS: Record<AgentActivityStatus, string> = {
+const ACTIVITY_LABELS: Record<
+  Exclude<AgentActivityStatus, 'success'>,
+  string
+> = {
   pending: 'Waiting',
   running: 'In progress',
-  success: 'Completed',
   error: 'Failed',
   cancelled: 'Cancelled',
 };
@@ -32,73 +34,53 @@ function activitiesWithStatus(
   return activities.filter((activity) => activity.status === status);
 }
 
+function stepCount(count: number) {
+  return `${count} ${count === 1 ? 'step' : 'steps'}`;
+}
+
+/**
+ * The summary of the activity: the current step while it runs, else only the
+ * number of steps. How the turn ended is said once, by the answer, the error
+ * or the change card under the activity.
+ */
 function activityPresentation(entry: AgentActivityEntry): {
   summary: string;
   showSpinner: boolean;
-  failed: boolean;
 } {
   const { activities, phase } = entry;
   const current = activitiesWithStatus(activities, 'running').at(-1);
   const failedCount = activitiesWithStatus(activities, 'error').length;
   const cancelledCount = activitiesWithStatus(activities, 'cancelled').length;
-  const completedCount = activitiesWithStatus(activities, 'success').length;
-  const pendingCount = activitiesWithStatus(activities, 'pending').length;
 
   if (phase === 'running') {
     if (current) {
-      return { summary: current.label, showSpinner: true, failed: false };
+      return { summary: current.label, showSpinner: true };
     }
 
     return {
       summary: failedCount > 0 ? 'Trying another approach…' : 'Working…',
       showSpinner: true,
-      failed: false,
-    };
-  }
-
-  if (phase === 'failed') {
-    return {
-      summary: 'Couldn’t complete this request',
-      showSpinner: false,
-      failed: true,
     };
   }
 
   if (phase === 'cancelled' || cancelledCount > 0) {
-    return { summary: 'Stopped', showSpinner: false, failed: false };
+    return { summary: 'Stopped', showSpinner: false };
   }
 
-  if (phase === 'waiting' || pendingCount > 0) {
-    return {
-      summary: 'Waiting for approval',
-      showSpinner: false,
-      failed: false,
-    };
-  }
-
-  if (failedCount > 0) {
-    return {
-      summary: 'DatoCMS activity',
-      showSpinner: false,
-      failed: false,
-    };
-  }
-
-  return {
-    summary: `${completedCount} ${
-      completedCount === 1 ? 'step' : 'steps'
-    } completed`,
-    showSpinner: false,
-    failed: false,
-  };
+  return { summary: stepCount(activities.length), showSpinner: false };
 }
 
+/** The state of a step, when it did not simply succeed */
 function activityStatusLabel(
   activity: AgentActivityViewModel,
   phase: AgentActivityPhase,
-): string {
+): string | undefined {
   if (activity.timestampLabel) {
     return activity.timestampLabel;
+  }
+
+  if (activity.status === 'success') {
+    return undefined;
   }
 
   if (activity.status !== 'error' || phase === 'failed') {
@@ -136,6 +118,9 @@ function ActivityItem({
   phase: AgentActivityPhase;
 }) {
   const marker = stepMarker(activity, phase);
+  const statusLabel = activityStatusLabel(activity, phase);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailId = useId();
 
   return (
     <li className={styles.step}>
@@ -149,19 +134,35 @@ function ActivityItem({
       <div className={styles.stepBody}>
         <p className={styles.stepHeading}>
           <span>{activity.label}</span>
-          <span className={styles.stepStatus}>
-            {activityStatusLabel(activity, phase)}
-          </span>
+          {statusLabel && (
+            <span className={styles.stepStatus}>{statusLabel}</span>
+          )}
         </p>
         {activity.description && (
           <p className={styles.stepDescription}>{activity.description}</p>
         )}
+        {/* The request or the error of the step is technical: it waits
+            behind a disclosure, as the code of a change */}
         {activity.detail && (
-          <CodeSnippet
-            ariaLabel={`${activity.label} details`}
-            code={activity.detail}
-            maxHeight={DETAIL_MAX_HEIGHT}
-          />
+          <>
+            <RawButton
+              // Which step, for a screen reader that lists the buttons
+              ariaLabel={`Show the details of ${activity.label}`}
+              className={styles.stepToggle}
+              expandable={{ open: detailOpen, controls: detailId }}
+              onClick={() => setDetailOpen((open) => !open)}
+            >
+              <DisclosureChevron open={detailOpen} />
+              Show the details
+            </RawButton>
+            <div hidden={!detailOpen} id={detailId}>
+              <CodeSnippet
+                ariaLabel={`${activity.label} details`}
+                code={activity.detail}
+                maxHeight={DETAIL_MAX_HEIGHT}
+              />
+            </div>
+          </>
         )}
       </div>
     </li>
@@ -191,11 +192,7 @@ export function ActivityEntry({ entry }: { entry: AgentActivityEntry }) {
   return (
     <div className={styles.activity}>
       <RawButton
-        className={
-          presentation.failed
-            ? `${styles.activityToggle} ${styles.activityFailed}`
-            : styles.activityToggle
-        }
+        className={styles.activityToggle}
         expandable={{ open, controls: panelId }}
         onClick={() => setOpen((current) => !current)}
       >

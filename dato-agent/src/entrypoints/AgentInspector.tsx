@@ -293,6 +293,9 @@ function AuthorizedAgentInspector({ ctx }: Props) {
             siteName: ctx.site.attributes.name,
           })
         }
+        onAlert={(message) => {
+          void ctx.alert(message);
+        }}
       />
     </Canvas>
   );

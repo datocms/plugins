@@ -30,6 +30,7 @@ import {
   activeApiKey,
   activeFastMode,
   activeModel,
+  activeModelMaxOutputTokens,
   activeReasoningEffort,
   normalizeConfig,
   providerLabel,
@@ -63,7 +64,7 @@ type ProviderOption = {
 type ReasoningOption = {
   /** The name of the level, "High" */
   label: string;
-  /** What the level does, "Deeper reasoning" */
+  /** What the level trades, "More careful, slower" */
   hint: string;
   value: ReasoningEffort;
   /** The level that the provider recommends */
@@ -141,12 +142,12 @@ const PROVIDER_DETAILS: Record<
 };
 
 const REASONING_OPTIONS: ReasoningOption[] = [
-  { label: 'None', hint: 'Fastest, no reasoning', value: 'none' },
-  { label: 'Low', hint: 'Faster responses', value: 'low' },
+  { label: 'None', hint: 'Fastest answers', value: 'none' },
+  { label: 'Low', hint: 'Faster answers', value: 'low' },
   { label: 'Medium', hint: 'Balanced', value: 'medium' },
-  { label: 'High', hint: 'Deeper reasoning', value: 'high' },
-  { label: 'X-high', hint: 'Intensive reasoning', value: 'xhigh' },
-  { label: 'Max', hint: 'Maximum reasoning', value: 'max' },
+  { label: 'High', hint: 'More careful, slower', value: 'high' },
+  { label: 'X-high', hint: 'Slower, higher cost', value: 'xhigh' },
+  { label: 'Max', hint: 'Slowest, highest cost', value: 'max' },
 ];
 
 /**
@@ -169,7 +170,7 @@ function reasoningRadioOption(option: ReasoningOption) {
   };
 }
 
-/** A level as an option of a select, on one line: "High — deeper reasoning" */
+/** A level as an option of a select, on one line: "High — more careful, slower" */
 function reasoningSelectOption(option: ReasoningOption) {
   const hint = `${option.hint.charAt(0).toLowerCase()}${option.hint.slice(1)}`;
 
@@ -354,9 +355,21 @@ function normalizedRoleIds(roleIds: readonly string[]): string[] {
   ].sort((left, right) => left.localeCompare(right));
 }
 
+/**
+ * A saved role that the list does not have. It is unavailable only when the
+ * roles loaded: else its name is just unknown here, and its ID shows.
+ */
+function missingRoleOption(roleId: string, rolesLoaded: boolean): RoleOption {
+  return {
+    label: rolesLoaded ? `Unavailable role (${roleId})` : roleId,
+    value: roleId,
+  };
+}
+
 function roleOptionsForSelection(
   roleIds: readonly string[],
   availableOptions: readonly RoleOption[],
+  rolesLoaded: boolean,
 ): RoleOption[] {
   const optionsById = new Map(
     availableOptions.map((option) => [option.value, option]),
@@ -364,10 +377,7 @@ function roleOptionsForSelection(
 
   return roleIds.map(
     (roleId) =>
-      optionsById.get(roleId) ?? {
-        label: `Unavailable role (${roleId})`,
-        value: roleId,
-      },
+      optionsById.get(roleId) ?? missingRoleOption(roleId, rolesLoaded),
   );
 }
 
@@ -397,6 +407,7 @@ function buildRoleSelectionState(
     selectedRoleOptions: roleOptionsForSelection(
       displayedAllowedRoleIds,
       availableOptions,
+      roleDiscovery.loaded,
     ),
     hasUnsavedRoleSnapshot,
   };
@@ -560,7 +571,9 @@ function useProviderModels(
           if (!abortController.signal.aborted) {
             setState({
               ...emptyDiscoveryState(request.requestKey),
-              error: `Couldn’t load models: ${errorMessage(error)}`,
+              error: `Couldn’t load models with this API key: ${errorMessage(
+                error,
+              )}`,
             });
           }
         });
@@ -577,8 +590,9 @@ function useProviderModels(
     : emptyDiscoveryState(request.requestKey);
 }
 
-// The state of the model list, under the model select. A failed load is the
-// error of the field instead.
+// The state of the model list, under the model select, while it is not
+// there yet or empty. A failed load is the error of the API key, which must
+// change.
 function modelDiscoveryHint(
   provider: AgentProvider,
   apiKey: string,
@@ -598,10 +612,9 @@ function modelDiscoveryHint(
   if (!discovery.loaded) {
     return 'Waiting to load models…';
   }
-  const count = discovery.models.length;
-  return count === 0
+  return discovery.models.length === 0
     ? 'No compatible models for this API key.'
-    : { id: 'datoAgent.compatibleModels', values: { count } };
+    : undefined;
 }
 
 function configurationValidationError(
@@ -637,12 +650,14 @@ function configurationValidationError(
   return undefined;
 }
 
+// A model can't be picked without a key or a list of models: the error is
+// then on the API key, and the hint of the model tells the rest
 function modelFieldError(
   attemptedSave: boolean,
   config: AgentConfig,
   discovery: ModelDiscoveryState,
 ): string | undefined {
-  if (!attemptedSave) {
+  if (!attemptedSave || !activeApiKey(config).trim() || discovery.error) {
     return undefined;
   }
 
@@ -724,12 +739,23 @@ function configWithSelectedModel(
   return fallback ? withActiveReasoningEffort(withModel, fallback) : withModel;
 }
 
-function fastModeHint(provider: AgentProvider, supported: boolean): string {
-  if (supported) {
-    return 'Uses premium processing for every model request, including tool steps, and can significantly increase API costs.';
+/** What fast mode does, else the real reason why it is off */
+function fastModeHint(
+  provider: AgentProvider,
+  apiKey: string,
+  selectedModel: ProviderModel | undefined,
+): string {
+  if (!apiKey.trim()) {
+    return 'Enter an API key first.';
+  }
+  if (!selectedModel) {
+    return 'Pick a model first.';
+  }
+  if (providerModelSupportsFastMode(provider, selectedModel.id)) {
+    return 'Faster answers at a higher cost from the provider.';
   }
   return provider === 'anthropic'
-    ? 'Not available for this Claude model. Anthropic Fast mode currently requires a supported Opus model and preview access.'
+    ? 'Not available for the selected Claude model.'
     : 'Not available for the selected OpenAI model.';
 }
 
@@ -778,9 +804,7 @@ function ModelField({
       label={PROVIDER_DETAILS[config.provider].modelLabel}
       required
       hint={modelDiscoveryHint(config.provider, apiKey, discovery)}
-      error={
-        discovery.error ?? modelFieldError(attemptedSave, config, discovery)
-      }
+      error={modelFieldError(attemptedSave, config, discovery)}
     >
       <SelectInput
         value={shownModel}
@@ -820,7 +844,6 @@ function ModelField({
 type ReasoningEffortFieldProps = {
   availableReasoningOptions: ReasoningOption[];
   disabled: boolean;
-  provider: AgentProvider;
   reasoningEffort: ReasoningEffort;
   setConfig: Dispatch<SetStateAction<AgentConfig>>;
 };
@@ -828,7 +851,6 @@ type ReasoningEffortFieldProps = {
 function ReasoningEffortField({
   availableReasoningOptions,
   disabled,
-  provider,
   reasoningEffort,
   setConfig,
 }: ReasoningEffortFieldProps) {
@@ -845,15 +867,16 @@ function ReasoningEffortField({
     }
   };
   const count = availableReasoningOptions.length;
-  const hint =
-    count === 1
-      ? 'The selected model supports only this level.'
-      : provider === 'anthropic'
-        ? 'Options supported by the selected Claude model.'
-        : 'Availability depends on the selected model.';
 
+  // The options are the ones of the selected model: only a single level
+  // needs a word
   return (
-    <FieldWrapper label="Reasoning effort" hint={hint}>
+    <FieldWrapper
+      label="Reasoning effort"
+      hint={
+        count === 1 ? 'The selected model supports only this level.' : undefined
+      }
+    >
       {count <= 1 ? (
         <FixedReasoningEffort option={selectedOption} />
       ) : count <= MAX_REASONING_RADIOS ? (
@@ -952,11 +975,11 @@ function ProviderConfigurationFields({
       <FieldWrapper
         label={details.apiKeyLabel}
         required
-        hint="Shared by this project. Each editor connects DatoCMS separately in the agent."
+        hint="Used by everyone in this project. Each editor still connects their own DatoCMS account."
         error={
           attemptedSave && !apiKey.trim()
             ? `${details.apiKeyLabel} is required.`
-            : undefined
+            : discovery.error
         }
       >
         <PasswordInput
@@ -981,16 +1004,17 @@ function ProviderConfigurationFields({
         retryModelDiscovery={retryModelDiscovery}
         setConfig={setConfig}
       />
-      <ReasoningEffortField
-        availableReasoningOptions={availableReasoningOptions}
-        disabled={
-          fieldsDisabled || (config.provider === 'anthropic' && !selectedModel)
-        }
-        provider={config.provider}
-        reasoningEffort={reasoningEffort}
-        setConfig={setConfig}
-      />
-      <FieldWrapper hint={fastModeHint(config.provider, fastModeSupported)}>
+      {/* The levels of a Claude model come from the model: they show once
+          one is selected */}
+      {(config.provider !== 'anthropic' || selectedModel) && (
+        <ReasoningEffortField
+          availableReasoningOptions={availableReasoningOptions}
+          disabled={fieldsDisabled}
+          reasoningEffort={reasoningEffort}
+          setConfig={setConfig}
+        />
+      )}
+      <FieldWrapper hint={fastModeHint(config.provider, apiKey, selectedModel)}>
         <SwitchInput
           label="Fast mode"
           value={activeFastMode(config)}
@@ -1089,6 +1113,8 @@ type AccessFieldsProps = {
   canManageUsers: boolean;
   config: AgentConfig;
   fieldsDisabled: boolean;
+  /** The roles show the first-run selection, which is not saved yet */
+  hasUnsavedRoleSnapshot: boolean;
   retryRoleDiscovery: () => void;
   roleDiscovery: RoleDiscoveryState;
   roleOptions: RoleOption[];
@@ -1100,19 +1126,23 @@ function AccessFields({
   canManageUsers,
   config,
   fieldsDisabled,
+  hasUnsavedRoleSnapshot,
   retryRoleDiscovery,
   roleDiscovery,
   roleOptions,
   update,
 }: AccessFieldsProps) {
-  const roleError =
-    canManageUsers && roleDiscovery.error
-      ? `Couldn’t load project roles: ${roleDiscovery.error}`
-      : undefined;
+  // The response of the API helps nobody here: Retry is the next step
+  const roleError = roleDiscovery.error
+    ? 'Couldn’t load the project roles.'
+    : undefined;
+  const rolesHint = hasUnsavedRoleSnapshot
+    ? 'Project owners always have access. These roles aren’t saved yet: save to confirm them.'
+    : 'Project owners always have access. Roles you create later must be added here.';
 
   return (
     <>
-      <FieldWrapper hint="The agent can inspect and plan, but can’t change project content or create assets.">
+      <FieldWrapper hint="The agent can read content and suggest changes, but can’t change content or add assets.">
         <SwitchInput
           label="Read-only mode"
           value={config.readOnly}
@@ -1128,38 +1158,37 @@ function AccessFields({
           onChange={(value) => update('enableRecordSidebar', value ?? false)}
         />
       </FieldWrapper>
-      <FieldWrapper
-        label="Roles that can use Dato Agent"
-        hint={
-          canManageUsers
-            ? 'Project owners always have access. New roles must be added here.'
-            : 'Project owners always have access. New roles must be added here. Only users who can manage collaborators can change this list.'
-        }
-        error={roleError}
-        container={{
-          trailing: roleError && (
-            <Button tone="ghost" label="Retry" onClick={retryRoleDiscovery} />
-          ),
-        }}
-      >
-        <SelectInput
-          multiple
-          value={allowedRoleOptions.map((option) => option.value)}
-          options={roleOptions}
-          acceptValueNotIncludedInOptions={(roleId) => ({
-            label: `Unavailable role (${roleId})`,
-            value: roleId,
-          })}
-          placeholder="Pick roles"
-          loading={roleDiscovery.loading}
-          // Without the loaded roles every saved role would show as
-          // unavailable: the select stays locked until they load
-          disabled={fieldsDisabled || !canManageUsers || !roleDiscovery.loaded}
-          onChange={(roleIds) =>
-            update('allowedRoleIds', normalizedRoleIds(roleIds ?? []))
-          }
-        />
-      </FieldWrapper>
+      {/* Without user management the role names can't load: the list
+          would show bare IDs. The saved roles stay as they are. */}
+      {canManageUsers && (
+        <FieldWrapper
+          label="Roles that can use Dato Agent"
+          hint={rolesHint}
+          error={roleError}
+          container={{
+            trailing: roleError && (
+              <Button tone="ghost" label="Retry" onClick={retryRoleDiscovery} />
+            ),
+          }}
+        >
+          <SelectInput
+            multiple
+            value={allowedRoleOptions.map((option) => option.value)}
+            options={roleOptions}
+            acceptValueNotIncludedInOptions={(roleId) =>
+              missingRoleOption(roleId, roleDiscovery.loaded)
+            }
+            placeholder="Pick roles"
+            loading={roleDiscovery.loading}
+            // Without the loaded roles every saved role would show as
+            // unavailable: the select stays locked until they load
+            disabled={fieldsDisabled || !roleDiscovery.loaded}
+            onChange={(roleIds) =>
+              update('allowedRoleIds', normalizedRoleIds(roleIds ?? []))
+            }
+          />
+        </FieldWrapper>
+      )}
     </>
   );
 }
@@ -1225,10 +1254,24 @@ export default function ConfigScreen({ ctx }: Props) {
       ),
     [config.allowedRoleIds, canManageUsers, roleDiscovery, roleOptions],
   );
+  // The output limit of the saved model, which the page fills in by itself
+  // once the models load when none is saved, is no change of the admin. A
+  // value that the page corrects (a level the model lacks) stays a change.
+  const savedModel =
+    savedConfig.provider === config.provider &&
+    activeApiKey(savedConfig) === apiKey &&
+    activeModelMaxOutputTokens(savedConfig) === undefined
+      ? modelDiscovery.models.find(
+          (candidate) => candidate.id === activeModel(savedConfig),
+        )
+      : undefined;
+  const comparedSavedConfig = savedModel
+    ? withActiveModel(savedConfig, savedModel.id, savedModel.maxOutputTokens)
+    : savedConfig;
   const isDirty = (group: SettingsGroup) =>
     groupIsDirty(
       config,
-      savedConfig,
+      comparedSavedConfig,
       group,
       roleSelection.hasUnsavedRoleSnapshot,
     );
@@ -1431,7 +1474,7 @@ export default function ConfigScreen({ ctx }: Props) {
         <Page.Content>
           {!canEditSchema && (
             <Callout title="You can only view these settings">
-              Only roles that can edit the schema can change them.
+              Ask a project admin if something needs to change.
             </Callout>
           )}
 
@@ -1463,7 +1506,12 @@ export default function ConfigScreen({ ctx }: Props) {
               {/* A viewer can still select and copy the instructions */}
               <TextareaInput
                 value={config.additionalInstructions}
-                placeholder="Always use British English for public copy."
+                // An example only helps someone who can type
+                placeholder={
+                  canEditSchema
+                    ? 'Always use British English for public copy.'
+                    : null
+                }
                 rows={5}
                 readOnly={!canEditSchema}
                 disabled={saving}
@@ -1480,6 +1528,7 @@ export default function ConfigScreen({ ctx }: Props) {
               canManageUsers={canManageUsers}
               config={config}
               fieldsDisabled={!canEditSchema || saving}
+              hasUnsavedRoleSnapshot={roleSelection.hasUnsavedRoleSnapshot}
               retryRoleDiscovery={retryRoleDiscovery}
               roleDiscovery={roleDiscovery}
               roleOptions={roleOptions}

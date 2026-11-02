@@ -15,10 +15,10 @@ export const MCP_ACCESS_CHANGE_GUIDANCE =
 
 export function mcpAccessLabel(level: McpAccessLevel): string {
   return {
-    content_view_only: 'Only read content',
+    content_view_only: 'Read content only',
     content_only: 'Read and edit content',
-    unrestricted: 'Anything you can',
-    unknown: 'Access not verified',
+    unrestricted: 'Same as your role',
+    unknown: 'Not checked',
   }[level];
 }
 

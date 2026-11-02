@@ -55,9 +55,48 @@ describe('openApprovalDetailsModal', () => {
     await expect(
       openApprovalDetailsModal({ openModal }, approval('approved')),
     ).resolves.toBeNull();
+    // The modal tells the decision already taken
     expect(openModal).toHaveBeenCalledWith(
       expect.objectContaining({
-        parameters: expect.objectContaining({ canDecide: false }),
+        parameters: expect.objectContaining({
+          canDecide: false,
+          decision: 'approved',
+        }),
+      }),
+    );
+  });
+
+  it('tells no decision for a change that ended with an error', async () => {
+    const openModal = vi.fn().mockResolvedValue(null);
+    const { outcome: _outcome, ...withoutOutcome } = approval('rejected');
+
+    await openApprovalDetailsModal(
+      { openModal },
+      {
+        ...withoutOutcome,
+        error:
+          'Your DatoCMS access changed, so nothing was changed: ask the agent again.',
+      },
+    );
+    // The editor didn't deny it: "Denied" would be wrong
+    expect(openModal.mock.calls[0]?.[0].parameters).not.toHaveProperty(
+      'decision',
+    );
+  });
+
+  it('passes the plain error of a failed change with its outcome', async () => {
+    const openModal = vi.fn().mockResolvedValue(null);
+
+    await openApprovalDetailsModal(
+      { openModal },
+      { ...approval('approved'), error: 'The Italian title is required.' },
+    );
+    expect(openModal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          error: 'The Italian title is required.',
+          outcome: expect.objectContaining({ kind: 'failed_before_execution' }),
+        }),
       }),
     );
   });

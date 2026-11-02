@@ -9,9 +9,12 @@ import {
 } from '../../../icons';
 import { RecordMentionDropdown } from './RecordModelSelectorDropdown';
 
-/** The label of a reference the user may not make: why it is disabled */
-const ASSETS_UNAVAILABLE = 'Mentioning assets needs the upload permission.';
-const MODELS_UNAVAILABLE = 'Mentioning models needs schema access.';
+/**
+ * The label of a reference the user may not make: what it is and why it is
+ * disabled, since the label is both the tooltip and the name of the button
+ */
+const ASSETS_UNAVAILABLE = 'Your role can’t mention assets.';
+const MODELS_UNAVAILABLE = 'Your role can’t mention models.';
 
 type ComposerToolbarProps = {
   onUserClick: () => void;

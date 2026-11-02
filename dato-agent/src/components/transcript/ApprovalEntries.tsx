@@ -1,7 +1,6 @@
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import { useId } from 'react';
-import { EditIcon } from '../../icons';
 import type { UnsafeApprovalViewModel } from '../AgentSurface';
 import styles from './Transcript.module.css';
 
@@ -10,22 +9,24 @@ type ApprovalAction = (approval: UnsafeApprovalViewModel) => void;
 const DECISION_SAVING_REASON = 'Wait for the decision to save.';
 const HOST_ACTION_REASON = 'Wait for the current action to finish.';
 
+// What happened to the content. The error of the change follows it in the
+// same callout. The same words are in the Change details modal.
 const OUTCOME_PRESENTATION: Record<
   NonNullable<UnsafeApprovalViewModel['outcome']>['kind'],
   { title: string; description: string }
 > = {
   failed_before_execution: {
     title: 'Change didn’t run',
-    description: 'No project content was changed.',
+    description: 'Nothing was changed.',
   },
   failed_after_execution: {
     title: 'Change may be incomplete',
     description:
-      'Some project content may have changed. Check DatoCMS before trying again.',
+      'Some content may have changed. Ask the agent to check, or look at the content yourself.',
   },
   unknown: {
-    title: 'Outcome needs checking',
-    description: 'The change may have run. Check DatoCMS before trying again.',
+    title: 'Not sure the change ran',
+    description: 'Ask the agent to check, or look at the content yourself.',
   },
 };
 
@@ -108,8 +109,9 @@ function DecisionButtons({
 }
 
 /**
- * A change that ran and failed, or whose result is not known: what happened
- * and what to check, the details, and a repair turn when one is possible.
+ * A change that ran and failed, or whose result is not known: one callout
+ * with what happened and why, the details, and a repair turn when one is
+ * possible.
  */
 function ApprovalOutcomeEntry({
   approval,
@@ -148,14 +150,15 @@ function ApprovalOutcomeEntry({
         title={presentation.title}
         tone="warning"
       >
-        {presentation.description}
+        {approval.error
+          ? `${presentation.description} ${approval.error}`
+          : presentation.description}
       </Callout>
-      {/* What stopped the change is a fact of its own: the outcome stays
-          one or two sentences */}
-      {approval.error && (
-        <Callout className={styles.callout} tone="danger">
-          {approval.error}
-        </Callout>
+      {/* With auto-approve on, the corrected change runs without a review */}
+      {canRepair && autoApproveEnabled && !repairStarting && (
+        <p className={styles.approvalNote}>
+          Auto-approve is on, so the fix can run without asking you.
+        </p>
       )}
       {(canReview || canRepair) && (
         <div className={styles.approvalActions}>
@@ -174,19 +177,7 @@ function ApprovalOutcomeEntry({
                     : undefined
                 }
                 label={
-                  repairStarting ? (
-                    'Preparing fix…'
-                  ) : autoApproveEnabled ? (
-                    <>
-                      Fix with Auto
-                      <span className="visually-hidden">
-                        . Auto is on. The corrected operation may run
-                        automatically.
-                      </span>
-                    </>
-                  ) : (
-                    'Fix and review'
-                  )
+                  repairStarting ? 'Preparing fix…' : 'Ask the agent to fix it'
                 }
                 onClick={() => onRepair?.(approval)}
                 tone="primary"
@@ -228,9 +219,6 @@ function ResolvedApprovalEntry({
       className={styles.approvalResolved}
       role="group"
     >
-      <span className={styles.approvalIcon}>
-        <EditIcon />
-      </span>
       <p className={styles.approvalResolution} role="status">
         {resolution}
       </p>
@@ -245,8 +233,7 @@ function ResolvedApprovalEntry({
 
 /**
  * A change that waits for a decision, or whose decision saves or failed: the
- * change, its error, and Review details, Deny and Approve. An error that ends
- * the change leaves no decision to take.
+ * change, its error, and Review details, Deny and Approve.
  */
 function PendingApprovalEntry({
   approval,
@@ -263,11 +250,6 @@ function PendingApprovalEntry({
   const showDecision =
     (approval.status === 'pending' || deciding) &&
     Boolean(onApprove || onReject);
-  const errorMessage =
-    approval.error ??
-    (approval.status === 'error'
-      ? 'This change could not be approved.'
-      : undefined);
   const canReview = Boolean(
     (approval.details?.length || approval.script) && onReview,
   );
@@ -275,31 +257,28 @@ function PendingApprovalEntry({
   return (
     <div
       aria-describedby={
-        errorMessage ? `${descriptionId} ${errorId}` : descriptionId
+        approval.error ? `${descriptionId} ${errorId}` : descriptionId
       }
       aria-labelledby={titleId}
       className={styles.approval}
       role="group"
     >
-      <div className={styles.approvalHeader}>
-        <span className={styles.approvalIcon}>
-          <EditIcon />
-        </span>
-        <div className={styles.approvalText}>
-          {/* The name of the card, not a heading: the frame is no page or
-              dialog, and the card is a named group */}
-          <p className={styles.approvalTitle} id={titleId}>
-            {approval.title}
-          </p>
-          <p className={styles.approvalDescription} id={descriptionId}>
-            {approval.description}
-          </p>
-        </div>
+      <div className={styles.approvalText}>
+        {/* The name of the card, not a heading: the frame is no page or
+            dialog, and the card is a named group */}
+        <p className={styles.approvalTitle} id={titleId}>
+          {approval.title}
+        </p>
+        <p className={styles.approvalDescription} id={descriptionId}>
+          {approval.description}
+        </p>
       </div>
-      {errorMessage && (
+      {/* Why the change waits (auto-approve didn't run it, unsaved record
+          changes): nothing failed, the decision is still to take */}
+      {approval.error && (
         <div id={errorId}>
-          <Callout className={styles.callout} tone="danger">
-            {errorMessage}
+          <Callout className={styles.callout} tone="warning">
+            {approval.error}
           </Callout>
         </div>
       )}
@@ -324,6 +303,56 @@ function PendingApprovalEntry({
         <span className="visually-hidden" role="status">
           {approval.status === 'approving' ? 'Approving…' : 'Denying…'}
         </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A change that ended before a decision (it can't run, or its approval
+ * expired): there is nothing to decide, thus the card has its title, the
+ * change, and its error, which says why once
+ */
+function BlockedApprovalEntry({
+  approval,
+  locked,
+  onReview,
+}: Pick<ApprovalEntryProps, 'approval' | 'locked' | 'onReview'>) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const errorId = useId();
+  const canReview = Boolean(
+    (approval.details?.length || approval.script) && onReview,
+  );
+
+  return (
+    <div
+      aria-describedby={`${descriptionId} ${errorId}`}
+      aria-labelledby={titleId}
+      className={styles.approval}
+      role="group"
+    >
+      <div className={styles.approvalText}>
+        <p className={styles.approvalTitle} id={titleId}>
+          {approval.title}
+        </p>
+        <p className={styles.approvalDescription} id={descriptionId}>
+          {approval.description}
+        </p>
+      </div>
+      <div id={errorId}>
+        <Callout className={styles.callout} tone="danger">
+          {approval.error ?? 'This change could not be approved.'}
+        </Callout>
+      </div>
+      {canReview && (
+        <div className={styles.approvalActions}>
+          <ReviewDetailsButton
+            approval={approval}
+            locked={locked}
+            onReview={onReview}
+          />
+        </div>
       )}
     </div>
   );
@@ -365,6 +394,16 @@ export function ApprovalEntry({
   if (isResolved) {
     return (
       <ResolvedApprovalEntry
+        approval={approval}
+        locked={locked}
+        onReview={onReview}
+      />
+    );
+  }
+
+  if (approval.status === 'error') {
+    return (
+      <BlockedApprovalEntry
         approval={approval}
         locked={locked}
         onReview={onReview}

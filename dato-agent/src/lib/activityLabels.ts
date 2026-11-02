@@ -491,17 +491,17 @@ function callHasLiteralSearchFilter(argumentsCode: string): boolean {
 
 function safeScriptLabel(argumentsRecord: UnknownRecord): string {
   if (argumentsRecord.no_execute === true) {
-    return 'Saving a CMS operation';
+    return 'Preparing the change';
   }
 
   const script = literalMethodCoordinates(argumentsRecord);
   if (!script) {
-    return 'Reading CMS content';
+    return 'Reading content';
   }
 
   const { calls, coordinates } = script;
   if (!coordinates.every(({ method }) => isReadMethod(method))) {
-    return 'Reading CMS content';
+    return 'Reading content';
   }
 
   if (coordinates.every(({ resource }) => resource === 'items')) {
@@ -530,10 +530,10 @@ function safeScriptLabel(argumentsRecord: UnknownRecord): string {
       ['itemTypes', 'fields', 'fieldsets'].includes(resource),
     )
   ) {
-    return 'Reading the content model';
+    return 'Checking the models';
   }
 
-  return 'Reading CMS content';
+  return 'Reading content';
 }
 
 function writeTarget(resource: string): WriteTarget | undefined {
@@ -616,16 +616,16 @@ function classifyWrite(
 
 function genericWriteLabel(status: ActivityLabelStatus): string {
   if (status === 'waiting') {
-    return 'Preparing a CMS change';
+    return 'Preparing changes';
   }
-  return 'Applying CMS changes';
+  return 'Applying changes';
 }
 
 function bulkWriteLabel(status: ActivityLabelStatus): string {
   if (status === 'waiting') {
-    return 'Preparing bulk record processing';
+    return 'Preparing to update many records';
   }
-  return 'Bulk processing records';
+  return 'Updating many records';
 }
 
 function actionLabel(
@@ -652,9 +652,7 @@ function unsafeScriptLabel(
   status: ActivityLabelStatus,
 ): string {
   if (argumentsRecord.no_execute === true) {
-    return status === 'completed'
-      ? 'CMS operation saved'
-      : 'Saving a CMS operation';
+    return status === 'completed' ? 'Change prepared' : 'Preparing the change';
   }
 
   const classification = classifyWrite(argumentsRecord);
@@ -683,18 +681,18 @@ export function mcpActivityLabel(
 
   switch (toolName) {
     case 'list_api_resources':
-      label = 'Reading available DatoCMS resources';
+      label = 'Checking what it can access';
       break;
     case 'get_api_methods':
-      label = 'Looking up relevant API methods';
+      label = 'Planning the steps';
       break;
     case 'get_schema':
-      label = 'Reading the content model';
+      label = 'Checking the models';
       break;
     case 'upsert_and_execute_safe_script':
       label = argumentsRecord
         ? safeScriptLabel(argumentsRecord)
-        : 'Reading CMS content';
+        : 'Reading content';
       break;
     case 'upsert_and_execute_unsafe_script':
       label = argumentsRecord
@@ -702,13 +700,13 @@ export function mcpActivityLabel(
         : genericWriteLabel(status);
       break;
     case 'view_script':
-      label = 'Reviewing a saved operation';
+      label = 'Reviewing the change';
       break;
     case 'whoami':
       label = 'Checking the DatoCMS connection';
       break;
     default:
-      label = 'Running a DatoCMS operation';
+      label = 'Working in DatoCMS';
   }
 
   return boundedLabel(label);

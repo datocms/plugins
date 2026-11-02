@@ -101,7 +101,7 @@ describe('auto-approval confirmation', () => {
     siteName: 'Marketing Website',
   };
 
-  it('stops after the first cancellation', async () => {
+  it('stays off when the confirmation is cancelled', async () => {
     const openConfirm = vi.fn().mockResolvedValue('cancel');
 
     await expect(
@@ -110,50 +110,24 @@ describe('auto-approval confirmation', () => {
     expect(openConfirm).toHaveBeenCalledOnce();
   });
 
-  it('stays off when the second confirmation is cancelled', async () => {
-    const openConfirm = vi
-      .fn()
-      .mockResolvedValueOnce('continue')
-      .mockResolvedValueOnce('cancel');
-
-    await expect(
-      confirmEnableAutoApproval({ openConfirm }, context),
-    ).resolves.toBe(false);
-    expect(openConfirm).toHaveBeenCalledTimes(2);
-  });
-
-  it('requires both exact sentinels and uses danger actions', async () => {
-    const openConfirm = vi
-      .fn()
-      .mockResolvedValueOnce('continue')
-      .mockResolvedValueOnce('enable');
+  it('requires the exact sentinel of one danger confirmation', async () => {
+    const openConfirm = vi.fn().mockResolvedValue('enable');
 
     await expect(
       confirmEnableAutoApproval({ openConfirm }, context),
     ).resolves.toBe(true);
 
-    expect(openConfirm).toHaveBeenNthCalledWith(
-      1,
+    expect(openConfirm).toHaveBeenCalledOnce();
+    expect(openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Auto-approve is dangerous',
+        title: 'Turn on auto-approve?',
         content: expect.stringMatching(
-          /whole DatoCMS project.*not confined.*destructive operations/i,
-        ),
-        choices: [
-          expect.objectContaining({ value: 'continue', intent: 'negative' }),
-        ],
-      }),
-    );
-    expect(openConfirm).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        title: 'Accept the risk?',
-        content: expect.stringMatching(
-          /dangerous.*create, update, publish, unpublish, delete.*anywhere.*including other environments/i,
+          /change, publish or delete anything your role allows in Marketing Website, in every environment, without asking you.*can’t be undone/i,
         ),
         choices: [
           expect.objectContaining({ value: 'enable', intent: 'negative' }),
         ],
+        cancel: expect.objectContaining({ value: 'cancel' }),
       }),
     );
   });

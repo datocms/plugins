@@ -40,7 +40,7 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
   return (
     <MentionDropdownBase
       emptyMessage="No matching references"
-      headerText="References"
+      headerText="Mention"
       items={commands}
       keyExtractor={(command) => command.name}
       onClose={onClose}

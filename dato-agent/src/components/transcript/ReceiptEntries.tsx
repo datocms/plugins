@@ -1,4 +1,3 @@
-import ApiKey from 'datocms-react-ui/ApiKey';
 import Avatar from 'datocms-react-ui/Avatar';
 import Callout from 'datocms-react-ui/Callout';
 import EntityRow from 'datocms-react-ui/EntityRow';
@@ -18,6 +17,7 @@ import {
 import type { AgentMentionHost } from '../../lib/mentionHost';
 import type { Mention } from '../../lib/mentions';
 import { extractLeadingEmoji } from '../../recordComments/entrypoints/utils/emojiUtils';
+import { formatLocale } from '../../recordComments/entrypoints/utils/mentionFormatters';
 import type {
   AgentAssetsEntry,
   AgentFieldsEntry,
@@ -82,6 +82,11 @@ function RowPicture({
   }
 
   return <IconAvatar icon={icon} size={ROW_IMAGE_SIZE} surface="muted" />;
+}
+
+/** The language of a locale, as the editor knows it ("English") */
+function language(locale: string | undefined) {
+  return locale ? formatLocale(locale) : undefined;
 }
 
 function picture(icon: RowIcon, src?: string | null, emoji?: string | null) {
@@ -157,14 +162,20 @@ function recordRowContent(
   const rawTitle = untitled ? 'Untitled record' : trimmedTitle;
   const { emoji, textWithoutEmoji } = extractLeadingEmoji(rawTitle);
   const mention = record.mention;
+  // The emoji of the model is a picture, as in the titles: the kicker is
+  // its bare name
+  const model = modelName ? extractLeadingEmoji(modelName) : undefined;
 
   return {
     image: picture(
       RecordIcon,
       mention?.thumbnailUrl,
-      emoji || mention?.modelEmoji || (mention?.isSingleton ? '📄' : undefined),
+      emoji ||
+        mention?.modelEmoji ||
+        model?.emoji ||
+        (mention?.isSingleton ? '📄' : undefined),
     ),
-    kicker: modelName,
+    kicker: (model?.emoji && model.textWithoutEmoji.trim()) || modelName,
     title: (emoji && textWithoutEmoji.trim()) || rawTitle,
     details: untitled ? <IdText id={record.itemId} /> : undefined,
   };
@@ -279,16 +290,15 @@ export function FieldsEntry({
     >
       {entry.fields.map((field) => {
         const key = `${field.fieldPath}:${field.locale ?? ''}`;
+        // The label and the language: the path of the field is internal
         const row = (
           <EntityRow
-            aside={field.locale}
+            aside={language(field.locale)}
             image={picture(FieldIcon)}
             layout="row"
             title={field.title.trim() || field.fieldPath}
             trailing={entry.openingKey === key ? openingSpinner : undefined}
-          >
-            {field.fieldPath}
-          </EntityRow>
+          />
         );
 
         if (!onOpenField) {
@@ -414,12 +424,7 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
 
       return (
         <EntityRow
-          afterTitle={
-            <>
-              <ApiKey>{mention.apiKey}</ApiKey>
-              {mention.isBlockModel && <Pill>Block</Pill>}
-            </>
-          }
+          afterTitle={mention.isBlockModel && <Pill>Block</Pill>}
           image={picture(ModelIcon, null, emoji)}
           layout="row"
           title={(emoji && textWithoutEmoji.trim()) || mention.name}
@@ -434,7 +439,7 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
           layout="row"
           title={mention.filename}
         >
-          Not an asset yet
+          Attached file
         </EntityRow>
       );
 
@@ -460,13 +465,11 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
     case 'field':
       return (
         <EntityRow
-          aside={mention.localized ? mention.locale : undefined}
+          aside={mention.localized ? language(mention.locale) : undefined}
           image={picture(FieldIcon)}
           layout="row"
           title={mention.label.trim() || mention.apiKey}
-        >
-          {mention.fieldPath}
-        </EntityRow>
+        />
       );
 
     case 'asset':

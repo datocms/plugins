@@ -93,7 +93,7 @@ function expectHint(
 describe('MentionDisplay', () => {
   it.each([
     ['user', mentions.user, '@Ada Lovelace', 'ada@example.com'],
-    ['field', mentions.field, '#seo_title · it', 'Structured text'],
+    ['field', mentions.field, '#SEO title · Italian', 'Structured text'],
     ['asset', mentions.asset, 'brand-gu….pdf', 'brand-guidelines.pdf'],
     ['file', mentions.file, 'research….pdf', 'research-notes.pdf'],
     ['record', mentions.record, 'Homepage', 'Page'],
@@ -321,7 +321,7 @@ describe('MentionDisplay', () => {
 
   it.each([
     ['user', mentions.user, '@Ada Lovelace'],
-    ['field', mentions.field, '#seo_title · it'],
+    ['field', mentions.field, '#SEO title · Italian'],
     ['asset', mentions.asset, 'brand-gu….pdf'],
     ['file', mentions.file, 'research….pdf'],
     ['record', mentions.record, 'Homepage'],
@@ -354,10 +354,10 @@ describe('MentionDisplay', () => {
           onClick={onClick}
         />,
       );
-      const chip = screen.getByRole('button', { name: '#seo_title · it' });
+      const chip = screen.getByRole('button', { name: '#SEO title · Italian' });
 
       expect(chip).toHaveAttribute('tabindex', '-1');
-      expect(within(chip).getByText('#seo_title · it')).toBeVisible();
+      expect(within(chip).getByText('#SEO title · Italian')).toBeVisible();
       expectHint(container, chip, 'Structured text');
 
       fireEvent.click(chip);
