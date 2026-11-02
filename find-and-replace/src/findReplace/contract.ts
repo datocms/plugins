@@ -223,8 +223,8 @@ export type ReplacementProblem =
 export type ReplacementWarning =
   /** Regex mode: `$3` (or `$<name>`) refers to a group the pattern doesn't have; it is inserted literally. */
   | { code: 'group_out_of_range'; token: string; groupCount: number }
-  /** Literal mode only: the replacement text itself matches the find settings (Acme → Acme Inc). */
-  | { code: 'self_match' }
+  /** Literal mode only: the replacement text itself matches the find settings (Acme → Acme Inc). The copy quotes both texts. */
+  | { code: 'self_match'; pattern: string; replacement: string }
   /** Included slug matches whose new text has characters outside [a-z0-9_-]; they will probably fail validation. */
   | { code: 'slug_format'; count: number };
 

@@ -4,6 +4,7 @@ import {
   type DisabledReason,
   type FailDetail,
   type FailReason,
+  type FindInput,
   type MetaView,
   type NoResultsView,
   type NoteView,
@@ -35,42 +36,44 @@ export const STRINGS = {
   /** The Toolbar.Help of the title: what the page is for. */
   help: 'Finds text in the records of your models and replaces it. You review every match, and can leave any out, before anything changes.',
   loading: 'Loading the models',
-  searching: 'Searching the records',
   /** The name of the page's Pane: what it lists. The find form takes it as its search name. */
   paneLabel: 'Records',
   findLabel: 'Find',
   /** Placeholders name the field, never instruct. */
   findPlaceholder: 'Find',
   pressEnter: 'Press Enter to search.',
+  /** The meta after the title while Find holds settings not searched yet: the count shown is the earlier search's. */
+  awaitingEnter: 'Press Enter to search',
   clearSearch: 'Clear search',
+  /** The menu of the find options, after Find. */
+  options: 'Options',
   matchCase: 'Match case',
   matchWholeWord: 'Match whole word',
   useRegex: 'Use regular expression',
-  /** The tooltip of the regular expression toggle. */
-  regexTip:
-    'Use regular expression. In Replace with, $1 inserts the first group of the pattern.',
+  /** "Use regular expression" in the Options trigger, while it is on. */
+  regexOn: 'Regular expression',
+  /** Under the options while regular expressions are on. */
+  regexTip: 'In Replace with, $1 inserts the first group of the pattern.',
   replaceLabel: 'Replace with',
   replacePlaceholder: 'Replace with',
   replacePlaceholderRemove: 'Matches will be removed',
   replaceWithNothing: 'Replace with nothing',
   allModels: 'All models',
   searchAgain: 'Search again',
+  /** The publish offer on a phone-width frame, next to "Search again" (the confirm gives the count). */
+  publish: 'Publish',
   publishing: 'Publishing…',
   published: 'Published',
-  publishingReason:
-    'You cannot do anything else while the records are being published.',
+  notPublished: 'Not published',
+  publishingReason: 'Wait for the records to be published.',
   keepOpen: 'Keep this page open until it finishes',
   /** The same, as a callout above the results on a phone-width frame, where the progress row has no room for it. */
   keepOpenNotice: 'Keep this page open until it finishes.',
   stop: 'Stop',
   stopping: 'Stopping…',
   stoppingReason: 'It stops after the record in progress.',
-  retryRecords: 'Try the failed records again',
-  retryModels: 'Search the failed models again',
-  retryDisabledReason:
-    'You cannot try again until the replacement or publishing ends.',
   searchDisabledReason:
-    'You cannot change the search while records are being updated or published.',
+    "You can't change the search while records are being updated or published.",
   recordColumn: 'Record',
   matchColumn: 'Match',
   modelColumn: 'Model',
@@ -83,10 +86,12 @@ export const STRINGS = {
   loadMore: 'Load more records',
   openRecordNewTab: 'Open record in a new tab',
   openRecord: 'Open record',
-  openRecordDisabled: 'You cannot open records while they are being updated.',
+  openRecordDisabled: "You can't open records while they are being updated.",
   updating: 'Updating…',
   replacedWith: ' replaced with ',
   tryAgain: 'Try again',
+  /** The retry of the failed records on a phone-width frame, where the count has no room. */
+  saveAgain: 'Save again',
   /** What is missing before the first search. */
   idleTitle: 'No search yet',
   idleLine:
@@ -241,38 +246,34 @@ function metaText(c: Counts, meta: MetaView): string | null {
 
 // ── Primary slot ────────────────────────────────────────────────────────────
 
+/** Each reason says what to do, as the docs' "Fix the 2 invalid fields first." */
 const DISABLED_REASONS: Record<DisabledReason, (verb: ReplaceVerb) => string> =
   {
-    no_matches: (verb) =>
-      `You cannot ${verb} anything until the search finds matches.`,
-    search_running: (verb) =>
-      `You cannot ${verb} right now as the search is still running.`,
-    press_enter: (verb) =>
-      `You cannot ${verb} until you press Enter to search.`,
-    invalid_pattern: (verb) =>
-      `You cannot ${verb} as the pattern is not valid.`,
+    no_matches: (verb) => `Find some matches to ${verb} first.`,
+    search_running: () => 'Wait for the search to finish.',
+    press_enter: () => 'Press Enter to search first.',
+    invalid_pattern: () => 'Fix the text in Find first.',
     no_replacement: () =>
-      'You cannot replace until you type a replacement or turn on Replace with nothing.',
-    invalid_replacement: () =>
-      'You cannot replace until the replacement is fixed.',
-    nothing_selected: (verb) =>
-      `You cannot ${verb} as no matches are selected.`,
-    nothing_changes: () => 'You cannot replace as nothing would change.',
-    replacing: (verb) =>
-      `You cannot ${verb} right now as a replacement is in progress.`,
+      'Type a replacement first, or pick Replace with nothing in Options.',
+    invalid_replacement: () => 'Fix the replacement first.',
+    nothing_selected: () => 'Select at least one match first.',
+    nothing_changes: () =>
+      'Type a different replacement, as this one changes nothing.',
+    replacing: () => 'Wait for the replacement to finish.',
   };
 
 // ── Row statuses and reasons ────────────────────────────────────────────────
 
+/** Each row states only its cause: the title bar holds "Search again" and "Save 2 records again". */
 const SKIP_REASONS: Record<SkipReason, string> = {
-  stale: 'Changed after the search. Search again to include it.',
+  stale: 'Someone edited it after the search.',
   deleted: 'This record no longer exists.',
   unsupported: "This field type can't be replaced yet.",
 };
 
 const FAIL_REASONS: Record<Exclude<FailReason, 'validation'>, string> = {
   permission: "Your role can't edit this record.",
-  network: "Couldn't save this record. Try again.",
+  network: "Couldn't save this record, as DatoCMS didn't respond.",
   unknown: "Couldn't save this record.",
 };
 
@@ -323,7 +324,7 @@ const PUBLISH_FAIL_REASONS: Record<
   string
 > = {
   permission: "Couldn't publish, as your role can't publish this record.",
-  network: "Couldn't publish this record. Try again.",
+  network: "Couldn't publish, as DatoCMS didn't respond.",
   unknown: "Couldn't publish this record.",
 };
 
@@ -358,8 +359,8 @@ function patternProblemText(problem: PatternProblem): string {
   switch (problem.code) {
     case 'invalid_regex':
       return problem.cause
-        ? `Pattern must be a valid regular expression (${problem.cause}).`
-        : 'Pattern must be a valid regular expression.';
+        ? `Fix the regular expression (${problem.cause}), or turn off Use regular expression in Options.`
+        : 'Fix the regular expression, or turn off Use regular expression in Options.';
     case 'zero_width':
       return 'Pattern must match at least one character.';
     case 'too_slow':
@@ -387,7 +388,7 @@ function replacementWarningText(
         ? `Replacement uses ${warning.token}, but the pattern only has 1 group.`
         : `Replacement uses ${warning.token}, but the pattern only has ${c.fmt(warning.groupCount)} groups.`;
     case 'self_match':
-      return 'Your replacement also matches this search, so a later search can find these matches again.';
+      return `${quote(warning.replacement)} still contains ${quote(warning.pattern)}, so searching again will find these matches again.`;
     case 'slug_format':
       return warning.count === 1
         ? 'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail.'
@@ -395,9 +396,11 @@ function replacementWarningText(
   }
 }
 
-/** The title of a note whose text has two sentences: the problem in a few words. */
-function noteTitle(note: NoteView): string | null {
-  return note.kind === 'capped' ? 'More matches to replace' : null;
+/** The title of a note: the problem in a few words (each text has two sentences). */
+function noteTitle(note: NoteView): string {
+  return note.kind === 'capped'
+    ? 'More matches to replace'
+    : 'Some matches may be missing';
 }
 
 function noteText(c: Counts, note: NoteView): string {
@@ -405,80 +408,24 @@ function noteText(c: Counts, note: NoteView): string {
     // Searching again after replacing reads on from where this search stopped.
     return `Showing the ${note.continued ? 'next' : 'first'} ${c.fmt(DEFAULT_LIMITS.maxMatches)} matches. Replace them, then search again for the rest.`;
   }
-  return note.total === null
-    ? `Search stopped after ${c.records(note.searched)}, so some matches may be missing.`
-    : `Search stopped after ${c.fmt(note.searched)} of ${c.records(note.total)}, so some matches may be missing.`;
+  const searched =
+    note.total === null
+      ? c.records(note.searched)
+      : `${c.fmt(note.searched)} of ${c.records(note.total)}`;
+  return `The search stopped after ${searched}. Press Enter in Find to search them all.`;
 }
 
-/** The retry a callout's situation offers. It is an option of the title bar's ⋮, never a button in the callout. */
-export type CalloutAction = 'retryRecords' | 'retryModels';
-
+/**
+ * The callout of the models that couldn't be searched: a fact about the
+ * current results. The failed records and the skipped ones have no callout:
+ * the meta counts them, each row says why, and the toast reported the run.
+ */
 export type CalloutCopy = {
-  tone: 'danger' | 'warning';
   /** The problem in a few words, when the text has two sentences; else null. */
   title: string | null;
   /** The whole message: the callout holds only this text. */
   text: string;
-  action: CalloutAction | null;
 };
-
-function recordsFailedText(
-  c: Counts,
-  callout: Extract<CalloutView, { kind: 'recordsFailed' }>,
-): string {
-  const one = callout.count === 1;
-  const n = c.fmt(callout.count);
-  switch (callout.singleReason) {
-    case 'validation':
-      return one
-        ? "Couldn't update 1 record, as the new value doesn't pass its field validations."
-        : `Couldn't update ${n} records, as the new values don't pass their field validations.`;
-    case 'permission':
-      return one
-        ? "Couldn't update 1 record, as your role can't edit it."
-        : `Couldn't update ${n} records, as your role can't edit them.`;
-    case 'network':
-      return one
-        ? "Couldn't update 1 record, as DatoCMS didn't respond."
-        : `Couldn't update ${n} records, as DatoCMS didn't respond.`;
-    default:
-      return one
-        ? "Couldn't update 1 record. The reason is under it."
-        : `Couldn't update ${n} records. The reason is under each one.`;
-  }
-}
-
-/** One reason fits one sentence; mixed reasons take two, under a title. */
-function recordsFailedTitle(
-  callout: Extract<CalloutView, { kind: 'recordsFailed' }>,
-): string | null {
-  switch (callout.singleReason) {
-    case 'validation':
-    case 'permission':
-    case 'network':
-      return null;
-    default:
-      return callout.count === 1
-        ? "A record wasn't updated"
-        : "Some records weren't updated";
-  }
-}
-
-function recordsSkippedText(
-  c: Counts,
-  callout: Extract<CalloutView, { kind: 'recordsSkipped' }>,
-): string {
-  const one = callout.count === 1;
-  const n = c.fmt(callout.count);
-  if (callout.allStale) {
-    return one
-      ? '1 record changed after the search and was skipped. Search again to include it.'
-      : `${n} records changed after the search and were skipped. Search again to include them.`;
-  }
-  return one
-    ? '1 record was skipped. The reason is under it.'
-    : `${n} records were skipped. The reason is under each one.`;
-}
 
 function modelsFailedText(
   c: Counts,
@@ -497,60 +444,78 @@ function modelsFailedText(
   }
 }
 
-function calloutCopy(c: Counts, callout: CalloutView): CalloutCopy {
-  switch (callout.kind) {
-    case 'recordsFailed':
-      return {
-        tone: 'danger',
-        title: recordsFailedTitle(callout),
-        text: recordsFailedText(c, callout),
-        action: callout.retryable ? 'retryRecords' : null,
-      };
-    case 'recordsSkipped':
-      return {
-        tone: 'warning',
-        title:
-          callout.count === 1
-            ? 'A record was skipped'
-            : 'Some records were skipped',
-        text: recordsSkippedText(c, callout),
-        action: null,
-      };
-    case 'modelsFailed':
-      return callout.retryable
-        ? {
-            tone: 'warning',
-            title: null,
-            text: modelsFailedText(c, callout.modelNames),
-            action: 'retryModels',
-          }
-        : {
-            tone: 'warning',
-            title:
-              callout.modelNames.length === 1
-                ? "A model wasn't searched"
-                : "Some models weren't searched",
-            text: `${modelsFailedText(c, callout.modelNames)} Searching again reads ${callout.modelNames.length === 1 ? 'it' : 'them'} once more.`,
-            action: null,
-          };
+export type ModelsFailedCallout = Extract<
+  CalloutView,
+  { kind: 'modelsFailed' }
+>;
+
+/** Retryable: the title bar has the button that searches them again. Else Enter in Find does. */
+function modelsFailedCopy(
+  c: Counts,
+  callout: ModelsFailedCallout,
+): CalloutCopy {
+  const text = modelsFailedText(c, callout.modelNames);
+  if (callout.retryable) {
+    return { title: null, text };
   }
+  return {
+    title:
+      callout.modelNames.length === 1
+        ? "A model wasn't searched"
+        : "Some models weren't searched",
+    text: `${text} Press Enter in Find to search again.`,
+  };
+}
+
+/**
+ * The Options trigger: the options that are on, so a search they narrow, or
+ * a disabled Replace with, never looks like a plain one ("Options: Match
+ * case", "Options: Replace with nothing", "Options: 2 on").
+ */
+export function optionsLabel(
+  find: Pick<FindInput, 'caseSensitive' | 'wholeWord' | 'regex'>,
+  remove: boolean,
+): string {
+  const on: string[] = [];
+  if (find.caseSensitive) {
+    on.push(STRINGS.matchCase);
+  }
+  if (find.wholeWord) {
+    on.push(STRINGS.matchWholeWord);
+  }
+  if (find.regex) {
+    on.push(STRINGS.regexOn);
+  }
+  if (remove) {
+    on.push(STRINGS.replaceWithNothing);
+  }
+  const [only] = on;
+  if (on.length > 1) {
+    return `${STRINGS.options}: ${on.length} on`;
+  }
+  return only ? `${STRINGS.options}: ${only}` : STRINGS.options;
+}
+
+/** The button of the title bar that searches the failed models again. */
+function retryModelsLabel(modelNames: ReadonlyArray<string>): string {
+  const [name] = modelNames;
+  return modelNames.length === 1 && name
+    ? `Search ${quoteName(name)} again`
+    : 'Search the failed models again';
 }
 
 // ── Empty, no results and pane states ──────────────────────────────────────
 
-function narrowingParts(view: NoResultsView): string[] {
-  const parts: string[] = [];
-  if (view.caseSensitive && view.wholeWord) {
-    parts.push('turn off Match case and Match whole word');
-  } else if (view.caseSensitive) {
-    parts.push('turn off Match case');
-  } else if (view.wholeWord) {
-    parts.push('turn off Match whole word');
+/** The options that are on and narrow the search, by their names in Options. */
+function narrowingOptions(view: NoResultsView): string[] {
+  const names: string[] = [];
+  if (view.caseSensitive) {
+    names.push(STRINGS.matchCase);
   }
-  if (view.regex) {
-    parts.push('check the regular expression');
+  if (view.wholeWord) {
+    names.push(STRINGS.matchWholeWord);
   }
-  return parts;
+  return names;
 }
 
 /** A model filter is on and other models still have matches: "Show all models" leads back to them. */
@@ -580,21 +545,25 @@ function noResultsTitle(view: NoResultsView, pattern: string): string {
   return `No matches for ${what}`;
 }
 
-function noResultsLine(view: NoResultsView): string {
+/**
+ * The line under the title, only when something on screen can change the
+ * outcome; a plain search with no results has a title alone.
+ */
+function noResultsLine(view: NoResultsView): string | null {
   if (hiddenByFilter(view)) {
     return 'Other models have matches.';
   }
+  // After a run, the title alone says that every match is gone.
   if (view.followsRun) {
-    return 'Type something else to find.';
+    return null;
   }
   if (view.continued) {
     return "Records you already went through weren't read again. Press Enter to search them all.";
   }
-  const parts = narrowingParts(view);
-  if (parts.length > 0) {
-    return `Consider broadening your search: ${parts.join(', ')}, or try different keywords.`;
-  }
-  return 'Check the spelling, or try different keywords.';
+  const options = narrowingOptions(view);
+  return options.length > 0
+    ? `To find more, turn off ${options.join(' and ')} in Options.`
+    : null;
 }
 
 export type PaneStateCase =
@@ -611,29 +580,30 @@ export type PaneStateCopy = {
 
 /** A failure the user can't see the cause of: what happened, then what to do. */
 const API_DIDNT_RESPOND =
-  "The Content Management API didn't respond. Check your connection, then try again.";
+  "DatoCMS didn't respond. Check your connection, then try again.";
 const TRY_AGAIN_OR_RELOAD =
   'Try again, and reload the page if it keeps failing.';
 
+/** The title says what is missing; the line, what to do. */
 function unavailablePane(cause: 'role' | 'no_models' | 'token'): PaneStateCopy {
   switch (cause) {
     case 'role':
       return {
         icon: 'ban',
-        title: 'Permission denied',
-        line: "Your role can't use this plugin. Ask a project admin to give it access in the plugin settings.",
+        title: `Your role can't use ${STRINGS.title}`,
+        line: 'Ask a project admin to give your role access in the plugin settings.',
       };
     case 'no_models':
       return {
         icon: 'ban',
-        title: 'Permission denied',
-        line: "Your role can't edit records in any model this plugin can search. Ask a project admin to give your role access to one of them.",
+        title: 'No models you can edit',
+        line: `Ask a project admin to give your role access to one of the models that ${STRINGS.title} searches.`,
       };
     case 'token':
       return {
         icon: 'error',
         title: "Couldn't access your content",
-        line: 'This plugin needs access to your API token. Ask a project admin to grant it in the plugin settings.',
+        line: "This plugin needs access to your API token. Ask a project admin to grant it in the plugin's permissions.",
       };
   }
 }
@@ -664,7 +634,8 @@ export function paneStateCopy(pane: PaneStateCase): PaneStateCopy {
 
 // ── Confirm ─────────────────────────────────────────────────────────────────
 
-function confirmQuestion(c: Counts, plan: PlanFacts): string {
+/** What the write does, stated once: the title already asks. */
+function confirmStatement(c: Counts, plan: PlanFacts): string {
   const where =
     plan.recordCount === 1 && plan.singleRecord
       ? quoteName(recordTitle(plan.singleRecord.title, plan.singleRecord.id))
@@ -673,9 +644,9 @@ function confirmQuestion(c: Counts, plan: PlanFacts): string {
     ? `matches of ${quotePattern(plan.pattern, true)}`
     : quote(plan.pattern);
   if (plan.verb === 'remove') {
-    return `Are you sure you want to remove ${what} from ${where}?`;
+    return `This removes ${what} from ${where}.`;
   }
-  return `Are you sure you want to replace ${what} with ${quote(plan.replacementText)} in ${where}?`;
+  return `This replaces ${what} with ${quote(plan.replacementText)} in ${where}.`;
 }
 
 function publishingConsequence(plan: PlanFacts): string {
@@ -687,7 +658,7 @@ function publishingConsequence(plan: PlanFacts): string {
       : 'Changes are saved as drafts and nothing gets published.';
   }
   if (live < total) {
-    return 'Records in models without draft/published change on your website right away.';
+    return "Some of these records aren't saved as drafts, so they change on your website right away.";
   }
   return total === 1
     ? 'This record changes on your website right away.'
@@ -720,7 +691,7 @@ function confirmCopy(c: Counts, plan: PlanFacts): ConfirmCopy {
     title: one
       ? `${capitalVerb(plan.verb)} this match?`
       : `${capitalVerb(plan.verb)} ${c.fmt(plan.matchCount)} matches?`,
-    content: [confirmQuestion(c, plan), ...confirmConsequences(c, plan)].join(
+    content: [confirmStatement(c, plan), ...confirmConsequences(c, plan)].join(
       ' ',
     ),
     choice: one
@@ -731,18 +702,14 @@ function confirmCopy(c: Counts, plan: PlanFacts): ConfirmCopy {
 
 function publishConfirmCopy(c: Counts, offer: PublishOffer): ConfirmCopy {
   const one = offer.recordCount === 1;
-  const sentences = [
-    one
-      ? 'Only the replaced text goes live, as this record had no other unpublished changes.'
-      : 'Only the replaced text goes live, as these records had no other unpublished changes.',
-  ];
+  const sentences = ['Only the replaced text goes live.'];
   if (offer.heldCount === 1) {
     sentences.push(
-      "1 other replaced record stays unpublished, as publishing it would also publish changes that aren't part of this replacement.",
+      '1 other record stays unpublished, as it has other unpublished changes.',
     );
   } else if (offer.heldCount > 1) {
     sentences.push(
-      `${c.fmt(offer.heldCount)} other replaced records stay unpublished, as publishing them would also publish changes that aren't part of this replacement.`,
+      `${c.fmt(offer.heldCount)} other records stay unpublished, as they have other unpublished changes.`,
     );
   }
   return {
@@ -768,46 +735,30 @@ function leadingMatches(c: Counts, n: number, verb: ReplaceVerb): string {
     : `${c.fmt(n)} matches ${pastVerb(verb)}`;
 }
 
-function toastAllWritten(c: Counts, n: number, verb: ReplaceVerb): string {
-  if (n === 0) {
-    return `No matches successfully ${pastVerb(verb)}!`;
-  }
-  return n === 1
-    ? `One match successfully ${pastVerb(verb)}!`
-    : `${c.fmt(n)} matches successfully ${pastVerb(verb)}!`;
-}
-
+/** In the words of the meta after the title: "…, 3 records skipped." Each row says why. */
 function toastSkipped(c: Counts, pass: RunTotals, verb: ReplaceVerb): string {
   const lead = leadingMatches(c, pass.replacedMatches, verb);
-  const skipped = pass.skippedRecords;
-  if (pass.staleSkippedRecords !== skipped) {
-    return `${lead}, ${c.records(skipped)} skipped.`;
-  }
-  return skipped === 1
-    ? `${lead}, 1 record skipped as it changed after the search.`
-    : `${lead}, ${c.fmt(skipped)} records skipped as they changed after the search.`;
+  return `${lead}, ${c.records(pass.skippedRecords)} skipped.`;
 }
 
+/** In the words of the meta after the title: "…, 3 records failed." */
 function toastFailed(c: Counts, pass: RunTotals, verb: ReplaceVerb): string {
   const lead = leadingMatches(c, pass.replacedMatches, verb);
-  return pass.failedRecords === 1
-    ? `${lead}, 1 record couldn't be updated.`
-    : `${lead}, ${c.fmt(pass.failedRecords)} records couldn't be updated.`;
+  return `${lead}, ${c.records(pass.failedRecords)} failed.`;
 }
 
+/** In the words of the meta after the title: "…, 2 records skipped, 1 failed." */
 function toastNotUpdated(
   c: Counts,
   pass: RunTotals,
   verb: ReplaceVerb,
 ): string {
   const lead = leadingMatches(c, pass.replacedMatches, verb);
-  return `${lead}, ${c.records(pass.skippedRecords + pass.failedRecords)} weren't updated.`;
+  return `${lead}, ${c.records(pass.skippedRecords)} skipped, ${c.fmt(pass.failedRecords)} failed.`;
 }
 
 function toastPublished(c: Counts, n: number): string {
-  return n === 1
-    ? 'One record successfully published!'
-    : `${c.fmt(n)} records successfully published!`;
+  return n === 1 ? 'One record published' : `${c.fmt(n)} records published`;
 }
 
 function toastPublishPartial(c: Counts, pass: PublishTotals): string {
@@ -842,29 +793,48 @@ function optionCount(
 const NBSP = '\u00a0';
 
 /**
- * "SEO › Description · en": every segment, then the locale as plain text.
- * No-break spaces keep a wrapped label readable in its narrow column: a line
- * breaks only after "›" (never before it), and the locale stays with the
- * last segment ("Heading · en", never a lone "· en").
+ * The name of a locale's language in English, the language of this copy
+ * ("en" → "English", "pt-BR" → "Brazilian Portuguese"), or its code in
+ * capitals ("XX") when there is no name for it.
+ */
+function createLanguageNames(): (code: string) => string {
+  const names = new Intl.DisplayNames('en', {
+    type: 'language',
+    fallback: 'none',
+  });
+  return (code) => {
+    try {
+      return names.of(code) ?? code.toUpperCase();
+    } catch {
+      return code.toUpperCase();
+    }
+  };
+}
+
+/**
+ * "SEO › Description · English": every segment, then the language as plain
+ * text. No-break spaces keep a wrapped label readable in its narrow column:
+ * a line breaks only after "›" (never before it), and the language stays
+ * with the last segment ("Heading · English", never a lone "· English").
  */
 export function whereLabel(
   path: ReadonlyArray<string>,
-  locale: string | null,
+  language: string | null,
 ): string {
   const full = path.join(`${NBSP}› `);
-  return locale ? `${full}${NBSP}·${NBSP}${locale}` : full;
+  return language ? `${full}${NBSP}·${NBSP}${language}` : full;
 }
 
-/** Every match line's accessible name: "Body, en, match 2" ("Title, en" when the field has one match). */
+/** Every match line's accessible name: "Body, English, match 2" ("Title, English" when the field has one match). */
 export function whereName(
   path: ReadonlyArray<string>,
-  locale: string | null,
+  language: string | null,
   index: number,
   total: number,
 ): string {
   const parts = [path.join(' › ')];
-  if (locale) {
-    parts.push(locale);
+  if (language) {
+    parts.push(language);
   }
   if (total > 1) {
     parts.push(`match ${index + 1}`);
@@ -876,6 +846,9 @@ export function whereName(
 
 export function createCopy(locale: string) {
   const c = createCounts(locale);
+  const languageName = createLanguageNames();
+  const language = (code: string | null) =>
+    code === null ? null : languageName(code);
 
   return {
     fmt: c.fmt,
@@ -883,11 +856,24 @@ export function createCopy(locale: string) {
     records: c.records,
     quote,
     recordTitle,
-    /** "Article · 3 matches": the model and the count of a record, under its title in a narrow table. */
-    recordFacts: (modelName: string, matchCount: number) =>
-      `${modelName} · ${c.matches(matchCount)}`,
-    whereLabel,
-    whereName,
+    /**
+     * The match count of a record: "3 matches", or "2 of 3 matches" when
+     * only some of them are included (`included` is null otherwise). The
+     * record checkbox has no mixed state: the words say it.
+     */
+    recordMatches: (matchCount: number, included: number | null) =>
+      included === null
+        ? c.matches(matchCount)
+        : ofMatches(c, included, matchCount),
+    /** The place of a match line: its path, then its locale's language. */
+    whereLabel: (path: ReadonlyArray<string>, locale: string | null) =>
+      whereLabel(path, language(locale)),
+    whereName: (
+      path: ReadonlyArray<string>,
+      locale: string | null,
+      index: number,
+      total: number,
+    ) => whereName(path, language(locale), index, total),
 
     meta: (meta: MetaView) => metaText(c, meta),
 
@@ -898,6 +884,9 @@ export function createCopy(locale: string) {
     replaceActionName: (verb: ReplaceVerb) =>
       `${capitalVerb(verb)} the matches`,
     publishLabel: (count: number) => `Publish ${c.records(count)}`,
+    /** The button of the title bar that tries the failed records that can be tried again: "Save 2 records again". */
+    retryRecordsLabel: (count: number) => `Save ${c.records(count)} again`,
+    retryModelsLabel,
     disabledReason: (reason: DisabledReason, verb: ReplaceVerb) =>
       DISABLED_REASONS[reason](verb),
 
@@ -916,7 +905,7 @@ export function createCopy(locale: string) {
         : `About ${c.fmt(minutes)} minutes left`;
     },
     replaceProgress: (done: number, total: number) =>
-      `${c.fmt(done)} of ${c.records(total)} processed`,
+      `${c.fmt(done)} of ${c.records(total)} updated`,
     publishProgress: (done: number, total: number) =>
       `${c.fmt(done)} of ${c.records(total)} published`,
 
@@ -933,7 +922,8 @@ export function createCopy(locale: string) {
       replacementWarningText(c, warning),
     note: (note: NoteView) => noteText(c, note),
     noteTitle,
-    callout: (callout: CalloutView) => calloutCopy(c, callout),
+    modelsFailed: (callout: ModelsFailedCallout) =>
+      modelsFailedCopy(c, callout),
 
     noResultsTitle,
     noResultsLine,
@@ -942,12 +932,13 @@ export function createCopy(locale: string) {
     confirm: (plan: PlanFacts) => confirmCopy(c, plan),
     publishConfirm: (offer: PublishOffer) => publishConfirmCopy(c, offer),
 
-    toastStopped: (pass: RunTotals) =>
-      `Replacement stopped: ${c.fmt(pass.replacedRecords)} of ${c.records(pass.plannedRecords)} updated.`,
+    /** In matches, as the meta after the title counts them. */
+    toastStopped: (pass: RunTotals, verb: ReplaceVerb) =>
+      `Replacement stopped: ${ofMatches(c, pass.replacedMatches, pass.plannedMatches)} ${pastVerb(verb)}.`,
     toastAllWritten: (pass: RunTotals, verb: ReplaceVerb) =>
-      toastAllWritten(c, pass.replacedMatches, verb),
+      leadingMatches(c, pass.replacedMatches, verb),
     toastPermission: (verb: ReplaceVerb) =>
-      `Couldn't ${verb} the matches, as your role can't edit these records!`,
+      `Couldn't ${verb} the matches, as your role can't edit these records.`,
     toastSkipped: (pass: RunTotals, verb: ReplaceVerb) =>
       toastSkipped(c, pass, verb),
     toastFailed: (pass: RunTotals, verb: ReplaceVerb) =>
@@ -959,10 +950,11 @@ export function createCopy(locale: string) {
       `Publishing stopped: ${c.fmt(pass.published)} of ${c.records(pass.planned)} published.`,
     toastPublishPartial: (pass: PublishTotals) => toastPublishPartial(c, pass),
     toastPublishPermission: () =>
-      "Couldn't publish the records, as your role can't publish them!",
+      "Couldn't publish the records, as your role can't publish them.",
 
+    /** "Model: Article" while a model is chosen, like "Options: Match case". */
     filterTrigger: (selected: { name: string } | null) =>
-      selected ? selected.name : STRINGS.allModels,
+      selected ? `Model: ${selected.name}` : STRINGS.allModels,
     optionCount: (count: number | null, partial: boolean) =>
       optionCount(c, count, partial),
 

@@ -71,9 +71,37 @@ function toOptions(
   }));
 }
 
-/** A saved ID that no option has (a deleted role or model) still shows. */
-function optionForSavedId(value: string): SelectOption {
-  return { value, label: value };
+type OptionsState = 'loading' | 'loaded' | 'failed';
+
+function optionsStateOf(
+  loading: boolean,
+  loadError: LoadError | null,
+): OptionsState {
+  if (loading) {
+    return 'loading';
+  }
+  return loadError ? 'failed' : 'loaded';
+}
+
+/**
+ * A saved ID that no option has still shows, named by what it is: once the
+ * options are loaded it was deleted; if they couldn't load, it is unknown.
+ * While they load, it waits for them (the select shows its spinner).
+ */
+function savedIdOption(
+  kind: 'role' | 'model',
+  state: OptionsState,
+): (value: string) => SelectOption | undefined {
+  return (value) => {
+    switch (state) {
+      case 'loading':
+        return undefined;
+      case 'loaded':
+        return { value, label: `Deleted ${kind} (${value})` };
+      case 'failed':
+        return { value, label: `Unknown ${kind} (${value})` };
+    }
+  };
 }
 
 function normalizeIds(value: string[]): string[] {
@@ -99,8 +127,8 @@ function isDraftDirty(draft: DraftState, params: PluginParameters): boolean {
 type LoadError = { title: string | null; text: string };
 
 const NO_TOKEN_ERROR: LoadError = {
-  title: null,
-  text: "Couldn't load the roles and models, as the plugin has no access to your API token.",
+  title: "Couldn't load the roles and models",
+  text: "The plugin needs access to your API token. Grant it in the plugin's permissions, then reload the page.",
 };
 
 const LOAD_FAILED_ERROR: LoadError = {
@@ -209,19 +237,14 @@ function selectionErrors(draft: DraftState): {
 
 /** Why Save is unavailable, or undefined when it can save. */
 function saveDisabledReason({
-  canEditSchema,
   isDirty,
   roleSelectionError,
   modelSelectionError,
 }: {
-  canEditSchema: boolean;
   isDirty: boolean;
   roleSelectionError: string | null;
   modelSelectionError: string | null;
 }): { reason: string } | undefined {
-  if (!canEditSchema) {
-    return { reason: "Your role can't change the settings of plugins." };
-  }
   if (!isDirty) {
     return { reason: 'There are no changes to save.' };
   }
@@ -244,10 +267,29 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const [draft, setDraft] = useState<DraftState>(() => toDraftState(params));
   const [isSaving, setIsSaving] = useState(false);
+  // A selection error shows once its select was used: its menu was opened
+  // and closed, or its value changed. Save says why it waits meanwhile.
+  const [touched, setTouched] = useState({ roles: false, models: false });
+  const touchRoles = () =>
+    setTouched((current) => ({ ...current, roles: true }));
+  const touchModels = () =>
+    setTouched((current) => ({ ...current, models: true }));
   const { availableModels, availableRoles, isLoadingOptions, loadError } =
     useProjectOptions(client);
+  const optionsState = optionsStateOf(isLoadingOptions, loadError);
+  const savedRoleOption = useMemo(
+    () => savedIdOption('role', optionsState),
+    [optionsState],
+  );
+  const savedModelOption = useMemo(
+    () => savedIdOption('model', optionsState),
+    [optionsState],
+  );
 
   const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
+  // Without the lists, the saved roles and models show but stay as they are:
+  // nothing could be picked again once removed.
+  const selectsLocked = !canEditSchema || optionsState === 'failed';
 
   useEffect(() => {
     setDraft(toDraftState(params));
@@ -266,7 +308,6 @@ export default function ConfigScreen({ ctx }: Props) {
   const hasValidationError = Boolean(roleSelectionError || modelSelectionError);
   const hasRestriction = draft.restrictToRoles || draft.restrictToModels;
   const disabledReason = saveDisabledReason({
-    canEditSchema,
     isDirty,
     roleSelectionError,
     modelSelectionError,
@@ -280,7 +321,7 @@ export default function ConfigScreen({ ctx }: Props) {
     }
 
     if (!canEditSchema) {
-      ctx.alert('Your role cannot update plugin settings.');
+      ctx.alert("Your role can't change these settings.");
       return;
     }
 
@@ -292,9 +333,9 @@ export default function ConfigScreen({ ctx }: Props) {
 
     try {
       await ctx.updatePluginParameters(toPayload(draft));
-      ctx.notice('Settings successfully saved!');
+      ctx.notice('Settings saved');
     } catch {
-      ctx.alert("Couldn't save the settings.");
+      ctx.alert("Couldn't save the settings. Try again.");
     } finally {
       setIsSaving(false);
     }
@@ -311,13 +352,16 @@ export default function ConfigScreen({ ctx }: Props) {
             <Page.Group
               title="Access"
               footer={
-                <Button
-                  submit
-                  tone="primary"
-                  label="Save"
-                  busy={isSaving}
-                  disabled={disabledReason}
-                />
+                // A role that can't change the settings has nothing to save.
+                canEditSchema ? (
+                  <Button
+                    submit
+                    tone="primary"
+                    label="Save"
+                    busy={isSaving}
+                    disabled={disabledReason}
+                  />
+                ) : undefined
               }
             >
               {hasRestriction && loadError && (
@@ -342,15 +386,17 @@ export default function ConfigScreen({ ctx }: Props) {
                 <FieldWrapper
                   label="Roles"
                   hint="Only these roles see Find and replace in the navigation and can open it."
-                  error={roleSelectionError ?? undefined}
+                  error={(touched.roles && roleSelectionError) || undefined}
                 >
                   <SelectInput
                     multiple
                     value={draft.allowedRoleIds}
                     options={roleOptions}
                     loading={isLoadingOptions}
-                    disabled={!canEditSchema}
-                    acceptValueNotIncludedInOptions={optionForSavedId}
+                    disabled={selectsLocked}
+                    acceptValueNotIncludedInOptions={savedRoleOption}
+                    onBlur={touchRoles}
+                    onMenuClose={touchRoles}
                     onChange={(allowedRoleIds) =>
                       setDraft((current) => ({
                         ...current,
@@ -376,16 +422,17 @@ export default function ConfigScreen({ ctx }: Props) {
               {draft.restrictToModels && (
                 <FieldWrapper
                   label="Models"
-                  hint="Find and replace searches and changes only the records of these models."
-                  error={modelSelectionError ?? undefined}
+                  error={(touched.models && modelSelectionError) || undefined}
                 >
                   <SelectInput
                     multiple
                     value={draft.allowedModelIds}
                     options={modelOptions}
                     loading={isLoadingOptions}
-                    disabled={!canEditSchema}
-                    acceptValueNotIncludedInOptions={optionForSavedId}
+                    disabled={selectsLocked}
+                    acceptValueNotIncludedInOptions={savedModelOption}
+                    onBlur={touchModels}
+                    onMenuClose={touchModels}
                     onChange={(allowedModelIds) =>
                       setDraft((current) => ({
                         ...current,

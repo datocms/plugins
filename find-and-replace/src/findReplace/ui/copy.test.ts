@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DisabledReason, NoResultsView } from '../contract';
-import { createCopy, quote, whereLabel, whereName } from './copy';
+import { createCopy, optionsLabel, quote, whereLabel, whereName } from './copy';
 
 const copy = createCopy('en');
 
@@ -122,8 +122,7 @@ describe('publishing', () => {
       copy.publishConfirm({ token: 't', recordCount: 9, heldCount: 0 }),
     ).toEqual({
       title: 'Publish 9 records?',
-      content:
-        'Only the replaced text goes live, as these records had no other unpublished changes.',
+      content: 'Only the replaced text goes live.',
       choice: 'Yes, publish 9 records',
     });
     const one = copy.publishConfirm({
@@ -134,7 +133,12 @@ describe('publishing', () => {
     expect(one.title).toBe('Publish this record?');
     expect(one.choice).toBe('Yes, publish this record');
     expect(one.content).toBe(
-      "Only the replaced text goes live, as this record had no other unpublished changes. 2 other replaced records stay unpublished, as publishing them would also publish changes that aren't part of this replacement.",
+      'Only the replaced text goes live. 2 other records stay unpublished, as they have other unpublished changes.',
+    );
+    expect(
+      copy.publishConfirm({ token: 't', recordCount: 3, heldCount: 1 }).content,
+    ).toBe(
+      'Only the replaced text goes live. 1 other record stays unpublished, as it has other unpublished changes.',
     );
   });
 
@@ -172,17 +176,17 @@ describe('primary', () => {
 
   it('explains every disabled reason', () => {
     const reasons: Record<DisabledReason, string> = {
-      no_matches: 'You cannot remove anything until the search finds matches.',
-      search_running:
-        'You cannot remove right now as the search is still running.',
-      press_enter: 'You cannot remove until you press Enter to search.',
-      invalid_pattern: 'You cannot remove as the pattern is not valid.',
+      no_matches: 'Find some matches to remove first.',
+      search_running: 'Wait for the search to finish.',
+      press_enter: 'Press Enter to search first.',
+      invalid_pattern: 'Fix the text in Find first.',
       no_replacement:
-        'You cannot replace until you type a replacement or turn on Replace with nothing.',
-      invalid_replacement: 'You cannot replace until the replacement is fixed.',
-      nothing_selected: 'You cannot remove as no matches are selected.',
-      nothing_changes: 'You cannot replace as nothing would change.',
-      replacing: 'You cannot remove right now as a replacement is in progress.',
+        'Type a replacement first, or pick Replace with nothing in Options.',
+      invalid_replacement: 'Fix the replacement first.',
+      nothing_selected: 'Select at least one match first.',
+      nothing_changes:
+        'Type a different replacement, as this one changes nothing.',
+      replacing: 'Wait for the replacement to finish.',
     };
     for (const [reason, text] of Object.entries(reasons)) {
       expect(copy.disabledReason(reason as DisabledReason, 'remove')).toBe(
@@ -200,8 +204,8 @@ describe('progress', () => {
     expect(copy.searchProgress(1200, 3400)).toBe(
       '1,200 of 3,400 records searched',
     );
-    expect(copy.replaceProgress(0, 1)).toBe('0 of 1 record processed');
-    expect(copy.replaceProgress(1, 3)).toBe('1 of 3 records processed');
+    expect(copy.replaceProgress(0, 1)).toBe('0 of 1 record updated');
+    expect(copy.replaceProgress(1, 3)).toBe('1 of 3 records updated');
   });
 
   it('rounds the time left to minutes', () => {
@@ -223,8 +227,11 @@ describe('results', () => {
     expect(copy.recordTitle(null, '42')).toBe('Record 42');
     expect(copy.recordTitle('  ', '42')).toBe('Record 42');
     expect(copy.recordTitle('About us', '42')).toBe('About us');
-    expect(copy.recordFacts('Article', 1)).toBe('Article · 1 match');
-    expect(copy.recordFacts('Article', 1200)).toBe('Article · 1,200 matches');
+    expect(copy.recordMatches(1, null)).toBe('1 match');
+    expect(copy.recordMatches(1200, null)).toBe('1,200 matches');
+    // Only some included: the checkbox has no mixed state, the words say it.
+    expect(copy.recordMatches(3, 2)).toBe('2 of 3 matches');
+    expect(copy.recordMatches(1200, 0)).toBe('0 of 1,200 matches');
     expect(copy.showMore(1)).toBe('Show 1 more match');
     expect(copy.showMore(20)).toBe('Show 20 more matches');
   });
@@ -247,6 +254,24 @@ describe('results', () => {
     );
     expect(whereLabel(['Call to action'], 'en')).toBe(
       `Call to action${nb}·${nb}en`,
+    );
+  });
+
+  it('names the locale by its language, in English as the rest of the copy', () => {
+    const plain = (label: string) => label.replace(/\u00a0/g, ' ');
+    expect(plain(copy.whereLabel(['Title'], 'it'))).toBe('Title · Italian');
+    expect(plain(copy.whereLabel(['Body'], 'pt-BR'))).toBe(
+      'Body · Brazilian Portuguese',
+    );
+    expect(plain(copy.whereLabel(['SEO', 'Title'], null))).toBe('SEO › Title');
+    expect(copy.whereName(['Body'], 'en', 1, 4)).toBe('Body, English, match 2');
+    expect(plain(createCopy('it').whereLabel(['Title'], 'en'))).toBe(
+      'Title · English',
+    );
+    // No name for it: the code, in capitals.
+    expect(plain(copy.whereLabel(['Title'], 'xx'))).toBe('Title · XX');
+    expect(plain(createCopy('not a locale!').whereLabel(['Title'], 'de'))).toBe(
+      'Title · German',
     );
   });
 
@@ -290,7 +315,11 @@ describe('results', () => {
         retryable: true,
         detail: null,
       }),
-    ).toBe("Couldn't save this record. Try again.");
+    ).toBe("Couldn't save this record, as DatoCMS didn't respond.");
+    // Each row states only its cause: "Search again" is in the title bar.
+    expect(copy.statusReason({ kind: 'skipped', reason: 'stale' })).toBe(
+      'Someone edited it after the search.',
+    );
     expect(copy.statusReason({ kind: 'untouched' })).toBeNull();
     expect(
       copy.statusReason({ kind: 'replaced', replacedMatches: 2 }),
@@ -301,7 +330,15 @@ describe('results', () => {
 describe('callouts above the results', () => {
   it('explains pattern and replacement problems', () => {
     expect(copy.patternProblem({ code: 'invalid_regex', cause: null })).toBe(
-      'Pattern must be a valid regular expression.',
+      'Fix the regular expression, or turn off Use regular expression in Options.',
+    );
+    expect(
+      copy.patternProblem({
+        code: 'invalid_regex',
+        cause: 'unterminated group',
+      }),
+    ).toBe(
+      'Fix the regular expression (unterminated group), or turn off Use regular expression in Options.',
     );
     expect(copy.patternProblem({ code: 'too_slow' })).toBe(
       'Pattern takes too long to run, so try a simpler one.',
@@ -354,97 +391,54 @@ describe('callouts above the results', () => {
     expect(
       copy.note({ kind: 'searchStopped', searched: 1200, total: null }),
     ).toBe(
-      'Search stopped after 1,200 records, so some matches may be missing.',
+      'The search stopped after 1,200 records. Press Enter in Find to search them all.',
     );
-    // A two-sentence note has a title; a one-sentence one has none.
+    expect(
+      copy.note({ kind: 'searchStopped', searched: 1200, total: 3400 }),
+    ).toBe(
+      'The search stopped after 1,200 of 3,400 records. Press Enter in Find to search them all.',
+    );
+    // Each note has two sentences, under a title.
     expect(
       copy.noteTitle({ kind: 'capped', selfMatch: false, continued: false }),
     ).toBe('More matches to replace');
     expect(
       copy.noteTitle({ kind: 'searchStopped', searched: 1200, total: null }),
-    ).toBeNull();
+    ).toBe('Some matches may be missing');
   });
 
-  it('writes every callout', () => {
-    const failed = (
-      count: number,
-      singleReason: 'validation' | 'permission' | 'network' | 'unknown' | null,
-      retryable = false,
-    ) =>
-      copy.callout({ kind: 'recordsFailed', count, retryable, singleReason });
-    expect(failed(1, null, true)).toEqual({
-      tone: 'danger',
-      title: "A record wasn't updated",
-      text: "Couldn't update 1 record. The reason is under it.",
-      action: 'retryRecords',
-    });
-    expect(failed(2, 'validation').text).toBe(
-      "Couldn't update 2 records, as the new values don't pass their field validations.",
-    );
-    expect(failed(2, 'unknown').title).toBe("Some records weren't updated");
-    expect(failed(1, 'validation')).toEqual({
-      tone: 'danger',
-      title: null,
-      text: "Couldn't update 1 record, as the new value doesn't pass its field validations.",
-      action: null,
-    });
-    expect(failed(1, 'permission').text).toBe(
-      "Couldn't update 1 record, as your role can't edit it.",
-    );
-    expect(failed(3, 'permission').text).toBe(
-      "Couldn't update 3 records, as your role can't edit them.",
-    );
-    expect(failed(3, 'network', true).text).toBe(
-      "Couldn't update 3 records, as DatoCMS didn't respond.",
-    );
-
-    expect(
-      copy.callout({ kind: 'recordsSkipped', count: 1, allStale: true }),
-    ).toEqual({
-      tone: 'warning',
-      title: 'A record was skipped',
-      text: '1 record changed after the search and was skipped. Search again to include it.',
-      action: null,
-    });
-    expect(
-      copy.callout({ kind: 'recordsSkipped', count: 1, allStale: false }).text,
-    ).toBe('1 record was skipped. The reason is under it.');
-    expect(
-      copy.callout({ kind: 'recordsSkipped', count: 4, allStale: false }).text,
-    ).toBe('4 records were skipped. The reason is under each one.');
-    expect(
-      copy.callout({ kind: 'recordsSkipped', count: 4, allStale: false }).title,
-    ).toBe('Some records were skipped');
-
+  it('writes the callout of the failed models, and the button that retries them', () => {
     const models = (names: string[]) =>
-      copy.callout({
+      copy.modelsFailed({
         kind: 'modelsFailed',
         modelNames: names,
         retryable: true,
       });
     expect(models(['Author'])).toEqual({
-      tone: 'warning',
       title: null,
       text: "Couldn't search the “Author” model.",
-      action: 'retryModels',
     });
-    // Capped results: no "Try again", searching again reads them.
+    // Capped results: no retry button, Enter in Find searches again.
     expect(
-      copy.callout({
+      copy.modelsFailed({
         kind: 'modelsFailed',
         modelNames: ['Author', 'Page'],
         retryable: false,
       }),
     ).toEqual({
-      tone: 'warning',
       title: "Some models weren't searched",
-      text: "Couldn't search the “Author” and “Page” models. Searching again reads them once more.",
-      action: null,
+      text: "Couldn't search the “Author” and “Page” models. Press Enter in Find to search again.",
     });
     expect(models(['A', 'B', 'C']).text).toBe(
       "Couldn't search the “A”, “B” and “C” models.",
     );
     expect(models(['A', 'B', 'C', 'D']).text).toBe("Couldn't search 4 models.");
+    expect(copy.retryRecordsLabel(1)).toBe('Save 1 record again');
+    expect(copy.retryRecordsLabel(2)).toBe('Save 2 records again');
+    expect(copy.retryModelsLabel(['Author'])).toBe('Search “Author” again');
+    expect(copy.retryModelsLabel(['Author', 'Page'])).toBe(
+      'Search the failed models again',
+    );
   });
 });
 
@@ -507,9 +501,9 @@ describe('no results and pane states', () => {
   });
 
   it('names only what narrows the search', () => {
-    expect(copy.noResultsLine(view({ followsRun: true, regex: true }))).toBe(
-      'Type something else to find.',
-    );
+    expect(
+      copy.noResultsLine(view({ followsRun: true, caseSensitive: true })),
+    ).toBeNull();
     expect(
       copy.noResultsLine(
         view({ filteredModelName: 'Article', otherModelsHaveMatches: true }),
@@ -520,46 +514,44 @@ describe('no results and pane states', () => {
         view({ caseSensitive: true, wholeWord: true, regex: true }),
       ),
     ).toBe(
-      'Consider broadening your search: turn off Match case and Match whole word, check the regular expression, or try different keywords.',
+      'To find more, turn off Match case and Match whole word in Options.',
     );
     expect(copy.noResultsLine(view({ wholeWord: true }))).toBe(
-      'Consider broadening your search: turn off Match whole word, or try different keywords.',
+      'To find more, turn off Match whole word in Options.',
     );
-    expect(copy.noResultsLine(view({}))).toBe(
-      'Check the spelling, or try different keywords.',
-    );
+    // A plain search with no results has a title alone.
+    expect(copy.noResultsLine(view({}))).toBeNull();
+    expect(copy.noResultsLine(view({ regex: true }))).toBeNull();
   });
 
   it('writes the pane states', () => {
     expect(copy.paneState({ kind: 'unavailable', cause: 'role' })).toEqual({
       icon: 'ban',
-      title: 'Permission denied',
-      line: "Your role can't use this plugin. Ask a project admin to give it access in the plugin settings.",
+      title: "Your role can't use Find and replace",
+      line: 'Ask a project admin to give your role access in the plugin settings.',
     });
     expect(copy.paneState({ kind: 'unavailable', cause: 'no_models' })).toEqual(
       {
         icon: 'ban',
-        title: 'Permission denied',
-        line: "Your role can't edit records in any model this plugin can search. Ask a project admin to give your role access to one of them.",
+        title: 'No models you can edit',
+        line: 'Ask a project admin to give your role access to one of the models that Find and replace searches.',
       },
     );
     expect(copy.paneState({ kind: 'unavailable', cause: 'token' })).toEqual({
       icon: 'error',
       title: "Couldn't access your content",
-      line: 'This plugin needs access to your API token. Ask a project admin to grant it in the plugin settings.',
+      line: "This plugin needs access to your API token. Ask a project admin to grant it in the plugin's permissions.",
     });
     // A failure says what happened, then what to do.
     expect(copy.paneState({ kind: 'bootFailed', cause: 'network' }).line).toBe(
-      "The Content Management API didn't respond. Check your connection, then try again.",
+      "DatoCMS didn't respond. Check your connection, then try again.",
     );
     expect(copy.paneState({ kind: 'bootFailed', cause: 'unknown' }).line).toBe(
       'Something went wrong while loading your models and fields. Try again, and reload the page if it keeps failing.',
     );
     expect(
       copy.paneState({ kind: 'searchFailed', cause: 'network' }).line,
-    ).toBe(
-      "The Content Management API didn't respond. Check your connection, then try again.",
-    );
+    ).toBe("DatoCMS didn't respond. Check your connection, then try again.");
     expect(
       copy.paneState({ kind: 'searchFailed', cause: 'unknown' }).line,
     ).toBe(
@@ -571,7 +563,7 @@ describe('no results and pane states', () => {
 describe('model filter and live region', () => {
   it('counts options', () => {
     expect(copy.filterTrigger(null)).toBe('All models');
-    expect(copy.filterTrigger({ name: 'Article' })).toBe('Article');
+    expect(copy.filterTrigger({ name: 'Article' })).toBe('Model: Article');
     expect(copy.optionCount(1, false)).toBe('1 match');
     expect(copy.optionCount(12, false)).toBe('12 matches');
     expect(copy.optionCount(1200, false)).toBe('1,200 matches');
@@ -579,6 +571,25 @@ describe('model filter and live region', () => {
     expect(copy.optionCount(96, true)).toBe('96+ matches');
     expect(copy.optionCount(0, true)).toBe('0+ matches');
     expect(copy.optionCount(null, true)).toBe("Couldn't search");
+  });
+
+  it('names the options that are on in the Options trigger', () => {
+    const find = (
+      caseSensitive: boolean,
+      wholeWord: boolean,
+      regex: boolean,
+      remove = false,
+    ) => optionsLabel({ caseSensitive, wholeWord, regex }, remove);
+    expect(find(false, false, false)).toBe('Options');
+    expect(find(true, false, false)).toBe('Options: Match case');
+    expect(find(false, true, false)).toBe('Options: Match whole word');
+    expect(find(false, false, true)).toBe('Options: Regular expression');
+    expect(find(false, false, false, true)).toBe(
+      'Options: Replace with nothing',
+    );
+    expect(find(true, true, false)).toBe('Options: 2 on');
+    expect(find(true, false, false, true)).toBe('Options: 2 on');
+    expect(find(true, true, true)).toBe('Options: 3 on');
   });
 
   it('announces settled searches', () => {

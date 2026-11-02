@@ -33,7 +33,8 @@ export function ModelFilter({ view, copy, onChange }: ModelFilterProps) {
         // Remounted when a run disables it, so an open menu closes with it.
         key={view.enabled ? 'enabled' : 'disabled'}
         triggerComponent={ButtonTrigger}
-        label={view.selected?.name ?? STRINGS.allModels}
+        tone="ghost"
+        label={copy.filterTrigger(view.selected)}
         disabled={
           view.enabled ? undefined : { reason: STRINGS.searchDisabledReason }
         }

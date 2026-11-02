@@ -8,17 +8,21 @@ type CalloutsProps = {
 };
 
 /**
- * What the last search or run left to know, one callout per kind, in the
- * snapshot's order. They hold only their text: the retries they call for are
- * options of the title bar's ⋮, and the toasts carry them too.
+ * The models that couldn't be searched: a fact about the current results.
+ * The callout holds only its text: the button that searches them again is
+ * in the title bar. Failed and skipped records have no callout: the meta
+ * counts them, each row says why, and the toast reported the run.
  */
 export function Callouts({ callouts, copy }: CalloutsProps) {
   return (
     <>
       {callouts.map((callout) => {
-        const { tone, title, text } = copy.callout(callout);
+        if (callout.kind !== 'modelsFailed') {
+          return null;
+        }
+        const { title, text } = copy.modelsFailed(callout);
         return (
-          <Callout key={callout.kind} tone={tone} title={title ?? undefined}>
+          <Callout key={callout.kind} tone="warning" title={title ?? undefined}>
             {text}
           </Callout>
         );
@@ -36,8 +40,6 @@ export function NoteCallout({
   copy: Copy;
 }) {
   return note ? (
-    <Callout title={copy.noteTitle(note) ?? undefined}>
-      {copy.note(note)}
-    </Callout>
+    <Callout title={copy.noteTitle(note)}>{copy.note(note)}</Callout>
   ) : null;
 }

@@ -27,20 +27,25 @@ import type {
   FindReplaceSnapshot,
   FindRowView,
   MetaView,
+  RecordView,
   ReplaceInput,
 } from '../contract';
 import { useFindReplaceEvent, useFindReplaceSnapshot } from '../useFindReplace';
-import { Body, shownFieldProblems } from './Body';
+import { Body, metaLine, shownFieldProblems } from './Body';
 import { buildConfirmOptions, buildPublishConfirmOptions } from './confirm';
-import { type CalloutAction, type Copy, createCopy, STRINGS } from './copy';
+import { type Copy, createCopy, STRINGS } from './copy';
 import { type FieldProblemIds, FindBar, type FindBarHandlers } from './FindBar';
 import styles from './FindReplaceApp.module.css';
 import { LiveRegion, useAnnouncer } from './LiveRegion';
 import { LoadingState, PageState } from './PaneState';
-import { PrimarySlot, REPLACE_ACTION_ID } from './PrimarySlot';
+import {
+  PrimarySlot,
+  REPLACE_ACTION_ID,
+  type SlotRetries,
+} from './PrimarySlot';
 import { isProgressVisible, ProgressRow } from './ProgressRow';
 import { ResultsEnv, type ResultsEnvValue } from './ResultsEnv';
-import { NARROW_FRAME_QUERY, type RetryOptions, TitleBar } from './TitleBar';
+import { NARROW_FRAME_QUERY, TitleBar } from './TitleBar';
 import {
   publishToast,
   type RunEndedEvent,
@@ -123,7 +128,6 @@ function BootPage({ boot, copy }: { boot: NotReady; copy: Copy }) {
                 find={BOOT_FIND}
                 replace={BOOT_REPLACE}
                 findRow={BOOT_FIND_ROW}
-                invalid={false}
                 modelFilter={null}
                 copy={copy}
                 handlers={BOOT_HANDLERS}
@@ -319,25 +323,39 @@ function useFindBarHandlers(
   );
 }
 
-/**
- * The retries that the callouts above the results offer, as options of the
- * title bar's "⋮" (a callout holds only text). Only while the callouts show.
- */
-function retryActions(
-  snapshot: FindReplaceSnapshot,
-  copy: Copy,
-): CalloutAction[] {
-  if (snapshot.body !== 'results' && snapshot.body !== 'noResults') {
-    return [];
-  }
-  const actions: CalloutAction[] = [];
-  for (const callout of snapshot.callouts) {
-    const { action } = copy.callout(callout);
-    if (action && !actions.includes(action)) {
-      actions.push(action);
+/** The failed records that can be tried again: those DatoCMS didn't answer. */
+function retryableRecords(records: ReadonlyArray<RecordView>): number {
+  let count = 0;
+  for (const { status } of records) {
+    if (status.kind === 'failed' && status.retryable) {
+      count += 1;
     }
   }
-  return actions;
+  return count;
+}
+
+/**
+ * The retries that apply to the results on screen, as buttons of the title
+ * bar: the failed records that can be tried again (counted, as only those
+ * are), and the models that couldn't be searched. Not while a pass runs
+ * (the find form is then disabled).
+ */
+function retriesOf(
+  snapshot: FindReplaceSnapshot,
+): Pick<SlotRetries, 'records' | 'modelNames'> {
+  const shown =
+    snapshot.findRow.enabled &&
+    (snapshot.body === 'results' || snapshot.body === 'noResults');
+  let records = 0;
+  let modelNames: ReadonlyArray<string> | null = null;
+  for (const callout of shown ? snapshot.callouts : []) {
+    if (callout.kind === 'recordsFailed' && callout.retryable) {
+      records = retryableRecords(snapshot.records);
+    } else if (callout.kind === 'modelsFailed' && callout.retryable) {
+      modelNames = callout.modelNames;
+    }
+  }
+  return { records, modelNames };
 }
 
 /** The element that scrolls the content of the Pane: the nearest scrolling ancestor of the marker. */
@@ -411,27 +429,6 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
     }
   }, [resultsId, scrollToTop]);
 
-  const onToastCta = useCallback(
-    (cta: 'searchAgain' | 'retry' | null) => {
-      const current = controller.getSnapshot();
-      const sessionOpen =
-        current.run.phase === 'finished' || current.run.phase === 'stopped';
-      if (!cta || !sessionOpen) {
-        return;
-      }
-      if (cta === 'searchAgain') {
-        controller.searchAgain();
-      } else if (
-        current.callouts.some(
-          (callout) => callout.kind === 'recordsFailed' && callout.retryable,
-        )
-      ) {
-        controller.retryFailedRecords();
-      }
-    },
-    [controller],
-  );
-
   useFindReplaceEvent(controller, (event) => {
     switch (event.type) {
       case 'searchSettled':
@@ -457,7 +454,7 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
         announce(
           runEndedAnnouncement(controller.getSnapshot().meta, event, copy),
         );
-        showRunToast(ctxRef.current, runToast(event, copy)).then(onToastCta);
+        void showRunToast(ctxRef.current, runToast(event, copy));
         return;
       case 'publishStarted':
         requestFocus('stop', isPublishActive);
@@ -475,9 +472,8 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
     [controller, copy],
   );
 
-  const retries: RetryOptions = {
-    actions: retryActions(snapshot, copy),
-    enabled: snapshot.findRow.enabled,
+  const retries: SlotRetries = {
+    ...retriesOf(snapshot),
     onRetryRecords: () => controller.retryFailedRecords(),
     onRetryModels: () => controller.retryFailedModels(),
   };
@@ -516,11 +512,7 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
           ariaLabel={STRINGS.paneLabel}
           header={
             <>
-              <TitleBar
-                meta={copy.meta(snapshot.meta)}
-                narrow={narrow}
-                retries={retries}
-              >
+              <TitleBar meta={metaLine(snapshot, copy)} narrow={narrow}>
                 <PrimarySlot
                   primary={primary}
                   copy={copy}
@@ -532,6 +524,7 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
                   onPublish={requestPublish}
                   slotRef={slotRef}
                   isPhone={isPhone}
+                  retries={retries}
                 />
               </TitleBar>
               <FindBar
@@ -539,7 +532,6 @@ function ReadyPage({ ctx, controller, copy }: ReadyPageProps) {
                 find={snapshot.find}
                 replace={snapshot.replace}
                 findRow={snapshot.findRow}
-                invalid={snapshot.search.phase === 'invalid'}
                 problemIds={fieldProblemIds}
                 modelFilter={snapshot.modelFilter}
                 copy={copy}

@@ -180,24 +180,29 @@ describe('chunks and "Show more"', () => {
     expect(button('Show 20 more matches')).toHaveFocus();
   });
 
-  it('says "Show 1 more match" when one is left', () => {
-    const record = makeRecord({
-      modelId: 'article',
-      modelName: 'Article',
-      recordId: 'four',
-      title: 'Four matches',
-      fields: [
-        makeField({
-          key: 'four:body',
-          path: ['Body'],
-          matches: [0, 1, 2, 3].map((index) =>
-            makeMatch({ key: `four:${index}`, text: 'Acme' }),
-          ),
-        }),
-      ],
-    });
-    renderTable({ ...resultsSnapshot(), records: [record] });
-    expect(button('Show 1 more match')).toBeInTheDocument();
+  it('shows the 4th match rather than a row that would hide only it', () => {
+    const record = (count: number) =>
+      makeRecord({
+        modelId: 'article',
+        modelName: 'Article',
+        recordId: `n${count}`,
+        title: `${count} matches`,
+        fields: [
+          makeField({
+            key: `n${count}:body`,
+            path: ['Body'],
+            matches: Array.from({ length: count }, (_, index) =>
+              makeMatch({ key: `n${count}:${index}`, text: 'Acme' }),
+            ),
+          }),
+        ],
+      });
+    renderTable({ ...resultsSnapshot(), records: [record(4), record(5)] });
+    expect(matchRows('n4:')).toHaveLength(4);
+    expect(matchRows('n5:')).toHaveLength(3);
+    expect(screen.queryByText('Show 1 more match')).toBeNull();
+    expect(screen.queryByText('Show fewer matches')).toBeNull();
+    expect(button('Show 2 more matches')).toBeInTheDocument();
   });
 
   it('starts again from the first chunk, at rest, for a new result set', async () => {
@@ -253,7 +258,8 @@ describe('on a frame under 720px wide', () => {
         expect(screen.queryByText(label, { exact: true })).toBeNull();
       }
       const replaced = recordRow('article:launch');
-      expect(replaced).toHaveTextContent('Article · 3 matches');
+      // Only some of its matches were included: the words say so.
+      expect(replaced).toHaveTextContent('Article · 2 of 3 matches');
       expect(within(replaced).getByText('Replaced')).toBeInTheDocument();
       expect(
         within(recordRow('article:brand')).getByText('Updating…'),
@@ -286,30 +292,88 @@ describe('on a frame under 720px wide', () => {
   });
 });
 
+describe('columns', () => {
+  it('adds Status only once a pass gave a record a status', () => {
+    renderTable(snapshotOf('S7'));
+    expect(screen.getByText('Model', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText('Status', { exact: true })).toBeNull();
+    cleanup();
+    renderTable(snapshotOf('S14'));
+    expect(screen.getByText('Status', { exact: true })).toBeInTheDocument();
+  });
+});
+
 describe('selection', () => {
-  it('record checkboxes ask for the negated value', async () => {
+  it('says how many matches of a record are included when only some are', () => {
+    renderTable(excludingSnapshot());
+    const launch = recordRow('article:launch');
+    expect(
+      within(launch).getByText(/^\d+ of \d+ matches$/),
+    ).toBeInTheDocument();
+    // A record with every match (or none) included keeps its plain count.
+    expect(
+      within(recordRow('page:about')).queryByText(/ of /),
+    ).not.toBeInTheDocument();
+    cleanup();
+    // No selection (find mode): the plain count.
+    renderTable(resultsSnapshot());
+    expect(screen.queryByText(/^\d+ of \d+ matches$/)).toBeNull();
+    cleanup();
+    // The report keeps the words of the selection the pass used.
+    renderTable(snapshotOf('S16'));
+    expect(
+      within(recordRow('article:launch')).getByText('2 of 3 matches'),
+    ).toBeInTheDocument();
+  });
+
+  it('record checkboxes say whether the record takes part, and ask for the negated value', async () => {
     const user = userEvent.setup();
     const { controller } = renderTable(excludingSnapshot());
-    // "Some" has no mixed look in the kit: it shows unchecked and includes all.
+    // Only some matches: the record takes part, so it is checked ("2 of 3
+    // matches" says the rest), and a click leaves it out.
     const launch = screen.getByRole('checkbox', {
       name: 'Acme launches a new widget',
     });
-    expect(launch).not.toBeChecked();
+    expect(launch).toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: 'Legal notice' }),
+    ).not.toBeChecked();
     await user.click(launch);
     await user.click(screen.getByRole('checkbox', { name: 'About us' }));
     await user.click(screen.getByRole('checkbox', { name: 'Legal notice' }));
     expect(controller.callsTo('setRecordIncluded')).toEqual([
-      ['article:launch', true],
+      ['article:launch', false],
       ['page:about', false],
       ['page:legal', true],
     ]);
   });
 
+  it('checks "Select all" when every record takes part, slugs left out or not', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderTable(planSnapshot());
+    // The slug of "Brand guidelines" starts left out: the record still takes part.
+    expect(
+      within(recordRow('article:brand')).getByRole('checkbox'),
+    ).toBeChecked();
+    const all = screen.getByRole('checkbox', { name: 'Select all rows' });
+    expect(all).toBeChecked();
+    await user.click(all);
+    expect(controller.callsTo('setAllIncluded')).toEqual([[false]]);
+    cleanup();
+    // A record left out: unchecked.
+    renderTable(excludingSnapshot());
+    expect(
+      screen.getByRole('checkbox', { name: 'Select all rows' }),
+    ).not.toBeChecked();
+  });
+
   it('match checkboxes and "Select all" ask for the negated value', async () => {
     const user = userEvent.setup();
     const { controller } = renderTable(excludingSnapshot());
-    await user.click(screen.getByRole('checkbox', { name: 'Body, en' }));
-    const [titleEn] = screen.getAllByRole('checkbox', { name: 'Title, en' });
+    await user.click(screen.getByRole('checkbox', { name: 'Body, English' }));
+    const [titleEn] = screen.getAllByRole('checkbox', {
+      name: 'Title, English',
+    });
     await user.click(titleEn);
     await user.click(screen.getByRole('checkbox', { name: 'Select all rows' }));
     expect(controller.callsTo('setMatchIncluded')).toEqual([
@@ -346,14 +410,20 @@ describe('selection', () => {
     expect(controller.callsTo('setRecordIncluded')).toHaveLength(2);
   });
 
-  it('only selectable lines get a live checkbox', () => {
-    renderTable(planSnapshot());
-    // One match: the record checkbox decides, the line shows its inclusion.
+  it('only selectable lines get a live checkbox', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderTable(planSnapshot());
+    // One match: its line takes the record's own checkbox, live and agreeing.
     expect(within(recordRow('page:legal')).getByRole('checkbox')).toBeEnabled();
     const [legalLine] = matchRows('legal:');
     const lone = within(legalLine).getByRole('checkbox');
-    expect(lone).toBeDisabled();
+    expect(lone).toBeEnabled();
     expect(lone).toBeChecked();
+    await user.click(lone);
+    expect(controller.callsTo('setRecordIncluded')).toEqual([
+      ['page:legal', false],
+    ]);
+    expect(controller.callsTo('setMatchIncluded')).toEqual([]);
 
     const brand = matchRows('brand:');
     expect(brand).toHaveLength(3);
@@ -415,30 +485,33 @@ describe('tree', () => {
 });
 
 describe('where labels', () => {
-  it('shows the label on the first line of each field only', async () => {
+  it('shows the label on every line, so later lines of a field never look empty', async () => {
     const user = userEvent.setup();
     const [history] = manyRecords();
     renderTable({ ...resultsSnapshot(), records: [history] });
     const lines = () => matchRows('history:');
-    expect(lines().map(whereLabel)).toEqual(['Title · en', null, 'Body · en']);
+    expect(lines().map(whereLabel)).toEqual([
+      'Title · English',
+      'Title · English',
+      'Body · English',
+    ]);
     // Every line keeps an accessible name, numbered within its field.
     expect(lines().map(whereName)).toEqual([
-      'Title, en, match 1',
-      'Title, en, match 2',
-      'Body, en, match 1',
+      'Title, English, match 1',
+      'Title, English, match 2',
+      'Body, English, match 1',
     ]);
 
     await user.click(button('Show 20 more matches'));
     const labels = lines().map(whereLabel);
     expect(labels).toHaveLength(23);
-    expect(labels.filter((label) => label !== null)).toEqual([
-      'Title · en',
-      'Body · en',
-    ]);
-    expect(whereName(lines()[22])).toBe('Body, en, match 21');
+    expect(new Set(labels)).toEqual(
+      new Set(['Title · English', 'Body · English']),
+    );
+    expect(whereName(lines()[22])).toBe('Body, English, match 21');
   });
 
-  it('is plain text: the path joined with " › " and the locale after " · "', () => {
+  it('is plain text: the path joined with " › " and the language after " · "', () => {
     const record = makeRecord({
       modelId: 'article',
       modelName: 'Article',
@@ -455,8 +528,10 @@ describe('where labels', () => {
     });
     renderTable({ ...resultsSnapshot(), records: [record] });
     const [line] = matchRows('deep:');
-    expect(whereLabel(line)).toBe('Content › Section 2 › Quote › Text · it');
-    expect(whereName(line)).toBe('Content › Section 2 › Quote › Text, it');
+    expect(whereLabel(line)).toBe(
+      'Content › Section 2 › Quote › Text · Italian',
+    );
+    expect(whereName(line)).toBe('Content › Section 2 › Quote › Text, Italian');
   });
 
   it('marks a slug with "Changes the URL" only while the selection shows', async () => {
@@ -464,6 +539,13 @@ describe('where labels', () => {
       "Replacing text in a slug changes the record's URL, so slugs are left out unless you select them.";
     renderTable(snapshotOf('S7'));
     expect(screen.queryByText('Changes the URL')).toBeNull();
+    cleanup();
+
+    // In the report, only on a slug the pass left out: it kept the old text.
+    renderTable(snapshotOf('S16'));
+    const [, leftOut] = matchRows('brand:');
+    expect(within(leftOut).getByText('Changes the URL')).toBeInTheDocument();
+    expect(screen.getAllByText('Changes the URL')).toHaveLength(1);
     cleanup();
 
     renderTable(snapshotOf('S11'));
@@ -510,13 +592,15 @@ describe('statuses, reasons and links', () => {
     });
   }
 
-  const STATUS_WORDS = /^(Replaced|Skipped|Failed|Published)$/;
+  const STATUS_WORDS = /^(Replaced|Skipped|Failed|Published|Not published)$/;
 
   const cases: Array<{
     status: RecordRunStatus;
     publish?: RecordPublishStatus;
     word: string | null;
     reason: string | null;
+    /** The editor fixes it in the record: "Open record in a new tab" follows the reason. */
+    open?: boolean;
   }> = [
     { status: { kind: 'untouched' }, word: null, reason: null },
     {
@@ -527,7 +611,7 @@ describe('statuses, reasons and links', () => {
     {
       status: { kind: 'skipped', reason: 'stale' },
       word: 'Skipped',
-      reason: 'Changed after the search. Search again to include it.',
+      reason: 'Someone edited it after the search.',
     },
     {
       status: { kind: 'skipped', reason: 'unsupported' },
@@ -543,6 +627,7 @@ describe('statuses, reasons and links', () => {
       },
       word: 'Failed',
       reason: "The new value doesn't have the format “Slug” requires.",
+      open: true,
     },
     {
       status: {
@@ -566,9 +651,28 @@ describe('statuses, reasons and links', () => {
       word: 'Replaced',
       reason: 'Not published, as it already had other unpublished changes.',
     },
+    // The text was replaced, but the record isn't live: the dot says so.
+    {
+      status: { kind: 'replaced', replacedMatches: 1 },
+      publish: {
+        kind: 'failed',
+        reason: 'validation',
+        retryable: false,
+        detail: { fieldLabel: 'Published on', code: 'required' },
+      },
+      word: 'Not published',
+      reason: "Couldn't publish, as “Published on” can't be empty.",
+      open: true,
+    },
+    {
+      status: { kind: 'replaced', replacedMatches: 1 },
+      publish: { kind: 'skipped', reason: 'changed' },
+      word: 'Not published',
+      reason: 'Not published, as it was edited after the replacement.',
+    },
   ];
 
-  for (const { status, publish, word, reason } of cases) {
+  for (const { status, publish, word, reason, open = false } of cases) {
     const name = `${status.kind}${'reason' in status ? ` (${status.reason})` : ''}${publish ? `, publish ${publish.kind}` : ''}`;
     it(`renders ${name}`, () => {
       renderTable({
@@ -585,6 +689,10 @@ describe('statuses, reasons and links', () => {
       } else {
         expect(screen.queryByText(/\.$/)).toBeNull();
       }
+      // Visible text, not only the row's icon that shows on hover.
+      expect(screen.queryAllByText('Open record in a new tab')).toHaveLength(
+        open ? 1 : 0,
+      );
     });
   }
 
@@ -671,7 +779,7 @@ describe('statuses, reasons and links', () => {
     await user.hover(buttons[0]);
     expect(
       await screen.findByText(
-        'You cannot open records while they are being updated.',
+        "You can't open records while they are being updated.",
       ),
     ).toBeInTheDocument();
   });

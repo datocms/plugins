@@ -10,7 +10,7 @@
   color: var(--color--ink-subtle);
 }
 
-/* "SEO › Description · en", with the "Changes the URL" pill after it. */
+/* "SEO › Description · English", with the "Changes the URL" pill after it. */
 .where {
   display: flex;
   flex: 1 1 auto;
@@ -38,7 +38,8 @@
   align-items: center;
 }
 
-/* "Show 20 more matches" and "Show fewer matches". */
+/* "Show 20 more matches" and "Show fewer matches"; a reason, then
+   "Open record". */
 .actions {
   display: flex;
   flex-wrap: wrap;

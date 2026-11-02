@@ -1,6 +1,6 @@
 import type { RenderPageCtx, Toast } from 'datocms-plugin-sdk';
 import type { FindReplaceEvent } from '../contract';
-import { type Copy, STRINGS } from './copy';
+import type { Copy } from './copy';
 
 export type RunEndedEvent = Extract<FindReplaceEvent, { type: 'runEnded' }>;
 export type PublishEndedEvent = Extract<
@@ -8,41 +8,33 @@ export type PublishEndedEvent = Extract<
   { type: 'publishEnded' }
 >;
 
-/** What a toast's button asks the page to do. */
-export type RunToastCta = 'searchAgain' | 'retry';
-
 export type RunToast =
   | { kind: 'notice'; message: string }
   | { kind: 'alert'; message: string }
-  | { kind: 'custom'; toast: Toast<RunToastCta> };
+  | { kind: 'custom'; toast: Toast };
 
 type ToastCtx = Pick<RenderPageCtx, 'notice' | 'alert' | 'customToast'>;
 
-const SEARCH_AGAIN = {
-  label: STRINGS.searchAgain,
-  value: 'searchAgain',
-} as const;
-const TRY_AGAIN = { label: STRINGS.tryAgain, value: 'retry' } as const;
-
-function custom(
-  type: Toast['type'],
-  message: string,
-  cta?: Toast<RunToastCta>['cta'],
-): RunToast {
+/**
+ * A toast without a button: the title bar holds "Search again" and the
+ * retries whenever no pass runs.
+ */
+function custom(type: Toast['type'], message: string): RunToast {
   return {
     kind: 'custom',
-    toast: cta
-      ? { type, message, cta, dismissOnPageChange: true }
-      : { type, message, dismissOnPageChange: true },
+    toast: { type, message, dismissOnPageChange: true },
   };
 }
 
-/** The one toast for a pass that just ended (from `pass`, never the session totals). */
+/**
+ * The one toast for a pass that just ended (from `pass`, never the session
+ * totals), in the words of the meta after the title.
+ */
 export function runToast(event: RunEndedEvent, copy: Copy): RunToast {
   const { pass, verb } = event;
 
   if (event.stopped) {
-    return custom('warning', copy.toastStopped(pass));
+    return custom('warning', copy.toastStopped(pass, verb));
   }
   if (event.allFailedCause === 'permission') {
     return { kind: 'alert', message: copy.toastPermission(verb) };
@@ -55,19 +47,12 @@ export function runToast(event: RunEndedEvent, copy: Copy): RunToast {
     return { kind: 'notice', message: copy.toastAllWritten(pass, verb) };
   }
   if (!failed) {
-    return custom('warning', copy.toastSkipped(pass, verb), SEARCH_AGAIN);
+    return custom('warning', copy.toastSkipped(pass, verb));
   }
-
-  const retry = pass.retryableFailedRecords > 0 ? TRY_AGAIN : undefined;
-
   if (!skipped) {
-    return custom('alert', copy.toastFailed(pass, verb), retry);
+    return custom('alert', copy.toastFailed(pass, verb));
   }
-  return custom(
-    'alert',
-    copy.toastNotUpdated(pass, verb),
-    retry ?? SEARCH_AGAIN,
-  );
+  return custom('alert', copy.toastNotUpdated(pass, verb));
 }
 
 /** The one toast for a publish pass that just ended. */
@@ -89,29 +74,18 @@ export function publishToast(event: PublishEndedEvent, copy: Copy): RunToast {
   );
 }
 
-/**
- * Shows the toast without waiting for it. Resolves with the CTA the user
- * clicked, or null (no CTA, dismissed, or the host call failed).
- */
-export function showRunToast(
-  ctx: ToastCtx,
-  toast: RunToast,
-): Promise<RunToastCta | null> {
+/** Shows the toast without waiting for it; a host call that fails is ignored. */
+export function showRunToast(ctx: ToastCtx, toast: RunToast): Promise<void> {
+  const settled = () => {};
   switch (toast.kind) {
     case 'notice':
-      return Promise.resolve(ctx.notice(toast.message)).then(
-        () => null,
-        () => null,
-      );
+      return Promise.resolve(ctx.notice(toast.message)).then(settled, settled);
     case 'alert':
-      return Promise.resolve(ctx.alert(toast.message)).then(
-        () => null,
-        () => null,
-      );
+      return Promise.resolve(ctx.alert(toast.message)).then(settled, settled);
     case 'custom':
-      return Promise.resolve(ctx.customToast<RunToastCta>(toast.toast)).then(
-        (value) => value ?? null,
-        () => null,
+      return Promise.resolve(ctx.customToast(toast.toast)).then(
+        settled,
+        settled,
       );
   }
 }

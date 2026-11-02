@@ -1,6 +1,5 @@
 import Toolbar from 'datocms-react-ui/Toolbar';
 import type { Ref } from 'react';
-import { ArrowsRotateIcon } from '../../icons';
 import type { PrimaryView } from '../contract';
 import { type Copy, STRINGS } from './copy';
 
@@ -13,6 +12,19 @@ const REPLACE_TOOLTIP = {
   placement: 'bottom',
 } as const;
 
+/**
+ * The retries that apply now (only while no pass runs): soft buttons before
+ * the slot's own, so the next step after a failure is always in sight.
+ */
+export type SlotRetries = {
+  /** The failed records that can be tried again (0: none). */
+  records: number;
+  /** The models that couldn't be searched and can be searched again, or null. */
+  modelNames: ReadonlyArray<string> | null;
+  onRetryRecords: () => void;
+  onRetryModels: () => void;
+};
+
 type PrimarySlotProps = {
   primary: PrimaryView;
   copy: Copy;
@@ -21,14 +33,16 @@ type PrimarySlotProps = {
   onSearchAgain: () => void;
   /** Opens the publish confirm. */
   onPublish: () => void;
-  /** The first button of the slot, for moving the focus to whatever the slot holds. */
+  /** The main button of the slot, for moving the focus to whatever the slot holds. */
   slotRef?: Ref<HTMLElement>;
   /**
-   * A phone-width frame: next to "Publish N records", "Search again" shows
-   * only its icon (its label is its name and tooltip), so both fit by the
-   * title.
+   * A phone-width frame: next to "Search again", the publish offer reads
+   * "Publish" (its confirm gives the count), the retry of the failed records
+   * "Save again" and the retry of the failed models "Try again" (the callout
+   * names them), so the labels fit by the title.
    */
   isPhone?: boolean;
+  retries?: SlotRetries;
 };
 
 function SlotButtons({
@@ -44,27 +58,20 @@ function SlotButtons({
     case 'searchAgain':
       return (
         <>
-          {isPhone && primary.publish ? (
-            <Toolbar.Button
-              ref={slotRef}
-              tone="soft"
-              iconOnly
-              icon={ArrowsRotateIcon}
-              label={STRINGS.searchAgain}
-              onClick={onSearchAgain}
-            />
-          ) : (
-            <Toolbar.Button
-              ref={slotRef}
-              tone="soft"
-              label={STRINGS.searchAgain}
-              onClick={onSearchAgain}
-            />
-          )}
+          <Toolbar.Button
+            ref={slotRef}
+            tone="soft"
+            label={STRINGS.searchAgain}
+            onClick={onSearchAgain}
+          />
           {primary.publish && (
             <Toolbar.Button
               tone="primary"
-              label={copy.publishLabel(primary.publish.recordCount)}
+              label={
+                isPhone
+                  ? STRINGS.publish
+                  : copy.publishLabel(primary.publish.recordCount)
+              }
               onClick={onPublish}
             />
           )}
@@ -118,16 +125,40 @@ function SlotButtons({
 }
 
 /**
- * The slot at the right end of the title bar: the primary (enabled, disabled
- * with a reason, or busy) or, after a finished run, a soft "Search again" in
- * its place, followed by a primary "Publish N records" when replaced records
- * can be published. The slot holds one primary at most. The page registers
- * the Cmd/Ctrl + Enter action (`REPLACE_ACTION_ID`): the enabled primary
- * shows its keys.
+ * The slot at the right end of the title bar: the retries that apply, then
+ * the primary (enabled, disabled with a reason, or busy) or, after a
+ * finished run, a soft "Search again" in its place, followed by a primary
+ * "Publish N records" when replaced records can be published. The slot
+ * holds one primary at most. The page registers the Cmd/Ctrl + Enter action
+ * (`REPLACE_ACTION_ID`): the enabled primary shows its keys.
  */
 export function PrimarySlot(props: PrimarySlotProps) {
+  const { retries, copy } = props;
+
   return (
     <Toolbar.Group gap="s">
+      {retries && retries.records > 0 && (
+        <Toolbar.Button
+          tone="soft"
+          label={
+            props.isPhone
+              ? STRINGS.saveAgain
+              : copy.retryRecordsLabel(retries.records)
+          }
+          onClick={retries.onRetryRecords}
+        />
+      )}
+      {retries?.modelNames && (
+        <Toolbar.Button
+          tone="soft"
+          label={
+            props.isPhone
+              ? STRINGS.tryAgain
+              : copy.retryModelsLabel(retries.modelNames)
+          }
+          onClick={retries.onRetryModels}
+        />
+      )}
       <SlotButtons {...props} />
     </Toolbar.Group>
   );

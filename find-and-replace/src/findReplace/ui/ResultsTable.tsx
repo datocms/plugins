@@ -1,5 +1,5 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import Button from 'datocms-react-ui/Button';
+import Button, { type ButtonContent } from 'datocms-react-ui/Button';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import { LoadMoreChevron } from 'datocms-react-ui/Chevron';
 import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
@@ -20,6 +20,7 @@ import StatusCell from 'datocms-react-ui/Table/cells/StatusCell';
 import {
   type MouseEvent,
   memo,
+  type ReactNode,
   useEffect,
   useId,
   useMemo,
@@ -113,7 +114,15 @@ const LOAD_MORE_FIRST_CELL: TableFirstCell = { prefix: <LoadMoreChevron /> };
 
 // ── Rows ────────────────────────────────────────────────────────────────────
 
-type RecordRowData = { kind: 'record'; record: RecordView };
+type RecordRowData = {
+  kind: 'record';
+  record: RecordView;
+  /**
+   * The included matches while only some are (the selection shows, or a
+   * pass used it); else null.
+   */
+  included: number | null;
+};
 
 type MatchRowData = {
   kind: 'match';
@@ -122,9 +131,10 @@ type MatchRowData = {
   match: MatchView;
   /** The position of the match in its field. */
   index: number;
-  /** The field's first shown line: it carries the where label. */
-  firstOfField: boolean;
-  /** "Changes the URL" on a slug's first line, while the selection shows. */
+  /**
+   * "Changes the URL" on a slug's first line, while the selection shows,
+   * and after a pass on a slug it left out.
+   */
   showChangesUrl: boolean;
 };
 
@@ -160,6 +170,43 @@ function countMatches(fields: ReadonlyArray<FieldView>): number {
   return count;
 }
 
+/**
+ * A pass gave the record a status: its lines show what the pass used, so
+ * they keep the words of the selection after it (the report has none).
+ */
+function usedSelection(record: RecordView, ui: SelectionUi): boolean {
+  return ui !== 'hidden' || record.status.kind !== 'untouched';
+}
+
+/**
+ * The included matches of a record whose checkbox can't show it: only some
+ * are included, while the selection shows or after a pass used it (the
+ * kit's checkbox has no mixed state). Null otherwise: the count of every
+ * match is enough.
+ */
+function partlyIncluded(record: RecordView, ui: SelectionUi): number | null {
+  if (!usedSelection(record, ui) || record.inclusion !== 'some') {
+    return null;
+  }
+  let count = 0;
+  for (const field of record.fields) {
+    for (const match of field.matches) {
+      if (match.included) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+/** A pass gave a record a status: the Status column has something to show. */
+function hasStatus(records: ReadonlyArray<RecordView>): boolean {
+  return records.some(
+    (record) =>
+      record.status.kind !== 'untouched' || record.publish.kind !== 'none',
+  );
+}
+
 type SelectionUi = SelectionView['ui'];
 
 const noop = () => {};
@@ -192,8 +239,11 @@ function fromCheckbox(event: MouseEvent<HTMLElement>): boolean {
  */
 
 /**
- * The record checkbox. A click asks for the negated value: unchecked or
- * mixed includes every match, checked leaves the record out. An attempted
+ * The record checkbox says whether the record takes part: checked while any
+ * of its matches is included ("2 of 3 matches" says when only some are).
+ * A click asks for the negated value: checked leaves the record out,
+ * unchecked includes every match. A slug left out of a checked record is
+ * included only from its own line, next to "Changes the URL". An attempted
  * record keeps its inclusion, disabled.
  */
 function recordSelection(
@@ -204,7 +254,7 @@ function recordSelection(
   if (ui === 'hidden') {
     return undefined;
   }
-  const selected = record.inclusion === 'all';
+  const selected = record.inclusion !== 'none';
   if (!record.selectable) {
     return { selected, onSelect: noop, disabled: true };
   }
@@ -212,7 +262,7 @@ function recordSelection(
     selected,
     onSelect: (event) => {
       if (fromCheckbox(event)) {
-        controller.setRecordIncluded(record.key, record.inclusion !== 'all');
+        controller.setRecordIncluded(record.key, record.inclusion === 'none');
       }
     },
     disabled: ui === 'disabled',
@@ -221,14 +271,19 @@ function recordSelection(
 
 /**
  * A match checkbox: live where the match is selectable (2+ matches, not
- * attempted); otherwise its inclusion, disabled (the record checkbox decides
- * for a lone match).
+ * attempted); otherwise its inclusion, disabled. The lone match of a record
+ * takes the record's own checkbox, so both boxes of that one choice are
+ * live and agree.
  */
 function matchSelection(
+  record: RecordView,
   match: MatchView,
   ui: SelectionUi,
   controller: FindReplaceController,
 ): RowSelection | undefined {
+  if (record.matchCount === 1) {
+    return recordSelection(record, ui, controller);
+  }
   if (ui === 'hidden') {
     return undefined;
   }
@@ -271,10 +326,15 @@ function buildMatchRows(
           field,
           match,
           index,
-          firstOfField: index === 0,
-          showChangesUrl: index === 0 && field.changesUrl && ui !== 'hidden',
+          // In the report, a slug the pass left out still shows the old
+          // text: the pill says why.
+          showChangesUrl:
+            index === 0 &&
+            field.changesUrl &&
+            usedSelection(record, ui) &&
+            (ui !== 'hidden' || !match.included),
         },
-        selection: matchSelection(match, ui, controller),
+        selection: matchSelection(record, match, ui, controller),
         wrapperProps: { 'data-match': match.key },
       });
     }
@@ -294,7 +354,9 @@ function WhereCell({ row, copy }: { row: MatchRowData; copy: Copy }) {
   return (
     <div className={styles.where}>
       {/* Every line keeps its place as its name: the row checkbox reads it,
-          with a comma before the pill ("Slug, match 1, Changes the URL"). */}
+          with a comma before the pill ("Slug, match 1, Changes the URL").
+          Every line shows the place too, so the later lines of a field
+          don't look empty. */}
       <span className="visually-hidden">
         {copy.whereName(
           field.path,
@@ -304,11 +366,9 @@ function WhereCell({ row, copy }: { row: MatchRowData; copy: Copy }) {
         )}
         {row.showChangesUrl && ', '}
       </span>
-      {row.firstOfField && (
-        <span aria-hidden="true">
-          {copy.whereLabel(field.path, field.locale)}
-        </span>
-      )}
+      <span aria-hidden="true">
+        {copy.whereLabel(field.path, field.locale)}
+      </span>
       {row.showChangesUrl && (
         <Pill tooltip={STRINGS.changesUrlTip}>{STRINGS.changesUrl}</Pill>
       )}
@@ -341,6 +401,13 @@ function RecordStatus({
   if (publish.kind === 'published') {
     return <StatusCell tone="success">{STRINGS.published}</StatusCell>;
   }
+  // The text was replaced, but the record isn't live: the reason is under it.
+  if (publish.kind === 'failed') {
+    return <StatusCell tone="danger">{STRINGS.notPublished}</StatusCell>;
+  }
+  if (publish.kind === 'skipped') {
+    return <StatusCell tone="warning">{STRINGS.notPublished}</StatusCell>;
+  }
   switch (status.kind) {
     case 'untouched':
       return null;
@@ -361,8 +428,8 @@ function RecordStatus({
 
 /**
  * The one cell of a record or a match line on a narrow frame. A record:
- * its title, then "Article · 3 matches", then its status. A match line: its
- * place, then the snippet.
+ * its title, then "Article · 3 matches" ("2 of 3 matches" when only some are
+ * included), then its status. A match line: its place, then the snippet.
  */
 function CompactCell({ row, copy }: { row: ResultRow; copy: Copy }) {
   if (row.kind === 'match') {
@@ -380,7 +447,7 @@ function CompactCell({ row, copy }: { row: ResultRow; copy: Copy }) {
         {copy.recordTitle(record.title, record.recordId)}
       </span>
       <span className={styles.subtle}>
-        {copy.recordFacts(record.modelName, record.matchCount)}
+        {`${record.modelName} · ${copy.recordMatches(record.matchCount, row.included)}`}
       </span>
       <RecordStatus
         status={record.status}
@@ -391,7 +458,11 @@ function CompactCell({ row, copy }: { row: ResultRow; copy: Copy }) {
   );
 }
 
-function useColumns(copy: Copy, compact: boolean): TableColumn<ResultRow>[] {
+function useColumns(
+  copy: Copy,
+  compact: boolean,
+  showStatus: boolean,
+): TableColumn<ResultRow>[] {
   return useMemo<TableColumn<ResultRow>[]>(
     () =>
       compact
@@ -403,14 +474,20 @@ function useColumns(copy: Copy, compact: boolean): TableColumn<ResultRow>[] {
               renderCell: (row) => <CompactCell row={row} copy={copy} />,
             },
           ]
-        : wideColumns(copy),
-    [copy, compact],
+        : wideColumns(copy, showStatus),
+    [copy, compact, showStatus],
   );
 }
 
-/** Record, Match, Model and Status: on a narrow table, Model goes first, then Status. */
-function wideColumns(copy: Copy): TableColumn<ResultRow>[] {
-  return [
+/**
+ * Record, Match, Model and, once a pass gave a record a status, Status: on
+ * a narrow table, Model goes first, then Status.
+ */
+function wideColumns(
+  copy: Copy,
+  showStatus: boolean,
+): TableColumn<ResultRow>[] {
+  const columns: TableColumn<ResultRow>[] = [
     {
       name: 'record',
       label: STRINGS.recordColumn,
@@ -434,7 +511,7 @@ function wideColumns(copy: Copy): TableColumn<ResultRow>[] {
       renderCell: (row) =>
         row.kind === 'record' ? (
           <span className={styles.subtle}>
-            {copy.matches(row.record.matchCount)}
+            {copy.recordMatches(row.record.matchCount, row.included)}
           </span>
         ) : (
           <Snippet match={row.match} />
@@ -447,7 +524,9 @@ function wideColumns(copy: Copy): TableColumn<ResultRow>[] {
       renderCell: (row) =>
         row.kind === 'record' ? row.record.modelName : null,
     },
-    {
+  ];
+  if (showStatus) {
+    columns.push({
       name: 'status',
       label: STRINGS.statusColumn,
       minWidth: STATUS_MIN_WIDTH,
@@ -460,8 +539,9 @@ function wideColumns(copy: Copy): TableColumn<ResultRow>[] {
             copy={copy}
           />
         ) : null,
-    },
-  ];
+    });
+  }
+  return columns;
 }
 
 /**
@@ -471,37 +551,35 @@ function wideColumns(copy: Copy): TableColumn<ResultRow>[] {
  * `href` of the bare path would resolve on the plugin's own origin (a middle
  * click or "Open in new tab" would open a broken page): a button then opens
  * it in the same tab through the host's router, locked while a pass runs (it
- * would leave the page).
+ * would leave the page). `labelled` shows its text, the same as the icon's
+ * name: "Open record in a new tab" or "Open record".
  */
 function OpenRecord({
   link,
   runActive,
+  labelled = false,
 }: {
   link: RecordLink;
   runActive: boolean;
+  labelled?: boolean;
 }) {
   const ctx = useCtx<RenderPageCtx>();
+  const label =
+    link.kind === 'href' ? STRINGS.openRecordNewTab : STRINGS.openRecord;
+  const content: ButtonContent = labelled
+    ? { icon: OpenInNewTabIcon, label }
+    : { iconOnly: true, icon: OpenInNewTabIcon, label };
 
   if (link.kind === 'href') {
     return (
-      <Button
-        tone="ghost"
-        size="micro"
-        iconOnly
-        icon={OpenInNewTabIcon}
-        label={STRINGS.openRecordNewTab}
-        to={link.path}
-        newTab
-      />
+      <Button tone="ghost" size="micro" {...content} to={link.path} newTab />
     );
   }
   return (
     <Button
       tone="ghost"
       size="micro"
-      iconOnly
-      icon={OpenInNewTabIcon}
-      label={STRINGS.openRecord}
+      {...content}
       onClick={() => {
         // Like a link: no spinner while the host opens the page.
         void ctx.navigateTo(link.path);
@@ -513,12 +591,31 @@ function OpenRecord({
 
 // ── Lines of a record ───────────────────────────────────────────────────────
 
-/** Why a record was skipped, failed, or not published, under its row. */
-function ReasonRow({ reason }: { reason: string }) {
+/**
+ * A validation the record must pass, on save or on publish: the editor
+ * fixes it in the record.
+ */
+function fixedInRecord(record: RecordView): boolean {
+  const { status, publish } = record;
+  return (
+    (status.kind === 'failed' && status.reason === 'validation') ||
+    (publish.kind === 'failed' && publish.reason === 'validation')
+  );
+}
+
+/**
+ * Why a record was skipped, failed, or not published, under its row. When
+ * the editor fixes it in the record, "Open record" follows, always visible
+ * (the row's own button shows only on hover or focus).
+ */
+function ReasonRow({ reason, open }: { reason: string; open: ReactNode }) {
   return (
     <Table.Row>
       <Table.Cell index={0} fill firstCell={RECORD_LINE_FIRST_CELL}>
-        <span className={styles.subtle}>{reason}</span>
+        <div className={styles.actions}>
+          <span className={styles.subtle}>{reason}</span>
+          {open}
+        </div>
       </Table.Cell>
     </Table.Row>
   );
@@ -532,7 +629,8 @@ type MoreMatchesRowProps = {
 
 /**
  * "Show N more matches" (up to 20 per click) and "Show fewer matches" (back
- * to 3). The focus stays on the first button of the row.
+ * to 3). A record with one match more than 3 shows them all: no row. The
+ * focus stays on the first button of the row.
  */
 function MoreMatchesRow({ total, shown, onShow }: MoreMatchesRowProps) {
   const { copy } = useResultsEnv();
@@ -540,7 +638,7 @@ function MoreMatchesRow({ total, shown, onShow }: MoreMatchesRowProps) {
   const keepFocus = useRef(false);
   const atRest = UI_LIMITS.matchesAtRest;
   const remaining = total - shown;
-  const expanded = shown > atRest && total > atRest;
+  const expanded = shown > atRest && total > atRest + 1;
 
   useEffect(() => {
     if (keepFocus.current) {
@@ -616,12 +714,20 @@ const RecordRows = memo(function RecordRows({
   idPrefix,
 }: RecordRowsProps) {
   const { controller, copy } = useResultsEnv();
-  const [shown, setShown] = useState<number>(UI_LIMITS.matchesAtRest);
+  const total = countMatches(record.fields);
+  // "Show 1 more match" would take the place of the line it hides.
+  const [shown, setShown] = useState<number>(() =>
+    total <= UI_LIMITS.matchesAtRest + 1 ? total : UI_LIMITS.matchesAtRest,
+  );
   const [open, setOpen] = useState(true);
 
   const row = useMemo<RecordRowData>(
-    () => ({ kind: 'record', record }),
-    [record],
+    () => ({
+      kind: 'record',
+      record,
+      included: partlyIncluded(record, selectionUi),
+    }),
+    [record, selectionUi],
   );
   const selection = useMemo(
     () => recordSelection(record, selectionUi, controller),
@@ -670,7 +776,20 @@ const RecordRows = memo(function RecordRows({
       />
       {open && (
         <>
-          {reason !== null && <ReasonRow reason={reason} />}
+          {reason !== null && (
+            <ReasonRow
+              reason={reason}
+              open={
+                fixedInRecord(record) ? (
+                  <OpenRecord
+                    link={controller.recordLink(record.key)}
+                    runActive={runActive}
+                    labelled
+                  />
+                ) : null
+              }
+            />
+          )}
           {matchRows.map((entry) => (
             <Table.Row
               key={entry.data.match.key}
@@ -680,11 +799,7 @@ const RecordRows = memo(function RecordRows({
               wrapperProps={entry.wrapperProps}
             />
           ))}
-          <MoreMatchesRow
-            total={countMatches(record.fields)}
-            shown={shown}
-            onShow={setShown}
-          />
+          <MoreMatchesRow total={total} shown={shown} onShow={setShown} />
         </>
       )}
     </>
@@ -730,11 +845,22 @@ export function ResultsTable({
 }: ResultsTableProps) {
   const { copy } = useResultsEnv();
   const compact = useMediaQuery(COMPACT_TABLE_QUERY).matches;
-  const columns = useColumns(copy, compact);
+  const showStatus = hasStatus(records);
+  const columns = useColumns(copy, compact, showStatus);
   const [layout, setLayout] = useLocalStorageTableLayout(
     LAYOUT_KEY,
     DEFAULT_LAYOUT,
   );
+  // Without its column, the table leaves Status out of the layouts it
+  // reports: keep the saved one, so Status comes back where it was.
+  const changeLayout = (next: TableLayout) => {
+    const status = layout.columns.find((column) => column.name === 'status');
+    const kept =
+      !showStatus &&
+      status !== undefined &&
+      !next.columns.some((column) => column.name === 'status');
+    setLayout(kept ? { columns: [...next.columns, status] } : next);
+  };
   const [chunks, setChunks] = useState(1);
   const idPrefix = useId();
   const focusKey = useRef<string | null>(null);
@@ -750,12 +876,16 @@ export function ResultsTable({
   });
 
   // The kit's select-all has no locked state: while a pass runs, it's left out.
+  // Checked when every record row is: every record takes part.
   const selectAll = useMemo<TableSelectAll | undefined>(
     () =>
       selection.ui === 'enabled'
-        ? { selected: selection.all === 'all', onChange: onSelectAll }
+        ? {
+            selected: records.every((record) => record.inclusion !== 'none'),
+            onChange: onSelectAll,
+          }
         : undefined,
-    [selection.ui, selection.all, onSelectAll],
+    [selection.ui, records, onSelectAll],
   );
 
   const loadMore = () => {
@@ -767,7 +897,7 @@ export function ResultsTable({
     <Table
       columns={columns}
       layout={compact ? COMPACT_LAYOUT : layout}
-      onLayoutChange={compact ? noop : setLayout}
+      onLayoutChange={compact ? noop : changeLayout}
       checkboxes={selection.ui === 'hidden' ? undefined : ALWAYS_VISIBLE}
       trailingWidth={TRAILING_WIDTH}
       tree

@@ -890,7 +890,10 @@ function noChangeSnapshot(): FindReplaceSnapshot {
     find: { ...base.find, pattern: 'acme' },
     replace: { text: 'Acme', remove: false },
     verb: 'replace',
-    replacementCheck: { problem: null, warnings: [{ code: 'self_match' }] },
+    replacementCheck: {
+      problem: null,
+      warnings: [{ code: 'self_match', pattern: 'acme', replacement: 'Acme' }],
+    },
     primary: { kind: 'replace', verb: 'replace', count: 5, enabled: true },
     meta: { kind: 'willChange', changing: 5, found: 9, verb: 'replace' },
     selection: { ui: 'enabled', all: 'some' },

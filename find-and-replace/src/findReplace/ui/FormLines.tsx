@@ -38,9 +38,9 @@ type FormLinesProps = {
 /**
  * What is wrong with the find form, above the results: a pattern or a
  * replacement that can't run is an error, then each warning about the
- * replacement, in the snapshot's order. These callouts are alerts: a screen
- * reader hears each one as it appears, so the page's live region doesn't
- * announce them again.
+ * replacement, in the snapshot's order. The errors and warnings are alerts:
+ * a screen reader hears each one as it appears, so the page's live region
+ * doesn't announce them again.
  */
 export function FormLines({
   copy,
@@ -69,7 +69,12 @@ export function FormLines({
         </Callout>
       )}
       {warnings.map((warning) => (
-        <Callout key={warningKey(warning)} tone="warning">
+        <Callout
+          key={warningKey(warning)}
+          // A replacement that still contains the search is no risk to the
+          // data: only information.
+          tone={warning.code === 'self_match' ? 'neutral' : 'warning'}
+        >
           {copy.replacementWarning(warning)}
         </Callout>
       ))}

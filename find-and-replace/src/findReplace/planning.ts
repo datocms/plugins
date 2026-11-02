@@ -194,7 +194,11 @@ export function replacementCheck(args: {
     });
   }
   if (isSelfMatch(find, replacement.text))
-    warnings.push({ code: 'self_match' });
+    warnings.push({
+      code: 'self_match',
+      pattern: find.pattern,
+      replacement: replacement.text,
+    });
   if (args.slugFormatMatches > 0) {
     warnings.push({ code: 'slug_format', count: args.slugFormatMatches });
   }

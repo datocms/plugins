@@ -8,7 +8,7 @@ import type { FieldProblemIds } from './FindBar';
 import { FormLines } from './FormLines';
 import { IdleState } from './IdleState';
 import { NoResults } from './NoResults';
-import { LoadingState, PageState } from './PaneState';
+import { PageState } from './PaneState';
 import { ResultsTable } from './ResultsTable';
 
 export type BodyProps = {
@@ -59,6 +59,38 @@ function isPassActive(snapshot: FindReplaceSnapshot): boolean {
   );
 }
 
+/**
+ * The meta after the title (above the results on a narrow frame). While a
+ * replacement runs, the progress row says what is done. While Find holds
+ * settings not searched yet, the count shown is the earlier search's: the
+ * meta asks for Enter instead.
+ */
+export function metaLine(
+  snapshot: FindReplaceSnapshot,
+  copy: Copy,
+): string | null {
+  const { run } = snapshot;
+  if (run.phase === 'running' || run.phase === 'stopping') {
+    return null;
+  }
+  if (snapshot.findRow.awaitingEnter && snapshot.meta.kind !== 'none') {
+    return STRINGS.awaitingEnter;
+  }
+  // No list shows: the title of the blank slate says it on its own.
+  if (snapshot.body === 'noResults') {
+    return null;
+  }
+  return copy.meta(snapshot.meta);
+}
+
+/** The notices that the body shows above the results: the failed models and the note. */
+function hasNotices(snapshot: FindReplaceSnapshot): boolean {
+  return (
+    snapshot.note !== null ||
+    snapshot.callouts.some((callout) => callout.kind === 'modelsFailed')
+  );
+}
+
 /** The results, and what to know about them above the table. */
 function Results({
   snapshot,
@@ -70,7 +102,7 @@ function Results({
   BodyProps,
   'snapshot' | 'copy' | 'narrow' | 'problemIds' | 'onSelectAll'
 >) {
-  const meta = narrow ? copy.meta(snapshot.meta) : null;
+  const meta = narrow ? metaLine(snapshot, copy) : null;
   const runActive = isPassActive(snapshot);
 
   return (
@@ -109,10 +141,10 @@ function BodyContent({
   switch (snapshot.body) {
     case 'idle':
       return <IdleState enterToSearch={snapshot.findRow.enterToSearch} />;
+    // The progress row under the find form shows the search: one indicator.
     case 'blank':
-      return null;
     case 'spinner':
-      return <LoadingState title={STRINGS.searching} />;
+      return null;
     case 'searchFailed':
       return (
         <PageState
@@ -143,9 +175,7 @@ function BodyContent({
               view={snapshot.noResults}
               pattern={snapshot.find.pattern}
               pending={snapshot.search.phase === 'pending'}
-              belowNotices={
-                snapshot.callouts.length > 0 || snapshot.note !== null
-              }
+              belowNotices={hasNotices(snapshot)}
               copy={copy}
               onShowAllModels={onShowAllModels}
             />

@@ -1,6 +1,5 @@
 import Toolbar from 'datocms-react-ui/Toolbar';
 import type { KeyboardEvent } from 'react';
-import { ArrowRightIcon } from '../../icons';
 import type {
   FindInput,
   FindOption,
@@ -37,7 +36,6 @@ type FindBarProps = {
   find: FindInput;
   replace: ReplaceInput;
   findRow: FindRowView;
-  invalid: boolean;
   /**
    * The ids of the problems of the fields that the page shows above the
    * results, if any: each field takes its own as its description.
@@ -52,16 +50,15 @@ type FindBarProps = {
 
 /**
  * The find form, a toolbar of fields under the title bar: Find with its
- * options → Replace with, the eraser and the model filter. It takes the
- * Pane's name ("Records") as its search name. One line from 960px of frame
- * width, two lines below.
+ * Options, then Replace with and the model filter. It takes the Pane's name
+ * ("Records") as its search name. One line from 960px of frame width, two
+ * lines below.
  */
 export function FindBar({
   findInputId,
   find,
   replace,
   findRow,
-  invalid,
   problemIds,
   modelFilter,
   copy,
@@ -78,30 +75,26 @@ export function FindBar({
         <FindGroup
           inputId={findInputId}
           find={find}
+          remove={replace.remove}
+          showRemove={findRow.showEraser}
           enabled={findRow.enabled}
           disabled={disabled}
           showClear={findRow.showClear}
           awaitingEnter={findRow.awaitingEnter}
-          invalid={invalid}
           problemId={problemIds?.pattern}
           onPatternChange={handlers.onPatternChange}
           onKeyDown={handlers.onFindKeyDown}
           onClear={handlers.onClear}
           onOptionChange={handlers.onOptionChange}
+          onRemoveChange={handlers.onRemoveChange}
         />
-        <span className={styles.arrow} aria-hidden="true">
-          <ArrowRightIcon />
-        </span>
         <ReplaceGroup
           replace={replace}
           regex={find.regex}
           enabled={findRow.enabled}
-          disabled={disabled}
-          showEraser={findRow.showEraser}
           problemId={problemIds?.replacement}
           onTextChange={handlers.onReplacementChange}
           onKeyDown={handlers.onReplaceKeyDown}
-          onRemoveChange={handlers.onRemoveChange}
         >
           {modelFilter?.visible && (
             <ModelFilter

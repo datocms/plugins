@@ -53,30 +53,21 @@ describe('PrimarySlot', () => {
   });
 
   const reasons: Array<[DisabledReason, string]> = [
-    [
-      'no_matches',
-      'You cannot replace anything until the search finds matches.',
-    ],
-    [
-      'search_running',
-      'You cannot replace right now as the search is still running.',
-    ],
-    ['press_enter', 'You cannot replace until you press Enter to search.'],
-    ['invalid_pattern', 'You cannot replace as the pattern is not valid.'],
+    ['no_matches', 'Find some matches to replace first.'],
+    ['search_running', 'Wait for the search to finish.'],
+    ['press_enter', 'Press Enter to search first.'],
+    ['invalid_pattern', 'Fix the text in Find first.'],
     [
       'no_replacement',
-      'You cannot replace until you type a replacement or turn on Replace with nothing.',
+      'Type a replacement first, or pick Replace with nothing in Options.',
     ],
+    ['invalid_replacement', 'Fix the replacement first.'],
+    ['nothing_selected', 'Select at least one match first.'],
     [
-      'invalid_replacement',
-      'You cannot replace until the replacement is fixed.',
+      'nothing_changes',
+      'Type a different replacement, as this one changes nothing.',
     ],
-    ['nothing_selected', 'You cannot replace as no matches are selected.'],
-    ['nothing_changes', 'You cannot replace as nothing would change.'],
-    [
-      'replacing',
-      'You cannot replace right now as a replacement is in progress.',
-    ],
+    ['replacing', 'Wait for the replacement to finish.'],
   ];
 
   for (const [reason, text] of reasons) {
@@ -107,7 +98,7 @@ describe('PrimarySlot', () => {
     renderPrimary(disabledPrimary('nothing_selected', { verb: 'remove' }));
     await user.hover(screen.getByRole('button', { name: 'Remove' }));
     expect(
-      await screen.findByText('You cannot remove as no matches are selected.'),
+      await screen.findByText('Select at least one match first.'),
     ).toBeInTheDocument();
   });
 

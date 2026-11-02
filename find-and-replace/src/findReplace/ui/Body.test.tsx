@@ -74,12 +74,13 @@ describe('the states of the body', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows nothing for a blank body, and what loads while searching', () => {
+  it('shows nothing for a blank body, nor while the progress row shows the search', () => {
     const { container } = renderBody({ ...snapshotOf('S2'), body: 'blank' });
     expect(container).toHaveTextContent('');
     cleanup();
-    renderBody(snapshotOf('S5'));
-    expect(screen.getByText('Searching the records')).toBeInTheDocument();
+    // One indicator: the progress row under the find form.
+    const searching = renderBody(snapshotOf('S5'));
+    expect(searching.container).toHaveTextContent('');
   });
 
   it('offers "Try again" after a failed search, without the raw error', async () => {
@@ -88,7 +89,7 @@ describe('the states of the body', () => {
     expect(screen.getByText("Couldn't search the records")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "The Content Management API didn't respond. Check your connection, then try again.",
+        "DatoCMS didn't respond. Check your connection, then try again.",
       ),
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
@@ -98,7 +99,7 @@ describe('the states of the body', () => {
   it('shows only the pattern problem for an invalid pattern', () => {
     renderBody(snapshotOf('S4'));
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Pattern must be a valid regular expression (unterminated group).',
+      'Fix the regular expression (unterminated group), or turn off Use regular expression in Options.',
     );
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
@@ -113,7 +114,7 @@ describe('the states of the body', () => {
     const second = screen.getByRole('alert');
     expect(second).not.toBe(first);
     expect(second).toHaveTextContent(
-      'Pattern must be a valid regular expression (unterminated group).',
+      'Fix the regular expression (unterminated group), or turn off Use regular expression in Options.',
     );
   });
 });
@@ -124,9 +125,7 @@ describe('no results', () => {
     const { rerenderWith } = renderBody(settled);
     expect(screen.getByText('No matches for “Acme Corp”')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'Consider broadening your search: turn off Match case, or try different keywords.',
-      ),
+      screen.getByText('To find more, turn off Match case in Options.'),
     ).toBeInTheDocument();
 
     rerenderWith({
@@ -167,9 +166,10 @@ describe('no results', () => {
       ...snapshotOf('S20'),
       note: { kind: 'searchStopped', searched: 1200, total: 3400 },
     });
+    expect(screen.getByText('Some matches may be missing')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Search stopped after 1,200 of 3,400 records, so some matches may be missing.',
+        'The search stopped after 1,200 of 3,400 records. Press Enter in Find to search them all.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -185,7 +185,10 @@ describe('above the results', () => {
       ...plan,
       replacementCheck: {
         problem: { code: 'context_token' },
-        warnings: [{ code: 'self_match' }, { code: 'slug_format', count: 2 }],
+        warnings: [
+          { code: 'self_match', pattern: 'Acme', replacement: 'Acme Inc.' },
+          { code: 'slug_format', count: 2 },
+        ],
       },
       callouts: [
         {
@@ -198,7 +201,7 @@ describe('above the results', () => {
     });
     const texts = [
       "Replacement can't use $` or $'.",
-      'Your replacement also matches this search, so a later search can find these matches again.',
+      '“Acme Inc.” still contains “Acme”, so searching again will find these matches again.',
       'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 2 slug changes will probably fail.',
       "Couldn't search the “Author” model.",
       'Showing the first 10,000 matches. Replace them, then search again for the rest.',
@@ -227,5 +230,23 @@ describe('above the results', () => {
     cleanup();
     renderBody(results, true);
     expect(screen.getByText('9 matches in 4 records')).toBeInTheDocument();
+  });
+
+  it('shows no callout for failed or skipped records: the rows and the meta say it', () => {
+    renderBody({
+      ...snapshotOf('S17'),
+      callouts: [
+        {
+          kind: 'recordsFailed',
+          count: 3,
+          retryable: true,
+          singleReason: null,
+        },
+        { kind: 'recordsSkipped', count: 2, allStale: true },
+      ],
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Couldn't update/)).toBeNull();
+    expect(screen.queryByText(/were skipped/)).toBeNull();
   });
 });

@@ -20,8 +20,8 @@ type NoResultsProps = {
 
 /**
  * A settled search with nothing to show: the title quotes what was searched,
- * the line names only what narrows it. When the model filter hides the
- * matches of other models, it leads back to them.
+ * and a line shows only when something on screen narrows it. When the model
+ * filter hides the matches of other models, it leads back to them.
  */
 export function NoResults({
   view,
@@ -42,7 +42,7 @@ export function NoResults({
       placement={belowNotices ? 'section' : 'area'}
       icon={<SearchIcon />}
       title={copy.noResultsTitle(view, pending ? searched : pattern)}
-      description={copy.noResultsLine(view)}
+      description={copy.noResultsLine(view) ?? undefined}
       actions={
         hiddenByFilter(view) ? (
           <Button label={STRINGS.showAllModels} onClick={onShowAllModels} />

@@ -280,7 +280,7 @@ describe('find mode and plan mode', () => {
     await searchFor(harness, 'Acme');
     harness.controller.setReplacementText('Acme Inc');
     expect(harness.snapshot().replacementCheck.warnings).toEqual([
-      { code: 'self_match' },
+      { code: 'self_match', pattern: 'Acme', replacement: 'Acme Inc' },
     ]);
 
     harness.controller.setReplacementText('Globex');

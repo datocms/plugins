@@ -7,12 +7,17 @@ import { runToast, showRunToast } from './toasts';
 const copy = createCopy('en');
 
 describe('runToast', () => {
-  it('stopped: a warning with the records updated, no CTA', () => {
+  it('stopped: a warning with the matches replaced, as the meta counts them, no CTA', () => {
     expect(
       runToast(
         runEndedEvent({
           stopped: true,
-          pass: makeTotals({ replacedRecords: 18, plannedRecords: 37 }),
+          pass: makeTotals({
+            replacedRecords: 3,
+            plannedRecords: 10,
+            replacedMatches: 17,
+            plannedMatches: 36,
+          }),
         }),
         copy,
       ),
@@ -20,7 +25,7 @@ describe('runToast', () => {
       kind: 'custom',
       toast: {
         type: 'warning',
-        message: 'Replacement stopped: 18 of 37 records updated.',
+        message: 'Replacement stopped: 17 of 36 matches replaced.',
         dismissOnPageChange: true,
       },
     });
@@ -32,7 +37,7 @@ describe('runToast', () => {
         runEndedEvent({ pass: makeTotals({ replacedMatches: 1 }) }),
         copy,
       ),
-    ).toEqual({ kind: 'notice', message: 'One match successfully replaced!' });
+    ).toEqual({ kind: 'notice', message: 'One match replaced' });
     expect(
       runToast(
         runEndedEvent({
@@ -43,7 +48,7 @@ describe('runToast', () => {
       ),
     ).toEqual({
       kind: 'notice',
-      message: '1,200 matches successfully removed!',
+      message: '1,200 matches removed',
     });
   });
 
@@ -59,11 +64,11 @@ describe('runToast', () => {
     ).toEqual({
       kind: 'alert',
       message:
-        "Couldn't replace the matches, as your role can't edit these records!",
+        "Couldn't replace the matches, as your role can't edit these records.",
     });
   });
 
-  it('skipped only: a warning with "Search again"', () => {
+  it('skipped only: a warning, without a button (the title bar has "Search again")', () => {
     const skipped = (
       replacedMatches: number,
       skippedRecords: number,
@@ -83,16 +88,13 @@ describe('runToast', () => {
       kind: 'custom',
       toast: {
         type: 'warning',
-        message:
-          'One match replaced, 1 record skipped as it changed after the search.',
-        cta: { label: 'Search again', value: 'searchAgain' },
+        message: 'One match replaced, 1 record skipped.',
         dismissOnPageChange: true,
       },
     });
     expect(skipped(0, 3, 3)).toMatchObject({
       toast: {
-        message:
-          'No matches replaced, 3 records skipped as they changed after the search.',
+        message: 'No matches replaced, 3 records skipped.',
       },
     });
     expect(skipped(115, 3, 1)).toMatchObject({
@@ -100,7 +102,7 @@ describe('runToast', () => {
     });
   });
 
-  it('failed only: an alert with "Try again" when a failure is retryable', () => {
+  it('failed only: an alert in the words of the meta, without a button', () => {
     expect(
       runToast(
         runEndedEvent({
@@ -116,8 +118,7 @@ describe('runToast', () => {
       kind: 'custom',
       toast: {
         type: 'alert',
-        message: "119 matches replaced, 2 records couldn't be updated.",
-        cta: { label: 'Try again', value: 'retry' },
+        message: '119 matches replaced, 2 records failed.',
         dismissOnPageChange: true,
       },
     });
@@ -132,13 +133,13 @@ describe('runToast', () => {
       kind: 'custom',
       toast: {
         type: 'alert',
-        message: "4 matches replaced, 1 record couldn't be updated.",
+        message: '4 matches replaced, 1 record failed.',
         dismissOnPageChange: true,
       },
     });
   });
 
-  it('skipped and failed: "Try again" when retryable, else "Search again"', () => {
+  it('skipped and failed: an alert in the words of the meta, without a button', () => {
     const both = (retryableFailedRecords: number) =>
       runToast(
         runEndedEvent({
@@ -155,39 +156,29 @@ describe('runToast', () => {
       kind: 'custom',
       toast: {
         type: 'alert',
-        message: "100 matches replaced, 5 records weren't updated.",
-        cta: { label: 'Try again', value: 'retry' },
+        message: '100 matches replaced, 3 records skipped, 2 failed.',
         dismissOnPageChange: true,
       },
     });
-    expect(both(0)).toMatchObject({
-      toast: { cta: { label: 'Search again', value: 'searchAgain' } },
-    });
+    expect(both(0)).toEqual(both(1));
   });
 });
 
 describe('showRunToast', () => {
-  it('calls the matching host method once and resolves the CTA', async () => {
+  it('calls the matching host method once', async () => {
     const mock = createMockCtx();
-    mock.customToast.mockResolvedValueOnce('retry');
-    await expect(
-      showRunToast(mock.ctx, { kind: 'notice', message: 'Done!' }),
-    ).resolves.toBeNull();
-    await expect(
-      showRunToast(mock.ctx, { kind: 'alert', message: 'No!' }),
-    ).resolves.toBeNull();
-    await expect(
-      showRunToast(mock.ctx, {
-        kind: 'custom',
-        toast: { type: 'alert', message: 'Hm', dismissOnPageChange: true },
-      }),
-    ).resolves.toBe('retry');
+    await showRunToast(mock.ctx, { kind: 'notice', message: 'Done!' });
+    await showRunToast(mock.ctx, { kind: 'alert', message: 'No!' });
+    await showRunToast(mock.ctx, {
+      kind: 'custom',
+      toast: { type: 'alert', message: 'Hm', dismissOnPageChange: true },
+    });
     expect(mock.notice).toHaveBeenCalledTimes(1);
     expect(mock.alert).toHaveBeenCalledTimes(1);
     expect(mock.customToast).toHaveBeenCalledTimes(1);
   });
 
-  it('resolves null when the host call fails', async () => {
+  it('ignores a host call that fails', async () => {
     const mock = createMockCtx();
     mock.customToast.mockRejectedValueOnce(new Error('gone'));
     await expect(
@@ -195,6 +186,6 @@ describe('showRunToast', () => {
         kind: 'custom',
         toast: { type: 'warning', message: 'x' },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toBeUndefined();
   });
 });
