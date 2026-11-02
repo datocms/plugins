@@ -1,14 +1,11 @@
-/* Placement only: the grid of the assets, then a line with "Add assets"
-   and the count. */
+/* Placement only: the grid of the assets, then a line with "Add assets". */
 .editor {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-l);
 }
 
+/* The button keeps its own width */
 .footer {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-m);
 }

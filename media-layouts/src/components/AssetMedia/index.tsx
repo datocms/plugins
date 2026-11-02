@@ -5,7 +5,7 @@ import type {
   MediaCardAction,
   MediaCardOption,
 } from 'datocms-react-ui/MediaCard';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import { FileIcon, WarningIcon } from '../../icons';
 import type { MediaLayoutItem } from '../../types';
 import { getFormatLabel, isImageFormat } from '../../utils/upload';
@@ -17,18 +17,29 @@ type AssetMediaProps = {
   /** The crop of the asset, or null when it has none (Original, unknown size) */
   ratio: number | null;
   focalPoint: MediaLayoutItem['focalPoint'];
+  /**
+   * A gallery: the media sits in a frame of one shape (FRAME_RATIO), thus
+   * the cards of a row have one height
+   */
+  framed?: boolean;
 };
+
+/** The shape of the frame of the media in a gallery: 4:3 */
+const FRAME_RATIO = 4 / 3;
 
 /**
  * The media of a MediaCard: the image at the crop of the asset (or of its
  * slot), or a box with the file icon and the format. Without a ratio, the
- * media keeps a minimum height.
+ * media keeps a minimum height. In a frame, the image keeps its crop at the
+ * center of the frame (as wide as the frame, or as tall), and the box of a
+ * file fills the frame.
  */
 export function AssetMedia({
   url,
   format,
   ratio,
   focalPoint,
+  framed = false,
 }: AssetMediaProps) {
   const hasRatio = ratio !== null && ratio > 0;
   const ratioStyle: CSSProperties | undefined = hasRatio
@@ -40,8 +51,10 @@ export function AssetMedia({
     const formatLabel = getFormatLabel(format);
     return (
       <div
-        className={[s.filePlaceholder, sizeClass].filter(Boolean).join(' ')}
-        style={ratioStyle}
+        className={[s.filePlaceholder, framed ? s.frame : sizeClass]
+          .filter(Boolean)
+          .join(' ')}
+        style={framed ? undefined : ratioStyle}
       >
         <FileIcon />
         {formatLabel && (
@@ -53,14 +66,39 @@ export function AssetMedia({
 
   const focalX = focalPoint ? focalPoint.x * 100 : 50;
   const focalY = focalPoint ? focalPoint.y * 100 : 50;
+  const src = `${url}?auto=format&w=400&fit=crop`;
+  const objectPosition = `${focalX}% ${focalY}%`;
+
+  if (!framed) {
+    return (
+      <img
+        className={[s.media, sizeClass].filter(Boolean).join(' ')}
+        src={src}
+        alt=""
+        draggable={false}
+        style={{ ...ratioStyle, objectPosition }}
+      />
+    );
+  }
+
+  // A crop taller than the frame is as tall as the frame: its width is the
+  // part of the width of the frame that its ratio gives
+  const framedStyle: CSSProperties = hasRatio
+    ? {
+        ...ratioStyle,
+        width: `${Math.min(1, ratio / FRAME_RATIO) * 100}%`,
+      }
+    : {};
   return (
-    <img
-      className={[s.media, sizeClass].filter(Boolean).join(' ')}
-      src={`${url}?auto=format&w=400&fit=crop`}
-      alt=""
-      draggable={false}
-      style={{ ...ratioStyle, objectPosition: `${focalX}% ${focalY}%` }}
-    />
+    <div className={s.frame}>
+      <img
+        className={hasRatio ? s.framedMedia : s.framedOriginal}
+        src={src}
+        alt=""
+        draggable={false}
+        style={{ ...framedStyle, objectPosition }}
+      />
+    </div>
   );
 }
 
@@ -91,54 +129,57 @@ export function useMediaCardMenus(
   return { actions, options: [remove] };
 }
 
-/**
- * Where the state of an asset shows: "inline" when it is the only content of
- * its box (a column of a gallery, the frame of a single-asset field),
- * "section" under other content (the header of a slot).
- */
-type AssetStatePlacement = 'inline' | 'section';
+// The states of an asset sit in the place of its card, under a label of the
+// form or the header of a slot: the "section" placement frames them as an
+// empty slot, as the cards around them have a frame
 
 /** The upload of the asset still loads: the place of its card says so. */
-export function LoadingAsset({
-  placement,
-}: {
-  placement: AssetStatePlacement;
-}) {
+export function LoadingAsset() {
   return (
-    <BlankSlate placement={placement} small loading title="Loading the asset" />
+    <BlankSlate placement="section" small loading title="Loading the asset" />
   );
 }
 
 type FailedAssetProps = {
-  placement: AssetStatePlacement;
+  /** The file name of the asset, when the field stored it */
+  filename?: string | null;
   disabled?: boolean;
   onRemove: () => void;
 };
 
 /**
- * The upload of the asset couldn't load: the user can remove the asset,
- * unless the field is read-only.
+ * The upload of the asset couldn't load, most likely because it was deleted:
+ * the user can remove the asset (a regular button, so that it reads as the
+ * way out) and pick another, unless the field is read-only. The file name
+ * tells which asset it was.
  */
 export function FailedAsset({
-  placement,
+  filename,
   disabled,
   onRemove,
 }: FailedAssetProps) {
+  const name = filename?.trim();
+  let description: ReactElement | string | undefined;
+  if (!disabled) {
+    // One element: the description lays out each of its children apart
+    description = name ? (
+      <span>
+        It may have been deleted. Remove{' '}
+        <span className={s.filename}>{name}</span> and pick another asset.
+      </span>
+    ) : (
+      'It may have been deleted. Remove it and pick another asset.'
+    );
+  }
   return (
     <BlankSlate
-      placement={placement}
+      placement="section"
       small
       icon={<WarningIcon />}
       error
       title="The asset couldn't load"
-      description={
-        disabled ? undefined : 'Remove it, then add the asset again.'
-      }
-      actions={
-        !disabled && (
-          <Button tone="ghost-alert" label="Remove" onClick={onRemove} />
-        )
-      }
+      description={description}
+      actions={!disabled && <Button label="Remove" onClick={onRemove} />}
     />
   );
 }

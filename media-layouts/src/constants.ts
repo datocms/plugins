@@ -2,14 +2,15 @@ import type { AspectRatioOption, WidthOption } from './types';
 
 export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
   { value: 'original', label: 'Original (no crop)', ratio: null },
+  // From the widest to the tallest
+  { value: '21:9', label: '21:9 (Ultrawide)', ratio: 21 / 9 },
   { value: '16:9', label: '16:9 (Widescreen)', ratio: 16 / 9 },
+  { value: '3:2', label: '3:2 (Photo)', ratio: 3 / 2 },
   { value: '4:3', label: '4:3 (Standard)', ratio: 4 / 3 },
   { value: '1:1', label: '1:1 (Square)', ratio: 1 },
-  { value: '3:2', label: '3:2 (Photo)', ratio: 3 / 2 },
-  { value: '2:3', label: '2:3 (Portrait photo)', ratio: 2 / 3 },
-  { value: '21:9', label: '21:9 (Ultrawide)', ratio: 21 / 9 },
-  { value: '9:16', label: '9:16 (Portrait, mobile)', ratio: 9 / 16 },
   { value: '3:4', label: '3:4 (Portrait)', ratio: 3 / 4 },
+  { value: '2:3', label: '2:3 (Portrait photo)', ratio: 2 / 3 },
+  { value: '9:16', label: '9:16 (Portrait, mobile)', ratio: 9 / 16 },
   { value: 'custom', label: 'Custom ratio', ratio: null },
 ];
 
@@ -34,17 +35,16 @@ export const MODE_OPTIONS = [
   {
     value: 'single',
     label: 'Single asset',
-    hint: 'One asset, with its own crop and width.',
   },
   {
     value: 'multiple',
     label: 'Gallery',
-    hint: 'Any number of assets, each with its own crop and width.',
+    hint: 'Any number of assets.',
   },
   {
     value: 'layout',
     label: 'Layout',
-    hint: 'Slots that you define, each with its own crop and width.',
+    hint: 'Named places, one asset each, that you set up.',
   },
 ] as const;
 

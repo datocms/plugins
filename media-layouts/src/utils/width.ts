@@ -69,9 +69,10 @@ export function buildWidthOptions(
   const baseNumericOptions = baseOptions.filter(
     (opt) => opt.value !== 'original',
   );
+  // The same format as the standard options: '600px (Card)'
   const customOptions: WidthOption[] = presets.map((preset) => ({
     value: preset.value,
-    label: preset.label,
+    label: `${preset.value}px (${preset.label})`,
   }));
   return [
     ...(originalOption ? [originalOption] : []),

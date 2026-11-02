@@ -1,4 +1,5 @@
-import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
+import FieldWrapper, { useFieldInput } from 'datocms-react-ui/FieldWrapper';
 import { useCallback, useState } from 'react';
 import type { LayoutConfig, LayoutSlot, WidthOption } from '../../types';
 import {
@@ -126,6 +127,31 @@ function previewHint(config: LayoutConfig, isMasonry: boolean): string {
 }
 
 /**
+ * The input of the empty Slots field of a masonry: a group named by the
+ * label of the field, with its error as the description.
+ */
+function EmptySlots({ onAdd }: { onAdd: () => void }) {
+  // A group has no invalid or required state: only the name and the error
+  const field = useFieldInput({});
+
+  return (
+    <div
+      role="group"
+      id={field.id}
+      aria-labelledby={field['aria-labelledby']}
+      aria-describedby={field['aria-describedby']}
+    >
+      <FieldWrapper.Boundary>
+        <EmptySlot
+          message="No slots yet"
+          action={{ label: 'Add slot', onClick: onAdd }}
+        />
+      </FieldWrapper.Boundary>
+    </div>
+  );
+}
+
+/**
  * The layout of a field in layout mode: the settings of the whole layout,
  * the preview of the grid (where a click on an empty cell adds a slot and a
  * drag moves a slot), and the list of the slots with their settings. A slot
@@ -161,9 +187,14 @@ export default function LayoutBuilder({
     setOpenSlotId((current) => (current === slotId ? null : slotId));
   }, []);
 
-  // A masonry with no slots has nothing to preview: the list below adds the
-  // first one. A grid always shows its cells, where a click adds a slot.
-  const showPreview = !isMasonry || config.slots.length > 0;
+  // A masonry with no slots has nothing to preview: its empty Slots field
+  // adds the first one. A grid always shows its cells, where a click adds a
+  // slot, thus an empty grid has no list.
+  const isEmptyMasonry = isMasonry && config.slots.length === 0;
+  // The error of the whole layout (no slot yet, for example), on the field
+  // that shows the slots: the preview, or the empty Slots field. The row of
+  // a slot and its settings show the errors of the slot.
+  const error = errors.layoutConfig;
 
   return (
     <>
@@ -175,12 +206,19 @@ export default function LayoutBuilder({
         onRowsChange={handleRowsChange}
       />
 
-      {showPreview && (
-        <FieldWrapper label="Preview" hint={previewHint(config, isMasonry)}>
+      {isEmptyMasonry ? (
+        <FieldWrapper label="Slots" error={error}>
+          <EmptySlots onAdd={handleAddSlotMasonry} />
+        </FieldWrapper>
+      ) : (
+        <FieldWrapper
+          label="Preview"
+          hint={previewHint(config, isMasonry)}
+          error={error}
+        >
           <LayoutPreview
             config={config}
             isMasonry={isMasonry}
-            widthOptions={widthOptions}
             openSlotId={openSlotId}
             onToggleSlot={handleToggleSlot}
             onAddSlotAt={handleAddSlotAtPosition}
@@ -189,18 +227,20 @@ export default function LayoutBuilder({
         </FieldWrapper>
       )}
 
-      <SlotList
-        config={config}
-        isMasonry={isMasonry}
-        widthOptions={widthOptions}
-        errors={errors}
-        openSlotId={openSlotId}
-        onToggleSlot={handleToggleSlot}
-        onAddSlot={handleAddSlotMasonry}
-        onUpdateSlot={handleUpdateSlot}
-        onMoveSlot={handleMoveSlot}
-        onDeleteSlot={handleDeleteSlot}
-      />
+      {config.slots.length > 0 && (
+        <SlotList
+          config={config}
+          isMasonry={isMasonry}
+          widthOptions={widthOptions}
+          errors={errors}
+          openSlotId={openSlotId}
+          onToggleSlot={handleToggleSlot}
+          onAddSlot={handleAddSlotMasonry}
+          onUpdateSlot={handleUpdateSlot}
+          onMoveSlot={handleMoveSlot}
+          onDeleteSlot={handleDeleteSlot}
+        />
+      )}
     </>
   );
 }

@@ -10,6 +10,7 @@ import {
   isValidGlobalParams,
   normalizeGlobalParams,
 } from './utils/fieldParams';
+import { slotTitle } from './utils/options';
 import { render } from './utils/render';
 import {
   isValidWidthNumber,
@@ -27,10 +28,17 @@ type LayoutConfigRaw = {
   layoutWidth?: unknown;
 };
 
-// "Slot 2: enter an aspect ratio.": the message after the colon starts lower
-// case. Only the layout callout shows these, as full sentences.
+// "Detail: enter an aspect ratio": the message after the colon starts lower
+// case, and ends with no period, as the errors of the inputs
 function prefixError(prefix: string, message: string): string {
-  return `${prefix}: ${message.charAt(0).toLowerCase()}${message.slice(1)}.`;
+  return `${prefix}: ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
+}
+
+// The name that the field settings show for the slot: its label, or
+// 'Untitled slot'. The position would name no slot on the screen, which
+// lists the slots row by row.
+function slotName(slot: Record<string, unknown>): string {
+  return slotTitle({ label: typeof slot.label === 'string' ? slot.label : '' });
 }
 
 function validateSlotSpans(
@@ -43,7 +51,7 @@ function validateSlotSpans(
     (typeof slot.rowSpan !== 'number' || slot.rowSpan < 1)
   ) {
     errors[`slot_${index}_rowSpan`] =
-      `Slot ${index + 1}: the row span must be 1 or more`;
+      `${slotName(slot)}: the row span must be 1 or more`;
   }
 
   if (
@@ -51,12 +59,12 @@ function validateSlotSpans(
     (typeof slot.colSpan !== 'number' || slot.colSpan < 1)
   ) {
     errors[`slot_${index}_colSpan`] =
-      `Slot ${index + 1}: the column span must be 1 or more`;
+      `${slotName(slot)}: the column span must be 1 or more`;
   }
 
   if (slot.autoSpan !== undefined && typeof slot.autoSpan !== 'boolean') {
     errors[`slot_${index}_autoSpan`] =
-      `Slot ${index + 1}: turn Size from aspect ratio on or off`;
+      `${slotName(slot)}: turn Size from aspect ratio on or off`;
   }
 }
 
@@ -69,40 +77,43 @@ function validateLayoutSlot(
   setLayoutError: (msg: string) => void,
 ) {
   if (!slot.label || typeof slot.label !== 'string' || !slot.label.trim()) {
-    errors[`slot_${index}_label`] = `Slot ${index + 1}: enter a label`;
+    errors[`slot_${index}_label`] = `${slotName(slot)}: enter a label`;
   }
 
   if (slot.id && typeof slot.id === 'string') {
     if (slotIds.has(slot.id)) {
-      errors.layoutConfig = 'Two slots have the same ID.';
+      errors.layoutConfig = 'Two slots have the same ID';
     }
     slotIds.add(slot.id);
   }
 
   validateSlotSpans(slot, index, errors);
-  validateSlotAspectRatio(slot, index, presetAspectRatioValues, setLayoutError);
+  validateSlotAspectRatio(slot, index, presetAspectRatioValues, errors);
 
   if (slot.width !== undefined && !isWidthValue(slot.width)) {
     setLayoutError(
-      `Slot ${index + 1}: the width must be a number of pixels or Original.`,
+      `${slotName(slot)}: the width must be a number of pixels or Original`,
     );
   }
 }
 
+// The settings of an open slot show this error on its custom aspect ratio,
+// thus it has a key of its own
 function validateSlotAspectRatio(
   slot: Record<string, unknown>,
   index: number,
   presetAspectRatioValues: Set<string>,
-  setLayoutError: (msg: string) => void,
+  errors: Record<string, string>,
 ) {
   if (typeof slot.aspectRatio !== 'string') return;
+  const key = `slot_${index}_aspectRatio`;
 
   if (slot.aspectRatio === 'custom') {
     const customAspectRatio =
       typeof slot.customAspectRatio === 'string' ? slot.customAspectRatio : '';
     const error = validateCustomAspectRatio(customAspectRatio);
     if (error) {
-      setLayoutError(prefixError(`Slot ${index + 1}`, error));
+      errors[key] = prefixError(slotName(slot), error);
     }
     return;
   }
@@ -110,20 +121,21 @@ function validateSlotAspectRatio(
   if (!presetAspectRatioValues.has(slot.aspectRatio)) {
     const error = validateCustomAspectRatio(slot.aspectRatio);
     if (error) {
-      setLayoutError(prefixError(`Slot ${index + 1}`, error));
+      errors[key] = prefixError(slotName(slot), error);
     }
   }
 }
 
 function validateLayoutConfigAspectRatio(
   layoutConfig: LayoutConfigRaw,
+  errors: Record<string, string>,
   setLayoutError: (msg: string) => void,
 ) {
   if (
     layoutConfig.layoutAspectRatio !== undefined &&
     typeof layoutConfig.layoutAspectRatio !== 'string'
   ) {
-    setLayoutError('The layout aspect ratio is not valid.');
+    setLayoutError('The layout aspect ratio is not valid');
     return;
   }
 
@@ -131,7 +143,7 @@ function validateLayoutConfigAspectRatio(
     layoutConfig.layoutCustomAspectRatio !== undefined &&
     typeof layoutConfig.layoutCustomAspectRatio !== 'string'
   ) {
-    setLayoutError('The custom layout aspect ratio is not valid.');
+    setLayoutError('The custom layout aspect ratio is not valid');
     return;
   }
 
@@ -141,8 +153,10 @@ function validateLayoutConfigAspectRatio(
         ? layoutConfig.layoutCustomAspectRatio
         : '';
     const error = validateCustomAspectRatio(customAspectRatio);
+    // Its input shows the error: a key of its own keeps it out of the
+    // layout error
     if (error) {
-      setLayoutError(prefixError('Layout aspect ratio', error));
+      errors.layoutAspectRatio = prefixError('Layout aspect ratio', error);
     }
   }
 }
@@ -154,7 +168,7 @@ function validateLayoutConfigSlots(
   setLayoutError: (msg: string) => void,
 ) {
   if (slots.length === 0) {
-    errors.layoutConfig = 'Add at least one slot.';
+    errors.layoutConfig = 'Add at least one slot';
     return;
   }
 
@@ -186,7 +200,7 @@ function validateLayoutMode(
   const layoutConfig = parameters.layoutConfig as LayoutConfigRaw | undefined;
 
   if (!layoutConfig || !Array.isArray(layoutConfig.slots)) {
-    errors.layoutConfig = 'The layout settings are missing.';
+    errors.layoutConfig = 'The layout settings are missing';
     return;
   }
 
@@ -202,15 +216,15 @@ function validateLayoutMode(
     layoutConfig.layoutStyle !== 'grid' &&
     layoutConfig.layoutStyle !== 'masonry'
   ) {
-    errors.layoutConfig = 'The layout style must be Grid or Masonry.';
+    errors.layoutConfig = 'The layout style must be Grid or Masonry';
   }
 
-  validateLayoutConfigAspectRatio(layoutConfig, setLayoutError);
+  validateLayoutConfigAspectRatio(layoutConfig, errors, setLayoutError);
 
   if (layoutConfig.layoutWidth !== undefined) {
     const width = Number(layoutConfig.layoutWidth);
     if (!isValidWidthNumber(width)) {
-      setLayoutError(`Enter a layout width from ${MIN_WIDTH} to ${MAX_WIDTH}.`);
+      setLayoutError(`Enter a layout width from ${MIN_WIDTH} to ${MAX_WIDTH}`);
     }
   }
 }

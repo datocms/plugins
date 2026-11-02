@@ -40,6 +40,8 @@ export type AssetItemProps = {
   onEditMetadata: (index: number) => void;
   /** Single asset only: picks another asset in the place of this one */
   onReplace?: () => void;
+  /** A gallery: the media sits in a frame of one shape (see AssetMedia) */
+  framed?: boolean;
 };
 
 type ResolvedCardData = {
@@ -93,20 +95,22 @@ type AssetCardProps = {
   item: MediaLayoutItem;
   data: ResolvedCardData;
   disabled: boolean;
+  framed: boolean;
   onReplace?: () => void;
   onEditMetadata: () => void;
   onRemove: () => void;
 };
 
 /**
- * The card of the asset, at its crop: Replace (single asset) and Edit
- * metadata on the media, Remove in the "⋮" (a touch screen has them all in
- * the "⋮"). A read-only field shows the card alone.
+ * The card of the asset, at its crop (in a gallery, in its frame): Replace
+ * (single asset) and Edit metadata on the media, Remove in the "⋮" (a touch
+ * screen has them all in the "⋮"). A read-only field shows the card alone.
  */
 function AssetCard({
   item,
   data,
   disabled,
+  framed,
   onReplace,
   onEditMetadata,
   onRemove,
@@ -140,12 +144,13 @@ function AssetCard({
         data.originalHeight,
       )}
       focalPoint={item.focalPoint}
+      framed={framed}
     />
   );
 
   if (disabled) {
     return (
-      <MediaCard caption={caption} isDisabled captionDisabled>
+      <MediaCard caption={{ text: caption, muted: true }} disabled>
         {media}
       </MediaCard>
     );
@@ -153,7 +158,7 @@ function AssetCard({
 
   return (
     <MediaCard
-      caption={caption}
+      caption={{ text: caption }}
       actions={menus.actions}
       options={menus.options}
     >
@@ -179,6 +184,7 @@ function AssetItem({
   onRemove,
   onEditMetadata,
   onReplace,
+  framed = false,
 }: AssetItemProps) {
   const needsFetch = needsUploadFetch(item);
   const { upload, error } = useUploadData(ctx, item.uploadId, !needsFetch);
@@ -191,12 +197,11 @@ function AssetItem({
   });
   const handleRemove = () => onRemove(index);
 
-  // The state is the only content of its column (and of the frame of a
-  // single-asset field)
+  // The state takes the place of the card, in the row of the cards
   if (state === 'loading') {
     return (
       <div className={s.cell}>
-        <LoadingAsset placement="inline" />
+        <LoadingAsset />
       </div>
     );
   }
@@ -204,7 +209,7 @@ function AssetItem({
     return (
       <div className={s.cell}>
         <FailedAsset
-          placement="inline"
+          filename={item.filename}
           disabled={disabled}
           onRemove={handleRemove}
         />
@@ -222,12 +227,13 @@ function AssetItem({
         item={item}
         data={data}
         disabled={disabled}
+        framed={framed}
         onReplace={onReplace}
         onEditMetadata={() => onEditMetadata(index)}
         onRemove={handleRemove}
       />
       {/* Its own box: the last field of the box drops its bottom margin */}
-      <div>
+      <div className={s.fields}>
         <CropFields
           value={item}
           originalWidth={data.originalWidth}

@@ -214,9 +214,9 @@ function describeOutputSize(
 }
 
 /**
- * The aspect ratio and the width of an asset, side by side, with the size
- * that they give. While Custom is picked in one of them (or both), a second
- * row holds the custom inputs, one cell each.
+ * The aspect ratio and the width of an asset, side by side. Custom shows its
+ * input under its own menu, in the same cell. The size that they give is
+ * the hint of the last field of the width.
  */
 export function CropFields({
   value,
@@ -234,70 +234,62 @@ export function CropFields({
     onChange,
   });
   const outputSize = describeOutputSize(value, originalWidth, originalHeight);
+  const sizeHint = outputSize ? `Final size: ${outputSize}.` : undefined;
 
   return (
-    <>
-      <div className="form__field form__row">
-        <div className="form__row__cell">
-          <FieldWrapper label="Aspect ratio">
-            <SelectInput
-              value={ratio.selectValue}
-              onChange={ratio.handleSelectChange}
-              options={ASPECT_RATIO_SELECT_OPTIONS}
-              clearable={false}
+    <div className="form__field form__row">
+      <div className="form__row__cell">
+        <FieldWrapper label="Aspect ratio">
+          <SelectInput
+            value={ratio.selectValue}
+            onChange={ratio.handleSelectChange}
+            options={ASPECT_RATIO_SELECT_OPTIONS}
+            clearable={false}
+            disabled={disabled}
+          />
+        </FieldWrapper>
+        {ratio.isCustom && (
+          <FieldWrapper label="Custom aspect ratio" error={ratio.customError}>
+            <StringInput
+              placeholder="2.35:1"
+              value={ratio.customValue}
+              onChange={ratio.handleCustomChange}
               disabled={disabled}
             />
           </FieldWrapper>
-        </div>
-        <div className="form__row__cell">
-          <FieldWrapper
-            label="Width"
-            hint={outputSize ? `The output is ${outputSize}.` : undefined}
-          >
-            <SelectInput
-              value={width.selectValue}
-              onChange={width.handleSelectChange}
-              options={width.selectOptions}
-              clearable={false}
-              disabled={disabled}
-            />
-          </FieldWrapper>
-        </div>
+        )}
       </div>
-      {(ratio.isCustom || width.customWidthActive) && (
-        <div className="form__field form__row">
-          {ratio.isCustom && (
-            <div className="form__row__cell">
-              <FieldWrapper
-                label="Custom aspect ratio"
-                error={ratio.customError}
-              >
-                <StringInput
-                  placeholder="2.35:1"
-                  value={ratio.customValue}
-                  onChange={ratio.handleCustomChange}
-                  disabled={disabled}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-          {width.customWidthActive && (
-            <div className="form__row__cell">
-              <FieldWrapper label="Custom width" error={width.customWidthError}>
-                <InputGroup
-                  value={width.customWidthInput}
-                  onChange={width.handleCustomWidthChange}
-                  post="px"
-                  inputMode="numeric"
-                  placeholder={String(DEFAULT_WIDTH)}
-                  disabled={disabled}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-        </div>
-      )}
-    </>
+      <div className="form__row__cell">
+        <FieldWrapper
+          label="Width"
+          hint={width.customWidthActive ? undefined : sizeHint}
+        >
+          <SelectInput
+            value={width.selectValue}
+            onChange={width.handleSelectChange}
+            options={width.selectOptions}
+            clearable={false}
+            disabled={disabled}
+          />
+        </FieldWrapper>
+        {width.customWidthActive && (
+          <FieldWrapper
+            label="Custom width"
+            hint={sizeHint}
+            error={width.customWidthError}
+          >
+            <InputGroup
+              value={width.customWidthInput}
+              onChange={width.handleCustomWidthChange}
+              post="px"
+              inputMode="numeric"
+              placeholder={String(DEFAULT_WIDTH)}
+              disabled={disabled}
+            />
+          </FieldWrapper>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -309,7 +301,10 @@ type AssetOptionFieldsProps = {
   onChange: (change: AssetOptionsValue) => void;
 };
 
-/** The CSS class and the lazy loading of an asset, when the field has them. */
+/**
+ * The CSS class and the lazy loading of an asset, when the field has them.
+ * The switch names lazy loading in plain words; the key stays `lazyLoading`.
+ */
 export function AssetOptionFields({
   value,
   enableCssClass,
@@ -323,7 +318,7 @@ export function AssetOptionFields({
         <FieldWrapper label="CSS class">
           <StringInput
             code
-            placeholder="hero-image"
+            placeholder="rounded"
             value={value.cssClass ?? ''}
             onChange={(next) => onChange({ cssClass: next ?? '' })}
             disabled={disabled}
@@ -331,9 +326,9 @@ export function AssetOptionFields({
         </FieldWrapper>
       )}
       {enableLazyLoading && (
-        <FieldWrapper hint="The image loads only when it scrolls into view.">
+        <FieldWrapper>
           <SwitchInput
-            label="Lazy loading"
+            label="Load when scrolled into view"
             value={value.lazyLoading ?? false}
             onChange={(next) => onChange({ lazyLoading: Boolean(next) })}
             disabled={disabled}

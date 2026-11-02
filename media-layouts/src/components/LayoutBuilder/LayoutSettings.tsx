@@ -37,12 +37,11 @@ const LAYOUT_STYLE_OPTIONS = [
   {
     value: 'masonry',
     label: 'Masonry',
-    hint: 'Slots flow into columns in their order, each as tall as its aspect ratio.',
+    hint: 'Slots fill the columns in order, each keeping its own aspect ratio.',
   },
 ] as const;
 
-// Four options to compare: radios, not a select
-const COLUMN_RADIO_OPTIONS = COLUMN_OPTIONS.map((option) => ({
+const COLUMN_SELECT_OPTIONS: SelectOption[] = COLUMN_OPTIONS.map((option) => ({
   value: String(option.value),
   label: option.label,
 }));
@@ -52,11 +51,19 @@ const ROW_SELECT_OPTIONS: SelectOption[] = ROW_OPTIONS.map((option) => ({
   label: option.label,
 }));
 
-const AUTO_OPTION: SelectOption = { value: AUTO_OPTION_VALUE, label: 'Auto' };
+// The layout has no ratio or width of its own: each option says so
+const NO_FIXED_RATIO_OPTION: SelectOption = {
+  value: AUTO_OPTION_VALUE,
+  label: 'No fixed ratio',
+};
+const NO_FIXED_WIDTH_OPTION: SelectOption = {
+  value: AUTO_OPTION_VALUE,
+  label: 'No fixed width',
+};
 
 // The whole layout has no Original ratio: it is not an asset
 const LAYOUT_ASPECT_RATIO_SELECT_OPTIONS: SelectOption[] = [
-  AUTO_OPTION,
+  NO_FIXED_RATIO_OPTION,
   ...buildAspectRatioSelectOptions({ includeOriginal: false }),
 ];
 
@@ -186,6 +193,19 @@ export default function LayoutSettings({
     );
   };
 
+  const columnsField = (
+    <FieldWrapper label="Columns">
+      <SelectInput
+        value={String(config.columns)}
+        onChange={(next) => {
+          if (next !== null) onColumnsChange(Number(next));
+        }}
+        options={COLUMN_SELECT_OPTIONS}
+        clearable={false}
+      />
+    </FieldWrapper>
+  );
+
   return (
     <>
       <FieldWrapper label="Layout style">
@@ -196,28 +216,25 @@ export default function LayoutSettings({
         />
       </FieldWrapper>
 
-      <FieldWrapper label="Columns">
-        <RadioGroupInput
-          small
-          options={COLUMN_RADIO_OPTIONS}
-          value={String(config.columns)}
-          onChange={(next) => {
-            if (next !== null) onColumnsChange(Number(next));
-          }}
-        />
-      </FieldWrapper>
-
-      {!isMasonry && (
-        <FieldWrapper label="Rows">
-          <SelectInput
-            value={String(config.rows)}
-            onChange={(next) => {
-              if (next !== null) onRowsChange(Number(next));
-            }}
-            options={ROW_SELECT_OPTIONS}
-            clearable={false}
-          />
-        </FieldWrapper>
+      {isMasonry ? (
+        columnsField
+      ) : (
+        // The size of the grid, on one line
+        <div className="form__field form__row">
+          <div className="form__row__cell">{columnsField}</div>
+          <div className="form__row__cell">
+            <FieldWrapper label="Rows">
+              <SelectInput
+                value={String(config.rows)}
+                onChange={(next) => {
+                  if (next !== null) onRowsChange(Number(next));
+                }}
+                options={ROW_SELECT_OPTIONS}
+                clearable={false}
+              />
+            </FieldWrapper>
+          </div>
+        </div>
       )}
 
       <LayoutSizeFields
@@ -236,9 +253,9 @@ type LayoutSizeFieldsProps = {
 };
 
 /**
- * The aspect ratio controls of the whole layout. Auto stores none; a stored
- * ratio that is no preset shows as Custom, with its text in the input,
- * which saves each keystroke.
+ * The aspect ratio controls of the whole layout. No fixed ratio stores
+ * none; a stored ratio that is no preset shows as Custom, with its text in
+ * the input, which saves each keystroke.
  */
 function layoutAspectRatioControls({
   config,
@@ -277,12 +294,11 @@ function layoutAspectRatioControls({
 }
 
 /**
- * The aspect ratio and the width of the whole layout, side by side. Auto
- * stores none. While Custom is picked in one of them (or both), a second
- * row holds the custom inputs, one cell each; a typed custom width saves
- * only when it is valid, while the input keeps the text. The hint of the
- * width gives the size of the whole layout when it has both a ratio and a
- * width.
+ * The aspect ratio and the width of the whole layout, side by side. No
+ * fixed ratio and No fixed width store none. Custom shows its input under its own menu, in the same cell;
+ * a typed custom width saves only when it is valid, while the input keeps
+ * the text. The size of the whole layout, when it has both a ratio and a
+ * width, is the hint of the last field of the width.
  */
 function LayoutSizeFields({
   config,
@@ -299,7 +315,10 @@ function LayoutSizeFields({
     [layoutPresetWidthOptions],
   );
   const widthSelectOptions = useMemo(
-    () => [AUTO_OPTION, ...buildWidthSelectOptions(layoutPresetWidthOptions)],
+    () => [
+      NO_FIXED_WIDTH_OPTION,
+      ...buildWidthSelectOptions(layoutPresetWidthOptions),
+    ],
     [layoutPresetWidthOptions],
   );
   const ratio = layoutAspectRatioControls({ config, onChange });
@@ -310,79 +329,68 @@ function LayoutSizeFields({
   });
 
   const dimensions = buildLayoutDimensions(config);
+  const sizeHint = dimensions
+    ? `The whole layout is ${dimensions}.`
+    : undefined;
+  const customWidthShows = width.layoutCustomWidthActive;
 
   return (
-    <>
-      <div className="form__field form__row">
-        <div className="form__row__cell">
+    <div className="form__field form__row">
+      <div className="form__row__cell">
+        <FieldWrapper label="Layout aspect ratio">
+          <SelectInput
+            value={ratio.selection}
+            onChange={ratio.handleSelectChange}
+            options={LAYOUT_ASPECT_RATIO_SELECT_OPTIONS}
+            clearable={false}
+          />
+        </FieldWrapper>
+        {ratio.isCustom && (
           <FieldWrapper
-            label="Layout aspect ratio"
-            hint="The shape of the whole layout. Auto leaves it out."
+            label="Custom layout aspect ratio"
+            error={validateCustomAspectRatio(ratio.customAspectRatio)}
           >
-            <SelectInput
-              value={ratio.selection}
-              onChange={ratio.handleSelectChange}
-              options={LAYOUT_ASPECT_RATIO_SELECT_OPTIONS}
-              clearable={false}
+            <StringInput
+              placeholder="2.35:1"
+              value={ratio.customAspectRatio}
+              onChange={ratio.handleCustomChange}
             />
           </FieldWrapper>
-        </div>
-        <div className="form__row__cell">
-          <FieldWrapper
-            label="Layout width"
-            hint={
-              dimensions
-                ? `The whole layout is ${dimensions}.`
-                : 'The width of the whole layout. Auto leaves it out.'
-            }
-          >
-            <SelectInput
-              value={width.layoutWidthSelection}
-              onChange={(next) => {
-                if (next !== null) width.handleLayoutWidthChange(next);
-              }}
-              options={widthSelectOptions}
-              clearable={false}
-            />
-          </FieldWrapper>
-        </div>
+        )}
       </div>
-      {(ratio.isCustom || width.layoutCustomWidthActive) && (
-        <div className="form__field form__row">
-          {ratio.isCustom && (
-            <div className="form__row__cell">
-              <FieldWrapper
-                label="Custom layout aspect ratio"
-                error={validateCustomAspectRatio(ratio.customAspectRatio)}
-              >
-                <StringInput
-                  placeholder="2.35:1"
-                  value={ratio.customAspectRatio}
-                  onChange={ratio.handleCustomChange}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-          {width.layoutCustomWidthActive && (
-            <div className="form__row__cell">
-              <FieldWrapper
-                label="Custom layout width"
-                error={width.layoutCustomWidthError}
-              >
-                <InputGroup
-                  value={width.layoutCustomWidthInput}
-                  onChange={(next) =>
-                    width.handleLayoutCustomWidthInputChange(next ?? '')
-                  }
-                  post="px"
-                  inputMode="numeric"
-                  placeholder={String(DEFAULT_WIDTH)}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-        </div>
-      )}
-    </>
+      <div className="form__row__cell">
+        {/* The size goes on the custom width while it shows */}
+        <FieldWrapper
+          label="Layout width"
+          hint={customWidthShows ? undefined : sizeHint}
+        >
+          <SelectInput
+            value={width.layoutWidthSelection}
+            onChange={(next) => {
+              if (next !== null) width.handleLayoutWidthChange(next);
+            }}
+            options={widthSelectOptions}
+            clearable={false}
+          />
+        </FieldWrapper>
+        {customWidthShows && (
+          <FieldWrapper
+            label="Custom layout width"
+            hint={sizeHint}
+            error={width.layoutCustomWidthError}
+          >
+            <InputGroup
+              value={width.layoutCustomWidthInput}
+              onChange={(next) =>
+                width.handleLayoutCustomWidthInputChange(next ?? '')
+              }
+              post="px"
+              inputMode="numeric"
+              placeholder={String(DEFAULT_WIDTH)}
+            />
+          </FieldWrapper>
+        )}
+      </div>
+    </div>
   );
 }

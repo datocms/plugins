@@ -44,7 +44,6 @@
 /* A slot: a button that opens its settings in the list below. It is inside
    the frame of the field, thus it has the border alone, with no shadow. */
 .tile {
-  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -87,39 +86,8 @@
   border-color: var(--color--selected--border);
 }
 
-/* The shape of the aspect ratio of a grid slot, behind its text: the
-   largest box of that ratio (--ratio, set by the script) in the cell */
-.ratioFrame {
-  position: absolute;
-  inset: var(--spacing-s);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  container-type: size;
-}
-
-.ratioShape {
-  width: min(100cqw, calc(100cqh * var(--ratio)));
-  aspect-ratio: var(--ratio);
-  background-color: var(--color--surface-muted);
-  border: 1px dashed var(--color--border);
-  border-radius: var(--radius-s);
-}
-
-.isOpen .ratioShape {
-  background-color: transparent;
-  border-color: var(--color--selected--border);
-}
-
-/* The drop cue of the cell shows through the shape too */
-.isDropOver .ratioShape {
-  background-color: transparent;
-}
-
-/* The text of a slot: its name, its pill and its size */
+/* The text of a slot: its name and its pill */
 .tileBody {
-  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -133,17 +101,6 @@
   max-width: 100%;
   font-weight: var(--font-weight-strong);
   overflow-wrap: anywhere;
-}
-
-.tileMeta {
-  max-width: 100%;
-  font-size: var(--font-size-xs);
-  color: var(--color--ink-subtle);
-  overflow-wrap: anywhere;
-}
-
-.isOpen .tileMeta {
-  color: inherit;
 }
 
 /* A free cell of a grid: a dashed frame with the button that adds a slot */
@@ -178,4 +135,10 @@
 .addCell:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+/* The list of the slots is a block between the fields of the form: it keeps
+   their rhythm */
+.slotList {
+  margin-bottom: var(--form-field-gap);
 }

@@ -125,14 +125,12 @@ export function describeSize({
 }
 
 /**
- * The name of a slot: its label, or 'Slot 3' (the position in the layout's
- * slots, the same number the field validation uses) when the label is blank.
+ * The name of a slot: its label, or 'Untitled slot' when the label is blank
+ * (a name that can't pass for a label). The field validation names the slot
+ * in the same way.
  */
-export function slotTitle(
-  slot: Pick<LayoutSlot, 'label'>,
-  index: number,
-): string {
-  return (slot.label ?? '').trim() || `Slot ${index + 1}`;
+export function slotTitle(slot: Pick<LayoutSlot, 'label'>): string {
+  return (slot.label ?? '').trim() || 'Untitled slot';
 }
 
 /**
@@ -150,34 +148,4 @@ export function assetTitle({
   const name = typeof filename === 'string' ? filename.trim() : '';
   if (name) return name;
   return uploadId ? `Asset ${uploadId}` : 'Unknown asset';
-}
-
-const numberFormats = new Map<string, Intl.NumberFormat>();
-
-// One formatter per locale; an unknown locale falls back to English
-function numberFormat(locale: string): Intl.NumberFormat {
-  let format = numberFormats.get(locale);
-  if (!format) {
-    try {
-      format = new Intl.NumberFormat(locale);
-    } catch {
-      format = new Intl.NumberFormat('en');
-    }
-    numberFormats.set(locale, format);
-  }
-  return format;
-}
-
-/**
- * A count that names the thing counted, with the number separators of the
- * locale: '1 slot', '1,234 slots'. The words stay English, as the texts of
- * the components.
- */
-export function countLabel(
-  locale: string,
-  count: number,
-  one: string,
-  other: string,
-): string {
-  return `${numberFormat(locale).format(count)} ${count === 1 ? one : other}`;
 }

@@ -13,10 +13,8 @@ import {
 } from 'datocms-react-ui/dnd';
 import FieldWrapper, { useFieldInput } from 'datocms-react-ui/FieldWrapper';
 import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
-import Pill from 'datocms-react-ui/Pill';
 import RawButton from 'datocms-react-ui/RawButton';
 import {
-  type CSSProperties,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -26,9 +24,9 @@ import {
   useState,
 } from 'react';
 import { AddIcon } from '../../icons';
-import type { LayoutConfig, LayoutSlot, WidthOption } from '../../types';
+import type { LayoutConfig, LayoutSlot } from '../../types';
 import { getEffectiveRatio } from '../../utils/aspectRatio';
-import { describeSize, slotTitle } from '../../utils/options';
+import { slotTitle } from '../../utils/options';
 import {
   buildGridContainerStyle,
   buildOccupancy,
@@ -130,68 +128,36 @@ function useMasonryGridMetrics({ config, gridRef }: UseMasonryGridMetricsArgs) {
   return { getMasonryRowSpan, gap: gridMetrics.gap };
 }
 
-/** The dashed shape of the aspect ratio of a grid slot, behind its text */
-function RatioFrame({ slot }: { slot: LayoutSlot }) {
-  const ratio =
-    getEffectiveRatio(slot.aspectRatio, slot.customAspectRatio) ?? 1;
-  const previewRatio = ratio > 0 ? ratio : 1;
-  // The shape is the largest box of that ratio that fits in the cell
-  const ratioStyle = { '--ratio': String(previewRatio) } as CSSProperties;
-
-  return (
-    <span className={s.ratioFrame} aria-hidden="true">
-      <span className={s.ratioShape} style={ratioStyle} />
-    </span>
-  );
-}
-
 type SlotTileProps = {
   slot: LayoutSlot;
-  /** The position of the slot in the slots of the layout */
-  index: number;
-  widthOptions: WidthOption[];
   open: boolean;
   /** A drag that the slot takes is over it */
   isDropOver?: boolean;
-  /** Grid only: the dashed shape of the aspect ratio */
-  showRatioFrame: boolean;
   /** Masonry only: measures the text, so the slot is never shorter */
   bodyRef?: RefObject<HTMLSpanElement | null>;
   onToggleSlot: (slotId: string) => void;
 };
 
 /**
- * A slot of the preview: its name, its state and its size. The click opens
- * its settings in the list of the slots, and closes them.
+ * A slot of the preview: its name (the list of the slots gives its size and
+ * whether it needs an asset). The click opens its settings in the list, and
+ * closes them.
  */
 function SlotTile({
   slot,
-  index,
-  widthOptions,
   open,
   isDropOver = false,
-  showRatioFrame,
   bodyRef,
   onToggleSlot,
 }: SlotTileProps) {
-  const size = describeSize({
-    aspectRatio: slot.aspectRatio,
-    customAspectRatio: slot.customAspectRatio,
-    width: slot.width,
-    widthOptions,
-  });
-
   return (
     <RawButton
       className={classes(s.tile, open && s.isOpen, isDropOver && s.isDropOver)}
       expandable={{ open }}
       onClick={() => onToggleSlot(slot.id)}
     >
-      {showRatioFrame && <RatioFrame slot={slot} />}
       <span ref={bodyRef} className={s.tileBody}>
-        <span className={s.tileTitle}>{slotTitle(slot, index)}</span>
-        {slot.required && <Pill>Required</Pill>}
-        <span className={s.tileMeta}>{size}</span>
+        <span className={s.tileTitle}>{slotTitle(slot)}</span>
       </span>
     </RawButton>
   );
@@ -200,8 +166,6 @@ function SlotTile({
 type GridSlotProps = {
   config: LayoutConfig;
   slot: LayoutSlot;
-  index: number;
-  widthOptions: WidthOption[];
   open: boolean;
   /** The slot that the user drags now, if any */
   draggedSlot: LayoutSlot | null;
@@ -216,8 +180,6 @@ type GridSlotProps = {
 function GridSlot({
   config,
   slot,
-  index,
-  widthOptions,
   open,
   draggedSlot,
   onToggleSlot,
@@ -275,11 +237,8 @@ function GridSlot({
     >
       <SlotTile
         slot={slot}
-        index={index}
-        widthOptions={widthOptions}
         open={open}
         isDropOver={isOver}
-        showRatioFrame
         onToggleSlot={onToggleSlot}
       />
     </div>
@@ -350,19 +309,13 @@ function EmptyCell({
 }
 
 type GridItem =
-  | { kind: 'slot'; row: number; col: number; slot: LayoutSlot; index: number }
+  | { kind: 'slot'; row: number; col: number; slot: LayoutSlot }
   | { kind: 'empty'; row: number; col: number };
 
 /** The slots and the free cells of a grid, row by row (the Tab order) */
 function buildGridItems(config: LayoutConfig): GridItem[] {
   const slots: GridItem[] = orderSlotsForList(config, false).map(
-    ({ slot, index }) => ({
-      kind: 'slot',
-      row: slot.row,
-      col: slot.col,
-      slot,
-      index,
-    }),
+    ({ slot }) => ({ kind: 'slot', row: slot.row, col: slot.col, slot }),
   );
   const cells: GridItem[] = computeEmptyCells(
     config,
@@ -373,7 +326,6 @@ function buildGridItems(config: LayoutConfig): GridItem[] {
 
 type GridSlotsProps = {
   config: LayoutConfig;
-  widthOptions: WidthOption[];
   openSlotId: string | null;
   onToggleSlot: (slotId: string) => void;
   onAddSlotAt: (row: number, col: number) => void;
@@ -383,7 +335,6 @@ type GridSlotsProps = {
 /** The cells of a grid: its slots, and its free cells */
 function GridSlots({
   config,
-  widthOptions,
   openSlotId,
   onToggleSlot,
   onAddSlotAt,
@@ -401,8 +352,6 @@ function GridSlots({
             key={item.slot.id}
             config={config}
             slot={item.slot}
-            index={item.index}
-            widthOptions={widthOptions}
             open={openSlotId === item.slot.id}
             draggedSlot={draggedSlot}
             onToggleSlot={onToggleSlot}
@@ -428,7 +377,6 @@ type MasonrySlotProps = {
   config: LayoutConfig;
   slot: LayoutSlot;
   index: number;
-  widthOptions: WidthOption[];
   open: boolean;
   /** The rows of 8px that the aspect ratio of the slot needs */
   ratioRowSpan: number;
@@ -444,7 +392,6 @@ function MasonrySlot({
   config,
   slot,
   index,
-  widthOptions,
   open,
   ratioRowSpan,
   gap,
@@ -474,10 +421,7 @@ function MasonrySlot({
         >
           <SlotTile
             slot={slot}
-            index={index}
-            widthOptions={widthOptions}
             open={open}
-            showRatioFrame={false}
             bodyRef={bodyRef}
             onToggleSlot={onToggleSlot}
           />
@@ -490,7 +434,6 @@ function MasonrySlot({
 
 type MasonrySlotsProps = {
   config: LayoutConfig;
-  widthOptions: WidthOption[];
   openSlotId: string | null;
   getMasonryRowSpan: (slot: LayoutSlot) => number;
   gap: number;
@@ -501,7 +444,6 @@ type MasonrySlotsProps = {
 /** The slots of a masonry layout, in their order, which a drag changes */
 function MasonrySlots({
   config,
-  widthOptions,
   openSlotId,
   getMasonryRowSpan,
   gap,
@@ -519,7 +461,6 @@ function MasonrySlots({
           config={config}
           slot={slot}
           index={index}
-          widthOptions={widthOptions}
           open={openSlotId === slot.id}
           ratioRowSpan={getMasonryRowSpan(slot)}
           gap={gap}
@@ -556,7 +497,6 @@ function PreviewGroup({ children }: GroupProps) {
 type Props = {
   config: LayoutConfig;
   isMasonry: boolean;
-  widthOptions: WidthOption[];
   openSlotId: string | null;
   onToggleSlot: (slotId: string) => void;
   /** Grid only: adds a slot in a free cell */
@@ -572,7 +512,6 @@ type Props = {
 export default function LayoutPreview({
   config,
   isMasonry,
-  widthOptions,
   openSlotId,
   onToggleSlot,
   onAddSlotAt,
@@ -595,7 +534,6 @@ export default function LayoutPreview({
         {isMasonry ? (
           <MasonrySlots
             config={config}
-            widthOptions={widthOptions}
             openSlotId={openSlotId}
             getMasonryRowSpan={getMasonryRowSpan}
             gap={gap}
@@ -605,7 +543,6 @@ export default function LayoutPreview({
         ) : (
           <GridSlots
             config={config}
-            widthOptions={widthOptions}
             openSlotId={openSlotId}
             onToggleSlot={onToggleSlot}
             onAddSlotAt={onAddSlotAt}

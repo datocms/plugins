@@ -25,7 +25,7 @@ const MASONRY_ROW_HEIGHT = 8;
 
 type MasonryCellProps = {
   colSpan: number;
-  /** The rows that the aspect ratio of the slot spans */
+  /** The rows that the aspect ratio of the slot spans, or 1 */
   ratioRowSpan: number;
   /** The gap of the grid, in pixels */
   gap: number;
@@ -33,9 +33,9 @@ type MasonryCellProps = {
 };
 
 /**
- * A cell of the masonry: it spans the rows of its aspect ratio, or more when
- * its content (the name of the slot, the asset and its options) is taller,
- * thus it never covers the cell below it.
+ * A cell of the masonry: it spans the rows of its aspect ratio (an empty
+ * slot, 1), or more when its content (the name of the slot, the asset and
+ * its options) is taller, thus it never covers the cell below it.
  */
 function MasonryCell({
   colSpan,
@@ -253,24 +253,17 @@ export default function SlotEditor({
     [gridMetrics.columnWidth, gridMetrics.gap],
   );
 
-  // Each slot keeps its position in the slots of the layout: its fallback
-  // name ('Slot 3') is the one the field validation uses
-  const indexedSlots = layoutConfig.slots.map((slot, index) => ({
-    slot,
-    index,
-  }));
-
   // Sort slots by row and column for display
-  const sortedSlots = [...indexedSlots].sort((a, b) => {
-    if (a.slot.row !== b.slot.row) return a.slot.row - b.slot.row;
-    return a.slot.col - b.slot.col;
+  const sortedSlots = [...layoutConfig.slots].sort((a, b) => {
+    if (a.row !== b.row) return a.row - b.row;
+    return a.col - b.col;
   });
 
-  const displaySlots = isMasonry ? indexedSlots : sortedSlots;
+  const displaySlots = isMasonry ? layoutConfig.slots : sortedSlots;
 
   if (sortedSlots.length === 0) {
     return (
-      <EmptySlot message="No slots yet. Add them in the field settings." />
+      <EmptySlot message="No slots yet. Ask an administrator to add them." />
     );
   }
 
@@ -290,12 +283,11 @@ export default function SlotEditor({
             }
       }
     >
-      {displaySlots.map(({ slot, index }) => {
+      {displaySlots.map((slot) => {
         const card = (
           <SlotCard
             ctx={ctx}
             slot={slot}
-            index={index}
             assignment={getAssignmentForSlot(slot.id)}
             widthOptions={widthOptions}
             enableCssClass={enableCssClass}
@@ -319,7 +311,10 @@ export default function SlotEditor({
             <MasonryCell
               key={slot.id}
               colSpan={masonryColSpan}
-              ratioRowSpan={getMasonryRowSpan(slot)}
+              // An empty slot is as tall as its "No asset yet": no hole
+              ratioRowSpan={
+                getAssignmentForSlot(slot.id) ? getMasonryRowSpan(slot) : 1
+              }
               gap={gridMetrics.gap}
             >
               {card}

@@ -1,5 +1,4 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InputGroup from 'datocms-react-ui/InputGroup';
 import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
@@ -8,7 +7,11 @@ import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LayoutBuilder from '../components/LayoutBuilder';
-import { DEFAULT_WIDTH, MODE_OPTIONS } from '../constants';
+import {
+  ASPECT_RATIO_OPTIONS,
+  DEFAULT_WIDTH,
+  MODE_OPTIONS,
+} from '../constants';
 import type {
   FieldParams,
   FieldParamsLayout,
@@ -280,6 +283,20 @@ function deriveCustomAspectRatioValue(
 }
 
 /**
+ * The name of an aspect ratio in a menu: the label of its preset ('16:9
+ * (Widescreen)', as the plugin settings show it), or the short form of a
+ * custom ratio.
+ */
+function aspectRatioLabel(aspectRatio: string): string {
+  const preset = ASPECT_RATIO_OPTIONS.find(
+    (option) => option.value === aspectRatio,
+  );
+  return preset && aspectRatio !== CUSTOM_OPTION_VALUE
+    ? preset.label
+    : getAspectRatioShortLabel(aspectRatio);
+}
+
+/**
  * The option of the stored override: the plugin default when there is none,
  * Custom for 'custom' or a ratio that is no preset.
  */
@@ -338,26 +355,6 @@ export default function FieldConfigScreen({ ctx }: Props) {
         />
       </FieldWrapper>
 
-      <FieldWrapper hint="Editors can give each asset a CSS class.">
-        <SwitchInput
-          label="CSS class for each asset"
-          value={formValues.enableCssClass}
-          onChange={(checked) =>
-            updateFieldOption('enableCssClass', checked === true)
-          }
-        />
-      </FieldWrapper>
-
-      <FieldWrapper hint="Editors can choose whether each asset loads lazily.">
-        <SwitchInput
-          label="Lazy loading for each asset"
-          value={formValues.enableLazyLoading}
-          onChange={(checked) =>
-            updateFieldOption('enableLazyLoading', checked === true)
-          }
-        />
-      </FieldWrapper>
-
       {legacyValues && (
         <>
           <AspectRatioOverrideFields
@@ -376,18 +373,34 @@ export default function FieldConfigScreen({ ctx }: Props) {
       )}
 
       {formValues.mode === 'layout' && (
-        <>
-          {errors.layoutConfig && (
-            <Callout tone="danger">{errors.layoutConfig}</Callout>
-          )}
-          <LayoutBuilder
-            config={formValues.layoutConfig}
-            onChange={updateLayoutConfig}
-            widthOptions={presetWidthOptions}
-            errors={errors}
-          />
-        </>
+        <LayoutBuilder
+          config={formValues.layoutConfig}
+          onChange={updateLayoutConfig}
+          widthOptions={presetWidthOptions}
+          errors={errors}
+        />
       )}
+
+      {/* The options of each asset, after the settings of the mode */}
+      <FieldWrapper>
+        <SwitchInput
+          label="Editors can set a CSS class for each asset"
+          value={formValues.enableCssClass}
+          onChange={(checked) =>
+            updateFieldOption('enableCssClass', checked === true)
+          }
+        />
+      </FieldWrapper>
+
+      <FieldWrapper>
+        <SwitchInput
+          label="Editors can make each asset load when scrolled into view"
+          value={formValues.enableLazyLoading}
+          onChange={(checked) =>
+            updateFieldOption('enableLazyLoading', checked === true)
+          }
+        />
+      </FieldWrapper>
     </>
   );
 }
@@ -419,7 +432,7 @@ function AspectRatioOverrideFields({
     () => [
       {
         value: PLUGIN_DEFAULT_OPTION_VALUE,
-        label: `Plugin default: ${getAspectRatioShortLabel(globalAspectRatio)}`,
+        label: `Plugin default: ${aspectRatioLabel(globalAspectRatio)}`,
       },
       ...ASPECT_RATIO_SELECT_OPTIONS,
     ],
@@ -441,10 +454,7 @@ function AspectRatioOverrideFields({
 
   return (
     <>
-      <FieldWrapper
-        label="Default aspect ratio"
-        hint="The crop of a new asset. Editors can change it for each asset."
-      >
+      <FieldWrapper label="Default aspect ratio">
         <SelectInput
           value={deriveAspectRatioSelectValue(aspectRatio, isCustomAspectRatio)}
           onChange={handleSelectChange}
@@ -455,7 +465,6 @@ function AspectRatioOverrideFields({
       {isCustomAspectRatio && (
         <FieldWrapper
           label="Custom aspect ratio"
-          hint="Width and height, separated by a colon."
           error={validateCustomAspectRatio(customAspectRatioValue)}
         >
           <StringInput
@@ -552,11 +561,16 @@ function WidthOverrideFields({
       : widthToOptionValue(width);
   }
 
+  // The hint of the group, after its last field: the custom width, while it
+  // shows
+  const hint =
+    'Editors can change the aspect ratio and the width of each asset.';
+
   return (
     <>
       <FieldWrapper
         label="Default width"
-        hint="The width of a new asset. Editors can change it for each asset."
+        hint={showsCustomWidth ? undefined : hint}
         // The custom width field below already tells what is wrong with it
         error={customWidthError ? undefined : error}
       >
@@ -568,7 +582,7 @@ function WidthOverrideFields({
         />
       </FieldWrapper>
       {showsCustomWidth && (
-        <FieldWrapper label="Custom width" error={customWidthError}>
+        <FieldWrapper label="Custom width" hint={hint} error={customWidthError}>
           <InputGroup
             value={customWidthInput}
             onChange={handleCustomWidthChange}

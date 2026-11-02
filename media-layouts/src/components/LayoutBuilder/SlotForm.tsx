@@ -226,11 +226,10 @@ function slotAspectRatioControls({ slot, onUpdateSlot }: SlotFieldProps) {
 }
 
 /**
- * The aspect ratio and the width of a slot, side by side. While Custom is
- * picked in one of them (or both), a second row holds the custom inputs,
- * one cell each (as the crop fields of an asset do). A stored width that
- * matches no option shows as Custom; a typed width saves only when it is
- * valid, while the input keeps the text.
+ * The aspect ratio and the width of a slot, side by side. Custom shows its
+ * input under its own menu, in the same cell (as the crop fields of an
+ * asset do). A stored width that matches no option shows as Custom; a typed
+ * width saves only when it is valid, while the input keeps the text.
  */
 function SlotCropFields({
   slot,
@@ -253,74 +252,61 @@ function SlotCropFields({
   });
 
   return (
-    <>
-      <div className="form__field form__row">
-        <div className="form__row__cell">
-          <FieldWrapper label="Aspect ratio">
-            <SelectInput
-              value={ratio.selectValue}
-              onChange={ratio.handleSelectChange}
-              options={ASPECT_RATIO_SELECT_OPTIONS}
-              clearable={false}
+    <div className="form__field form__row">
+      <div className="form__row__cell">
+        <FieldWrapper label="Aspect ratio">
+          <SelectInput
+            value={ratio.selectValue}
+            onChange={ratio.handleSelectChange}
+            options={ASPECT_RATIO_SELECT_OPTIONS}
+            clearable={false}
+          />
+        </FieldWrapper>
+        {ratio.isCustom && (
+          <FieldWrapper
+            label="Custom aspect ratio"
+            error={validateCustomAspectRatio(ratio.customAspectRatio)}
+          >
+            <StringInput
+              placeholder="2.35:1"
+              value={ratio.customAspectRatio}
+              onChange={ratio.handleCustomChange}
             />
           </FieldWrapper>
-        </div>
-        <div className="form__row__cell">
-          <FieldWrapper label="Width">
-            <SelectInput
-              value={
-                width.slotCustomWidthActive
-                  ? CUSTOM_OPTION_VALUE
-                  : widthToOptionValue(slot.width)
-              }
-              onChange={(next) => {
-                if (next !== null) {
-                  width.handleSlotWidthSelectChange(slot.id, next, slot.width);
-                }
-              }}
-              options={widthSelectOptions}
-              clearable={false}
-            />
-          </FieldWrapper>
-        </div>
+        )}
       </div>
-      {(ratio.isCustom || width.slotCustomWidthActive) && (
-        <div className="form__field form__row">
-          {ratio.isCustom && (
-            <div className="form__row__cell">
-              <FieldWrapper
-                label="Custom aspect ratio"
-                error={validateCustomAspectRatio(ratio.customAspectRatio)}
-              >
-                <StringInput
-                  placeholder="2.35:1"
-                  value={ratio.customAspectRatio}
-                  onChange={ratio.handleCustomChange}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-          {width.slotCustomWidthActive && (
-            <div className="form__row__cell">
-              <FieldWrapper
-                label="Custom width"
-                error={width.slotCustomWidthError}
-              >
-                <InputGroup
-                  value={width.slotCustomWidthInput}
-                  onChange={(next) =>
-                    width.handleSlotCustomWidthInputChange(slot.id, next ?? '')
-                  }
-                  post="px"
-                  inputMode="numeric"
-                  placeholder={String(DEFAULT_WIDTH)}
-                />
-              </FieldWrapper>
-            </div>
-          )}
-        </div>
-      )}
-    </>
+      <div className="form__row__cell">
+        <FieldWrapper label="Width">
+          <SelectInput
+            value={
+              width.slotCustomWidthActive
+                ? CUSTOM_OPTION_VALUE
+                : widthToOptionValue(slot.width)
+            }
+            onChange={(next) => {
+              if (next !== null) {
+                width.handleSlotWidthSelectChange(slot.id, next, slot.width);
+              }
+            }}
+            options={widthSelectOptions}
+            clearable={false}
+          />
+        </FieldWrapper>
+        {width.slotCustomWidthActive && (
+          <FieldWrapper label="Custom width" error={width.slotCustomWidthError}>
+            <InputGroup
+              value={width.slotCustomWidthInput}
+              onChange={(next) =>
+                width.handleSlotCustomWidthInputChange(slot.id, next ?? '')
+              }
+              post="px"
+              inputMode="numeric"
+              placeholder={String(DEFAULT_WIDTH)}
+            />
+          </FieldWrapper>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -563,7 +549,7 @@ export default function SlotForm({
     <>
       <FieldWrapper label="Label" required error={labelError}>
         <StringInput
-          placeholder="Hero image"
+          placeholder="Team photo"
           value={slot.label}
           onChange={(next) => onUpdateSlot(slot.id, { label: next ?? '' })}
         />

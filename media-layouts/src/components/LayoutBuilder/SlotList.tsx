@@ -1,11 +1,9 @@
 import CardList from 'datocms-react-ui/CardList';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
-import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import Pill from 'datocms-react-ui/Pill';
 import { type JSX, memo, type SVGProps, useMemo } from 'react';
-import { useCountLabel } from '../../hooks/useCountLabel';
 import {
   ActionToggleIcon,
   DeleteIcon,
@@ -25,6 +23,7 @@ import {
   orderSlotsForList,
 } from './grid';
 import SlotForm, { type UpdateSlot } from './SlotForm';
+import s from './styles.module.css';
 
 export type SlotMove = GridDirection | MasonryDirection;
 
@@ -173,20 +172,39 @@ function SlotMenu({
 
 type SlotSummaryProps = {
   slot: LayoutSlot;
+  /** The position of the slot in the slots of the layout */
   index: number;
   isMasonry: boolean;
   widthOptions: WidthOption[];
+  errors: Partial<Record<string, string>>;
+  /** The settings of the slot are open: their inputs show the errors */
+  open: boolean;
 };
 
+/** What a closed slot needs, at the end of its row: a label, then a ratio */
+function slotProblem(
+  slot: LayoutSlot,
+  index: number,
+  errors: Partial<Record<string, string>>,
+): string | undefined {
+  if (!(slot.label ?? '').trim()) return 'Needs a label';
+  if (errors[`slot_${index}_aspectRatio`]) return 'Fix the aspect ratio';
+  return undefined;
+}
+
 /**
- * The row of a slot: its name, whether it needs an asset, its crop and size,
- * and its cell. A slot without a label asks for one at the end of the row.
+ * The row of a slot: its name, whether it needs an asset, its crop and size
+ * (which only this row gives), and its cell. A closed slot without a label,
+ * or with an aspect ratio to fix, says so at the end of the row; its
+ * settings show the error on the input.
  */
 function SlotSummary({
   slot,
   index,
   isMasonry,
   widthOptions,
+  errors,
+  open,
 }: SlotSummaryProps) {
   const size = describeSize({
     aspectRatio: slot.aspectRatio,
@@ -194,16 +212,14 @@ function SlotSummary({
     width: slot.width,
     widthOptions,
   });
-  const needsLabel = !(slot.label ?? '').trim();
+  const problem = open ? undefined : slotProblem(slot, index, errors);
 
   return (
     <EntityRow
       layout="row"
-      title={slotTitle(slot, index)}
+      title={slotTitle(slot)}
       afterTitle={slot.required ? <Pill>Required</Pill> : undefined}
-      trailing={
-        needsLabel ? <Pill tone="danger">Needs a label</Pill> : undefined
-      }
+      trailing={problem ? <Pill tone="danger">{problem}</Pill> : undefined}
     >
       {isMasonry
         ? size
@@ -250,6 +266,8 @@ const SlotListItem = memo(function SlotListItem({
             index={index}
             isMasonry={isMasonry}
             widthOptions={widthOptions}
+            errors={errors}
+            open={open}
           />
         ),
         actions: (
@@ -297,7 +315,8 @@ type SlotListProps = {
 
 /**
  * The slots of the layout, in one card: in a grid row by row, in masonry in
- * their order. Each row opens the settings of its slot, one at a time.
+ * their order. Each row opens the settings of its slot, one at a time. The
+ * builder shows it once the layout has a slot.
  */
 export default function SlotList({
   config,
@@ -311,29 +330,15 @@ export default function SlotList({
   onMoveSlot,
   onDeleteSlot,
 }: SlotListProps) {
-  const formatCount = useCountLabel();
   const entries = useMemo(
     () => orderSlotsForList(config, isMasonry),
     [config, isMasonry],
   );
-  const add = isMasonry ? { label: 'Add slot', onClick: onAddSlot } : undefined;
-
   return (
     <CardList
-      header={{
-        title: 'Slots',
-        trailing: (
-          <Pill>{formatCount(config.slots.length, 'slot', 'slots')}</Pill>
-        ),
-      }}
-      add={add}
-      empty={
-        add ? (
-          <EmptySlot message="No slots yet" action={add} />
-        ) : (
-          <EmptySlot message="No slots yet" />
-        )
-      }
+      className={s.slotList}
+      header={{ title: 'Slots' }}
+      add={isMasonry ? { label: 'Add slot', onClick: onAddSlot } : undefined}
     >
       {entries.map(({ slot, index }) => (
         <SlotListItem

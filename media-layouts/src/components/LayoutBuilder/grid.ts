@@ -342,13 +342,27 @@ export function computeSpanOptions(
 
 // Changes of the slots
 
+/**
+ * The label of a new slot: 'Slot N', with the first N from the count of the
+ * slots that no slot has, thus two slots never get the same name (after a
+ * delete, for example).
+ */
+function newSlotLabel(slots: LayoutSlot[]): string {
+  const labels = new Set(slots.map((slot) => (slot.label ?? '').trim()));
+  let number = slots.length + 1;
+  while (labels.has(`Slot ${number}`)) {
+    number++;
+  }
+  return `Slot ${number}`;
+}
+
 function createSlot(
   config: LayoutConfig,
   position: Pick<LayoutSlot, 'row' | 'col' | 'autoSpan'>,
 ): LayoutSlot {
   return {
     id: generateSlotId(),
-    label: `Slot ${config.slots.length + 1}`,
+    label: newSlotLabel(config.slots),
     aspectRatio: DEFAULT_ASPECT_RATIO,
     width: DEFAULT_WIDTH,
     row: position.row,

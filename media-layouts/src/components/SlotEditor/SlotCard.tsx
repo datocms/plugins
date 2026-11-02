@@ -21,12 +21,11 @@ import {
   LoadingAsset,
   useMediaCardMenus,
 } from '../AssetMedia';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
   slot: LayoutSlot;
-  /** The position of the slot in the slots of the layout (not the display order) */
-  index: number;
   assignment: SlotAssignment | undefined;
   widthOptions: WidthOption[];
   enableCssClass: boolean;
@@ -53,48 +52,50 @@ export default function SlotCard(props: Props) {
 
 type SlotHeaderProps = {
   slot: LayoutSlot;
-  index: number;
   widthOptions: WidthOption[];
   originalWidth?: number | null;
   originalHeight?: number | null;
 };
 
-/** The name of the slot, whether it needs an asset, and its size. */
+/**
+ * The name of the slot, whether it needs an asset, and its size. With or
+ * without its pill, the header has one height.
+ */
 function SlotHeader({
   slot,
-  index,
   widthOptions,
   originalWidth,
   originalHeight,
 }: SlotHeaderProps) {
   return (
-    <EntityRow
-      layout="row"
-      title={slotTitle(slot, index)}
-      afterTitle={slot.required ? <Pill>Required</Pill> : undefined}
-    >
-      {describeSize({
-        aspectRatio: slot.aspectRatio,
-        customAspectRatio: slot.customAspectRatio,
-        width: slot.width,
-        widthOptions,
-        originalWidth,
-        originalHeight,
-      })}
-    </EntityRow>
+    <div className={s.header}>
+      <EntityRow
+        layout="row"
+        title={slotTitle(slot)}
+        afterTitle={slot.required ? <Pill>Required</Pill> : undefined}
+      >
+        {describeSize({
+          aspectRatio: slot.aspectRatio,
+          customAspectRatio: slot.customAspectRatio,
+          width: slot.width,
+          widthOptions,
+          originalWidth,
+          originalHeight,
+        })}
+      </EntityRow>
+    </div>
   );
 }
 
 function EmptySlotContent({
   slot,
-  index,
   widthOptions,
   disabled,
   onSelectAsset,
 }: Props) {
   return (
     <>
-      <SlotHeader slot={slot} index={index} widthOptions={widthOptions} />
+      <SlotHeader slot={slot} widthOptions={widthOptions} />
       <EmptySlot
         message="No asset yet"
         action={
@@ -206,12 +207,12 @@ function ReadyAsset({
   return (
     <>
       {disabled ? (
-        <MediaCard caption={caption} isDisabled captionDisabled>
+        <MediaCard caption={{ text: caption, muted: true }} disabled>
           {media}
         </MediaCard>
       ) : (
         <MediaCard
-          caption={caption}
+          caption={{ text: caption }}
           actions={menus.actions}
           options={menus.options}
         >
@@ -239,7 +240,7 @@ function ReadyAsset({
  * first: the slot says so, and offers to remove the asset when it fails.
  */
 function FilledSlot(props: FilledSlotProps) {
-  const { ctx, slot, index, assignment, widthOptions } = props;
+  const { ctx, slot, assignment, widthOptions } = props;
   const needsFetch = determineNeedsFetch(assignment, slot);
   const { upload, error } = useUploadData(
     ctx,
@@ -259,16 +260,15 @@ function FilledSlot(props: FilledSlotProps) {
     <>
       <SlotHeader
         slot={slot}
-        index={index}
         widthOptions={widthOptions}
         originalWidth={data.originalWidth}
         originalHeight={data.originalHeight}
       />
       {/* Under the header of the slot: content sits above the state */}
-      {state === 'loading' && <LoadingAsset placement="section" />}
+      {state === 'loading' && <LoadingAsset />}
       {state === 'failed' && (
         <FailedAsset
-          placement="section"
+          filename={assignment.filename}
           disabled={props.disabled}
           onRemove={props.onRemoveAsset}
         />

@@ -1,9 +1,7 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import EmptySlot from 'datocms-react-ui/EmptySlot';
-import Pill from 'datocms-react-ui/Pill';
 import { useCallback } from 'react';
-import { useCountLabel } from '../../hooks/useCountLabel';
 import { AddIcon } from '../../icons';
 import type {
   MediaLayoutItem,
@@ -29,9 +27,10 @@ function itemKey(item: MediaLayoutItem, index: number): string {
 }
 
 /**
- * The assets of a gallery field: a grid of cards, each with its crop, width
- * and options under it, then "Add assets" and the count. With no assets,
- * the empty slot shows in the place of the grid.
+ * The assets of a gallery field: a grid of cards of one shape (each media
+ * in its frame, at its crop), each with its crop, width and options under
+ * it, then "Add assets" (not in a read-only field). With no assets, the
+ * empty slot shows in the place of the grid.
  */
 export default function GalleryEditor({
   ctx,
@@ -41,7 +40,6 @@ export default function GalleryEditor({
   enableCssClass,
   enableLazyLoading,
 }: Props) {
-  const formatCount = useCountLabel();
   const handleLayoutChange = useCallback(
     (index: number, newLayout: Partial<MediaLayoutItem>) => {
       const merged = { ...items[index], ...newLayout };
@@ -125,15 +123,15 @@ export default function GalleryEditor({
             onChange={handleLayoutChange}
             onRemove={handleRemove}
             onEditMetadata={handleEditMetadata}
+            framed
           />
         ))}
       </AssetGrid>
-      <div className={s.footer}>
-        {!ctx.disabled && (
+      {!ctx.disabled && (
+        <div className={s.footer}>
           <Button icon={AddIcon} label="Add assets" onClick={onAddAsset} />
-        )}
-        <Pill>{formatCount(items.length, 'asset', 'assets')}</Pill>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

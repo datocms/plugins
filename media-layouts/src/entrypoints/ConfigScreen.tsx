@@ -1,4 +1,5 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InputGroup from 'datocms-react-ui/InputGroup';
 import { Page } from 'datocms-react-ui/Page';
@@ -7,8 +8,9 @@ import StringInput from 'datocms-react-ui/StringInput';
 import TableList, {
   type TableListChange,
   type TableListColumn,
+  type TableListRowTouched,
 } from 'datocms-react-ui/TableList';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DEFAULT_WIDTH } from '../constants';
 import type {
   CustomWidthPreset,
@@ -23,6 +25,7 @@ import {
   CUSTOM_OPTION_VALUE,
   isPresetAspectRatio,
   optionValueToWidth,
+  type SelectOption,
   widthToOptionValue,
 } from '../utils/options';
 import {
@@ -39,72 +42,141 @@ const ASPECT_RATIO_SELECT_OPTIONS = buildAspectRatioSelectOptions({
   includeOriginal: true,
 });
 
+/** Why the Save of a group is off, if it is */
+function saveDisabledReason(dirty: boolean, invalidReason: string | false) {
+  if (invalidReason) return { reason: invalidReason };
+  if (!dirty) return { reason: 'There are no changes to save.' };
+  return undefined;
+}
+
 /**
- * The plugin-wide defaults. There is no Save button: every change saves the
- * whole set of parameters at once.
+ * The plugin-wide settings, in two groups: the defaults of new assets and
+ * the width presets. Each group keeps its changes until its Save.
  */
 export default function ConfigScreen({ ctx }: Props) {
-  const [formValues, setFormValues] = useState<ValidGlobalParams>(() =>
-    normalizeGlobalParams(ctx.plugin.attributes.parameters),
-  );
+  const parameters = ctx.plugin.attributes.parameters;
+  const saved = useMemo(() => normalizeGlobalParams(parameters), [parameters]);
 
-  const update = useCallback(
-    <K extends keyof ValidGlobalParams>(
-      field: K,
-      value: ValidGlobalParams[K],
-    ) => {
-      const newParameters = { ...formValues, [field]: value };
-      setFormValues(newParameters);
-      ctx.updatePluginParameters(newParameters);
-    },
-    [formValues, ctx],
-  );
+  // Saves the changes of one group over the saved settings, then confirms
+  const save = async (changes: Partial<ValidGlobalParams>) => {
+    await ctx.updatePluginParameters({ ...saved, ...changes });
+    ctx.notice('Settings saved.');
+  };
 
   return (
     <Page>
       <Page.Content>
-        <Page.Group title="Defaults for new assets">
-          <AspectRatioFields
-            value={formValues.defaultAspectRatio}
-            onChange={(value) => update('defaultAspectRatio', value)}
-          />
-          <WidthFields
-            value={formValues.defaultWidth}
-            widthPresets={formValues.widthPresets}
-            onChange={(value) => update('defaultWidth', value)}
-          />
-        </Page.Group>
-        <Page.Group title="Width presets">
-          <WidthPresetsField
-            presets={formValues.widthPresets}
-            onChange={(presets) => update('widthPresets', presets)}
-          />
-        </Page.Group>
+        <DefaultsGroup saved={saved} onSave={save} />
+        <WidthPresetsGroup
+          saved={saved.widthPresets}
+          onSave={(widthPresets) => save({ widthPresets })}
+        />
       </Page.Content>
     </Page>
   );
 }
 
+type DefaultsGroupProps = {
+  saved: ValidGlobalParams;
+  onSave: (
+    changes: Pick<ValidGlobalParams, 'defaultAspectRatio' | 'defaultWidth'>,
+  ) => Promise<void>;
+};
+
+/**
+ * The aspect ratio and the width of new assets. A width that matches no
+ * option (of the saved presets) shows as Custom, with its number.
+ */
+function DefaultsGroup({ saved, onSave }: DefaultsGroupProps) {
+  const [aspectRatio, setAspectRatio] = useState(saved.defaultAspectRatio);
+  const [width, setWidth] = useState<WidthValue>(saved.defaultWidth);
+  // The text of the custom width input, once the user picked Custom or typed
+  const [customWidthText, setCustomWidthText] = useState<string | null>(null);
+
+  const widthOptions = useMemo(
+    () => buildWidthOptions(saved.widthPresets),
+    [saved.widthPresets],
+  );
+  const widthSelectOptions = useMemo(
+    () => buildWidthSelectOptions(widthOptions),
+    [widthOptions],
+  );
+  const widthMatchesNoOption =
+    typeof width === 'number' &&
+    !widthOptions.some((option) => option.value === width);
+  const shownCustomWidth =
+    customWidthText ?? (widthMatchesNoOption ? String(width) : null);
+
+  const ratioError = isPresetAspectRatio(aspectRatio)
+    ? undefined
+    : validateCustomAspectRatio(customRatioText(aspectRatio));
+  const widthError =
+    shownCustomWidth === null
+      ? undefined
+      : validateCustomWidth(shownCustomWidth);
+  const dirty =
+    aspectRatio !== saved.defaultAspectRatio || width !== saved.defaultWidth;
+  const invalidReason =
+    ratioError && widthError
+      ? 'Fix the errors above first.'
+      : !!(ratioError || widthError) && 'Fix the error above first.';
+
+  return (
+    <Page.Group
+      title="Default aspect ratio and width"
+      footer={
+        <Button
+          tone="primary"
+          label="Save"
+          expand={false}
+          disabled={saveDisabledReason(dirty, invalidReason)}
+          onClick={() =>
+            onSave({ defaultAspectRatio: aspectRatio, defaultWidth: width })
+          }
+        />
+      }
+    >
+      <AspectRatioFields
+        value={aspectRatio}
+        error={ratioError}
+        onChange={setAspectRatio}
+      />
+      <WidthFields
+        value={width}
+        customText={shownCustomWidth}
+        error={widthError}
+        options={widthSelectOptions}
+        onChange={(nextWidth, nextCustomText) => {
+          setWidth(nextWidth);
+          setCustomWidthText(nextCustomText);
+        }}
+      />
+    </Page.Group>
+  );
+}
+
+/** The text of a custom aspect ratio: '' for 'custom', else the value. */
+function customRatioText(value: string): string {
+  return value === CUSTOM_OPTION_VALUE ? '' : value;
+}
+
 type AspectRatioFieldsProps = {
   value: string;
+  error: string | undefined;
   onChange: (value: string) => void;
 };
 
 /**
- * The default aspect ratio. A stored value that is 'custom' or no preset
- * shows as Custom, with its text in the input below ('' for 'custom'). Each
- * keystroke saves the text, also while it is not valid.
+ * The default aspect ratio. A value that is 'custom' or no preset shows as
+ * Custom, with its text in the input below ('' for 'custom').
  */
-function AspectRatioFields({ value, onChange }: AspectRatioFieldsProps) {
+function AspectRatioFields({ value, error, onChange }: AspectRatioFieldsProps) {
   const isCustom = !isPresetAspectRatio(value);
-  const customText = isCustom && value !== CUSTOM_OPTION_VALUE ? value : '';
+  const customText = isCustom ? customRatioText(value) : '';
 
   return (
     <>
-      <FieldWrapper
-        label="Aspect ratio"
-        hint="New assets get this crop unless their field sets its own."
-      >
+      <FieldWrapper label="Aspect ratio">
         <SelectInput
           value={isCustom ? CUSTOM_OPTION_VALUE : value}
           onChange={(next) => {
@@ -116,11 +188,7 @@ function AspectRatioFields({ value, onChange }: AspectRatioFieldsProps) {
         />
       </FieldWrapper>
       {isCustom && (
-        <FieldWrapper
-          label="Custom aspect ratio"
-          hint="Width and height, separated by a colon."
-          error={validateCustomAspectRatio(customText)}
-        >
+        <FieldWrapper label="Custom aspect ratio" error={error}>
           <StringInput
             placeholder="2.35:1"
             value={customText}
@@ -134,111 +202,63 @@ function AspectRatioFields({ value, onChange }: AspectRatioFieldsProps) {
 
 type WidthFieldsProps = {
   value: WidthValue;
-  widthPresets: CustomWidthPreset[];
-  onChange: (value: WidthValue) => void;
+  /** The text of the custom width input, or null while it doesn't show */
+  customText: string | null;
+  error: string | undefined;
+  options: SelectOption[];
+  onChange: (value: WidthValue, customText: string | null) => void;
 };
 
 /**
- * The default width. A stored number that matches no option shows as
- * Custom; a typed width saves only when it is valid.
+ * The default width. Custom starts from the current number; a typed width
+ * counts only when it is valid, while the input keeps the text.
  */
-function WidthFields({ value, widthPresets, onChange }: WidthFieldsProps) {
-  const presetWidthOptions = useMemo(
-    () => buildWidthOptions(widthPresets),
-    [widthPresets],
-  );
-  const selectOptions = useMemo(
-    () => buildWidthSelectOptions(presetWidthOptions),
-    [presetWidthOptions],
-  );
-  const presetWidthValues = useMemo(
-    () => presetWidthOptions.map((opt) => opt.value),
-    [presetWidthOptions],
-  );
-
-  const isCustomWidthValue =
-    typeof value === 'number' && !presetWidthValues.includes(value);
-  const [customWidthActive, setCustomWidthActive] =
-    useState(isCustomWidthValue);
-  const [customWidthInput, setCustomWidthInput] = useState(
-    isCustomWidthValue ? String(value) : '',
-  );
-
-  // Follows the saved width: a number that matches no option turns the
-  // custom input on with that number, Original turns it off. A number that
-  // matches an option leaves it as it is: picking Custom (or typing in it) a
-  // width that an option also has keeps the custom input open. Picking an
-  // option already turns it off.
-  useEffect(() => {
-    if (isCustomWidthValue) {
-      setCustomWidthActive(true);
-      setCustomWidthInput(String(value));
-    } else if (value === 'original') {
-      setCustomWidthActive(false);
-      setCustomWidthInput('');
-    }
-  }, [value, isCustomWidthValue]);
-
-  // Follows the presets: when an edit of the presets (not a typed width)
-  // gives the saved width an option, the select shows that option.
-  const previousWidthValues = useRef(presetWidthValues);
-  useEffect(() => {
-    const previous = previousWidthValues.current;
-    previousWidthValues.current = presetWidthValues;
-    if (previous === presetWidthValues) return;
-    const matchedNoOption =
-      typeof value === 'number' && !previous.includes(value);
-    if (matchedNoOption && !isCustomWidthValue) {
-      setCustomWidthActive(false);
-      setCustomWidthInput('');
-    }
-  }, [presetWidthValues, value, isCustomWidthValue]);
-
+function WidthFields({
+  value,
+  customText,
+  error,
+  options,
+  onChange,
+}: WidthFieldsProps) {
   const handleSelectChange = (next: string | null) => {
     if (next === null) return;
     if (next === CUSTOM_OPTION_VALUE) {
       const fallback = typeof value === 'number' ? value : DEFAULT_WIDTH;
-      setCustomWidthActive(true);
-      setCustomWidthInput(String(fallback));
-      onChange(fallback);
+      onChange(fallback, String(fallback));
       return;
     }
-    setCustomWidthActive(false);
-    setCustomWidthInput('');
-    onChange(optionValueToWidth(next));
+    onChange(optionValueToWidth(next), null);
   };
 
   const handleCustomWidthChange = (next: string | null) => {
     const text = next ?? '';
-    setCustomWidthInput(text);
     const parsed = parseCustomWidth(text);
-    if (parsed !== null && !validateCustomWidth(text)) {
-      onChange(parsed);
-    }
+    const valid = parsed !== null && !validateCustomWidth(text);
+    onChange(valid ? parsed : value, text);
   };
+
+  // The hint of the group, after its last field: the custom width, while it
+  // shows
+  const showsCustomWidth = customText !== null;
+  const hint =
+    'For assets that editors add to a field, unless the field sets its own.';
 
   return (
     <>
-      <FieldWrapper
-        label="Width"
-        hint="New assets get this width unless their field sets its own."
-      >
+      <FieldWrapper label="Width" hint={showsCustomWidth ? undefined : hint}>
         <SelectInput
           value={
-            customWidthActive ? CUSTOM_OPTION_VALUE : widthToOptionValue(value)
+            showsCustomWidth ? CUSTOM_OPTION_VALUE : widthToOptionValue(value)
           }
           onChange={handleSelectChange}
-          options={selectOptions}
+          options={options}
           clearable={false}
         />
       </FieldWrapper>
-      {customWidthActive && (
-        <FieldWrapper
-          label="Custom width"
-          error={validateCustomWidth(customWidthInput)}
-        >
+      {showsCustomWidth && (
+        <FieldWrapper label="Custom width" hint={hint} error={error}>
           <InputGroup
-            value={customWidthInput}
+            value={customText}
             onChange={handleCustomWidthChange}
             post="px"
             inputMode="numeric"
@@ -259,16 +279,28 @@ function presetToRow(preset: CustomWidthPreset): PresetRow {
   return { label: preset.label, width: String(preset.value) };
 }
 
-function validatePresetRow(row: PresetRow) {
+const newPresetRow = (): PresetRow => ({ label: '', width: '' });
+
+/**
+ * The errors of a row. A width that an earlier row already has is an
+ * error: the saved settings keep only the first preset of each width.
+ */
+function validatePresetRow(row: PresetRow, index: number, rows: PresetRow[]) {
+  const width = row.width ?? '';
+  const parsed = parseCustomWidth(width);
+  const taken = rows
+    .slice(0, index)
+    .some((other) => parseCustomWidth(other.width ?? '') === parsed);
   return {
     label: (row.label ?? '').trim() ? undefined : 'Enter a label',
-    width: validateCustomWidth(row.width ?? ''),
+    width:
+      validateCustomWidth(width) ??
+      (taken ? 'Enter a width that no other preset has' : undefined),
   };
 }
 
 /** The preset of a row, or null while its label or width is not valid. */
-function parsePresetRow(row: PresetRow | undefined): CustomWidthPreset | null {
-  if (!row) return null;
+function parsePresetRow(row: PresetRow): CustomWidthPreset | null {
   const label = (row.label ?? '').trim();
   const width = row.width ?? '';
   const parsed = parseCustomWidth(width);
@@ -276,20 +308,35 @@ function parsePresetRow(row: PresetRow | undefined): CustomWidthPreset | null {
   return { label, value: parsed };
 }
 
-type WidthPresetsFieldProps = {
-  presets: CustomWidthPreset[];
-  onChange: (presets: CustomWidthPreset[]) => void;
+function samePresets(
+  a: (CustomWidthPreset | null)[],
+  b: CustomWidthPreset[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (preset, i) =>
+        preset?.label === b[i].label && preset?.value === b[i].value,
+    )
+  );
+}
+
+type WidthPresetsGroupProps = {
+  saved: CustomWidthPreset[];
+  onSave: (presets: CustomWidthPreset[]) => Promise<void>;
 };
 
 /**
- * The named widths. The rows keep what the user types; the saved preset at
- * an index changes only when its row is valid. Rows and saved presets stay
- * in step by index: an add or a remove changes both.
+ * The named widths. A new row starts empty; Save takes the rows once each
+ * has a label and a valid width of its own.
  */
-function WidthPresetsField({ presets, onChange }: WidthPresetsFieldProps) {
-  // Taken from the saved presets once: a later save never resets the rows,
-  // so a row that is not valid yet keeps its text
-  const [rows, setRows] = useState<PresetRow[]>(() => presets.map(presetToRow));
+function WidthPresetsGroup({ saved, onSave }: WidthPresetsGroupProps) {
+  const [rows, setRows] = useState<PresetRow[]>(() => saved.map(presetToRow));
+  // The cells that the user left: their errors show, as in the TableList
+  // docs (an empty new row has no error until then)
+  const [touched, setTouched] = useState<(TableListRowTouched | undefined)[]>(
+    [],
+  );
 
   const columns = useMemo<TableListColumn<PresetRow>[]>(
     () => [
@@ -300,51 +347,60 @@ function WidthPresetsField({ presets, onChange }: WidthPresetsFieldProps) {
   );
 
   const errors = rows.map(validatePresetRow);
-  const nextLabel = `Preset ${presets.length + 1}`;
+  const presets = rows.map(parsePresetRow);
+  const invalid = errors.some((error) => error.label || error.width);
 
   const handleChange = (nextRows: PresetRow[], change: TableListChange) => {
     setRows(nextRows);
-
-    if (change.type === 'add') {
-      onChange([...presets, { label: nextLabel, value: DEFAULT_WIDTH }]);
-      return;
-    }
-
     if (change.type === 'remove') {
-      onChange(presets.filter((_preset, i) => i !== change.index));
-      return;
-    }
-
-    if (change.type === 'edit') {
-      const edited = parsePresetRow(nextRows[change.index]);
-      if (!edited) return;
-      onChange(
-        presets.map((preset, i) =>
-          i === change.index ? { ...preset, ...edited } : preset,
-        ),
-      );
+      setTouched((current) => current.filter((_, i) => i !== change.index));
     }
   };
 
   return (
-    <FieldWrapper
-      label="Width presets"
-      labelExtras={{ hidden: true }}
-      hint="Named widths that every width menu shows, before the standard ones."
+    <Page.Group
+      title="Width presets"
+      footer={
+        <Button
+          tone="primary"
+          label="Save"
+          expand={false}
+          disabled={saveDisabledReason(
+            !samePresets(presets, saved),
+            invalid && 'Give each preset a label and a width of its own.',
+          )}
+          onClick={() =>
+            onSave(presets.flatMap((preset) => (preset ? [preset] : [])))
+          }
+        />
+      }
     >
-      <TableList<PresetRow>
-        value={rows}
-        onChange={handleChange}
-        errors={errors}
-        // Errors show at once, not after the user leaves a cell
-        touched={true}
-        columns={columns}
-        emptyMessage="No width presets yet"
-        add={{
-          label: 'Add preset',
-          newItem: () => ({ label: nextLabel, width: String(DEFAULT_WIDTH) }),
-        }}
-      />
-    </FieldWrapper>
+      <FieldWrapper
+        label="Width presets"
+        labelExtras={{ hidden: true }}
+        hint="Named widths that every width menu shows, before the standard ones."
+      >
+        <TableList<PresetRow>
+          value={rows}
+          onChange={handleChange}
+          errors={errors}
+          touched={touched}
+          onCellBlur={({ index, field }) =>
+            setTouched((current) => {
+              const next = [...current];
+              const row = next[index];
+              next[index] = {
+                ...(typeof row === 'object' ? row : {}),
+                [field]: true,
+              };
+              return next;
+            })
+          }
+          columns={columns}
+          emptyMessage="No width presets yet"
+          add={{ label: 'Add preset', newItem: newPresetRow }}
+        />
+      </FieldWrapper>
+    </Page.Group>
   );
 }
