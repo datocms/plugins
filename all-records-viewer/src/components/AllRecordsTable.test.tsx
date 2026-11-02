@@ -29,7 +29,6 @@ const RECORD: TableRecord = {
   title: 'Hello world',
   model: 'Article',
   status: 'published',
-  statusLabel: 'Published',
   updatedAt: '2026-10-15T09:30:00Z',
   createdAt: '2026-10-01T09:30:00Z',
   publishedValid: true,
@@ -53,6 +52,7 @@ function props(
     sortingEnabled: true,
     onOrderByChange: vi.fn(),
     selectionEnabled: true,
+    selectAllHidden: false,
     onToggleRow: vi.fn(),
     onTogglePage: vi.fn(),
     ...overrides,
@@ -73,8 +73,8 @@ afterEach(() => {
   cleanup();
 });
 
-// The sortable headers are links; the others are plain text
-const header = (label: string) => screen.getByRole('link', { name: label });
+// The sortable headers are buttons; the others are plain text
+const header = (label: string) => screen.getByRole('button', { name: label });
 
 describe('AllRecordsTable ordering', () => {
   it('cycles the default descending Last update directly to ascending', () => {
@@ -109,15 +109,15 @@ describe('AllRecordsTable ordering', () => {
 
     fireEvent.click(header('Model'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_model_ASC');
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_preview_ASC');
 
     rerender(props('_preview_ASC', sortable, { onOrderByChange }));
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_preview_DESC');
 
     rerender(props('_preview_DESC', sortable, { onOrderByChange }));
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith(null);
   });
 
@@ -126,7 +126,7 @@ describe('AllRecordsTable ordering', () => {
 
     expect(screen.getByText('Last update')).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Last update' }),
+      screen.queryByRole('button', { name: 'Last update' }),
     ).not.toBeInTheDocument();
     expect(header('Model')).toBeInTheDocument();
   });
@@ -139,7 +139,7 @@ describe('AllRecordsTable ordering', () => {
     );
 
     expect(screen.getByText('Model')).toBeInTheDocument();
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Model' })).toBeNull();
   });
 });
 
@@ -171,8 +171,33 @@ describe('AllRecordsTable rows', () => {
   });
 
   it('locks the selection while the records load', () => {
+    const onTogglePage = vi.fn();
     renderTable(
-      props(DEFAULT_ORDER_BY, [], { rows: [RECORD], selectionEnabled: false }),
+      props(DEFAULT_ORDER_BY, [], {
+        rows: [RECORD],
+        selectionEnabled: false,
+        onTogglePage,
+      }),
+    );
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Hello world' }),
+    ).toBeDisabled();
+    // The header keeps its checkbox, thus its labels stay above their
+    // columns, but the checkbox does nothing meanwhile
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all records on this page' }),
+    );
+    expect(onTogglePage).not.toHaveBeenCalled();
+  });
+
+  it('hides the header checkbox while a bulk action runs', () => {
+    renderTable(
+      props(DEFAULT_ORDER_BY, [], {
+        rows: [RECORD],
+        selectionEnabled: false,
+        selectAllHidden: true,
+      }),
     );
 
     expect(

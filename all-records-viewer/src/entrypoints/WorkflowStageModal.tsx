@@ -95,23 +95,16 @@ export default function WorkflowStageModal({ ctx }: Props) {
     }
   }
 
-  const cancel = (
-    <Button tone="ghost" label="Cancel" onClick={() => ctx.resolve(null)} />
-  );
-
   return (
     <Canvas ctx={ctx} texts={TEXTS}>
       {options.length === 0 ? (
-        <>
-          <BlankSlate
-            placement="inline"
-            small
-            icon={<WorkflowStageIcon />}
-            title="No stages to move to"
-            description="Close this dialog, then choose Move to stage again."
-          />
-          <div className={s.footer}>{cancel}</div>
-        </>
+        // Nothing to do: no footer, the cross of the dialog closes it
+        <BlankSlate
+          placement="inline"
+          small
+          icon={<WorkflowStageIcon />}
+          title="No stages to move to"
+        />
       ) : (
         <form onSubmit={handleSubmit}>
           {options.length === 1 ? (
@@ -144,7 +137,11 @@ export default function WorkflowStageModal({ ctx }: Props) {
             </FieldWrapper>
           )}
           <div className={s.footer}>
-            {cancel}
+            <Button
+              tone="ghost"
+              label="Cancel"
+              onClick={() => ctx.resolve(null)}
+            />
             <Button
               tone="primary"
               submit

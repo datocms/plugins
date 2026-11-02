@@ -1,6 +1,6 @@
 import type { Client } from '@datocms/cma-client-browser';
 import { useEffect, useRef, useState } from 'react';
-import { normalizeError } from '../data/errors';
+import { type LoadError, loadError } from '../data/errors';
 import {
   fetchPartitionedItemsPage,
   shouldUsePartitionedOrdering,
@@ -13,7 +13,7 @@ type ItemsPageState = {
   totalCount: number;
   loading: boolean;
   loaded: boolean;
-  error: string | null;
+  error: LoadError | null;
 };
 
 const EMPTY_STATE: ItemsPageState = {
@@ -92,7 +92,7 @@ export function useItemsPage(args: {
           ...current,
           loading: false,
           loaded: false,
-          error: normalizeError(error).message,
+          error: loadError(error),
         }));
       });
 

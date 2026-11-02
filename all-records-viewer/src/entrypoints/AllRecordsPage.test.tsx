@@ -114,7 +114,8 @@ function item(id: string): RawItem {
       item_type: { data: { id: 'model-1', type: 'item_type' } },
     },
     meta: {
-      status: 'published',
+      // Published, with changes: Publish and Unpublish both apply
+      status: 'updated',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
       is_current_version_valid: true,
@@ -283,7 +284,8 @@ async function pickMenuOption(name: string): Promise<void> {
 async function selectAllMatching(count: number): Promise<void> {
   await clickReadyRecordCheckbox('record-1');
   await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
-  await clickReadyButton(`Select all ${count} matching records`);
+  // No filter is on: the button offers all the records
+  await clickReadyButton(`Select all ${count} records`);
   await screen.findByText(
     `${count} records selected`,
     undefined,
@@ -336,7 +338,7 @@ describe('AllRecordsPage states', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: 'No access to your API token',
+        name: 'This page needs a permission',
       }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Current user access token/)).toBeInTheDocument();
@@ -353,9 +355,7 @@ describe('AllRecordsPage states', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'All records' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/This environment has no models yet/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/There are no models yet/)).toBeInTheDocument();
   });
 
   it('shows the overview when there are no records, and no results for a filter', async () => {
@@ -363,7 +363,7 @@ describe('AllRecordsPage states', () => {
     const { rerender } = render(<AllRecordsPage ctx={ctx} />);
 
     expect(
-      await screen.findByText(/There are no records to show yet/),
+      await screen.findByText(/show here once they are created/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 1, name: 'All records' }),
@@ -379,9 +379,7 @@ describe('AllRecordsPage states', () => {
     );
 
     expect(
-      await screen.findByText(
-        'No records match the filters. Try other filters, or clear some of them.',
-      ),
+      await screen.findByText('Nothing matches the filter.'),
     ).toBeInTheDocument();
     // The title bar stays, so the filters can change
     expect(
@@ -393,10 +391,11 @@ describe('AllRecordsPage states', () => {
     const ctx = buildOperationCtx();
     const ctxAt = (search: string) =>
       buildCtx({ ...ctx, location: { pathname: '', search, hash: '' } });
-    const noResults =
-      'No records match the filters. Try other filters, or clear some of them.';
+    const noResults = 'Nothing matches the filter.';
     const { rerender } = render(<AllRecordsPage ctx={ctxAt('?query=zzz')} />);
     await screen.findByText(noResults, undefined, UI_WAIT_OPTIONS);
+    // No matches to order: the count is plain
+    expect(screen.getByText('0 records')).toBeInTheDocument();
     const toggle = screen.getByRole('button', { name: 'Filter Records' });
 
     // From no results to another filter: the old result is not of the new
@@ -421,7 +420,7 @@ describe('AllRecordsPage states', () => {
 
     expect(toggle).toBeInTheDocument();
     expect(
-      screen.queryByText(/There are no records to show yet/),
+      screen.queryByText(/show here once they are created/),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Loading the records')).toBeInTheDocument();
     await act(async () => {
@@ -623,12 +622,11 @@ describe('AllRecordsPage states', () => {
     await readyRecordCheckbox('record-1');
     expect(screen.getByText('Last update')).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Last update' }),
+      screen.queryByRole('button', { name: 'Last update' }),
     ).not.toBeInTheDocument();
+    // The order of a search shows in the count, not in a notice
     expect(
-      screen.getByText(
-        'While you search, the records are sorted by relevance.',
-      ),
+      await screen.findByText('1 record, best matches first'),
     ).toBeInTheDocument();
   });
 
@@ -639,7 +637,7 @@ describe('AllRecordsPage states', () => {
     });
     const { rerender } = render(<AllRecordsPage ctx={ctx} />);
     await readyRecordCheckbox('record-1');
-    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_ASC',
     );
@@ -657,7 +655,7 @@ describe('AllRecordsPage states', () => {
       />,
     );
     await readyRecordCheckbox('record-1');
-    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_DESC',
     );
@@ -675,7 +673,7 @@ describe('AllRecordsPage states', () => {
       />,
     );
     await readyRecordCheckbox('record-1');
-    fireEvent.click(screen.getByRole('link', { name: 'Last update' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Last update' }));
     expect(ctx.navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?model=model-1&orderBy=_updated_at_ASC',
     );
@@ -748,12 +746,12 @@ describe('AllRecordsPage states', () => {
     );
 
     await readyRecordCheckbox('record-1');
-    fireEvent.click(screen.getByRole('link', { name: 'Model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Model' }));
     expect(navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?orderBy=_model_ASC',
     );
 
-    fireEvent.click(screen.getByRole('link', { name: 'Status' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Status' }));
     expect(navigateTo).toHaveBeenLastCalledWith(
       '/editor/p/plugin-1/pages/all-records?orderBy=_status_ASC',
     );
@@ -777,8 +775,8 @@ describe('AllRecordsPage states', () => {
 
     await readyRecordCheckbox('record-1');
     expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Status' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Model' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument();
   });
 
   it('shows a load failure and retries without reloading the plugin', async () => {
@@ -798,6 +796,7 @@ describe('AllRecordsPage states', () => {
       await screen.findByText("Couldn't load the records"),
     ).toBeInTheDocument();
     expect(screen.getByText('Network unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Try again in a moment.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
@@ -840,9 +839,50 @@ describe('AllRecordsPage states', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('1 record selected')).toBeInTheDocument();
     expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
+    // The bar offers nothing that would fail on records that are gone
+    for (const name of ['Invert selection', 'Publish', 'Unpublish', 'Delete']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    // The list shows none of them: nothing in the title bar
+    expect(
+      screen.queryByText('Only the selected records'),
+    ).not.toBeInTheDocument();
+    // The area names the way out, as the cross of the bar does
+    expect(
+      screen.getAllByRole('button', { name: 'Clear selection' }),
+    ).toHaveLength(2);
 
     await clickReadyButton('Hide selection');
     await screen.findByRole('button', { name: 'Show selection' });
+  });
+
+  it('offers Publish and Unpublish only for the records they apply to', async () => {
+    const draft = item('record-1');
+    draft.meta.status = 'draft';
+    const published = item('record-2');
+    published.meta.status = 'published';
+    mockRecords([draft, published]);
+    render(<AllRecordsPage ctx={buildOperationCtx()} />);
+
+    // A published record has no changes to publish
+    await clickReadyRecordCheckbox('record-2');
+    await readyButton('Unpublish');
+    expect(
+      screen.queryByRole('button', { name: 'Publish' }),
+    ).not.toBeInTheDocument();
+
+    await clickReadyRecordCheckbox('record-1');
+    await screen.findByText('2 records selected', undefined, UI_WAIT_OPTIONS);
+    await readyButton('Publish');
+    await readyButton('Unpublish');
+
+    // A draft is not live: nothing to unpublish
+    await clickReadyRecordCheckbox('record-2');
+    await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
+    await readyButton('Publish');
+    expect(
+      screen.queryByRole('button', { name: 'Unpublish' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the rows of Show selection while it loads them again', async () => {
@@ -854,6 +894,11 @@ describe('AllRecordsPage states', () => {
     await clickReadyButton('Show selection');
     await readyRecordCheckbox('record-2');
     expect(queryRecordCheckbox('record-3')).not.toBeInTheDocument();
+    // Every row is selected here: inverting would only clear them
+    expect(
+      screen.queryByRole('button', { name: 'Invert selection' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
 
     const reload = deferred<{
       data: RawItem[];
@@ -909,7 +954,7 @@ describe('AllRecordsPage large selections', () => {
 
     expect(screen.getByText('200 records selected')).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /matching record/ }),
+      screen.queryByRole('button', { name: /^Select (all )?\d/ }),
     ).not.toBeInTheDocument();
     expect(
       cmaMocks.rawList.mock.calls.filter(([query]) => query.filter?.ids),
@@ -953,12 +998,13 @@ describe('AllRecordsPage large selections', () => {
     expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
     expect(ctx.alert).toHaveBeenCalledTimes(1);
     expect(ctx.alert).toHaveBeenCalledWith(
-      '1 record deleted; 1 record failed.',
+      "1 record deleted. 1 couldn't be deleted: open the selected records to see why.",
     );
     expect(ctx.openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Delete selected records',
-        content: '2 records will be affected. This action cannot be undone.',
+        title: 'Delete 2 records?',
+        content: "This can't be undone.",
+        choices: [expect.objectContaining({ label: 'Delete' })],
       }),
     );
     expect(cmaMocks.rawBulkDestroy).toHaveBeenCalledTimes(1);
@@ -1036,23 +1082,16 @@ describe('AllRecordsPage large selections', () => {
     ).toEqual(['Draft', 'Review']);
     await pickMenuOption('Draft');
 
-    await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
+    // The record already in Draft needs nothing more: the selection is done
+    await expectNoSelectionBar();
     expect(cmaMocks.workflowFind).toHaveBeenCalledTimes(2);
     expect(cmaMocks.workflowFind).toHaveBeenCalledWith('workflow-1');
     expect(ctx.openModal).not.toHaveBeenCalled();
-    expect(ctx.openConfirm).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        title: 'Move selected records to Review',
-        content: '201 records will be affected. Destination: Review.',
-      }),
-    );
-    expect(ctx.openConfirm).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        content:
-          '199 records of 200 selected records are eligible. Destination: Draft.',
-      }),
+    // The second pick leaves out only the record already in Draft: nothing
+    // is refused, thus neither pick asks first
+    expect(ctx.openConfirm).not.toHaveBeenCalled();
+    expect(ctx.notice).toHaveBeenCalledWith(
+      '199 records moved to “Draft”. The other 1 was already there.',
     );
     expect(
       cmaMocks.rawBulkMoveToStage.mock.calls.map(
@@ -1073,6 +1112,110 @@ describe('AllRecordsPage large selections', () => {
         expect(query.filter.ids.split(',').length).toBeLessThanOrEqual(100);
       }
     }
+  });
+
+  it('keeps selected only the records that the role could not move', async () => {
+    const workflowModel = model();
+    workflowModel.relationships.workflow.data = {
+      id: 'workflow-1',
+      type: 'workflow',
+    };
+    const there = item('record-1');
+    there.meta.stage = 'review';
+    const own = item('record-2');
+    own.meta.stage = 'draft';
+    own.relationships.creator = { data: { id: 'user-1', type: 'user' } };
+    const others = item('record-3');
+    others.meta.stage = 'draft';
+    others.relationships.creator = {
+      data: { id: 'other-user', type: 'user' },
+    };
+    mockRecords([there, own, others]);
+    cmaMocks.workflowFind.mockResolvedValue({
+      stages: [
+        { id: 'draft', name: 'Draft' },
+        { id: 'review', name: 'Review' },
+      ],
+    });
+    const ctx = buildOperationCtx({
+      itemTypes: { 'model-1': workflowModel },
+      currentRole: {
+        id: 'role-1',
+        meta: {
+          final_permissions: {
+            positive_item_type_permissions: [
+              { action: 'all', environment: 'main', on_creator: 'self' },
+            ],
+            negative_item_type_permissions: [],
+          },
+        },
+      },
+    });
+    render(<AllRecordsPage ctx={ctx} />);
+    await clickReadyRecordCheckbox('record-1');
+    await clickReadyRecordCheckbox('record-2');
+    await clickReadyRecordCheckbox('record-3');
+    await screen.findByText('3 records selected', undefined, UI_WAIT_OPTIONS);
+
+    await openReadyMenu('Move to stage');
+    await pickMenuOption('Review');
+
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith(
+        '1 record moved to “Review”. 1 was already there. The other 1 is still selected.',
+      ),
+    );
+    expect(ctx.openConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content:
+          "1 is already in this stage. Your role can't move the other 1.",
+      }),
+    );
+    // The record already in Review leaves the selection with the moved one
+    await screen.findByText('1 record selected', undefined, UI_WAIT_OPTIONS);
+    expect(recordCheckbox('record-3')).toBeChecked();
+    expect(recordCheckbox('record-1')).not.toBeChecked();
+  });
+
+  it('spins the title bar while a move reads the selected records again', async () => {
+    const workflowModel = model();
+    workflowModel.relationships.workflow.data = {
+      id: 'workflow-1',
+      type: 'workflow',
+    };
+    const record = item('record-1');
+    record.meta.stage = 'draft';
+    mockRecords([record]);
+    cmaMocks.workflowFind.mockResolvedValue({
+      stages: [
+        { id: 'draft', name: 'Draft' },
+        { id: 'review', name: 'Review' },
+      ],
+    });
+    const ctx = buildOperationCtx({
+      itemTypes: { 'model-1': workflowModel },
+    });
+    const { container } = render(<AllRecordsPage ctx={ctx} />);
+    await clickReadyRecordCheckbox('record-1');
+    await openReadyMenu('Move to stage');
+    await screen.findByRole('menuitem', { name: 'Review' }, UI_WAIT_OPTIONS);
+    expect(container.querySelector('.Toolbar__spinner')).toBeNull();
+
+    const reload = deferred<{
+      data: RawItem[];
+      meta: { total_count: number };
+    }>();
+    cmaMocks.rawList.mockImplementationOnce(() => reload.promise);
+    await pickMenuOption('Review');
+
+    // The menu has no spinner of its own: the title bar shows the wait
+    await waitFor(() =>
+      expect(container.querySelector('.Toolbar__spinner')).not.toBeNull(),
+    );
+    reload.resolve({ data: [record], meta: { total_count: 1 } });
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('1 record moved to “Review”.'),
+    );
   });
 
   it('shows Move to stage only for records of one model with a workflow', async () => {
@@ -1134,10 +1277,21 @@ describe('AllRecordsPage large selections', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Network unavailable')).toBeInTheDocument();
     expect(
-      screen.getByText('Close the menu, then open it again.'),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+      screen.getAllByRole('menuitem').map((option) => option.textContent),
+    ).toEqual(['Try again']);
     expect(ctx.openConfirm).not.toHaveBeenCalled();
+
+    // "Try again" is an option of the menu: the arrow keys and Enter reach
+    // it, and it loads the stages again in the same menu
+    cmaMocks.workflowFind.mockResolvedValueOnce({
+      stages: [{ id: 'review', name: 'Review' }],
+    });
+    const menu = screen.getByRole('menu');
+    fireEvent.keyDown(menu, { key: 'ArrowDown', keyCode: 40, which: 40 });
+    fireEvent.keyDown(menu, { key: 'Enter', keyCode: 13, which: 13 });
+    expect(
+      await screen.findByRole('menuitem', { name: 'Review' }, UI_WAIT_OPTIONS),
+    ).toBeInTheDocument();
   });
 
   it('checks current creator permissions before confirming a selected action', async () => {
@@ -1178,6 +1332,53 @@ describe('AllRecordsPage large selections', () => {
     expect(screen.getByText('1 record selected')).toBeInTheDocument();
   });
 
+  it('says what publishing does, or that the role leaves some records out', async () => {
+    const own = item('record-1');
+    own.relationships.creator = { data: { id: 'user-1', type: 'user' } };
+    const others = item('record-2');
+    others.relationships.creator = {
+      data: { id: 'other-user', type: 'user' },
+    };
+    mockRecords([own, others]);
+    const ctx = buildOperationCtx({
+      currentRole: {
+        id: 'role-1',
+        meta: {
+          final_permissions: {
+            positive_item_type_permissions: [
+              { action: 'all', environment: 'main', on_creator: 'self' },
+            ],
+            negative_item_type_permissions: [],
+          },
+        },
+      },
+      openConfirm: vi.fn().mockResolvedValue(false),
+    });
+    render(<AllRecordsPage ctx={ctx} />);
+    await clickReadyRecordCheckbox('record-1');
+    await clickReadyButton('Publish');
+    await waitFor(() =>
+      expect(ctx.openConfirm).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          title: 'Publish 1 record?',
+          content: 'Its latest changes go live.',
+        }),
+      ),
+    );
+
+    await clickReadyRecordCheckbox('record-2');
+    await clickReadyButton('Publish');
+    await waitFor(() =>
+      expect(ctx.openConfirm).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          title: 'Publish 1 of 2 records?',
+          content: "Your role can't publish the other 1.",
+        }),
+      ),
+    );
+    expect(cmaMocks.rawBulkPublish).not.toHaveBeenCalled();
+  });
+
   it('reports an incomplete preflight without submitting or dropping the selection', async () => {
     mockRecords([item('record-1')]);
     const ctx = buildOperationCtx();
@@ -1193,7 +1394,7 @@ describe('AllRecordsPage large selections', () => {
 
     await waitFor(() =>
       expect(ctx.alert).toHaveBeenCalledWith(
-        'Could not publish the selected records: Some selected records no longer exist or cannot be read. Refresh the view and select the records again.',
+        "Couldn't publish the selected records. Some selected records were deleted, or you can no longer read them. Clear the selection, then select the records again.",
       ),
     );
     expect(ctx.openConfirm).not.toHaveBeenCalled();
@@ -1335,12 +1536,12 @@ describe('AllRecordsPage large selections', () => {
     render(<AllRecordsPage ctx={buildOperationCtx()} />);
 
     expect(
-      screen.queryByRole('button', { name: /matching record/ }),
+      screen.queryByRole('button', { name: /^Select (all )?\d/ }),
     ).not.toBeInTheDocument();
     await clickReadyRecordCheckbox('record-1');
     expect(screen.getByText('1 record selected')).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /matching record/ }),
+      screen.queryByRole('button', { name: /^Select (all )?\d/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -1352,13 +1553,13 @@ describe('AllRecordsPage large selections', () => {
     });
     render(<AllRecordsPage ctx={ctx} />);
     expect(
-      screen.queryByRole('button', { name: /matching record/ }),
+      screen.queryByRole('button', { name: /^Select (all )?\d/ }),
     ).not.toBeInTheDocument();
 
     await selectAllMatching(401);
 
     expect(
-      screen.queryByRole('button', { name: /matching record/ }),
+      screen.queryByRole('button', { name: /^Select (all )?\d/ }),
     ).not.toBeInTheDocument();
     const collectionQueries = cmaMocks.rawList.mock.calls
       .map(([query]) => query)
@@ -1373,7 +1574,7 @@ describe('AllRecordsPage large selections', () => {
     await clickReadyButton('Show selection');
     await readyRecordCheckbox('record-1');
     expect(rowCheckboxes()).toHaveLength(perPage);
-    expect(screen.getByText('401 records')).toBeInTheDocument();
+    expect(screen.getByText('Only the selected records')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Go to page 1' }),
     ).toHaveAttribute('aria-current', 'page');
@@ -1419,16 +1620,19 @@ describe('AllRecordsPage large selections', () => {
     await waitFor(() =>
       expect(cmaMocks.rawBulkPublish).toHaveBeenCalledTimes(1),
     );
-    expect(
-      screen.getByText('0 of 401 processed; 0 succeeded; 0 failed'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Show selection' }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('button', { name: 'Publish' })).toHaveAttribute(
-      'aria-busy',
-      'true',
+    // The bar says what runs in place of the count, and its actions leave
+    // until it ends
+    expect(screen.getByText('Publishing 401 records…')).toHaveAttribute(
+      'role',
+      'status',
     );
+    expect(
+      screen.queryByRole('button', { name: 'Show selection' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Publish' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
 
     await act(async () =>
       firstJob.resolve({ data: [], meta: { successful: 200, failed: 0 } }),
@@ -1437,7 +1641,7 @@ describe('AllRecordsPage large selections', () => {
       expect(cmaMocks.rawBulkPublish).toHaveBeenCalledTimes(2),
     );
     expect(
-      screen.getByText('200 of 401 processed; 200 succeeded; 0 failed'),
+      screen.getByText('Publishing 200 of 401 records…'),
     ).toBeInTheDocument();
     await act(async () =>
       secondJob.resolve({ data: [], meta: { successful: 200, failed: 0 } }),
@@ -1468,18 +1672,22 @@ describe('AllRecordsPage large selections', () => {
       expect(cmaMocks.rawBulkPublish).toHaveBeenCalledTimes(1),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel remaining' }));
-    expect(screen.getByText('401 records selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(screen.getByText('Stopping…')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
     await act(async () =>
       acceptedJob.resolve({ data: [], meta: { successful: 200, failed: 0 } }),
     );
 
     await screen.findByText('201 records selected', undefined, UI_WAIT_OPTIONS);
     expect(cmaMocks.rawBulkPublish).toHaveBeenCalledTimes(1);
-    expect(ctx.alert).toHaveBeenCalledWith(
-      'Cancelled. 200 records published; 201 records were not submitted.',
+    // A stop that the user asked for is not a failure
+    expect(ctx.notice).toHaveBeenCalledWith(
+      'Stopped. 200 records published. The other 201 are still selected.',
     );
-    expect(ctx.notice).not.toHaveBeenCalled();
+    expect(ctx.alert).not.toHaveBeenCalled();
     await clickReadyButton('Show selection');
     expect(await readyRecordCheckbox('record-201')).toBeChecked();
     expect(queryRecordCheckbox('record-1')).not.toBeInTheDocument();
@@ -1513,11 +1721,12 @@ describe('AllRecordsPage large selections', () => {
     await screen.findByText('201 records selected', undefined, UI_WAIT_OPTIONS);
     expect(ctx.openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: '400 records of 401 selected records are eligible.',
+        title: 'Publish 400 of 401 records?',
+        content: "The other 1 can't be published.",
       }),
     );
     expect(ctx.alert).toHaveBeenCalledWith(
-      '399 records published; 1 record failed.',
+      "399 records published. 1 couldn't be published: open the selected records to see why.",
     );
     expect(cmaMocks.rawBulkPublish).toHaveBeenCalledTimes(2);
     expect(

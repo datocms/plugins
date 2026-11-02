@@ -67,6 +67,7 @@ function disabledReason(
 function buildEvaluation(
   selected: readonly RawItem[],
   eligible: readonly RawItem[],
+  deniedCount: number,
   action: SelectionAction | 'move_to_stage',
 ): SelectionEvaluation {
   const submittedItems = [...eligible];
@@ -75,6 +76,7 @@ function buildEvaluation(
     selectedCount: selected.length,
     eligibleCount: eligible.length,
     excludedCount: selected.length - eligible.length,
+    deniedCount,
     submittedCount: submittedItems.length,
     overflowCount: 0,
     items: submittedItems,
@@ -88,22 +90,27 @@ export function evaluateSelection(
 ): SelectionEvaluation {
   const selected = uniqueItems(input.items);
   const permissionAction = input.action === 'delete' ? 'delete' : 'publish';
-  const eligible = selected.filter((item) => {
+  const eligible: RawItem[] = [];
+  let deniedCount = 0;
+
+  for (const item of selected) {
     const model = modelForItem(item, input.modelsById);
+    if (!model || !modelAllowsAction(model, input.action)) continue;
+    if (
+      isPotentiallyEligible({
+        item,
+        model,
+        permissions: input.permissions,
+        action: permissionAction,
+      })
+    ) {
+      eligible.push(item);
+    } else {
+      deniedCount += 1;
+    }
+  }
 
-    return Boolean(
-      model &&
-        modelAllowsAction(model, input.action) &&
-        isPotentiallyEligible({
-          item,
-          model,
-          permissions: input.permissions,
-          action: permissionAction,
-        }),
-    );
-  });
-
-  return buildEvaluation(selected, eligible, input.action);
+  return buildEvaluation(selected, eligible, deniedCount, input.action);
 }
 
 export function getMoveSelectionContext(
@@ -166,24 +173,33 @@ export function evaluateMoveSelection(
 
   if (!moveContext.enabled) {
     return {
-      ...buildEvaluation(selected, [], 'move_to_stage'),
+      ...buildEvaluation(selected, [], 0, 'move_to_stage'),
       disabledReason: moveContext.disabledReason,
     };
   }
 
-  const eligible = selected.filter(
-    (item) =>
-      item.meta.stage !== input.destinationStageId &&
+  const eligible: RawItem[] = [];
+  let deniedCount = 0;
+
+  for (const item of selected) {
+    // A record already in the stage needs no move
+    if (item.meta.stage === input.destinationStageId) continue;
+    if (
       isPotentiallyEligible({
         item,
         model: moveContext.model,
         permissions: input.permissions,
         action: 'move_to_stage',
         destinationStageId: input.destinationStageId,
-      }),
-  );
+      })
+    ) {
+      eligible.push(item);
+    } else {
+      deniedCount += 1;
+    }
+  }
 
-  return buildEvaluation(selected, eligible, 'move_to_stage');
+  return buildEvaluation(selected, eligible, deniedCount, 'move_to_stage');
 }
 
 export function availableMoveDestinationIds(

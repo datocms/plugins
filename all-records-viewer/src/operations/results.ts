@@ -1,3 +1,5 @@
+import { errorAdvice, isPermissionError, normalizeError } from '../data/errors';
+import { formatNumber, formatRecordCount } from '../texts';
 import type {
   BulkJobResult,
   BulkOperation,
@@ -35,65 +37,126 @@ export function isPartialBulkResult(result: BulkOperationResult): boolean {
   return result.successful > 0 && result.failed > 0;
 }
 
-function resultCountsMessage(result: BulkOperationResult): string {
-  const record = result.successful === 1 ? 'record' : 'records';
-  if (result.unprocessed || result.cancelled) {
-    return incompleteBulkResultMessage(result);
+// The selected records that the action did not do: the ones already in the
+// stage of a move need nothing more and leave the selection, the others stay
+// selected
+function othersSentences(
+  locale: string,
+  alreadyThere: number,
+  stillSelected: number,
+): string[] {
+  const sentences: string[] = [];
+  if (alreadyThere > 0) {
+    const verb = alreadyThere === 1 ? 'was' : 'were';
+    const count = formatNumber(locale, alreadyThere);
+    sentences.push(
+      stillSelected > 0
+        ? `${count} ${verb} already there.`
+        : `The other ${count} ${verb} already there.`,
+    );
   }
+  if (stillSelected > 0) {
+    sentences.push(
+      `The other ${formatNumber(locale, stillSelected)} ${
+        stillSelected === 1 ? 'is' : 'are'
+      } still selected.`,
+    );
+  }
+  return sentences;
+}
 
-  if (result.failed === 0) {
-    return `${result.successful} ${record} ${pastTense[result.operation]}.`;
+// Why the requests failed, in plain words: the role of the user, or what to
+// do. Never the URL or the body of the request. Null when the records tell
+// why: a job that reports only counts, or a request that the server turned
+// down for these records (a 4xx other than 429: they are gone, or the API
+// won't take them), which trying again doesn't fix.
+function failureCause(
+  operation: BulkOperation,
+  error: unknown,
+  count: number,
+): string | null {
+  if (error === undefined) return null;
+  if (isPermissionError(error)) {
+    return `Your role can't ${infinitive[operation]} ${count === 1 ? 'it' : 'them'}.`;
   }
+  const { status } = normalizeError(error);
+  if (status !== null && status >= 400 && status < 500 && status !== 429) {
+    return null;
+  }
+  return errorAdvice(error);
+}
+
+/**
+ * The toast at the end of an action: what was done, what failed and why (or
+ * where to see why), or else what stays selected. `leftOut` is the number of
+ * selected records that the action could not apply to, thus were not sent;
+ * `alreadyThere` is how many of them were already in the stage of a move.
+ * After a failure the toast does not count the selection: a batch that
+ * failed in part stays selected as a whole, since the API gives only counts.
+ * The counts have the separators of `locale`, as the bar and the questions.
+ */
+export function bulkResultMessage(
+  result: BulkOperationResult,
+  {
+    locale = 'en',
+    stageName,
+    leftOut = 0,
+    alreadyThere = 0,
+  }: {
+    locale?: string;
+    stageName?: string;
+    leftOut?: number;
+    alreadyThere?: number;
+  } = {},
+): string {
+  const past = pastTense[result.operation];
+  const notDone = result.failed + (result.unprocessed ?? 0);
+  const sentences: string[] = result.cancelled ? ['Stopped.'] : [];
+  const cause =
+    result.failed > 0
+      ? failureCause(result.operation, result.error, notDone)
+      : null;
+  const end =
+    result.failed > 0 && cause === null
+      ? ': open the selected records to see why.'
+      : '.';
 
   if (result.successful === 0) {
-    const failedRecord = result.failed === 1 ? 'record' : 'records';
-    return `No records were ${pastTense[result.operation]}; ${result.failed} ${failedRecord} failed.`;
+    sentences.push(`No records were ${past}${end}`);
+  } else {
+    const destination = stageName ? ` to “${stageName}”` : '';
+    sentences.push(
+      `${formatRecordCount(locale, result.successful)} ${past}${destination}.`,
+    );
+    if (result.failed > 0) {
+      sentences.push(
+        `${formatNumber(locale, notDone)} couldn't be ${past}${end}`,
+      );
+    } else {
+      sentences.push(
+        ...othersSentences(
+          locale,
+          alreadyThere,
+          notDone + leftOut - alreadyThere,
+        ),
+      );
+    }
   }
 
-  const failedRecord = result.failed === 1 ? 'record' : 'records';
-  return `${result.successful} ${record} ${pastTense[result.operation]}; ${result.failed} ${failedRecord} failed.`;
-}
-
-export function bulkResultMessage(result: BulkOperationResult): string {
-  const message = resultCountsMessage(result);
-  return result.error ? `${message} ${result.error.slice(0, 600)}` : message;
-}
-
-function incompleteBulkResultMessage(result: BulkOperationResult): string {
-  const record = result.successful === 1 ? 'record' : 'records';
-  const parts = [
-    `${result.successful} ${record} ${pastTense[result.operation]}`,
-  ];
-  if (result.failed) parts.push(`${result.failed} records failed`);
-  if (result.unprocessed)
-    parts.push(`${result.unprocessed} records were not submitted`);
-  return `${result.cancelled ? 'Cancelled. ' : ''}${parts.join('; ')}.`;
-}
-
-function errorDetail(error: unknown): string | null {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
+  if (cause) {
+    sentences.push(cause);
   }
 
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    typeof error.message === 'string' &&
-    error.message.trim()
-  ) {
-    return error.message.trim();
-  }
-
-  return null;
+  return sentences.join(' ');
 }
 
+/** The alert of an action that failed before it could save anything */
 export function bulkErrorMessage(
   operation: BulkOperation,
   error: unknown,
 ): string {
-  const prefix = `Could not ${infinitive[operation]} the selected records`;
-  const detail = errorDetail(error);
-
-  return detail ? `${prefix}: ${detail}` : `${prefix}.`;
+  if (isPermissionError(error)) {
+    return `Your role can't ${infinitive[operation]} the selected records.`;
+  }
+  return `Couldn't ${infinitive[operation]} the selected records. ${errorAdvice(error)}`;
 }

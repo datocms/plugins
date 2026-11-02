@@ -34,6 +34,12 @@ export type SelectionEvaluation = {
   selectedCount: number;
   eligibleCount: number;
   excludedCount: number;
+  /**
+   * The excluded records that the role can't act on. The others are of a
+   * model without draft mode (publish, unpublish), or already in the stage
+   * (a move).
+   */
+  deniedCount: number;
   submittedCount: number;
   overflowCount: number;
   items: RawItem[];
@@ -80,7 +86,8 @@ export type BulkOperationResult = {
   unprocessed?: number;
   cancelled?: boolean;
   remainingItemIds?: string[];
-  error?: string;
+  /** The first request that failed: the toast says why in plain words */
+  error?: unknown;
 };
 
 export type BulkOperationProgress = {

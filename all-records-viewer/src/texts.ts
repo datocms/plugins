@@ -4,11 +4,26 @@
 export const TEXTS = {
   'allRecords.selected':
     '{count, plural, one {# record selected} other {# records selected}}',
+  'allRecords.selectAll':
+    '{count, plural, one {Select # record} other {Select all # records}}',
   'allRecords.selectAllMatching':
     '{count, plural, one {Select # matching record} other {Select all # matching records}}',
   'allRecords.moveHint':
     '{count, plural, one {The selected record moves to this stage.} other {The # selected records move to this stage.}}',
   'a11y.table.selectAll': 'Select all records on this page',
-  'listFilter.noResults.description':
-    'No records match the filters. Try other filters, or clear some of them.',
 } as const;
+
+// A number with the separators of the locale of the user ("1,234"), as the
+// `#` of the texts above, for the texts that the plugin writes itself
+export function formatNumber(locale: string, value: number): string {
+  return new Intl.NumberFormat(locale).format(value);
+}
+
+// A count of records ("1,234 records"), with the separators and the plural
+// rules of the locale of the user, as the texts above
+export function formatRecordCount(locale: string, count: number): string {
+  const number = formatNumber(locale, count);
+  return new Intl.PluralRules(locale).select(count) === 'one'
+    ? `${number} record`
+    : `${number} records`;
+}

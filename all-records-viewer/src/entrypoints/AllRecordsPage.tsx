@@ -2,7 +2,6 @@ import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
 import ListArea from 'datocms-react-ui/ListArea';
 import { getPaginatedListState } from 'datocms-react-ui/ListDetail';
@@ -31,6 +30,7 @@ import { useColumnSettings } from '../components/useColumnSettings';
 import { MAX_BULK_ITEMS, PER_PAGE_OPTIONS } from '../constants';
 import { buildCmaClient } from '../data/cma';
 import { collectSelection } from '../data/collectSelection';
+import { errorAdvice, type LoadError } from '../data/errors';
 import { loadItemsById, loadUploadsById, mapBounded } from '../data/loadById';
 import { getRegularModels } from '../data/models';
 import {
@@ -60,11 +60,7 @@ import type {
 } from '../operations/types';
 import type { RawField } from '../presentation/fields';
 import { createPresentationResolver } from '../presentation/resolver';
-import {
-  getItemStatus,
-  getItemValidity,
-  ITEM_STATUS_LABEL,
-} from '../presentation/status';
+import { getItemStatus, getItemValidity } from '../presentation/status';
 import { buildRecordEditorUrl } from '../state/navigation';
 import {
   buildPluginPageUrl,
@@ -83,7 +79,7 @@ import { useItemsPage } from '../state/useItemsPage';
 import { useModelFields } from '../state/useModelFields';
 import { usePresentations } from '../state/usePresentations';
 import { useSelectedItemsPage } from '../state/useSelectedItemsPage';
-import { TEXTS } from '../texts';
+import { formatNumber, formatRecordCount, TEXTS } from '../texts';
 import type {
   ModelSummary,
   QueryState,
@@ -122,6 +118,20 @@ function isoDate(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
+const PAST_TENSE: Record<BulkSelectionAction, string> = {
+  delete: 'deleted',
+  publish: 'published',
+  unpublish: 'unpublished',
+};
+
+// What the bar says while an action runs
+const PROGRESS_VERB: Record<BusyAction, string> = {
+  delete: 'Deleting',
+  publish: 'Publishing',
+  unpublish: 'Unpublishing',
+  move: 'Moving',
+};
+
 function operationLabel(action: BulkSelectionAction): string {
   switch (action) {
     case 'delete':
@@ -133,23 +143,54 @@ function operationLabel(action: BulkSelectionAction): string {
   }
 }
 
-function confirmationContent(
-  action: BulkSelectionAction | 'move_to_stage',
+// The records that the question is about: "3 records", or "1 of 3 records"
+// when the action can't apply to some of the selected records
+function confirmationCount(
+  locale: string,
   evaluation: SelectionEvaluation,
 ): string {
-  const eligible = `${evaluation.eligibleCount} ${
-    evaluation.eligibleCount === 1 ? 'record' : 'records'
-  }`;
-  const scope =
-    evaluation.excludedCount > 0
-      ? `${eligible} of ${evaluation.selectedCount} selected records are eligible.`
-      : `${eligible} will be affected.`;
+  return evaluation.excludedCount > 0
+    ? `${formatNumber(locale, evaluation.eligibleCount)} of ${formatRecordCount(
+        locale,
+        evaluation.selectedCount,
+      )}`
+    : formatRecordCount(locale, evaluation.eligibleCount);
+}
 
-  if (action === 'delete') {
-    return `${scope} This action cannot be undone.`;
+// What the question says under the title: that a delete can't be undone,
+// why the action leaves some selected records out, or else what it does.
+// When the role is the only reason, it says so with the words of the toast
+// of a refused action.
+function confirmationContent(
+  locale: string,
+  action: BulkSelectionAction,
+  evaluation: SelectionEvaluation,
+): string {
+  const count = formatNumber(locale, evaluation.excludedCount);
+  let others: string | null = null;
+  if (evaluation.excludedCount > 0) {
+    others =
+      evaluation.deniedCount === evaluation.excludedCount
+        ? `Your role can't ${action} the other ${count}.`
+        : `The other ${count} can't be ${PAST_TENSE[action]}.`;
   }
+  const one = evaluation.eligibleCount === 1;
 
-  return scope;
+  switch (action) {
+    case 'delete':
+      return others
+        ? `This can't be undone. ${others}`
+        : "This can't be undone.";
+    case 'publish':
+      return (
+        others ??
+        (one ? 'Its latest changes go live.' : 'Their latest changes go live.')
+      );
+    case 'unpublish':
+      return (
+        others ?? (one ? 'It goes back to draft.' : 'They go back to draft.')
+      );
+  }
 }
 
 function rawItemTypes(itemTypes: RenderPageCtx['itemTypes']): RawItemType[] {
@@ -182,21 +223,6 @@ function creatorRoleMap(
   }
 
   return result;
-}
-
-// A number with the separators of the locale of the user ("1,234"), as the
-// `#` of the ICU texts of Canvas
-function formatNumber(locale: string, value: number): string {
-  return new Intl.NumberFormat(locale).format(value);
-}
-
-// The count of the title bar ("1,234 records"), with the separators and the
-// plural rules of the locale of the user, as the ICU texts of Canvas do
-function formatRecordCount(locale: string, count: number): string {
-  const number = formatNumber(locale, count);
-  return new Intl.PluralRules(locale).select(count) === 'one'
-    ? `${number} record`
-    : `${number} records`;
 }
 
 function displayedOrderBy(queryState: QueryState) {
@@ -298,14 +324,25 @@ type MoveBarAction = { menu: ReactNode } | { disabledReason: string };
 
 // The buttons of the selection bar. The plain actions change the selection;
 // the main actions on it are primary, with Delete last. An action that does
-// not apply to any selected record does not show. While an action runs, its
-// own button shows a spinner and the others say why they wait.
+// not apply to any selected record does not show: as in the record editor,
+// Publish needs a record with changes to publish, and Unpublish a record
+// that is published. Nor do the main actions
+// while the selected records can't be shown, nor "Invert selection" in "Show
+// selection", where every row is selected. While an action gets ready, its
+// own button shows a spinner and the others say why they wait. Once it runs,
+// the bar shows only its progress.
 function buildSelectionBarActions(args: {
   running: SelectionBarActionId | null;
+  /** The action runs, and the status of the bar shows how far it got */
+  progressing: boolean;
   loading: boolean;
   showingSelected: boolean;
+  /** "Show selection" shows none of the selected records: they are gone */
+  selectionUnavailable: boolean;
   /** The number of matching records, when the bar offers to select them */
   selectAllMatchingCount: number | null;
+  /** A filter or a search is on: the records to select are the matches */
+  filtered: boolean;
   evaluations: Record<BulkSelectionAction, SelectionEvaluation>;
   move: MoveBarAction | null;
   onSelectAllMatching: () => void | Promise<void>;
@@ -313,18 +350,24 @@ function buildSelectionBarActions(args: {
   onInvertSelection: () => void;
   onRun: (action: BulkSelectionAction) => void | Promise<void>;
 }): (MaybeAction | MaybeAction[])[] {
-  const waitReason = args.running
-    ? ACTION_RUNNING
-    : args.loading
-      ? RECORDS_LOADING
-      : undefined;
+  const waitReason =
+    args.running || args.progressing
+      ? ACTION_RUNNING
+      : args.loading
+        ? RECORDS_LOADING
+        : undefined;
   const disabled = (id: SelectionBarActionId) =>
     args.running === id ? undefined : waitReason;
+  const offersMainActions = !args.progressing && !args.selectionUnavailable;
   const mainAction = (
     action: BulkSelectionAction,
     label: string,
+    statuses?: readonly RawItem['meta']['status'][],
   ): MaybeAction =>
-    args.evaluations[action].eligibleCount > 0 && {
+    offersMainActions &&
+    args.evaluations[action].items.some(
+      (item) => !statuses || statuses.includes(item.meta.status),
+    ) && {
       id: action,
       tone: 'primary',
       label,
@@ -342,11 +385,13 @@ function buildSelectionBarActions(args: {
   };
 
   return [
-    [
+    !args.progressing && [
       args.selectAllMatchingCount !== null && {
         id: 'selectAllMatching',
         label: {
-          id: 'allRecords.selectAllMatching',
+          id: args.filtered
+            ? 'allRecords.selectAllMatching'
+            : 'allRecords.selectAll',
           values: { count: args.selectAllMatchingCount },
         },
         disabled: disabled('selectAllMatching'),
@@ -358,42 +403,47 @@ function buildSelectionBarActions(args: {
         disabled: disabled('toggleSelection'),
         onClick: args.onToggleSelection,
       },
-      {
+      !args.showingSelected && {
         id: 'invert',
         label: 'Invert selection',
         disabled: disabled('invert'),
         onClick: args.onInvertSelection,
       },
     ],
-    mainAction('publish', 'Publish'),
-    mainAction('unpublish', 'Unpublish'),
-    move,
+    mainAction('publish', 'Publish', ['draft', 'updated']),
+    mainAction('unpublish', 'Unpublish', ['published', 'updated']),
+    offersMainActions && move,
     mainAction('delete', 'Delete'),
   ];
 }
 
-function bulkProgressText(
+// The status of the bar while an action runs: "Publishing 457 records…",
+// then "Publishing 200 of 457 records…" between the batches. What failed
+// waits for the toast at the end.
+function progressText(
   locale: string,
-  progress: BulkOperationProgress,
-): string {
-  const n = (value: number) => formatNumber(locale, value);
-  return `${n(progress.completed)} of ${n(progress.requested)} processed; ${n(progress.successful)} succeeded; ${n(progress.failed)} failed`;
-}
-
-function collectionProgressText(
-  locale: string,
-  count: number,
+  verb: string,
+  done: number,
   total: number,
 ): string {
-  return `Selecting ${formatNumber(locale, count)} of ${formatNumber(locale, total)} records…`;
+  const count =
+    done > 0 && done < total
+      ? `${formatNumber(locale, done)} of ${formatRecordCount(locale, total)}`
+      : formatRecordCount(locale, total);
+  return `${verb} ${count}…`;
 }
 
 function reportBulkResult(
   ctx: RenderPageCtx,
   result: BulkOperationResult,
+  options: { stageName?: string; leftOut: number; alreadyThere?: number },
 ): void {
-  const message = bulkResultMessage(result);
-  if (result.failed > 0 || result.unprocessed) {
+  const message = bulkResultMessage(result, {
+    ...options,
+    locale: ctx.ui.locale,
+  });
+  // A stop that the user asked for is not a failure
+  if (result.failed > 0 || (result.unprocessed && !result.cancelled)) {
     ctx.alert(message);
   } else {
     ctx.notice(message);
@@ -408,8 +458,8 @@ async function confirmSelectionAction(
   const label = operationLabel(action);
   return Boolean(
     await ctx.openConfirm({
-      title: `${label} selected records`,
-      content: confirmationContent(action, evaluation),
+      title: `${label} ${confirmationCount(ctx.ui.locale, evaluation)}?`,
+      content: confirmationContent(ctx.ui.locale, action, evaluation),
       choices: [
         {
           label,
@@ -422,16 +472,29 @@ async function confirmSelectionAction(
   );
 }
 
+// The question before a move that the role can't make for some selected
+// records. It also counts the ones already in the stage, if any.
 async function confirmMoveToStage(
   ctx: RenderPageCtx,
   destination: WorkflowStageOption,
   evaluation: SelectionEvaluation,
 ): Promise<boolean> {
+  const locale = ctx.ui.locale;
+  const alreadyThere = evaluation.excludedCount - evaluation.deniedCount;
+  const denied = `Your role can't move the other ${formatNumber(
+    locale,
+    evaluation.deniedCount,
+  )}.`;
   return Boolean(
     await ctx.openConfirm({
-      title: `Move selected records to ${destination.name}`,
-      content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
-      choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
+      title: `Move ${confirmationCount(locale, evaluation)} to “${destination.name}”?`,
+      content:
+        alreadyThere > 0
+          ? `${formatNumber(locale, alreadyThere)} ${
+              alreadyThere === 1 ? 'is' : 'are'
+            } already in this stage. ${denied}`
+          : denied,
+      choices: [{ label: 'Move', value: true, intent: 'positive' }],
       cancel: { label: 'Cancel', value: false },
     }),
   );
@@ -496,7 +559,7 @@ async function loadCurrentSelection(
   ).flat();
   const byId = new Map(loaded.map((item) => [item.id, item]));
   const missingMessage =
-    'Some selected records no longer exist or cannot be read. Refresh the view and select the records again.';
+    'Some selected records were deleted, or you can no longer read them. Clear the selection, then select the records again.';
   const selectedIds = new Set(selected.map((item) => item.id));
   if (
     [...byId.keys()].some((id) => !selectedIds.has(id)) ||
@@ -540,7 +603,7 @@ function checkMoveDestination(args: {
   });
   if (availableIds.length === 0) {
     return {
-      message: 'None of the selected records can be moved to another stage.',
+      message: "Your role can't move these records to another stage.",
       refresh: false,
     };
   }
@@ -593,7 +656,11 @@ const NO_ITEMS: readonly RawItem[] = [];
 // its last page. Before the first load of the selection there are none, thus
 // the area shows its loading state.
 function useSelectionRows(args: {
-  page: { items: readonly RawItem[]; loading: boolean; error: string | null };
+  page: {
+    items: readonly RawItem[];
+    loading: boolean;
+    error: LoadError | null;
+  };
   loadStarted: boolean;
   selectedById: ReadonlyMap<string, RawItem>;
 }): readonly RawItem[] {
@@ -662,8 +729,8 @@ function PageBlankSlate({ state }: { state: PageState }) {
           titleLevel={1}
           error
           icon={<CircleExclamationIcon />}
-          title="No access to your API token"
-          description="This page needs the “Current user access token” permission. Turn it on in the plugin settings, then reload the page."
+          title="This page needs a permission"
+          description="An administrator can turn on “Current user access token” in the settings of this plugin. Then reload the page."
         />
       );
     case 'no-models':
@@ -673,7 +740,7 @@ function PageBlankSlate({ state }: { state: PageState }) {
           titleLevel={1}
           icon={<TableListIcon />}
           title="All records"
-          description="This environment has no models yet. The records of every model show here."
+          description="The records of every model show here. There are no models yet."
         />
       );
     case 'empty':
@@ -683,7 +750,7 @@ function PageBlankSlate({ state }: { state: PageState }) {
           titleLevel={1}
           icon={<TableListIcon />}
           title="All records"
-          description="There are no records to show yet. The records of every model that you can read show here."
+          description="The records that you can read, from every model, show here once they are created."
         />
       );
     default:
@@ -695,23 +762,22 @@ function PageBlankSlate({ state }: { state: PageState }) {
 
 // What the area of the list shows: the error of the last load, the "no
 // results" of the filters, the spinner while a page has no rows yet, a page
-// of the selection whose records can't be shown, or the table (with the
-// relevance notice while searching)
+// of the selection whose records can't be shown, or the table
 function RecordsArea({
   state,
   error,
   waitingForRows,
   selectionUnavailable,
-  searching,
   onRetry,
+  onClearSelection,
   children,
 }: {
   state: PageState;
-  error: string | null;
+  error: LoadError | null;
   waitingForRows: boolean;
   selectionUnavailable: boolean;
-  searching: boolean;
   onRetry: () => void;
+  onClearSelection: () => void;
   children: ReactNode;
 }) {
   if (state === 'failed') {
@@ -721,8 +787,12 @@ function RecordsArea({
         error
         icon={<CircleExclamationIcon />}
         title="Couldn't load the records"
-        code={error ?? undefined}
-        description="Check your connection, then try again."
+        code={error?.code}
+        description={
+          error?.connection
+            ? 'Check your connection, then try again.'
+            : 'Try again in a moment.'
+        }
         actions={
           <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
         }
@@ -735,7 +805,7 @@ function RecordsArea({
   if (waitingForRows) {
     return <BlankSlate placement="area" loading title="Loading the records" />;
   }
-  // The selection bar stays: the user can hide the selection or clear it
+  // The selection bar stays: the user can also hide the selection
   if (selectionUnavailable) {
     return (
       <BlankSlate
@@ -743,27 +813,18 @@ function RecordsArea({
         icon={<TableListIcon />}
         title="The selected records can't be shown"
         description="They were deleted, or you can no longer read them."
+        actions={<Button label="Clear selection" onClick={onClearSelection} />}
       />
     );
   }
-  return (
-    <>
-      {searching && (
-        <Callout>
-          While you search, the records are sorted by relevance.
-        </Callout>
-      )}
-      {children}
-    </>
-  );
+  return children;
 }
 
 type FilterOption = { label: string; value: string };
 
 // The title bar, and the search row under it while the filter is open
 function RecordsTitleBar({
-  count,
-  locale,
+  subtitle,
   busy,
   modelOptions,
   queryState,
@@ -774,9 +835,8 @@ function RecordsTitleBar({
   filter,
   onFilter,
 }: {
-  /** The number of listed records, once the first load ends */
-  count: number | null;
-  locale: string;
+  /** What the list shows ("138 records"), once the first load ends */
+  subtitle: string | null;
   busy: boolean;
   modelOptions: readonly FilterOption[];
   queryState: QueryState;
@@ -794,16 +854,15 @@ function RecordsTitleBar({
           level={1}
           help={
             <Toolbar.Help>
-              Every record of this environment, from all its models, in one
-              table. Select records to publish, unpublish, delete or move them
-              to a workflow stage.
+              Every record of every model, in one table. Select records to
+              publish, unpublish, delete or move them to a workflow stage.
             </Toolbar.Help>
           }
         >
           All records
         </Toolbar.Title>
-        <Toolbar.Subtitle hidden={count === null}>
-          {count !== null && formatRecordCount(locale, count)}
+        <Toolbar.Subtitle hidden={subtitle === null}>
+          {subtitle}
         </Toolbar.Subtitle>
         <Toolbar.Spinner show={busy} />
         <Toolbar.Space />
@@ -886,27 +945,20 @@ function hasPagination(totalEntries: number, perPage: number): boolean {
   return totalEntries > Math.min(perPage, ...PER_PAGE_OPTIONS);
 }
 
-// The progress of a long action, after the actions of the selection bar
-function ActionProgress({
-  text,
-  onCancel,
-}: {
-  text: string;
-  onCancel: () => void;
-}) {
-  return (
-    <div className={s.progress}>
-      <span role="status" aria-live="polite">
-        {text}
-      </span>
-      <Button
-        tone="overlay"
-        size="micro"
-        label="Cancel remaining"
-        onClick={onCancel}
-      />
-    </div>
-  );
+// The count of the title bar: what the list shows now
+function subtitleText(args: {
+  locale: string;
+  count: number;
+  showingSelected: boolean;
+  searching: boolean;
+}): string {
+  // The bar counts the selection: the title bar says only what the list is
+  if (args.showingSelected) return 'Only the selected records';
+  const records = formatRecordCount(args.locale, args.count);
+  // A search sorts the records by relevance: the headers do not sort
+  return args.searching && args.count > 0
+    ? `${records}, best matches first`
+    : records;
 }
 
 // "Select all matching records" shows outside "Show selection", when the
@@ -968,6 +1020,8 @@ function moveBarActionOf(args: {
 // What the state of the page locks, and what it shows, now
 function pageFlagsOf(args: {
   busyAction: BusyAction | null;
+  /** The selection bar shows how far the running action got */
+  progressing: boolean;
   collectingSelection: boolean;
   orderingPending: boolean;
   displayLoading: boolean;
@@ -1006,10 +1060,14 @@ function pageFlagsOf(args: {
       (args.collectingSelection ? ('selectAllMatching' as const) : null),
     barLoading: args.orderingPending || args.displayLoading,
     // The spinner of the title bar shows on reloads, never before the first
-    // load, and while a bulk action saves
+    // load. A bulk action shows its progress in the selection bar; before
+    // that, Publish, Unpublish and Delete spin their button, but the Move to
+    // stage menu has no spinner while it reads the selected records again.
     titleBusy:
       args.firstLoadDone &&
-      (listLoading || args.presentationsLoading || args.busyAction !== null),
+      (listLoading ||
+        args.presentationsLoading ||
+        (args.busyAction === 'move' && !args.progressing)),
     waitingForRows: args.rowCount === 0 && listLoading,
     // None of the selected records of this page loaded: they were deleted, or
     // the user can no longer read them. They stay selected.
@@ -1017,15 +1075,6 @@ function pageFlagsOf(args: {
       args.showingSelected && !listLoading && args.rowCount === 0,
     searching: args.query !== '' && !args.showingSelected,
   };
-}
-
-function progressTextOf(
-  locale: string,
-  collectionProgress: string | null,
-  bulkProgress: BulkOperationProgress | null,
-): string | null {
-  if (collectionProgress) return collectionProgress;
-  return bulkProgress ? bulkProgressText(locale, bulkProgress) : null;
 }
 
 const PANE_STATES: ReadonlySet<PageState> = new Set([
@@ -1056,11 +1105,11 @@ export default function AllRecordsPage({ ctx }: Props) {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [selectionPage, setSelectionPage] = useState(0);
   const [collectingSelection, setCollectingSelection] = useState(false);
-  const [collectionProgress, setCollectionProgress] = useState<string | null>(
-    null,
-  );
-  const [bulkProgress, setBulkProgress] =
-    useState<BulkOperationProgress | null>(null);
+  // While an action runs: the status of the bar, and whether it can stop
+  const [progress, setProgress] = useState<{
+    text: string;
+    stoppable: boolean;
+  } | null>(null);
   const actionController = useRef<AbortController | null>(null);
   const actionLocked = useRef(false);
 
@@ -1152,8 +1201,7 @@ export default function AllRecordsPage({ ctx }: Props) {
     actionLocked.current = false;
     setBusyAction(null);
     setCollectingSelection(false);
-    setCollectionProgress(null);
-    setBulkProgress(null);
+    setProgress(null);
     selectionFilterScope.current = null;
     setSelectedById(new Map());
     setShowingSelected(false);
@@ -1338,7 +1386,6 @@ export default function AllRecordsPage({ ctx }: Props) {
           imageUrl: presentation?.image?.url,
           model: model?.name ?? 'Unknown model',
           status,
-          statusLabel: presentation?.statusLabel ?? ITEM_STATUS_LABEL[status],
           updatedAt: isoDate(item.meta.updated_at),
           createdAt: isoDate(item.meta.created_at),
           publishedValid: validity.publishedValid,
@@ -1425,6 +1472,11 @@ export default function AllRecordsPage({ ctx }: Props) {
     setSelectionPage(0);
   }
 
+  // The cross of the bar: not while an action runs
+  function deselectAll(): void {
+    if (!actionLocked.current) clearSelection();
+  }
+
   function noteSelectionFilter(): void {
     if (selectedById.size === 0) {
       selectionFilterScope.current = matchingFilterScope;
@@ -1452,8 +1504,7 @@ export default function AllRecordsPage({ ctx }: Props) {
     actionLocked.current = false;
     setBusyAction(null);
     setCollectingSelection(false);
-    setCollectionProgress(null);
-    setBulkProgress(null);
+    setProgress(null);
   }
 
   function isActive(controller: AbortController): boolean {
@@ -1478,10 +1529,23 @@ export default function AllRecordsPage({ ctx }: Props) {
     if (!isActive(controller)) return;
     reportActionError(
       controller,
-      error instanceof Error
-        ? error.message
-        : 'Could not select matching records.',
+      `Couldn't select the records. ${errorAdvice(error)}`,
     );
+  }
+
+  function showProgress(
+    controller: AbortController,
+    verb: string,
+    done: number,
+    total: number,
+    stoppable: boolean,
+  ): void {
+    if (isActive(controller)) {
+      setProgress({
+        text: progressText(ctx.ui.locale, verb, done, total),
+        stoppable,
+      });
+    }
   }
 
   async function selectAllMatching(): Promise<void> {
@@ -1489,18 +1553,13 @@ export default function AllRecordsPage({ ctx }: Props) {
     const controller = beginAction();
     if (!controller) return;
     setCollectingSelection(true);
-    setCollectionProgress('Selecting matching records…');
+    showProgress(controller, 'Selecting', 0, itemsPage.totalCount, true);
     try {
       const selection = await collectSelection(client, queryState, {
         signal: controller.signal,
         modelIds: models.map((model) => model.id),
-        onProgress: (count, total) => {
-          if (actionController.current === controller) {
-            setCollectionProgress(
-              collectionProgressText(ctx.ui.locale, count, total),
-            );
-          }
-        },
+        onProgress: (count, total) =>
+          showProgress(controller, 'Selecting', count, total, true),
       });
       if (isActive(controller)) {
         selectionFilterScope.current = matchingFilterScope;
@@ -1514,13 +1573,31 @@ export default function AllRecordsPage({ ctx }: Props) {
     }
   }
 
-  function operationProgress(controller: AbortController, count: number) {
-    return count > MAX_BULK_ITEMS
-      ? (progress: BulkOperationProgress) => {
-          if (actionController.current === controller)
-            setBulkProgress(progress);
-        }
-      : undefined;
+  // The progress of a running action in the bar. An action of more than
+  // one batch can stop between two batches.
+  function operationProgress(controller: AbortController, action: BusyAction) {
+    return (progress: BulkOperationProgress) =>
+      showProgress(
+        controller,
+        PROGRESS_VERB[action],
+        progress.completed,
+        progress.requested,
+        progress.requested > MAX_BULK_ITEMS,
+      );
+  }
+
+  // The question shows with nothing running behind it: the action looks
+  // busy again only after the yes
+  async function ask(
+    controller: AbortController,
+    action: BusyAction,
+    question: () => Promise<boolean>,
+  ): Promise<boolean> {
+    setBusyAction(null);
+    const confirmed = await question();
+    if (!confirmed || controller.signal.aborted) return false;
+    setBusyAction(action);
+    return true;
   }
 
   async function selectionForAction(
@@ -1540,13 +1617,23 @@ export default function AllRecordsPage({ ctx }: Props) {
     currentSelection: SelectionInput,
     result: BulkOperationResult,
     submittedIds: readonly string[],
+    /** A move: the stage, and how many records were already in it */
+    move?: { stageId: string; stageName: string; alreadyThere: number },
   ): Promise<void> {
     if (actionController.current !== controller) return;
-    reportBulkResult(ctx, result);
-    const retained = new Set(result.remainingItemIds);
     const submitted = new Set(submittedIds);
+    reportBulkResult(ctx, result, {
+      stageName: move?.stageName,
+      alreadyThere: move?.alreadyThere,
+      leftOut: currentSelection.items.length - submitted.size,
+    });
+    const retained = new Set(result.remainingItemIds);
+    // What the action did leaves the selection, as the records already in
+    // the stage of a move: they need nothing more
     const remaining = currentSelection.items.filter(
-      (item) => !submitted.has(item.id) || retained.has(item.id),
+      (item) =>
+        !(move && item.meta.stage === move.stageId) &&
+        (!submitted.has(item.id) || retained.has(item.id)),
     );
     selectionFilterScope.current = null;
     setSelectedById(new Map(remaining.map((item) => [item.id, item])));
@@ -1567,16 +1654,14 @@ export default function AllRecordsPage({ ctx }: Props) {
       }
     } catch (error) {
       if (!isActive(controller)) return;
-      ctx.alert(
-        `The action finished, but the remaining selection could not be refreshed: ${
-          error instanceof Error ? error.message : 'The request failed.'
-        }`,
-      );
+      ctx.alert(`The selection couldn't be updated. ${errorAdvice(error)}`);
     }
   }
 
   async function runSelectionAction(
     action: BulkSelectionAction,
+    /** Runs when the question shows: the button stops its spinner */
+    asking: () => void,
   ): Promise<void> {
     if (!client) {
       ctx.alert(
@@ -1594,8 +1679,11 @@ export default function AllRecordsPage({ ctx }: Props) {
         reportActionError(controller, evaluation.disabledReason);
         return;
       }
-      const confirmed = await confirmSelectionAction(ctx, action, evaluation);
-      if (!confirmed || controller.signal.aborted) return;
+      const confirmed = await ask(controller, action, () => {
+        asking();
+        return confirmSelectionAction(ctx, action, evaluation);
+      });
+      if (!confirmed) return;
       setShowingSelected(false);
       const result = await executeBulkOperation(
         client,
@@ -1605,7 +1693,7 @@ export default function AllRecordsPage({ ctx }: Props) {
         },
         {
           signal: controller.signal,
-          onProgress: operationProgress(controller, evaluation.itemIds.length),
+          onProgress: operationProgress(controller, action),
         },
       );
       await applyBulkResult(
@@ -1659,8 +1747,17 @@ export default function AllRecordsPage({ ctx }: Props) {
         return;
       }
       const { evaluation } = check;
-      const confirmed = await confirmMoveToStage(ctx, destination, evaluation);
-      if (!confirmed || controller.signal.aborted) return;
+      // The pick of a stage applies at once. The question shows only when
+      // the role can't move some selected records to it: the ones already in
+      // the stage need nothing.
+      if (
+        evaluation.deniedCount > 0 &&
+        !(await ask(controller, 'move', () =>
+          confirmMoveToStage(ctx, destination, evaluation),
+        ))
+      ) {
+        return;
+      }
       const result = await executeBulkOperation(
         client,
         {
@@ -1670,7 +1767,7 @@ export default function AllRecordsPage({ ctx }: Props) {
         },
         {
           signal: controller.signal,
-          onProgress: operationProgress(controller, evaluation.itemIds.length),
+          onProgress: operationProgress(controller, 'move'),
         },
       );
       await applyBulkResult(
@@ -1678,6 +1775,11 @@ export default function AllRecordsPage({ ctx }: Props) {
         currentSelection,
         result,
         evaluation.itemIds,
+        {
+          stageId: destination.id,
+          stageName: destination.name,
+          alreadyThere: evaluation.excludedCount - evaluation.deniedCount,
+        },
       );
     } catch (error) {
       reportActionError(controller, bulkErrorMessage('move_to_stage', error));
@@ -1686,9 +1788,12 @@ export default function AllRecordsPage({ ctx }: Props) {
     }
   }
 
-  function cancelRemaining(): void {
+  // Stops what is left: the batch that the server got still ends
+  function stop(): void {
     actionController.current?.abort();
-    setCollectionProgress((value) => (value ? 'Cancelling…' : null));
+    setProgress(
+      (current) => current && { text: 'Stopping…', stoppable: false },
+    );
   }
 
   const filter = useFilterToolbar({
@@ -1713,6 +1818,7 @@ export default function AllRecordsPage({ ctx }: Props) {
   });
   const flags = pageFlagsOf({
     busyAction,
+    progressing: progress !== null,
     collectingSelection,
     orderingPending: ordering.pending,
     displayLoading,
@@ -1728,16 +1834,16 @@ export default function AllRecordsPage({ ctx }: Props) {
     selectedItems.length,
     loadedTotalCount ?? 0,
   );
-  const progressText = progressTextOf(
-    ctx.ui.locale,
-    collectionProgress,
-    bulkProgress,
-  );
 
   const selectionActions = buildSelectionBarActions({
     running: flags.barRunning,
+    progressing: progress !== null,
     loading: flags.barLoading,
     showingSelected,
+    selectionUnavailable: flags.selectionUnavailable,
+    filtered: Boolean(
+      queryState.query || queryState.model || queryState.status,
+    ),
     selectAllMatchingCount: selectAllMatchingCountOf({
       showingSelected,
       totalCount: itemsPage.totalCount,
@@ -1772,7 +1878,13 @@ export default function AllRecordsPage({ ctx }: Props) {
       setSelectedById((current) => invertPageSelection(current, displayItems));
     },
     onRun: (action) =>
-      actionLocked.current ? undefined : runSelectionAction(action),
+      actionLocked.current
+        ? undefined
+        : // The button spins while the selection reloads, until the question
+          // shows
+          new Promise<void>((asking) => {
+            void runSelectionAction(action, asking).finally(asking);
+          }),
   });
 
   const table = (
@@ -1784,6 +1896,7 @@ export default function AllRecordsPage({ ctx }: Props) {
       sortableColumnIds={ordering.columnIds}
       sortingEnabled={!queryState.query}
       selectionEnabled={flags.selectionEnabled}
+      selectAllHidden={progress !== null}
       onColumnsChange={setColumns}
       onOrderByChange={(orderBy) => {
         if (!flags.tableDisabled) updateLocation({ orderBy });
@@ -1818,8 +1931,17 @@ export default function AllRecordsPage({ ctx }: Props) {
       ariaLabel="Records"
       header={
         <RecordsTitleBar
-          count={loadedTotalCount === undefined ? null : listedCount}
-          locale={ctx.ui.locale}
+          subtitle={
+            // The list shows none of the selected records: no count
+            loadedTotalCount === undefined || flags.selectionUnavailable
+              ? null
+              : subtitleText({
+                  locale: ctx.ui.locale,
+                  count: listedCount,
+                  showingSelected,
+                  searching: flags.searching,
+                })
+          }
           busy={flags.titleBusy}
           modelOptions={modelFilterOptions}
           queryState={queryState}
@@ -1864,17 +1986,21 @@ export default function AllRecordsPage({ ctx }: Props) {
       slideUpToolbar={
         <MultipleSelectionActionBar
           open={selectedItems.length > 0}
-          status={{
-            id: 'allRecords.selected',
-            values: { count: selectedItems.length },
-          }}
-          onDeselectAll={() => {
-            if (!actionLocked.current) clearSelection();
-          }}
+          status={
+            progress ? (
+              <span role="status">{progress.text}</span>
+            ) : (
+              {
+                id: 'allRecords.selected',
+                values: { count: selectedItems.length },
+              }
+            )
+          }
+          onDeselectAll={deselectAll}
           actions={selectionActions}
           extra={
-            progressText && (
-              <ActionProgress text={progressText} onCancel={cancelRemaining} />
+            progress?.stoppable && (
+              <Button tone="overlay" size="micro" label="Stop" onClick={stop} />
             )
           }
         />
@@ -1886,8 +2012,8 @@ export default function AllRecordsPage({ ctx }: Props) {
           error={displayError}
           waitingForRows={flags.waitingForRows}
           selectionUnavailable={flags.selectionUnavailable}
-          searching={flags.searching}
           onRetry={refresh}
+          onClearSelection={deselectAll}
         >
           {table}
         </RecordsArea>

@@ -1,4 +1,5 @@
 import IdText from 'datocms-react-ui/IdText';
+import ItemStatus from 'datocms-react-ui/ItemStatus';
 import {
   Table,
   type TableColumn,
@@ -6,20 +7,12 @@ import {
   type TableSort,
   type TableSortState,
 } from 'datocms-react-ui/Table';
-import StatusCell, {
-  type StatusCellProps,
-} from 'datocms-react-ui/Table/cells/StatusCell';
+import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
 import TimeCell from 'datocms-react-ui/Table/cells/TimeCell';
 import { ItemValidityTriangles } from 'datocms-react-ui/ValidityTriangles';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { DEFAULT_ORDER_BY } from '../data/query';
-import type {
-  ColumnId,
-  ColumnSetting,
-  OrderBy,
-  PublicationStatus,
-} from '../types';
-import s from './AllRecordsTable.module.css';
+import type { ColumnId, ColumnSetting, OrderBy } from '../types';
 import {
   ALL_COLUMN_IDS,
   fromTableLayout,
@@ -42,16 +35,21 @@ export type AllRecordsTableProps = {
   onOrderByChange: (orderBy: OrderBy | null) => void;
   /** False while the records load or an action runs */
   selectionEnabled: boolean;
+  /**
+   * True while a bulk action runs, which can take minutes: the header has no
+   * checkbox meanwhile, since the table can't show it as disabled
+   */
+  selectAllHidden: boolean;
   onToggleRow: (id: string) => void;
   onTogglePage: (selected: boolean) => void;
 };
 
-// The CMS colors of the record dots: green, amber and red
-const STATUS_TONE: Record<PublicationStatus, StatusCellProps['tone']> = {
-  published: 'success',
-  updated: 'warning',
-  draft: 'danger',
-};
+// The narrowest Status and date columns that show "Unpublished changes" and
+// a full date: on a narrow table, the columns of a lower priority hide first
+const STATUS_MIN_WIDTH = 180;
+const DATE_MIN_WIDTH = 170;
+
+function ignore(): void {}
 
 function orderDirection(orderBy: OrderBy | null, columnId: ColumnId) {
   if (!orderBy?.startsWith(`${columnId}_`)) return null;
@@ -87,34 +85,29 @@ function tableSort(orderBy: OrderBy | null): TableSort | null {
   return null;
 }
 
-function TitleCell({ row }: { row: TableRecord }) {
-  return (
-    <span className={s.titleCell}>
-      {row.imageUrl && (
-        <img alt="" className={s.thumbnail} src={row.imageUrl} />
-      )}
-      <span className={s.titleText}>{row.title}</span>
-      <ItemValidityTriangles
-        publishedValid={row.publishedValid}
-        currentValid={row.currentValid}
-        draftModeActive={row.draftModeActive}
-      />
-    </span>
-  );
-}
-
 function buildColumns(
   sortableColumnIds: ReadonlySet<ColumnId>,
 ): TableColumn<TableRecord>[] {
   return [
     {
       name: '_preview',
-      label: 'Preview',
+      label: 'Title',
       sortable: sortableColumnIds.has('_preview'),
-      truncate: false,
       minWidth: 200,
       priority: 5,
-      renderCell: (row) => <TitleCell row={row} />,
+      renderCell: (row) => (
+        <EntityCell
+          title={row.title}
+          image={row.imageUrl && <img src={row.imageUrl} alt="" />}
+          afterTitle={
+            <ItemValidityTriangles
+              publishedValid={row.publishedValid}
+              currentValid={row.currentValid}
+              draftModeActive={row.draftModeActive}
+            />
+          }
+        />
+      ),
     },
     {
       name: '_model',
@@ -127,17 +120,15 @@ function buildColumns(
       name: '_status',
       label: 'Status',
       sortable: sortableColumnIds.has('_status'),
+      minWidth: STATUS_MIN_WIDTH,
       priority: 4,
-      renderCell: (row) => (
-        <StatusCell tone={STATUS_TONE[row.status]}>
-          {row.statusLabel}
-        </StatusCell>
-      ),
+      renderCell: (row) => <ItemStatus status={row.status} display="label" />,
     },
     {
       name: '_updated_at',
       label: 'Last update',
       sortable: sortableColumnIds.has('_updated_at'),
+      minWidth: DATE_MIN_WIDTH,
       priority: 2,
       renderCell: (row) =>
         row.updatedAt ? <TimeCell value={row.updatedAt} /> : null,
@@ -146,6 +137,7 @@ function buildColumns(
       name: '_created_at',
       label: 'Created',
       sortable: sortableColumnIds.has('_created_at'),
+      minWidth: DATE_MIN_WIDTH,
       priority: 1,
       renderCell: (row) =>
         row.createdAt ? <TimeCell value={row.createdAt} /> : null,
@@ -193,6 +185,7 @@ export function AllRecordsTable({
   sortingEnabled,
   onOrderByChange,
   selectionEnabled,
+  selectAllHidden,
   onToggleRow,
   onTogglePage,
 }: AllRecordsTableProps) {
@@ -240,10 +233,15 @@ export function AllRecordsTable({
       sort={sort}
       checkboxes={{ alwaysVisible: selectedIds.size > 0 }}
     >
+      {/* The checkbox stays while the records reload, thus the labels of
+          the header stay above their columns; it does nothing meanwhile */}
       <Table.Header
         selectAll={
-          selectionEnabled && rows.length > 0
-            ? { selected: allPageSelected, onChange: onTogglePage }
+          rows.length > 0 && !selectAllHidden
+            ? {
+                selected: allPageSelected,
+                onChange: selectionEnabled ? onTogglePage : ignore,
+              }
             : undefined
         }
       />

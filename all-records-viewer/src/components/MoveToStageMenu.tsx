@@ -2,7 +2,7 @@ import type { Client } from '@datocms/cma-client-browser';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
-import { normalizeError } from '../data/errors';
+import { loadError } from '../data/errors';
 import { CircleExclamationIcon } from '../icons';
 import { availableMoveDestinationIds } from '../operations/candidates';
 import type { SelectionInput } from '../operations/types';
@@ -29,10 +29,10 @@ export type MoveToStageMenuProps = {
 type WorkflowState =
   | { status: 'loading' }
   | { status: 'loaded'; stages: readonly WorkflowStageOption[] }
-  | { status: 'failed'; message: string };
+  | { status: 'failed'; code: string };
 
 // The menu renders this part only while it is open, thus each opening loads
-// the current stages of the workflow.
+// the current stages of the workflow. "Try again" loads them again.
 function StageOptions({
   client,
   workflowId,
@@ -42,8 +42,10 @@ function StageOptions({
   const [workflow, setWorkflow] = useState<WorkflowState>({
     status: 'loading',
   });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    void attempt;
     let active = true;
     setWorkflow({ status: 'loading' });
     client.workflows.find(workflowId).then(
@@ -59,16 +61,13 @@ function StageOptions({
       },
       (error: unknown) => {
         if (!active) return;
-        setWorkflow({
-          status: 'failed',
-          message: normalizeError(error).message,
-        });
+        setWorkflow({ status: 'failed', code: loadError(error).code });
       },
     );
     return () => {
       active = false;
     };
-  }, [client, workflowId]);
+  }, [attempt, client, workflowId]);
 
   const stageIds = useMemo(
     () =>
@@ -101,26 +100,36 @@ function StageOptions({
     );
   }
 
+  // "Try again" is an option of the menu: the arrow keys and Enter reach it,
+  // and the menu stays open while the stages load again
   if (workflow.status === 'failed') {
     return (
-      <div className="Dropdown__menu__body">
-        <BlankSlate
-          placement="inline"
-          small
-          error
-          icon={<CircleExclamationIcon />}
-          title="Couldn't load the stages"
-          code={workflow.message}
-          description="Close the menu, then open it again."
-        />
-      </div>
+      <>
+        <div className="Dropdown__menu__body">
+          <BlankSlate
+            placement="inline"
+            small
+            error
+            icon={<CircleExclamationIcon />}
+            title="Couldn't load the stages"
+            code={workflow.code}
+          />
+        </div>
+        <Dropdown.Separator />
+        <Dropdown.Option
+          closeMenuOnClick={false}
+          onPick={() => setAttempt((value) => value + 1)}
+        >
+          Try again
+        </Dropdown.Option>
+      </>
     );
   }
 
   if (destinations.length === 0) {
     return (
       <Dropdown.Text>
-        None of the selected records can move to another stage.
+        Your role can't move these records to another stage.
       </Dropdown.Text>
     );
   }

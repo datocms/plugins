@@ -130,10 +130,12 @@ describe('evaluateSelection', () => {
     });
 
     expect(result.itemIds).toEqual(['article-1']);
+    // The product is refused by the role; the immediate model has no draft
     expect(result).toMatchObject({
       selectedCount: 3,
       eligibleCount: 1,
       excludedCount: 2,
+      deniedCount: 1,
       submittedCount: 1,
       overflowCount: 0,
       disabledReason: null,
@@ -187,6 +189,7 @@ describe('evaluateSelection', () => {
 
     expect(result.itemIds).toEqual(['allowed']);
     expect(result.excludedCount).toBe(2);
+    expect(result.deniedCount).toBe(2);
   });
 
   it('handles action=all, workflow targeting, environment, and negative rules', () => {
@@ -335,5 +338,27 @@ describe('workflow movement', () => {
         destinationStageId: 'review',
       }).itemIds,
     ).toEqual(['one']);
+  });
+
+  it('tells the records already in the stage from the ones the role refuses', () => {
+    const article = model('article', { workflowId: 'editorial' });
+    const result = evaluateMoveSelection({
+      items: [
+        item('to-move', article.id, { stage: 'draft' }),
+        item('already-there', article.id, { stage: 'review' }),
+        item('refused', article.id, { stage: 'published' }),
+      ],
+      modelsById: modelMap(article),
+      permissions: permissionContext([
+        rule('move_to_stage', { workflow: 'editorial', on_stage: 'draft' }),
+      ]),
+      destinationStageId: 'review',
+    });
+
+    expect(result).toMatchObject({
+      itemIds: ['to-move'],
+      excludedCount: 2,
+      deniedCount: 1,
+    });
   });
 });

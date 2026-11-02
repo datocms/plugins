@@ -1,6 +1,6 @@
 import type { Client } from '@datocms/cma-client-browser';
 import { useEffect, useState } from 'react';
-import { normalizeError } from '../data/errors';
+import { type LoadError, loadError } from '../data/errors';
 import { loadItemsById } from '../data/loadById';
 import type { RawItem } from '../types';
 
@@ -13,7 +13,7 @@ export function useSelectedItemsPage(
   const [state, setState] = useState<{
     items: readonly RawItem[];
     loading: boolean;
-    error: string | null;
+    error: LoadError | null;
   }>({ items: [], loading: false, error: null });
   useEffect(() => {
     void refreshVersion;
@@ -45,7 +45,7 @@ export function useSelectedItemsPage(
           setState({
             items: [],
             loading: false,
-            error: normalizeError(error).message,
+            error: loadError(error),
           });
       });
     return () => {

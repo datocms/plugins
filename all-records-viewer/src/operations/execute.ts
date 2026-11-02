@@ -50,7 +50,7 @@ type BatchOutcome = {
   successful: number;
   failed: number;
   stop: boolean;
-  error?: string;
+  error?: unknown;
 };
 
 async function runBatch(
@@ -82,7 +82,7 @@ async function runBatch(
         status < 400 ||
         status >= 500 ||
         [401, 403, 429].includes(status),
-      error: error instanceof Error ? error.message : 'The request failed.',
+      error,
     };
   }
 }

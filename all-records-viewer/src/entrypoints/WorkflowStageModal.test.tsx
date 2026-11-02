@@ -95,17 +95,12 @@ describe('WorkflowStageModal', () => {
     expect(resolve).toHaveBeenCalledWith('stage-0');
   });
 
-  it('offers only Cancel without valid stages', () => {
+  it('says why there is nothing to pick without valid stages', () => {
     const { ctx } = buildCtx({ count: 2, stages: [{ id: 1 }] });
     render(<WorkflowStageModal ctx={ctx} />);
 
     expect(screen.getByText('No stages to move to')).toBeInTheDocument();
-    expect(
-      screen.getByText('Close this dialog, then choose Move to stage again.'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Continue' }),
-    ).not.toBeInTheDocument();
+    // No footer: the cross of the dialog closes it
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

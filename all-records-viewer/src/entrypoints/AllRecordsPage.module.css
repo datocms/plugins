@@ -4,13 +4,3 @@
   position: absolute;
   inset: 0;
 }
-
-/* The progress of a long action, in the selection bar: the text keeps the
-   ink of the bar, before the button that stops what is left */
-.progress {
-  display: inline-flex;
-  gap: var(--spacing-s);
-  align-items: center;
-  padding-left: var(--spacing-s);
-  white-space: nowrap;
-}

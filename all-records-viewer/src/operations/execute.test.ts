@@ -154,7 +154,7 @@ describe('bulk result helpers', () => {
     };
     expect(isPartialBulkResult(partial)).toBe(true);
     expect(bulkResultMessage(partial)).toBe(
-      '1 record unpublished; 1 record failed.',
+      "1 record unpublished. 1 couldn't be unpublished: open the selected records to see why.",
     );
     expect(
       bulkResultMessage({
@@ -163,12 +163,131 @@ describe('bulk result helpers', () => {
         successful: 0,
         failed: 2,
       }),
-    ).toBe('No records were deleted; 2 records failed.');
-    expect(bulkErrorMessage('move_to_stage', new Error('Network error'))).toBe(
-      'Could not move the selected records: Network error',
+    ).toBe('No records were deleted: open the selected records to see why.');
+    expect(
+      bulkErrorMessage('move_to_stage', new TypeError('Failed to fetch')),
+    ).toBe(
+      "Couldn't move the selected records. Check your connection, then try again.",
     );
     expect(bulkErrorMessage('delete', null)).toBe(
-      'Could not delete the selected records.',
+      "Couldn't delete the selected records. Try again in a moment.",
+    );
+  });
+
+  it('names the stage and the records that stay selected', () => {
+    expect(
+      bulkResultMessage(
+        {
+          operation: 'move_to_stage',
+          requested: 11,
+          successful: 11,
+          failed: 0,
+        },
+        { stageName: 'Approved', leftOut: 3 },
+      ),
+    ).toBe('11 records moved to “Approved”. The other 3 are still selected.');
+    expect(
+      bulkResultMessage(
+        {
+          operation: 'move_to_stage',
+          requested: 11,
+          successful: 11,
+          failed: 0,
+        },
+        { stageName: 'Approved', leftOut: 3, alreadyThere: 3 },
+      ),
+    ).toBe('11 records moved to “Approved”. The other 3 were already there.');
+    expect(
+      bulkResultMessage(
+        {
+          operation: 'move_to_stage',
+          requested: 11,
+          successful: 11,
+          failed: 0,
+        },
+        { stageName: 'Approved', leftOut: 3, alreadyThere: 2 },
+      ),
+    ).toBe(
+      '11 records moved to “Approved”. 2 were already there. The other 1 is still selected.',
+    );
+    expect(
+      bulkResultMessage({
+        operation: 'publish',
+        requested: 457,
+        successful: 200,
+        failed: 0,
+        unprocessed: 257,
+        cancelled: true,
+      }),
+    ).toBe('Stopped. 200 records published. The other 257 are still selected.');
+  });
+
+  it('writes the counts with the separators of the locale of the user', () => {
+    const result = {
+      operation: 'publish' as const,
+      requested: 2500,
+      successful: 1500,
+      failed: 0,
+      unprocessed: 1000,
+      cancelled: true,
+    };
+    expect(bulkResultMessage(result, { locale: 'en' })).toBe(
+      'Stopped. 1,500 records published. The other 1,000 are still selected.',
+    );
+    expect(bulkResultMessage(result, { locale: 'de' })).toBe(
+      'Stopped. 1.500 records published. The other 1.000 are still selected.',
+    );
+  });
+
+  it('says why a request was refused, never the request itself', () => {
+    const refused = Object.assign(
+      new Error('POST https://site-api.datocms.com/items/bulk/publish: 403'),
+      {
+        response: {
+          status: 403,
+          body: {
+            data: [
+              {
+                id: 'err',
+                type: 'api_error',
+                attributes: { code: 'INSUFFICIENT_PERMISSIONS', details: {} },
+              },
+            ],
+          },
+        },
+      },
+    );
+    expect(
+      bulkResultMessage({
+        operation: 'publish',
+        requested: 2,
+        successful: 0,
+        failed: 2,
+        error: refused,
+      }),
+    ).toBe("No records were published. Your role can't publish them.");
+    expect(bulkErrorMessage('delete', refused)).toBe(
+      "Your role can't delete the selected records.",
+    );
+  });
+
+  it('asks to try again only when trying again can help', () => {
+    const failedWith = (status: number) =>
+      bulkResultMessage({
+        operation: 'publish',
+        requested: 2,
+        successful: 0,
+        failed: 2,
+        error: { response: { status } },
+      });
+    expect(failedWith(500)).toBe(
+      'No records were published. Try again in a moment.',
+    );
+    expect(failedWith(429)).toBe(
+      'No records were published. Try again in a moment.',
+    );
+    expect(failedWith(422)).toBe(
+      'No records were published: open the selected records to see why.',
     );
   });
 });
@@ -208,7 +327,9 @@ describe('batched bulk execution', () => {
       remainingItemIds: ids.slice(200),
     });
     expect(mocks.rawBulkDestroy).toHaveBeenCalledTimes(2);
-    expect(bulkResultMessage(result)).toContain('connection lost');
+    expect(bulkResultMessage(result)).toBe(
+      "200 records deleted. 250 couldn't be deleted. Check your connection, then try again.",
+    );
   });
 
   it('awaits an accepted job before honoring cancellation of remaining batches', async () => {
@@ -249,7 +370,7 @@ describe('batched bulk execution', () => {
     expect(mocks.rawBulkPublish).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves the first confirmed rejection detail across later successful batches', async () => {
+  it('keeps going after a batch that the server rejects, and says where to see why', async () => {
     const mocks = mockClient();
     mocks.rawBulkPublish
       .mockRejectedValueOnce(
@@ -263,6 +384,11 @@ describe('batched bulk execution', () => {
       itemIds: Array.from({ length: 201 }, (_, index) => `id-${index}`),
     });
     expect(result).toMatchObject({ successful: 1, failed: 200 });
-    expect(bulkResultMessage(result)).toContain('Records no longer exist.');
+    expect(result.error).toBeInstanceOf(Error);
+    expect(mocks.rawBulkPublish).toHaveBeenCalledTimes(2);
+    // Trying again won't publish records that the server turned down
+    expect(bulkResultMessage(result)).toBe(
+      "1 record published. 200 couldn't be published: open the selected records to see why.",
+    );
   });
 });

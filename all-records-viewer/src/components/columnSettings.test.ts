@@ -11,12 +11,12 @@ import {
 } from './columnSettings';
 
 describe('column settings', () => {
-  it('uses the CMS-compatible default widths', () => {
+  it('gives the status and the date room by default', () => {
     expect(DEFAULT_COLUMN_SETTINGS).toEqual([
-      { id: '_preview', width: 0.45 },
-      { id: '_model', width: 0.2 },
-      { id: '_status', width: 0.15 },
-      { id: '_updated_at', width: 0.2 },
+      { id: '_preview', width: 0.38 },
+      { id: '_model', width: 0.16 },
+      { id: '_status', width: 0.21 },
+      { id: '_updated_at', width: 0.25 },
     ]);
   });
 

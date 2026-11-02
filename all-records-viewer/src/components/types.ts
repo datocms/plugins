@@ -9,7 +9,6 @@ export type TableRecord = {
   /** The name of the model */
   model: string;
   status: PublicationStatus;
-  statusLabel: string;
   /** ISO 8601 */
   updatedAt: string | null;
   /** ISO 8601 */
