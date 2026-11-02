@@ -28,3 +28,7 @@
   grid-template-columns: minmax(0, 1fr);
   row-gap: var(--spacing-l);
 }
+
+.loadMore {
+  align-self: center;
+}

@@ -17,7 +17,7 @@
     "@types/react-dom": "^19.2.3",
     "blurhash": "^2.0.5",
     "datocms-plugin-sdk": "^2.6.0-next.1",
-    "datocms-react-ui": "^3.1.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.2",
     "react": "^19.2.4",
     "react-blurhash": "^0.3.0",
     "react-dom": "^19.2.4",

@@ -4,9 +4,9 @@ import Button from 'datocms-react-ui/Button';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
+import { useDebouncedValue } from 'datocms-react-ui/hooks/useDebouncedValue';
 import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
 import Search from 'datocms-react-ui/Search';
-import Spinner from 'datocms-react-ui/Spinner';
 import StringInput from 'datocms-react-ui/StringInput';
 import {
   type FormEvent,
@@ -103,8 +103,9 @@ const AssetBrowser = () => {
   const [color, setColor] = useState<Color>('all');
   const [page, setPage] = useState(1);
   const [photos, setPhotos] = useState<Response | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [failed, setFailed] = useState(false);
+  const debouncedQuery = useDebouncedValue(query, 1000);
 
   const handleSelect = useCallback(
     async (photo: Photo) => {
@@ -147,8 +148,6 @@ const AssetBrowser = () => {
 
   const performRequest = useCallback(
     async (page: number): Promise<Response> => {
-      setLoading(true);
-
       const request = query
         ? unsplash.search.getPhotos({
             query,
@@ -169,8 +168,6 @@ const AssetBrowser = () => {
         throw new Error();
       }
 
-      setLoading(false);
-
       return response.response;
     },
     [orientation, color, query],
@@ -183,38 +180,42 @@ const AssetBrowser = () => {
       }
       setPage(1);
       setFailed(false);
+      setSearching(true);
       try {
         setPhotos(await performRequest(1));
       } catch {
-        setLoading(false);
+        // A retry or a new search then shows the loading state, not the
+        // photos from before the error
+        setPhotos(undefined);
         setFailed(true);
+      } finally {
+        setSearching(false);
       }
     },
     [performRequest],
   );
 
+  // A failed page keeps the photos on screen, and the next click asks for the
+  // same page again
   const handleLoadMore = useCallback(async () => {
-    setPage((page) => page + 1);
     try {
       const result = await performRequest(page + 1);
       setPhotos((oldPhotos) => ({
         results: [...(oldPhotos?.results || []), ...result.results],
         total: result.total,
       }));
-      setLoading(false);
+      setPage(page + 1);
     } catch {
-      setLoading(false);
-      setFailed(true);
+      ctx.alert('More photos could not be loaded. Try again in a moment.');
     }
-  }, [page, performRequest]);
+  }, [ctx, page, performRequest]);
 
+  // The search runs one second after the last key, and right away when a
+  // filter changes; the Search button and Enter run it at once
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handleSearch changes on each key
   useEffect(() => {
-    const timer = setTimeout(() => {
-      handleSearch();
-    }, 400);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSearch]);
+    handleSearch();
+  }, [debouncedQuery, orientation, color]);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const rect = useElementLayout(rootRef);
@@ -234,7 +235,7 @@ const AssetBrowser = () => {
         error
         icon={<CircleExclamationIcon />}
         title="The photos could not be loaded"
-        description="Search again in a moment."
+        actions={<Button label="Try again" onClick={() => handleSearch()} />}
       />
     );
   } else if (!photos || !colsData) {
@@ -244,8 +245,11 @@ const AssetBrowser = () => {
       <BlankSlate
         placement="section"
         icon={<SearchIcon />}
-        title="No results"
-        description="No photo matches this search. Try other words or filters."
+        title={
+          orientation !== 'all' || color !== 'all'
+            ? 'No photos match this search and filters'
+            : 'No photos match this search'
+        }
       />
     );
   } else {
@@ -277,9 +281,16 @@ const AssetBrowser = () => {
           <StringInput
             className={s.query}
             aria-label="Search photos"
-            placeholder="Mountains at sunset"
+            placeholder="Search free photos on Unsplash"
             value={query}
-            onChange={(next) => setQuery(next ?? '')}
+            onChange={(next) => {
+              setQuery(next ?? '');
+              // The popular photos take no filters
+              if (!next) {
+                setOrientation('all');
+                setColor('all');
+              }
+            }}
           />
           <Dropdown
             triggerComponent={ButtonTrigger}
@@ -320,7 +331,7 @@ const AssetBrowser = () => {
                 : { reason: 'Type a search to filter by color.' }
             }
           >
-            <Dropdown.Menu>
+            <Dropdown.Menu contextualSearch={false}>
               {colorOptions.map((option) => (
                 <Dropdown.Option
                   key={option.value}
@@ -332,22 +343,22 @@ const AssetBrowser = () => {
               ))}
             </Dropdown.Menu>
           </Dropdown>
-          {loading && photos && <Spinner inline label="Loading photos" />}
           <Button
             submit
             tone="primary"
             size="field"
             icon={SearchIcon}
             label="Search"
+            busy={searching && photos !== undefined}
           />
         </form>
       </Search>
       {results}
       {photos && !failed && photos.total !== photos.results.length && (
         <Button
+          className={s.loadMore}
           label="Load more"
-          expand
-          disabled={loading}
+          disabled={searching}
           onClick={handleLoadMore}
         />
       )}
