@@ -53,7 +53,7 @@ function pick(combobox: HTMLElement, optionName: string) {
 
 /** The text of the chosen values of the target locales select. */
 function pickedTargets(): string {
-  const combobox = screen.getByRole('combobox', { name: /^Target locales/ });
+  const combobox = screen.getByRole('combobox', { name: /^Translate into/ });
   const values = combobox.closest('[class*="value-container"]');
   if (!values) throw new Error('No value container for the target locales');
   return values.textContent ?? '';
@@ -104,13 +104,11 @@ describe('AIBulkTranslationsPage selects', () => {
       'Articles article',
     );
     // The model's field picker loads its fields, all picked by default.
-    expect(
-      await screen.findByText('1 of 1 translatable field selected'),
-    ).toBeTruthy();
+    expect(await screen.findByText('All fields')).toBeTruthy();
     expect(pickedTargets()).toBe('All other locales');
 
     // A specific target replaces "All other locales".
-    const targets = screen.getByRole('combobox', { name: /^Target locales/ });
+    const targets = screen.getByRole('combobox', { name: /^Translate into/ });
     pick(targets, 'Italian [it]');
     expect(screen.queryByText('All other locales')).toBeNull();
     expect(pickedTargets()).toMatch(/^Italian/);
@@ -118,7 +116,7 @@ describe('AIBulkTranslationsPage selects', () => {
     // Picking the target as the source drops it from the targets, which
     // fall back to "All other locales".
     pick(
-      screen.getByRole('combobox', { name: /^Source locale/ }),
+      screen.getByRole('combobox', { name: /^Translate from/ }),
       'Italian [it]',
     );
     await waitFor(() =>

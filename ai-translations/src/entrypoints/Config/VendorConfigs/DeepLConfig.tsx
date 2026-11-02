@@ -19,7 +19,6 @@ import SelectInput from 'datocms-react-ui/SelectInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { RESPONSE_PREVIEW_MAX_LENGTH } from '../../../utils/constants';
 import { useBusyFocus } from '../../../utils/retryFocus';
 import {
   DEEPL_DEFAULT_IGNORE_TAGS,
@@ -118,7 +117,7 @@ function getDeepLErrorMessage(
   const errorMessage = body.message.toLowerCase();
 
   if (errorMessage.includes('wrong endpoint')) {
-    return 'This key needs the DeepL Free endpoint. Turn on “Use DeepL Free endpoint”, then test the key again.';
+    return 'This key is for the other DeepL plan. Change “Key from the DeepL Free plan”, then test the key again.';
   }
 
   if (errorMessage.includes('forbidden')) {
@@ -143,14 +142,8 @@ function getTranslationSample(
   return (translations[0] as Record<string, unknown>).text as string;
 }
 
-/** The start of the toast of a passed test; the message follows it. */
-const API_KEY_OK = 'API key OK.';
-
-function getSuccessMessage(sample: string): string {
-  if (!sample) return 'DeepL responded with an empty text.';
-
-  return `DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`;
-}
+/** The toast of a passed test. */
+const API_KEY_OK = 'The DeepL API key works.';
 
 function validateDeepLTestResponse(
   response: DeepLTestResponse,
@@ -181,7 +174,7 @@ function validateDeepLTestResponse(
     };
   }
 
-  return { status: 'success', message: getSuccessMessage(sample) };
+  return { status: 'success', message: API_KEY_OK };
 }
 
 async function testDeepLApiKey(
@@ -213,16 +206,6 @@ export interface DeepLConfigProps {
   deeplGlossaryPairs: string;
   setDeeplGlossaryPairs: (value: string) => void;
   siteLocales: ApiTypes.Site['locales'];
-  openConfirm: (options: {
-    title: string;
-    content: string;
-    choices: {
-      label: string;
-      value: unknown;
-      intent?: 'positive' | 'negative';
-    }[];
-    cancel: { label: string; value: unknown };
-  }) => Promise<unknown>;
   /** Shows a toast (`ctx.notice`): the result of a passed test. */
   notice: (message: string) => unknown;
 }
@@ -253,7 +236,6 @@ export default function DeepLConfig({
   deeplGlossaryPairs,
   setDeeplGlossaryPairs,
   siteLocales,
-  openConfirm,
   notice,
 }: DeepLConfigProps) {
   const [showTags, setShowTags] = useState(false);
@@ -278,7 +260,7 @@ export default function DeepLConfig({
   );
 
   // Shared glossary data for both the default glossary dropdown and per-pair editor
-  const { glossaries, fetchStatus, fetchError } = useDeepLGlossaries(
+  const { glossaries, fetchStatus } = useDeepLGlossaries(
     deeplApiKey,
     deeplUseFree,
   );
@@ -296,10 +278,11 @@ export default function DeepLConfig({
     fetchStatus === 'success' &&
     !glossaries.some((g) => g.glossary_id === deeplGlossaryId);
 
-  // The fetch error shows once, on the default glossary
+  // The fetch error shows once, on the default glossary, in plain words: the
+  // key is the usual cause.
   const defaultGlossaryError =
-    fetchStatus === 'error' && fetchError
-      ? fetchError
+    fetchStatus === 'error'
+      ? "Couldn't load the glossaries. Check the API key above."
       : isDefaultGlossaryUnknown
         ? "This glossary isn't in your DeepL account."
         : undefined;
@@ -370,7 +353,7 @@ export default function DeepLConfig({
       setIsTesting(false);
     }
     if (result.status === 'success') {
-      notice(`${API_KEY_OK} ${result.message}`);
+      notice(result.message);
     } else {
       setTestError(result.message);
     }
@@ -405,19 +388,19 @@ export default function DeepLConfig({
           hint={
             autoToggledFree && deeplUseFree
               ? 'Turned on because the key ends in :fx, like the keys of the Free plan.'
-              : 'Needed for the keys of the DeepL Free plan (api-free.deepl.com).'
+              : 'Turns on by itself for keys that end in :fx.'
           }
         >
           <SwitchInput
             name="deeplUseFree"
-            label="Use DeepL Free endpoint"
+            label="Key from the DeepL Free plan"
             value={deeplUseFree}
             onChange={handleUseFreeChange}
           />
         </FieldWrapper>
         <FieldWrapper
           label="Formality"
-          hint="Target languages without formality support keep DeepL's default tone."
+          hint="Some languages have no formal and informal forms. They keep DeepL's usual tone."
         >
           <RadioGroupInput
             name="deeplFormality"
@@ -444,7 +427,7 @@ export default function DeepLConfig({
         </FieldWrapper>
         <FieldWrapper
           label="Ignored tags"
-          hint={`Comma-separated tag names. The content of these tags isn't translated. Default: ${tagListHint(DEEPL_DEFAULT_IGNORE_TAGS)}.`}
+          hint={`The content of these tags isn't translated. Default: ${tagListHint(DEEPL_DEFAULT_IGNORE_TAGS)}.`}
         >
           <StringInput
             code
@@ -456,7 +439,7 @@ export default function DeepLConfig({
         </FieldWrapper>
         <FieldWrapper
           label="Non-splitting tags"
-          hint={`Comma-separated tag names. These tags never split a sentence. Default: ${tagListHint(DEEPL_DEFAULT_NON_SPLITTING_TAGS)}.`}
+          hint={`These tags never split a sentence. Default: ${tagListHint(DEEPL_DEFAULT_NON_SPLITTING_TAGS)}.`}
         >
           <StringInput
             code
@@ -468,7 +451,7 @@ export default function DeepLConfig({
         </FieldWrapper>
         <FieldWrapper
           label="Splitting tags"
-          hint="Comma-separated tag names. These tags always start a new sentence."
+          hint="These tags always start a new sentence."
         >
           <StringInput
             code
@@ -514,7 +497,6 @@ export default function DeepLConfig({
           siteLocales={siteLocales}
           glossaries={glossaries}
           fetchStatus={fetchStatus}
-          openConfirm={openConfirm}
         />
       </Page.Group>
     </>

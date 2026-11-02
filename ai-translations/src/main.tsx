@@ -33,7 +33,6 @@ import AITranslationsPickerModal, {
   PICKER_DISMISSED,
 } from './components/AITranslationsPickerModal';
 import {
-  confirmTranslationTitle,
   PICKER_MODAL_TITLE,
   PROGRESS_MODAL_TITLE,
   reportTranslationOutcome,
@@ -41,7 +40,6 @@ import {
 import InvalidModalParameters from './components/InvalidModalParameters';
 import TranslationConfirmModal, {
   isTranslationConfirmModalParams,
-  type TranslationConfirmModalParams,
 } from './components/TranslationConfirmModal';
 import TranslationProgressModal from './components/TranslationProgressModal';
 import ConfigScreen, {
@@ -53,14 +51,13 @@ import {
   translateFieldTypes,
 } from './entrypoints/Config/configConstants';
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
-import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { defaultPrompt } from './prompts/DefaultPrompt';
 import {
   buildLocaleSettingsPath,
   buildPluginSettingsPath,
 } from './utils/dashboardPaths';
-import { formatLocaleWithCode } from './utils/localeUtils';
+import { formatList, formatLocaleWithCode } from './utils/localeUtils';
 import { createLogger } from './utils/logging/Logger';
 import { renderFrame } from './utils/render';
 // Import refactored utility functions and types
@@ -78,7 +75,6 @@ import {
   isFieldTranslatable,
 } from './utils/translation/SharedFieldUtils';
 import TranslateField from './utils/translation/TranslateField';
-import { startTranslationProgressToasts } from './utils/translation/TranslationProgressToasts';
 import { isEmptyStructuredText } from './utils/translation/utils';
 
 /**
@@ -120,28 +116,89 @@ function isTranslationProgressModalParams(
   );
 }
 
+/** A locale of "Translate into → All other locales" that failed, and why. */
+type LocaleFailure = { locale: string; message: string };
+
 /**
- * The closing notice of "Translate to → All locales". A locale that failed
- * has had its own alert, so the notice counts only the translated locales,
- * and there is none when no locale was translated.
+ * The fields that "Translate into → All other locales" is translating, by
+ * record and field path.
+ */
+const fieldsTranslatingIntoAll = new Set<string>();
+
+/**
+ * Runs "Translate into → All other locales" on the field of `ctx`, one run
+ * at a time per field. The locales are translated one after the other, out
+ * of view, so a short notice says that the run started. A second click while
+ * it runs gets the notice again and starts nothing: a second run would pay
+ * the vendor twice and race the writes of the first one.
  *
  * @param ctx - The ctx of the field dropdown action.
- * @param translatedLocales - The locales that were translated.
- * @param targetLocales - The locales that the action translated to.
+ * @param run - Translates the field and reports how it went.
  */
-function noticeTranslatedLocales(
+async function translateIntoAllOnce(
   ctx: ExecuteFieldDropdownActionCtx,
-  translatedLocales: number,
+  run: () => Promise<void>,
+): Promise<void> {
+  void ctx.customToast({
+    type: 'notice',
+    message: `Translating “${ctx.field.attributes.label}” into all other locales…`,
+    dismissAfterTimeout: 3000,
+    dismissOnPageChange: true,
+  });
+  const runKey = `${ctx.item?.id ?? 'new'}/${ctx.fieldPath}`;
+  if (fieldsTranslatingIntoAll.has(runKey)) return;
+  fieldsTranslatingIntoAll.add(runKey);
+  try {
+    await run();
+  } finally {
+    fieldsTranslatingIntoAll.delete(runKey);
+  }
+}
+
+/**
+ * The text of a translation error for the user (the vendor in plain words).
+ *
+ * @param error - The caught error.
+ * @param pluginParams - The plugin settings, for the vendor.
+ */
+function errorText(error: unknown, pluginParams: ctxParamsType): string {
+  const provider = getProvider(pluginParams);
+  return formatErrorForUser(normalizeProviderError(error, provider.vendor));
+}
+
+/**
+ * The one toast at the end of "Translate into → All other locales": a notice
+ * when every locale was translated, else one alert that says how many were,
+ * which failed and why, and what to do with the others.
+ *
+ * @param ctx - The ctx of the field dropdown action.
+ * @param failures - The locales that failed, with their causes.
+ * @param targetLocales - The number of locales that the action translated to.
+ */
+function reportAllLocales(
+  ctx: ExecuteFieldDropdownActionCtx,
+  failures: LocaleFailure[],
   targetLocales: number,
 ) {
   const label = ctx.field.attributes.label;
-  if (translatedLocales === targetLocales) {
-    ctx.notice(`Translated "${label}" to all locales`);
-  } else if (translatedLocales > 0) {
+  if (failures.length === 0) {
     ctx.notice(
-      `Translated "${label}" to ${translatedLocales} of ${targetLocales} locales`,
+      `Translated “${label}” into all other locales. Review them, then save the record.`,
     );
+    return;
   }
+  const translated = targetLocales - failures.length;
+  const lead =
+    translated > 0
+      ? `Translated “${label}” into ${translated} of ${targetLocales} locales.`
+      : `Couldn't translate “${label}”.`;
+  const failed = `${formatList(failures.map((failure) => formatLocaleWithCode(failure.locale)))} failed.`;
+  const causes = [...new Set(failures.map((failure) => failure.message))];
+  const next =
+    translated > 0
+      ? ['Review the other translations, then save the record.']
+      : [];
+  ctx.alert([lead, failed, ...causes, ...next].join(' '));
 }
 
 /**
@@ -169,10 +226,17 @@ function getPluginParams(ctx: {
 }
 
 /**
+ * What a role that can't open the plugin settings reads when no vendor is
+ * set up: the vendor is a setting it never sees, so only who to ask.
+ */
+const EDITOR_NOT_SET_UP_MESSAGE =
+  "Translation isn't set up yet. Ask an admin to set it up.";
+
+/**
  * Checks, before the records picker opens, the problems the picker can't fix:
- * no AI vendor set up, or an environment with a single locale. Each shows a
+ * no AI vendor set up, or a project with a single locale. Each shows a
  * non-blocking warning toast (with a way forward when the user has the
- * permission for it) and returns false.
+ * permission for it, else who to ask) and returns false.
  *
  * @param ctx - Items dropdown action context.
  * @param pluginParams - Plugin configuration parameters.
@@ -188,10 +252,12 @@ function preflightItemsTranslation(
     void ctx
       .customToast({
         type: 'warning',
-        message: "Couldn't translate the records, as no AI vendor is set up!",
+        message: permissions.can_edit_schema
+          ? 'No AI vendor is set up yet.'
+          : EDITOR_NOT_SET_UP_MESSAGE,
         dismissOnPageChange: true,
         ...(permissions.can_edit_schema
-          ? { cta: { label: 'Go to plugin settings', value: 'settings' } }
+          ? { cta: { label: 'Open plugin settings', value: 'settings' } }
           : {}),
       })
       .then((choice) => {
@@ -206,8 +272,9 @@ function preflightItemsTranslation(
     void ctx
       .customToast({
         type: 'warning',
-        message:
-          "Couldn't translate the records, as this environment has only one locale!",
+        message: permissions.can_edit_environment
+          ? "This project has only one locale, so there's nothing to translate into."
+          : "This project has only one locale, so there's nothing to translate into. Ask an admin to add another one.",
         dismissOnPageChange: true,
         ...(permissions.can_edit_environment
           ? { cta: { label: 'Go to locale settings', value: 'locales' } }
@@ -395,7 +462,6 @@ connect({
         return renderFrame(ctx, <AIBulkTranslationsPage ctx={ctx} />, {
           noAutoResizer: true,
           page: true,
-          settingsPath: buildPluginSettingsPath(ctx),
         });
       default:
         return null;
@@ -433,7 +499,7 @@ connect({
     return [
       {
         id: 'aiTranslationsPicker',
-        label: 'AI Translate these records',
+        label: 'Translate with AI',
         icon: 'language',
       },
     ];
@@ -446,9 +512,26 @@ connect({
   ) {
     if (actionId !== 'aiTranslationsPicker') return;
     if (!ctx.currentUserAccessToken) {
-      ctx.alert(
-        "Couldn't translate the records, as the plugin can't access your API token!",
-      );
+      // The access to the token is a setting of the plugin: a role that can
+      // open the settings gets the way there, the others who to ask.
+      const canOpenSettings =
+        ctx.currentRole.meta.final_permissions.can_edit_schema;
+      void ctx
+        .customToast({
+          type: 'alert',
+          message: canOpenSettings
+            ? "The plugin can't access your API token."
+            : "The plugin can't access your API token. Ask an admin to allow it in the plugin settings.",
+          dismissOnPageChange: true,
+          ...(canOpenSettings
+            ? { cta: { label: 'Open plugin settings', value: 'settings' } }
+            : {}),
+        })
+        .then((choice) => {
+          if (choice === 'settings') {
+            void ctx.navigateTo(buildPluginSettingsPath(ctx));
+          }
+        });
       return;
     }
     const accessToken = ctx.currentUserAccessToken;
@@ -466,6 +549,7 @@ connect({
       ),
     );
 
+    const modelIdOf = (item: Item) => item.relationships?.item_type?.data?.id;
     const models: AITranslationsPickerModalParams['models'] =
       uniqueItemTypeIds.map((id) => {
         const itemType = ctx.itemTypes[id];
@@ -473,11 +557,16 @@ connect({
           value: id,
           label: itemType?.attributes?.name ?? `Model ${id}`,
           code: itemType?.attributes?.api_key ?? id,
+          recordCount: new Set(
+            items
+              .filter((item) => modelIdOf(item) === id)
+              .map((item) => item.id),
+          ).size,
         };
       });
 
     if (models.length === 0) {
-      ctx.alert("Couldn't find the models of the selected records!");
+      ctx.alert("Couldn't find the models of the selected records.");
       return;
     }
 
@@ -487,6 +576,22 @@ connect({
 
     try {
       const itemIds = [...new Set(items.map((item) => item.id))];
+      // The records of the models excluded in the settings are skipped: the
+      // picker says so, and the run leaves them out.
+      const excludedModelIds = new Set(
+        models
+          .filter((model) =>
+            pluginParams.modelsToBeExcludedFromThisPlugin?.includes(model.code),
+          )
+          .map((model) => model.value),
+      );
+      const runItemIds = [
+        ...new Set(
+          items
+            .filter((item) => !excludedModelIds.has(modelIdOf(item) ?? ''))
+            .map((item) => item.id),
+        ),
+      ];
       const pickerParams: AITranslationsPickerModalParams = {
         itemIds,
         models,
@@ -508,46 +613,24 @@ connect({
 
       // The picker resolves with `config` only when the user clicked
       // "Translate"; a dismissal resolves without it and bails out here.
+      // Its submit is the commitment: it says what the run does to the
+      // records, so no second dialog asks again.
       if (!result?.config) return;
 
-      const {
-        fromLocale,
-        toLocales,
-        selectedFieldsByModel,
-        models: modelsBreakdown,
-      } = result.config;
+      const { fromLocale, toLocales, selectedFieldsByModel } = result.config;
 
-      // Review modal (record count + locales + per-model field breakdown)
-      // instead of the native text-only openConfirm. Opened here in
-      // the dropdown handler's non-modal context — NOT inside the picker modal,
-      // which would nest modal-on-modal and hang behind the current modal.
-      // Both dialogs draw a footer with Cancel at the left, so the host
-      // draws no cross (`closeDisabled`): their own buttons, and the Escape
-      // they register, are the ways out. A cross on the progress dialog
-      // would close it mid-run and abort the job without its summary.
-      const confirmParams: TranslationConfirmModalParams = {
-        recordCount: itemIds.length,
-        fromLocale,
-        toLocales,
-        models: modelsBreakdown,
-      };
-      const confirmed = await ctx.openModal({
-        id: 'translationConfirmModal',
-        title: confirmTranslationTitle(itemIds.length, ctx.ui.locale),
-        width: 'm',
-        closeDisabled: true,
-        parameters: confirmParams as unknown as Record<string, unknown>,
-      });
-
-      if (confirmed !== true) return;
-
+      // Opened here in the dropdown handler's non-modal context, NOT inside
+      // the picker modal, which would nest modal-on-modal and hang behind the
+      // current modal. It draws a footer, so the host draws no cross
+      // (`closeDisabled`): a cross would close it mid-run and abort the job
+      // without its summary.
       const progressParams: TranslationProgressModalParams = {
-        totalRecords: itemIds.length,
+        totalRecords: runItemIds.length,
         fromLocale,
         toLocales,
         accessToken,
         pluginParams,
-        itemIds,
+        itemIds: runItemIds,
         selectedFieldsByModel,
       };
 
@@ -562,7 +645,7 @@ connect({
       reportTranslationOutcome(
         ctx,
         progressResult,
-        itemIds.length,
+        runItemIds.length,
         ctx.ui.locale,
       );
     } catch (error) {
@@ -604,22 +687,14 @@ connect({
 
   /**
    * Renders the sidebar panel. TranslateSidebar shows its own states for a
-   * vendor that isn't set up and for a record with a single locale. The
-   * error fallback links the plugin settings only for the roles that can
-   * open them.
+   * vendor that isn't set up and for a record with a single locale.
    */
   renderItemFormSidebarPanel(
     sidebarPanelId,
     ctx: RenderItemFormSidebarPanelCtx,
   ) {
     if (sidebarPanelId === 'datoGptTranslateSidebar') {
-      const canOpenSettings =
-        ctx.currentRole.meta.final_permissions.can_edit_schema;
-      return renderFrame(ctx, <TranslateSidebar ctx={ctx} />, {
-        settingsPath: canOpenSettings
-          ? buildPluginSettingsPath(ctx)
-          : undefined,
-      });
+      return renderFrame(ctx, <TranslateSidebar ctx={ctx} />);
     }
     return null;
   },
@@ -630,12 +705,15 @@ connect({
   fieldDropdownActions(_field, ctx: FieldDropdownActionsCtx) {
     const pluginParams = getPluginParams(ctx);
 
-    // If plugin is not properly configured, show an error action
+    // If the plugin is not configured, a role that can open its settings
+    // gets the way there; the others read that translation isn't set up.
     if (!isProviderConfigured(pluginParams)) {
       return [
         {
           id: 'not-configured',
-          label: 'Set up an AI vendor',
+          label: ctx.currentRole.meta.final_permissions.can_edit_schema
+            ? 'Set up an AI vendor'
+            : "Translation isn't set up",
           icon: 'language',
         } as DropdownAction,
       ];
@@ -668,12 +746,12 @@ connect({
     // "Translate to" actions
     if (isLocalized && hasOtherLocales && hasFieldValueInThisLocale) {
       actionsArray.push({
-        label: 'Translate to',
+        label: 'Translate into',
         icon: 'language',
         actions: [
           {
             id: 'translateTo.allLocales',
-            label: 'All locales',
+            label: 'All other locales',
             icon: 'globe',
           },
           ...availableLocales
@@ -687,20 +765,25 @@ connect({
       } as DropdownActionGroup);
     }
 
-    // "Translate from" actions
-    if (isLocalized && hasOtherLocales) {
+    // "Translate from" actions: only the other locales that have a value,
+    // since an empty one has nothing to translate from.
+    const sourceLocales =
+      isLocalized && hasOtherLocales
+        ? availableLocales.filter(
+            (locale) =>
+              locale !== ctx.locale &&
+              resolveHasFieldValueInLocale(fieldType, fieldValue, locale),
+          )
+        : [];
+    if (sourceLocales.length > 0) {
       actionsArray.push({
         label: 'Translate from',
         icon: 'language',
-        actions: [
-          ...availableLocales
-            .filter((locale) => locale !== ctx.locale)
-            .map((locale) => ({
-              id: `translateFrom.${locale}`,
-              label: formatLocaleWithCode(locale),
-              icon: 'globe',
-            })),
-        ],
+        actions: sourceLocales.map((locale) => ({
+          id: `translateFrom.${locale}`,
+          label: formatLocaleWithCode(locale),
+          icon: 'globe',
+        })),
       } as DropdownActionGroup);
     }
 
@@ -709,8 +792,11 @@ connect({
 
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     switch (fieldExtensionId) {
+      // A legacy add-on that some fields still carry. Nothing loads there,
+      // so it shows nothing, in a frame with no height.
       case 'loadingAddon':
-        return renderFrame(ctx, <LoadingAddon />);
+        void ctx.setHeight(0);
+        return renderFrame(ctx, null, { noAutoResizer: true });
       default:
         // Unknown field extension; return null to let SDK handle gracefully
         return null;
@@ -737,19 +823,18 @@ connect({
       const fieldValueInSourceLocale = (
         fieldValue as Record<string, unknown>
       )?.[locale];
+      const label = ctx.field.attributes.label;
+      // The menu lists only the locales with a value: this guards a value
+      // that was emptied after the menu was built.
       if (!fieldValueInSourceLocale) {
-        ctx.alert(`The field is empty in ${formatLocaleWithCode(locale)}.`);
+        ctx.alert(
+          `“${label}” is empty in ${formatLocaleWithCode(locale)}, so there's nothing to translate from.`,
+        );
         return;
       }
 
-      const progressMessage = `Translating "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}...`;
-      const stopProgressToasts = startTranslationProgressToasts(
-        (toast) => ctx.customToast(toast),
-        (elapsedSeconds) =>
-          elapsedSeconds === 0
-            ? progressMessage
-            : `${progressMessage} Still working (${elapsedSeconds}s elapsed).`,
-      );
+      // No start toast: the value shows in the field in a moment, and the
+      // toast at the end says how it went.
       let translatedValue: unknown;
       try {
         translatedValue = await TranslateField(
@@ -762,12 +847,10 @@ connect({
           ctx.environment,
         );
       } catch (e) {
-        const provider = getProvider(pluginParams);
-        const normalized = normalizeProviderError(e, provider.vendor);
-        ctx.alert(formatErrorForUser(normalized));
+        ctx.alert(
+          `Couldn't translate “${label}” from ${formatLocaleWithCode(locale)}. ${errorText(e, pluginParams)}`,
+        );
         return;
-      } finally {
-        stopProgressToasts();
       }
 
       // Persist translated value into the current editing locale
@@ -796,7 +879,7 @@ connect({
       });
       await ctx.setFieldValue(fieldPath, translatedValue);
       ctx.notice(
-        `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
+        `Translated “${label}” from ${formatLocaleWithCode(locale)}. Review it, then save the record.`,
       );
 
       return;
@@ -806,19 +889,10 @@ connect({
     if (actionId.startsWith('translateTo')) {
       const locale = actionId.split('.')[1];
 
-      // Translate to all locales
+      // Translate to all the other locales
       if (locale === 'allLocales') {
         const targetLocales = locales.filter((loc) => loc !== ctx.locale);
-        let processedLocales = 0;
-        let translatedLocales = 0;
-        const progressMessage = `Translating "${ctx.field.attributes.label}" to all locales...`;
-        const stopProgressToasts = startTranslationProgressToasts(
-          (toast) => ctx.customToast(toast),
-          (elapsedSeconds) =>
-            elapsedSeconds === 0
-              ? progressMessage
-              : `${progressMessage} ${processedLocales}/${targetLocales.length} locales processed (${elapsedSeconds}s elapsed).`,
-        );
+        const failures: LocaleFailure[] = [];
 
         /**
          * Translates a single locale and writes the result to the form.
@@ -837,9 +911,8 @@ connect({
               ctx.environment,
             );
           } catch (e) {
-            const provider = getProvider(pluginParams);
-            const normalized = normalizeProviderError(e, provider.vendor);
-            ctx.alert(formatErrorForUser(normalized));
+            // The toast at the end names the failed locales and why.
+            failures.push({ locale: loc, message: errorText(e, pluginParams) });
             return;
           }
 
@@ -867,36 +940,21 @@ connect({
             value: translatedValue,
           });
           await ctx.setFieldValue(fieldPath, translatedValue);
-          translatedLocales += 1;
         };
 
-        try {
+        await translateIntoAllOnce(ctx, async () => {
           await targetLocales.reduce(
-            (chain, loc) =>
-              chain.then(() =>
-                translateToLocale(loc).finally(() => {
-                  processedLocales += 1;
-                }),
-              ),
+            (chain, loc) => chain.then(() => translateToLocale(loc)),
             Promise.resolve(),
           );
-        } finally {
-          stopProgressToasts();
-        }
-
-        noticeTranslatedLocales(ctx, translatedLocales, targetLocales.length);
+          reportAllLocales(ctx, failures, targetLocales.length);
+        });
         return;
       }
 
-      // Translate to a specific locale
-      const progressMessage = `Translating "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}...`;
-      const stopProgressToasts = startTranslationProgressToasts(
-        (toast) => ctx.customToast(toast),
-        (elapsedSeconds) =>
-          elapsedSeconds === 0
-            ? progressMessage
-            : `${progressMessage} Still working (${elapsedSeconds}s elapsed).`,
-      );
+      // Translate to a specific locale. No start toast: the one at the end
+      // follows in a moment.
+      const label = ctx.field.attributes.label;
 
       let translatedValue: unknown;
       try {
@@ -910,12 +968,10 @@ connect({
           ctx.environment,
         );
       } catch (e) {
-        const provider = getProvider(pluginParams);
-        const normalized = normalizeProviderError(e, provider.vendor);
-        ctx.alert(formatErrorForUser(normalized));
+        ctx.alert(
+          `Couldn't translate “${label}” into ${formatLocaleWithCode(locale)}. ${errorText(e, pluginParams)}`,
+        );
         return;
-      } finally {
-        stopProgressToasts();
       }
 
       const fieldPath = `${ctx.field.attributes.api_key}.${locale}`;
@@ -943,14 +999,23 @@ connect({
       });
       await ctx.setFieldValue(fieldPath, translatedValue);
       ctx.notice(
-        `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
+        `Translated “${label}” into ${formatLocaleWithCode(locale)}. Review it, then save the record.`,
       );
       return;
     }
 
-    // If the plugin is not configured, navigate to its config screen
+    // If the plugin is not configured, a role that can open its settings
+    // goes there; the others are told who to ask.
     if (actionId === 'not-configured') {
-      ctx.navigateTo(buildPluginSettingsPath(ctx));
+      if (ctx.currentRole.meta.final_permissions.can_edit_schema) {
+        ctx.navigateTo(buildPluginSettingsPath(ctx));
+        return;
+      }
+      void ctx.customToast({
+        type: 'warning',
+        message: EDITOR_NOT_SET_UP_MESSAGE,
+        dismissOnPageChange: true,
+      });
     }
   },
 

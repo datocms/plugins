@@ -30,6 +30,11 @@ export type NormalizedProviderError = {
   source: ErrorSource;
   message: string;
   hint?: string;
+  /**
+   * The vendor of a provider error, so the text for the user can name it
+   * ("DeepL's usage limit is reached").
+   */
+  vendor?: VendorId;
 };
 
 const SOURCE_LABEL_ENTRIES: Array<[ErrorSource, string]> = [
@@ -715,6 +720,17 @@ export function normalizeProviderError(
   err: unknown,
   vendor: VendorId,
 ): NormalizedProviderError {
+  const normalized = normalizeError(err, vendor);
+  return normalized.source === 'provider'
+    ? { ...normalized, vendor }
+    : normalized;
+}
+
+/** The body of {@link normalizeProviderError}, before it adds the vendor. */
+function normalizeError(
+  err: unknown,
+  vendor: VendorId,
+): NormalizedProviderError {
   const status = extractStatus(err);
   const rawMessage = extractMessage(err);
   const datoCMSError = normalizeDatoCMSError(err, rawMessage);
@@ -790,13 +806,16 @@ export function isFatalProviderError(
 }
 
 /**
- * Formats a normalized error for display to users.
- * Combines message and hint into a single user-friendly string.
+ * Formats a normalized error as the message of a thrown error: the source
+ * label, the message and the hint. The layers above read such a message
+ * again (`normalizeProviderError` strips the label and matches the
+ * message), so it keeps the wording of the normalized error. Never shown
+ * as is: the text for the user is {@link formatErrorForUser}.
  *
  * @param error - The normalized error object.
- * @returns A formatted string suitable for display in alerts/notices.
+ * @returns The message of the error to throw.
  */
-export function formatErrorForUser(error: NormalizedProviderError): string {
+export function formatErrorMessage(error: NormalizedProviderError): string {
   const body = error.hint ? `${error.message} ${error.hint}` : error.message;
   if (hasSourcePrefix(body)) return body;
 
@@ -805,6 +824,164 @@ export function formatErrorForUser(error: NormalizedProviderError): string {
   )?.[1];
 
   return sourceLabel ? `${sourceLabel}: ${body}` : body;
+}
+
+/** The name of each vendor in the texts for the user. */
+const VENDOR_NAMES: Record<VendorId, string> = {
+  openai: 'OpenAI',
+  google: 'Google',
+  anthropic: 'Anthropic',
+  deepl: 'DeepL',
+  yandex: 'Yandex',
+};
+
+/** The name of a vendor in a text for the user: "DeepL". */
+export function vendorName(vendor: VendorId): string {
+  return VENDOR_NAMES[vendor] ?? VENDOR_NAMES.openai;
+}
+
+/** What to check when the usage limit of a vendor is reached. */
+const QUOTA_NEXT_STEPS: Record<VendorId, string> = {
+  openai: 'Check the billing of your OpenAI account.',
+  google: 'Check the quota and the billing of your Google project.',
+  anthropic: 'Check the plan of your Anthropic account.',
+  deepl: 'Check your DeepL plan.',
+  yandex: 'Check the quotas of your Yandex Cloud folder.',
+};
+
+/** An error for the user: the problem, and what to do about it. */
+export type UserFacingError = {
+  /** What went wrong, in one sentence. */
+  problem: string;
+  /** What the user can do about it, in one sentence. */
+  nextStep?: string;
+};
+
+/** A text that ends with a period. */
+function withPeriod(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/** An authentication error of a vendor, in plain words. */
+function describeAuthError(
+  vendor: VendorId,
+  name: string,
+  message: string,
+): UserFacingError {
+  if (vendor === 'yandex' && includes(message, 'folder id')) {
+    return {
+      problem: "Yandex can't access the Folder ID.",
+      nextStep: 'Check the Folder ID and the role of the service account.',
+    };
+  }
+  if (vendor === 'yandex') {
+    return {
+      problem: 'Yandex rejected the API key.',
+      nextStep: 'Check the key and its role in Yandex Cloud.',
+    };
+  }
+  if (vendor === 'deepl' && includes(message, 'wrong endpoint')) {
+    return {
+      problem: 'DeepL rejected the key for this plan.',
+      nextStep: 'Check “Key from the DeepL Free plan” in the plugin settings.',
+    };
+  }
+  if (vendor === 'openai' && includes(message, 'verified to stream')) {
+    return {
+      problem: 'OpenAI needs your organization to be verified for this model.',
+      nextStep: 'Verify it, or pick another model in the plugin settings.',
+    };
+  }
+  return {
+    problem: `${name} rejected the API key.`,
+    nextStep: 'Check the key in the plugin settings.',
+  };
+}
+
+/** An error of a vendor, in plain words that name the vendor. */
+function describeProviderError(
+  error: NormalizedProviderError,
+  vendor: VendorId,
+): UserFacingError {
+  const name = VENDOR_NAMES[vendor] ?? 'The translation service';
+  const { message } = error;
+  switch (error.code) {
+    case 'quota':
+      return {
+        problem: `${name}'s usage limit is reached.`,
+        nextStep: QUOTA_NEXT_STEPS[vendor],
+      };
+    case 'rate_limit':
+      return {
+        problem: `${name} is getting too many requests.`,
+        nextStep: 'Wait a moment, then try again.',
+      };
+    case 'auth':
+      return describeAuthError(vendor, name, message);
+    case 'model':
+      if (includes(message, 'unexpected response')) {
+        return {
+          problem: `${name} returned an answer that the plugin can't read.`,
+          nextStep: 'Try again, or pick another model in the plugin settings.',
+        };
+      }
+      if (vendor === 'deepl' || vendor === 'yandex') {
+        return { problem: `${name} doesn't support one of these languages.` };
+      }
+      return {
+        problem: `The selected ${name} model isn't available.`,
+        nextStep: 'Pick another model in the plugin settings.',
+      };
+    case 'network':
+      if (vendor === 'yandex' && includes(error.hint, 'temporarily')) {
+        return {
+          problem: "Yandex Translate isn't available right now.",
+          nextStep: 'Try again later.',
+        };
+      }
+      return {
+        problem: `Couldn't reach ${name}.`,
+        nextStep: 'Check the connection, then try again.',
+      };
+    default:
+      return { problem: `${name} returned an error: ${withPeriod(message)}` };
+  }
+}
+
+/**
+ * An error for the user, as the problem and the next step. A vendor error
+ * names the vendor in plain words; a DatoCMS or plugin error keeps its
+ * source label, its message and its hint.
+ *
+ * @param error - The normalized error object.
+ */
+export function describeErrorForUser(
+  error: NormalizedProviderError,
+): UserFacingError {
+  if (error.source === 'provider' && error.vendor) {
+    return describeProviderError(error, error.vendor);
+  }
+  const sourceLabel = SOURCE_LABEL_ENTRIES.find(
+    ([source]) => source === error.source,
+  )?.[1];
+  const problem =
+    sourceLabel && error.source !== 'provider'
+      ? `${sourceLabel}: ${error.message}`
+      : error.message;
+  return { problem, nextStep: error.hint };
+}
+
+/**
+ * Formats a normalized error for display to users: the problem, then what to
+ * do about it.
+ *
+ * @param error - The normalized error object.
+ * @returns A formatted string suitable for display in alerts/notices.
+ */
+export function formatErrorForUser(error: NormalizedProviderError): string {
+  const { problem, nextStep } = describeErrorForUser(error);
+  return nextStep ? `${problem} ${nextStep}` : problem;
 }
 
 /**
@@ -830,8 +1007,8 @@ export function handleTranslationError(
     source: normalized.source,
     hint: normalized.hint,
   });
-  // Include hint in thrown error for consistent user-facing messages
-  const message = formatErrorForUser(normalized);
+  // The layers above normalize the message again: it keeps its wording.
+  const message = formatErrorMessage(normalized);
   if (isProviderError(error)) {
     throw new ProviderError(message, error.status, error.vendor ?? vendor, {
       cause: error,
@@ -872,7 +1049,7 @@ export function handleUIError(
 ): void {
   // Handle user cancellation gracefully
   if (error instanceof Error && error.name === 'AbortError') {
-    ctx.notice('Operation was cancelled');
+    ctx.notice('Translation cancelled.');
     return;
   }
 

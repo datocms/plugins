@@ -20,6 +20,8 @@ export type FieldTypeDictionary = Record<
     isLocalized: boolean;
     validators?: FieldValidators;
     field_type?: string;
+    /** The label of the field, for the texts for the user. */
+    label?: string;
   }
 >;
 

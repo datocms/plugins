@@ -95,3 +95,19 @@ export function formatLocaleLabel(localeCode: string): string {
     return localeCode;
   }
 }
+
+const listFormat = new Intl.ListFormat('en', {
+  style: 'long',
+  type: 'conjunction',
+});
+
+/**
+ * A list for a sentence of the plugin's English texts: "Italian, German,
+ * and French".
+ *
+ * @param items - The parts of the list.
+ * @returns The parts joined with commas and "and".
+ */
+export function formatList(items: readonly string[]): string {
+  return listFormat.format(items);
+}

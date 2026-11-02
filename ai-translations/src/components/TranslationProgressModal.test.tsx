@@ -204,12 +204,15 @@ function loadingAbortSignal() {
 /** The value of an InfoList row, found by its title. */
 function rowValue(title: string) {
   const term = screen
-    .getAllByRole('term')
+    .queryAllByRole('term')
     .find((element) => element.textContent === title);
   return term?.nextElementSibling?.textContent;
 }
 
-/** The Translated and Failed counts of the InfoList. */
+/**
+ * The Translated and Failed counts of the InfoList, which shows once the run
+ * ended. Failed shows only when some record failed.
+ */
 function counts() {
   return { translated: rowValue('Translated'), failed: rowValue('Failed') };
 }
@@ -279,10 +282,11 @@ describe('TranslationProgressModal', () => {
     const options = mocks.loadRecordBatches.mock.calls[0][2];
     expect(options?.abortSignal?.aborted).toBe(false);
     expect(options?.checkCancellation?.()).toBe(false);
-    expect(counts()).toEqual({ translated: '1', failed: '0' });
+    expect(counts()).toEqual({ translated: '1', failed: undefined });
     expect(screen.getByText('Translation finished')).toBeTruthy();
-    expect(rowValue('From')).toBe('English [en]');
-    expect(rowValue('To')).toBe('Italian [it]');
+    // The locales were confirmed before the run: no row repeats them.
+    expect(rowValue('From')).toBeUndefined();
+    expect(rowValue('To')).toBeUndefined();
   });
 
   it('continues the running job when the host supplies new context and parameter objects', async () => {
@@ -332,7 +336,7 @@ describe('TranslationProgressModal', () => {
     await waitForClose();
     expect(mocks.loadRecordBatches).toHaveBeenCalledTimes(1);
     expect(mocks.translateAndUpdateRecords).toHaveBeenCalledTimes(1);
-    expect(counts()).toEqual({ translated: '1', failed: '0' });
+    expect(counts()).toEqual({ translated: '1', failed: undefined });
   });
 
   it('translates the first batch before fetching the next and reports loading progress', async () => {
@@ -369,16 +373,17 @@ describe('TranslationProgressModal', () => {
 
     renderModal();
 
-    expect(
-      await screen.findByText('0 of 2 records processed (0%) · 1 loaded'),
-    ).toBeTruthy();
+    expect(await screen.findByText('0 of 2 records')).toBeTruthy();
+    // The counts of the result wait for the end: the bar shows the progress.
+    expect(counts()).toEqual({ translated: undefined, failed: undefined });
     await waitFor(() => {
       expect(events).toEqual(['fetch first', 'translate r1']);
     });
-    expect(screen.getByText('Translating 2 records…')).toBeTruthy();
+    // The status line says the task; the count under the bar says how far.
+    expect(screen.getByText('Translating…')).toBeTruthy();
     // The bar has the name of the status line next to it.
     expect(
-      screen.getByRole('progressbar', { name: 'Translating 2 records…' }),
+      screen.getByRole('progressbar', { name: 'Translating…' }),
     ).toBeTruthy();
     expectCloseBlocked();
 
@@ -391,13 +396,12 @@ describe('TranslationProgressModal', () => {
       'fetch second',
       'translate r2',
     ]);
-    expect(
-      screen.getByText('2 of 2 records processed (100%) · 2 loaded'),
-    ).toBeTruthy();
+    // Once the run ended, the counts of the result say it.
+    expect(screen.queryByText('2 of 2 records')).toBeNull();
     expect(
       screen.getByRole('progressbar', { name: 'Translation finished' }),
     ).toHaveAttribute('aria-valuenow', '100');
-    expect(counts()).toEqual({ translated: '2', failed: '0' });
+    expect(counts()).toEqual({ translated: '2', failed: undefined });
   });
 
   it('keeps Close disabled until loading and translation finish, even when every record reports completion', async () => {
@@ -410,7 +414,7 @@ describe('TranslationProgressModal', () => {
     const { ctx } = renderModal(['r1']);
 
     await waitFor(() => {
-      expect(counts()).toEqual({ translated: '1', failed: '0' });
+      expect(screen.getByText('1 of 1 record')).toBeTruthy();
     });
     expectCloseBlocked();
     act(() => closeButton().focus());
@@ -446,7 +450,7 @@ describe('TranslationProgressModal', () => {
 
     it('gives a focus on Close back to the enabled Close', async () => {
       const { endRun } = renderOpenRun();
-      await screen.findByRole('button', { name: 'Cancel' });
+      await screen.findByRole('button', { name: 'Cancel translation' });
       act(() => closeButton().focus());
 
       await endRun();
@@ -457,20 +461,24 @@ describe('TranslationProgressModal', () => {
 
     it('moves a focus on Cancel, which goes, to Close', async () => {
       const { endRun } = renderOpenRun();
-      const cancel = await screen.findByRole('button', { name: 'Cancel' });
+      const cancel = await screen.findByRole('button', {
+        name: 'Cancel translation',
+      });
       act(() => cancel.focus());
 
       await endRun();
 
       const close = await waitForClose();
-      expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel translation' }),
+      ).toBeNull();
       expect(document.activeElement).toBe(close);
     });
 
     it('leaves the focus where it is when the frame does not have it', async () => {
       vi.mocked(document.hasFocus).mockReturnValue(false);
       const { endRun } = renderOpenRun();
-      await screen.findByRole('button', { name: 'Cancel' });
+      await screen.findByRole('button', { name: 'Cancel translation' });
 
       await endRun();
 
@@ -486,7 +494,7 @@ describe('TranslationProgressModal', () => {
       await loading.promise;
     });
     const { ctx, modalCtx } = renderModal(['r1']);
-    await screen.findByRole('button', { name: 'Cancel' });
+    await screen.findByRole('button', { name: 'Cancel translation' });
     const pressEscape = () =>
       fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
 
@@ -541,7 +549,7 @@ describe('TranslationProgressModal', () => {
       ['r2', 1],
       ['r3', 2],
     ]);
-    expect(counts()).toEqual({ translated: '3', failed: '0' });
+    expect(counts()).toEqual({ translated: '3', failed: undefined });
   });
 
   it('finishes with a failed record when a selected record was deleted', async () => {
@@ -551,10 +559,12 @@ describe('TranslationProgressModal', () => {
     const { ctx } = renderModal();
 
     const close = await waitForClose();
-    expect(screen.getByText('Record r1')).toBeTruthy();
-    expect(screen.getByText(/Record is no longer available/)).toBeTruthy();
+    expect(screen.getByText('Deleted record')).toBeTruthy();
+    expect(
+      screen.getByText('Failed. It was deleted, or is no longer available.'),
+    ).toBeTruthy();
     expect(counts()).toEqual({ translated: '1', failed: '1' });
-    expect(screen.getByText(/^2 of 2 records processed/)).toBeTruthy();
+    expect(screen.queryByText('2 of 2 records')).toBeNull();
     fireEvent.click(close);
 
     expect(ctx.resolve).toHaveBeenCalledWith(
@@ -586,43 +596,39 @@ describe('TranslationProgressModal', () => {
 
     await waitForClose();
     expect(screen.getAllByRole('status')[0]).toHaveTextContent(
-      'Translation failed',
+      'Translation stopped',
     );
     // A screen reader hears the progress from a line that changes only with
     // the percentage.
-    expect(screen.getByText(/% of the records processed$/)).toHaveAttribute(
+    expect(screen.getByText(/% of the records done$/)).toHaveAttribute(
       'role',
       'status',
     );
     expect(
-      screen.getByRole('progressbar', { name: 'Translation failed' }),
+      screen.getByRole('progressbar', { name: 'Translation stopped' }),
     ).toBeTruthy();
-    // The Callout titles the error and shows its cause once.
+    // The Callout says the error; the counts under it say how far the run
+    // got.
     const alert = screen.getByRole('alert');
-    expect(within(alert).getByText('Translation stopped')).toBeTruthy();
     expect(within(alert).getByText(/^DatoCMS error:/)).toBeTruthy();
+    expect(alert.textContent).not.toContain('Stopped after');
     expect(alert.textContent).not.toContain('Translation failed:');
     expect(screen.queryByText(/Translation provider error/)).toBeNull();
     // The fatal error is a message of the run, not a row of a record.
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(counts()).toEqual({ translated: '1', failed: '0' });
-    expect(screen.getByText(/^1 of 2 records processed \(50%\)/)).toBeTruthy();
+    // No failed record: no "Failed 0" row contradicts the stop. The record
+    // that the run never reached counts as not translated.
+    expect(counts()).toEqual({ translated: '1', failed: undefined });
+    expect(rowValue('Not translated')).toBe('1');
+    expect(screen.queryByText('1 of 2 records')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Publish 1 record' }));
     await waitFor(() => {
       expect(ctx.notice).toHaveBeenCalledWith('Published 1 translated record.');
     });
-    // Once done, the button says so, and its disabled reason tells why.
+    // Once every record is published, the toast says it: the button goes.
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: 'Published 1 record' }),
-      ).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
     });
-    act(() =>
-      screen.getByRole('button', { name: 'Published 1 record' }).focus(),
-    );
-    expect((await screen.findByRole('tooltip')).textContent).toBe(
-      'All translated records are published.',
-    );
     fireEvent.click(closeButton());
     expect(ctx.resolve).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -652,14 +658,21 @@ describe('TranslationProgressModal', () => {
     );
     const { ctx } = renderModal();
 
-    const cancel = await screen.findByRole('button', { name: 'Cancel' });
-    expect(screen.getByText('Loading the first batch of records')).toBeTruthy();
+    const cancel = await screen.findByRole('button', {
+      name: 'Cancel translation',
+    });
+    // Before the first records, the spinning status line is the only
+    // loading state.
+    expect(screen.getByText('Translating…')).toBeTruthy();
+    expect(screen.queryByText('Loading the records')).toBeNull();
     fireEvent.click(cancel);
 
     expect(loadingOptions?.abortSignal?.aborted).toBe(true);
     expect(loadingOptions?.checkCancellation?.()).toBe(true);
     expect(ctx.resolve).not.toHaveBeenCalled();
-    const cancelling = screen.getByRole('button', { name: 'Cancel' });
+    const cancelling = screen.getByRole('button', {
+      name: 'Cancel translation',
+    });
     expect(cancelling).toHaveProperty('disabled', true);
     expect(cancelling).toHaveAttribute('aria-busy', 'true');
     await act(async () => loading.resolve());
@@ -671,7 +684,7 @@ describe('TranslationProgressModal', () => {
       }),
     );
     expect(mocks.translateAndUpdateRecords).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Translation failed/)).toBeNull();
+    expect(screen.queryByText(/Translation stopped/)).toBeNull();
     expect(ctx.resolve).toHaveBeenCalledTimes(1);
   });
 
@@ -712,7 +725,7 @@ describe('TranslationProgressModal', () => {
     });
     expect(translationOptions?.abortSignal).toBe(loadingOptions?.abortSignal);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel translation' }));
     expect(translationOptions?.abortSignal?.aborted).toBe(true);
     expect(translationOptions?.checkCancellation?.()).toBe(true);
     expect(ctx.resolve).not.toHaveBeenCalled();
@@ -790,7 +803,7 @@ describe('TranslationProgressModal', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
     await act(async () => vi.advanceTimersByTime(100));
     expect(snapshot).toHaveBeenCalledTimes(2);
-    expect(counts()).toEqual({ translated: '1', failed: '0' });
+    expect(screen.getByText('1 of 1 record')).toBeTruthy();
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
 
     await act(async () => translation.resolve());
@@ -837,9 +850,9 @@ describe('TranslationProgressModal', () => {
         'Published 2 translated records.',
       ),
     );
-    expect(
-      await screen.findByRole('button', { name: 'Published 2 records' }),
-    ).toHaveAttribute('aria-disabled', 'true');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull(),
+    );
     // Every record is published: Close, the next action, takes the focus.
     expect(document.activeElement).toBe(closeButton());
     expect(
@@ -929,9 +942,8 @@ describe('TranslationProgressModal', () => {
     expect(rows).toHaveLength(100);
     expect(within(rows[0]).getByText('Article r1')).toBeTruthy();
     expect(within(rows[99]).getByText('Article r3')).toBeTruthy();
-    expect(
-      screen.getByText('Showing the latest 100 of 101 updates'),
-    ).toBeTruthy();
+    // The record with warnings comes first, then the latest translated ones.
+    expect(screen.getByText('Showing 100 of 101 records')).toBeTruthy();
     expect(rowValue('Translated')).toBe('1011 with warnings');
     expect(screen.getByText('1 with warnings')).toBeTruthy();
     // A link to a page of the CMS (`to`): the Canvas gives it the absolute
@@ -942,6 +954,49 @@ describe('TranslationProgressModal', () => {
       'https://example/editor/item_types/article/items/r1/edit',
     );
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('lists the records with problems first once the run ended, also one out of the latest 100', async () => {
+    const itemIds = Array.from({ length: 150 }, (_, index) => `r${index + 1}`);
+    mocks.translateAndUpdateRecords.mockImplementation(
+      async (
+        records,
+        _client,
+        _provider,
+        _from,
+        _to,
+        _fields,
+        _params,
+        _ctx,
+        _token,
+        options = {},
+      ) => {
+        options.onProgress?.({
+          recordIndex: 0,
+          recordId: 'r1',
+          itemTypeId: 'article',
+          recordLabel: 'Article r1',
+          status: 'error',
+          statusText: 'Failed',
+        });
+        reportCompleted(
+          records.filter((item) => item.id !== 'r1'),
+          options,
+        );
+      },
+    );
+    renderModal(itemIds);
+
+    await waitForClose();
+    // The list keeps its 100 rows: the failed record, then the latest 99
+    // translated ones.
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(100);
+    expect(within(rows[0]).getByText('Article r1')).toBeTruthy();
+    expect(within(rows[1]).getByText('Article r150')).toBeTruthy();
+    expect(within(rows[99]).getByText('Article r52')).toBeTruthy();
+    expect(screen.getByText('Showing 100 of 150 records')).toBeTruthy();
+    expect(counts()).toEqual({ translated: '149', failed: '1' });
   });
 
   it('publishes in the job environment even if the host replaces context and parameters', async () => {

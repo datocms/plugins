@@ -26,8 +26,6 @@ export type RenderFrameOptions = {
    * the whole page, in its own `Main`.
    */
   page?: boolean;
-  /** The CMS path of the plugin settings, linked from the error fallback. */
-  settingsPath?: string;
   /**
    * Closes a dialog with the value that a dismissal means to its caller: the
    * error fallback shows a "Close" button that calls it.
@@ -45,21 +43,12 @@ export type RenderFrameOptions = {
 export function renderFrame(
   ctx: BaseCtx,
   content: ReactNode,
-  {
-    noAutoResizer = false,
-    page = false,
-    settingsPath,
-    onClose,
-  }: RenderFrameOptions = {},
+  { noAutoResizer = false, page = false, onClose }: RenderFrameOptions = {},
 ): void {
   root.render(
     <StrictMode>
       <Canvas ctx={ctx} noAutoResizer={noAutoResizer} texts={PLUGIN_TEXTS}>
-        <ErrorBoundary
-          page={page}
-          settingsPath={settingsPath}
-          onClose={onClose}
-        >
+        <ErrorBoundary page={page} onClose={onClose}>
           {content}
         </ErrorBoundary>
       </Canvas>

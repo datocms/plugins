@@ -8,7 +8,7 @@
  * frame; inside it one `<form>` holds a `Pane` whose `Pane.FormHeader` has
  * the title (the page's h1, with its help) and the submit button "Translate
  * records". The content is either a blank slate (loading, load error, a
- * single-locale environment, a project without models) or the form: an
+ * single-locale project, a project without models) or the form: an
  * 800px `Page` with the "AI vendor" problem group (when no vendor is set
  * up), the "Finding records" group (while the run discovers records), then
  * the "Locales" and "Models" groups.
@@ -75,10 +75,7 @@ import {
 } from '../../components/BulkTranslations/localeSelection';
 import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
 import { getStartBlockedReason } from '../../components/BulkTranslations/startBlockedReason';
-import {
-  boundedSelectHint,
-  useBoundedChipSelect,
-} from '../../components/BulkTranslations/useBoundedChipSelect';
+import { useBoundedChipSelect } from '../../components/BulkTranslations/useBoundedChipSelect';
 import { useModelFields } from '../../components/BulkTranslations/useModelFields';
 import { useModelPickerPage } from '../../components/BulkTranslations/useModelPickerPage';
 import type { TranslationConfirmModalParams } from '../../components/TranslationConfirmModal';
@@ -98,7 +95,11 @@ import {
   pruneFieldSelection,
   resolveTargetLocales,
 } from '../../utils/translation/BulkTranslationHelpers';
-import { handleUIError } from '../../utils/translation/ProviderErrors';
+import {
+  handleUIError,
+  normalizeProviderError,
+  vendorName,
+} from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import s from './AIBulkTranslationsPage.module.css';
 
@@ -236,7 +237,7 @@ function DiscoveryProgress({
 /**
  * The content of every view but the form: loading, a failed load (with
  * "Try again", or the plugin settings when the API token is missing), a
- * single-locale environment and a project without models. No title level:
+ * single-locale project and a project without models. No title level:
  * the title of the form header is the page's h1. `actionRef` gets the
  * button of the slate that shows, if it has one: it takes the focus when a
  * retry of the load settles.
@@ -269,7 +270,7 @@ function StateSlate({
         error
         icon={<CircleExclamationIcon />}
         title="No access to your API token"
-        description="The plugin needs your API token to read the records. Allow it in the plugin settings."
+        description="The plugin needs your API token to read the records."
         actions={
           <Button
             ref={actionRef}
@@ -289,7 +290,7 @@ function StateSlate({
         icon={<CircleExclamationIcon />}
         title="Couldn't load models and locales"
         code={loadState.message}
-        description="Something went wrong while loading this environment. Try again, or reload the page if it keeps failing."
+        description="Try again, or reload the page if it keeps failing."
         actions={<Button ref={actionRef} label="Try again" onClick={onRetry} />}
       />
     );
@@ -298,15 +299,17 @@ function StateSlate({
   if (view === 'single-locale') {
     const canEditEnvironment =
       ctx.currentRole.meta.final_permissions.can_edit_environment;
+    // The "Go to locale settings" button is the way there: the text says
+    // only what to add, or who to ask.
     const nextStep = canEditEnvironment
-      ? 'Add a locale in the Locales & Timezone settings, then come back here.'
-      : 'Ask a project admin to add another locale.';
+      ? 'Add another locale to translate into.'
+      : 'Ask an admin to add another locale.';
     return (
       <BlankSlate
         placement="area"
         icon={<LanguageIcon />}
         title="Only one locale"
-        description={`Bulk translations copy content from one locale into others, and this environment only has ${onlyLocale?.label ?? 'one locale'}. ${nextStep}`}
+        description={`This project has only ${onlyLocale?.label ?? 'one locale'}. ${nextStep}`}
         actions={
           canEditEnvironment && (
             <Button
@@ -379,14 +382,7 @@ function LocalesGroup({
     <Page.Group title="Locales">
       <div className="form__field form__row">
         <div className="form__row__cell">
-          <FieldWrapper
-            label="Source locale"
-            required
-            hint={boundedSelectHint(
-              sourceSelect.hint,
-              'Content is translated from this locale',
-            )}
-          >
+          <FieldWrapper label="Translate from" hint={sourceSelect.hint}>
             <SelectInput
               name="sourceLocale"
               {...sourceSelect.selectProps}
@@ -400,12 +396,8 @@ function LocalesGroup({
         </div>
         <div className="form__row__cell">
           <FieldWrapper
-            label="Target locales"
-            required
-            hint={boundedSelectHint(
-              targetSelect.hint,
-              '“All other locales” skips the source locale',
-            )}
+            label="Translate into"
+            hint={targetSelect.hint}
             error={targetValues.length === 0 ? PICK_LOCALE_ERROR : undefined}
           >
             <SelectInput
@@ -530,14 +522,17 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         console.error('Error loading data:', error);
         // Only the initial load (or a "Try again") shows the error state. A
         // failed background refresh keeps the loaded form, including a
-        // running discovery and its Cancel.
+        // running discovery and its Cancel. The slate shows the short cause
+        // ("DatoCMS request failed (500 Internal Server Error)."), not the
+        // whole request.
         setLoadState((prev) =>
           prev.status === 'ready'
             ? prev
             : {
                 status: 'error',
                 cause: 'request',
-                message: error instanceof Error ? error.message : undefined,
+                // A request to DatoCMS: the vendor plays no part here.
+                message: normalizeProviderError(error, 'openai').message,
               },
         );
       }
@@ -762,13 +757,13 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     if (isStartingTranslation || !isReady) return;
     if (!ctx.currentUserAccessToken) {
       ctx.alert(
-        "Couldn't start the translation, as the plugin can't access your API token!",
+        "The plugin can't access your API token. Allow it in the plugin settings.",
       );
       return;
     }
     if (!sourceLocale) return;
     if (!isProviderConfigured(pluginParams)) {
-      ctx.alert("Couldn't start the translation, as no AI vendor is set up!");
+      ctx.alert('No AI vendor is set up yet.');
       return;
     }
 
@@ -810,6 +805,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         recordCount: allRecordIds.length,
         fromLocale: sourceLocale.value,
         toLocales: targetLocales,
+        vendorName: pluginParams.vendor
+          ? vendorName(pluginParams.vendor)
+          : undefined,
         models: selectedModels.map((model) => {
           const selectedKeys = new Set(
             selectedFieldsByModel[model.value] ?? [],
@@ -946,13 +944,12 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           />
 
           <Page.Group title="Models" footer={pagination}>
+            {/* The title of the group names the select. */}
             <FieldWrapper
               label="Models"
+              labelExtras={{ hidden: true }}
               required
-              hint={boundedSelectHint(
-                modelSelect.hint,
-                'All records of these models are translated',
-              )}
+              hint={modelSelect.hint}
               error={showModelsError ? PICK_MODEL_ERROR : undefined}
             >
               <SelectInput

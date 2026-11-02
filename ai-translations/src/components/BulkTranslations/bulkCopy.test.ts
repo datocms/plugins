@@ -62,14 +62,12 @@ describe('bulkCopy counts', () => {
   });
 
   it('phrases the completion notice', () => {
-    expect(translatedRecordsNotice(1)).toBe(
-      'One record successfully translated!',
-    );
+    expect(translatedRecordsNotice(1)).toBe('1 record translated.');
     expect(translatedRecordsNotice(2882)).toBe(
-      `${n(2882)} records successfully translated!`,
+      `${n(2882)} records translated.`,
     );
     expect(translatedRecordsNotice(2882, 'de')).toBe(
-      '2.882 records successfully translated!',
+      '2.882 records translated.',
     );
   });
 
@@ -121,6 +119,7 @@ describe('reportTranslationOutcome', () => {
     return {
       notice: vi.fn(() => new Promise<void>(() => {})),
       alert: vi.fn(() => new Promise<void>(() => {})),
+      customToast: vi.fn(() => new Promise<unknown>(() => {})),
     };
   }
 
@@ -136,18 +135,14 @@ describe('reportTranslationOutcome', () => {
   it('notices a completed run with the record count', () => {
     const ctx = makeCtx();
     reportTranslationOutcome(ctx, { completed: true }, 2882);
-    expect(ctx.notice).toHaveBeenCalledWith(
-      `${n(2882)} records successfully translated!`,
-    );
+    expect(ctx.notice).toHaveBeenCalledWith(`${n(2882)} records translated.`);
     expect(ctx.alert).not.toHaveBeenCalled();
   });
 
   it('formats the counts in the given UI locale', () => {
     const ctx = makeCtx();
     reportTranslationOutcome(ctx, { completed: true }, 2882, 'de');
-    expect(ctx.notice).toHaveBeenCalledWith(
-      '2.882 records successfully translated!',
-    );
+    expect(ctx.notice).toHaveBeenCalledWith('2.882 records translated.');
     reportTranslationOutcome(
       ctx,
       {
@@ -164,7 +159,7 @@ describe('reportTranslationOutcome', () => {
       'de',
     );
     expect(ctx.alert).toHaveBeenCalledWith(
-      '1.499 records completed; 1 record failed; 198.500 records were not processed.',
+      '1.499 records translated. 1 failed. The translation stopped before the other 198.500.',
     );
   });
 
@@ -184,8 +179,27 @@ describe('reportTranslationOutcome', () => {
       },
       3,
     );
+    // The count of zero stays out of the toast.
     expect(ctx.alert).toHaveBeenCalledWith(
-      '2 records completed; 0 records failed; 1 record was not processed.',
+      '2 records translated. The translation stopped before the last one.',
+    );
+    // A run that stopped before any record says how many it never reached.
+    reportTranslationOutcome(
+      ctx,
+      {
+        summary: {
+          totalRecords: 12,
+          processedCount: 0,
+          successfulCount: 0,
+          failedCount: 0,
+          warningCount: 0,
+          loadedCount: 0,
+        },
+      },
+      12,
+    );
+    expect(ctx.alert).toHaveBeenCalledWith(
+      'The translation stopped before translating 12 records.',
     );
     reportTranslationOutcome(
       ctx,
@@ -202,9 +216,11 @@ describe('reportTranslationOutcome', () => {
       },
       3,
     );
-    expect(ctx.notice).toHaveBeenCalledWith(
-      '3 records completed; 1 record needs review.',
-    );
+    expect(ctx.customToast).toHaveBeenCalledWith({
+      type: 'warning',
+      message: '3 records translated, 1 with warnings.',
+      dismissOnPageChange: true,
+    });
   });
 
   it('reports partial failures and unprocessed records from cumulative counts', () => {
@@ -224,7 +240,7 @@ describe('reportTranslationOutcome', () => {
       200000,
     );
     expect(ctx.alert).toHaveBeenCalledWith(
-      `120 records completed; 5 records failed; ${n(199875)} records were not processed.`,
+      `120 records translated. 5 failed. The translation stopped before the other ${n(199875)}.`,
     );
     expect(ctx.notice).not.toHaveBeenCalled();
   });
@@ -247,7 +263,7 @@ describe('reportTranslationOutcome', () => {
       100,
     );
     expect(ctx.notice).toHaveBeenCalledWith(
-      'Translation canceled. 5 records completed; 1 record failed. Saved changes were kept.',
+      'Translation cancelled. 5 records were translated and saved.',
     );
   });
 
@@ -268,9 +284,12 @@ describe('reportTranslationOutcome', () => {
       },
       10,
     );
-    expect(ctx.notice).toHaveBeenCalledWith(
-      '10 records completed; 3 records need review.',
-    );
+    expect(ctx.customToast).toHaveBeenCalledWith({
+      type: 'warning',
+      message: '10 records translated, 3 with warnings.',
+      dismissOnPageChange: true,
+    });
+    expect(ctx.notice).not.toHaveBeenCalled();
   });
 
   it('distinguishes unchanged records from confirmed updates', () => {
@@ -292,7 +311,7 @@ describe('reportTranslationOutcome', () => {
       10,
     );
     expect(ctx.notice).toHaveBeenCalledWith(
-      '2 records updated; 8 records had no eligible fields to translate.',
+      '2 records translated. 8 had nothing to translate.',
     );
   });
 

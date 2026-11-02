@@ -11,9 +11,19 @@ import ExclusionRulesSection, {
 } from './ExclusionRulesSection';
 
 const fields: Field[] = [
-  { id: 'field-season', name: 'Season type', model: 'Season block' },
-  { id: 'field-title', name: 'Title', model: 'Article' },
+  {
+    id: 'field-season',
+    name: 'Season type',
+    model: 'Season block',
+    apiKey: 'season_type',
+  },
+  { id: 'field-title', name: 'Title', model: 'Article', apiKey: 'title' },
 ];
+
+/** The chip of a saved token: a name, then the token as an API key. */
+function savedChip(token: string): HTMLElement | null | undefined {
+  return screen.getByText(token).closest('.ApiKey')?.parentElement;
+}
 
 function createProps(
   overrides: Partial<ExclusionRulesSectionProps> = {},
@@ -21,7 +31,6 @@ function createProps(
   return {
     showExclusionRules: true,
     setShowExclusionRules: vi.fn(),
-    hasExclusionRules: true,
     modelsToBeExcluded: [],
     setModelsToBeExcluded: vi.fn(),
     rolesToBeExcluded: [],
@@ -68,9 +77,17 @@ describe('ExclusionRulesSection', () => {
     );
 
     expect(screen.getByText('Season type (Season block)')).toBeInTheDocument();
-    expect(screen.getByText('season_type')).toBeInTheDocument();
-    expect(screen.getByText('hero.season_type')).toBeInTheDocument();
-    expect(screen.getByText('deleted-field')).toBeInTheDocument();
+    // A token saved by API key or path names a field with that key, and
+    // shows the token as a key; an unknown one is a field with that key.
+    expect(savedChip('season_type')).toHaveTextContent(
+      /^Season type season_type$/,
+    );
+    expect(savedChip('hero.season_type')).toHaveTextContent(
+      /^Season type hero\.season_type$/,
+    );
+    expect(savedChip('deleted-field')).toHaveTextContent(
+      /^Field deleted-field$/,
+    );
     expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
     expect(selectedFieldValues(container)).toEqual(saved);
   });
@@ -161,11 +178,12 @@ describe('ExclusionRulesSection', () => {
     expect(screen.getByText('deleted_model')).toBeInTheDocument();
   });
 
-  it('tells that exclusions exist, and closes the group on its title', () => {
+  it('closes the group on its title', () => {
     const props = createProps();
     renderWithCanvas(<ExclusionRulesSection {...props} />);
 
-    expect(screen.getByText(/doesn't show everywhere/)).toBeInTheDocument();
+    // The pill and the selects tell that exclusions exist: no callout.
+    expect(screen.queryByText(/doesn't show everywhere/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Exclusions' }));
 
     expect(props.setShowExclusionRules).toHaveBeenCalledWith(false);
@@ -176,7 +194,6 @@ describe('ExclusionRulesSection', () => {
       <ExclusionRulesSection
         {...createProps({
           showExclusionRules: false,
-          hasExclusionRules: false,
         })}
       />,
     );
@@ -226,7 +243,7 @@ describe('ExclusionRulesSection', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      "Couldn't load the roles.",
+      "Couldn't load the roles. Reload the page to try again.",
     );
 
     rerender(

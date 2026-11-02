@@ -2,16 +2,14 @@
  * YandexConfig.tsx
  * Configuration component for Yandex Translate vendor settings: the settings
  * group with the API key, the optional folder ID and a credentials test. A
- * passed test is a toast (a finished action); a failed one stays as a danger
- * callout under the button until the key or the folder changes.
+ * passed test is a toast (a finished action); a failed one is the error of
+ * the key field until the key or the folder changes, as for DeepL.
  */
 
 import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import IdText from 'datocms-react-ui/IdText';
 import { Page } from 'datocms-react-ui/Page';
-import PasswordInput from 'datocms-react-ui/PasswordInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import { useId, useState } from 'react';
 import { useBusyFocus } from '../../../utils/retryFocus';
@@ -28,12 +26,6 @@ const SETUP_GUIDE_URL =
 
 /** The longest folder ID that Yandex Cloud accepts. */
 const FOLDER_ID_MAX_LENGTH = 50;
-
-type CredentialTestFailure = {
-  /** The problem in a few words. */
-  title: string;
-  message: string;
-};
 
 const API_KEY_HINT = (
   <>
@@ -63,9 +55,7 @@ export default function YandexConfig({
   setYandexFolderId,
   notice,
 }: YandexConfigProps) {
-  const [testFailure, setTestFailure] = useState<CredentialTestFailure | null>(
-    null,
-  );
+  const [testFailure, setTestFailure] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
 
   const handleApiKeyChange = (value: string | null) => {
@@ -87,7 +77,8 @@ export default function YandexConfig({
     ? undefined
     : { reason: 'Enter a Yandex API key first.' };
   // The busy button is disabled, which drops its focus: once the test ends,
-  // the button takes it back, just above the callout of a failure.
+  // the button takes it back (a failure is the error of the key field, which
+  // the field announces).
   const followTest = useBusyFocus(
     isTesting,
     () => document.getElementById(testId),
@@ -108,16 +99,12 @@ export default function YandexConfig({
         apiKey,
         folderId: yandexFolderId.trim() || undefined,
       });
-      const languages = await provider.listLanguages();
-      notice(
-        `Credentials verified. Yandex returned ${languages.length} supported ${languages.length === 1 ? 'language' : 'languages'}.`,
-      );
+      await provider.listLanguages();
+      notice('The Yandex credentials work.');
     } catch (error) {
-      const normalized = normalizeProviderError(error, 'yandex');
-      setTestFailure({
-        title: "Couldn't verify the credentials",
-        message: formatErrorForUser(normalized),
-      });
+      setTestFailure(
+        formatErrorForUser(normalizeProviderError(error, 'yandex')),
+      );
     } finally {
       setIsTesting(false);
     }
@@ -130,8 +117,10 @@ export default function YandexConfig({
         required
         hint={API_KEY_HINT}
         docs={SETUP_GUIDE_DOCS}
+        error={testFailure ?? undefined}
       >
-        <PasswordInput
+        <StringInput
+          code
           name="yandexApiKey"
           value={yandexApiKey}
           onChange={handleApiKeyChange}
@@ -166,11 +155,6 @@ export default function YandexConfig({
           }}
         />
       </div>
-      {testFailure && (
-        <Callout tone="danger" title={testFailure.title}>
-          {testFailure.message}
-        </Callout>
-      )}
     </Page.Group>
   );
 }

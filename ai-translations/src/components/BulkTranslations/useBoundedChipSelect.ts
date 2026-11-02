@@ -25,7 +25,7 @@ export const CHIP_OPTION_LIMIT = 100;
  * catalog note when there is one.
  */
 export function boundedSelectHint(hint: string | undefined, fallback: string) {
-  return hint ? `${fallback}. ${hint}` : fallback;
+  return hint ? `${fallback}. ${hint}` : `${fallback}.`;
 }
 
 function normalize(value: string) {

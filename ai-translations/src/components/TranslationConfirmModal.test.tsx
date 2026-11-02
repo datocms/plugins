@@ -45,16 +45,17 @@ describe('TranslationConfirmModal', () => {
       ],
     });
 
+    // What the run does to the records, before the facts.
     expect(
       screen.getByText(
-        'This translates 12 records across 2 models into 2 locales.',
+        "This overwrites the content in the locales you translate into, and saves each record as soon as it's translated.",
       ),
     ).toBeTruthy();
-    expect(rowValue('From')).toBe('English [en]');
-    expect(rowValue('To')).toBe('Italian [it], French [fr]');
-    expect(screen.getByText('Models and fields')).toBeTruthy();
-    expect(rowValue('Blog post blog_post')).toBe('Title, Body');
-    expect(rowValue('Author author')).toBe('No fields selected');
+    expect(rowValue('Translate from')).toBe('English [en]');
+    expect(rowValue('Translate into')).toBe('Italian [it], French [fr]');
+    expect(screen.getByText('Fields')).toBeTruthy();
+    expect(rowValue('Blog post')).toBe('Title, Body');
+    expect(rowValue('Author')).toBe('No fields selected');
     expect(screen.queryByText('Large translation')).toBeNull();
   });
 
@@ -63,12 +64,15 @@ describe('TranslationConfirmModal', () => {
       recordCount: 5000,
       fromLocale: 'en',
       toLocales: ['it', 'fr'],
+      vendorName: 'DeepL',
     });
 
-    expect(screen.getByText(/into 2 locales\.$/)).toBeTruthy();
-    expect(screen.queryByText('Models and fields')).toBeNull();
+    expect(screen.queryByText('Fields')).toBeNull();
     const warning = screen.getByRole('alert');
     expect(within(warning).getByText('Large translation')).toBeTruthy();
+    expect(warning).toHaveTextContent(
+      'This can use a lot of your DeepL quota. Keep the progress window open until it finishes.',
+    );
   });
 
   it('resolves true to start and false to cancel', () => {

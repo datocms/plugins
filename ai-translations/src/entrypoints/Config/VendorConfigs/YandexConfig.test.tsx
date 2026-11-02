@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe('YandexConfig', () => {
-  it('masks the API key and limits the optional Folder ID', () => {
+  it('shows the API key as code, like the other vendors, and limits the optional Folder ID', () => {
     renderConfig();
 
     const guide = screen.getByRole('link', {
@@ -42,9 +42,7 @@ describe('YandexConfig', () => {
     );
     expect(guide.getAttribute('target')).toBe('_blank');
 
-    expect(screen.getByLabelText(/^API key/).getAttribute('type')).toBe(
-      'password',
-    );
+    expect(screen.getByLabelText(/^API key/).getAttribute('type')).toBe('text');
     const folderInput = screen.getByRole('textbox', {
       name: /^Folder ID/,
     }) as HTMLInputElement;
@@ -61,11 +59,9 @@ describe('YandexConfig', () => {
 
     // A passed test is a finished action: a toast, not a callout.
     await waitFor(() =>
-      expect(notice).toHaveBeenCalledWith(
-        'Credentials verified. Yandex returned 2 supported languages.',
-      ),
+      expect(notice).toHaveBeenCalledWith('The Yandex credentials work.'),
     );
-    expect(screen.queryByText(/Credentials verified/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/credentials work/)).not.toBeInTheDocument();
     expect(listLanguages).toHaveBeenCalledTimes(1);
   });
 
@@ -92,7 +88,7 @@ describe('YandexConfig', () => {
     expect(document.activeElement).toBe(testButton());
   });
 
-  it('shows normalized Yandex permission guidance', async () => {
+  it('shows a failed test as the error of the key field, in one plain line', async () => {
     vi.spyOn(YandexProvider.prototype, 'listLanguages').mockRejectedValue(
       new ProviderError('Permission denied', 403, 'yandex'),
     );
@@ -101,10 +97,13 @@ describe('YandexConfig', () => {
     fireEvent.click(testButton());
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain(
-      'Yandex Cloud denied access to the Translate API.',
+    expect(alert.textContent).toBe(
+      'Yandex rejected the API key. Check the key and its role in Yandex Cloud.',
     );
-    expect(alert.textContent).toContain('ai.translate.user');
+    expect(screen.getByLabelText(/^API key/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
   });
 
   it('clears a failed result when the API key changes', async () => {

@@ -41,24 +41,6 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Rendered content')).toBeInTheDocument();
   });
 
-  it('links to the plugin settings when the frame has them', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const ctx = makeCtx<RenderPageCtx>();
-
-    renderWithCanvas(
-      <ErrorBoundary settingsPath="/configuration/plugins/42/edit">
-        <Flaky />
-      </ErrorBoundary>,
-      ctx,
-    );
-
-    fireEvent.click(screen.getByRole('link', { name: 'Open plugin settings' }));
-
-    expect(ctx.navigateTo).toHaveBeenCalledWith(
-      '/configuration/plugins/42/edit',
-    );
-  });
-
   it('sizes a frame that had no auto-resizer, and closes its dialog', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const ctx = makeCtx<RenderModalCtx>();

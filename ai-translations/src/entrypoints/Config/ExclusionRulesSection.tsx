@@ -5,13 +5,12 @@
  * first when some exclusion exists.
  */
 
-import Callout from 'datocms-react-ui/Callout';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
 import SelectInput from 'datocms-react-ui/SelectInput';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { formatCount } from '../../components/BulkTranslations/bulkCopy';
 import {
   type ChipOption,
@@ -33,6 +32,8 @@ export interface Field {
   id: string;
   name: string;
   model: string;
+  /** The API key of the field, to name the exclusions saved by API key. */
+  apiKey?: string;
 }
 
 /** The state of the request that loads the roles of the project. */
@@ -41,7 +42,6 @@ export type RolesStatus = 'loading' | 'ready' | 'error';
 export interface ExclusionRulesSectionProps {
   showExclusionRules: boolean;
   setShowExclusionRules: (value: boolean) => void;
-  hasExclusionRules: boolean;
   modelsToBeExcluded: string[];
   setModelsToBeExcluded: (value: string[]) => void;
   rolesToBeExcluded: string[];
@@ -58,10 +58,9 @@ export interface ExclusionRulesSectionProps {
 }
 
 /**
- * A saved value that no option has (a deleted model or role, a field saved by
- * API key or path) shows as the raw token, and is saved unchanged. Each
- * select lists every option of the schema, so the whole list can be
- * scrolled as well as searched.
+ * A saved model or role that no option has (a deleted one) shows as the raw
+ * token, and is saved unchanged. Each select lists every option of the
+ * schema, so the whole list can be scrolled as well as searched.
  */
 function savedTokenOption(value: string): ChipOption {
   return { label: value, value };
@@ -74,7 +73,6 @@ const noFields = () => 'No fields';
 export default function ExclusionRulesSection({
   showExclusionRules,
   setShowExclusionRules,
-  hasExclusionRules,
   modelsToBeExcluded,
   setModelsToBeExcluded,
   rolesToBeExcluded,
@@ -120,6 +118,21 @@ export default function ExclusionRulesSection({
     [listOfFields],
   );
 
+  // A saved field that no option has: one saved by API key or path, which
+  // excludes every field with that API key, or a deleted one. It shows as a
+  // key, after the name of a field that has that key ("Field" when none
+  // has), and is saved unchanged.
+  const savedFieldOption = useCallback(
+    (value: string): ChipOption => {
+      const apiKey = value.split('.').filter(Boolean).pop();
+      const field = listOfFields.find(
+        (candidate) => apiKey !== undefined && candidate.apiKey === apiKey,
+      );
+      return { label: field?.name ?? 'Field', value, code: value };
+    },
+    [listOfFields],
+  );
+
   // The header keeps saying that exclusions exist while the group is closed.
   const exclusionCount =
     modelsToBeExcluded.length +
@@ -143,12 +156,6 @@ export default function ExclusionRulesSection({
         onToggle: () => setShowExclusionRules(!showExclusionRules),
       }}
     >
-      {hasExclusionRules && (
-        <Callout>
-          Some models, roles or fields are excluded, so the plugin doesn't show
-          everywhere.
-        </Callout>
-      )}
       <FieldWrapper
         label="Excluded models"
         hint="The plugin doesn't translate the records of these models."
@@ -168,7 +175,11 @@ export default function ExclusionRulesSection({
       <FieldWrapper
         label="Excluded roles"
         hint="Users with these roles can't use the plugin."
-        error={rolesStatus === 'error' ? "Couldn't load the roles." : undefined}
+        error={
+          rolesStatus === 'error'
+            ? "Couldn't load the roles. Reload the page to try again."
+            : undefined
+        }
       >
         <SelectInput
           multiple
@@ -192,7 +203,8 @@ export default function ExclusionRulesSection({
           value={apiKeysToBeExcluded}
           onChange={(value) => setApiKeysToBeExcluded(value ?? [])}
           options={fieldOptions}
-          acceptValueNotIncludedInOptions={savedTokenOption}
+          acceptValueNotIncludedInOptions={savedFieldOption}
+          formatOptionLabel={formatApiKeyOptionLabel}
           loading={fieldsLoading}
           noOptionsMessage={noFields}
           placeholder="Pick fields"

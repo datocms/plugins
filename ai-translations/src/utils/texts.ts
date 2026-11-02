@@ -16,6 +16,8 @@ export const GLOSSARY_ERROR_ID = 'aiTranslations.glossaryError';
 
 /** Every text of the plugin, a constant so the Canvas never renders again. */
 export const PLUGIN_TEXTS: Record<string, string> = {
-  [GLOSSARY_LOCALE_ERROR_ID]: 'Pick a locale of this project',
-  [GLOSSARY_ERROR_ID]: 'Pick a glossary of your DeepL account',
+  [GLOSSARY_LOCALE_ERROR_ID]:
+    'This project has no such locale. Pick another one.',
+  [GLOSSARY_ERROR_ID]:
+    "This glossary isn't in your DeepL account. Pick another one.",
 };

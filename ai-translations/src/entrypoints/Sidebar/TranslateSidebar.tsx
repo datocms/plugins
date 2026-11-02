@@ -8,19 +8,22 @@
  * `translateRecordFields`, which writes through `ctx.setFieldValue`), so the
  * changes show in the form at once and the user reviews them before saving.
  *
- * While it runs, one row per field and locale shows its state, and a click on
- * a row scrolls the form to that field. Single-record translation reports
+ * While it runs, one row per field shows its state in all the target
+ * locales, and a click on a row scrolls the form to that field (in the
+ * first locale that failed, when one did). Single-record translation reports
  * field by field, so it stays in the panel instead of the bulk progress
  * modal.
  *
  * Each phase swaps the panel's button, so the focus moves with the phase:
- * to Cancel while it runs, to Done after a success, and back to "Translate
- * all fields" with the form.
+ * to Cancel while it runs, to Done once it ends, and back to "Translate all
+ * fields" with the form. A run with failures keeps its rows too, and one
+ * alert at its end says which fields failed, in which locales, and why.
  */
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import RowList from 'datocms-react-ui/RowList';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import {
@@ -32,14 +35,16 @@ import {
   useState,
 } from 'react';
 import { PICK_LOCALE_ERROR } from '../../components/BulkTranslations/bulkCopy';
-import { InsetRowList } from '../../components/InsetRowList';
 import { buildPluginSettingsPath } from '../../utils/dashboardPaths';
-import { formatLocaleWithCode } from '../../utils/localeUtils';
+import { formatList, formatLocaleWithCode } from '../../utils/localeUtils';
 import { translateRecordFields } from '../../utils/translateRecordFields';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import type { ctxParamsType } from '../Config/ConfigScreen';
 import {
+  type FieldRowState,
+  fieldRows,
+  localeToOpen,
   TranslationRow,
   type TranslationRowState,
   type TranslationRowStatus,
@@ -52,18 +57,84 @@ type PropTypes = {
 
 /**
  * `form` picks the locales, `running` shows the rows while the fields are
- * translated, `success` keeps the rows with "Done" after a run without
- * errors.
+ * translated, `done` keeps the rows with "Done" once the run ended (with or
+ * without failures).
  */
-type Phase = 'form' | 'running' | 'success';
+type Phase = 'form' | 'running' | 'done';
 
-/** How long the success state stays before the panel goes back to the form. */
+/**
+ * How long a run without failures stays before the panel goes back to the
+ * form. A run with failures stays until Done, so its failed rows stay in view.
+ */
 const SUCCESS_TIMER_DURATION_MS = 7500;
 
 const SUCCESS_NOTICE =
-  'Translations were applied to the form. Review them and click Save to persist the changes.';
+  'The translations are in the form. Review them, then save the record.';
 
-const NOT_READY_REASON = 'Pick a source locale and at least one target locale.';
+const NOT_READY_REASON = 'Pick at least one locale to translate into.';
+
+/** A field that couldn't be translated into a locale, and why. */
+type Failure = { fieldLabel: string; locale: string; message: string };
+
+/** What the end-of-run alert needs to know about the run. */
+type RunTally = {
+  /** The number of fields that the run started. */
+  fields: number;
+  /** The target locales of the run, in order. */
+  locales: string[];
+  /** Some field was translated into some locale. */
+  someTranslated: boolean;
+};
+
+/**
+ * The one alert at the end of a run with failures. When every field failed
+ * in the same locales, it names the locales only ("Couldn't translate into
+ * German [de]."); otherwise the fields and their locales ("Couldn't
+ * translate “Excerpt” into Italian [it] and German [de]."). Then the causes
+ * and, when something was translated, what to do next.
+ */
+function failureAlert(failures: Failure[], run: RunTally): string {
+  // Each field that failed, with its failed locales in the order of the run
+  const failedLocales = new Map<string, string[]>();
+  for (const { fieldLabel } of failures) {
+    failedLocales.set(
+      fieldLabel,
+      run.locales.filter((locale) =>
+        failures.some(
+          (failure) =>
+            failure.fieldLabel === fieldLabel && failure.locale === locale,
+        ),
+      ),
+    );
+  }
+  // The fields that failed in the same locales go together
+  const fieldsByLocales = new Map<string, string[]>();
+  for (const [fieldLabel, locales] of failedLocales) {
+    const key = formatList(locales.map(formatLocaleWithCode));
+    fieldsByLocales.set(key, [
+      ...(fieldsByLocales.get(key) ?? []),
+      `“${fieldLabel}”`,
+    ]);
+  }
+  const groups = [...fieldsByLocales];
+  const lead =
+    groups.length === 1 && failedLocales.size >= run.fields
+      ? `Couldn't translate into ${groups[0][0]}.`
+      : `Couldn't translate ${formatList(
+          groups.map(
+            ([locales, fields]) => `${formatList(fields)} into ${locales}`,
+          ),
+        )}.`;
+  const causes = [...new Set(failures.map((failure) => failure.message))];
+  // The failed fields failed in every locale: the other fields are whole
+  const wholeFieldsFailed = [...failedLocales.values()].every(
+    (locales) => locales.length === run.locales.length,
+  );
+  const next = run.someTranslated
+    ? `The other ${wholeFieldsFailed ? 'fields' : 'translations'} are in the form. Review them, then save the record.`
+    : '';
+  return [lead, ...causes, next].filter(Boolean).join(' ');
+}
 
 /**
  * Whether the frame has the focus but no element holds it: the focused
@@ -89,19 +160,21 @@ function recordLocales(ctx: RenderItemFormSidebarPanelCtx): string[] {
  * told to ask an admin.
  */
 function VendorNotSetUp({ ctx }: PropTypes) {
+  // The vendor is a setting that these roles never see: only who to ask.
   if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
     return (
-      <SidebarPanel.Blank message="No AI vendor is set up yet. Ask an admin to set one up." />
+      <SidebarPanel.Blank message="Translation isn't set up yet. Ask an admin to set it up." />
     );
   }
 
   return (
     <>
       <SidebarPanel.Blank message="No AI vendor is set up yet." />
-      <Button
-        expand
+      <SidebarPanel.Action
         label="Open plugin settings"
-        to={buildPluginSettingsPath(ctx)}
+        onClick={() => {
+          void ctx.navigateTo(buildPluginSettingsPath(ctx));
+        }}
       />
     </>
   );
@@ -169,7 +242,11 @@ function RecordTranslator({
     internalLocales.slice(1),
   );
   const [phase, setPhase] = useState<Phase>('form');
+  // The last run ended with failures: its rows stay until Done.
+  const [hasFailures, setHasFailures] = useState(false);
   const [rows, setRows] = useState<TranslationRowState[]>([]);
+  // The target locales of the run that the rows show.
+  const [runLocales, setRunLocales] = useState<string[]>([]);
   // Drives the busy Cancel button only. The running loop reads the ref: a
   // state value would be captured stale in its in-flight async closure.
   const [isCancelling, setIsCancelling] = useState(false);
@@ -198,12 +275,12 @@ function RecordTranslator({
     [localeOptions, sourceLocale],
   );
 
-  // The success state goes back to the form on its own after a while.
+  // A run without failures goes back to the form on its own after a while.
   useEffect(() => {
-    if (phase !== 'success') return;
+    if (phase !== 'done' || hasFailures) return;
     const timer = setTimeout(() => setPhase('form'), SUCCESS_TIMER_DURATION_MS);
     return () => clearTimeout(timer);
-  }, [phase]);
+  }, [phase, hasFailures]);
 
   // The focused button goes away with its phase (Translate when the run
   // starts, Cancel when it ends, Done when the form comes back): give the
@@ -216,15 +293,15 @@ function RecordTranslator({
     const target =
       phase === 'running'
         ? cancelRef.current
-        : phase === 'success'
+        : phase === 'done'
           ? doneRef.current
           : document.getElementById(translateId);
     target?.focus({ preventScroll: true });
   }, [phase, translateId]);
 
   const openRow = useCallback(
-    (row: TranslationRowState) => {
-      void ctx.scrollToField(row.baseFieldPath, row.locale);
+    (field: FieldRowState) => {
+      void ctx.scrollToField(field.baseFieldPath, localeToOpen(field));
     },
     [ctx],
   );
@@ -236,11 +313,68 @@ function RecordTranslator({
     setTargetLocales(internalLocales.filter((locale) => locale !== next));
   }
 
+  /**
+   * What the panel shows once a run settles: the form after a cancel or a
+   * run with nothing to translate; the rows with Done after a run, kept
+   * until Done when some field failed or stopped (with one alert for the
+   * failures).
+   */
+  function endRun(
+    source: string,
+    tally: {
+      started: number;
+      completed: number;
+      fields: number;
+      locales: string[];
+      failures: Failure[];
+    },
+  ) {
+    const { started, completed, fields, locales, failures } = tally;
+    if (isCancellingRef.current) {
+      ctx.notice(
+        completed > 0
+          ? 'Translation cancelled. Review the translated fields, then save the record.'
+          : 'Translation cancelled.',
+      );
+      setIsCancelling(false);
+      setPhase('form');
+    } else if (started === 0) {
+      ctx.notice(
+        `No translatable field has content in ${formatLocaleWithCode(source)}.`,
+      );
+      setPhase('form');
+    } else if (failures.length > 0 || completed < started) {
+      // The rows stay, with the failed ones marked. A field that stopped
+      // without a result isn't a success either: its row stops loading.
+      setRows((prev) =>
+        prev.map((row) =>
+          row.status === 'pending' ? { ...row, status: 'error' } : row,
+        ),
+      );
+      if (failures.length > 0) {
+        ctx.alert(
+          failureAlert(failures, {
+            fields,
+            locales,
+            someTranslated: completed > 0,
+          }),
+        );
+      }
+      setHasFailures(true);
+      setPhase('done');
+    } else {
+      ctx.notice(SUCCESS_NOTICE);
+      setPhase('done');
+    }
+  }
+
   async function handleTranslateAllFields() {
     if (!sourceLocale || concreteTargetLocales.length === 0) return;
 
     setPhase('running');
     setRows([]);
+    setRunLocales(concreteTargetLocales);
+    setHasFailures(false);
     setIsCancelling(false);
     isCancellingRef.current = false;
 
@@ -249,8 +383,9 @@ function RecordTranslator({
     // The run's own tally, read once it settles: the rows in state would be
     // a render behind.
     const startedFieldPaths = new Set<string>();
+    const startedFields = new Set<string>();
     const completedFieldPaths = new Set<string>();
-    let failedCount = 0;
+    const failures: Failure[] = [];
 
     try {
       await translateRecordFields(
@@ -261,6 +396,7 @@ function RecordTranslator({
         {
           onStart: (fieldLabel, locale, fieldPath, baseFieldPath) => {
             startedFieldPaths.add(fieldPath);
+            startedFields.add(fieldLabel);
             setRows((prev) => {
               if (prev.some((row) => row.id === fieldPath)) return prev;
               return [
@@ -279,38 +415,23 @@ function RecordTranslator({
             completedFieldPaths.add(fieldPath);
             setRows((prev) => withRowStatus(prev, fieldPath, 'done'));
           },
+          // The row shows the failure; the alert at the end says why.
           onError: (fieldLabel, locale, fieldPath, _base, errorMessage) => {
-            failedCount += 1;
+            failures.push({ fieldLabel, locale, message: errorMessage });
             setRows((prev) => withRowStatus(prev, fieldPath, 'error'));
-            ctx.alert(
-              `Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`,
-            );
           },
           checkCancellation: () => isCancellingRef.current,
           abortSignal: controller.signal,
         },
       );
 
-      if (isCancellingRef.current) {
-        ctx.notice('Translation cancelled');
-        setIsCancelling(false);
-        setPhase('form');
-      } else if (startedFieldPaths.size === 0) {
-        ctx.notice(
-          `No translatable field has content in ${formatLocaleWithCode(sourceLocale)}.`,
-        );
-        setPhase('form');
-      } else if (
-        failedCount > 0 ||
-        completedFieldPaths.size < startedFieldPaths.size
-      ) {
-        // Each failure was alerted: the form is back for another try. A
-        // field that stopped without a result isn't a success either.
-        setPhase('form');
-      } else {
-        ctx.notice(SUCCESS_NOTICE);
-        setPhase('success');
-      }
+      endRun(sourceLocale, {
+        started: startedFieldPaths.size,
+        completed: completedFieldPaths.size,
+        fields: startedFields.size,
+        locales: concreteTargetLocales,
+        failures,
+      });
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
       setIsCancelling(false);
@@ -320,17 +441,17 @@ function RecordTranslator({
     }
   }
 
+  // The busy Cancel shows that the run is stopping.
   function handleCancelTranslation() {
     setIsCancelling(true);
     isCancellingRef.current = true;
-    ctx.notice('Translation cancellation requested. Please wait...');
     abortControllerRef.current?.abort();
   }
 
   if (phase === 'form') {
     return (
       <>
-        <FieldWrapper label="From">
+        <FieldWrapper label="Translate from">
           <SelectInput
             name="sourceLocale"
             value={sourceLocale}
@@ -340,7 +461,7 @@ function RecordTranslator({
           />
         </FieldWrapper>
         <FieldWrapper
-          label="To"
+          label="Translate into"
           error={
             concreteTargetLocales.length === 0 ? PICK_LOCALE_ERROR : undefined
           }
@@ -377,25 +498,23 @@ function RecordTranslator({
           title="Preparing the fields"
         />
       ) : (
-        // The rows go out into the panel padding, so their text lines up
-        // with the fields and buttons of the panel.
-        <InsetRowList bodyPadding={ctx.bodyPadding}>
-          {rows.map((row) => (
+        // The panel has its inset: compact rows keep their text on its edge,
+        // in line with the fields and buttons of the panel.
+        <RowList density="compact">
+          {fieldRows(rows, runLocales, phase === 'done').map((field) => (
             <TranslationRow
-              key={row.id}
-              row={row}
-              vendor={pluginParams.vendor}
+              key={field.baseFieldPath}
+              field={field}
               onOpen={openRow}
             />
           ))}
-        </InsetRowList>
+        </RowList>
       )}
       <div className={s.actions}>
-        {phase === 'success' ? (
+        {phase === 'done' ? (
           <Button
             key="done"
             ref={doneRef}
-            tone="primary"
             expand
             label="Done"
             onClick={() => setPhase('form')}

@@ -30,11 +30,11 @@ function renderPicker(overrides: Partial<ModelFieldPickerProps> = {}) {
 }
 
 const fieldSelect = () =>
-  screen.getByRole('combobox', { name: 'Articles article' });
+  screen.getByRole('combobox', { name: 'Fields of Articles' });
 
 // react-select hides the input of a disabled select (visibility: hidden), so
 // it has no accessible role: find it through its label.
-const disabledFieldSelect = () => screen.getByLabelText('Articles article');
+const disabledFieldSelect = () => screen.getByLabelText('Fields of Articles');
 
 /** Opens the menu of the field select and picks the option with `name`. */
 function pick(name: string) {
@@ -55,7 +55,7 @@ describe('ModelFieldPicker', () => {
 
   it('treats not-yet-loaded fields as pending, not as the dead end', () => {
     const { container } = renderPicker({ fields: undefined });
-    expect(screen.getByText('Pick fields')).toBeTruthy();
+    expect(screen.getByText('Loading fields…')).toBeTruthy();
     expect(container.querySelector('.SelectInput__loading')).not.toBeNull();
     expect(disabledFieldSelect()).toBeDisabled();
     expect(screen.queryByText(/translatable field/)).toBeNull();
@@ -64,7 +64,7 @@ describe('ModelFieldPicker', () => {
 
   it('shows the pending select while loading', () => {
     renderPicker({ isLoading: true });
-    expect(screen.getByText('Pick fields')).toBeTruthy();
+    expect(screen.getByText('Loading fields…')).toBeTruthy();
     expect(disabledFieldSelect()).toBeDisabled();
   });
 
@@ -75,11 +75,11 @@ describe('ModelFieldPicker', () => {
       loadFailed: true,
       onRetry,
     });
-    expect(screen.getByText('Articles')).toBeTruthy();
+    expect(screen.getByText('Fields of Articles')).toBeTruthy();
     // No select without fields: the field holds an error blank slate, in a
     // group that the label names, with "Try again" in view (not revealed on
     // hover like the actions of an empty slot).
-    const group = screen.getByRole('group', { name: 'Articles article' });
+    const group = screen.getByRole('group', { name: 'Fields of Articles' });
     expect(group).toHaveTextContent("Couldn't load the fields of this model");
     expect(group.querySelector('.blank-slate--section')).not.toBeNull();
     expect(container.querySelector('.EmptySlot')).toBeNull();
@@ -183,13 +183,14 @@ describe('ModelFieldPicker', () => {
     renderPicker({ fields: [], onRemove });
     expect(screen.getByText('No translatable fields')).toBeTruthy();
     expect(screen.queryByRole('combobox')).toBeNull();
+    // "Remove model" is the other way out: the hint doesn't say it again.
     expect(screen.getByText(/Allow more field types in the/).textContent).toBe(
-      'Allow more field types in the plugin settings, or remove the model.',
+      'Allow more field types in the plugin settings.',
     );
     expect(
-      screen.getByRole('group', { name: 'Articles article' }),
+      screen.getByRole('group', { name: 'Fields of Articles' }),
     ).toHaveAccessibleDescription(
-      'Allow more field types in the plugin settings, or remove the model.',
+      'Allow more field types in the plugin settings.',
     );
     // The way out is in view, not an action revealed by the slot on hover.
     expect(
@@ -199,12 +200,16 @@ describe('ModelFieldPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove model' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
 
+    // Without onRemove (the records picker) nor the path of the settings,
+    // the role can't open them: it asks an admin.
     cleanup();
     renderPicker({ fields: [] });
     expect(screen.getByText('No translatable fields')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Remove model' })).toBeNull();
-    expect(screen.getByText(/Allow more field types in the/).textContent).toBe(
-      'Allow more field types in the plugin settings, or leave its records out of the selection.',
+    expect(
+      screen.getByRole('group', { name: 'Fields of Articles' }),
+    ).toHaveAccessibleDescription(
+      'Ask an admin to allow more field types, or leave these records out of the selection.',
     );
   });
 
@@ -224,6 +229,7 @@ describe('ModelFieldPicker', () => {
   it('links "plugin settings" in the dead end only with pluginSettingsPath', () => {
     const { ctx } = renderPicker({
       fields: [],
+      onRemove: vi.fn(),
       pluginSettingsPath: '/configuration/plugins/plugin-id/edit',
     });
     fireEvent.click(screen.getByRole('link', { name: 'plugin settings' }));
@@ -231,8 +237,23 @@ describe('ModelFieldPicker', () => {
       '/configuration/plugins/plugin-id/edit',
     );
 
+    // In the records picker, a dialog, the link opens a new tab.
     cleanup();
-    renderPicker({ fields: [] });
+    renderPicker({
+      fields: [],
+      pluginSettingsPath: '/configuration/plugins/plugin-id/edit',
+    });
+    expect(
+      screen.getByRole('link', { name: 'plugin settings' }),
+    ).toHaveAttribute('target', '_blank');
+    expect(
+      screen.getByRole('group', { name: 'Fields of Articles' }),
+    ).toHaveAccessibleDescription(
+      'Allow more field types in the plugin settings, or leave these records out of the selection.',
+    );
+
+    cleanup();
+    renderPicker({ fields: [], onRemove: vi.fn() });
     expect(screen.queryByRole('link', { name: 'plugin settings' })).toBeNull();
   });
 
@@ -240,9 +261,8 @@ describe('ModelFieldPicker', () => {
     renderPicker();
     expect(screen.getByText('All fields')).toBeTruthy();
     expect(screen.queryByText('Title')).toBeNull();
-    expect(
-      screen.getByText('2 of 2 translatable fields selected'),
-    ).toBeTruthy();
+    // "All fields" says it all: no count repeats it.
+    expect(screen.queryByText(/translatable fields? selected/)).toBeNull();
   });
 
   it('narrows to the concrete picks when the sentinel is dropped', () => {
@@ -250,7 +270,7 @@ describe('ModelFieldPicker', () => {
     expect(screen.getByText('Title')).toBeTruthy();
     expect(screen.queryByText('All fields')).toBeNull();
     expect(
-      screen.getByText('1 of 2 translatable fields selected'),
+      screen.getByText('1 of 2 translatable fields selected.'),
     ).toBeTruthy();
     pick('Body body');
     expect(props.onChange).toHaveBeenLastCalledWith(['title', 'body']);

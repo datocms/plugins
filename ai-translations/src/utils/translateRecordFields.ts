@@ -27,6 +27,7 @@ import { STREAM_THROTTLE_MS } from './constants';
 import { createLogger } from './logging/Logger';
 import {
   formatErrorForUser,
+  formatErrorMessage,
   isFatalProviderError,
   normalizeProviderError,
 } from './translation/ProviderErrors';
@@ -264,7 +265,8 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
     if (isAbortError(e)) return;
     const norm = normalizeProviderError(e, provider.vendor);
     if (isFatalProviderError(provider.vendor, norm)) {
-      const message = formatErrorForUser(norm);
+      // The sidebar normalizes the thrown error again for its alert.
+      const message = formatErrorMessage(norm);
       const fatalErr = createFatalProviderError(e, message, provider);
       setFatalAbort(true);
       setFatalError(fatalErr);

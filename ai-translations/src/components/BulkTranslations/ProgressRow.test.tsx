@@ -51,12 +51,16 @@ describe('ProgressRow', () => {
     expect(link.getAttribute('target')).toBe('_blank');
   });
 
-  it('counts the warnings and shows every one in a tooltip on focus', async () => {
+  it('shows every warning in the line, and in full in a tooltip on focus', async () => {
     renderRow(warned, { recordPath: RECORD_PATH });
 
-    const line = screen.getByText(/^Translated with 2 warnings:/);
-    expect(line.textContent).toContain('Copied linked records');
-    // The tooltip shows only while the line is hovered or focused.
+    const line = screen.getByText(
+      'Translated. Copied linked records in "related". Skipped the empty field "summary".',
+      { exact: false },
+    );
+    // The line is cut with an ellipsis: the tooltip shows only while the
+    // line is hovered or focused.
+    expect(line.getAttribute('tabindex')).toBe('0');
     expect(screen.queryByRole('tooltip')).toBeNull();
     act(() => line.focus());
     const tooltip = await screen.findByRole('tooltip');
@@ -79,32 +83,20 @@ describe('ProgressRow', () => {
     expect(screen.getByText('Translated').getAttribute('tabindex')).toBeNull();
   });
 
-  it('says "a warning" for a single warning', () => {
-    renderRow({ ...warned, warnings: ['Skipped the empty field "summary".'] });
-
-    expect(
-      screen
-        .getByText(
-          'Translated with a warning: Skipped the empty field "summary".',
-        )
-        .getAttribute('tabindex'),
-    ).toBe('0');
-  });
-
   it('names a record without a label by its ID and shows its error', () => {
     renderRow({
       recordIndex: 1,
       recordId: 'r2',
       status: 'error',
-      statusText: 'Record is no longer available',
-      warnings: ['The record was deleted or is no longer accessible.'],
+      statusText: 'Failed',
+      warnings: ["DeepL's usage limit is reached."],
     });
 
     expect(screen.getByText('Record r2')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Record is no longer available: The record was deleted or is no longer accessible.',
-      ),
+      screen.getByText("Failed. DeepL's usage limit is reached.", {
+        exact: false,
+      }),
     ).toBeTruthy();
   });
 
@@ -134,7 +126,7 @@ describe('ProgressRow', () => {
       { runEnded: true },
     );
 
-    expect(screen.getByText('Stopped')).toBeTruthy();
+    expect(screen.getByText('Not translated')).toBeTruthy();
     expect(screen.queryByText('Translating to Italian [it]…')).toBeNull();
     expect(container.querySelector('.Spinner')).toBeNull();
   });

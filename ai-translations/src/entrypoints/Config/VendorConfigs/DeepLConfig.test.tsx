@@ -66,7 +66,6 @@ function Harness({
       deeplGlossaryPairs={glossaryPairs}
       setDeeplGlossaryPairs={setGlossaryPairs}
       siteLocales={['en', 'it']}
-      openConfirm={vi.fn()}
       notice={notice}
     />
   );
@@ -120,7 +119,7 @@ describe('DeepLConfig', () => {
     renderWithCanvas(<Harness saved={{}} />);
 
     const freeSwitch = screen.getByRole('checkbox', {
-      name: /^Use DeepL Free endpoint/,
+      name: /^Key from the DeepL Free plan/,
     }) as HTMLInputElement;
     expect(freeSwitch.checked).toBe(false);
 
@@ -161,11 +160,9 @@ describe('DeepLConfig', () => {
 
     // A passed test is a finished action: a toast, not a callout.
     await waitFor(() =>
-      expect(notice).toHaveBeenCalledWith(
-        'API key OK. DeepL responded: Hallo Welt',
-      ),
+      expect(notice).toHaveBeenCalledWith('The DeepL API key works.'),
     );
-    expect(screen.queryByText(/API key OK/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/API key works/)).not.toBeInTheDocument();
     const translateCall = fetchMock.mock.calls.find(([url]) =>
       url.includes(encodeURIComponent('https://api.deepl.com/v2/translate')),
     );
@@ -255,7 +252,9 @@ describe('DeepLConfig', () => {
     fireEvent.click(screen.getByRole('button', { name: /Glossaries/ }));
 
     expect(
-      await screen.findAllByText('Could not load glossaries: Forbidden'),
+      await screen.findAllByText(
+        "Couldn't load the glossaries. Check the API key above.",
+      ),
     ).toHaveLength(1);
     expect(
       screen.getByRole('combobox', { name: /^Default glossary/ }),

@@ -18,7 +18,7 @@ import {
   parseDeepLTagList,
   toDeepLFormality,
 } from './DeepLSettings';
-import { formatErrorForUser, normalizeProviderError } from './ProviderErrors';
+import { formatErrorMessage, normalizeProviderError } from './ProviderErrors';
 import {
   type BatchTranslationOptions,
   type CancellationOptions,
@@ -683,7 +683,7 @@ export async function translateArray(
     checkCancellation(opts);
     if (isAbortError(error)) throw error;
     const norm = normalizeProviderError(error, provider.vendor);
-    const message = formatErrorForUser(norm);
+    const message = formatErrorMessage(norm);
     // Preserve provider metadata as well as the original cause. Record-level
     // schedulers use status/vendor to distinguish fatal credentials from
     // retryable failures after this layer adds user-facing context.

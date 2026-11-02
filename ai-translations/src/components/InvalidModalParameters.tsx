@@ -24,7 +24,7 @@ export default function InvalidModalParameters({ onClose }: Props) {
       error
       icon={<CircleExclamationIcon />}
       title="Couldn't open this window"
-      description="Its parameters are missing. Close it and try again."
+      description="Some of its information is missing. Close it and try again."
       actions={<Button label="Close" onClick={onClose} />}
     />
   );

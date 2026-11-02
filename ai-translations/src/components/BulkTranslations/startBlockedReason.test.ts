@@ -73,7 +73,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('Pick a source locale first.');
+    ).toBe('Pick the locale to translate from first.');
   });
 
   it('explains missing target locales before missing models', () => {
@@ -86,7 +86,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('Pick at least one target locale first.');
+    ).toBe('Pick at least one locale to translate into.');
   });
 
   it('explains missing models when they are required', () => {

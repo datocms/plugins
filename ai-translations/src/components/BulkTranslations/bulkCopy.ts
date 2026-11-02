@@ -55,11 +55,34 @@ export const PICK_MODEL_ERROR = 'Pick at least one model';
 export const PICK_FIELD_ERROR = 'Pick at least one field';
 export const PICKER_MODAL_TITLE = 'Translate records';
 export const PROGRESS_MODAL_TITLE = 'Translation progress';
-export const TRANSLATION_CANCELED_NOTICE = 'Translation successfully canceled!';
-export const TRANSLATION_FAILED_ALERT =
-  "Couldn't translate some of the records!";
-export const NO_RECORDS_WARNING =
-  "Couldn't find any records in the selected models!";
+export const TRANSLATION_CANCELED_NOTICE = 'Translation cancelled.';
+export const TRANSLATION_FAILED_ALERT = "Couldn't translate the records.";
+export const NO_RECORDS_WARNING = 'The selected models have no records.';
+/**
+ * What a bulk run does to the records, said before it starts: the last line
+ * above the button that starts it.
+ */
+export const BULK_RUN_CONSEQUENCE =
+  "This overwrites the content in the locales you translate into, and saves each record as soon as it's translated.";
+
+/**
+ * From this many record × target locale translations on, the dialog that
+ * starts a run warns about the usage of the vendor.
+ */
+const LARGE_RUN_THRESHOLD = 10_000;
+
+/** Whether a run is large enough to warn about the usage of the vendor. */
+export function isLargeRun(records: number, targetLocales: number): boolean {
+  return records * targetLocales >= LARGE_RUN_THRESHOLD;
+}
+
+/** The title of the warning of a large run. */
+export const LARGE_RUN_TITLE = 'Large translation';
+
+/** The warning of a large run, with the name of the vendor when known. */
+export function largeRunWarning(vendorName?: string): string {
+  return `This can use a lot of your ${vendorName ?? 'translation'} quota. Keep the progress window open until it finishes.`;
+}
 
 /** "1 record" / "2,882 records". */
 export function recordCount(count: number, locale?: string): string {
@@ -89,14 +112,12 @@ export function confirmTranslationTitle(
   return `Translate ${recordCount(count, locale)}?`;
 }
 
-/** Completion toast: "One record successfully translated!". */
+/** Completion toast: "12 records translated.". */
 export function translatedRecordsNotice(
   count: number,
   locale?: string,
 ): string {
-  return count === 1
-    ? 'One record successfully translated!'
-    : `${formatCount(count, locale)} records successfully translated!`;
+  return `${recordCount(count, locale)} translated.`;
 }
 
 /** "1 record was" / "3 records were": a count of records with its verb. */
@@ -104,7 +125,7 @@ export function recordCountWas(count: number, locale?: string): string {
   return `${recordCount(count, locale)} ${count === 1 ? 'was' : 'were'}`;
 }
 
-/** Field select hint: "5 of 7 translatable fields selected". */
+/** Field select hint: "5 of 7 translatable fields selected", for a part. */
 export function fieldCountHint(
   selected: number,
   total: number,
@@ -134,9 +155,31 @@ export function discoveryStatus(
   return `${formatCount(loaded, locale)} of ${formatCount(total, locale)} records found`;
 }
 
+/**
+ * The sentence about the records that a run never reached, by what happened
+ * to them: "The translation stopped before the other 2." (or "before the
+ * last one."), or, when it is the first sentence, "before translating 12
+ * records."
+ */
+function stoppedSentence(
+  notProcessed: number,
+  isFirst: boolean,
+  locale?: string,
+): string {
+  let rest = `the other ${formatCount(notProcessed, locale)}`;
+  if (isFirst) rest = `translating ${recordCount(notProcessed, locale)}`;
+  else if (notProcessed === 1) rest = 'the last one';
+  return `The translation stopped before ${rest}.`;
+}
+
 type OutcomeToasts = {
   notice(message: string): Promise<void>;
   alert(message: string): Promise<void>;
+  customToast(toast: {
+    type: 'warning';
+    message: string;
+    dismissOnPageChange: boolean;
+  }): Promise<unknown>;
 };
 
 type TranslationOutcome = {
@@ -168,29 +211,48 @@ export function reportTranslationOutcome(
 ): void {
   const summary = result?.summary;
   const records = (n: number) => recordCount(n, locale);
+  const num = (n: number) => formatCount(n, locale);
   if (result?.canceled) {
     void ctx.notice(
-      summary?.processedCount
-        ? `Translation canceled. ${records(summary.successfulCount)} completed; ${records(summary.failedCount)} failed. Saved changes were kept.`
+      summary?.successfulCount
+        ? `Translation cancelled. ${recordCountWas(summary.successfulCount, locale)} translated and saved.`
         : TRANSLATION_CANCELED_NOTICE,
     );
   } else if (
     summary &&
     (summary.failedCount > 0 || summary.processedCount < summary.totalRecords)
   ) {
-    void ctx.alert(
-      `${records(summary.successfulCount)} completed; ${records(summary.failedCount)} failed; ${recordCountWas(summary.totalRecords - summary.processedCount, locale)} not processed.`,
-    );
+    // One short sentence per count, without the counts of zero. The first
+    // one names the records: "8 records translated. 2 failed. The
+    // translation stopped before the other 2."
+    const notProcessed = summary.totalRecords - summary.processedCount;
+    const sentences: string[] = [];
+    const add = (n: number, text: string) => {
+      if (n === 0) return;
+      sentences.push(`${sentences.length === 0 ? records(n) : num(n)} ${text}`);
+    };
+    add(summary.successfulCount, 'translated.');
+    add(summary.failedCount, 'failed.');
+    if (notProcessed > 0) {
+      sentences.push(
+        stoppedSentence(notProcessed, sentences.length === 0, locale),
+      );
+    }
+    void ctx.alert(sentences.join(' '));
   } else if (summary && summary.warningCount > 0) {
-    void ctx.notice(
-      `${records(summary.successfulCount)} completed; ${records(summary.warningCount)} ${summary.warningCount === 1 ? 'needs' : 'need'} review.`,
-    );
+    // The progress dialog marks these records amber: a warning, not a success
+    void ctx.customToast({
+      type: 'warning',
+      message: `${records(summary.successfulCount)} translated, ${num(summary.warningCount)} with warnings.`,
+      dismissOnPageChange: true,
+    });
   } else if (
     summary?.updatedCount !== undefined &&
     summary.updatedCount < summary.successfulCount
   ) {
+    const unchanged = summary.successfulCount - summary.updatedCount;
     void ctx.notice(
-      `${records(summary.updatedCount)} updated; ${records(summary.successfulCount - summary.updatedCount)} had no eligible fields to translate.`,
+      `${records(summary.updatedCount)} translated. ${num(unchanged)} had nothing to translate.`,
     );
   } else if (result?.completed)
     void ctx.notice(

@@ -1,8 +1,11 @@
 // ConfigScreen.tsx
 // ------------------------------------------------------
 // The plugin's configuration screen inside DatoCMS: one form with the AI
-// vendor, its credentials and model (or its own options), the translation
-// prompt and field types, the features, and the exclusions, then Save.
+// vendor, its credentials and model (or its own options), the features, the
+// exclusions, and the advanced settings (the translation prompt, the field
+// types and the debug logging), then Save. The exclusions and the advanced
+// settings open and close; each is open at first when it differs from the
+// defaults.
 // It renders inside the Canvas that main.tsx puts around every frame hook.
 //
 // PERF-003: State has been refactored into custom hooks to reduce re-renders:
@@ -415,7 +418,7 @@ const API_KEY_REASONS: Record<VendorType, string> = {
  */
 const NO_MODEL_REASONS: Partial<Record<ModelListStatus, string>> = {
   error: "Check the API key: the models couldn't be loaded.",
-  empty: 'Use an API key that has compatible models.',
+  empty: 'Use an API key that can use one of the supported models.',
 };
 
 /**
@@ -699,7 +702,6 @@ type VendorSettingsProps = {
   vendorActions: VendorConfigActions;
   modelLists: Record<'openai' | 'google' | 'anthropic', ModelList>;
   siteLocales: ApiTypes.Site['locales'];
-  openConfirm: RenderConfigScreenCtx['openConfirm'];
   /** The toast of a finished action, such as a passed credentials test. */
   notice: RenderConfigScreenCtx['notice'];
 };
@@ -710,7 +712,6 @@ function VendorSettings({
   vendorActions,
   modelLists,
   siteLocales,
-  openConfirm,
   notice,
 }: VendorSettingsProps) {
   switch (vendorConfig.vendor) {
@@ -766,7 +767,6 @@ function VendorSettings({
           deeplGlossaryPairs={vendorConfig.deeplGlossaryPairs}
           setDeeplGlossaryPairs={vendorActions.setDeeplGlossaryPairs}
           siteLocales={siteLocales}
-          openConfirm={openConfirm}
           notice={notice}
         />
       );
@@ -784,9 +784,26 @@ function VendorSettings({
 }
 
 /**
+ * Whether the saved advanced settings differ from the defaults: a prompt of
+ * their own, other field types, or the debug logging. Then the "Advanced"
+ * group is open at first.
+ */
+function hasCustomAdvancedSettings(pluginParams: ctxParamsType): boolean {
+  const fields = Array.isArray(pluginParams.translationFields)
+    ? pluginParams.translationFields
+    : Object.keys(translateFieldTypes);
+  return (
+    (!!pluginParams.prompt && pluginParams.prompt !== defaultPrompt) ||
+    [...fields].sort().join(',') !==
+      Object.keys(translateFieldTypes).sort().join(',') ||
+    pluginParams.enableDebugging === true
+  );
+}
+
+/**
  * Main config screen component: one form whose groups are the vendor, its
- * settings, the translation, the features and the exclusions, with Save
- * after the last group.
+ * settings, the features, the exclusions and the advanced settings, with
+ * Save after the last group.
  *
  * @param props - Contains the RenderConfigScreenCtx from DatoCMS
  */
@@ -846,7 +863,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     rolesToBeExcluded,
     apiKeysToBeExcluded,
     showExclusionRules,
-    hasExclusionRules,
   } = exclusionRules;
   const {
     setModelsToBeExcluded,
@@ -856,6 +872,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   } = exclusionActions;
 
   // Performance concurrency is now fully automatic; no user setting.
+
+  // The advanced settings are rarely changed: closed unless they differ from
+  // the defaults.
+  const [showAdvanced, setShowAdvanced] = useState(() =>
+    hasCustomAdvancedSettings(pluginParams),
+  );
 
   // Save operation state
   const [isSaving, setIsSaving] = useState(false);
@@ -908,6 +930,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           const newFields = fields.map((field) => ({
             id: field.id,
             name: field.attributes.label,
+            apiKey: field.attributes.api_key,
             model: itemType.attributes.modular_block
               ? `${modelName} block`
               : modelName,
@@ -1261,63 +1284,23 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               anthropic: anthropicModels,
             }}
             siteLocales={siteLocales}
-            openConfirm={ctx.openConfirm}
             notice={ctx.notice}
           />
 
-          <Page.Group title="Translation">
-            {/* Prompt input is not applicable to native translation providers. */}
-            {!isNativeTranslationVendor(vendor) && (
-              <FieldWrapper label="Translation prompt" hint={PROMPT_HINT}>
-                <TextareaInput
-                  name="prompt"
-                  value={prompt}
-                  onChange={(next) => setPrompt(next ?? '')}
-                  maxRows={PROMPT_MAX_ROWS}
-                />
-              </FieldWrapper>
-            )}
-            <FieldWrapper
-              label="Translatable field types"
-              hint="The plugin translates the fields of these types."
-            >
-              <SelectInput
-                multiple
-                name="translationFields"
-                value={translationFields}
-                onChange={(next) => setTranslationFields(next ?? [])}
-                options={FIELD_TYPE_OPTIONS}
-                acceptValueNotIncludedInOptions={savedFieldTypeOption}
-                noOptionsMessage={noFieldTypes}
-                placeholder="Pick field types"
-              />
-            </FieldWrapper>
-          </Page.Group>
-
           <Page.Group title="Features">
             <SwitchList>
-              <FieldWrapper hint="Adds the AI Translations panel to the record sidebar.">
-                <SwitchInput
-                  name="translateWholeRecord"
-                  label="Whole-record translation in the sidebar"
-                  value={translateWholeRecord}
-                  onChange={(next) => setTranslateWholeRecord(next === true)}
-                />
-              </FieldWrapper>
-              <FieldWrapper hint="Adds “AI Translate these records” to the actions of the records selected in a table.">
+              <SwitchInput
+                name="translateWholeRecord"
+                label="Whole-record translation in the sidebar"
+                value={translateWholeRecord}
+                onChange={(next) => setTranslateWholeRecord(next === true)}
+              />
+              <FieldWrapper hint="Adds “Translate with AI” to the actions of the records selected in a table.">
                 <SwitchInput
                   name="translateBulkRecords"
                   label="Bulk translation of selected records"
                   value={translateBulkRecords}
                   onChange={(next) => setTranslateBulkRecords(next === true)}
-                />
-              </FieldWrapper>
-              <FieldWrapper hint="Logs translation requests and responses in the browser console.">
-                <SwitchInput
-                  name="enableDebugging"
-                  label="Debug logging"
-                  value={enableDebugging}
-                  onChange={(next) => setEnableDebugging(next === true)}
                 />
               </FieldWrapper>
             </SwitchList>
@@ -1326,7 +1309,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           <ExclusionRulesSection
             showExclusionRules={showExclusionRules}
             setShowExclusionRules={setShowExclusionRules}
-            hasExclusionRules={hasExclusionRules}
             modelsToBeExcluded={modelsToBeExcluded}
             setModelsToBeExcluded={setModelsToBeExcluded}
             rolesToBeExcluded={rolesToBeExcluded}
@@ -1340,8 +1322,52 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             fieldsLoading={fieldsLoading}
           />
 
+          <Page.Group
+            title="Advanced"
+            collapse={{
+              open: showAdvanced,
+              onToggle: () => setShowAdvanced((open) => !open),
+            }}
+          >
+            {/* Prompt input is not applicable to native translation providers. */}
+            {!isNativeTranslationVendor(vendor) && (
+              <FieldWrapper label="Translation prompt" hint={PROMPT_HINT}>
+                <TextareaInput
+                  name="prompt"
+                  value={prompt}
+                  onChange={(next) => setPrompt(next ?? '')}
+                  maxRows={PROMPT_MAX_ROWS}
+                />
+              </FieldWrapper>
+            )}
+            <FieldWrapper label="Translatable field types">
+              <SelectInput
+                multiple
+                name="translationFields"
+                value={translationFields}
+                onChange={(next) => setTranslationFields(next ?? [])}
+                options={FIELD_TYPE_OPTIONS}
+                acceptValueNotIncludedInOptions={savedFieldTypeOption}
+                noOptionsMessage={noFieldTypes}
+                placeholder="Pick field types"
+              />
+            </FieldWrapper>
+            {/* One switch, not a list: a field of its own. */}
+            <FieldWrapper hint="Logs translation requests and responses in the browser console.">
+              <SwitchInput
+                name="enableDebugging"
+                label="Debug logging"
+                value={enableDebugging}
+                onChange={(next) => setEnableDebugging(next === true)}
+              />
+            </FieldWrapper>
+          </Page.Group>
+
+          {/* Restore defaults is a rare reset: quiet, so Save stays the one
+              weighted action. */}
           <div className={styles.actions}>
             <Button
+              tone="ghost"
               label="Restore defaults"
               disabled={
                 isRestoreDefaultsButtonDisabled

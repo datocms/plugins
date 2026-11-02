@@ -7,7 +7,7 @@ import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
-import { formatLocaleWithCode } from '../localeUtils';
+import { formatList, formatLocaleWithCode } from '../localeUtils';
 import { loadRecordBatches } from './BulkRecordLoader';
 import { cloneContent } from './ContentIntegrity';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
@@ -284,11 +284,53 @@ export function summarizeReferenceCopies(
     fields.add(field);
     locales.add(toLocale);
   }
-  const fieldList = [...fields].map((f) => `"${f}"`).join(', ');
+  const fieldList = [...fields].map((f) => `“${f}”`).join(', ');
   const localeList = [...locales]
     .map((l) => formatLocaleWithCode(l))
     .join(', ');
   return `Copied linked records in ${fieldList} into ${localeList} — these are shared references and weren't translated; review whether they should differ per locale.`;
+}
+
+/**
+ * A field that couldn't be translated into one locale: its label and the
+ * cause, as the text for the user.
+ */
+export type FieldFailure = { label: string; toLocale: string; reason: string };
+
+/**
+ * The warnings of a record's skipped fields, for its row: one sentence per
+ * group of fields with the same locales and cause, with the field labels and
+ * the locale names. "Excerpt wasn't translated into Italian [it] and German
+ * [de]. DeepL returned an error: Text too long."
+ *
+ * @param failures - The field failures of one record, across its locales.
+ * @returns One line per group, in the order of the fields.
+ */
+export function summarizeFieldFailures(failures: FieldFailure[]): string[] {
+  const byField = new Map<string, { locales: string[]; reasons: string[] }>();
+  for (const { label, toLocale, reason } of failures) {
+    const entry = byField.get(label) ?? { locales: [], reasons: [] };
+    if (!entry.locales.includes(toLocale)) entry.locales.push(toLocale);
+    if (!entry.reasons.includes(reason)) entry.reasons.push(reason);
+    byField.set(label, entry);
+  }
+  // Fields with the same locales and causes share one sentence.
+  const groups = new Map<
+    string,
+    { labels: string[]; locales: string[]; reasons: string[] }
+  >();
+  for (const [label, { locales, reasons }] of byField) {
+    const key = JSON.stringify([locales, reasons]);
+    const group = groups.get(key) ?? { labels: [], locales, reasons };
+    group.labels.push(label);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ labels, locales, reasons }) =>
+    [
+      `${formatList(labels)} ${labels.length === 1 ? "wasn't" : "weren't"} translated into ${formatList(locales.map(formatLocaleWithCode))}.`,
+      ...reasons,
+    ].join(' '),
+  );
 }
 
 /**
@@ -362,6 +404,8 @@ export interface BuildTranslatedUpdatePayloadResult {
   referenceCopies: ReferenceCopy[];
   /** Genuine per-field translation failures (not reference-copy notices). */
   warnings: string[];
+  /** The same failures, for the warnings of the record's row. */
+  fieldFailures: FieldFailure[];
 }
 
 /**
@@ -583,6 +627,7 @@ export async function translateAndUpdateRecords(
 
     const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
+    const aggregatedFieldFailures: FieldFailure[] = [];
     const aggregatedReferenceCopies: ReferenceCopy[] = [];
     const aggregatedTranslatedFields: string[] = [];
     let totalTranslatedFields = 0;
@@ -599,7 +644,7 @@ export async function translateAndUpdateRecords(
         recordId: record.id,
         status: 'processing',
         message: `Translating "${recordLabel}" (#${record.id}) to ${formatLocaleWithCode(toLocale)}…`,
-        statusText: `Translating to ${formatLocaleWithCode(toLocale)}…`,
+        statusText: `Translating into ${formatLocaleWithCode(toLocale)}…`,
         recordLabel,
         itemTypeId,
       });
@@ -626,6 +671,7 @@ export async function translateAndUpdateRecords(
 
       mergeLocalePayloadInto(mergedPayload, localeResult.payload, toLocale);
       aggregatedWarnings.push(...localeResult.warnings);
+      aggregatedFieldFailures.push(...localeResult.fieldFailures);
       aggregatedReferenceCopies.push(...localeResult.referenceCopies);
       aggregatedTranslatedFields.push(...localeResult.translatedFields);
       totalTranslatedFields += localeResult.translatedFieldCount;
@@ -646,7 +692,10 @@ export async function translateAndUpdateRecords(
     ).meta;
     let updatedAt = recordMeta?.updated_at;
     let currentVersion: string | undefined;
-    if (totalTranslatedFields + totalReferenceFieldsCopied > 0 && Object.keys(mergedPayload).length > 0) {
+    if (
+      totalTranslatedFields + totalReferenceFieldsCopied > 0 &&
+      Object.keys(mergedPayload).length > 0
+    ) {
       throwIfTranslationCancelled(options);
       updateProgress({
         recordIndex,
@@ -680,6 +729,7 @@ export async function translateAndUpdateRecords(
       translatedFields: aggregatedTranslatedFields,
       referenceCopies: aggregatedReferenceCopies,
       warnings: aggregatedWarnings,
+      fieldFailures: aggregatedFieldFailures,
       translatedFieldApiKeys,
       translatedFieldIds: toFieldIds(translatedFieldApiKeys),
       copiedLinkFieldApiKeys,
@@ -707,7 +757,7 @@ export async function translateAndUpdateRecords(
     const referenceSummary = summarizeReferenceCopies(outcome.referenceCopies);
     const recordWarnings = [
       ...(referenceSummary ? [referenceSummary] : []),
-      ...outcome.warnings,
+      ...summarizeFieldFailures(outcome.fieldFailures),
     ];
     const warnings = recordWarnings.length > 0 ? recordWarnings : undefined;
 
@@ -736,7 +786,7 @@ export async function translateAndUpdateRecords(
         recordId,
         status: 'error',
         message: `No fields were updated for "${recordLabel}" (#${recordId}).`,
-        statusText: 'No fields were updated',
+        statusText: 'Failed',
         ...completionFields,
       });
       return 'continue';
@@ -752,7 +802,7 @@ export async function translateAndUpdateRecords(
       statusText = 'Copied linked records into new locales';
     } else {
       completionMessage = `No eligible fields to translate for "${recordLabel}" (#${recordId}).`;
-      statusText = 'No eligible fields to translate';
+      statusText = 'Nothing to translate';
     }
     updateProgress({
       recordIndex,
@@ -802,7 +852,7 @@ export async function translateAndUpdateRecords(
           recordIndex,
           recordId: record.id,
           status: 'completed',
-          statusText: 'No eligible fields to translate',
+          statusText: 'Nothing to translate',
           recordLabel,
           itemTypeId,
         });
@@ -818,11 +868,13 @@ export async function translateAndUpdateRecords(
           recordId: record.id,
           status: 'error',
           message: errorMsg,
-          statusText: 'Missing source locale',
+          statusText: 'Failed',
           recordLabel,
           itemTypeId,
           updatedAt: recordUpdatedAt,
-          warnings: [errorMsg],
+          warnings: [
+            `It has no content in ${formatLocaleWithCode(fromLocale)}.`,
+          ],
         });
         return 'continue';
       }
@@ -1062,6 +1114,7 @@ export async function buildTranslatedUpdatePayload(
   throwIfTranslationCancelled(opts);
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
+  const fieldFailures: FieldFailure[] = [];
   const referenceCopies: ReferenceCopy[] = [];
   const translatedFields: string[] = [];
   let translatedFieldCount = 0;
@@ -1152,6 +1205,11 @@ export async function buildTranslatedUpdatePayload(
       warnings.push(
         `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
       );
+      fieldFailures.push({
+        label: fieldTypeDictionary[field]?.label ?? field,
+        toLocale,
+        reason: `${formattedMessage}${suffix}`,
+      });
     }
   }
 
@@ -1204,6 +1262,7 @@ export async function buildTranslatedUpdatePayload(
     translatedFields,
     referenceCopies,
     warnings,
+    fieldFailures,
   };
 }
 
@@ -1299,6 +1358,7 @@ export async function buildFieldTypeDictionary(
         api_key: string;
         appearance: { editor: string };
         id: string;
+        label?: string;
         localized: boolean;
         validators: FieldValidators;
         field_type?: string;
@@ -1309,6 +1369,7 @@ export async function buildFieldTypeDictionary(
         field_type: field.field_type,
         id: field.id,
         isLocalized: field.localized,
+        label: field.label,
         validators: field.validators,
       };
       return acc;

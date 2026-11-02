@@ -391,7 +391,7 @@ describe('AIBulkTranslationsPage', () => {
 
     await waitFor(() => {
       expect(ctx.notice).toHaveBeenCalledWith(
-        `${(2882).toLocaleString()} records successfully translated!`,
+        `${(2882).toLocaleString()} records translated.`,
       );
     });
     expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('article');
@@ -406,6 +406,7 @@ describe('AIBulkTranslationsPage', () => {
         recordCount: 2882,
         fromLocale: 'en',
         toLocales: ['it'],
+        vendorName: 'OpenAI',
         models: [
           {
             label: 'Articles',
@@ -518,7 +519,7 @@ describe('AIBulkTranslationsPage', () => {
     expect(await screen.findByText('Only one locale')).toBeTruthy();
     expect(
       screen.getByText(
-        'Bulk translations copy content from one locale into others, and this environment only has English [en]. Add a locale in the Locales & Timezone settings, then come back here.',
+        'This project has only English [en]. Add another locale to translate into.',
       ),
     ).toBeTruthy();
     expect(
@@ -534,12 +535,14 @@ describe('AIBulkTranslationsPage', () => {
     );
   });
 
-  it('asks a project admin for another locale when the role cannot edit the environment', async () => {
+  it('asks an admin for another locale when the role cannot edit the environment', async () => {
     mocks.findSite.mockResolvedValue({ locales: ['en'] });
     renderPage({ canEditEnvironment: false });
 
     expect(
-      await screen.findByText(/Ask a project admin to add another locale\./),
+      await screen.findByText(
+        'This project has only English [en]. Ask an admin to add another locale.',
+      ),
     ).toBeTruthy();
     expect(
       screen.queryByRole('link', { name: 'Go to locale settings' }),
@@ -572,9 +575,7 @@ describe('AIBulkTranslationsPage', () => {
     ).toBeTruthy();
     expect(screen.getByText('boom')).toBeTruthy();
     expect(
-      screen.getByText(
-        /^Something went wrong while loading this environment\./,
-      ),
+      screen.getByText('Try again, or reload the page if it keeps failing.'),
     ).toBeTruthy();
     expect(ctx.alert).not.toHaveBeenCalled();
 
@@ -717,7 +718,7 @@ describe('AIBulkTranslationsPage', () => {
     await waitFor(() => {
       expect(ctx.customToast).toHaveBeenCalledWith({
         type: 'warning',
-        message: "Couldn't find any records in the selected models!",
+        message: 'The selected models have no records.',
         dismissOnPageChange: true,
       });
     });
@@ -749,9 +750,7 @@ describe('AIBulkTranslationsPage', () => {
     fireEvent.click(await selectModel());
 
     await waitFor(() => {
-      expect(ctx.notice).toHaveBeenCalledWith(
-        'One record successfully translated!',
-      );
+      expect(ctx.notice).toHaveBeenCalledWith('1 record translated.');
     });
     await waitFor(() => expectEnabled(primaryButton()));
   });
@@ -845,7 +844,7 @@ describe('AIBulkTranslationsPage', () => {
     expect(screen.queryByText(/^1 model · /)).toBeNull();
     await expectDisabledWithReason(
       primaryButton(),
-      'Pick at least one target locale first.',
+      'Pick at least one locale to translate into.',
     );
   });
 

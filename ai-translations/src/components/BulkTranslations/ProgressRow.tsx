@@ -3,9 +3,11 @@
  * ---------------
  * One record's row in the list of the translation progress modal: the record
  * title, its state under it (an inline spinner while it is translated, then
- * a dot and the result), and a button that opens the record in a new tab.
- * A record still in progress when the run stopped on a fatal error shows as
- * stopped, without the spinner.
+ * a dot and the result, with the fields that weren't translated and why, and
+ * a tooltip with all of them in full, as the line can be cut), and a button
+ * that opens the record in a new tab, on hover or focus. A record still in
+ * progress when the run stopped on a fatal error shows as not translated,
+ * without the spinner.
  */
 import Button from 'datocms-react-ui/Button';
 import EntityRow from 'datocms-react-ui/EntityRow';
@@ -31,8 +33,11 @@ interface ProgressRowProps {
   runEnded?: boolean;
 }
 
-/** The state word of a record that the run left in progress. */
-const STOPPED_TEXT = 'Stopped';
+/**
+ * The state word of a record that the run left in progress: the word of its
+ * result, like the other rows.
+ */
+const STOPPED_TEXT = 'Not translated';
 
 /** Fallback state word when a progress update carries no explicit one. */
 function defaultStatusText(status: ProgressUpdate['status']): string {
@@ -42,24 +47,17 @@ function defaultStatusText(status: ProgressUpdate['status']): string {
 }
 
 /**
- * The state of the record in words: the status phrase of the update, with
- * the first warning after it for a completion with warnings or a failure.
- * A completion says how many warnings there are, so the line itself tells
- * that the tooltip has more of them.
+ * The state of the record in words: the status phrase of the update, then
+ * its warnings, which say in full sentences which fields weren't translated
+ * and why ("Translated. Excerpt wasn't translated into Italian [it]. …").
  */
 function stateText(update: ProgressUpdate): string {
   const statusText = update.statusText ?? defaultStatusText(update.status);
-  const warnings = update.warnings ?? [];
-  const firstWarning = warnings[0];
-  if (update.status === 'completed' && firstWarning) {
-    const count =
-      warnings.length === 1 ? 'a warning' : `${warnings.length} warnings`;
-    return `${statusText} with ${count}: ${firstWarning}`;
-  }
-  if (update.status === 'error' && firstWarning) {
-    return `${statusText}: ${firstWarning}`;
-  }
-  return statusText;
+  const warnings =
+    update.status === 'processing' ? [] : (update.warnings ?? []);
+  return warnings.length > 0
+    ? [`${statusText}.`, ...warnings].join(' ')
+    : statusText;
 }
 
 /** The mark before the state: a spinner while running, then a dot. */
@@ -73,10 +71,11 @@ function stateMark(update: ProgressUpdate): ReactNode {
 }
 
 /**
- * The details line of the row. The line is cut with an ellipsis, so when the
- * record raised warnings, a tooltip on the line (on hover and on keyboard
- * focus) shows all of them in full. The line keeps the same elements in
- * every state: only the label of the tooltip comes and goes.
+ * The details line of the row: the mark, then the state in words. The line
+ * is cut with an ellipsis, so when the record has warnings, a tooltip on the
+ * line (on hover and on keyboard focus) shows each of them in full. The line
+ * keeps the same elements in every state: only the label of the tooltip
+ * comes and goes.
  */
 function StateLine({
   update,
@@ -122,9 +121,8 @@ function StateLine({
 }
 
 /**
- * A static row of the progress list. Records without a label (a record that
- * was deleted before it loaded) fall back to their ID, so every row stays
- * unique.
+ * A static row of the progress list. A record without a label falls back to
+ * its ID, so every row stays unique.
  */
 function BaseProgressRow({
   update,
@@ -139,15 +137,18 @@ function BaseProgressRow({
         trailing={
           recordPath ? (
             // A page of the CMS: `to`, in a new tab so the modal stays open.
-            <Button
-              tone="ghost"
-              size="micro"
-              iconOnly
-              icon={OpenInNewTabIcon}
-              label="Open the record"
-              to={recordPath}
-              newTab
-            />
+            // It shows on hover or focus of the row (always on touch).
+            <RowList.Actions>
+              <Button
+                tone="ghost"
+                size="micro"
+                iconOnly
+                icon={OpenInNewTabIcon}
+                label="Open the record"
+                to={recordPath}
+                newTab
+              />
+            </RowList.Actions>
           ) : undefined
         }
       >

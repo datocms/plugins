@@ -2,8 +2,8 @@
  * ErrorBoundary.tsx
  * -----------------
  * Catches a render error in any frame of the plugin and shows it as an error
- * blank slate, with a way to render the frame again and, where the frame has
- * one, a link to the plugin settings or a button that closes the dialog.
+ * blank slate, with a way to render the frame again and, in a dialog, a
+ * button that closes it.
  * main.tsx puts it inside the Canvas of every frame hook, so the fallback can
  * use the kit.
  *
@@ -37,8 +37,6 @@ interface ErrorBoundaryProps {
    * page, alone in its `Main`.
    */
   page?: boolean;
-  /** The CMS path of the plugin settings, for the frames that link to them. */
-  settingsPath?: string;
   /**
    * Closes the dialog of the frame with the value that a dismissal means to
    * its caller. Give it for a dialog: the fallback then shows a "Close"
@@ -64,7 +62,6 @@ function isSelfSizing(ctx: object): ctx is SelfSizingCtx {
 interface ErrorFallbackProps {
   error: Error;
   page?: boolean;
-  settingsPath?: string;
   onClose?: () => void;
   onReset: () => void;
   /**
@@ -86,7 +83,6 @@ interface ErrorFallbackProps {
 function ErrorFallback({
   error,
   page = false,
-  settingsPath,
   onClose,
   onReset,
   retried = false,
@@ -121,9 +117,6 @@ function ErrorFallback({
     actions: (
       <>
         <Button ref={retryRef} label="Try again" onClick={onReset} />
-        {settingsPath && (
-          <Button label="Open plugin settings" to={settingsPath} />
-        )}
         {onClose && <Button label="Close" onClick={onClose} />}
       </>
     ),
@@ -188,7 +181,6 @@ export default class ErrorBoundary extends Component<
       <ErrorFallback
         error={error}
         page={this.props.page}
-        settingsPath={this.props.settingsPath}
         onClose={this.props.onClose}
         onReset={this.handleReset}
         retried={this.retried}

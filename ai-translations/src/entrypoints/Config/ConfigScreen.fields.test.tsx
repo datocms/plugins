@@ -166,6 +166,18 @@ function saveButton() {
   return screen.getByRole('button', { name: 'Save' });
 }
 
+/** Opens the closed "Advanced" group, which holds the prompt and the debug logging. */
+function openAdvanced() {
+  const toggle = screen.getByRole('button', { name: 'Advanced' });
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+}
+
+/** A change of the form: the debug logging, in the "Advanced" group. */
+function toggleDebugLogging() {
+  openAdvanced();
+  fireEvent.click(screen.getByLabelText('Debug logging'));
+}
+
 /** The text of the tooltip of a button disabled with a reason. */
 async function disabledReason(button: HTMLElement) {
   expect(button.getAttribute('aria-disabled')).toBe('true');
@@ -186,23 +198,26 @@ afterEach(() => {
 });
 
 describe('config field exclusions', () => {
-  it.each(['openai', 'google', 'anthropic', 'deepl', 'yandex'])(
-    'loads model and block fields for %s without an OpenAI key',
-    async (vendor) => {
-      listRoles.mockResolvedValue([]);
-      const ctx = context();
-      ctx.plugin.attributes.parameters.vendor = vendor;
-      renderScreen(ctx);
+  it.each([
+    'openai',
+    'google',
+    'anthropic',
+    'deepl',
+    'yandex',
+  ])('loads model and block fields for %s without an OpenAI key', async (vendor) => {
+    listRoles.mockResolvedValue([]);
+    const ctx = context();
+    ctx.plugin.attributes.parameters.vendor = vendor;
+    renderScreen(ctx);
 
-      await waitFor(() =>
-        expect(options().querySelectorAll('option')).toHaveLength(2),
-      );
-      expect(options().textContent).toContain('Title (Article)');
-      expect(options().textContent).toContain('Season type (Season block)');
-      expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('article');
-      expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('season');
-    },
-  );
+    await waitFor(() =>
+      expect(options().querySelectorAll('option')).toHaveLength(2),
+    );
+    expect(options().textContent).toContain('Title (Article)');
+    expect(options().textContent).toContain('Season type (Season block)');
+    expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('article');
+    expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('season');
+  });
 
   it('loads fields when the SDK supplies item types after the first render', async () => {
     listRoles.mockResolvedValue([]);
@@ -330,7 +345,7 @@ describe('config field exclusions', () => {
     await waitFor(() =>
       expect(options().querySelectorAll('option')).toHaveLength(2),
     );
-    fireEvent.click(screen.getByLabelText('Debug logging'));
+    toggleDebugLogging();
     fireEvent.click(saveButton());
 
     await waitFor(() =>
@@ -350,7 +365,15 @@ describe('config screen form', () => {
     listRoles.mockResolvedValue([]);
     renderScreen(context());
 
-    expect(screen.getByText(/doesn't show everywhere/)).toBeInTheDocument();
+    // The selects say that exclusions exist: no callout repeats it.
+    expect(screen.getByLabelText('Excluded fields')).toBeInTheDocument();
+    expect(screen.queryByText(/doesn't show everywhere/)).toBeNull();
+    // The advanced settings use the defaults: their group is closed.
+    expect(screen.getByRole('button', { name: 'Advanced' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByLabelText('Debug logging')).toBeNull();
     expect(await disabledReason(saveButton())).toBe(
       'There are no changes to save.',
     );
@@ -370,6 +393,7 @@ describe('config screen form', () => {
   it('shows the prompt only for the vendors that use one', async () => {
     listRoles.mockResolvedValue([]);
     renderScreen(context());
+    openAdvanced();
     expect(screen.queryByLabelText(/^Translation prompt/)).toBeNull();
 
     fireEvent.click(screen.getByRole('radio', { name: /^OpenAI/ }));
@@ -393,7 +417,7 @@ describe('config screen form', () => {
       expect(options().querySelectorAll('option')).toHaveLength(2),
     );
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
-    fireEvent.click(screen.getByLabelText('Debug logging'));
+    toggleDebugLogging();
     expect(saveButton()).not.toHaveAttribute('aria-disabled');
 
     // The form's guard prevents the implicit submission of the browser.
@@ -414,7 +438,7 @@ describe('config screen form', () => {
     });
     renderScreen(ctx);
 
-    fireEvent.click(screen.getByLabelText('Debug logging'));
+    toggleDebugLogging();
     fireEvent.click(saveButton());
 
     await waitFor(() =>
@@ -439,7 +463,7 @@ describe('config screen form', () => {
     });
     renderScreen(ctx);
 
-    fireEvent.click(screen.getByLabelText('Debug logging'));
+    toggleDebugLogging();
     act(() => saveButton().focus());
     fireEvent.click(saveButton());
     expect(saveButton()).toHaveAttribute('aria-busy', 'true');
@@ -459,7 +483,7 @@ describe('config screen form', () => {
     const ctx = context();
     const { rerenderWith } = renderScreen(ctx);
 
-    fireEvent.click(screen.getByLabelText('Debug logging'));
+    toggleDebugLogging();
     act(() => saveButton().focus());
     fireEvent.click(saveButton());
     dropFocus();
@@ -499,7 +523,6 @@ describe('config screen form', () => {
       'Defaults restored. Save to apply them.',
     );
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
-    expect(screen.queryByText(/doesn't show everywhere/)).toBeNull();
     expect(
       (screen.getByRole('radio', { name: /^OpenAI/ }) as HTMLInputElement)
         .checked,
@@ -517,7 +540,7 @@ describe('config screen form', () => {
     renderScreen(context());
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      "Couldn't load the roles.",
+      "Couldn't load the roles. Reload the page to try again.",
     );
   });
 });

@@ -8,7 +8,10 @@ import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
 import { vendorSettingsTitle } from '../configConstants';
-import ModelSelectField, { type ModelList } from './ModelSelectField';
+import ModelSelectField, {
+  type ModelList,
+  modelListKeyError,
+} from './ModelSelectField';
 
 export interface AnthropicConfigProps {
   anthropicApiKey: string;
@@ -27,7 +30,11 @@ export default function AnthropicConfig({
 }: AnthropicConfigProps) {
   return (
     <Page.Group title={vendorSettingsTitle('anthropic')}>
-      <FieldWrapper label="API key" required>
+      <FieldWrapper
+        label="API key"
+        required
+        error={modelListKeyError(modelList.status, 'Anthropic')}
+      >
         <StringInput
           code
           name="anthropicApiKey"

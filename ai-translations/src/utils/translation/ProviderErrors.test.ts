@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from '../logging/Logger';
 import {
   formatErrorForUser,
+  formatErrorMessage,
   handleTranslationError,
   isFatalProviderError,
   normalizeProviderError,
@@ -501,8 +502,48 @@ describe('ProviderErrors.ts', () => {
         message: 'Auth failed',
         hint: 'Check your API key',
       };
-      expect(formatErrorForUser(error)).toBe(
-        'Translation provider error: Auth failed Check your API key',
+      expect(formatErrorForUser(error)).toBe('Auth failed Check your API key');
+    });
+
+    it('names the vendor of a provider error in plain words', () => {
+      expect(
+        formatErrorForUser(
+          normalizeProviderError(
+            new ProviderError('Quota exceeded', 456, 'deepl'),
+            'deepl',
+          ),
+        ),
+      ).toBe("DeepL's usage limit is reached. Check your DeepL plan.");
+      expect(
+        formatErrorForUser(
+          normalizeProviderError(
+            new ProviderError('Invalid API key', 401, 'yandex'),
+            'yandex',
+          ),
+        ),
+      ).toBe(
+        'Yandex rejected the API key. Check the key and its role in Yandex Cloud.',
+      );
+      expect(
+        formatErrorForUser(
+          normalizeProviderError(
+            new ProviderError('Text too long', 400, 'deepl'),
+            'deepl',
+          ),
+        ),
+      ).toBe('DeepL returned an error: Text too long.');
+    });
+
+    it('keeps the source label in the message of a thrown error, which is read again', () => {
+      const normalized = normalizeProviderError(
+        new ProviderError('Quota exceeded', 456, 'deepl'),
+        'deepl',
+      );
+      const thrown = formatErrorMessage(normalized);
+      expect(thrown).toMatch(/^Translation provider error: /);
+      // The layers above normalize it again to the same code.
+      expect(normalizeProviderError(new Error(thrown), 'deepl').code).toBe(
+        'quota',
       );
     });
 

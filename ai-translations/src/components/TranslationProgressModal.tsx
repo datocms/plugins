@@ -1,12 +1,13 @@
 /**
  * TranslationProgressModal.tsx
  * ----------------------------
- * Runs a bulk translation and shows its progress: a status line with a bar,
- * the counts, and the latest records with their state. The user can cancel
- * the run, publish the translated records of draft-mode models once it ends,
- * and close the modal. Cancel stops the run, Cancel publishing stops a large
- * publishing, and Close, enabled once the run and the publishing end, closes
- * it. The modal opens with no host cross (`closeDisabled`): these buttons,
+ * Runs a bulk translation and shows its progress: a status line with a bar
+ * and its count of records while it runs, the counts of the result once it
+ * ends, and the latest records with their state (once it ends, the records
+ * with problems first). The user can cancel the run, publish the translated
+ * records of draft-mode models once it ends, and close the modal. Cancel
+ * translation stops the run, Cancel publishing stops a large publishing, and
+ * Close, enabled once the run and the publishing end, closes it. The modal opens with no host cross (`closeDisabled`): these buttons,
  * and Escape as Close, are the only ways out, so the run never ends without
  * its summary.
  *
@@ -16,7 +17,6 @@
  */
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { useRegisterActions } from 'datocms-react-ui/Actions';
-import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import InfoList from 'datocms-react-ui/InfoList';
@@ -27,12 +27,12 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
-import { formatLocaleWithCode } from '../utils/localeUtils';
 import { buildRecordEditorPath } from '../utils/recordUrl';
 import { isFocusLost, useBusyFocus } from '../utils/retryFocus';
 import {
@@ -54,8 +54,10 @@ import {
   translateAndUpdateRecords,
 } from '../utils/translation/ItemsDropdownUtils';
 import {
+  describeErrorForUser,
   formatErrorForUser,
   normalizeProviderError,
+  type UserFacingError,
 } from '../utils/translation/ProviderErrors';
 import { getProvider } from '../utils/translation/ProviderFactory';
 import {
@@ -108,10 +110,56 @@ const PROGRESS_RENDER_INTERVAL_MS = 100;
  */
 const FATAL_UPDATE_ID = 'fatal';
 
+/** Whether an update is a record's, not the fatal error of the run. */
+function isRecordUpdate(update: ProgressUpdate): boolean {
+  return update.recordId !== FATAL_UPDATE_ID;
+}
+
 /**
- * The lead of the message of a fatal error, before its cause. The message
- * keeps it (the result of the modal carries it), and the Callout that shows
- * the error drops it, because its title already says that the run stopped.
+ * The order of the rows once the run ended: failed, not translated (left in
+ * progress by a fatal error), translated with warnings, then translated.
+ */
+const TRANSLATED_RANK = 3;
+function rowRank(update: ProgressUpdate): number {
+  if (update.status === 'error') return 0;
+  if (update.status === 'processing') return 1;
+  if ((update.warnings?.length ?? 0) > 0) return 2;
+  return TRANSLATED_RANK;
+}
+
+/**
+ * The rows of the list, newest first, at most
+ * VISIBLE_TRANSLATION_UPDATE_LIMIT of them. Once the run ended, the records
+ * with problems come first, from the whole history of the run, so that the
+ * window of the latest rows never hides one; the latest translated records
+ * fill the rest.
+ */
+function listRows(
+  latest: ProgressUpdate[],
+  runEnded: boolean,
+  getHistory: () => ProgressUpdate[],
+): { rows: ProgressUpdate[]; problemCount: number } {
+  const newestFirst = latest
+    .filter(isRecordUpdate)
+    .slice(-VISIBLE_TRANSLATION_UPDATE_LIMIT)
+    .reverse();
+  if (!runEnded) return { rows: newestFirst, problemCount: 0 };
+  const problems = getHistory()
+    .filter(
+      (update) => isRecordUpdate(update) && rowRank(update) < TRANSLATED_RANK,
+    )
+    .reverse()
+    .sort((a, b) => rowRank(a) - rowRank(b))
+    .slice(0, VISIBLE_TRANSLATION_UPDATE_LIMIT);
+  const translated = newestFirst
+    .filter((update) => rowRank(update) === TRANSLATED_RANK)
+    .slice(0, VISIBLE_TRANSLATION_UPDATE_LIMIT - problems.length);
+  return { rows: [...problems, ...translated], problemCount: problems.length };
+}
+
+/**
+ * The lead of the message of a fatal error in the result of the modal,
+ * before its cause.
  */
 const FATAL_MESSAGE_PREFIX = 'Translation failed: ';
 
@@ -124,15 +172,6 @@ const CLOSE_ACTION_ID = 'translationProgress.close';
 const RUNNING_CLOSE_REASON =
   'The translation is still running. Wait for it to finish, or cancel it.';
 const PUBLISHING_CLOSE_REASON = 'Wait for the publishing to finish.';
-const PUBLISHED_ALL_REASON = 'All translated records are published.';
-
-/** The cause of a fatal error, for the text of its Callout. */
-function getFatalCause(update: ProgressUpdate): string {
-  const message = update.message ?? update.statusText ?? '';
-  return message.startsWith(FATAL_MESSAGE_PREFIX)
-    ? message.slice(FATAL_MESSAGE_PREFIX.length)
-    : message;
-}
 
 function getTranslationErrorMessage(
   error: unknown,
@@ -192,14 +231,16 @@ async function translateLoadedBatch(
     accessToken,
     selectedFieldsByModel,
   } = job.parameters;
+  // A record that didn't load has no title: the row says what became of it.
   for (const recordId of batch.missingItemIds) {
     job.onProgress({
       recordIndex: job.progressStore.getRecordIndex(recordId),
       recordId,
+      recordLabel: 'Deleted record',
       status: 'error',
       message: 'DatoCMS error: Record is no longer available.',
-      statusText: 'Record is no longer available',
-      warnings: ['The record was deleted or is no longer accessible.'],
+      statusText: 'Failed',
+      warnings: ['It was deleted, or is no longer available.'],
     });
   }
 
@@ -260,8 +301,7 @@ async function translateRecordBatches(
 /**
  * The label of the publish button: "Publish 10 records", "Publishing 3 of
  * 10…" while it runs, and "Publish the other 3 records" after a partial run.
- * Once every record is published, the button says so ("Published 10
- * records") and is disabled with a reason.
+ * Once every record is published, the button goes: the toast says it.
  */
 function getPublishButtonLabel(
   isPublishing: boolean,
@@ -275,9 +315,6 @@ function getPublishButtonLabel(
   }
   if (publishedCount > 0 && remainingCount > 0) {
     return `Publish the other ${recordCount(remainingCount, locale)}`;
-  }
-  if (publishedCount > 0) {
-    return `Published ${recordCount(totalCount, locale)}`;
   }
   return `Publish ${recordCount(totalCount, locale)}`;
 }
@@ -467,11 +504,12 @@ function getCloseBlockedReason(
 
 /**
  * The actions row, like a dialog footer: at the left the Cancel of the
- * dialog while the run goes on (it stops the run and closes the modal); at
+ * dialog while the run goes on ("Cancel translation": it stops the run and
+ * closes the modal, and its label tells it apart from Close); at
  * the right Cancel publishing while a large set of records is published
  * (a cancel only stops between batches, and a small set is one or a few
- * batches), the publish button once the run ended, and Close, the main
- * action. The publish button and Close take ids, not refs, for the focus
+ * batches), the publish button once the run ended (until every record is
+ * published), and Close, the main action. The publish button and Close take ids, not refs, for the focus
  * after a publishing and at the end of the run: while they are disabled
  * with a reason, the kit's tooltip clones them and reads `element.ref`,
  * which React 19 warns about.
@@ -517,7 +555,7 @@ function ProgressActions({
       {!isCompleted && isProcessing && (
         <Button
           tone="ghost"
-          label="Cancel"
+          label="Cancel translation"
           className={s.cancel}
           busy={isCancelling}
           onClick={onCancel}
@@ -534,14 +572,12 @@ function ProgressActions({
         )}
         {!isProcessing &&
           (isCompleted || hasFatalError) &&
-          publishableCount > 0 && (
+          publishableCount > 0 &&
+          !hasPublishedAll && (
             <Button
               id={publishId}
               label={publishButtonLabel}
               busy={isPublishing}
-              disabled={
-                hasPublishedAll ? { reason: PUBLISHED_ALL_REASON } : undefined
-              }
               onClick={onPublish}
             />
           )}
@@ -561,14 +597,14 @@ function ProgressActions({
 
 /**
  * The top of the modal: the state of the run (with an inline spinner while it
- * goes on), the bar of the processed records, and the counts behind it.
+ * goes on), the bar of the records done, and, while it goes on, their count
+ * under it. Once the run ended, the counts of the result say it.
  */
 function ProgressSummary({
   isRunning,
   isCompleted,
   totalRecords,
   completedCount,
-  loadedRecords,
   percentComplete,
   locale,
 }: {
@@ -576,15 +612,14 @@ function ProgressSummary({
   isCompleted: boolean;
   totalRecords: number;
   completedCount: number;
-  loadedRecords: number;
   percentComplete: number;
   /** The user's language (`ctx.ui.locale`), for the separators of counts. */
   locale: string;
 }) {
   // A run that is neither running nor completed stopped on a fatal error,
   // which the Callout under the bar explains.
-  let status = 'Translation failed';
-  if (isRunning) status = `Translating ${recordCount(totalRecords, locale)}…`;
+  let status = 'Translation stopped';
+  if (isRunning) status = 'Translating…';
   else if (isCompleted) status = 'Translation finished';
 
   return (
@@ -599,14 +634,16 @@ function ProgressSummary({
         value={totalRecords > 0 ? completedCount / totalRecords : 0}
         ariaLabel={status}
       />
-      <p className={s.meta}>
-        {`${formatCount(completedCount, locale)} of ${recordCount(totalRecords, locale)} processed (${percentComplete}%) · ${formatCount(loadedRecords, locale)} loaded`}
-      </p>
-      {/* The counts above change every few records: a screen reader hears
+      {isRunning && (
+        <p className={s.meta}>
+          {`${formatCount(completedCount, locale)} of ${recordCount(totalRecords, locale)}`}
+        </p>
+      )}
+      {/* The count above changes every few records: a screen reader hears
           the progress from this line instead, which changes only with the
           percentage. */}
       <span className={s.srOnly} role="status">
-        {`${percentComplete}% of the records processed`}
+        {`${percentComplete}% of the records done`}
       </span>
     </div>
   );
@@ -622,7 +659,6 @@ export default function TranslationProgressModal({
   parameters,
 }: TranslationProgressModalProps) {
   const jobInputs = useRef({ ctx, parameters });
-  const { fromLocale, toLocales } = jobInputs.current.parameters;
   const [progressStore] = useState(
     () => new TranslationProgressStore(parameters.itemIds),
   );
@@ -637,6 +673,8 @@ export default function TranslationProgressModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
+  // The error that stopped the run, for its Callout.
+  const [fatalError, setFatalError] = useState<UserFacingError | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const frameRef = useFrameHeight(ctx);
   // The counts get the separators of the language that the Canvas gives the
@@ -703,6 +741,11 @@ export default function TranslationProgressModal({
         return;
       setHasFatalError(true);
       setIsProcessing(false);
+      setFatalError(
+        describeErrorForUser(
+          normalizeProviderError(error, pluginParams.vendor ?? 'openai'),
+        ),
+      );
       const failureMessage = `${FATAL_MESSAGE_PREFIX}${getTranslationErrorMessage(error, pluginParams.vendor)}`;
       addProgressUpdate({
         recordIndex: -1,
@@ -792,7 +835,6 @@ export default function TranslationProgressModal({
     successfulCount,
     failedCount,
     warningCount,
-    loadedCount: loadedRecords,
     updateCount,
     publishableCount,
   } = progressSnapshot;
@@ -843,14 +885,18 @@ export default function TranslationProgressModal({
   // The run is over once it completed or stopped on a fatal error. A cancel
   // resolves the modal, so it never shows as over.
   const isRunning = !isCompleted && !hasFatalError;
+  // The records that the run neither translated nor failed: once it stopped
+  // on an error, the one in progress and those it never reached.
+  const notTranslatedCount = totalRecords - successfulCount - failedCount;
   const fatalUpdate = progress.find(
     (update) => update.recordId === FATAL_UPDATE_ID,
   );
-  // Newest first. The fatal error is a message of the run, not a record row.
-  const recordUpdates = progress
-    .filter((update) => update.recordId !== FATAL_UPDATE_ID)
-    .slice(-VISIBLE_TRANSLATION_UPDATE_LIMIT)
-    .reverse();
+  // The fatal error is a message of the run, not a record row.
+  const { rows: recordUpdates, problemCount } = useMemo(
+    () =>
+      listRows(progress, !isRunning, () => progressStore.getResultUpdates()),
+    [progress, isRunning, progressStore],
+  );
   const recordUpdateCount = fatalUpdate ? updateCount - 1 : updateCount;
 
   const handleClose = () => {
@@ -909,42 +955,57 @@ export default function TranslationProgressModal({
         isCompleted={isCompleted}
         totalRecords={totalRecords}
         completedCount={completedCount}
-        loadedRecords={loadedRecords}
         percentComplete={percentComplete}
         locale={locale}
       />
 
-      {fatalUpdate && (
+      {/* The error that stopped the run: the problem as the title and what
+          to do as the text, or the problem alone when there is nothing to
+          do. The counts under it say how far the run got, with the records
+          that it didn't translate. */}
+      {fatalError && (
         <Callout
           tone="danger"
-          title="Translation stopped"
+          title={
+            fatalError.nextStep
+              ? fatalError.problem.replace(/\.$/, '')
+              : undefined
+          }
           className={s.callout}
         >
-          <span className={s.fatalCause}>{getFatalCause(fatalUpdate)}</span>
+          <span className={s.fatalCause}>
+            {fatalError.nextStep ?? fatalError.problem}
+          </span>
         </Callout>
       )}
 
-      <InfoList>
-        <InfoList.Row title="From">
-          {formatLocaleWithCode(fromLocale)}
-        </InfoList.Row>
-        <InfoList.Row title="To">
-          {toLocales.map(formatLocaleWithCode).join(', ')}
-        </InfoList.Row>
-        <InfoList.Row title="Translated">
-          {formatCount(successfulCount, locale)}
-          {warningCount > 0 && (
-            <span className={s.valueNote}>
-              {`${formatCount(warningCount, locale)} with warnings`}
-            </span>
+      {/* The result, once the run ended: the bar showed the progress. */}
+      {!isRunning && (
+        <InfoList>
+          <InfoList.Row title="Translated">
+            {formatCount(successfulCount, locale)}
+            {warningCount > 0 && (
+              <span className={s.valueNote}>
+                {`${formatCount(warningCount, locale)} with warnings`}
+              </span>
+            )}
+          </InfoList.Row>
+          {failedCount > 0 && (
+            <InfoList.Row title="Failed">
+              {formatCount(failedCount, locale)}
+            </InfoList.Row>
           )}
-        </InfoList.Row>
-        <InfoList.Row title="Failed">
-          {formatCount(failedCount, locale)}
-        </InfoList.Row>
-      </InfoList>
+          {notTranslatedCount > 0 && (
+            <InfoList.Row title="Not translated">
+              {formatCount(notTranslatedCount, locale)}
+            </InfoList.Row>
+          )}
+        </InfoList>
+      )}
 
-      {recordUpdates.length > 0 ? (
+      {/* Before the first records load, the spinning status line says
+          that the run goes on. */}
+      {recordUpdates.length > 0 && (
         <InsetRowList bodyPadding={ctx.bodyPadding} className={s.updates}>
           {recordUpdates.map((update) => (
             <ProgressRow
@@ -955,20 +1016,11 @@ export default function TranslationProgressModal({
             />
           ))}
         </InsetRowList>
-      ) : (
-        isRunning && (
-          <BlankSlate
-            placement="section"
-            small
-            loading
-            title="Loading the first batch of records"
-          />
-        )
       )}
 
       {recordUpdateCount > recordUpdates.length && (
         <p className={s.caption}>
-          {`Showing the latest ${formatCount(recordUpdates.length, locale)} of ${formatCount(recordUpdateCount, locale)} updates`}
+          {`Showing ${problemCount > 0 ? '' : 'the latest '}${formatCount(recordUpdates.length, locale)} of ${formatCount(recordUpdateCount, locale)} records`}
         </p>
       )}
 

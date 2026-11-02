@@ -1,8 +1,8 @@
 /**
  * ModelFieldPicker.tsx
  * --------------------
- * The translatable fields of one model, as a field of the form: the model
- * name with its API key is the label, and a multi-select holds the fields.
+ * The translatable fields of one model, as a field of the form: "Fields of
+ * Article" is the label, and a multi-select holds the fields.
  * An "All fields" sentinel option collapses a full selection to one pill,
  * like "All other locales" in the target locale select, and the validation
  * message is the field's error.
@@ -19,7 +19,6 @@
  * out via `onChange(apiKeys)` (the sentinel is resolved away before it leaves).
  * Used by the bulk page and the records-action picker modal.
  */
-import ApiKey from 'datocms-react-ui/ApiKey';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import { useCtx } from 'datocms-react-ui/Canvas';
@@ -100,8 +99,8 @@ function SlotGroup({ children }: { children: ReactNode }) {
 
 /** The parts of the field that every state of the picker shares. */
 interface PickerFieldProps {
-  /** The model name with its API key. */
-  label: ReactElement;
+  /** "Fields of Article". */
+  label: string;
   /** Why the buttons don't respond while the run is starting, if they don't. */
   locked: { reason: string } | undefined;
   /** The box of the field, in every state: it holds the focus of a retry. */
@@ -155,7 +154,11 @@ function FailedFields({
  * A model with zero translatable fields can never be satisfied by "pick a
  * field", so the field names the problem and the way out instead of showing
  * an empty select. "Remove model" doesn't fill the field, so it isn't an
- * action of the slot: it follows the hint, always in view.
+ * action of the slot: it follows the hint, always in view, and the hint
+ * doesn't say it again. Without it (the records picker, a dialog), the hint
+ * also says to leave the records out, and the link to the settings opens a
+ * new tab so the dialog stays open. Without the path of the settings, the
+ * role can't open them: the hint says to ask an admin.
  */
 function NoTranslatableFields({
   label,
@@ -170,23 +173,38 @@ function NoTranslatableFields({
   onRemove?: () => void;
   pluginSettingsPath?: string;
 }) {
-  const settings = pluginSettingsPath ? (
-    <Link to={pluginSettingsPath}>plugin settings</Link>
-  ) : (
-    'plugin settings'
-  );
+  let hint: ReactElement | string;
+  if (onRemove) {
+    hint = (
+      <>
+        Allow more field types in the{' '}
+        {pluginSettingsPath ? (
+          <Link to={pluginSettingsPath}>plugin settings</Link>
+        ) : (
+          'plugin settings'
+        )}
+        .
+      </>
+    );
+  } else if (pluginSettingsPath) {
+    hint = (
+      <>
+        Allow more field types in the{' '}
+        <Link to={pluginSettingsPath} target="_blank">
+          plugin settings
+        </Link>
+        , or leave these records out of the selection.
+      </>
+    );
+  } else {
+    hint =
+      'Ask an admin to allow more field types, or leave these records out of the selection.';
+  }
   return (
     <FieldWrapper
       ref={fieldRef}
       label={label}
-      hint={
-        <>
-          Allow more field types in the {settings},{' '}
-          {onRemove
-            ? 'or remove the model.'
-            : 'or leave its records out of the selection.'}
-        </>
-      }
+      hint={hint}
       container={
         onRemove
           ? {
@@ -242,8 +260,10 @@ export interface ModelFieldPickerProps {
   /** Retries a failed field load; shows "Try again" in the failure state. */
   onRetry?: () => void;
   /**
-   * The CMS path of the plugin settings. When provided, "plugin settings" in
-   * the dead-end hint is a link to it; otherwise it's plain text.
+   * The CMS path of the plugin settings, for a role that can open them. When
+   * provided, "plugin settings" in the dead-end hint is a link to it. In the
+   * records picker (no `onRemove`), its absence means the role can't open
+   * them, and the hint says to ask an admin.
    */
   pluginSettingsPath?: string;
   /** Inline validation message, shown as the field's error. */
@@ -314,11 +334,7 @@ export function ModelFieldPicker({
     onChange(next.filter((apiKey) => apiKey !== ALL_FIELDS_VALUE));
   };
 
-  const label = (
-    <>
-      {model.label} <ApiKey>{model.code}</ApiKey>
-    </>
-  );
+  const label = `Fields of ${model.label}`;
   const locked = isDisabled ? { reason: LOCKED_REASON } : undefined;
 
   const phase = pickerPhase(fields, isLoading, loadFailed);
@@ -360,7 +376,7 @@ export function ModelFieldPicker({
           multiple
           loading
           disabled
-          placeholder="Pick fields"
+          placeholder="Loading fields…"
           value={[]}
           options={[]}
         />
@@ -399,13 +415,16 @@ export function ModelFieldPicker({
     <FieldWrapper
       ref={fieldRef}
       label={label}
+      // A count only for a part of the fields: "All fields" says the rest.
       hint={
         validationMessage
           ? undefined
-          : boundedSelectHint(
-              fieldSelect.hint,
-              fieldCountHint(selectedCount, totalCount, locale),
-            )
+          : allSelected
+            ? fieldSelect.hint
+            : boundedSelectHint(
+                fieldSelect.hint,
+                fieldCountHint(selectedCount, totalCount, locale),
+              )
       }
       error={validationMessage}
     >

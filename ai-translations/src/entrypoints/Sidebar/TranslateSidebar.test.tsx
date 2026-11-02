@@ -1,6 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import type { SVGProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getChipRemoveButton,
@@ -14,20 +13,10 @@ vi.mock('../../utils/translateRecordFields', () => ({
   translateRecordFields: vi.fn(),
 }));
 
-// The rows show the vendor's logo: the stub tells which vendor it got.
-vi.mock('./Components/vendorIcon', () => ({
-  getVendorIcon: (vendor?: string) =>
-    function VendorIcon(props: SVGProps<SVGSVGElement>) {
-      return (
-        <svg data-testid="vendor-icon" data-vendor={vendor ?? ''} {...props} />
-      );
-    },
-}));
-
 import { translateRecordFields } from '../../utils/translateRecordFields';
 
 const SUCCESS_NOTICE =
-  'Translations were applied to the form. Review them and click Save to persist the changes.';
+  'The translations are in the form. Review them, then save the record.';
 
 const pluginParams: ctxParamsType = {
   apiKey: 'test-key',
@@ -119,8 +108,12 @@ describe('TranslateSidebar', () => {
     expect(
       screen.queryByText(/Defaults to every translatable field/i),
     ).toBeNull();
-    expect(screen.getByRole('combobox', { name: 'From' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'To' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Translate from' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Translate into' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('English [en]')).toBeInTheDocument();
     expect(screen.getByText('Italian [it]')).toBeInTheDocument();
     expect(translateButton()).not.toHaveAttribute('aria-disabled', 'true');
@@ -141,7 +134,7 @@ describe('TranslateSidebar', () => {
 
     act(() => button.focus());
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Pick a source locale and at least one target locale.',
+      'Pick at least one locale to translate into.',
     );
   });
 
@@ -162,25 +155,11 @@ describe('TranslateSidebar', () => {
     expect(translateOptions).not.toHaveProperty('allowedFieldApiKeys');
 
     const row = await screen.findByRole('button', {
-      name: /^Title\s*Italian \[it\] · Translating…$/,
+      name: /^Title\s*Translating into Italian \[it\]…$/,
     });
     fireEvent.click(row);
 
     expect(ctx.scrollToField).toHaveBeenCalledWith('title', 'it');
-  });
-
-  it('passes the configured vendor to the rows', async () => {
-    startsTitle(false);
-    renderSidebar(
-      sidebarCtx({
-        parameters: { vendor: 'deepl', deeplApiKey: 'test-key:fx' },
-      }),
-    );
-
-    fireEvent.click(translateButton());
-
-    const icon = await screen.findByTestId('vendor-icon');
-    expect(icon.getAttribute('data-vendor')).toBe('deepl');
   });
 
   it('shows a manual-save success notice after successful translation', async () => {
@@ -196,7 +175,7 @@ describe('TranslateSidebar', () => {
     expect(ctx.notice).toHaveBeenCalledTimes(1);
     expect(
       screen.getByRole('button', {
-        name: /^Title\s*Italian \[it\] · Translated$/,
+        name: /^Title\s*Translated into Italian \[it\]$/,
       }),
     ).toBeInTheDocument();
 
@@ -246,12 +225,11 @@ describe('TranslateSidebar', () => {
     fireEvent.click(cancel);
 
     expect(cancellationCheck?.()).toBe(true);
-    expect(ctx.notice).toHaveBeenCalledWith(
-      'Translation cancellation requested. Please wait...',
-    );
+    // The busy Cancel shows that the run is stopping: one toast at its end.
     await waitFor(() => {
-      expect(ctx.notice).toHaveBeenCalledWith('Translation cancelled');
+      expect(ctx.notice).toHaveBeenCalledWith('Translation cancelled.');
     });
+    expect(ctx.notice).toHaveBeenCalledTimes(1);
     expect(translateButton()).toBeInTheDocument();
   });
 
@@ -309,17 +287,26 @@ describe('TranslateSidebar', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it('alerts a failed field and goes back to the form', async () => {
+  it('keeps the rows of a run with failures, with one alert at its end', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(translateRecordFields).mockImplementation(
       async (_ctx, _params, _targets, _source, options) => {
         options?.onStart?.('Title', 'it', 'title.it', 'title');
-        options?.onError?.(
-          'Title',
-          'it',
-          'title.it',
-          'title',
-          'Quota exceeded',
-        );
+        options?.onStart?.('Body', 'it', 'body.it', 'body');
+        options?.onStart?.('Slug', 'it', 'slug.it', 'slug');
+        options?.onComplete?.('Slug', 'it', 'slug.it', 'slug');
+        for (const [label, path] of [
+          ['Title', 'title'],
+          ['Body', 'body'],
+        ]) {
+          options?.onError?.(
+            label,
+            'it',
+            `${path}.it`,
+            path,
+            "DeepL's usage limit is reached. Check your DeepL plan.",
+          );
+        }
       },
     );
     const ctx = sidebarCtx();
@@ -327,13 +314,95 @@ describe('TranslateSidebar', () => {
 
     fireEvent.click(translateButton());
 
-    await waitFor(() => {
-      expect(ctx.alert).toHaveBeenCalledWith(
-        'Failed to translate "Title" to it: Quota exceeded',
-      );
-    });
-    await screen.findByRole('button', { name: 'Translate all fields' });
+    await screen.findByRole('button', { name: 'Done' });
+    expect(ctx.alert).toHaveBeenCalledTimes(1);
+    expect(ctx.alert).toHaveBeenCalledWith(
+      "Couldn't translate “Title” and “Body” into Italian [it]. DeepL's usage limit is reached. Check your DeepL plan. The other fields are in the form. Review them, then save the record.",
+    );
     expect(ctx.notice).not.toHaveBeenCalledWith(SUCCESS_NOTICE);
+    expect(
+      screen.getByRole('button', { name: /^Title\s*Failed$/ }),
+    ).toBeInTheDocument();
+
+    // The failed rows stay until Done.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8500);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(translateButton()).toBeInTheDocument();
+  });
+
+  it('names the one field that failed, not only its locales', async () => {
+    const locales = ['it', 'de', 'fr'];
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        for (const [label, path] of [
+          ['Title', 'title'],
+          ['Excerpt', 'excerpt'],
+        ]) {
+          for (const locale of locales) {
+            options?.onStart?.(label, locale, `${path}.${locale}`, path);
+            if (path === 'title') {
+              options?.onComplete?.(label, locale, `${path}.${locale}`, path);
+            } else {
+              options?.onError?.(
+                label,
+                locale,
+                `${path}.${locale}`,
+                path,
+                'DeepL returned an error: Text too long.',
+              );
+            }
+          }
+        }
+      },
+    );
+    const ctx = sidebarCtx({ internalLocales: ['en', ...locales] });
+    renderSidebar(ctx);
+
+    fireEvent.click(translateButton());
+
+    await screen.findByRole('button', { name: 'Done' });
+    expect(ctx.alert).toHaveBeenCalledTimes(1);
+    expect(ctx.alert).toHaveBeenCalledWith(
+      "Couldn't translate “Excerpt” into Italian [it], German [de], and French [fr]. DeepL returned an error: Text too long. The other fields are in the form. Review them, then save the record.",
+    );
+  });
+
+  it('names only the locales when every field failed in them', async () => {
+    const locales = ['it', 'de', 'fr'];
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        for (const [label, path] of [
+          ['Title', 'title'],
+          ['Body', 'body'],
+        ]) {
+          for (const locale of locales) {
+            options?.onStart?.(label, locale, `${path}.${locale}`, path);
+            if (locale === 'de') {
+              options?.onError?.(
+                label,
+                locale,
+                `${path}.${locale}`,
+                path,
+                'DeepL returned an error: Unsupported target language.',
+              );
+            } else {
+              options?.onComplete?.(label, locale, `${path}.${locale}`, path);
+            }
+          }
+        }
+      },
+    );
+    const ctx = sidebarCtx({ internalLocales: ['en', ...locales] });
+    renderSidebar(ctx);
+
+    fireEvent.click(translateButton());
+
+    await screen.findByRole('button', { name: 'Done' });
+    expect(ctx.alert).toHaveBeenCalledWith(
+      "Couldn't translate into German [de]. DeepL returned an error: Unsupported target language. The other translations are in the form. Review them, then save the record.",
+    );
   });
 
   it('reports no success when a field stops without a result', async () => {
@@ -349,9 +418,43 @@ describe('TranslateSidebar', () => {
 
     fireEvent.click(translateButton());
 
-    await screen.findByRole('button', { name: 'Translate all fields' });
+    await screen.findByRole('button', { name: 'Done' });
     expect(ctx.notice).not.toHaveBeenCalledWith(SUCCESS_NOTICE);
-    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    // The field that stopped doesn't keep loading.
+    expect(
+      screen.getByRole('button', { name: /^Body\s*Failed$/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows one row per field, which names its failed locales and opens the first', async () => {
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        for (const locale of ['it', 'de', 'fr']) {
+          options?.onStart?.('Title', locale, `title.${locale}`, 'title');
+        }
+        options?.onComplete?.('Title', 'it', 'title.it', 'title');
+        options?.onError?.(
+          'Title',
+          'de',
+          'title.de',
+          'title',
+          'DeepL returned an error: Text too long.',
+        );
+        options?.onComplete?.('Title', 'fr', 'title.fr', 'title');
+      },
+    );
+    const ctx = sidebarCtx({ internalLocales: ['en', 'it', 'de', 'fr'] });
+    renderSidebar(ctx);
+
+    fireEvent.click(translateButton());
+
+    await screen.findByRole('button', { name: 'Done' });
+    const row = screen.getByRole('button', {
+      name: /^Title\s*Translated into 2 of 3 locales\. German \[de\] failed\.$/,
+    });
+    expect(screen.getAllByRole('button', { name: /^Title/ })).toHaveLength(1);
+    fireEvent.click(row);
+    expect(ctx.scrollToField).toHaveBeenCalledWith('title', 'de');
   });
 
   it('shows a loading state until the first field starts', async () => {
@@ -409,7 +512,9 @@ describe('TranslateSidebar', () => {
     expect(screen.getByText('No AI vendor is set up yet.')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).toBeNull();
 
-    fireEvent.click(screen.getByRole('link', { name: 'Open plugin settings' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open plugin settings' }),
+    );
 
     expect(ctx.navigateTo).toHaveBeenCalledWith(
       '/configuration/plugins/plugin-1/edit',
@@ -423,10 +528,10 @@ describe('TranslateSidebar', () => {
 
     expect(
       screen.getByText(
-        'No AI vendor is set up yet. Ask an admin to set one up.',
+        "Translation isn't set up yet. Ask an admin to set it up.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('explains that a record with one locale has nothing to translate into', () => {

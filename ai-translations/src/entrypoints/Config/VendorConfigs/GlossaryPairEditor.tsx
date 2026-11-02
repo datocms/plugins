@@ -16,7 +16,10 @@ import TableList, {
 } from 'datocms-react-ui/TableList';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatCount } from '../../../components/BulkTranslations/bulkCopy';
-import { formatLocaleWithCode } from '../../../utils/localeUtils';
+import {
+  formatLocaleLabel,
+  formatLocaleWithCode,
+} from '../../../utils/localeUtils';
 import {
   GLOSSARY_ERROR_ID,
   GLOSSARY_LOCALE_ERROR_ID,
@@ -34,7 +37,7 @@ type SelectOption = { label: string; value: string };
 
 /** The locale value that matches any locale. */
 const ANY_LOCALE = '*';
-const ANY_LOCALE_LABEL = 'All (*)';
+const ANY_LOCALE_LABEL = 'Any locale';
 
 /**
  * One error per kind: the list shows each one once. They are ids of the
@@ -173,16 +176,6 @@ export interface GlossaryPairEditorProps {
   siteLocales: ApiTypes.Site['locales'];
   glossaries: DeepLGlossary[];
   fetchStatus: GlossaryFetchStatus;
-  openConfirm: (options: {
-    title: string;
-    content: string;
-    choices: {
-      label: string;
-      value: unknown;
-      intent?: 'positive' | 'negative';
-    }[];
-    cancel: { label: string; value: unknown };
-  }) => Promise<unknown>;
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -193,7 +186,6 @@ export default function GlossaryPairEditor({
   siteLocales,
   glossaries,
   fetchStatus,
-  openConfirm,
 }: GlossaryPairEditorProps) {
   // Glossary sizes get the separators of the language of the Canvas.
   const uiLocale = useCtx().ui.locale;
@@ -239,8 +231,9 @@ export default function GlossaryPairEditor({
     [glossaries, uiLocale],
   );
 
-  // A cell is narrow: it shows the name of the glossary, and the menu its
-  // languages and size too.
+  // A cell is narrow: it shows the name of the locale (the menu adds its
+  // code) and the name of the glossary (the menu adds its languages and
+  // size).
   const glossaryNames = useMemo(
     () => new Map(glossaries.map((g) => [g.glossary_id, g.name])),
     [glossaries],
@@ -257,7 +250,7 @@ export default function GlossaryPairEditor({
       id,
       field: id,
       label,
-      grow: 1,
+      grow: 2,
       // The class of the cell input is for a text input: the select doesn't
       // take it.
       render: ({
@@ -275,8 +268,16 @@ export default function GlossaryPairEditor({
           onBlur={onBlur}
           options={localeOptions}
           acceptValueNotIncludedInOptions={rawOption}
+          formatOptionLabel={(
+            option: SelectOption,
+            { context }: { context: 'menu' | 'value' },
+          ) =>
+            context === 'value' && siteLocales.includes(option.value)
+              ? formatLocaleLabel(option.value)
+              : option.label
+          }
           clearable={false}
-          placeholder="Pick a locale"
+          placeholder="Locale"
           variant="embedded"
           classNamePrefix="TableList__select"
           menuPlacement="top"
@@ -287,11 +288,13 @@ export default function GlossaryPairEditor({
     return [
       localeColumn('source', 'From'),
       localeColumn('target', 'To'),
+      // The name of the glossary is the value that tells two rows apart: it
+      // gets more of the width than each locale.
       {
         id: 'glossaryId',
         field: 'glossaryId',
         label: 'Glossary',
-        grow: 1,
+        grow: 3,
         render: ({
           index,
           value: cell,
@@ -326,46 +329,15 @@ export default function GlossaryPairEditor({
         ),
       },
     ];
-  }, [localeOptions, glossaryOptions, glossaryNames, fetchStatus]);
+  }, [localeOptions, siteLocales, glossaryOptions, glossaryNames, fetchStatus]);
 
   const errors = useMemo(
     () => glossaryPairErrors(rows, siteLocales, glossaries, fetchStatus),
     [rows, siteLocales, glossaries, fetchStatus],
   );
 
-  // ── Removal ────────────────────────────────────────────────────────
-
-  const localeName = (code: string) => {
-    if (!code) return 'no locale';
-    if (code === ANY_LOCALE) return ANY_LOCALE_LABEL;
-    return siteLocales.includes(code) ? formatLocaleWithCode(code) : code;
-  };
-
-  const confirmRemove = async (row: GlossaryPairRow, remove: () => void) => {
-    // An empty row goes at once: there is nothing to lose.
-    if (!row.source && !row.target && !row.glossaryId) {
-      remove();
-      return;
-    }
-    const glossaryName =
-      glossaries.find((g) => g.glossary_id === row.glossaryId)?.name ??
-      row.glossaryId;
-    const confirmed = await openConfirm({
-      title: 'Remove this language pair?',
-      content: glossaryName
-        ? `From ${localeName(row.source)} to ${localeName(row.target)}, with the glossary “${glossaryName}”.`
-        : `From ${localeName(row.source)} to ${localeName(row.target)}, with no glossary.`,
-      choices: [{ label: 'Remove', value: true, intent: 'negative' }],
-      cancel: { label: 'Cancel', value: false },
-    });
-    if (confirmed) remove();
-  };
-
   return (
-    <FieldWrapper
-      label="Glossaries by language pair"
-      hint="Each row picks the glossary for a pair of locales. “All (*)” matches any locale."
-    >
+    <FieldWrapper label="Glossaries by language pair">
       <TableList<GlossaryPairRow>
         value={rows}
         onChange={commitRows}
@@ -374,10 +346,8 @@ export default function GlossaryPairEditor({
         // Errors come from saved values, so they show at once.
         touched={true}
         emptyMessage="No language pairs"
+        // A row goes at once: nothing is saved before Save.
         add={{ label: 'Add language pair', newItem: newRow }}
-        onRemove={(_index, row, remove) => {
-          confirmRemove(row, remove);
-        }}
       />
     </FieldWrapper>
   );

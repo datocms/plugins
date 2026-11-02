@@ -17,8 +17,19 @@ import AITranslationsPickerModal, {
 import type { ModelFieldPickerProps } from './BulkTranslations/ModelFieldPicker';
 
 vi.mock('./BulkTranslations/ModelFieldPicker', () => ({
-  ModelFieldPicker: ({ model, selectedApiKeys }: ModelFieldPickerProps) => (
-    <div data-testid="model-fields">{`${model.label} fields: ${selectedApiKeys.join(', ')}`}</div>
+  ModelFieldPicker: ({
+    model,
+    selectedApiKeys,
+    pluginSettingsPath,
+    onChange,
+  }: ModelFieldPickerProps) => (
+    <div data-testid="model-fields" data-settings={pluginSettingsPath}>
+      {`${model.label} fields: ${selectedApiKeys.join(', ')}`}
+      <button
+        type="button"
+        onClick={() => onChange(selectedApiKeys.slice(0, 1))}
+      >{`Keep the first field of ${model.label}`}</button>
+    </div>
   ),
 }));
 
@@ -53,6 +64,7 @@ function renderModal(
   overrides: Partial<AITranslationsPickerModalParams> = {},
   locales: string[] = ['en', 'it'],
   permissions = { can_edit_schema: true, can_edit_environment: true },
+  loadedFields: SdkField[] = fields,
 ) {
   const ctx = makeCtx<RenderModalCtx>({
     site: { attributes: { locales, internal_domain: null } },
@@ -61,7 +73,7 @@ function renderModal(
     environment: 'main',
     isEnvironmentPrimary: true,
     cmaBaseUrl: 'https://cma.example.test',
-    loadItemTypeFields: vi.fn().mockResolvedValue(fields),
+    loadItemTypeFields: vi.fn().mockResolvedValue(loadedFields),
     resolve: vi.fn(),
     alert: vi.fn().mockResolvedValue(undefined),
   });
@@ -112,15 +124,76 @@ describe('AITranslationsPickerModal', () => {
         );
       }),
     ).toBeTruthy();
+    // The labels say what each select picks: no group titles repeat them.
+    expect(screen.queryByRole('heading')).toBeNull();
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Locales' }),
+      screen.getByRole('combobox', { name: /^Translate from/ }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Fields' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('group', { name: 'Locales' })).toBeTruthy();
     expect(screen.getByText('All other locales')).toBeTruthy();
+    // The commitment: what the run does, above the button that starts it.
+    expect(
+      screen.getByText(
+        "This overwrites the content in the locales you translate into, and saves each record as soon as it's translated.",
+      ),
+    ).toBeTruthy();
     expect(ctx.resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps the field selects of many models behind a disclosure', async () => {
+    const models = Array.from({ length: 6 }, (_, index) => ({
+      label: `Model ${index + 1}`,
+      value: `model-${index + 1}`,
+      code: `model_${index + 1}`,
+    }));
+    renderModal({ models });
+    await waitForEnabledSubmit();
+
+    const toggle = screen.getByRole('button', { name: 'Fields of each model' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByText('All the fields of every model are translated.'),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('model-fields')).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByTestId('model-fields')).toHaveLength(6);
+  });
+
+  it('says that only the picked fields are translated once some are left out', async () => {
+    const models = Array.from({ length: 6 }, (_, index) => ({
+      label: `Model ${index + 1}`,
+      value: `model-${index + 1}`,
+      code: `model_${index + 1}`,
+    }));
+    const body: SdkField = {
+      id: 'body-field',
+      attributes: {
+        api_key: 'body',
+        label: 'Body',
+        localized: true,
+        position: 1,
+        appearance: { editor: 'single_line' },
+      },
+    };
+    renderModal({ models }, undefined, undefined, [...fields, body]);
+    await waitForEnabledSubmit();
+
+    const toggle = screen.getByRole('button', { name: 'Fields of each model' });
+    fireEvent.click(toggle);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep the first field of Model 1' }),
+    );
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByText('Only the fields you picked are translated.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('All the fields of every model are translated.'),
+    ).toBeNull();
   });
 
   it('dismisses with its Cancel, as the host draws no cross', async () => {
@@ -155,13 +228,6 @@ describe('AITranslationsPickerModal', () => {
         fromLocale: 'en',
         toLocales: ['it'],
         selectedFieldsByModel: { blog: ['title'] },
-        models: [
-          {
-            label: 'Blog post',
-            code: 'blog_post',
-            fields: [{ label: 'Title', apiKey: 'title' }],
-          },
-        ],
       },
     });
   });
@@ -170,7 +236,7 @@ describe('AITranslationsPickerModal', () => {
     const ctx = renderModal({}, ['en', 'it', 'fr']);
     await screen.findByText('Blog post fields: title');
 
-    const targets = screen.getByRole('combobox', { name: /^Target locales/ });
+    const targets = screen.getByRole('combobox', { name: /^Translate into/ });
     fireEvent.keyDown(targets, { key: 'ArrowDown' });
     fireEvent.click(screen.getByRole('option', { name: 'French [fr]' }));
     // A specific locale replaces "All other locales".
@@ -186,7 +252,7 @@ describe('AITranslationsPickerModal', () => {
   it('keeps Enter in a closed select from submitting, and lets it pick an open option', async () => {
     const ctx = renderModal({}, ['en', 'it', 'fr']);
     await waitForEnabledSubmit();
-    const targets = screen.getByRole('combobox', { name: /^Target locales/ });
+    const targets = screen.getByRole('combobox', { name: /^Translate into/ });
 
     // Closed menu: the form's guard prevents the implicit submission.
     expect(fireEvent.keyDown(targets, { key: 'Enter' })).toBe(false);
@@ -200,9 +266,12 @@ describe('AITranslationsPickerModal', () => {
     expect(ctx.resolve).not.toHaveBeenCalled();
   });
 
-  it('disables the submit with the provider reason when credentials are missing', async () => {
+  it('shows the missing vendor with only a Close, not a form that cannot be used', async () => {
     const ctx = renderModal({ pluginParams: { ...pluginParams, apiKey: '' } });
-    await screen.findByText('Blog post fields: title');
+    await waitFor(() => expect(ctx.loadItemTypeFields).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     const callout = screen
       .getByText('No AI vendor set up')
@@ -217,16 +286,13 @@ describe('AITranslationsPickerModal', () => {
       '/configuration/plugins/plugin-id/edit',
     );
     expect(settingsLink).toHaveAttribute('target', '_blank');
-    const submit = submitButton();
-    expect(submit).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Translate/ })).toBeNull();
+    // Nothing acts on the selection: the callout and Close are the dialog.
+    expect(screen.queryByText(/You selected/)).toBeNull();
 
-    act(() => submit.focus());
-    expect((await screen.findByRole('tooltip')).textContent).toBe(
-      'Set up an AI vendor in the plugin settings first.',
-    );
-
-    fireEvent.click(submit);
-    expect(ctx.resolve).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(ctx.resolve).toHaveBeenCalledWith(PICKER_DISMISSED);
   });
 
   it('shows the single-locale callout with only a Close', async () => {
@@ -257,10 +323,10 @@ describe('AITranslationsPickerModal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith(PICKER_DISMISSED);
   });
 
-  it('names the settings pages as plain text for roles that cannot open them', async () => {
+  it('asks for an admin when the role cannot open the settings', async () => {
     const ctx = renderModal(
       { pluginParams: { ...pluginParams, apiKey: '' } },
-      ['en'],
+      ['en', 'it'],
       { can_edit_schema: false, can_edit_environment: false },
     );
     await waitFor(() => expect(ctx.loadItemTypeFields).toHaveBeenCalled());
@@ -268,18 +334,47 @@ describe('AITranslationsPickerModal', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(screen.getByText(/in the plugin settings\./)).toBeTruthy();
+    // The vendor is a setting that this role never sees.
+    const callout = screen
+      .getByText('Translation not set up')
+      .closest('[role="alert"]');
+    expect(callout?.textContent).toContain('Ask an admin to set it up.');
+    expect(screen.queryByText(/AI vendor/)).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+
+    cleanup();
+    const single = renderModal({}, ['en'], {
+      can_edit_schema: false,
+      can_edit_environment: false,
+    });
+    await waitFor(() => expect(single.loadItemTypeFields).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(
-      screen.getByText(/in the Locales & Timezone settings first\./),
+      screen.getByText(
+        "There's nothing to translate these records into. Ask an admin to add another locale.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('loads only eligible models and submits an explicit empty allowlist for excluded ones', async () => {
     const ctx = renderModal({
+      itemIds: ['r1', 'r2', 'r3'],
       models: [
-        { label: 'Blog post', value: 'blog', code: 'blog_post' },
-        { label: 'Excluded', value: 'excluded', code: 'excluded_model' },
+        {
+          label: 'Blog post',
+          value: 'blog',
+          code: 'blog_post',
+          recordCount: 2,
+        },
+        {
+          label: 'Author',
+          value: 'excluded',
+          code: 'excluded_model',
+          recordCount: 1,
+        },
       ],
       pluginParams: {
         ...pluginParams,
@@ -287,10 +382,19 @@ describe('AITranslationsPickerModal', () => {
       },
     });
     await screen.findByText('Blog post fields: title');
+    // The intro says the selection; the callout under it names the skipped
+    // records, and the submit counts the records that are translated.
+    const intro = screen.getByText((_, element) => {
+      return (
+        element?.tagName === 'P' &&
+        element.textContent === 'You selected 3 records from 2 models.'
+      );
+    });
+    const skipped = screen.getByText(
+      '1 Author record will be skipped: Author is excluded in the plugin settings.',
+    );
     expect(
-      screen.getByText(
-        'Records of models excluded in the plugin settings will be skipped.',
-      ),
+      intro.compareDocumentPosition(skipped) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(ctx.loadItemTypeFields).toHaveBeenCalledTimes(1);
     expect(ctx.loadItemTypeFields).toHaveBeenCalledWith('blog');
@@ -302,5 +406,62 @@ describe('AITranslationsPickerModal', () => {
         selectedFieldsByModel: { blog: ['title'], excluded: [] },
       }),
     });
+  });
+
+  it('gives the plugin settings to the field pickers only for a role that can open them', async () => {
+    renderModal();
+    expect(
+      (await screen.findByTestId('model-fields')).getAttribute('data-settings'),
+    ).toBe('/configuration/plugins/plugin-id/edit');
+
+    cleanup();
+    renderModal({}, ['en', 'it'], {
+      can_edit_schema: false,
+      can_edit_environment: true,
+    });
+    expect(
+      (await screen.findByTestId('model-fields')).hasAttribute('data-settings'),
+    ).toBe(false);
+  });
+
+  it('shows only the problem and a Close when no model has a field to translate', async () => {
+    const ctx = renderModal({}, ['en', 'it'], undefined, []);
+    await waitFor(() => expect(ctx.loadItemTypeFields).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const callout = screen
+      .getByText('Nothing to translate')
+      .closest('[role="alert"]');
+    expect(callout?.textContent).toContain(
+      'Blog post has no fields that the plugin translates. Allow more field types in the plugin settings.',
+    );
+    expect(
+      screen.getByRole('link', { name: 'plugin settings' }),
+    ).toHaveAttribute('target', '_blank');
+    expect(screen.queryByText(/This replaces/)).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(ctx.resolve).toHaveBeenCalledWith(PICKER_DISMISSED);
+
+    // A role that can't open the settings is told who to ask.
+    cleanup();
+    const editor = renderModal(
+      {},
+      ['en', 'it'],
+      { can_edit_schema: false, can_edit_environment: false },
+      [],
+    );
+    await waitFor(() => expect(editor.loadItemTypeFields).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(
+      screen.getByText(
+        'Blog post has no fields that the plugin translates. Ask an admin to allow more field types.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });

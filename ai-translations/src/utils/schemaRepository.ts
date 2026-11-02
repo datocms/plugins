@@ -31,6 +31,8 @@ export type BlockFieldMeta = {
  */
 export type FieldTypeDictionaryEntry = BlockFieldMeta & {
   isLocalized: boolean;
+  /** The label of the field, for the texts for the user. */
+  label?: string;
 };
 
 /**
@@ -163,6 +165,7 @@ export async function buildFieldTypeDictionaryFromRepo(
           field_type: field.field_type,
           id: field.id,
           isLocalized: field.localized,
+          label: field.label,
           validators: field.validators,
         };
         return acc;

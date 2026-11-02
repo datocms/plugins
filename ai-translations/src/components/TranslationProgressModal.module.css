@@ -49,9 +49,14 @@
   white-space: nowrap;
 }
 
-/* Quiet lines: the counts under the bar and the caption of a capped list.
-   Tabular figures keep the counts from jumping while they change. */
-.meta,
+/* The count of records under the bar, at the size of the text. Tabular
+   figures keep the count from jumping while it changes. */
+.meta {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The quiet caption of a capped list. */
 .caption {
   margin: 0;
   font-size: var(--font-size-xs);

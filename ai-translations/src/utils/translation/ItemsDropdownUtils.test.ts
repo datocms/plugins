@@ -709,16 +709,38 @@ describe('ItemsDropdownUtils', () => {
 
   describe('translateAndUpdateRecords', () => {
     it('does not save unrelated locale fallbacks when every selected translation fails', async () => {
-      vi.mocked(translateFieldValue).mockRejectedValue(new Error('Invalid translation response'));
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new Error('Invalid translation response'),
+      );
       const update = vi.fn();
       const updates: ProgressUpdate[] = [];
       await translateAndUpdateRecords(
-        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' }, disabled: { en: 'Required source' } }],
-        { items: { update } } as unknown as Parameters<typeof translateAndUpdateRecords>[1],
-        provider, 'en', ['it'], async () => ({
+        [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: { en: 'Hello' },
+            disabled: { en: 'Required source' },
+          },
+        ],
+        { items: { update } } as unknown as Parameters<
+          typeof translateAndUpdateRecords
+        >[1],
+        provider,
+        'en',
+        ['it'],
+        async () => ({
           title: fieldTypeDictionary.title,
-          disabled: { editor: 'unknown', id: 'disabled', isLocalized: true, validators: { required: {} } },
-        }), pluginParams, { alert: vi.fn(), environment: 'main' }, 'token',
+          disabled: {
+            editor: 'unknown',
+            id: 'disabled',
+            isLocalized: true,
+            validators: { required: {} },
+          },
+        }),
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'token',
         { onProgress: (progress) => updates.push(progress) },
       );
       expect(update).not.toHaveBeenCalled();
@@ -754,9 +776,7 @@ describe('ItemsDropdownUtils', () => {
       expect(update).not.toHaveBeenCalled();
       expect(dictionary).not.toHaveBeenCalled();
       expect(translateFieldValue).not.toHaveBeenCalled();
-      expect(updates.at(-1)?.statusText).toBe(
-        'No eligible fields to translate',
-      );
+      expect(updates.at(-1)?.statusText).toBe('Nothing to translate');
     });
 
     it('merges many target locales into one version-locked write without losing untouched locales', async () => {
@@ -842,7 +862,7 @@ describe('ItemsDropdownUtils', () => {
         'token',
         { onProgress: (progress) => updates.push(progress) },
       );
-      expect(updates.at(-1)?.statusText).toBe('Missing source locale');
+      expect(updates.at(-1)?.statusText).toBe('Failed');
       expect(alert).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
       expect(translateFieldValue).not.toHaveBeenCalled();
@@ -934,7 +954,7 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.statusText).not.toMatch(/shared references/i);
       // Warnings stay structured and consolidated to a single per-record line.
       expect(finalUpdate?.warnings).toHaveLength(1);
-      expect(finalUpdate?.warnings?.[0]).toContain('"related"');
+      expect(finalUpdate?.warnings?.[0]).toContain('“related”');
       // Record + link metadata for the UI.
       expect(finalUpdate?.itemTypeId).toBe('m1');
       expect(finalUpdate?.recordLabel).toBeTruthy();
@@ -1215,13 +1235,13 @@ describe('ItemsDropdownUtils', () => {
         { field: 'also_related', toLocale: 'fr' },
       ]);
       // Each field appears once (deduped), each locale appears once (deduped).
-      expect(summary).toContain('"related"');
-      expect(summary).toContain('"also_related"');
+      expect(summary).toContain('“related”');
+      expect(summary).toContain('“also_related”');
       expect(summary).toContain('Italian [it]');
       expect(summary).toContain('French [fr]');
       expect(summary).toMatch(/shared references/i);
       // No duplicate field mentions.
-      expect(summary?.match(/"related"/g)?.length).toBe(1);
+      expect(summary?.match(/“related”/g)?.length).toBe(1);
     });
   });
 

@@ -1,28 +1,30 @@
 /**
  * TranslationConfirmModal.tsx
  * ---------------------------
- * The review shown before a bulk translation starts: how many records, from
- * which locale into which locales, and which fields of each model. It is a
- * modal opened with `ctx.openModal` rather than `ctx.openConfirm`, because
- * the native confirm shows plain text only and can't hold the breakdown.
+ * The question asked before a bulk translation of the bulk page starts: what
+ * the run does to the records (it replaces the content of the picked fields
+ * in the target locales, and saves each record), then from which locale into
+ * which locales, and which fields of each model. It is a modal opened with
+ * `ctx.openModal` rather than `ctx.openConfirm`, because the native confirm
+ * shows plain text only and can't hold the breakdown.
  *
  * Resolves `true` when the user starts the run, `false` when they cancel.
  * Its footer has Cancel at the left, so it opens with no host cross
  * (`closeDisabled`) and registers Escape as that Cancel, as a dialog with a
- * footer does. Opened from non-modal contexts (the items-dropdown handler
- * and the bulk page), so it never nests inside another modal.
+ * footer does. Opened from the bulk page, a non-modal context, so it never
+ * nests inside another modal.
  */
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { useRegisterActions } from 'datocms-react-ui/Actions';
-import ApiKey from 'datocms-react-ui/ApiKey';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import InfoList from 'datocms-react-ui/InfoList';
 import { formatLocaleWithCode } from '../utils/localeUtils';
 import {
-  localeCount,
-  modelCount,
-  recordCount,
+  BULK_RUN_CONSEQUENCE,
+  isLargeRun,
+  LARGE_RUN_TITLE,
+  largeRunWarning,
   translateRecordsLabel,
 } from './BulkTranslations/bulkCopy';
 import s from './TranslationConfirmModal.module.css';
@@ -38,6 +40,8 @@ export interface TranslationConfirmModalParams {
   recordCount: number;
   fromLocale: string;
   toLocales: string[];
+  /** The name of the vendor ("DeepL"), for the warning of a large run. */
+  vendorName?: string;
   /**
    * Optional per-model breakdown of exactly which fields will be translated.
    * When present, the modal lists the models and their fields so the user
@@ -62,12 +66,6 @@ export function isTranslationConfirmModalParams(
   );
 }
 
-/**
- * From this many record × target locale translations on, the modal warns
- * about the provider usage and asks to keep the progress window open.
- */
-const LARGE_RUN_THRESHOLD = 10_000;
-
 /** The Escape of the dialog: the Cancel of its footer. */
 const CANCEL_ACTION_ID = 'translationConfirm.cancel';
 
@@ -77,14 +75,16 @@ interface Props {
 }
 
 export default function TranslationConfirmModal({ ctx, parameters }: Props) {
-  const { recordCount: count, fromLocale, toLocales, models } = parameters;
+  const {
+    recordCount: count,
+    fromLocale,
+    toLocales,
+    vendorName,
+    models,
+  } = parameters;
   const hasModels = !!models && models.length > 0;
   // Counts get the separators of the language that the Canvas gives the kit.
   const locale = ctx.ui.locale;
-  const across = hasModels
-    ? ` across ${modelCount(models.length, locale)}`
-    : '';
-  const isLargeRun = count * toLocales.length >= LARGE_RUN_THRESHOLD;
   const cancel = () => ctx.resolve(false);
 
   // The host draws no cross on this dialog, so Escape is the Cancel of the
@@ -101,37 +101,27 @@ export default function TranslationConfirmModal({ ctx, parameters }: Props) {
 
   return (
     <>
-      <p className={s.lead}>
-        This translates {recordCount(count, locale)}
-        {across} into {localeCount(toLocales.length, locale)}.
-      </p>
+      {/* The title and the button count the records: the lead says what
+          the run does to them. */}
+      <p className={s.lead}>{BULK_RUN_CONSEQUENCE}</p>
 
-      {isLargeRun && (
-        <Callout tone="warning" title="Large translation">
-          Each selected field is translated into every target locale, so
-          provider usage can be large. Keep the progress window open until the
-          run finishes.
+      {isLargeRun(count, toLocales.length) && (
+        <Callout tone="warning" title={LARGE_RUN_TITLE}>
+          {largeRunWarning(vendorName)}
         </Callout>
       )}
 
       <InfoList>
-        <InfoList.Row title="From">
+        <InfoList.Row title="Translate from">
           {formatLocaleWithCode(fromLocale)}
         </InfoList.Row>
-        <InfoList.Row title="To">
+        <InfoList.Row title="Translate into">
           {toLocales.map(formatLocaleWithCode).join(', ')}
         </InfoList.Row>
         {hasModels && (
-          <InfoList.Group title="Models and fields">
+          <InfoList.Group title="Fields">
             {models.map((model) => (
-              <InfoList.Row
-                key={model.code}
-                title={
-                  <>
-                    {model.label} <ApiKey>{model.code}</ApiKey>
-                  </>
-                }
-              >
+              <InfoList.Row key={model.code} title={model.label}>
                 {model.fields.length > 0
                   ? model.fields.map((field) => field.label).join(', ')
                   : 'No fields selected'}

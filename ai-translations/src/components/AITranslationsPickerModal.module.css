@@ -1,28 +1,45 @@
 /*
  * Layout of the records-action picker modal. The host draws the title bar
  * and the body padding; the kit components draw everything else. These rules
- * only space the parts, place the actions and give the group titles their
- * quiet look.
+ * only space the parts and place the actions.
  */
 .intro {
   margin: 0 0 var(--spacing-l);
 }
 
-.group {
-  margin-bottom: var(--spacing-xl);
-}
-
-/* The title of a group of fields: small and subtle, above the fields. */
-.groupTitle {
-  margin: 0 0 var(--spacing-m);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-strong);
-  line-height: 1.4;
-  color: var(--color--ink-subtle);
+/* What the run does to the records, the last line above the buttons. */
+.consequence {
+  margin: var(--spacing-l) 0 var(--spacing-xl);
 }
 
 .pagination {
   margin-bottom: var(--spacing-m);
+}
+
+/* "Fields of each model": the toggle of the field selects of many models,
+   with the space of a field under it. */
+.disclosureBlock {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* A RawButton has no look: the chevron and the text, on the ink of the
+   form, like a disclosure of the kit (Chevron, "Disclosure"). */
+.disclosure {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink);
+}
+
+/* What a closed toggle means, under it. */
+.disclosureNote {
+  margin: var(--spacing-s) 0 0;
+  color: var(--color--ink-subtle);
 }
 
 /* Cancel at the left, the main action at the right, like a dialog footer.

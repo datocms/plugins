@@ -93,8 +93,13 @@ describe('config model lists', () => {
       context({ vendor: 'openai', apiKey: 'sk-bad', gptModel: 'gpt-old' }),
     );
 
+    // The key is the value to fix: the error is on its field.
     expect((await screen.findByRole('alert')).textContent).toContain(
-      "Couldn't load the models. Check the API key.",
+      "Couldn't load the models with this key. Check it in your OpenAI account.",
+    );
+    expect(screen.getByLabelText(/^API key/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
     );
     expect(modelField()?.textContent).not.toContain('gpt-old');
     // There is no model to pick, so Save says to check the key.
@@ -126,10 +131,10 @@ describe('config model lists', () => {
     );
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'No compatible models for this key.',
+      "This key can't use any of the models that the plugin supports.",
     );
     expect(await saveReason()).toBe(
-      'Use an API key that has compatible models.',
+      'Use an API key that can use one of the supported models.',
     );
   });
 
@@ -144,7 +149,7 @@ describe('config model lists', () => {
     );
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'No compatible models for this key.',
+      "This key can't use any of the models that the plugin supports.",
     );
     expect(modelField()?.textContent).toContain('gemini-saved');
   });

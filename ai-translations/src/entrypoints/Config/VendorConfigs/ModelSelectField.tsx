@@ -48,9 +48,23 @@ const UNSET_MODEL = 'None';
 
 const noModels = () => 'No models';
 
-function modelError(status: ModelListStatus): string | undefined {
-  if (status === 'error') return "Couldn't load the models. Check the API key.";
-  if (status === 'empty') return 'No compatible models for this key.';
+/**
+ * The error of the API key field when its models couldn't be listed: the key
+ * is the value to fix, so the error goes on it, not on the model.
+ *
+ * @param status - The state of the model list of the vendor.
+ * @param account - Where the key comes from ("OpenAI").
+ */
+export function modelListKeyError(
+  status: ModelListStatus,
+  account: string,
+): string | undefined {
+  if (status === 'error') {
+    return `Couldn't load the models with this key. Check it in your ${account} account.`;
+  }
+  if (status === 'empty') {
+    return "This key can't use any of the models that the plugin supports.";
+  }
   return undefined;
 }
 
@@ -76,16 +90,22 @@ export default function ModelSelectField({
   );
 
   const idle = modelList.status === 'idle';
+  const saved = value && value !== UNSET_MODEL ? value : null;
+  // The key can't list the models (its error says why): the saved model
+  // still shows, and the hint says it isn't one of the key's.
+  const keyFailed =
+    modelList.status === 'empty' || modelList.status === 'error';
+
+  let hint: string | undefined;
+  if (idle) hint = 'Enter the API key to load the models.';
+  else if (keyFailed && saved) {
+    hint = 'Saved model. Pick another once the key works.';
+  }
 
   return (
-    <FieldWrapper
-      label="Model"
-      required
-      hint={idle ? 'Enter the API key to load the models.' : undefined}
-      error={modelError(modelList.status)}
-    >
+    <FieldWrapper label="Model" required hint={hint}>
       <SelectInput
-        value={value && value !== UNSET_MODEL ? value : null}
+        value={saved}
         onChange={(next) => {
           if (next) onChange(next);
         }}

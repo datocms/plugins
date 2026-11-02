@@ -30,9 +30,11 @@ export function getStartBlockedReason(a: {
   if (!a.providerConfigured) {
     return 'Set up an AI vendor in the plugin settings first.';
   }
-  if (readiness.missingSourceLocale) return 'Pick a source locale first.';
+  if (readiness.missingSourceLocale) {
+    return 'Pick the locale to translate from first.';
+  }
   if (readiness.missingTargetLocales) {
-    return 'Pick at least one target locale first.';
+    return 'Pick at least one locale to translate into.';
   }
   if (a.requireModels && readiness.missingModels) return NO_MODEL_REASON;
 
