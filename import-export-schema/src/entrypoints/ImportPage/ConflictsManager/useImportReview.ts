@@ -119,7 +119,7 @@ function getProceedDisabledReason({
     return undefined;
   }
   if (hasUnresolvedConflicts || (!validating && !valid)) {
-    return 'Resolve every conflict in the overview first.';
+    return 'Click each conflict to resolve it first.';
   }
   if (validating) {
     return 'The new names and API keys are being checked.';
@@ -392,15 +392,26 @@ export function useImportReview(exportSchema: ExportSchema) {
 
   const hasConflicts = itemTypeConflictCount > 0 || pluginConflictCount > 0;
 
-  const unresolvedModelCount = itemTypesByCategory.models.filter(
+  const unresolvedModels = itemTypesByCategory.models.filter(
     isItemTypeConflictUnresolved,
-  ).length;
-  const unresolvedBlockCount = itemTypesByCategory.blocks.filter(
+  );
+  const unresolvedBlocks = itemTypesByCategory.blocks.filter(
     isItemTypeConflictUnresolved,
-  ).length;
-  const unresolvedPluginCount = pluginEntries.filter(
-    isPluginConflictUnresolved,
-  ).length;
+  );
+  const unresolvedPlugins = pluginEntries.filter(isPluginConflictUnresolved);
+  const unresolvedModelCount = unresolvedModels.length;
+  const unresolvedBlockCount = unresolvedBlocks.length;
+  const unresolvedPluginCount = unresolvedPlugins.length;
+
+  // The same entries, for the graph: see UnresolvedConflictsContext
+  const unresolvedIds = {
+    itemTypeIds: new Set(
+      [...unresolvedModels, ...unresolvedBlocks].map(
+        (entry) => entry.exportItemType.id,
+      ),
+    ),
+    pluginIds: new Set(unresolvedPlugins.map((entry) => entry.exportPlugin.id)),
+  };
 
   const unresolvedCount =
     unresolvedModelCount + unresolvedBlockCount + unresolvedPluginCount;
@@ -439,6 +450,7 @@ export function useImportReview(exportSchema: ExportSchema) {
     hasConflicts,
     unresolvedCount,
     hasUnresolvedConflicts,
+    unresolvedIds,
     pendingIdReplacementKeys,
     submitting,
     proceedDisabled,

@@ -189,7 +189,7 @@ async function buildProjectChildEntityMaps(
       onProgress?.({
         done: progress.done,
         total: progress.total,
-        label: `Scanning IDs: ${getItemTypeLabel(itemType)}`,
+        label: `Checking “${getItemTypeLabel(itemType)}”`,
       });
 
       const [fields, fieldsets] =
@@ -215,7 +215,7 @@ async function buildProjectChildEntityMaps(
       progress.done += 1;
       onProgress?.({
         ...progress,
-        label: `Scanned IDs: ${getItemTypeLabel(itemType)}`,
+        label: `Checking “${getItemTypeLabel(itemType)}”`,
       });
     },
     shouldCancel,
@@ -407,12 +407,12 @@ export default async function buildConflicts(
   let done = 0;
   let total = 2 + exportSchema.itemTypes.length + exportSchema.plugins.length;
 
-  onProgress?.({ done, total, label: 'Loading models…' });
+  onProgress?.({ done, total, label: 'Reading the models of the project…' });
   const projectItemTypes = await projectSchema.getAllItemTypes();
   checkCancellation(shouldCancel);
   total += projectItemTypes.length;
   done += 1;
-  onProgress?.({ done, total, label: 'Loading plugins…' });
+  onProgress?.({ done, total, label: 'Reading the plugins of the project…' });
   const projectItemTypesByName = keyBy(projectItemTypes, 'attributes.name');
   const projectItemTypesByApiKey = keyBy(
     projectItemTypes,
@@ -422,7 +422,7 @@ export default async function buildConflicts(
   const projectPlugins = await projectSchema.getAllPlugins();
   checkCancellation(shouldCancel);
   done += 1;
-  onProgress?.({ done, total, label: 'Scanning item types…' });
+  onProgress?.({ done, total, label: 'Checking the IDs…' });
   const projectPluginsByName = keyBy(projectPlugins, 'attributes.name');
   const projectPluginsByUrl = keyBy(projectPlugins, 'attributes.url');
 
@@ -464,11 +464,11 @@ export default async function buildConflicts(
     onProgress?.({
       done,
       total,
-      label: `Item type: ${itemType.attributes.name}`,
+      label: `Comparing “${itemType.attributes.name}”`,
     });
   }
 
-  onProgress?.({ done, total, label: 'Scanning plugins…' });
+  onProgress?.({ done, total, label: 'Comparing the plugins…' });
   for (const plugin of exportSchema.plugins) {
     checkCancellation(shouldCancel);
     const conflictingPlugin =
@@ -479,7 +479,11 @@ export default async function buildConflicts(
       conflicts.plugins[String(plugin.id)] = conflictingPlugin;
     }
     done += 1;
-    onProgress?.({ done, total, label: `Plugin: ${plugin.attributes.name}` });
+    onProgress?.({
+      done,
+      total,
+      label: `Comparing “${plugin.attributes.name}”`,
+    });
   }
 
   return conflicts;

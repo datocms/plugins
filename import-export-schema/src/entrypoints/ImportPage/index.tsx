@@ -1,3 +1,4 @@
+import { ApiError, TimeoutError } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -8,13 +9,15 @@ import {
   type UseLongTaskResult,
   useLongTask,
 } from '@/shared/tasks/useLongTask';
+import { isPermissionError, isTakenApiKeyError } from '@/utils/apiError';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
-import { ExportSchema } from '../ExportPage/ExportSchema';
+import { ExportSchema, olderExportMessage } from '../ExportPage/ExportSchema';
 import { buildImportDoc } from './buildImportDoc';
 import { ImportWorkflow } from './ImportWorkflow';
 import importSchema from './importSchema';
 import type { Resolutions } from './ResolutionsForm';
+import { notAnExportMessage } from './useJsonFileInput';
 import { useRecipeLoader } from './useRecipeLoader';
 
 type Props = {
@@ -25,15 +28,33 @@ function isImportCancelled(error: unknown) {
   return error instanceof Error && error.message === 'Import cancelled';
 }
 
+// Every message about a stopped import tells what it leaves behind
+const leftInProject = 'What was imported so far stays in the project.';
+// The review compares the file with the project again: what was imported
+// now shows as conflicts
+const importAgain =
+  'What was imported so far stays in the project: resolve any conflicts in the review, then import again.';
+
+/**
+ * The toast of a failed import, in plain words: the request and the body of
+ * the API error go to the console only.
+ */
 function importFailureMessage(error: unknown) {
-  // The detail is the message of the error, without its final period
-  const detail = (error instanceof Error ? error.message : '')
-    .trim()
-    .replace(/\.+$/, '');
-  const failure = detail
-    ? `The import failed: ${detail}.`
-    : 'The import failed.';
-  return `${failure} The changes made so far stay in the project.`;
+  if (isTakenApiKeyError(error)) {
+    return `The import stopped: an API key of the file is already used in this project. ${importAgain}`;
+  }
+  if (isPermissionError(error)) {
+    return `The import stopped: you don't have permission to change the schema. ${leftInProject} Ask an administrator for access.`;
+  }
+  if (error instanceof ApiError) {
+    return `The import stopped: DatoCMS refused one of the changes. ${importAgain}`;
+  }
+  // No answer from DatoCMS: a failed fetch or a request that timed out
+  if (error instanceof TypeError || error instanceof TimeoutError) {
+    return `The import stopped: check your connection. ${importAgain}`;
+  }
+  // A check of the file or of the import itself: importing again won't help
+  return `The import stopped before the end. ${leftInProject}`;
 }
 
 type ImportModeState = {
@@ -44,7 +65,7 @@ type ImportModeState = {
   loadingRecipe: boolean;
   handleDrop: (filename: string, doc: ExportDoc) => Promise<void>;
   handleImport: (resolutions: Resolutions) => Promise<void>;
-  requestClose: () => void;
+  requestClose: (hasChoices: boolean) => void;
   importTask: UseLongTaskResult;
   conflictsTask: UseLongTaskResult;
 };
@@ -90,7 +111,9 @@ function useImportMode({
   const handleRecipeError = useCallback(
     (error: unknown) => {
       console.error('Failed to load shared export recipe', error);
-      ctx.alert('The shared export could not be loaded.');
+      ctx.alert(
+        'The shared export could not be loaded. The link may have expired: choose the file from your computer instead.',
+      );
     },
     [ctx],
   );
@@ -105,11 +128,13 @@ function useImportMode({
         const schema = new ExportSchema(doc);
         setExportSchema([filename, schema]);
       } catch (error) {
+        // The reason goes to the console: the user needs another file, or a
+        // new export of an old one
         console.error(error);
         ctx.alert(
-          error instanceof Error
-            ? error.message
-            : 'This file is not a schema export.',
+          error instanceof Error && error.message === olderExportMessage
+            ? olderExportMessage
+            : notAnExportMessage,
         );
       }
     },
@@ -158,16 +183,14 @@ function useImportMode({
         }
 
         importTask.controller.complete({ label: 'Import completed' });
-        ctx.notice('Schema imported.');
+        ctx.notice(`Schema imported from “${exportSchema[0]}”.`);
         setExportSchema(undefined);
         setConflicts(undefined);
       } catch (error) {
         console.error(error);
         if (isImportCancelled(error)) {
           importTask.controller.complete({ label: 'Import cancelled' });
-          ctx.notice(
-            'Import stopped. The changes made so far stay in the project.',
-          );
+          ctx.notice(`Import stopped. ${leftInProject}`);
         } else {
           importTask.controller.fail(error);
           ctx.alert(importFailureMessage(error));
@@ -192,28 +215,33 @@ function useImportMode({
   );
 
   // The chevron of the review: the choices go with the file, thus it asks
-  const requestClose = useCallback(async () => {
-    if (!exportSchema) return;
-    const result = await ctx.openConfirm({
-      title: 'Choose another file?',
-      content: `Your choices for “${exportSchema[0]}” will be lost.`,
-      choices: [
-        {
-          label: 'Discard choices',
-          value: 'yes',
-          intent: 'negative',
-        },
-      ],
-      cancel: {
-        label: 'Cancel',
-        value: false,
-      },
-    });
+  // first, when the user made some
+  const requestClose = useCallback(
+    async (hasChoices: boolean) => {
+      if (!exportSchema) return;
+      if (hasChoices) {
+        const result = await ctx.openConfirm({
+          title: 'Choose another file?',
+          content: `Your choices for “${exportSchema[0]}” will be lost.`,
+          choices: [
+            {
+              label: 'Discard choices',
+              value: 'yes',
+              intent: 'negative',
+            },
+          ],
+          cancel: {
+            label: 'Cancel',
+            value: false,
+          },
+        });
+        if (result !== 'yes') return;
+      }
 
-    if (result === 'yes') {
       setExportSchema(undefined);
-    }
-  }, [ctx, exportSchema]);
+    },
+    [ctx, exportSchema],
+  );
 
   return {
     exportSchema,
@@ -287,12 +315,14 @@ function buildImportOverlay(
     id: 'import',
     task: importTask,
     title: 'Importing the schema',
+    // One line tells the stop: the progress keeps the last step
     subtitle: (state) =>
-      state.cancelRequested ? 'Stopping the import…' : undefined,
-    progressLabel: (progress, state) =>
       state.cancelRequested
-        ? 'Stopping at the next safe step…'
-        : (progress.label ?? ''),
+        ? 'Stopping the import after the current step…'
+        : undefined,
+    progressLabel: (progress) => progress.label ?? '',
+    stallMessage:
+      'DatoCMS is slowing things down for a moment. The import continues on its own.',
     cancel: (state) =>
       state.cancelRequested
         ? undefined
@@ -302,7 +332,7 @@ function buildImportOverlay(
               const result = await ctx.openConfirm({
                 title: 'Stop the import?',
                 content:
-                  'The changes made so far stay in the project: some models or blocks may lack their relationships, some fields or fieldsets may already exist, and plugins may be only partly set up.',
+                  'What was imported so far stays in the project and may be incomplete.',
                 choices: [
                   {
                     label: 'Stop the import',

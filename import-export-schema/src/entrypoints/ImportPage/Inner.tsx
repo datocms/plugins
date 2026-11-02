@@ -11,21 +11,32 @@ import Main from 'datocms-react-ui/Main';
 import Pane from 'datocms-react-ui/Pane';
 import SplitPane from 'datocms-react-ui/SplitPane';
 import Toolbar from 'datocms-react-ui/Toolbar';
+import isEqual from 'lodash-es/isEqual';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GraphCanvas } from '@/components/GraphCanvas';
+import { useForm } from 'react-final-form';
+import { GraphCanvas, useGraphView } from '@/components/GraphCanvas';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
-import { CircleExclamationIcon, ImportIcon } from '@/icons';
-import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
+import { CircleExclamationIcon, ModelIcon } from '@/icons';
+import {
+  GRAPH_NODE_THRESHOLD,
+  GRAPH_TOO_LARGE_DESCRIPTION,
+} from '@/shared/constants/graph';
 import { useOverviewSplit } from '@/shared/hooks/useOverviewSplit';
 import { type Formatters, useFormatters } from '@/texts';
+import { errorCode } from '@/utils/apiError';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
 import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 import ConflictsManager, { useConflictsOverviewList } from './ConflictsManager';
+import { UnresolvedConflictsContext } from './ConflictsManager/ConflictsContext';
 import { useImportReview } from './ConflictsManager/useImportReview';
 import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
-import { useSkippedItemsAndPluginIds, useSubmitGuard } from './ResolutionsForm';
+import {
+  type FormValues,
+  useSkippedItemsAndPluginIds,
+  useSubmitGuard,
+} from './ResolutionsForm';
 import s from './review.module.css';
 
 // Map React Flow node types to the dedicated renderers for import graphs.
@@ -40,14 +51,17 @@ type Props = {
   exportSchema: ExportSchema;
   /** The name of the file, or the title of the shared export */
   label: string;
-  /** Asks to drop the file and its choices, to choose another file */
-  onRequestClose?: () => void;
+  /**
+   * Asks to drop the file and its choices, to choose another file. It asks
+   * first only when the user made choices.
+   */
+  onRequestClose?: (hasChoices: boolean) => void;
 };
 
-/** "No conflicts to resolve", "1 conflict to resolve", "3 conflicts to resolve" */
+/** "Ready to import", "1 conflict to resolve", "3 conflicts to resolve" */
 function describeConflicts(format: Formatters, count: number) {
   return count === 0
-    ? 'No conflicts to resolve'
+    ? 'Ready to import'
     : format.count(count, 'conflict to resolve', 'conflicts to resolve');
 }
 
@@ -57,9 +71,11 @@ function describeConflicts(format: Formatters, count: number) {
  * Import button of the toolbar submits the resolutions form around it.
  */
 export function Inner({ exportSchema, label, onRequestClose }: Props) {
-  const { fitBounds, fitView, setNodes, setEdges } = useReactFlow();
+  const { setNodes, setEdges } = useReactFlow();
+  const { fitGraph, showNode } = useGraphView();
   const format = useFormatters();
   const review = useImportReview(exportSchema);
+  const form = useForm<FormValues>();
   // Enter in a rename field never imports while the button is disabled
   useSubmitGuard(review.proceedDisabled);
 
@@ -160,38 +176,21 @@ export function Inner({ exportSchema, label, onRequestClose }: Props) {
     }
 
     if (pendingZoomEntity === null) {
-      fitView({ duration: 800 });
-      setPendingZoomEntity(undefined);
-      return;
+      fitGraph(800);
+    } else {
+      const node = graph.nodes.find((node) =>
+        pendingZoomEntity.type === 'plugin'
+          ? node.type === 'plugin' &&
+            node.data.plugin.id === pendingZoomEntity.id
+          : node.type === 'itemType' &&
+            node.data.itemType.id === pendingZoomEntity.id,
+      );
+      if (node) {
+        showNode(node.id);
+      }
     }
-
-    const node = graph.nodes.find((node) =>
-      pendingZoomEntity.type === 'plugin'
-        ? node.type === 'plugin' && node.data.plugin.id === pendingZoomEntity.id
-        : node.type === 'itemType' &&
-          node.data.itemType.id === pendingZoomEntity.id,
-    );
-
-    if (!node) {
-      setPendingZoomEntity(undefined);
-      return;
-    }
-
-    fitBounds(
-      { x: node.position.x, y: node.position.y, width: 200, height: 200 },
-      { duration: 800, padding: 1 },
-    );
     setPendingZoomEntity(undefined);
-  }, [fitBounds, fitView, graph, pendingZoomEntity, showGraph]);
-
-  // Zoom the viewport to the full graph once React Flow has mounted and the graph is visible.
-  useEffect(() => {
-    if (!showGraph) {
-      return;
-    }
-    const timeout = window.setTimeout(() => fitView(), 100);
-    return () => window.clearTimeout(timeout);
-  }, [fitView, showGraph]);
+  }, [fitGraph, graph, pendingZoomEntity, showGraph, showNode]);
 
   const handleSelectEntity = useCallback(
     (newEntity: FocusedEntity | undefined, zoomIn?: boolean) => {
@@ -212,73 +211,87 @@ export function Inner({ exportSchema, label, onRequestClose }: Props) {
   );
 
   // The overview: beside the graph, or over it in a narrow frame, where it
-  // starts open too, because it holds the conflicts to resolve
-  const overviewSplit = useOverviewSplit({ openWhenSmall: true });
+  // starts open while it holds conflicts to resolve. Without any, it starts
+  // closed there, and the Import button at the right end of the toolbar
+  // shows.
+  const overviewSplit = useOverviewSplit({
+    openWhenSmall: review.hasUnresolvedConflicts,
+  });
   const overviewList = useConflictsOverviewList(review, selectedEntity);
+
+  // The values, not the dirty state of the form: the fields of a closed
+  // item are not registered, thus their choices don't count as dirty
+  const requestClose = onRequestClose
+    ? () => {
+        const { values, initialValues } = form.getState();
+        onRequestClose(!isEqual(values, initialValues));
+      }
+    : undefined;
 
   return (
     <SelectedEntityContext.Provider value={selectedEntityValue}>
-      <SplitPane primaryPane="left" {...overviewSplit}>
-        <Main>
-          <Pane
-            ariaLabel="Dependency graph"
-            header={
-              <Toolbar>
-                {onRequestClose ? (
-                  <Toolbar.GoBack
-                    onClick={onRequestClose}
-                    ariaLabel="Choose another file"
+      <UnresolvedConflictsContext.Provider value={review.unresolvedIds}>
+        <SplitPane primaryPane="left" {...overviewSplit}>
+          <Main>
+            <Pane
+              ariaLabel="Dependency diagram"
+              header={
+                <Toolbar>
+                  {requestClose ? (
+                    <Toolbar.GoBack
+                      onClick={requestClose}
+                      ariaLabel="Choose another file"
+                    />
+                  ) : null}
+                  <Toolbar.Title
+                    level={1}
+                    help={
+                      <Toolbar.Help>
+                        The import adds the models, blocks and plugins of the
+                        file to this environment, and never changes the existing
+                        ones.
+                        {review.hasConflicts
+                          ? ' Click a conflict to choose how to import it.'
+                          : null}
+                      </Toolbar.Help>
+                    }
+                  >
+                    {`Import “${label}”`}
+                  </Toolbar.Title>
+                  <Toolbar.Subtitle>
+                    {describeConflicts(format, review.unresolvedCount)}
+                  </Toolbar.Subtitle>
+                  <Toolbar.Space />
+                  <Toolbar.Button
+                    tone="primary"
+                    submit
+                    label="Import"
+                    busy={review.submitting}
+                    disabled={
+                      review.proceedDisabledReason
+                        ? { reason: review.proceedDisabledReason }
+                        : undefined
+                    }
                   />
-                ) : null}
-                <Toolbar.Title
-                  level={1}
-                  help={
-                    <Toolbar.Help>
-                      The import adds the models, blocks and plugins of the file
-                      to this environment, and never changes the existing ones.
-                      Resolve the conflicts in the overview, then import.
-                    </Toolbar.Help>
-                  }
-                >
-                  {`Import “${label}”`}
-                </Toolbar.Title>
-                <Toolbar.Subtitle>
-                  {describeConflicts(format, review.unresolvedCount)}
-                </Toolbar.Subtitle>
-                <Toolbar.Space />
-                <Toolbar.Button
-                  tone="primary"
-                  submit
-                  label="Import"
-                  busy={review.submitting}
-                  disabled={
-                    review.proceedDisabledReason
-                      ? { reason: review.proceedDisabledReason }
-                      : undefined
-                  }
-                />
-              </Toolbar>
-            }
-          >
-            <GraphArea
-              graph={graph}
-              error={graphError}
-              showGraph={showGraph}
-              nodeCount={Math.max(
-                graph?.nodes.length ?? 0,
-                totalPotentialNodes,
-              )}
-              onShowAnyway={() => setForceRenderGraph(true)}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              onChooseAnotherFile={onRequestClose}
-            />
-          </Pane>
-        </Main>
-        <Aside ariaLabel="Schema overview">
-          <ConflictsManager review={review} list={overviewList} />
-        </Aside>
-      </SplitPane>
+                </Toolbar>
+              }
+            >
+              <GraphArea
+                graph={graph}
+                error={graphError}
+                showGraph={showGraph}
+                onShowAnyway={() => setForceRenderGraph(true)}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                onChooseAnotherFile={requestClose}
+              />
+            </Pane>
+          </Main>
+          <Aside ariaLabel="Schema overview">
+            <ConflictsManager review={review} list={overviewList} />
+          </Aside>
+        </SplitPane>
+      </UnresolvedConflictsContext.Provider>
     </SelectedEntityContext.Provider>
   );
 }
@@ -288,8 +301,6 @@ type GraphAreaProps = {
   error: Error | undefined;
   /** The graph is small enough, or the user asked to draw it anyway */
   showGraph: boolean;
-  /** The size of the graph, for the message of a graph too large to draw */
-  nodeCount: number;
   onShowAnyway: () => void;
   onNodeClick: NodeMouseHandler<AppNode>;
   onPaneClick: () => void;
@@ -306,7 +317,6 @@ function GraphArea({
   graph,
   error,
   showGraph,
-  nodeCount,
   onShowAnyway,
   onNodeClick,
   onPaneClick,
@@ -318,8 +328,8 @@ function GraphArea({
         placement="area"
         error
         icon={<CircleExclamationIcon />}
-        title="The graph could not be drawn"
-        code={error.message}
+        title="The diagram could not be drawn"
+        code={errorCode(error)}
         description="The file may be damaged. Choose another file to try again."
         actions={
           onChooseAnotherFile ? (
@@ -331,21 +341,18 @@ function GraphArea({
   }
 
   if (!graph) {
-    return <BlankSlate placement="area" loading title="Drawing the graph" />;
+    return <BlankSlate placement="area" loading title="Drawing the diagram" />;
   }
 
   if (!showGraph) {
     return (
       <BlankSlate
         placement="area"
-        icon={<ImportIcon />}
-        title="The graph is too large to show"
-        description={{
-          id: 'importExportSchema.graphTooLarge',
-          values: { count: nodeCount },
-        }}
+        icon={<ModelIcon />}
+        title="The diagram is too large to show"
+        description={GRAPH_TOO_LARGE_DESCRIPTION}
         actions={
-          <Button label="Show the graph anyway" onClick={onShowAnyway} />
+          <Button label="Show the diagram anyway" onClick={onShowAnyway} />
         }
       />
     );
@@ -359,7 +366,6 @@ function GraphArea({
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
-        fitView
       />
     </div>
   );

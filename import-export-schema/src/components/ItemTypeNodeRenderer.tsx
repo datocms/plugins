@@ -9,11 +9,9 @@ import {
 } from '@xyflow/react';
 import classNames from 'classnames';
 import ApiKey from 'datocms-react-ui/ApiKey';
-import HoverCard from 'datocms-react-ui/HoverCard';
 import Pill from 'datocms-react-ui/Pill';
 import type { ReactNode } from 'react';
 import { BlockIcon, ModelIcon } from '@/icons';
-import { FieldList } from './FieldList';
 import s from './graph.module.css';
 
 export type ItemTypeNode = Node<
@@ -29,13 +27,13 @@ export type ItemTypeNode = Node<
 const zoomSelector = (state: ReactFlowState) => state.transform[2] >= 0.8;
 
 /**
- * Node renderer used by React Flow to display a DatoCMS model/block, with its
- * fields and fieldsets in a hover card, and the kind and API key once zoomed
- * in. The overview lists the same fields without a pointer. The state pill
- * shows at every zoom.
+ * Node renderer used by React Flow to display a DatoCMS model/block, with the
+ * kind and API key once zoomed in. The state pill shows at every zoom. Its
+ * fields show in its item of the overview, which a click on the node opens:
+ * no card opens over the nodes next to it.
  */
 export function ItemTypeNodeRenderer({
-  data: { itemType, fields, fieldsets },
+  data: { itemType },
   className,
   status,
   name,
@@ -56,35 +54,26 @@ export function ItemTypeNodeRenderer({
 
   return (
     <>
-      <Handle type="target" position={Position.Top} className={s.handle} />
-      <HoverCard
-        placement="right"
-        content={
-          <HoverCard.Body>
-            <FieldList fields={fields} fieldsets={fieldsets} />
-          </HoverCard.Body>
-        }
-      >
-        <div className={classNames(s.node, className)}>
-          {showDetails || status ? (
-            <span className={s.pills}>
-              {showDetails ? (
-                <Pill icon={isBlock ? <BlockIcon /> : <ModelIcon />}>
-                  {isBlock ? 'Block' : 'Model'}
-                </Pill>
-              ) : null}
-              {status}
-            </span>
-          ) : null}
-          <div className={s.name}>{name}</div>
-          {showDetails && (
-            <div className={s.details}>
-              <ApiKey>{apiKey}</ApiKey>
-            </div>
-          )}
-        </div>
-      </HoverCard>
-      <Handle type="source" position={Position.Bottom} className={s.handle} />
+      <Handle type="target" position={Position.Left} className={s.handle} />
+      <div className={classNames(s.node, className)}>
+        {showDetails || status ? (
+          <span className={s.pills}>
+            {showDetails ? (
+              <Pill icon={isBlock ? <BlockIcon /> : <ModelIcon />}>
+                {isBlock ? 'Block' : 'Model'}
+              </Pill>
+            ) : null}
+            {status}
+          </span>
+        ) : null}
+        <div className={s.name}>{name}</div>
+        {showDetails && (
+          <div className={s.details}>
+            <ApiKey>{apiKey}</ApiKey>
+          </div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Right} className={s.handle} />
     </>
   );
 }

@@ -21,6 +21,8 @@ export type TaskProgressOverlayProps = {
   /** The name of the progress bar. The default is the title. */
   ariaLabel?: string;
   progressLabel?: (progress: LongTaskProgress, state: LongTaskState) => string;
+  /** The notice of a pause in the progress. The default is for an export. */
+  stallMessage?: string;
   /**
    * The cancel for the current state: the Cancel of the dialog. Return
    * undefined once a cancel is requested, and say so in the subtitle.
@@ -39,6 +41,7 @@ export function TaskProgressOverlay({
   subtitle,
   ariaLabel,
   progressLabel,
+  stallMessage,
   cancel,
 }: TaskProgressOverlayProps) {
   if (task.state.status !== 'running' && task.state.status !== 'cancelling') {
@@ -64,6 +67,7 @@ export function TaskProgressOverlay({
         total: progress.total,
       }}
       stallCurrent={progress.done}
+      stallMessage={stallMessage}
       cancel={cancel?.(state)}
     />
   );

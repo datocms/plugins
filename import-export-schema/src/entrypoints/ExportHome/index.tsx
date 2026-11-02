@@ -5,8 +5,9 @@
  *  │ Start step │ ─────────────────────────▶│  Graph   │
  *  └────────────┘   Back ⟲ (picks kept)     └──────────┘
  *        │
- *        └── Export everything: confirm, then export the entire schema
+ *        └── Export everything: export the entire schema at once
  */
+import type { SchemaTypes } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
@@ -28,6 +29,7 @@ import {
   type UseLongTaskResult,
   useLongTask,
 } from '@/shared/tasks/useLongTask';
+import { isPermissionError } from '@/utils/apiError';
 import ExportInner from '../ExportPage/Inner';
 import s from '../ExportPage/styles.module.css';
 
@@ -43,6 +45,18 @@ function isTaskActive(task: UseLongTaskResult) {
   return task.state.status === 'running' || task.state.status === 'cancelling';
 }
 
+/**
+ * "Export everything" has nothing it could ever export: the user can't read
+ * the schema (another attempt can't give a permission), or the environment
+ * has no models or blocks. The group above already tells why.
+ */
+function cannotExportAll(
+  itemTypes: unknown[] | undefined,
+  error: Error | undefined,
+) {
+  return isPermissionError(error) || itemTypes?.length === 0;
+}
+
 /** The line of the export dialog once its Cancel was used */
 function describeExportCancel(state: LongTaskState) {
   return state.cancelRequested
@@ -50,10 +64,13 @@ function describeExportCancel(state: LongTaskState) {
     : undefined;
 }
 
-// Keep the dialog wiring in one place so the JSX tree stays readable.
+// Keep the dialog wiring in one place so the JSX tree stays readable. The
+// dialog of a selection takes the title of its page: it names a single
+// model.
 function buildOverlayItems(
   exportAllTask: UseLongTaskResult,
   exportSelectionTask: UseLongTaskResult,
+  selectedItemTypes: SchemaTypes.ItemType[],
 ): OverlayItems {
   return [
     {
@@ -71,7 +88,10 @@ function buildOverlayItems(
     {
       id: 'export-selection',
       task: exportSelectionTask,
-      title: 'Exporting the selection',
+      title:
+        selectedItemTypes.length === 1
+          ? `Exporting “${selectedItemTypes[0].attributes.name}”`
+          : 'Exporting the selection',
       subtitle: describeExportCancel,
       progressLabel: (progress) => progress.label ?? 'Preparing the export…',
       cancel: (state) =>
@@ -156,9 +176,8 @@ export default function ExportHome({ ctx }: Props) {
                   level={1}
                   help={
                     <Toolbar.Help>
-                      Export models, block models and plugins as a JSON file.
-                      Import it in another project or environment with this
-                      plugin.
+                      Export models, blocks and plugins as a JSON file. Import
+                      it in another project or environment with this plugin.
                     </Toolbar.Help>
                   }
                 >
@@ -177,29 +196,31 @@ export default function ExportHome({ ctx }: Props) {
                   onSelectedIdsChange={setSelectedIds}
                   onContinue={handleContinue}
                 />
-                <Page.Group title="Entire schema">
-                  <SettingsList>
-                    <SettingsList.Row
-                      title="Export everything"
-                      description="All the models, block models and plugins of this environment, in one JSON file."
-                      action={
-                        <Button
-                          tone="ghost"
-                          icon={ExportIcon}
-                          label="Export"
-                          onClick={() => {
-                            void runExportAll();
-                          }}
-                          disabled={
-                            isTaskActive(exportAllTask)
-                              ? { reason: 'The export is running.' }
-                              : undefined
-                          }
-                        />
-                      }
-                    />
-                  </SettingsList>
-                </Page.Group>
+                {cannotExportAll(allItemTypes, itemTypesError) ? null : (
+                  <Page.Group title="Entire schema">
+                    <SettingsList>
+                      <SettingsList.Row
+                        title="Export everything"
+                        description="All the models, blocks and plugins of this environment, in one JSON file."
+                        action={
+                          <Button
+                            tone="ghost"
+                            icon={ExportIcon}
+                            label="Export"
+                            onClick={() => {
+                              void runExportAll();
+                            }}
+                            disabled={
+                              isTaskActive(exportAllTask)
+                                ? { reason: 'The export is running.' }
+                                : undefined
+                            }
+                          />
+                        }
+                      />
+                    </SettingsList>
+                  </Page.Group>
+                )}
               </Page.Content>
             </Page>
           </Pane>
@@ -208,7 +229,11 @@ export default function ExportHome({ ctx }: Props) {
 
       {/* The dialogs of the exports: they block the page while they run */}
       <TaskOverlayStack
-        items={buildOverlayItems(exportAllTask, exportSelectionTask)}
+        items={buildOverlayItems(
+          exportAllTask,
+          exportSelectionTask,
+          selectedItemTypes,
+        )}
       />
     </ReactFlowProvider>
   );

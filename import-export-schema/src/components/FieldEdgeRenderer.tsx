@@ -4,6 +4,7 @@ import {
   type Edge,
   EdgeLabelRenderer,
   type EdgeProps,
+  useInternalNode,
   useNodesData,
 } from '@xyflow/react';
 import HoverCard from 'datocms-react-ui/HoverCard';
@@ -68,17 +69,16 @@ export function FieldEdgeRenderer({
     source,
     target,
   ]);
+  // The box of the source, for the loop of a node to itself
+  const sourceBox = useInternalNode(source);
 
   const [edgePath, labelX, labelY] =
-    source === target
-      ? getSelfPath({
-          sourceX,
-          sourceY,
-          sourcePosition,
-          targetX,
-          targetY,
-          targetPosition,
-        })
+    source === target && sourceBox
+      ? getSelfPath(
+          sourceBox.internals.positionAbsolute.x +
+            (sourceBox.measured.width ?? 0),
+          sourceBox.internals.positionAbsolute.y,
+        )
       : getBezierPath({
           sourceX,
           sourceY,

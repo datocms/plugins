@@ -1,96 +1,34 @@
 import { type GetBezierPathParams, Position } from '@xyflow/react';
 
-function getPointOnSimpleArc(
-  arcFraction: number,
-  rx: number,
-  ry: number,
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number,
-): [number, number] {
-  // Step 1. Compute the midpoint and differences.
-  const dx = (sourceX - targetX) / 2;
-  const dy = (sourceY - targetY) / 2;
-  const midX = (sourceX + targetX) / 2;
-  const midY = (sourceY + targetY) / 2;
+/**
+ * The edge of a node to itself: a small loop at the top right corner of the
+ * node (`right`, `top`), out of its right side and back into its top side.
+ * It stays in the free space around the corner: the pills of the node are in
+ * the middle of its top side, and the next nodes are above, below and to the
+ * right. The dot sits at the middle of the loop, outside the box.
+ */
+export function getSelfPath(
+  right: number,
+  top: number,
+): [string, number, number] {
+  // How far from the corner the loop leaves and enters the box, and how far
+  // out it goes
+  const inset = 14;
+  const reach = 50;
 
-  // Step 2. Compute the factor used to find the center.
-  // (This comes from the SVG spec’s “F.6.5 Conversion from endpoint to center parameterization”)
-  const rx2 = rx * rx;
-  const ry2 = ry * ry;
-  const dx2 = dx * dx;
-  const dy2 = dy * dy;
+  const start = [right, top + inset];
+  const control1 = [right + reach, top + inset];
+  const control2 = [right - inset, top - reach];
+  const end = [right - inset, top];
 
-  // The numerator under the square root:
-  const numerator = rx2 * ry2 - rx2 * dy2 - ry2 * dx2;
-  // The denominator:
-  const denom = rx2 * dy2 + ry2 * dx2;
-
-  // In case of rounding issues, make sure we don’t take sqrt of a negative.
-  const factor = Math.sqrt(Math.max(0, numerator / denom));
-
-  // For the flags: largeArcFlag=1 and sweepFlag=0.
-  // The spec tells us to choose sign = (largeArcFlag === sweepFlag ? -1 : 1).
-  // Since 1 !== 0, we have:
-  const sign = 1;
-
-  // Step 3. Compute the center in the “prime” coordinate system.
-  const cxPrime = sign * factor * ((rx * dy) / ry);
-  const cyPrime = sign * factor * ((-ry * dx) / rx);
-
-  // The actual center is:
-  const cx = midX + cxPrime;
-  const cy = midY + cyPrime;
-
-  // Step 4. Compute the start and end angles.
-  // Since there is no rotation (xAxisRotation=0), we can compute these directly.
-  const startAngle = Math.atan2((sourceY - cy) / ry, (sourceX - cx) / rx);
-  const endAngle = Math.atan2((targetY - cy) / ry, (targetX - cx) / rx);
-
-  // Step 5. Determine the angle difference.
-  let deltaAngle = endAngle - startAngle;
-  // For sweepFlag=0 the arc is drawn in the negative (clockwise) direction.
-  // If deltaAngle is positive, subtract 2π to get the proper (negative) angle.
-  if (deltaAngle > 0) {
-    deltaAngle -= 2 * Math.PI;
-  }
-
-  // Step 6. Find the angle at the given fraction along the arc.
-  const angleAtFraction = startAngle + arcFraction * deltaAngle;
-
-  // Step 7. Convert back to (x,y) coordinates.
-  const x = cx + rx * Math.cos(angleAtFraction);
-  const y = cy + ry * Math.sin(angleAtFraction);
-
-  return [x, y];
-}
-
-export function getSelfPath({
-  sourceX,
-  targetX,
-  sourceY,
-  targetY,
-}: GetBezierPathParams): [string, number, number] {
-  const radiusX = 100;
-  const radiusY = (sourceY - targetY) * 0.6;
-
-  const newTargetX = targetX + 2;
-
-  const [labelX, labelY] = getPointOnSimpleArc(
-    0.5,
-    radiusX,
-    radiusY,
-    sourceX,
-    sourceY,
-    newTargetX,
-    targetY,
-  );
+  // The middle of a cubic curve: (P0 + 3·P1 + 3·P2 + P3) / 8
+  const middle = (axis: 0 | 1) =>
+    (start[axis] + 3 * control1[axis] + 3 * control2[axis] + end[axis]) / 8;
 
   return [
-    `M ${sourceX} ${sourceY} A ${radiusX} ${radiusY} 0 1 0 ${newTargetX} ${targetY}`,
-    labelX,
-    labelY,
+    `M ${start[0]} ${start[1]} C ${control1[0]} ${control1[1]}, ${control2[0]} ${control2[1]}, ${end[0]} ${end[1]}`,
+    middle(0),
+    middle(1),
   ];
 }
 

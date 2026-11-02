@@ -8,40 +8,43 @@ import {
   PluginNodeRenderer,
 } from '@/components/PluginNodeRenderer';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
-import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
+import { UnresolvedConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
 import { useResolutionStatusForPlugin } from './ResolutionsForm';
 
 /**
- * A plugin node of the import graph: in the danger colors with a "Conflict"
- * pill while its conflict is unresolved, faded once the conflict is resolved
- * (with a "Uses installed" or "Skipped" pill), in the selected colors when it
- * is the focused entity.
+ * A plugin node of the import graph: with a "Conflict" pill while its row in
+ * the overview says so (a name, a URL or an ID to decide about), faded once
+ * the import reuses or skips it (with a "Uses installed" or "Skipped" pill),
+ * in the selected colors when it is the focused entity.
  */
 export function ImportPluginNodeRenderer(props: NodeProps<PluginNode>) {
   const { plugin } = props.data;
 
-  const conflict = useContext(ConflictsContext).plugins[plugin.id];
+  const unresolvedConflict = useContext(
+    UnresolvedConflictsContext,
+  ).pluginIds.has(plugin.id);
   const selectedEntityContext = useContext(SelectedEntityContext);
   const resolution = useResolutionStatusForPlugin(plugin.id);
 
-  const unresolvedConflict = conflict && resolution?.invalid;
-  const resolvedConflict = conflict && !resolution?.invalid;
-  const strategy = resolution?.values?.strategy;
+  // Only a plugin installed in the project has these choices
+  const strategy = unresolvedConflict
+    ? undefined
+    : resolution?.values?.strategy;
+  const notCreated = strategy === 'reuseExisting' || strategy === 'skip';
 
   return (
     <PluginNodeRenderer
       {...props}
       className={classNames(
-        unresolvedConflict && nodeState.conflict,
-        resolvedConflict && nodeState.excluded,
+        notCreated && nodeState.excluded,
         selectedEntityContext.entity === plugin && nodeState.focused,
       )}
       status={
         unresolvedConflict ? (
-          <Pill tone="danger">Conflict</Pill>
-        ) : resolvedConflict && strategy === 'reuseExisting' ? (
+          <Pill tone="warning">Conflict</Pill>
+        ) : strategy === 'reuseExisting' ? (
           <Pill>Uses installed</Pill>
-        ) : resolvedConflict && strategy === 'skip' ? (
+        ) : strategy === 'skip' ? (
           <Pill>Skipped</Pill>
         ) : undefined
       }

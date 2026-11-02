@@ -1,6 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import ApiKey from 'datocms-react-ui/ApiKey';
-import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import Pill from 'datocms-react-ui/Pill';
 import RadioGroupInput, {
@@ -20,13 +19,18 @@ import { isDefined } from '@/utils/isDefined';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
 import s from '../review.module.css';
 import type { IdReplacementIssue } from './buildConflicts';
-import { IdCollisionFallback } from './IdCollisionFallback';
+import { IdCollisionFallback, usePendingIdIssue } from './IdCollisionFallback';
 import type { ItemTypeEntry } from './useImportReview';
 
 type Props = {
   entry: ItemTypeEntry;
   /** The conflict still needs a decision of the user */
   unresolved: boolean;
+  /**
+   * The list shows only the conflicts, as its title says: the row then
+   * needs no "Conflict" pill
+   */
+  inConflictsView: boolean;
 };
 
 type Strategy = 'rename' | 'reuseExisting';
@@ -36,16 +40,10 @@ function kindOf(itemType: SchemaTypes.ItemType) {
 }
 
 /**
- * The IDs of the fields or of the fieldsets that need a new ID: a list of
- * switches under a small label, 100 per page past 200.
+ * The IDs of the item type, of its fields and of its fieldsets that need a
+ * new ID: a list of switches, 100 per page past 200.
  */
-function IdReplacementList({
-  issues,
-  title,
-}: {
-  issues: IdReplacementIssue[];
-  title: string;
-}) {
+function IdReplacementList({ issues }: { issues: IdReplacementIssue[] }) {
   const pagination = usePaginatedEntries(issues);
 
   if (issues.length === 0) {
@@ -54,16 +52,15 @@ function IdReplacementList({
 
   return (
     <div className={s.idGroup}>
-      <span className={s.groupLabel}>{title}</span>
       <SwitchList>
         {pagination.entries.map((collision) => (
           <IdCollisionFallback
-            key={`${collision.reason}-${collision.exportId}`}
+            key={`${collision.entityType}-${collision.reason}-${collision.exportId}`}
             collision={collision}
           />
         ))}
       </SwitchList>
-      <EntriesPagination pagination={pagination} ariaLabel={title} />
+      <EntriesPagination pagination={pagination} ariaLabel="New IDs" />
     </div>
   );
 }
@@ -72,9 +69,10 @@ function IdReplacementList({
 function statusPill(
   unresolved: boolean,
   strategy: Strategy | null | undefined,
+  inConflictsView: boolean,
 ) {
   if (unresolved) {
-    return <Pill tone="danger">Conflict</Pill>;
+    return inConflictsView ? null : <Pill tone="warning">Conflict</Pill>;
   }
   if (strategy === 'rename') {
     return <Pill>Renamed</Pill>;
@@ -83,6 +81,46 @@ function statusPill(
     return <Pill>Uses existing</Pill>;
   }
   return null;
+}
+
+/**
+ * What the item type of the file shares with the one of the project: the
+ * name, the API key, or both.
+ */
+function MatchSentence({
+  exportItemType,
+  projectItemType,
+}: {
+  exportItemType: SchemaTypes.ItemType;
+  projectItemType: SchemaTypes.ItemType;
+}) {
+  const { name, api_key: apiKey } = projectItemType.attributes;
+  const sameName = exportItemType.attributes.name === name;
+  const sameApiKey = exportItemType.attributes.api_key === apiKey;
+  const kind = kindOf(projectItemType);
+
+  if (sameName && !sameApiKey) {
+    return (
+      <p className={s.text}>
+        {`The project already has a ${kind} named “${name}”.`}
+      </p>
+    );
+  }
+  if (!sameName) {
+    return (
+      <p className={s.text}>
+        {`“${name}” in the project already uses the API key `}
+        <ApiKey>{apiKey}</ApiKey>.
+      </p>
+    );
+  }
+  // Both by name: after a rename, the row title shows the new ones
+  return (
+    <p className={s.text}>
+      {`“${name}” already exists in the project, with the API key `}
+      <ApiKey>{apiKey}</ApiKey>.
+    </p>
+  );
 }
 
 /** How to import an item type that exists in the project: a new name, or reuse */
@@ -192,7 +230,7 @@ function RenameFields({ fieldPrefix }: { fieldPrefix: string }) {
  * A model or block of the file in the overview. Its body tells whether the
  * project has one with the same name or API key, and how to import it, then
  * lists the exported IDs that the project can't take, and last its fields
- * and fieldsets (the hover card of its node shows them only to a pointer).
+ * and fieldsets. Without a conflict, it shows only the fields.
  *
  * Memoized, as CardList asks of the components that make its items: the
  * overview renders again on every change of the form.
@@ -200,6 +238,7 @@ function RenameFields({ fieldPrefix }: { fieldPrefix: string }) {
 export const ItemTypeConflict = memo(function ItemTypeConflict({
   entry,
   unresolved,
+  inConflictsView,
 }: Props) {
   const {
     exportItemType,
@@ -214,38 +253,45 @@ export const ItemTypeConflict = memo(function ItemTypeConflict({
   const fieldPrefix = `itemType-${exportItemType.id}`;
   const resolution = useResolutionStatusForItemType(exportItemType.id);
   const strategy = resolution?.values.strategy;
+  // A rename shows its new name and API key, as the node of the graph does
+  const renamed = strategy === 'rename' ? resolution?.values : undefined;
 
-  const ownIssues = useMemo(
-    () => [idCollision, legacyIdIssue].filter(isDefined),
-    [idCollision, legacyIdIssue],
-  );
-  const fieldReplacements = useMemo(
-    () => [...fieldIdCollisions, ...fieldLegacyIdIssues],
-    [fieldIdCollisions, fieldLegacyIdIssues],
-  );
-  const fieldsetReplacements = useMemo(
-    () => [...fieldsetIdCollisions, ...fieldsetLegacyIdIssues],
-    [fieldsetIdCollisions, fieldsetLegacyIdIssues],
+  // Its own IDs, then the IDs of its fields and of its fieldsets
+  const idIssues = useMemo(
+    () => [
+      ...[idCollision, legacyIdIssue].filter(isDefined),
+      ...fieldIdCollisions,
+      ...fieldLegacyIdIssues,
+      ...fieldsetIdCollisions,
+      ...fieldsetLegacyIdIssues,
+    ],
+    [
+      idCollision,
+      legacyIdIssue,
+      fieldIdCollisions,
+      fieldLegacyIdIssues,
+      fieldsetIdCollisions,
+      fieldsetLegacyIdIssues,
+    ],
   );
 
   // A reused item type creates nothing: its IDs need no decision
   const itemTypeWillBeCreated = strategy !== 'reuseExisting';
-  const hasIdIssue =
-    ownIssues.length > 0 ||
-    fieldReplacements.length > 0 ||
-    fieldsetReplacements.length > 0;
+  const idIssuePending = usePendingIdIssue(idIssues);
 
   return (
     <OverviewItem
       entity={exportItemType}
-      status={statusPill(unresolved, strategy)}
+      name={renamed?.name}
+      apiKey={renamed?.apiKey}
+      status={statusPill(unresolved, strategy, inConflictsView)}
     >
       {projectItemType ? (
         <>
-          <p className={s.text}>
-            {`The project already has a ${kindOf(projectItemType)} named “${projectItemType.attributes.name}” `}
-            <ApiKey>{projectItemType.attributes.api_key}</ApiKey>.
-          </p>
+          <MatchSentence
+            exportItemType={exportItemType}
+            projectItemType={projectItemType}
+          />
           <StrategyField
             exportItemType={exportItemType}
             projectItemType={projectItemType}
@@ -254,36 +300,12 @@ export const ItemTypeConflict = memo(function ItemTypeConflict({
             <RenameFields fieldPrefix={fieldPrefix} />
           ) : null}
         </>
-      ) : hasIdIssue ? (
-        <Callout tone="warning" className={s.text}>
-          The name and API key are free, but some exported IDs are already used
-          in the project.
-        </Callout>
-      ) : (
-        <p className={s.text}>The name and API key are free in this project.</p>
-      )}
-      {itemTypeWillBeCreated && ownIssues.length > 0 ? (
-        <div className={s.idGroup}>
-          <SwitchList>
-            {ownIssues.map((collision) => (
-              <IdCollisionFallback
-                key={`${collision.reason}-${collision.exportId}`}
-                collision={collision}
-              />
-            ))}
-          </SwitchList>
-        </div>
+      ) : idIssuePending && idIssues.length > 1 ? (
+        // One switch tells its reason in its own hint
+        <p className={s.text}>Some of its IDs can't be used in this project.</p>
       ) : null}
-      {itemTypeWillBeCreated ? (
-        <IdReplacementList issues={fieldReplacements} title="Field IDs" />
-      ) : null}
-      {itemTypeWillBeCreated ? (
-        <IdReplacementList issues={fieldsetReplacements} title="Fieldset IDs" />
-      ) : null}
-      <div className={s.fieldsGroup}>
-        <span className={s.groupLabel}>Fields</span>
-        <FieldList fields={entry.fields} fieldsets={entry.fieldsets} />
-      </div>
+      {itemTypeWillBeCreated ? <IdReplacementList issues={idIssues} /> : null}
+      <FieldList fields={entry.fields} fieldsets={entry.fieldsets} />
     </OverviewItem>
   );
 });

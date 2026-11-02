@@ -17,6 +17,10 @@ type Options = {
   disabled?: boolean;
 };
 
+/** The alert of a file that the import can't read: the reason goes to the console */
+export const notAnExportMessage =
+  'This file is not a schema export. Choose a JSON file exported with this plugin.';
+
 function isJsonFile(file: File) {
   return file.type.includes('json') || file.name.endsWith('.json');
 }
@@ -30,7 +34,9 @@ export function useJsonFileInput({ ctx, onJsonDrop, disabled }: Options) {
   const readFile = useCallback(
     (file: File) => {
       if (!isJsonFile(file)) {
-        ctx.alert('Choose a JSON file.');
+        ctx.alert(
+          'This is not a JSON file. Choose the file that the export downloaded.',
+        );
         return;
       }
 
@@ -41,15 +47,16 @@ export function useJsonFileInput({ ctx, onJsonDrop, disabled }: Options) {
       reader.onload = (event: ProgressEvent<FileReader>) => {
         const result = event.target?.result;
         if (typeof result !== 'string') {
-          ctx.alert('The file is empty or not text.');
+          ctx.alert(notAnExportMessage);
           return;
         }
 
         let json: ExportDoc;
         try {
           json = JSON.parse(result) as ExportDoc;
-        } catch (_error) {
-          ctx.alert('The file is not valid JSON.');
+        } catch (error) {
+          console.error(error);
+          ctx.alert(notAnExportMessage);
           return;
         }
 

@@ -8,14 +8,14 @@ import { EntriesPagination, usePaginatedEntries } from './PaginatedEntries';
 
 const groupTitles: Record<OverviewKind, string> = {
   model: 'Models',
-  block: 'Block models',
+  block: 'Blocks',
   plugin: 'Plugins',
 };
 
 // The count in the header names what it counts: "12 models"
 const countNouns: Record<OverviewKind, [one: string, other: string]> = {
   model: ['model', 'models'],
-  block: ['block model', 'block models'],
+  block: ['block', 'blocks'],
   plugin: ['plugin', 'plugins'],
 };
 
@@ -27,18 +27,26 @@ type Props<T> = {
    * and a change of page releases the focus
    */
   getEntityId?: (entry: T) => string;
+  /**
+   * The only group of the overview: the subtitle of the pane already counts
+   * its entries
+   */
+  onlyGroup?: boolean;
   /** Renders an entry: an OverviewItem with a key */
   children: (entry: T) => ReactNode;
 };
 
 /**
- * The models, the block models or the plugins of an overview, in one card.
- * Past 200 entries, the card shows 100 per page, with the pages under it.
+ * The models, the blocks or the plugins of an overview, in one card. Past
+ * 200 entries, the card shows 100 per page, with the pages under it, and
+ * its header counts them all, unless it is the only group: a short card
+ * needs no count.
  */
 export function OverviewGroup<T>({
   kind,
   entries,
   getEntityId,
+  onlyGroup = false,
   children,
 }: Props<T>) {
   const format = useFormatters();
@@ -53,7 +61,10 @@ export function OverviewGroup<T>({
         header={{
           image: <KindIcon />,
           title,
-          trailing: <Pill>{format.count(entries.length, one, other)}</Pill>,
+          trailing:
+            pagination.paginated && !onlyGroup ? (
+              <Pill>{format.count(entries.length, one, other)}</Pill>
+            ) : undefined,
         }}
       >
         {pagination.entries.map((entry) => children(entry))}

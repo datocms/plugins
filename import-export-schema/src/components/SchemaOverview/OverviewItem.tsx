@@ -2,7 +2,6 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import ApiKey from 'datocms-react-ui/ApiKey';
 import CardList from 'datocms-react-ui/CardList';
 import EntityRow from 'datocms-react-ui/EntityRow';
-import IconAvatar from 'datocms-react-ui/IconAvatar';
 import {
   type FunctionComponent,
   type ReactNode,
@@ -27,13 +26,14 @@ export const overviewKindIcons: Record<
   plugin: PluginIcon,
 };
 
-export function getOverviewKind(entity: OverviewEntity): OverviewKind {
-  if (entity.type === 'plugin') return 'plugin';
-  return entity.attributes.modular_block ? 'block' : 'model';
-}
-
 type Props = {
   entity: OverviewEntity;
+  /**
+   * The name and the API key that the row shows in place of those of the
+   * entity, for example the new ones of a rename
+   */
+  name?: string;
+  apiKey?: string;
   /** The state of the entity at the end of the row, for example a Pill */
   status?: ReactNode;
   /** The body of the open item. It mounts only while the item is open. */
@@ -45,7 +45,13 @@ type Props = {
  * focused in SelectedEntityContext: opening it focuses the entity (and zooms
  * the graph on it), opening it again releases the focus.
  */
-export function OverviewItem({ entity, status, children }: Props) {
+export function OverviewItem({
+  entity,
+  name,
+  apiKey,
+  status,
+  children,
+}: Props) {
   const selection = useContext(SelectedEntityContext);
   const open = selection.entity === entity;
 
@@ -77,19 +83,14 @@ export function OverviewItem({ entity, status, children }: Props) {
     }
   }
 
-  const KindIcon = overviewKindIcons[getOverviewKind(entity)];
-
+  // No kind icon: the header of the group shows it
   return (
     <CardList.Item
       ref={itemRef}
       row={{
         summary: (
-          <EntityRow
-            layout="row"
-            image={<IconAvatar icon={KindIcon} size={32} surface="muted" />}
-            title={entity.attributes.name}
-          >
-            {entityDetails(entity)}
+          <EntityRow layout="row" title={name || entity.attributes.name}>
+            {entityDetails(entity, apiKey)}
           </EntityRow>
         ),
         trailing: status,
@@ -104,13 +105,13 @@ export function OverviewItem({ entity, status, children }: Props) {
 }
 
 /** The line under the name: the API key, or the version of a plugin */
-function entityDetails(entity: OverviewEntity): ReactNode {
+function entityDetails(entity: OverviewEntity, apiKey?: string): ReactNode {
   if (entity.type === 'plugin') {
     const version = entity.attributes.package_version;
     return version ? `v${version}` : null;
   }
 
-  return <ApiKey>{entity.attributes.api_key}</ApiKey>;
+  return <ApiKey>{apiKey || entity.attributes.api_key}</ApiKey>;
 }
 
 /**

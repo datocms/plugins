@@ -1,10 +1,9 @@
 /**
- * The overview pane of the import review: the models, block models and
- * plugins of the file, grouped by kind, with the unresolved conflicts first.
+ * The overview pane of the import review: the models, blocks and plugins
+ * of the file, grouped by kind, with the unresolved conflicts first.
  * Opening an item focuses its node, and its body holds the decisions about
  * it: how to import it, and the new IDs it needs.
  */
-import Callout from 'datocms-react-ui/Callout';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import ListArea from 'datocms-react-ui/ListArea';
 import Pane, { type ListPreset, useFilteredList } from 'datocms-react-ui/Pane';
@@ -81,11 +80,13 @@ const sectionKinds: Record<SectionKey, OverviewKind> = {
   plugins: 'plugin',
 };
 
+const conflictsPresetId = 'unresolved';
+
 const presetOptions: ListPreset<ListedEntry>[] = [
   {
-    id: 'unresolved',
-    label: 'With unresolved conflicts',
-    shortLabel: 'Unresolved',
+    id: conflictsPresetId,
+    label: 'With conflicts to resolve',
+    shortLabel: 'Conflicts',
     matches: (entry) => entry.listedAsUnresolved,
   },
 ];
@@ -184,11 +185,11 @@ function listEntries(
     .sort((a, b) => position(a) - position(b));
 }
 
-/** The option of the "⋮" that gives a new ID to every pending ID at once */
+/** The option of the "⋮" that turns on every "Gets a new ID" at once */
 function pendingIdsLabel(format: Formatters, count: number) {
   return count === 1
-    ? 'Use a new ID for the pending ID'
-    : `Use new IDs for all ${format.number(count)} pending IDs`;
+    ? "Replace the ID that can't be used"
+    : `Replace the ${format.number(count)} IDs that can't be used`;
 }
 
 /**
@@ -240,6 +241,7 @@ export default function ConflictsManager({ review, list }: Props) {
     .filter((group) => group.entries.length > 0);
 
   const { pendingIdReplacementKeys } = review;
+  const inConflictsView = presets?.value === conflictsPresetId;
 
   return (
     <Pane
@@ -250,7 +252,7 @@ export default function ConflictsManager({ review, list }: Props) {
             Schema overview
           </Pane.Header.Title>
           <Pane.Header.Subtitle>
-            {format.count(filteredItems.length, 'element', 'elements')}
+            {format.count(filteredItems.length, 'item', 'items')}
           </Pane.Header.Subtitle>
           {pendingIdReplacementKeys.length > 0 ? (
             <Pane.Header.Menu>
@@ -270,17 +272,13 @@ export default function ConflictsManager({ review, list }: Props) {
         <Pane.FilterBlankSlate />
       ) : (
         <ListArea>
-          {review.hasConflicts ? null : (
-            <Callout tone="success">
-              No model, block or plugin of the file conflicts with the project.
-            </Callout>
-          )}
           {groups.map((group) => (
             <OverviewGroup
               key={group.kind}
               kind={group.kind}
               entries={group.entries}
               getEntityId={getEntryEntityId}
+              onlyGroup={groups.length === 1}
             >
               {(entry) =>
                 entry.kind === 'plugin' ? (
@@ -288,12 +286,14 @@ export default function ConflictsManager({ review, list }: Props) {
                     key={entry.key}
                     entry={entry.item}
                     unresolved={entry.unresolved}
+                    inConflictsView={inConflictsView}
                   />
                 ) : (
                   <ItemTypeConflict
                     key={entry.key}
                     entry={entry.item}
                     unresolved={entry.unresolved}
+                    inConflictsView={inConflictsView}
                   />
                 )
               }

@@ -26,20 +26,3 @@
   gap: var(--spacing-s);
   margin-bottom: var(--form-field-gap);
 }
-
-/* The small label above a list of IDs or of fields: a label, not a heading
-   (the overview is out of the main landmark) */
-.groupLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-strong);
-  color: var(--color--ink-subtle);
-}
-
-/* The fields and fieldsets of a model or block, last in the body of its
-   item */
-.fieldsGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-  min-width: 0;
-}

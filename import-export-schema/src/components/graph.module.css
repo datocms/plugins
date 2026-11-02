@@ -13,11 +13,6 @@
   --xy-handle-border-color: var(--color--surface);
 
   background-color: var(--color--surface);
-
-  /* The edges end above the kind pill, which sits on the top border */
-  :global(.react-flow__handle-top) {
-    top: var(--negative-spacing-m);
-  }
 }
 
 /* The handles only anchor the edges: the graph is read-only */
@@ -26,7 +21,8 @@
 }
 
 /* A model, a block or a plugin: a card that rests on the canvas. The width
-   stays under the 250px slot that the hierarchy layout gives each node. */
+   leaves room for the edges in the 350px column that the hierarchy layout
+   gives each node. */
 .node {
   position: relative;
   box-sizing: border-box;
@@ -84,9 +80,22 @@
 /* The states that the export and import wrappers compose, each with its
    word in the state pill of the node. Each state uses the tokens of one
    context only. An excluded node is muted as the kit mutes a row: its text
-   turns subtle but keeps 4.5:1, and only its icons fade. */
+   turns subtle but keeps 4.5:1, and only its icons fade. It also leaves
+   the surface it rested on: a dashed outline on the canvas, thus it reads
+   as out of the file at a glance, before its pill. With no surface step
+   under it, the outline alone draws the box: it takes the solid hover
+   border, which reaches a contrast on its own in both schemes, and turns
+   solid on hover. */
 .excluded {
   color: var(--color--ink-subtle);
+  background-color: var(--color--surface);
+  border-style: dashed;
+  border-color: var(--color--border-hover);
+  box-shadow: none;
+
+  &:hover {
+    border-style: solid;
+  }
 
   & svg {
     opacity: var(--disabled-opacity);
@@ -98,18 +107,6 @@
   color: var(--color--selected--ink);
   background-color: var(--color--selected--surface);
   border-color: var(--color--selected--border);
-}
-
-.conflict,
-.conflict:hover {
-  color: var(--color--danger-soft--ink);
-  background-color: var(--color--danger-soft--surface);
-  border-color: var(--color--danger-soft--border);
-}
-
-/* The ring out of the border, from the same context */
-.conflict.focused {
-  outline: 2px solid var(--color--danger-soft--outline);
 }
 
 /* The dot in the middle of an edge: a button whose HoverCard lists the
@@ -144,8 +141,8 @@
   }
 }
 
-/* The fields and fieldsets of a model or block: in a HoverCard of the
-   graph, and in the body of an overview item */
+/* The fields and fieldsets of a model or block, in the body of an overview
+   item */
 .fieldList {
   display: flex;
   flex-direction: column;

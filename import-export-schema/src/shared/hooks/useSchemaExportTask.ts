@@ -5,6 +5,7 @@ import {
   calculateExportProgressTotal,
 } from '@/entrypoints/ExportPage/buildExportDoc';
 import { useLongTask } from '@/shared/tasks/useLongTask';
+import { describeSchemaReadError } from '@/utils/apiError';
 import { downloadBlob } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
@@ -72,23 +73,24 @@ export function useSchemaExportTask({
           throw new Error('Export cancelled');
         }
 
-        downloadBlob(exportBlob, {
-          fileName: fileName ?? defaultFileName,
-        });
+        const downloadedFileName = fileName ?? defaultFileName;
+        downloadBlob(exportBlob, { fileName: downloadedFileName });
         task.controller.complete({
           done: total,
           total,
           label: 'Export completed',
         });
-        ctx.notice('Schema exported.');
+        ctx.notice(`Schema downloaded as ${downloadedFileName}.`);
       } catch (error) {
         console.error('Schema export failed', error);
         if (error instanceof Error && error.message === 'Export cancelled') {
           task.controller.complete({ label: 'Export cancelled' });
-          ctx.notice('Export canceled.');
+          ctx.notice('Export cancelled.');
         } else {
           task.controller.fail(error);
-          ctx.alert('The schema could not be exported. Try again.');
+          ctx.alert(
+            `The schema could not be exported. ${describeSchemaReadError(error)}`,
+          );
         }
       } finally {
         runningRef.current = false;

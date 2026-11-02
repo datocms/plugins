@@ -10,6 +10,7 @@ import { CircleExclamationIcon } from '@/icons';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
 import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import type { LongTaskState } from '@/shared/tasks/useLongTask';
+import { errorCode } from '@/utils/apiError';
 import { debugLog } from '@/utils/debug';
 import Inner from './Inner';
 import s from './styles.module.css';
@@ -143,7 +144,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
           error
           icon={<CircleExclamationIcon />}
           title="The model could not be loaded"
-          code={loadError.message}
+          code={errorCode(loadError)}
           description="It may have been deleted, or you may not have access to it."
           actions={<Button label="Choose what to export" to={exportPagePath} />}
         />
@@ -179,7 +180,8 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
           {
             id: 'export-selection',
             task: exportTask,
-            title: 'Exporting the selection',
+            // The title of the page names the model: so does the dialog
+            title: `Exporting “${currentItemType.attributes.name}”`,
             subtitle: describeExportCancel,
             progressLabel: (progress) =>
               progress.label ?? 'Preparing the export…',

@@ -7,6 +7,11 @@ import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import { useMemo, useState } from 'react';
 import { CircleExclamationIcon, ModelIcon, RefreshIcon } from '@/icons';
+import {
+  describeSchemaReadError,
+  errorCode,
+  isPermissionError,
+} from '@/utils/apiError';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 
 type MultiOption = {
@@ -69,14 +74,11 @@ export function getVisibleExportOptions(
   return { options: visible, totalMatches };
 }
 
-/** The menu of the select: the models, then the block models */
+/** The menu of the select: the models, then the blocks */
 function groupByKind(options: MultiOption[]): OptionGroup[] {
   const groups: OptionGroup[] = [
     { label: 'Models', options: options.filter((option) => !option.isBlock) },
-    {
-      label: 'Block models',
-      options: options.filter((option) => option.isBlock),
-    },
+    { label: 'Blocks', options: options.filter((option) => option.isBlock) },
   ];
   return groups.filter((group) => group.options.length > 0);
 }
@@ -86,6 +88,29 @@ function matchesSearch(option: { data: MultiOption }, inputValue: string) {
   const query = normalizeSearch(inputValue.trim());
   return normalizeSearch(option.data.searchText ?? option.data.label).includes(
     query,
+  );
+}
+
+/** The models and blocks could not be loaded */
+function LoadError({ error, onRetry }: { error: Error; onRetry?: () => void }) {
+  // Another attempt can't give a permission
+  const forbidden = isPermissionError(error);
+
+  return (
+    <BlankSlate
+      placement="inline"
+      small
+      error
+      icon={<CircleExclamationIcon />}
+      title="The models and blocks could not be loaded"
+      code={errorCode(error)}
+      description={describeSchemaReadError(error)}
+      actions={
+        onRetry && !forbidden ? (
+          <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -149,7 +174,7 @@ export function ExportSelectionPanel({
           id: 'importExportSchema.exportOptionsCapped',
           values: { total: visibleOptions.totalMatches },
         }
-      : 'The next step shows what they depend on, so you can choose what else goes in the file.';
+      : 'The next step shows what they use, so you can add it to the file too.';
 
   // The environment has nothing to pick: the group says so, with no select
   // and no Continue
@@ -176,35 +201,22 @@ export function ExportSelectionPanel({
       }
     >
       {error ? (
-        <BlankSlate
-          placement="inline"
-          small
-          error
-          icon={<CircleExclamationIcon />}
-          title="The models and blocks could not be loaded"
-          code={error.message}
-          description="Check your connection and your permissions, then try again."
-          actions={
-            onRetry ? (
-              <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
-            ) : undefined
-          }
-        />
+        <LoadError error={error} onRetry={onRetry} />
       ) : isEmpty ? (
         <BlankSlate
           placement="inline"
           small
           icon={<ModelIcon />}
           title="No models or blocks yet"
-          description="This environment has no models or blocks to export."
+          description="Models and blocks show here once you create them in the schema or import a schema file."
         />
       ) : (
-        <FieldWrapper label="Starting models and blocks" hint={hint}>
+        <FieldWrapper label="What to export" hint={hint}>
           <SelectInput<MultiOption, OptionGroup>
             multiple
             clearable
             name="export-initial-models"
-            placeholder="Blog post, Author"
+            placeholder="Choose models or blocks"
             options={menuOptions}
             value={selectedIds}
             onChange={(ids) => onSelectedIdsChange(ids ?? [])}

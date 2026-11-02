@@ -1,11 +1,10 @@
 /**
- * The overview pane of the export graph: the models, block models and plugins
- * of the graph, grouped by kind, with what goes in the export first. Opening
+ * The overview pane of the export graph: the models, blocks and plugins of
+ * the graph, grouped by kind, with what goes in the export first. Opening
  * an item focuses its node; its switch adds it to the export or removes it,
  * as a click on the node does.
  */
 import type { SchemaTypes } from '@datocms/cma-client';
-import BlankSlate from 'datocms-react-ui/BlankSlate';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import ListArea from 'datocms-react-ui/ListArea';
 import Pane, { type ListPreset, useFilteredList } from 'datocms-react-ui/Pane';
@@ -52,17 +51,19 @@ type OverviewEntry = ItemTypeEntry | PluginEntry;
 
 const kindOrder: OverviewKind[] = ['model', 'block', 'plugin'];
 
+const notIncludedPresetId = 'unselected';
+
 const presetOptions: ListPreset<OverviewEntry>[] = [
   {
     id: 'selected',
-    label: 'Selected for export',
-    shortLabel: 'Selected',
+    label: 'Included',
+    shortLabel: 'Included',
     matches: (entry) => entry.listedAsSelected,
   },
   {
-    id: 'unselected',
-    label: 'Not selected',
-    shortLabel: 'Not selected',
+    id: notIncludedPresetId,
+    label: 'Not included',
+    shortLabel: 'Not included',
     matches: (entry) => !entry.listedAsSelected,
   },
 ];
@@ -77,9 +78,11 @@ type ListOptions = {
 };
 
 type Props = {
+  /**
+   * The graph to list: none while it builds or after it failed, when the
+   * graph pane next to it tells so alone
+   */
   graph?: Graph;
-  /** The graph could not be built: there is nothing to list */
-  failed?: boolean;
   /** The entries, the filter and the presets: see `useExportOverviewList` */
   list: ExportOverviewList;
   /** The item types the export starts from: always included */
@@ -213,7 +216,6 @@ export type ExportOverviewList = ReturnType<typeof useExportOverviewList>;
 
 export function ExportSchemaOverview({
   graph,
-  failed,
   list,
   initialItemTypeIds,
   onToggleItemType,
@@ -237,6 +239,7 @@ export function ExportSchemaOverview({
     () => new Set(initialItemTypeIds),
     [initialItemTypeIds],
   );
+  const inNotIncludedView = presets?.value === notIncludedPresetId;
 
   return (
     <Pane
@@ -248,25 +251,13 @@ export function ExportSchemaOverview({
           </Pane.Header.Title>
           {graph ? (
             <Pane.Header.Subtitle>
-              {format.count(filteredItems.length, 'element', 'elements')}
+              {format.count(filteredItems.length, 'item', 'items')}
             </Pane.Header.Subtitle>
           ) : null}
         </Pane.Header>
       }
     >
-      {!graph ? (
-        failed ? (
-          // The graph pane next to it shows the error and "Try again"
-          <BlankSlate placement="area" small title="No elements to show" />
-        ) : (
-          <BlankSlate
-            placement="area"
-            small
-            loading
-            title="Loading the elements"
-          />
-        )
-      ) : hasNoResults ? (
+      {!graph ? null : hasNoResults ? (
         <Pane.FilterBlankSlate />
       ) : (
         <ListArea>
@@ -276,6 +267,7 @@ export function ExportSchemaOverview({
               kind={group.kind}
               entries={group.entries}
               getEntityId={getEntryId}
+              onlyGroup={groups.length === 1}
             >
               {(entry) => (
                 <ExportOverviewItem
@@ -284,6 +276,7 @@ export function ExportSchemaOverview({
                   isInitial={
                     entry.kind !== 'plugin' && initialIds.has(entry.entity.id)
                   }
+                  inNotIncludedView={inNotIncludedView}
                   onToggleItemType={onToggleItemType}
                   onTogglePlugin={onTogglePlugin}
                 />
@@ -299,6 +292,11 @@ export function ExportSchemaOverview({
 type ItemProps = {
   entry: OverviewEntry;
   isInitial: boolean;
+  /**
+   * The list shows only what is not included, as its title says: the row
+   * then needs no "Not included" pill
+   */
+  inNotIncludedView: boolean;
   onToggleItemType: (itemTypeId: string) => void;
   onTogglePlugin: (pluginId: string) => void;
 };
@@ -310,6 +308,7 @@ type ItemProps = {
 const ExportOverviewItem = memo(function ExportOverviewItem({
   entry,
   isInitial,
+  inNotIncludedView,
   onToggleItemType,
   onTogglePlugin,
 }: ItemProps) {
@@ -323,7 +322,7 @@ const ExportOverviewItem = memo(function ExportOverviewItem({
 
   const status = isInitial ? (
     <Pill>Starting point</Pill>
-  ) : entry.selected ? null : (
+  ) : entry.selected || inNotIncludedView ? null : (
     <Pill>Not included</Pill>
   );
 

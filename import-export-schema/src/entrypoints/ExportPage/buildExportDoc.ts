@@ -181,7 +181,7 @@ async function fetchExportPlugins(
     const plugin = await schema.getPluginById(id);
     if (shouldCancel?.()) throw new Error('Export cancelled');
     await appendEntities([plugin]);
-    reportProgress(`Plugin: ${plugin.attributes.name}`);
+    reportProgress(`Exporting “${plugin.attributes.name}”`);
   }
 }
 
@@ -241,7 +241,7 @@ async function buildExportEntities(
             shouldStop,
           );
           if (shouldStop()) throw new Error('Export cancelled');
-          progress.report(`Model/Block: ${itemTypeToExport.attributes.name}`);
+          progress.report(`Exporting “${itemTypeToExport.attributes.name}”`);
           return exportableData;
         } catch (error) {
           firstFailure ??= { error };

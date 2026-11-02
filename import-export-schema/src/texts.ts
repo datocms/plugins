@@ -6,8 +6,6 @@ import { useMemo } from 'react';
 export const TEXTS = {
   'importExportSchema.exportOptionsCapped':
     'The list shows the first 100 of {total, number} matches. Type a name or API key to narrow it.',
-  'importExportSchema.graphTooLarge':
-    'It has {count, plural, one {# node} other {# nodes}}, and drawing them can slow down your browser. The overview lists every element.',
 };
 
 const numberFormats = new Map<string, Intl.NumberFormat>();

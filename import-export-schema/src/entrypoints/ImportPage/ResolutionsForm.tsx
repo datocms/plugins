@@ -191,6 +191,9 @@ export function getPendingIdReplacementKeys(
   const prefixes = new Set<string>();
   for (const issue of getIdReplacementIssues(conflicts)) {
     if (!isIdReplacementActive(issue, values)) continue;
+    // An installed plugin is reused or skipped: its ID never needs a switch
+    if (issue.entityType === 'plugin' && conflicts.plugins[issue.exportId])
+      continue;
     const prefix = idCollisionFieldPrefix(issue.entityType, issue.exportId);
     if (get(values, [prefix, 'strategy']) !== 'generateReplacement')
       prefixes.add(prefix);

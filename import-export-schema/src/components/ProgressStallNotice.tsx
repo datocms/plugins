@@ -6,18 +6,19 @@ type Props = {
   current: number | undefined;
   // Minimum time without progress before showing the notice.
   thresholdMs?: number;
-  // Optional custom message.
+  // The message, which names the task. The default is for an export.
   message?: string;
 };
 
 /**
- * A warning callout when a long task shows no progress for a while, once it
- * has made some progress (the first idle period is not a stall).
+ * A neutral callout when a long task shows no progress for a while, once it
+ * has made some progress (the first idle period is not a stall). The pause
+ * ends by itself: it is information, not a problem.
  */
 export default function ProgressStallNotice({
   current,
   thresholdMs = 8000,
-  message = 'Too many requests in a short time: the progress may pause for a few seconds, then resume by itself.',
+  message = 'DatoCMS is slowing things down for a moment. The export continues on its own.',
 }: Props) {
   const [stalled, setStalled] = useState(false);
   const lastValueRef = useRef<number | undefined>(undefined);
@@ -61,5 +62,5 @@ export default function ProgressStallNotice({
 
   if (!stalled) return null;
 
-  return <Callout tone="warning">{message}</Callout>;
+  return <Callout>{message}</Callout>;
 }

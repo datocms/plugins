@@ -22,6 +22,8 @@ type Props = {
   description?: string;
   progress: ProgressData;
   stallCurrent?: number | undefined;
+  /** The notice of a pause in the progress. The default is for an export. */
+  stallMessage?: string;
   /** The name of the progress bar. The default is the title. */
   ariaLabel?: string;
   /**
@@ -42,12 +44,14 @@ export function ProgressOverlay({
   description,
   progress,
   stallCurrent,
+  stallMessage,
   ariaLabel,
   cancel,
 }: Props) {
   const format = useFormatters();
   const { label = '', done = 0, total } = progress;
-  const hasShare = typeof total === 'number' && total > 0;
+  // A task of one step has no share to show: the spinner and its label
+  const hasShare = typeof total === 'number' && total > 1;
 
   return (
     <Modal
@@ -83,7 +87,7 @@ export function ProgressOverlay({
               <span className={s.label}>{label}</span>
             </div>
           )}
-          <ProgressStallNotice current={stallCurrent} />
+          <ProgressStallNotice current={stallCurrent} message={stallMessage} />
         </div>
       </Modal.Body>
       {/* The footer draws its own Cancel at the left, from onClose. The

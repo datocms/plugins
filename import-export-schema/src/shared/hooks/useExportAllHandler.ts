@@ -5,6 +5,7 @@ import {
   calculateExportProgressTotal,
 } from '@/entrypoints/ExportPage/buildExportDoc';
 import type { LongTaskController } from '@/shared/tasks/useLongTask';
+import { describeSchemaReadError } from '@/utils/apiError';
 import { downloadBlob } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
@@ -19,7 +20,9 @@ function throwIfExportCancelled(task: LongTaskController): void {
 }
 
 /**
- * Returns a memoized handler that exports the entire schema with confirmation + progress.
+ * Returns a memoized handler that exports the entire schema with progress.
+ * It starts at once: the download changes nothing, and the Cancel of its
+ * dialog stops it.
  */
 export function useExportAllHandler({ ctx, schema, task }: Options) {
   const runningRef = useRef(false);
@@ -27,23 +30,6 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
     if (runningRef.current) return;
     runningRef.current = true;
     try {
-      const confirmation = await ctx.openConfirm({
-        title: 'Export the entire schema?',
-        content:
-          'All the models, block models and plugins of this environment go in one JSON file.',
-        choices: [
-          {
-            label: 'Export',
-            value: 'export',
-            intent: 'positive',
-          },
-        ],
-        cancel: { label: 'Cancel', value: false },
-      });
-      if (confirmation !== 'export') {
-        return;
-      }
-
       task.start({ label: 'Loading the project schema…' });
       const allTypes = await schema.getAllItemTypes();
       throwIfExportCancelled(task);
@@ -73,19 +59,20 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         },
       );
       throwIfExportCancelled(task);
-      downloadBlob(exportBlob, {
-        fileName: 'export.json',
-      });
+      const fileName = 'export.json';
+      downloadBlob(exportBlob, { fileName });
       task.complete({ done: total, total, label: 'Export completed' });
-      ctx.notice('Schema exported.');
+      ctx.notice(`Schema downloaded as ${fileName}.`);
     } catch (error) {
       console.error('Export-all failed', error);
       if (error instanceof Error && error.message === 'Export cancelled') {
         task.complete({ label: 'Export cancelled' });
-        ctx.notice('Export canceled.');
+        ctx.notice('Export cancelled.');
       } else {
         task.fail(error);
-        ctx.alert('The schema could not be exported. Try again.');
+        ctx.alert(
+          `The schema could not be exported. ${describeSchemaReadError(error)}`,
+        );
       }
     } finally {
       runningRef.current = false;

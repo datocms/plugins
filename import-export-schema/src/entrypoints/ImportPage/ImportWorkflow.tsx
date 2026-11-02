@@ -4,7 +4,6 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import { dropTargetClassName } from 'datocms-react-ui/dnd';
 import Main from 'datocms-react-ui/Main';
-import ProgressBar from 'datocms-react-ui/ProgressBar';
 import {
   CircleExclamationIcon,
   FolderOpenIcon,
@@ -12,6 +11,11 @@ import {
   RefreshIcon,
 } from '@/icons';
 import type { LongTaskProgress } from '@/shared/tasks/useLongTask';
+import {
+  describeSchemaReadError,
+  errorCode,
+  isPermissionError,
+} from '@/utils/apiError';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
@@ -36,11 +40,12 @@ type Props = {
   dropDisabled?: boolean;
   /** The progress of the comparison of the file with the project */
   preparingProgress?: LongTaskProgress;
-  /** Asks to drop the file and its choices, to choose another file */
-  onRequestClose?: () => void;
+  /**
+   * Asks to drop the file and its choices, to choose another file. It asks
+   * first only when the user made choices.
+   */
+  onRequestClose?: (hasChoices: boolean) => void;
 };
-
-const COMPARING_TITLE = 'Comparing the file with the project';
 
 /**
  * The import page, from the choice of the file to the review of the
@@ -88,6 +93,7 @@ export function ImportWorkflow({
         <ComparisonFailedStep
           error={conflictsError}
           onRetry={onRetryConflicts}
+          onChooseAnotherFile={open}
         />
       );
     }
@@ -128,7 +134,7 @@ export function ImportWorkflow({
           <span>
             {exportSchema
               ? `Drop to replace “${exportSchema[0]}”`
-              : 'Drop to import the file'}
+              : 'Drop to open the file'}
           </span>
         </div>
       ) : null}
@@ -159,37 +165,33 @@ function OverviewStep({ onChooseFile }: { onChooseFile: () => void }) {
   );
 }
 
-/** The file is compared with the project, with the share once it is known */
+/**
+ * The file is compared with the project. One busy signal: the spinner, with
+ * the current step as its caption.
+ */
 function ComparingStep({ progress }: { progress?: LongTaskProgress }) {
-  const done = progress?.done ?? 0;
-  const total = progress?.total ?? 0;
-
   return (
     <Main>
       <BlankSlate
         placement="area"
         titleLevel={1}
         loading
-        title={COMPARING_TITLE}
+        title="Comparing the file with the project"
         caption={progress?.label}
-      >
-        {/* The first step has no share yet: the bar shows once the
-            comparison counts its steps */}
-        {total > 1 ? (
-          <ProgressBar value={done / total} ariaLabel={COMPARING_TITLE} />
-        ) : null}
-      </BlankSlate>
+      />
     </Main>
   );
 }
 
-/** The comparison failed: its message, and a new attempt */
+/** The comparison failed: its message, a new attempt, or another file */
 function ComparisonFailedStep({
   error,
   onRetry,
+  onChooseAnotherFile,
 }: {
   error: Error;
   onRetry: () => void;
+  onChooseAnotherFile: () => void;
 }) {
   return (
     <Main>
@@ -198,11 +200,20 @@ function ComparisonFailedStep({
         titleLevel={1}
         error
         icon={<CircleExclamationIcon />}
-        title="The import could not be prepared"
-        code={error.message}
-        description="Check your connection and your permissions, then try again."
+        title="The file could not be compared with the project"
+        code={errorCode(error)}
+        description={describeSchemaReadError(error)}
         actions={
-          <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+          // Neither another attempt nor another file gives a permission
+          isPermissionError(error) ? undefined : (
+            <>
+              <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+              <Button
+                label="Choose another file"
+                onClick={onChooseAnotherFile}
+              />
+            </>
+          )
         }
       />
     </Main>

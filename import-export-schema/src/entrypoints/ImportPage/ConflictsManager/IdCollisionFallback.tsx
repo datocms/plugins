@@ -1,8 +1,7 @@
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import IdText from 'datocms-react-ui/IdText';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import type { ReactElement } from 'react';
-import { Field } from 'react-final-form';
+import get from 'lodash-es/get';
+import { Field, useFormState } from 'react-final-form';
 import { idCollisionFieldPrefix } from '../ResolutionsForm';
 import type { IdReplacementIssue } from './buildConflicts';
 
@@ -14,37 +13,38 @@ type Props = {
 
 /** The name of the switch: the entity itself, or its field or fieldset */
 function switchLabel(collision: IdReplacementIssue) {
-  if (collision.entityType === 'plugin') {
-    return 'New ID for this plugin';
+  if (
+    collision.entityType === 'plugin' ||
+    collision.entityType === 'itemType'
+  ) {
+    return 'Gets a new ID';
   }
-  if (collision.entityType === 'itemType') {
-    return collision.exportEntity.attributes.modular_block
-      ? 'New ID for this block'
-      : 'New ID for this model';
-  }
-  return `New ID for “${collision.exportLabel}”`;
+  return `“${collision.exportLabel}” gets a new ID`;
 }
 
-/** Why the exported ID can't be kept */
-function describeIssue(collision: IdReplacementIssue): ReactElement {
+/**
+ * Why the exported ID can't be kept, in words: the ID itself means nothing
+ * to the user. It stays once the switch is on: the label tells the rest.
+ */
+function describeIssue(collision: IdReplacementIssue) {
   if (collision.reason === 'legacy') {
-    return (
-      <>
-        <IdText id={collision.exportId} /> is a legacy ID, which the import
-        can't keep.
-      </>
-    );
+    return "This ID is in an old format the import can't keep.";
   }
+  if (collision.entityType === 'field' || collision.entityType === 'fieldset') {
+    return `“${collision.projectLabel}” in “${collision.projectParentItemType.attributes.name}” already uses this ID.`;
+  }
+  return `“${collision.projectLabel}” already uses this ID.`;
+}
 
-  const user =
-    collision.entityType === 'field' || collision.entityType === 'fieldset'
-      ? `${collision.projectLabel} in ${collision.projectParentItemType.attributes.name}`
-      : collision.projectLabel;
-
-  return (
-    <>
-      The ID <IdText id={collision.exportId} /> is already used by “{user}”.
-    </>
+/** A switch of these is still off: the import can't keep that ID */
+export function usePendingIdIssue(issues: IdReplacementIssue[]) {
+  const { values } = useFormState({ subscription: { values: true } });
+  return issues.some(
+    (issue) =>
+      get(values, [
+        idCollisionFieldPrefix(issue.entityType, issue.exportId),
+        'strategy',
+      ]) !== 'generateReplacement',
   );
 }
 

@@ -79,7 +79,7 @@ function processFrontierItem(
     done: state.scannedItemTypeCount,
     // This is the number discovered so far; it grows as links are scanned.
     total: state.visitedItemTypeIds.size,
-    label: `Scanning: ${current.attributes.name}`,
+    label: `Reading “${current.attributes.name}”`,
     phase: 'scan',
   });
 }
@@ -112,7 +112,7 @@ async function processBfsFrontiers(
         onProgress?.({
           done: state.scannedItemTypeCount,
           total: state.visitedItemTypeIds.size,
-          label: `Scanning: ${current.attributes.name}`,
+          label: `Reading “${current.attributes.name}”`,
           phase: 'scan',
         });
         return result;
@@ -196,7 +196,7 @@ async function discoverReachableEntities(
   onProgress?.({
     done: 0,
     total: initialItemTypeIds.size,
-    label: 'Scanning schema…',
+    label: 'Reading the schema…',
     phase: 'scan',
   });
 
@@ -281,7 +281,7 @@ export async function buildGraph({
 
   const total = visitedItemTypeIds.size + pluginsById.size;
   let done = 0;
-  onProgress?.({ done, total, label: 'Preparing export…', phase: 'build' });
+  onProgress?.({ done, total, label: 'Drawing the diagram…', phase: 'build' });
 
   for (const itemTypeId of visitedItemTypeIds) {
     if (done > 0 && done % 50 === 0) {
@@ -299,7 +299,7 @@ export async function buildGraph({
     onProgress?.({
       done,
       total,
-      label: `Model/Block: ${itemType.attributes.name}`,
+      label: `Placing “${itemType.attributes.name}”`,
       phase: 'build',
     });
 
@@ -317,7 +317,7 @@ export async function buildGraph({
     onProgress?.({
       done,
       total,
-      label: `Fields/Fieldsets for ${itemType.attributes.name}`,
+      label: `Placing “${itemType.attributes.name}”`,
       phase: 'build',
     });
   }
@@ -331,7 +331,7 @@ export async function buildGraph({
     onProgress?.({
       done,
       total,
-      label: `Plugin: ${plugin.attributes.name}`,
+      label: `Placing “${plugin.attributes.name}”`,
       phase: 'build',
     });
   }

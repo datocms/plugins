@@ -1,9 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import {
-  type NodeMouseHandler,
-  type NodeTypes,
-  useReactFlow,
-} from '@xyflow/react';
+import type { NodeMouseHandler, NodeTypes } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import Aside from 'datocms-react-ui/Aside';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
@@ -11,17 +7,29 @@ import Button from 'datocms-react-ui/Button';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import Main from 'datocms-react-ui/Main';
 import Pane from 'datocms-react-ui/Pane';
-import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SplitPane from 'datocms-react-ui/SplitPane';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import without from 'lodash-es/without';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GraphCanvas } from '@/components/GraphCanvas';
+import { GraphCanvas, useGraphView } from '@/components/GraphCanvas';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
-import { CircleExclamationIcon, ExportIcon, RefreshIcon } from '@/icons';
-import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
+import {
+  CircleExclamationIcon,
+  ExportIcon,
+  ModelIcon,
+  RefreshIcon,
+} from '@/icons';
+import {
+  EXPORT_GRAPH_TOO_LARGE_DESCRIPTION,
+  GRAPH_NODE_THRESHOLD,
+} from '@/shared/constants/graph';
 import { useOverviewSplit } from '@/shared/hooks/useOverviewSplit';
-import { type Formatters, useFormatters } from '@/texts';
+import { useFormatters } from '@/texts';
+import {
+  describeSchemaReadError,
+  errorCode,
+  isPermissionError,
+} from '@/utils/apiError';
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
 import {
@@ -68,51 +76,74 @@ type Props = {
 
 type FocusedEntity = SchemaTypes.ItemType | SchemaTypes.Plugin;
 
-/** What the user can do about a failed graph, from the status of the API */
-function describeGraphError(error: Error) {
-  const status = (error as { response?: { status?: number } }).response?.status;
-  if (status === 429) {
-    return 'The API is limiting the requests. Wait a few seconds, then try again.';
-  }
-  if (status === 401 || status === 403) {
-    return "You don't have the permission to read the schema of this environment.";
-  }
-  if (status && status >= 500) {
-    return 'The API is not available right now. Try again in a few moments.';
-  }
-  return 'Something went wrong while preparing the export. Try again.';
-}
-
 /** Why "Export as JSON" does nothing yet, if it does nothing */
-function exportDisabledReason(
-  selectingDependencies: boolean,
-  hasGraph: boolean,
-) {
+function exportDisabledReason({
+  selectingDependencies,
+  hasGraph,
+  failed,
+}: {
+  selectingDependencies: boolean;
+  hasGraph: boolean;
+  /** The graph could not be loaded */
+  failed: boolean;
+}) {
   if (selectingDependencies) {
-    return { reason: 'The dependencies are being selected.' };
+    return { reason: 'Still adding to the file.' };
+  }
+  if (failed) {
+    return { reason: 'The diagram could not be loaded.' };
   }
   if (!hasGraph) {
-    return { reason: 'The export is available once the graph loads.' };
+    return { reason: 'The export is available once the diagram loads.' };
   }
   return undefined;
 }
 
-/** "3 models or blocks and 1 plugin", or an empty string when both are 0 */
-function describeDependencies(
-  format: Formatters,
-  itemTypeCount: number,
-  pluginCount: number,
-) {
-  const parts: string[] = [];
-  if (itemTypeCount > 0) {
-    parts.push(
-      format.count(itemTypeCount, 'model or block', 'models or blocks'),
-    );
+/**
+ * The secondary button of the toolbar. "Remove what was added" undoes "Add
+ * what it uses", thus it shows only when that added something; with
+ * all of it in the file otherwise, the add has nothing to do.
+ */
+function dependencyButton({
+  hasGraph,
+  failed,
+  allSelected,
+  addedByButton,
+  single,
+}: {
+  hasGraph: boolean;
+  /** The graph could not be loaded */
+  failed: boolean;
+  allSelected: boolean;
+  addedByButton: boolean;
+  /** The export starts from one model or block */
+  single: boolean;
+}) {
+  if (!hasGraph) {
+    return {
+      remove: false,
+      label: single ? 'Add what it uses' : 'Add what they use',
+      disabled: {
+        reason: failed
+          ? 'The diagram could not be loaded.'
+          : 'The diagram is still loading.',
+      },
+    };
   }
-  if (pluginCount > 0) {
-    parts.push(format.count(pluginCount, 'plugin', 'plugins'));
+  if (allSelected && addedByButton) {
+    return { remove: true, label: 'Remove what was added' };
   }
-  return parts.join(' and ');
+  return {
+    remove: false,
+    label: single ? 'Add what it uses' : 'Add what they use',
+    disabled: allSelected
+      ? {
+          reason: single
+            ? 'Everything it uses is already in the file.'
+            : 'Everything they use is already in the file.',
+        }
+      : undefined,
+  };
 }
 
 /**
@@ -129,7 +160,7 @@ export default function Inner({
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
   const format = useFormatters();
-  const { fitBounds, fitView } = useReactFlow();
+  const { fitGraph, showNode } = useGraphView();
   const initialItemTypeIds = useMemo(
     () => initialItemTypes.map((itemType) => itemType.id),
     [initialItemTypes],
@@ -230,29 +261,21 @@ export default function Inner({
     }
 
     if (pendingZoomEntity === null) {
-      fitView({ duration: 800 });
-      setPendingZoomEntity(undefined);
-      return;
+      fitGraph(800);
+    } else {
+      const node = graph.nodes.find((node) =>
+        pendingZoomEntity.type === 'plugin'
+          ? node.type === 'plugin' &&
+            node.data.plugin.id === pendingZoomEntity.id
+          : node.type === 'itemType' &&
+            node.data.itemType.id === pendingZoomEntity.id,
+      );
+      if (node) {
+        showNode(node.id);
+      }
     }
-
-    const node = graph.nodes.find((node) =>
-      pendingZoomEntity.type === 'plugin'
-        ? node.type === 'plugin' && node.data.plugin.id === pendingZoomEntity.id
-        : node.type === 'itemType' &&
-          node.data.itemType.id === pendingZoomEntity.id,
-    );
-
-    if (!node) {
-      setPendingZoomEntity(undefined);
-      return;
-    }
-
-    fitBounds(
-      { x: node.position.x, y: node.position.y, width: 200, height: 200 },
-      { duration: 800, padding: 1 },
-    );
     setPendingZoomEntity(undefined);
-  }, [fitBounds, fitView, graph, pendingZoomEntity, showGraph]);
+  }, [fitGraph, graph, pendingZoomEntity, showGraph, showNode]);
 
   const graphNodes = useMemo<AppNode[]>(() => {
     if (!showGraph || !graph) {
@@ -335,7 +358,7 @@ export default function Inner({
             void ctx.customToast({
               type: 'warning',
               message:
-                'The installed plugins are not known, so some plugin dependencies may be missing.',
+                'The installed plugins could not be read, so some plugins it uses may be missing.',
               dismissAfterTimeout: true,
             });
             window.sessionStorage.setItem(pluginIdsWarnedKey, '1');
@@ -373,18 +396,16 @@ export default function Inner({
         samplePluginIds: Array.from(expansion.pluginIds).slice(0, 5),
       });
 
-      const added = describeDependencies(
-        format,
-        addedItemTypeIds.length,
-        addedPluginIds.length,
-      );
-      void ctx.notice(added ? `Added ${added}.` : 'No dependencies to add.');
+      // The graph and the count show what was added: only nothing needs
+      // words
+      if (addedItemTypeIds.length + addedPluginIds.length === 0) {
+        void ctx.notice('Nothing more to add.');
+      }
     } finally {
       setSelectingDependencies(false);
     }
   }, [
     ctx,
-    format,
     graph,
     resolvedInstalledPluginIds,
     selectedItemTypeIds,
@@ -398,16 +419,9 @@ export default function Inner({
 
     if (toRemoveItemTypeIds.size === 0 && toRemovePluginIds.size === 0) {
       // No recorded auto-selected deps; nothing to do
-      void ctx.notice('No dependencies to remove.');
+      void ctx.notice('Nothing to remove.');
       return;
     }
-
-    const removedModelsCount = selectedItemTypeIds.filter((id) =>
-      toRemoveItemTypeIds.has(id),
-    ).length;
-    const removedPluginsCount = selectedPluginIds.filter((id) =>
-      toRemovePluginIds.has(id),
-    ).length;
 
     setSelectedItemTypeIds((prev) =>
       prev.filter((id) => !toRemoveItemTypeIds.has(id)),
@@ -419,22 +433,7 @@ export default function Inner({
       itemTypeIds: new Set(),
       pluginIds: new Set(),
     });
-
-    const removed = describeDependencies(
-      format,
-      removedModelsCount,
-      removedPluginsCount,
-    );
-    void ctx.notice(
-      removed ? `Removed ${removed}.` : 'No dependencies to remove.',
-    );
-  }, [
-    autoSelectedDependencies,
-    ctx,
-    format,
-    selectedItemTypeIds,
-    selectedPluginIds,
-  ]);
+  }, [autoSelectedDependencies, ctx]);
 
   // Determine if all dependencies are already selected to flip the CTA label.
   const areAllDependenciesSelected = useMemo(() => {
@@ -465,8 +464,16 @@ export default function Inner({
   const readyGraph = error ? undefined : graph;
 
   // The overview: beside the graph, or over it in a narrow frame (closed
-  // there until its rail opens it)
+  // there until its rail opens it). Without a graph it has nothing to list:
+  // it stays closed, with no rail, and the blank slate of the graph pane
+  // gets the whole page.
   const overviewSplit = useOverviewSplit({ openWhenSmall: false });
+  const split = readyGraph
+    ? overviewSplit
+    : {
+        ...overviewSplit,
+        collapse: { ...overviewSplit.collapse, open: false, hideRail: true },
+      };
   const overviewList = useExportOverviewList({
     graph: readyGraph,
     focusedEntity,
@@ -483,33 +490,48 @@ export default function Inner({
     [selectedItemTypeIds, selectedPluginIds],
   );
 
-  const title =
-    initialItemTypes.length === 1
-      ? `Export “${initialItemTypes[0].attributes.name}”`
-      : 'Export the selection';
-  const showUnselect = Boolean(readyGraph) && areAllDependenciesSelected;
-  const selectedCount = selectedItemTypeIds.length + selectedPluginIds.length;
+  const single = initialItemTypes.length === 1;
+  const title = single
+    ? `Export “${initialItemTypes[0].attributes.name}”`
+    : 'Export the selection';
+  const loadingTitle = single
+    ? `Finding what “${initialItemTypes[0].attributes.name}” uses`
+    : 'Finding what the selection uses';
+  // A diagram too large to draw has no boxes to click
+  const howToChoose =
+    graphTooLarge && !forceRenderGraph
+      ? 'open an item in the overview'
+      : 'click a box';
+  const dependencies = dependencyButton({
+    hasGraph: Boolean(readyGraph),
+    failed: Boolean(error),
+    allSelected: areAllDependenciesSelected,
+    addedByButton:
+      autoSelectedDependencies.itemTypeIds.size +
+        autoSelectedDependencies.pluginIds.size >
+      0,
+    single,
+  });
+
   const goBack = onClose ? (
     <Toolbar.GoBack onClick={onClose} ariaLabel={goBackLabel} />
   ) : (
     <Toolbar.GoBack to={exportPagePath} ariaLabel={goBackLabel} />
   );
-  const dependenciesDisabled = readyGraph
-    ? undefined
-    : { reason: 'The dependencies show once the graph loads.' };
-  const exportDisabled = exportDisabledReason(
+  const exportDisabled = exportDisabledReason({
     selectingDependencies,
-    Boolean(readyGraph),
-  );
+    hasGraph: Boolean(readyGraph),
+    failed: Boolean(error),
+  });
 
   return (
     <div className={s.layout}>
       <SelectedEntityContext.Provider value={selectedEntityValue}>
         <EntitiesToExportContext.Provider value={entitiesToExportValue}>
-          <SplitPane primaryPane="left" {...overviewSplit}>
+          <SplitPane primaryPane="left" {...split}>
             <Main>
               <Pane
-                ariaLabel="Dependency graph"
+                ariaLabel="Dependency diagram"
                 header={
                   <Toolbar>
                     {goBack}
@@ -517,34 +539,29 @@ export default function Inner({
                       level={1}
                       help={
                         <Toolbar.Help>
-                          Click a node to add it to the export or remove it. The
-                          models you started from are always included.
+                          {`Choose what goes in the file: ${howToChoose} to add or remove it. Fields that link to something left out lose that link.`}
                         </Toolbar.Help>
                       }
                     >
                       {title}
                     </Toolbar.Title>
-                    <Toolbar.Subtitle>
-                      {format.count(
-                        selectedCount,
-                        'element to export',
-                        'elements to export',
-                      )}
+                    {/* The count, with the word of the pills and of the
+                        presets of the overview */}
+                    <Toolbar.Subtitle hidden={!readyGraph}>
+                      {`${format.number(
+                        selectedItemTypeIds.length + selectedPluginIds.length,
+                      )} included`}
                     </Toolbar.Subtitle>
                     <Toolbar.Spinner show={building && Boolean(graph)} />
                     <Toolbar.Space />
                     <Toolbar.Button
-                      label={
-                        showUnselect
-                          ? 'Unselect all dependencies'
-                          : 'Select all dependencies'
-                      }
+                      label={dependencies.label}
                       onClick={
-                        showUnselect
+                        dependencies.remove
                           ? handleUnselectAllDependencies
                           : handleSelectAllDependencies
                       }
-                      disabled={dependenciesDisabled}
+                      disabled={dependencies.disabled}
                     />
                     <Toolbar.Button
                       tone="primary"
@@ -563,6 +580,7 @@ export default function Inner({
                   error={error}
                   showGraph={showGraph}
                   graphNodes={graphNodes}
+                  loadingTitle={loadingTitle}
                   prepareProgress={prepareProgress}
                   onRetry={refresh}
                   onShowAnyway={() => setForceRenderGraph(true)}
@@ -573,7 +591,6 @@ export default function Inner({
             <Aside ariaLabel="Schema overview">
               <ExportSchemaOverview
                 graph={readyGraph}
-                failed={Boolean(error)}
                 list={overviewList}
                 initialItemTypeIds={initialItemTypeIds}
                 onToggleItemType={handleToggleItemType}
@@ -593,6 +610,8 @@ type GraphAreaProps = {
   /** The graph is small enough, or the user asked to draw it anyway */
   showGraph: boolean;
   graphNodes: AppNode[];
+  /** What the first build finds, for its blank slate */
+  loadingTitle: string;
   /** The progress of the first build */
   prepareProgress: SchemaProgressUpdate | undefined;
   onRetry: () => void;
@@ -610,6 +629,7 @@ function GraphArea({
   error,
   showGraph,
   graphNodes,
+  loadingTitle,
   prepareProgress,
   onRetry,
   onShowAnyway,
@@ -621,31 +641,29 @@ function GraphArea({
         placement="area"
         error
         icon={<CircleExclamationIcon />}
-        title="The graph could not be loaded"
-        code={error.message}
-        description={describeGraphError(error)}
+        title="The diagram could not be loaded"
+        code={errorCode(error)}
+        description={describeSchemaReadError(error)}
         actions={
-          <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+          // Another attempt can't give a permission
+          isPermissionError(error) ? undefined : (
+            <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
+          )
         }
       />
     );
   }
 
+  // One busy signal: the spinner, with the step as its caption. The scan
+  // finds more to read as it goes, thus it has no share for a bar.
   if (!graph) {
     return (
       <BlankSlate
         placement="area"
         loading
-        title="Preparing the dependency graph"
+        title={loadingTitle}
         caption={prepareProgress?.label}
-      >
-        {prepareProgress && prepareProgress.total > 0 ? (
-          <ProgressBar
-            value={prepareProgress.done / prepareProgress.total}
-            ariaLabel="Preparing the dependency graph"
-          />
-        ) : null}
-      </BlankSlate>
+      />
     );
   }
 
@@ -653,14 +671,11 @@ function GraphArea({
     return (
       <BlankSlate
         placement="area"
-        icon={<ExportIcon />}
-        title="The graph is too large to show"
-        description={{
-          id: 'importExportSchema.graphTooLarge',
-          values: { count: graph.nodes.length },
-        }}
+        icon={<ModelIcon />}
+        title="The diagram is too large to show"
+        description={EXPORT_GRAPH_TOO_LARGE_DESCRIPTION}
         actions={
-          <Button label="Show the graph anyway" onClick={onShowAnyway} />
+          <Button label="Show the diagram anyway" onClick={onShowAnyway} />
         }
       />
     );
@@ -673,7 +688,6 @@ function GraphArea({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
-        fitView
       />
     </div>
   );

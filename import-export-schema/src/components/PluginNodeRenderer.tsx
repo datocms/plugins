@@ -44,7 +44,7 @@ export function PluginNodeRenderer({
 
   return (
     <>
-      <Handle type="target" position={Position.Top} className={s.handle} />
+      <Handle type="target" position={Position.Left} className={s.handle} />
       <div className={classNames(s.node, className)}>
         {showDetails || status ? (
           <span className={s.pills}>
@@ -57,7 +57,7 @@ export function PluginNodeRenderer({
           <div className={classNames(s.details, s.version)}>v{version}</div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className={s.handle} />
+      <Handle type="source" position={Position.Right} className={s.handle} />
     </>
   );
 }

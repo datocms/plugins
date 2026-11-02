@@ -295,15 +295,18 @@ async function createPluginsPhase({
     const name =
       plugin.attributes.name || plugin.attributes.package_name || plugin.id;
     const id = getOrThrow(mappings.pluginIds, plugin.id, 'plugin create');
-    const created = await tracker.run(`Creating plugin: ${name}`, async () => {
-      const { data } = await client.plugins.rawCreate({
-        data: buildPluginCreateData(plugin, id),
-      });
-      verifyCreatedId(data.id, id);
-      return data;
-    });
+    const created = await tracker.run(
+      `Adding the plugin “${name}”`,
+      async () => {
+        const { data } = await client.plugins.rawCreate({
+          data: buildPluginCreateData(plugin, id),
+        });
+        verifyCreatedId(data.id, id);
+        return data;
+      },
+    );
     if (!isEqual(plugin.attributes.parameters, {})) {
-      await tracker.run(`Configuring plugin: ${name}`, async () => {
+      await tracker.run(`Setting up “${name}”`, async () => {
         if (
           !isEqual(created.attributes.parameters, plugin.attributes.parameters)
         )
@@ -327,7 +330,7 @@ async function createItemTypesPhase({
     tracker,
     async ({ entity, rename }) => {
       await tracker.run(
-        `Creating ${entity.attributes.modular_block ? 'block' : 'model'}: ${rename?.name || entity.attributes.name}`,
+        `Creating “${rename?.name || entity.attributes.name}”`,
         async () => {
           const id = getOrThrow(
             mappings.itemTypeIds,
@@ -377,7 +380,7 @@ async function createFieldsetsAndFieldsPhase(context: ImportContext) {
     tracker,
     async ({ itemType, fieldset }) => {
       await tracker.run(
-        `Creating fieldset in ${itemType.entity.attributes.name}`,
+        `Adding a fieldset to “${itemType.entity.attributes.name}”`,
         async () => {
           const id = getOrThrow(
             mappings.fieldsetIds,
@@ -411,7 +414,7 @@ async function createFieldsetsAndFieldsPhase(context: ImportContext) {
     field: SchemaTypes.Field;
   }) => {
     await tracker.run(
-      `Creating field ${field.attributes.label || field.attributes.api_key} in ${itemType.entity.attributes.name}`,
+      `Adding “${field.attributes.label || field.attributes.api_key}” to “${itemType.entity.attributes.name}”`,
       () => importField(field, context),
     );
   };
@@ -429,7 +432,7 @@ async function finalizeItemTypesPhase(
     tracker,
     async ({ entity, rename }) => {
       await tracker.run(
-        `Finalizing ${entity.attributes.modular_block ? 'block' : 'model'}: ${rename?.name || entity.attributes.name}`,
+        `Finishing “${rename?.name || entity.attributes.name}”`,
         async () => {
           const id = getOrThrow(
             mappings.itemTypeIds,
@@ -501,7 +504,7 @@ async function reorderEntitiesPhase({
       for (const entity of entities) {
         // biome-ignore lint/performance/noAwaitInLoops: Position updates affect siblings and must be sequential within each model.
         await tracker.run(
-          `Reordering field/fieldset in ${itemType.attributes.name}`,
+          `Ordering the fields of “${itemType.attributes.name}”`,
           async () => {
             const position = entity.attributes.position;
             if (entity.type === 'fieldset')
@@ -546,8 +549,9 @@ export default async function importSchema(
   tracker.checkCancel();
   const mappings = prepareMappings(importDoc);
   validateImport(importDoc, mappings);
-  const { locales } = await tracker.run('Loading project locales', () =>
-    client.site.find(),
+  const { locales } = await tracker.run(
+    'Reading the languages of the project',
+    () => client.site.find(),
   );
   const context: ImportContext = {
     client,
