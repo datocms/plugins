@@ -34,17 +34,16 @@ export default function ConfigScreen({ ctx }: Props) {
               tone="warning"
               status={<Pill tone="warning">Not granted</Pill>}
             >
-              <Callout tone="warning" title="Project scans are off">
-                This plugin needs permission to make API calls on behalf of the
-                logged-in user: ask a project admin to grant it, then reload the
-                page. Checks from the record sidebar panel still work.
+              <Callout tone="warning">
+                To scan the whole project, grant this plugin permission to make
+                API calls on behalf of the logged-in user.
               </Callout>
             </Page.Group>
           )}
           <Page.Group title="Link checker">
             <SettingsList>
-              {/* Without the permission the content area has no "Link checker", so nothing leads there. */}
-              {hasToken ? (
+              {/* Without the permission the content area has no "Link checker": the group above says what's missing. */}
+              {hasToken && (
                 <SettingsList.Row
                   title="Project scans"
                   description="Scan the saved records of this environment from “Link checker” in the content area."
@@ -55,11 +54,6 @@ export default function ConfigScreen({ ctx }: Props) {
                       to={pagePath}
                     />
                   }
-                />
-              ) : (
-                <SettingsList.Row
-                  title="Project scans"
-                  description="Scanning the saved records of this environment needs the API access above."
                 />
               )}
               <SettingsList.Row

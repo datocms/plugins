@@ -152,6 +152,25 @@ describe('project production', () => {
     ).toBe('https://good.example');
   });
 
+  it('starts the path of a field that could not be read with its model', async () => {
+    buildCmaClient.mockReturnValue(client);
+    const models = [model('article')];
+    rawList.mockResolvedValue({
+      data: [{ id: 'a', attributes: { url: 'not-a-locale-map' } }],
+      meta: { total_count: 1 },
+    });
+    const current = session();
+    await createProjectProducer(
+      { environment: 'test' },
+      loader(models),
+      models,
+      ['en'],
+    )(current, new AbortController().signal);
+    expect(vi.mocked(current.addRecord).mock.calls[0][0].warnings).toEqual([
+      "article › URL: This field couldn't be read.",
+    ]);
+  });
+
   it('yields to browser tasks while cached pages are streaming and honors cancellation', async () => {
     vi.useFakeTimers();
     let now = 0;

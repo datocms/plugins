@@ -413,7 +413,12 @@ describe('schema-aware link extraction', () => {
       ['en'],
     );
     expect(result.occurrences).toEqual([]);
-    expect(result.warnings).toHaveLength(4);
+    // The unloaded block and the block of a missing model read the same: one line.
+    expect(result.warnings).toEqual([
+      "sections › sections: Some blocks couldn't be read.",
+      "body › body: This text couldn't be read.",
+      "url: This field couldn't be read.",
+    ]);
     expect(extractLinks(record({}), new Map(), []).warnings).toHaveLength(1);
   });
 

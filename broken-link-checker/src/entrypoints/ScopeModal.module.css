@@ -1,10 +1,11 @@
-/* The intro and the submit keep the gap of the fields between them. */
+/* The intro and the footer keep the gap of the fields between them. */
 .intro {
   margin-bottom: var(--form-field-gap);
 }
 
+/* Cancel at the left, the scan at the right, as in a dialog's footer. */
 .actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-top: var(--form-field-gap);
 }

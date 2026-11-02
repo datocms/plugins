@@ -2,29 +2,32 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import { DOCS_URL } from '../constants';
 import { LinkIcon, SearchIcon } from '../icons';
-import { countLabel } from '../report/format';
 
-export type ResultsEmptyKind = 'noLinks' | 'clean' | 'cleanSoFar' | 'noMatch';
+export type ResultsEmptyKind =
+  | 'noLinks'
+  | 'clean'
+  | 'cleanChecked'
+  | 'cleanSoFar'
+  | 'noMatch';
 
 type ResultsEmptyProps = {
   kind: ResultsEmptyKind;
-  /** URLs found so far. */
+  /** Links found so far. */
   total: number;
   /** Some content couldn't be read. */
   partial: boolean;
-  /** Switches the view to all URLs. */
+  /** The view already shows every link. */
+  showingAll: boolean;
+  /** Switches the view to all links, keeping the filter. */
   onShowAll: () => void;
-  uiLocale: string;
 };
 
-function cleanSentence(total: number, partial: boolean, uiLocale: string) {
+/** The summary above already counts the links. */
+function cleanSentence(total: number, partial: boolean) {
   const scope = partial ? ' in the content that could be read' : '';
-  return countLabel(
-    total,
-    `The only URL found is not broken, invalid or unverified${scope}.`,
-    `None of the {n} URLs found is broken, invalid or unverified${scope}.`,
-    uiLocale,
-  );
+  return total === 1
+    ? `The only link found is not broken, invalid or unverified${scope}.`
+    : `None of the links found is broken, invalid or unverified${scope}.`;
 }
 
 /**
@@ -35,8 +38,8 @@ export function ResultsEmpty({
   kind,
   total,
   partial,
+  showingAll,
   onShowAll,
-  uiLocale,
 }: ResultsEmptyProps) {
   switch (kind) {
     case 'noLinks':
@@ -45,7 +48,7 @@ export function ResultsEmpty({
           placement="section"
           icon={<LinkIcon />}
           title="No links found"
-          description="The scanned records don't contain any website links. Links are read from Single-line String, Multiple-paragraph Text and Structured Text fields, including those inside blocks."
+          description="The scanned records don't contain any website links. Links are read from text fields, including those inside blocks."
           // One link: the kit names its button "Documentation".
           docs={[{ href: DOCS_URL }]}
         />
@@ -56,8 +59,19 @@ export function ResultsEmpty({
           placement="section"
           icon={<LinkIcon />}
           title="Nothing needs attention"
-          description={cleanSentence(total, partial, uiLocale)}
-          actions={<Button label="Show all URLs" onClick={onShowAll} />}
+          description={cleanSentence(total, partial)}
+          actions={<Button label="Show all links" onClick={onShowAll} />}
+        />
+      );
+    case 'cleanChecked':
+      // Some links weren't checked: the summary above counts them.
+      return (
+        <BlankSlate
+          placement="section"
+          icon={<LinkIcon />}
+          title="No problems found"
+          description="None of the checked links is broken, invalid or unverified."
+          actions={<Button label="Show all links" onClick={onShowAll} />}
         />
       );
     case 'cleanSoFar':
@@ -66,14 +80,15 @@ export function ResultsEmpty({
           placement="section"
           icon={<LinkIcon />}
           title="Nothing needs attention yet"
-          description="URLs that need attention appear here as they're checked."
-          actions={<Button label="Show all URLs" onClick={onShowAll} />}
+          description="Links that need attention appear here as they're checked."
+          actions={<Button label="Show all links" onClick={onShowAll} />}
         />
       );
     case 'noMatch':
       // The kit's no-results state (Pane.FilterBlankSlate) centers in the
       // area and would cover the notice above, so the same state sits in the
-      // flow.
+      // flow. The filter only searched the current view: the same filter can
+      // find the link among all of them.
       return (
         <BlankSlate
           placement="section"
@@ -81,6 +96,11 @@ export function ResultsEmpty({
           icon={<SearchIcon />}
           title={{ id: 'listFilter.noResults.title' }}
           description={{ id: 'listFilter.noResults.description' }}
+          actions={
+            showingAll ? undefined : (
+              <Button label="Show all links" onClick={onShowAll} />
+            )
+          }
         />
       );
   }

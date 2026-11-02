@@ -82,8 +82,11 @@ function announcement(
   // Nothing could be read: the reason is the whole story.
   if (report.recordsScanned === 0 && report.warnings.length > 0)
     return formatWarning(report.warnings[0], uiLocale);
+  // A cancel before any link was found: the summary says it.
+  const nothingFound =
+    report.groups.length === 0 && report.warnings.length === 0;
   return [
-    report.state === 'cancelled' && 'Check canceled',
+    report.state === 'cancelled' && !nothingFound && 'Check canceled',
     report.warnings.length > 0 && "Some content couldn't be read",
     panelSummaryText({ report, uiLocale }),
   ]
@@ -148,12 +151,9 @@ export default function RecordPanel({
   };
 
   const report = scan.report;
-  const [, right = 0, , left = 0] = ctx.bodyPadding;
-  // The frame's side padding: the place rows go out into it (see the CSS module).
-  const frameInsets = {
-    '--frame-inset-left': `${left}px`,
-    '--frame-inset-right': `${right}px`,
-  } as CSSProperties;
+  const [, , , left = 0] = ctx.bodyPadding;
+  // The frame's left padding: the focus ring of an action goes out into it (see the CSS module).
+  const frameInsets = { '--frame-inset-left': `${left}px` } as CSSProperties;
   return (
     <Canvas ctx={ctx}>
       <div className={styles.panel} style={frameInsets}>

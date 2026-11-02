@@ -55,14 +55,14 @@ const MESSAGES: Record<CheckReason, string> = {
     'The site is limiting automated requests. Check the link again later.',
   'sign-in':
     "The page asks for a sign-in, so it can't be checked automatically.",
-  dns: "The link's domain doesn't exist.",
+  dns: 'No website exists at this address.',
   certificate:
     "The site's security certificate is invalid, so browsers warn visitors before opening it.",
   'no-response': "The site didn't respond. It may be down, or only briefly.",
   'server-error':
     'The site answered with a server error. It may be temporary: check the link again later.',
   'proxy-refused':
-    "The link checking service refused this plugin's address. It only accepts the plugin when it's installed from the marketplace or run on localhost.",
+    "The link checking service only accepts this plugin when it's installed from the marketplace.",
 };
 
 type Verdict = {
@@ -113,12 +113,12 @@ function verdictFor(
   return undefined;
 }
 
+/** The HTTP status has its own row in the detail, so the sentences don't repeat it. */
 function defaultMessage(status: CheckResult['status'], httpStatus: number) {
   if (status === 'reachable')
-    return `The URL responded with HTTP ${httpStatus}.`;
-  if (status === 'broken')
-    return `The URL responded with HTTP ${httpStatus} to a GET request.`;
-  return `HTTP ${httpStatus} does not establish whether this link is broken.`;
+    return `The page answered with HTTP ${httpStatus}.`;
+  if (status === 'broken') return "The site says this page doesn't exist.";
+  return "The site's answer doesn't show whether the link works. Open it to check.";
 }
 
 /**

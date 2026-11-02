@@ -5,14 +5,19 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useMemo,
   useState,
 } from 'react';
-import { countLabel, formatWarning } from '../report/format';
+import {
+  countLabel,
+  formatWarning,
+  groupWarnings,
+  preciseWarnings,
+} from '../report/format';
 import { pageSlice } from '../report/view';
 import type { ScanReport } from '../types';
 import styles from './Notices.module.css';
 
-const COLLAPSED_WARNINGS = 5;
 const WARNINGS_PER_PAGE = 50;
 const PAGINATE_WARNINGS_ABOVE = 100;
 
@@ -20,20 +25,17 @@ const PAGINATE_WARNINGS_ABOVE = 100;
 export type SettledPhase = Exclude<ScanReport['state'], 'running'>;
 
 const UNREAD_INTRO =
-  "Some content couldn't be read, so the links in it aren't in this report:";
+  "Some content couldn't be read, so its links aren't in this report.";
+/** The facts under it count the links that show as “Not checked”. */
 const CANCELLED_LEAD =
-  "It covers only the records read and the URLs processed until then. URLs that weren't checked show as “Not checked”.";
-/** The same, in one sentence, when the list intro is the second one. */
-const CANCELLED_SHORT_LEAD =
-  "It covers only the records read until then, and URLs that weren't checked show as “Not checked”.";
+  'This report covers only what was checked before you stopped the scan.';
 
 /**
  * What a settled report leaves out: `lead` is the text before the list,
  * `listIntro` introduces the list of content issues (no list without it). A
- * canceled scan says what it covers and how its unchecked URLs read, then
- * lists the content it couldn't read, if any, in one sentence less, so the
- * callout keeps two sentences. An incomplete scan lists the unread content,
- * or else says how many URLs weren't checked. A complete scan leaves nothing
+ * canceled scan says what it covers, then that some content couldn't be
+ * read, if so. An incomplete scan says that some content couldn't be read,
+ * or else how many links weren't checked. A complete scan leaves nothing
  * out.
  */
 export function coverageText(
@@ -42,37 +44,24 @@ export function coverageText(
   notCheckedCount: number,
   uiLocale: string,
 ): { lead?: string; listIntro?: string } {
-  const unread = warnings.length > 0;
-  if (phase === 'cancelled')
-    return unread
-      ? { lead: CANCELLED_SHORT_LEAD, listIntro: UNREAD_INTRO }
-      : { lead: CANCELLED_LEAD };
+  const listIntro = warnings.length > 0 ? UNREAD_INTRO : undefined;
+  if (phase === 'cancelled') return { lead: CANCELLED_LEAD, listIntro };
   if (phase === 'complete') return {};
-  if (unread) return { listIntro: UNREAD_INTRO };
+  if (listIntro) return { listIntro };
   if (notCheckedCount === 0) return {};
   return {
     lead: countLabel(
       notCheckedCount,
-      "1 URL wasn't checked. Recheck it, or scan again.",
-      "{n} URLs weren't checked. Recheck them one by one, or scan again.",
+      "1 link wasn't checked. Recheck it, or scan again.",
+      "{n} links weren't checked. Recheck them one by one, or scan again.",
       uiLocale,
     ),
   };
 }
 
-function toggleLabel(
-  count: number,
-  expanded: boolean,
-  paginated: boolean,
-  uiLocale: string,
-) {
-  if (expanded) return 'Show fewer issues';
-  return countLabel(
-    count,
-    'Show 1 issue',
-    paginated ? 'Show {n} issues' : 'Show all {n} issues',
-    uiLocale,
-  );
+/** The list holds what couldn't be read, not the links that need attention. */
+function toggleLabel(expanded: boolean) {
+  return expanded ? "Hide what couldn't be read" : "Show what couldn't be read";
 }
 
 /** How a list of content issues shows: in full or not, and its page (from 0). */
@@ -96,8 +85,8 @@ export function useIssueList(): IssueListState {
 
 type CoverageCalloutProps = {
   tone: 'neutral' | 'warning';
-  /** The state or the problem, in a few words: "Scan incomplete". */
-  title: string;
+  /** The state or the problem, in a few words: "Scan incomplete". None for a complete scan. */
+  title?: string;
   /** The text before the list, when there is one. */
   lead?: string;
   /** Introduces the list of content issues; without it there is no list. */
@@ -113,24 +102,34 @@ type CoverageCalloutProps = {
 };
 
 /**
- * A callout about what the report covers, with the content that couldn't be
- * read as a list: 5 at first, then all of them, or pages of 50 above 100. A
- * callout holds no buttons, so the list's controls sit right after it. The
- * wrapper keeps them close to it, and it stays the same while the list grows,
- * so the callout never mounts again (a warning callout is an alert, read when
- * it appears).
+ * A callout about what the report covers. The content that couldn't be read
+ * is a list that shows on demand, so the callout stays short: then all of
+ * it, or pages of 50 above 100. Each reason shows once, after the places
+ * that give it. A callout holds no buttons, so the list's
+ * controls sit right after it. The wrapper keeps them close to it, and it
+ * stays the same while the list grows, so the callout never mounts again (a
+ * warning callout is an alert, read when it appears).
  */
 export function CoverageCallout({
   tone,
   title,
   lead,
   listIntro,
-  warnings,
+  warnings: allWarnings,
   children,
   compactPagination = false,
   issueList,
   uiLocale,
 }: CoverageCalloutProps) {
+  const warnings = useMemo(
+    () =>
+      groupWarnings(
+        preciseWarnings(allWarnings).map((warning) =>
+          formatWarning(warning, uiLocale),
+        ),
+      ),
+    [allWarnings, uiLocale],
+  );
   const ownList = useIssueList();
   const { expanded, setExpanded, page, setPage } = issueList ?? ownList;
   const listed = listIntro !== undefined && warnings.length > 0;
@@ -141,33 +140,29 @@ export function CoverageCallout({
     Math.ceil(warnings.length / WARNINGS_PER_PAGE) - 1,
   );
   const current = Math.min(page, lastPage);
-  const shown = !expanded
-    ? warnings.slice(0, COLLAPSED_WARNINGS)
-    : paginated
-      ? pageSlice(warnings, current + 1, WARNINGS_PER_PAGE)
-      : warnings;
+  const shown = paginated
+    ? pageSlice(warnings, current + 1, WARNINGS_PER_PAGE)
+    : warnings;
 
   return (
     <div className={styles.notice}>
       <Callout tone={tone} title={title} className={styles.callout}>
         {lead && <p>{lead}</p>}
-        {listed && (
-          <>
-            <p>{listIntro}</p>
-            <ul>
-              {shown.map((warning) => (
-                <li key={warning}>{formatWarning(warning, uiLocale)}</li>
-              ))}
-            </ul>
-          </>
+        {listed && <p>{listIntro}</p>}
+        {listed && expanded && (
+          <ul>
+            {shown.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
         )}
         {children}
       </Callout>
-      {listed && warnings.length > COLLAPSED_WARNINGS && (
+      {listed && (
         <div className={styles.controls}>
           <Button
             tone="ghost"
-            label={toggleLabel(warnings.length, expanded, paginated, uiLocale)}
+            label={toggleLabel(expanded)}
             onClick={() => setExpanded((value) => !value)}
           />
           {expanded && paginated && (
@@ -210,7 +205,7 @@ export function RunningCoverageCallout({
     <CoverageCallout
       tone="warning"
       title="Some content couldn't be read"
-      listIntro="The links in it aren't in this report:"
+      listIntro="Its links aren't in this report."
       warnings={warnings}
       compactPagination={compactPagination}
       issueList={issueList}

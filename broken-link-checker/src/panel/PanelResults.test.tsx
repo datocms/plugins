@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderInCanvas } from '../test/canvas';
 import { panelContext } from '../test/fixtures';
-import type { LinkOccurrence, ScanReport } from '../types';
-import { PanelResults } from './PanelResults';
+import type { LinkGroup, LinkOccurrence, ScanReport } from '../types';
+import { PanelResults, panelSummaryText } from './PanelResults';
 
 function report(count: number): ScanReport {
   const occurrences: LinkOccurrence[] = Array.from(
@@ -63,6 +63,34 @@ function renderResults(count: number) {
 const PLACE = /^Link \d+\s*,\s*go to field$/;
 
 describe('PanelResults places', () => {
+  it('lists a place once, with the times the link is there', () => {
+    const repeated = report(3);
+    const [group] = repeated.groups;
+    // The link twice in the same field, then once in another one.
+    group.occurrences = [
+      { ...group.occurrences[0], id: 'a', fieldLabel: 'Body' },
+      { ...group.occurrences[0], id: 'b', fieldLabel: 'Body' },
+      { ...group.occurrences[0], id: 'c', fieldLabel: 'Intro' },
+    ];
+    renderInCanvas(
+      <PanelResults
+        report={repeated}
+        showLocale={false}
+        uiLocale="en"
+        onGoToField={vi.fn()}
+      />,
+      { ctx: panelContext() },
+    );
+    expect(
+      screen.getByRole('button', {
+        name: /^Body\s*2 times\s*,\s*go to field$/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Intro\s*,\s*go to field$/ }),
+    ).toBeInTheDocument();
+  });
+
   it('preserves the existing expansion for small location lists', async () => {
     const user = userEvent.setup();
     const onGoToField = renderResults(8);
@@ -99,5 +127,55 @@ describe('PanelResults places', () => {
     expect(
       screen.getByRole('button', { name: /^Link 200\s*,\s*go to field$/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('a refused check in the panel', () => {
+  function refusedReport(withInvalid: boolean): ScanReport {
+    const base = report(1);
+    const [shared] = base.groups;
+    const refused = (key: string): LinkGroup => ({
+      ...shared,
+      key,
+      result: {
+        key,
+        url: '',
+        status: 'unverified',
+        message: '',
+        reason: 'proxy-refused',
+      },
+    });
+    const invalid: LinkGroup = {
+      ...shared,
+      key: 'invalid',
+      result: { ...shared.result, key: 'invalid', status: 'invalid' },
+    };
+    const groups = [refused('a'), refused('b')];
+    return { ...base, groups: withInvalid ? [invalid, ...groups] : groups };
+  }
+
+  it('counts its links as not checked, apart from the links with a problem', async () => {
+    const user = userEvent.setup();
+    const mixed = refusedReport(true);
+    expect(panelSummaryText({ report: mixed, uiLocale: 'en' })).toBe(
+      '1 of 3 links needs attention. 2 not checked',
+    );
+    expect(
+      panelSummaryText({ report: refusedReport(false), uiLocale: 'en' }),
+    ).toBe("2 links weren't checked");
+    renderInCanvas(
+      <PanelResults
+        report={mixed}
+        showLocale={false}
+        uiLocale="en"
+        onGoToField={vi.fn()}
+      />,
+      { ctx: panelContext() },
+    );
+    expect(screen.getByText('Invalid')).toBeInTheDocument();
+    expect(screen.queryByText('Not checked')).not.toBeInTheDocument();
+    // Links that weren't checked aren't known to be without problems.
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
+    expect(screen.getAllByText('Not checked')).toHaveLength(2);
   });
 });

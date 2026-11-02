@@ -164,7 +164,7 @@ describe('createSchemaLoader', () => {
       ]),
     });
     await expect(loader.load('article')).rejects.toThrow(
-      'schema for model missing',
+      "Its fields couldn't be loaded.",
     );
   });
 

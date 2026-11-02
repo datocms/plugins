@@ -139,6 +139,26 @@ function formatWarningPath(
   return parts.join(' > ');
 }
 
+/**
+ * A block model that couldn't be read gives a line for its model ("Article:
+ * Some blocks couldn't be read.") and one for each field that holds its blocks
+ * ("Article › Content: Some blocks couldn't be read."). The model's line says
+ * less, so it goes when a line of the same model gives the same reason.
+ */
+export function preciseWarnings(
+  warnings: readonly string[],
+): readonly string[] {
+  const covered = new Set<string>();
+  for (const warning of warnings) {
+    const path = warning.indexOf(WARNING_PATH_SEPARATOR);
+    const reason = path < 0 ? -1 : warning.indexOf(': ', path);
+    if (reason >= 0)
+      covered.add(`${warning.slice(0, path)}${warning.slice(reason)}`);
+  }
+  if (covered.size === 0) return warnings;
+  return warnings.filter((warning) => !covered.has(warning));
+}
+
 /** The form reader's own failure messages, which the panel shows reworded. */
 export function hasWarningRewrite(message: string): boolean {
   return WARNING_REWRITES.has(message);
@@ -164,6 +184,37 @@ export function formatWarning(warning: string, uiLocale: string): string {
   const end = warning.indexOf(': ', lastSeparator);
   const path = end < 0 ? warning : warning.slice(0, end);
   return `${formatWarningPath(path, uiLocale, false)}${warning.slice(path.length)}`;
+}
+
+/** A line names at most this many places, so a long list still pages. */
+const PLACES_PER_LINE = 10;
+
+/**
+ * Formatted warnings that give the same reason become one line, their places
+ * joined: "Event, Job posting: Your role can't see these records." The place
+ * ends at the first ": " after the path's last " > ", as formatWarning reads
+ * it; a line without a reason stays as it is.
+ */
+export function groupWarnings(lines: readonly string[]): string[] {
+  const grouped: string[] = [];
+  const open = new Map<string, { index: number; places: string[] }>();
+  for (const line of new Set(lines)) {
+    const end = line.indexOf(': ', line.lastIndexOf(' > ') + 1);
+    if (end <= 0) {
+      grouped.push(line);
+      continue;
+    }
+    const reason = line.slice(end);
+    const group = open.get(reason);
+    if (group && group.places.length < PLACES_PER_LINE) {
+      group.places.push(line.slice(0, end));
+      grouped[group.index] = `${group.places.join(', ')}${reason}`;
+    } else {
+      open.set(reason, { index: grouped.length, places: [line.slice(0, end)] });
+      grouped.push(line);
+    }
+  }
+  return grouped;
 }
 
 /** "A", "A and B", "A, B and C" (no Oxford comma). */

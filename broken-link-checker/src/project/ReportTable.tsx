@@ -8,18 +8,25 @@ import {
 import StatusCell from 'datocms-react-ui/Table/cells/StatusCell';
 import { useMemo } from 'react';
 import { countLabel } from '../report/format';
-import { groupFacts, type Sort, type SortKey } from '../report/view';
+import {
+  groupFacts,
+  type Sort,
+  type SortKey,
+  shownStatus,
+} from '../report/view';
 import type { LinkGroup } from '../types';
 import { BreakableUrl } from '../ui/BreakableUrl';
 import { STATUS_META } from '../ui/LogStatus';
 import styles from './Report.module.css';
 
-/** The columns as they show before the user moves or resizes them. */
+/**
+ * The columns as they show before the user moves or resizes them. The HTTP
+ * status is off at first: the column menu shows it.
+ */
 export const DEFAULT_TABLE_LAYOUT: TableLayout = {
   columns: [
     { name: 'url', width: 6 },
     { name: 'status', width: 2 },
-    { name: 'http', width: 2 },
     { name: 'usedIn', width: 2 },
   ],
 };
@@ -46,7 +53,7 @@ function useColumns(uiLocale: string) {
     () => [
       {
         name: 'url',
-        label: 'URL',
+        label: 'Link',
         sortable: true,
         // The last column a narrow table drops, wherever the user moves it:
         // without it, a row doesn't say which URL it is.
@@ -71,7 +78,7 @@ function useColumns(uiLocale: string) {
         sortable: true,
         priority: 3,
         renderCell: (group) => {
-          const { label, tone } = STATUS_META[group.result.status];
+          const { label, tone } = STATUS_META[shownStatus(group.result)];
           return <StatusCell tone={tone}>{label}</StatusCell>;
         },
       },

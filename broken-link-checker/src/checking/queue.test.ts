@@ -271,7 +271,7 @@ describe('CheckQueue', () => {
     for (const result of limited)
       expect(result.status).toBe(status === 429 ? 'blocked' : 'unverified');
     expect(limited[1]).toMatchObject({
-      message: expect.stringContaining('was not requested'),
+      message: expect.stringContaining('asked automated checks to wait'),
     });
     expect(limited[1].httpStatus).toBeUndefined();
     expect(results.some((result) => result.status === 'reachable')).toBe(true);
@@ -513,7 +513,7 @@ describe('CheckQueue', () => {
       expect(result).toMatchObject({
         status: 'unverified',
         reason: 'proxy-refused',
-        message: expect.stringContaining('was not requested'),
+        message: expect.stringContaining('installed from the marketplace'),
       });
       expect(result.httpStatus).toBeUndefined();
       expect(result.method).toBeUndefined();
@@ -630,7 +630,7 @@ describe('CheckQueue', () => {
     expect(later).toMatchObject({
       status: 'unverified',
       reason: 'proxy-refused',
-      message: expect.stringContaining('was not requested'),
+      message: expect.stringContaining('installed from the marketplace'),
     });
     expect(later?.method).toBeUndefined();
     expect(later?.checkedAt).toBeUndefined();

@@ -1,5 +1,6 @@
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import Spinner from 'datocms-react-ui/Spinner';
+import { RecheckIcon } from '../icons';
 import { countLabel } from '../report/format';
 import { countStatuses } from '../report/view';
 import type { ScanReport } from '../types';
@@ -34,6 +35,7 @@ export function PanelControls({
   return (
     <div className={styles.action}>
       <SidebarPanel.Action
+        icon={running ? undefined : RecheckIcon}
         label={
           running ? 'Cancel check' : hasReport ? 'Check again' : 'Check links'
         }
@@ -64,8 +66,8 @@ export function PanelProgress({
         ? 'Reading the record…'
         : countLabel(
             counts.queued + counts.checking,
-            'Checking URLs (1 left)…',
-            'Checking URLs ({n} left)…',
+            'Checking links (1 left)…',
+            'Checking links ({n} left)…',
             uiLocale,
           )}
     </div>

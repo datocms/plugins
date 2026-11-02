@@ -8,7 +8,7 @@ describe('prepareUrl', () => {
       url: 'https://example.com/a?x=1&x=2',
       hostname: 'example.com',
       status: 'queued',
-      message: 'Waiting to check this URL.',
+      message: 'Waiting to check this link.',
     });
     expect(prepareUrl('https://example.com/a#one').key).toBe(
       prepareUrl('https://example.com/a#two').key,

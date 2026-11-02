@@ -83,7 +83,7 @@ function RecordEntry({
   );
   return (
     <li className={styles.record}>
-      <RowList>
+      <RowList density="compact">
         {recordId === undefined ? (
           <RowList.Item>{row}</RowList.Item>
         ) : (
@@ -169,12 +169,11 @@ export function UsedInPanel({
     <SidebarPanel
       title="Records"
       count={total}
-      flush
       maxHeight={RECORDS_MAX_HEIGHT}
       collapse={collapse}
     >
       {/* One list of records, each with its row and its places. */}
-      <ul ref={recordsRef} className={styles.records}>
+      <ul ref={recordsRef}>
         {records.map((record) => {
           const { recordId } = record;
           return (
@@ -193,7 +192,7 @@ export function UsedInPanel({
       {paginated ? (
         <Toolbar>
           <Toolbar.Pagination
-            ariaLabel="Records using this URL"
+            ariaLabel="Records using this link"
             compact
             currentPage={current - 1}
             perPage={RECORD_CHUNK}
@@ -206,7 +205,7 @@ export function UsedInPanel({
         </Toolbar>
       ) : (
         remaining > 0 && (
-          <div className={styles.more}>
+          <div>
             <SidebarPanel.Action
               label={countLabel(
                 Math.min(RECORD_CHUNK, remaining),

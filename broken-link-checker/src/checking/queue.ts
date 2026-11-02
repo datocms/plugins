@@ -293,7 +293,7 @@ export class CheckQueue {
       status: 'unverified',
       reason: 'proxy-refused',
       message:
-        "The link checking service refused this plugin's address. This URL was not requested.",
+        "The link checking service only accepts this plugin when it's installed from the marketplace.",
     });
     return true;
   }
@@ -352,7 +352,7 @@ export class CheckQueue {
       status: rateLimited ? 'blocked' : 'unverified',
       reason: rateLimited ? 'rate-limited' : 'server-error',
       message:
-        'The site asked automated requests to wait. This URL was not requested during its waiting period.',
+        'The site asked automated checks to wait. Check the link again later.',
     });
     return true;
   }

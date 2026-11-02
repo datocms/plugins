@@ -6,7 +6,7 @@ import { type ScanProgress, settledUrls } from '../report/view';
 import styles from './Notices.module.css';
 
 type ScanProgressProps = {
-  /** "All models • All locales" */
+  /** "Article • English", when the user narrowed the scan; empty for the whole project. */
   scope: string;
   progress: ScanProgress;
   /** 0 to 1, never moving backwards; null while the record count is unknown. */
@@ -22,6 +22,8 @@ function recordsFact(
   uiLocale: string,
   recordTotal?: number,
 ) {
+  // "0 records read" tells nothing yet.
+  if (progress.records === 0) return undefined;
   if (discovering && recordTotal !== undefined) {
     const read = progress.records.toLocaleString(uiLocale);
     // Concurrent additions can outgrow the earlier count without ending discovery.
@@ -46,15 +48,15 @@ function urlsFact(progress: ScanProgress, uiLocale: string) {
   const done = settledUrls(progress).toLocaleString(uiLocale);
   return countLabel(
     progress.found,
-    `${done} of 1 URL processed`,
-    `${done} of {n} URLs processed`,
+    `${done} of 1 link checked`,
+    `${done} of {n} links checked`,
     uiLocale,
   );
 }
 
 /**
- * The share in whole percents, rounded down: "99%" until the scan really
- * ends. The bar gets the same value, so it never says more than the title.
+ * The bar shows the share, once it is known, in whole percents rounded down:
+ * it stays short of the end until the scan really ends.
  */
 function progressText({
   progress,
@@ -63,11 +65,9 @@ function progressText({
   recordTotal,
   uiLocale,
 }: ScanProgressProps) {
-  const percent = fraction === null ? null : Math.floor(fraction * 100);
   return {
-    value: percent === null ? undefined : percent / 100,
-    title:
-      percent === null ? 'Scanning links…' : `Scanning links (${percent}%)…`,
+    value: fraction === null ? undefined : Math.floor(fraction * 100) / 100,
+    title: 'Scanning links…',
     facts: joinFacts([
       recordsFact(progress, discovering, uiLocale, recordTotal),
       urlsFact(progress, uiLocale),
@@ -90,8 +90,8 @@ export function ScanProgressSlate({
       placement={placement}
       loading
       title={title}
-      description={props.scope}
-      caption={facts}
+      description={props.scope || undefined}
+      caption={facts || undefined}
     >
       {value !== undefined && (
         <ProgressBar value={value} ariaLabel="Scanning links" />

@@ -8,6 +8,8 @@ import {
   RunningCoverageCallout,
 } from './CoverageCallout';
 
+const SHOW_UNREAD = "Show what couldn't be read";
+
 const issues = (count: number) =>
   Array.from({ length: count }, (_, index) => `Issue ${index}`);
 
@@ -16,7 +18,7 @@ function show(count: number) {
     <CoverageCallout
       tone="warning"
       title="Scan incomplete"
-      listIntro="Some content couldn't be read, so the links in it aren't in this report:"
+      listIntro="Some content couldn't be read, so its links aren't in this report."
       warnings={issues(count)}
       uiLocale="en"
     />,
@@ -25,30 +27,74 @@ function show(count: number) {
 }
 
 describe('CoverageCallout', () => {
-  it('preserves the small issue list expansion, with its controls under the callout', async () => {
+  it('shows the issues on demand, with their controls under the callout', async () => {
     const user = userEvent.setup();
     const callout = show(8);
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(5);
-    const toggle = screen.getByRole('button', { name: 'Show all 8 issues' });
+    // The callout stays short: its sentence, and the issues behind a button.
+    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: SHOW_UNREAD });
     // A callout holds no buttons.
     expect(callout).not.toContainElement(toggle);
     await user.click(toggle);
     expect(within(callout).getAllByRole('listitem')).toHaveLength(8);
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show fewer issues' }));
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(5);
+    await user.click(
+      screen.getByRole('button', { name: "Hide what couldn't be read" }),
+    );
+    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
   });
 
-  it('shows no controls for 5 issues or fewer', () => {
-    const callout = show(5);
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(5);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  it('names a model once when a field of it gives the same reason', async () => {
+    const user = userEvent.setup();
+    renderInCanvas(
+      <CoverageCallout
+        tone="warning"
+        listIntro="Some content couldn't be read, so its links aren't in this report."
+        warnings={[
+          "Article: Some blocks couldn't be read.",
+          "Article › Content: Some blocks couldn't be read.",
+          'Author: Access was refused.',
+        ]}
+        uiLocale="en"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
+    expect(
+      screen.getAllByRole('listitem').map((item) => item.textContent),
+    ).toEqual([
+      "Article > Content: Some blocks couldn't be read.",
+      'Author: Access was refused.',
+    ]);
+  });
+
+  it('says each reason once, after the places that give it', async () => {
+    const user = userEvent.setup();
+    renderInCanvas(
+      <CoverageCallout
+        tone="warning"
+        listIntro="Some content couldn't be read, so its links aren't in this report."
+        warnings={[
+          "Article › Content: Some blocks couldn't be read.",
+          "Event: Your role can't see these records.",
+          "Job posting: Your role can't see these records.",
+          "Landing page › Sections: Some blocks couldn't be read.",
+        ]}
+        uiLocale="en"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
+    expect(
+      screen.getAllByRole('listitem').map((item) => item.textContent),
+    ).toEqual([
+      "Article > Content, Landing page > Sections: Some blocks couldn't be read.",
+      "Event, Job posting: Your role can't see these records.",
+    ]);
   });
 
   it('pages more than 100 issues, 50 at a time', async () => {
     const user = userEvent.setup();
     const callout = show(120);
-    await user.click(screen.getByRole('button', { name: 'Show 120 issues' }));
+    await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
     expect(within(callout).getAllByRole('listitem')).toHaveLength(50);
     const pages = screen.getByRole('navigation', {
       name: 'Content issues pagination',
@@ -61,7 +107,8 @@ describe('CoverageCallout', () => {
     expect(within(callout).getByText('Issue 119')).toBeInTheDocument();
   });
 
-  it('warns about unread content while a scan runs, and says nothing otherwise', () => {
+  it('warns about unread content while a scan runs, and says nothing otherwise', async () => {
+    const user = userEvent.setup();
     const { rerender } = renderInCanvas(
       <RunningCoverageCallout warnings={[]} uiLocale="en" />,
     );
@@ -77,8 +124,9 @@ describe('CoverageCallout', () => {
       within(callout).getByText("Some content couldn't be read"),
     ).toBeInTheDocument();
     expect(
-      within(callout).getByText("The links in it aren't in this report:"),
+      within(callout).getByText("Its links aren't in this report."),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
     // Warning paths read with " > ".
     expect(within(callout).getByRole('listitem')).toHaveTextContent(
       'Hero > Body (en) > Link: Not found',
@@ -89,15 +137,19 @@ describe('CoverageCallout', () => {
 describe('coverageText', () => {
   it('explains what a settled report leaves out', () => {
     const cancelled =
-      "It covers only the records read and the URLs processed until then. URLs that weren't checked show as “Not checked”.";
+      'This report covers only what was checked before you stopped the scan.';
     const unread =
-      "Some content couldn't be read, so the links in it aren't in this report:";
+      "Some content couldn't be read, so its links aren't in this report.";
     expect(coverageText('complete', [], 0, 'en')).toEqual({});
-    expect(coverageText('cancelled', [], 3, 'en')).toEqual({ lead: cancelled });
-    // A canceled scan that left content unread still says what it covers,
-    // in one sentence, then lists that content: two sentences in all.
+    // The facts under it count the links not checked.
+    expect(coverageText('cancelled', [], 3, 'en')).toEqual({
+      lead: cancelled,
+      listIntro: undefined,
+    });
+    // A canceled scan that left content unread says what it covers, then
+    // that some content couldn't be read: two sentences in all.
     expect(coverageText('cancelled', ['Issue'], 0, 'en')).toEqual({
-      lead: "It covers only the records read until then, and URLs that weren't checked show as “Not checked”.",
+      lead: cancelled,
       listIntro: unread,
     });
     // Unread content explains the gap before the URLs that weren't checked.
@@ -105,10 +157,10 @@ describe('coverageText', () => {
       listIntro: unread,
     });
     expect(coverageText('partial', [], 1, 'en').lead).toBe(
-      "1 URL wasn't checked. Recheck it, or scan again.",
+      "1 link wasn't checked. Recheck it, or scan again.",
     );
     expect(coverageText('partial', [], 1200, 'en').lead).toBe(
-      "1,200 URLs weren't checked. Recheck them one by one, or scan again.",
+      "1,200 links weren't checked. Recheck them one by one, or scan again.",
     );
     expect(coverageText('partial', [], 0, 'en')).toEqual({});
   });

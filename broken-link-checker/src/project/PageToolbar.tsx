@@ -22,32 +22,33 @@ export type ExportState = 'ready' | 'none' | 'waiting' | 'preparing';
 
 /**
  * The page's texts for the kit: the first option of the title's menu, every
- * URL whatever its status, reads "All URLs". A constant, so the Canvas that
+ * link whatever its status, reads "All links". A constant, so the Canvas that
  * takes it doesn't render again.
  */
-export const REPORT_TEXTS = { 'admin.listPresets.all': 'All URLs' };
+export const REPORT_TEXTS = { 'admin.listPresets.all': 'All links' };
 
 const RECHECK_BLOCKS_SCAN = {
-  reason: "You can't start a scan while a URL is being rechecked.",
+  reason: "You can't start a scan while a link is being rechecked.",
 };
 const RECHECK_BLOCKS_SCOPE = {
-  reason: "You can't choose what to scan while a URL is being rechecked.",
+  reason: "You can't choose what to scan while a link is being rechecked.",
 };
 /** Why the export can't run now. */
 const EXPORT_DISABLED: Record<ExportState, { reason: string } | undefined> = {
   ready: undefined,
-  none: { reason: 'The report has no URLs to export.' },
-  waiting: { reason: 'The report has no URLs to export yet.' },
+  // A settled report with no URL has no export option at all.
+  none: undefined,
+  waiting: { reason: 'The report has no links to export yet.' },
   preparing: { reason: 'The CSV is being prepared.' },
 };
 
-/** A view the title's menu gives back by its id; null is "All URLs". */
+/** A view the title's menu gives back by its id; null is "All links". */
 function isStatusView(id: string | null): id is StatusView {
   return id === 'attention' || STATUS_ORDER.some((status) => status === id);
 }
 
 /**
- * The views of the title's menu after "All URLs", which the kit puts first:
+ * The views of the title's menu after "All links", which the kit puts first:
  * "Needs attention" (the default), then each status in severity order. A
  * view that keeps no URL shows only while it's picked, as the kit's own
  * presets do (useListPresets), so the default view is there at first even
@@ -77,23 +78,31 @@ function presetsFor(
 /**
  * A mode change swaps the scan action (the split "Scan links", or "Cancel
  * scan"), and a disabled reason wraps the control in its tooltip, which
- * remounts it; a new scan remounts the whole toolbar. Focus on a control that
- * is gone would fall to <body>, so it moves to what now holds the same place,
- * and to "Cancel scan" when a scan starts.
+ * remounts it; a new scan remounts the whole toolbar. Keyboard focus on a
+ * control that is gone would fall to <body>, so it moves to what now holds
+ * the same place, and to "Cancel scan" when a scan starts. A pointer focuses
+ * without `:focus-visible`: its focus isn't moved, so the action doesn't keep
+ * a focused look after a click.
  */
 function useToolbarFocus(mode: PageToolbarMode) {
   const actionRef = useRef<HTMLSpanElement>(null);
   const previous = useRef<PageToolbarMode | null>(null);
   // Read while rendering, before the commit replaces the focused control.
-  const hadFocus = useRef(false);
-  hadFocus.current =
-    actionRef.current?.contains(document.activeElement) ?? false;
+  const keyboardFocus = useRef<'action' | 'elsewhere' | null>(null);
+  const active = document.activeElement;
+  keyboardFocus.current = !active?.matches(':focus-visible')
+    ? null
+    : actionRef.current?.contains(active)
+      ? 'action'
+      : 'elsewhere';
   useLayoutEffect(() => {
     const before = previous.current;
     previous.current = mode;
     if (before === mode) return;
+    const started = mode === 'scanning' && before !== 'scanning';
     const move =
-      hadFocus.current || (mode === 'scanning' && before !== 'scanning');
+      keyboardFocus.current === 'action' ||
+      (started && keyboardFocus.current !== null);
     if (!move || !document.hasFocus()) return;
     if (document.activeElement !== document.body) return;
     // A control disabled with a reason stays focusable, so it explains why.
@@ -110,7 +119,7 @@ type PageToolbarProps = {
   status: StatusView;
   counts: StatusCounts;
   onStatusChange: (status: StatusView) => void;
-  /** The rows in the current view ("248 URLs"); nothing when there are none. */
+  /** The rows in the current view ("248 links"); nothing when there are none. */
   countLabel?: string;
   exportState: ExportState;
   onExport: () => void;
@@ -146,9 +155,10 @@ export function PageToolbar({
 }: PageToolbarProps) {
   const actionRef = useToolbarFocus(mode);
   const rechecking = mode === 'rechecking';
-  // With no view to pick ("All URLs" of a report with no URL), the title is
-  // no menu, as with the kit's own presets.
-  const views = presetsFor(counts, status);
+  // A settled report with no URL has no view to pick and nothing to export:
+  // the title is no menu and the "⋮" doesn't show.
+  const noLinks = exportState === 'none';
+  const views = noLinks ? [] : presetsFor(counts, status);
 
   return (
     <Pane.Header>
@@ -175,12 +185,14 @@ export function PageToolbar({
       </Pane.Header.Title>
       <Pane.Header.Subtitle>{countLabel}</Pane.Header.Subtitle>
       <Pane.Header.Menu>
-        <Dropdown.Option
-          disabled={EXPORT_DISABLED[exportState]}
-          onPick={onExport}
-        >
-          Export as CSV
-        </Dropdown.Option>
+        {!noLinks && (
+          <Dropdown.Option
+            disabled={EXPORT_DISABLED[exportState]}
+            onPick={onExport}
+          >
+            Export as CSV
+          </Dropdown.Option>
+        )}
       </Pane.Header.Menu>
       <Pane.Header.Button>
         {filter && (

@@ -4,11 +4,13 @@ import {
   countLabel,
   FACT_SEPARATOR,
   formatWarning,
+  groupWarnings,
   joinFacts,
   joinNames,
   localeName,
   locationParts,
   placeName,
+  preciseWarnings,
 } from './format';
 
 function occurrence(overrides: Partial<LinkOccurrence> = {}): LinkOccurrence {
@@ -199,5 +201,57 @@ describe('formatWarning', () => {
       'News: Model schema could not be loaded.',
     ])
       expect(formatWarning(warning, 'en')).toBe(warning);
+  });
+});
+
+describe('groupWarnings', () => {
+  it('says each reason once, after the places that give it', () => {
+    expect(
+      groupWarnings([
+        "Article > Content: Some blocks couldn't be read.",
+        "Event: Your role can't see these records.",
+        "Job posting: Your role can't see these records.",
+        "Landing page > Sections: Some blocks couldn't be read.",
+        'Body (English) > Hero',
+        "Press release: Your role can't see these records.",
+      ]),
+    ).toEqual([
+      "Article > Content, Landing page > Sections: Some blocks couldn't be read.",
+      "Event, Job posting, Press release: Your role can't see these records.",
+      'Body (English) > Hero',
+    ]);
+  });
+
+  it('names at most 10 places in a line', () => {
+    const lines = Array.from(
+      { length: 12 },
+      (_, index) => `Model ${index}: Access was refused.`,
+    );
+    expect(groupWarnings(lines)).toEqual([
+      `${lines
+        .slice(0, 10)
+        .map((_, index) => `Model ${index}`)
+        .join(', ')}: Access was refused.`,
+      'Model 10, Model 11: Access was refused.',
+    ]);
+  });
+});
+
+describe('preciseWarnings', () => {
+  it("drops a model's line when one of its fields gives the same reason", () => {
+    expect(
+      preciseWarnings([
+        "Article: Some blocks couldn't be read.",
+        "Article › Content: Some blocks couldn't be read.",
+        "Landing page: Some blocks couldn't be read.",
+        'Author: Access was refused.',
+        "Author › Bio: Part of this text couldn't be read.",
+      ]),
+    ).toEqual([
+      "Article › Content: Some blocks couldn't be read.",
+      "Landing page: Some blocks couldn't be read.",
+      'Author: Access was refused.',
+      "Author › Bio: Part of this text couldn't be read.",
+    ]);
   });
 });

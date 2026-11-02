@@ -456,7 +456,7 @@ describe('checkUrl', () => {
       expect(result).toMatchObject({
         status: 'broken',
         reason: 'dns',
-        message: "The link's domain doesn't exist.",
+        message: 'No website exists at this address.',
       });
       expect(result.httpStatus).toBeUndefined();
     });

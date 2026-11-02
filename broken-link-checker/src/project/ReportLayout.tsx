@@ -49,7 +49,12 @@ import styles from './Report.module.css';
 import { ReportTable } from './ReportTable';
 import { ResultsEmpty, type ResultsEmptyKind } from './ResultsEmpty';
 import { ScanProgressBlock, ScanProgressSlate } from './ScanProgressBlock';
-import { ScanAnnouncement, ScanSummary } from './ScanSummary';
+import {
+  readNothing,
+  ScanAnnouncement,
+  ScanFailed,
+  ScanSummary,
+} from './ScanSummary';
 import type { SettledScan } from './useSettledScan';
 
 /** The in-memory route of the open row: "/links/<encoded URL key>". */
@@ -89,10 +94,13 @@ export type ReportLayoutProps = {
   onOpenRecord: (recordId: string) => void;
 };
 
+/** Broken links first, as the record panel lists them. */
+const BY_SEVERITY: Sort = { key: 'status', direction: 'asc' };
+
 /** Filters, sort and pagination; a new scan remounts the layout, which resets them. */
 function useReportView(groups: readonly LinkGroup[]) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [sort, setSort] = useState<Sort>(null);
+  const [sort, setSort] = useState<Sort>(BY_SEVERITY);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
   const query = useDeferredValue(filters.query);
@@ -152,12 +160,12 @@ function exportStateFor(
   return exporting ? 'preparing' : 'ready';
 }
 
-/** The rows in the current view: "248 URLs". */
+/** The rows in the current view: "248 links". */
 function urlCountLabel(view: ReportView, uiLocale: string) {
   const shown = view.filtered.length;
   return shown === 0
     ? undefined
-    : countLabel(shown, '1 URL', '{n} URLs', uiLocale);
+    : countLabel(shown, '1 link', '{n} links', uiLocale);
 }
 
 /**
@@ -252,10 +260,15 @@ function emptyKind(
   // A canceled or failed scan without URLs: its summary explains it.
   if (total === 0) return state === 'complete' ? 'noLinks' : null;
   if (!isDefaultFilters(view.applied)) return 'noMatch';
-  return scanning ? 'cleanSoFar' : 'clean';
+  // No link could be checked: the callout says so, and nothing is "clean".
+  if (proxyRefused(report.groups)) return null;
+  if (scanning) return 'cleanSoFar';
+  // Links that weren't checked may have a problem: only the checked ones are
+  // clean, and with none checked the summary's "not checked" says it all.
+  const notChecked = view.counts.cancelled;
+  if (notChecked === 0) return 'clean';
+  return notChecked < total ? 'cleanChecked' : null;
 }
-
-type ScanProgressProps = Parameters<typeof ScanProgressBlock>[0];
 
 type ReportResultsProps = {
   view: ReportView;
@@ -263,12 +276,9 @@ type ReportResultsProps = {
   /** The report as the view reads it (a rechecked URL keeps its previous result). */
   viewReport: ScanReport;
   settled?: SettledScan;
+  /** The scan's record count, once known: with none, nothing failed to read. */
+  recordTotal?: number;
   scanning: boolean;
-  /** The running scan's progress is all the list area shows. */
-  centered: boolean;
-  /** A notice sits above the results. */
-  noticeAbove: boolean;
-  progress: ScanProgressProps;
   /** The live groups, so a rechecked row reads "Checking". */
   groupsByKey: ReadonlyMap<string, LinkGroup>;
   tableLayout: TableLayout;
@@ -282,16 +292,17 @@ type ReportResultsProps = {
   uiLocale: string;
 };
 
-/** The progress or the summary, then the table or what takes its place. */
+/**
+ * The summary of a settled scan, then the table or what takes its place. A
+ * running scan's progress sits above them, in the report.
+ */
 function ReportResults({
   view,
   report,
   viewReport,
   settled,
+  recordTotal,
   scanning,
-  centered,
-  noticeAbove,
-  progress,
   groupsByKey,
   tableLayout,
   onTableLayoutChange,
@@ -301,22 +312,15 @@ function ReportResults({
   issueList,
   uiLocale,
 }: ReportResultsProps) {
-  if (centered)
-    return (
-      <ScanProgressSlate
-        placement={noticeAbove ? 'section' : 'area'}
-        {...progress}
-      />
-    );
+  if (!scanning && readNothing(report, settled, recordTotal))
+    return <ScanFailed report={report} />;
   const showTable = view.filtered.length > 0;
   const kind = showTable
     ? null
     : emptyKind(view, report, settled?.state ?? report.state, scanning);
   return (
     <>
-      {scanning ? (
-        <ScanProgressBlock {...progress} />
-      ) : (
+      {!scanning && (
         <ScanSummary
           report={viewReport}
           settled={settled}
@@ -345,10 +349,10 @@ function ReportResults({
           kind={kind}
           total={report.groups.length}
           partial={report.warnings.length > 0}
+          showingAll={view.filters.status === 'all'}
           onShowAll={() =>
             view.changeFilters({ ...view.filters, status: 'all' })
           }
-          uiLocale={uiLocale}
         />
       )}
     </>
@@ -481,7 +485,16 @@ export function ReportLayout({
   const hasGroups = report.groups.length > 0;
   const showFilter = hasGroups && !centered;
   const refused = proxyRefused(report.groups);
-  const runningWarnings = scanning && report.warnings.length > 0;
+  // A notice in the list area: the progress then sits in the flow with it.
+  const notices = scanning && (refused || report.warnings.length > 0);
+  const progress = {
+    scope: viewReport.scope,
+    progress: scanProgress(viewReport),
+    fraction,
+    discovering: viewReport.discovering,
+    recordTotal,
+    uiLocale,
+  };
 
   const changeStatus = (status: StatusView) =>
     view.changeFilters({ ...view.filters, status });
@@ -517,7 +530,7 @@ export function ReportLayout({
       >
         <div ref={setListBox} className={styles.list}>
           <Pane
-            ariaLabel="URLs"
+            ariaLabel="Links"
             header={
               <>
                 <PageToolbar
@@ -560,9 +573,23 @@ export function ReportLayout({
                 ref={topRef}
                 report={viewReport}
                 settled={settled}
+                recordTotal={recordTotal}
                 scanning={scanning}
               />
-              {refused && <ProxyRefusedCallout className={styles.callout} />}
+              {/* Once the scan settles, its summary says it. */}
+              {refused && scanning && (
+                <ProxyRefusedCallout className={styles.callout} />
+              )}
+              {/* The scan's state first, then what it couldn't read. */}
+              {scanning &&
+                (centered ? (
+                  <ScanProgressSlate
+                    placement={notices ? 'section' : 'area'}
+                    {...progress}
+                  />
+                ) : (
+                  <ScanProgressBlock {...progress} />
+                ))}
               {scanning && (
                 <RunningCoverageCallout
                   warnings={report.warnings}
@@ -571,31 +598,24 @@ export function ReportLayout({
                   uiLocale={uiLocale}
                 />
               )}
-              <ReportResults
-                view={view}
-                report={report}
-                viewReport={viewReport}
-                settled={settled}
-                scanning={scanning}
-                centered={centered}
-                noticeAbove={refused || runningWarnings}
-                progress={{
-                  scope: viewReport.scope,
-                  progress: scanProgress(viewReport),
-                  fraction,
-                  discovering: viewReport.discovering,
-                  recordTotal,
-                  uiLocale,
-                }}
-                groupsByKey={groupsByKey}
-                tableLayout={tableLayout}
-                onTableLayoutChange={onTableLayoutChange}
-                openKey={openGroup?.key}
-                onOpen={open}
-                compactPagination={compactPagination}
-                issueList={issueList}
-                uiLocale={uiLocale}
-              />
+              {!centered && (
+                <ReportResults
+                  view={view}
+                  report={report}
+                  viewReport={viewReport}
+                  settled={settled}
+                  recordTotal={recordTotal}
+                  scanning={scanning}
+                  groupsByKey={groupsByKey}
+                  tableLayout={tableLayout}
+                  onTableLayoutChange={onTableLayoutChange}
+                  openKey={openGroup?.key}
+                  onOpen={open}
+                  compactPagination={compactPagination}
+                  issueList={issueList}
+                  uiLocale={uiLocale}
+                />
+              )}
             </ListArea>
           </Pane>
         </div>

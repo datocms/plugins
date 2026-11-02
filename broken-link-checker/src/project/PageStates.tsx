@@ -20,8 +20,8 @@ export function NoAccessState() {
         titleLevel={1}
         error
         icon={<CircleExclamationIcon />}
-        title="API access needed"
-        description="This plugin needs permission to make API calls on behalf of the logged-in user to read your saved records. Ask a project admin to grant it, then reload this page. You can still check the record you're editing from its “Broken links” sidebar panel."
+        title="Link checker can't read your records"
+        description="Ask a project admin to give this plugin access to your records, then reload this page. Meanwhile, you can check a record from its “Broken links” panel."
       />
     </Main>
   );

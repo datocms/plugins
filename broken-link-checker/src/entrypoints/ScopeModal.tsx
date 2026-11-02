@@ -1,4 +1,5 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { useRegisterActions } from 'datocms-react-ui/Actions';
 import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
@@ -22,11 +23,11 @@ export type ScopeModalParams = {
  * The `initialHeight` of the dialog: its content height (the host adds the
  * 20px body padding) before it measures itself, so the frame doesn't jump.
  * The locale field shows only on multi-locale sites. Measured in a browser on
- * the dialog as it opens on the whole project ("All models", "All locales"),
- * at the 600px width of `width: 's'`.
+ * the dialog as it opens on the whole project ("All models", "All locales")
+ * of the primary environment, at the 600px width of `width: 's'`.
  */
 export function scopeModalHeight(multiLocale: boolean): number {
-  return multiLocale ? 392 : 234;
+  return multiLocale ? 349 : 215;
 }
 
 type Option = { label: string; value: string };
@@ -42,6 +43,9 @@ const LOCALE_EXTENTS = [
   { value: 'all', label: 'All locales' },
   { value: 'some', label: 'Only some locales' },
 ] as const;
+
+/** Escape, the Cancel of the footer. */
+const CANCEL_ACTION_ID = 'brokenLinkChecker.scopeCancel';
 
 /** The input ids, for the focus after a failed submit. */
 const MODELS_INPUT_ID = 'scope-models';
@@ -85,9 +89,21 @@ function knownIds(ids: Scope['modelIds'], options: readonly Option[]) {
 const asExtent = (value: string | null): Extent =>
   value === 'some' ? 'some' : 'all';
 
-/** "Choose what to scan": ✕ or Esc resolve nothing. */
+/**
+ * "Choose what to scan". The dialog ends with a footer, so the host draws no
+ * cross (`closeDisabled`): Cancel, and Escape, resolve nothing.
+ */
 export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
   useFrameSizedToContent();
+  // The form registers Escape, so it sits inside the Canvas that holds the keys.
+  return (
+    <Canvas ctx={ctx}>
+      <ScopeForm ctx={ctx} />
+    </Canvas>
+  );
+}
+
+function ScopeForm({ ctx }: { ctx: RenderModalCtx }) {
   const params: ScopeModalParams = isModalParams(ctx.parameters)
     ? ctx.parameters
     : {
@@ -124,6 +140,21 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
   const modelsMissing = limitModels && modelIds.length === 0;
   const localesMissing = limitLocales && localeIds.length === 0;
 
+  const cancel = () => {
+    void ctx.resolve(null);
+  };
+
+  // A key that only makes sense as a key: it doesn't show in the palette.
+  useRegisterActions([
+    {
+      id: CANCEL_ACTION_ID,
+      name: 'Cancel',
+      shortcut: { key: 'escape' },
+      palette: 'hidden',
+      run: cancel,
+    },
+  ]);
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (modelsMissing || localesMissing) {
@@ -141,80 +172,80 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
   };
 
   return (
-    <Canvas ctx={ctx}>
-      <form onSubmit={submit} noValidate>
-        <p className={styles.intro}>
-          Scans the latest saved version of every record in the{' '}
-          <IdText id={params.environment} /> environment, drafts and invalid
-          records included.
-        </p>
-        <FieldWrapper label="Models">
-          <RadioGroupInput
-            value={modelExtent}
-            onChange={(value) => setModelExtent(asExtent(value))}
-            options={MODEL_EXTENTS}
+    <form onSubmit={submit} noValidate>
+      <p className={styles.intro}>
+        {ctx.isEnvironmentPrimary ? (
+          'Scans the latest saved version of each record, drafts included.'
+        ) : (
+          <>
+            Scans the latest saved version of each record in the{' '}
+            <IdText id={params.environment} /> environment, drafts included.
+          </>
+        )}
+      </p>
+      <FieldWrapper label="Models">
+        <RadioGroupInput
+          value={modelExtent}
+          onChange={(value) => setModelExtent(asExtent(value))}
+          options={MODEL_EXTENTS}
+        />
+      </FieldWrapper>
+      {limitModels && (
+        <FieldWrapper
+          id={MODELS_INPUT_ID}
+          label="Models to scan"
+          required
+          error={
+            attempted && modelsMissing ? 'Pick at least one model.' : undefined
+          }
+        >
+          <SelectInput
+            multiple
+            value={modelIds}
+            onChange={(ids) => setModelIds(ids ?? [])}
+            options={modelOptions}
+            placeholder="Select models…"
+            noOptionsMessage={() => 'No models found'}
+            closeMenuOnSelect={false}
           />
         </FieldWrapper>
-        {limitModels && (
-          <FieldWrapper
-            id={MODELS_INPUT_ID}
-            label="Models to scan"
-            required
-            error={
-              attempted && modelsMissing
-                ? 'Pick at least one model.'
-                : undefined
-            }
-          >
-            <SelectInput
-              multiple
-              value={modelIds}
-              onChange={(ids) => setModelIds(ids ?? [])}
-              options={modelOptions}
-              placeholder="Select models…"
-              noOptionsMessage={() => 'No models found'}
-              closeMenuOnSelect={false}
-            />
-          </FieldWrapper>
-        )}
-        {multiLocale && (
-          <FieldWrapper
-            label="Locales"
-            hint="Fields that aren't localized are always scanned."
-          >
-            <RadioGroupInput
-              value={localeExtent}
-              onChange={(value) => setLocaleExtent(asExtent(value))}
-              options={LOCALE_EXTENTS}
-            />
-          </FieldWrapper>
-        )}
-        {limitLocales && (
-          <FieldWrapper
-            id={LOCALES_INPUT_ID}
-            label="Locales to scan"
-            required
-            error={
-              attempted && localesMissing
-                ? 'Pick at least one locale.'
-                : undefined
-            }
-          >
-            <SelectInput
-              multiple
-              value={localeIds}
-              onChange={(ids) => setLocaleIds(ids ?? [])}
-              options={localeOptions}
-              placeholder="Select locales…"
-              noOptionsMessage={() => 'No locales found'}
-              closeMenuOnSelect={false}
-            />
-          </FieldWrapper>
-        )}
-        <div className={styles.actions}>
-          <Button tone="primary" submit label="Scan links" />
-        </div>
-      </form>
-    </Canvas>
+      )}
+      {multiLocale && (
+        <FieldWrapper label="Locales">
+          <RadioGroupInput
+            value={localeExtent}
+            onChange={(value) => setLocaleExtent(asExtent(value))}
+            options={LOCALE_EXTENTS}
+          />
+        </FieldWrapper>
+      )}
+      {limitLocales && (
+        <FieldWrapper
+          id={LOCALES_INPUT_ID}
+          label="Locales to scan"
+          hint="Fields that aren't localized are always scanned."
+          required
+          error={
+            attempted && localesMissing
+              ? 'Pick at least one locale.'
+              : undefined
+          }
+        >
+          <SelectInput
+            multiple
+            value={localeIds}
+            onChange={(ids) => setLocaleIds(ids ?? [])}
+            options={localeOptions}
+            placeholder="Select locales…"
+            noOptionsMessage={() => 'No locales found'}
+            closeMenuOnSelect={false}
+          />
+        </FieldWrapper>
+      )}
+      <div className={styles.actions}>
+        <Button tone="ghost" label="Cancel" onClick={cancel} />
+        <Button tone="primary" submit label="Scan links" />
+      </div>
+    </form>
   );
 }

@@ -22,6 +22,7 @@ import {
   reportDimensions,
   scanFraction,
   scanProgress,
+  shownStatus,
   sortGroups,
 } from './view';
 
@@ -87,26 +88,49 @@ function filters(overrides: Partial<Filters>): Filters {
 const urls = (groups: LinkGroup[]) => groups.map((entry) => entry.key);
 
 describe('attention', () => {
-  it('includes stale reachable groups alongside failing statuses', () => {
-    const staleReachable = group('reachable', 'page', 'en', { stale: true });
-    expect(needsAttention(staleReachable)).toBe(true);
-    expect(needsAttention(group('reachable'))).toBe(false);
-    expect(needsAttention(group('skipped'))).toBe(false);
-    for (const status of [
-      'broken',
-      'invalid',
-      'unverified',
-      'cancelled',
-    ] as const)
+  it('keeps only the links with a known problem', () => {
+    for (const status of ['broken', 'invalid', 'unverified'] as const)
       expect(needsAttention(group(status))).toBe(true);
+    for (const status of ['reachable', 'skipped', 'cancelled'] as const)
+      expect(needsAttention(group(status))).toBe(false);
+  });
+
+  it('reads a changed record by its result, not by the change', () => {
+    const staleReachable = group('reachable', 'post', 'en', { stale: true });
+    const staleBroken = group('broken', 'news', 'en', { stale: true });
+    expect(needsAttention(staleReachable)).toBe(false);
+    const groups = [group('reachable'), staleReachable, staleBroken];
+    expect(urls(filterGroups(groups, DEFAULT_FILTERS))).toEqual([
+      staleBroken.key,
+    ]);
     expect(
-      urls(
-        filterGroups(
-          [group('reachable'), staleReachable, group('queued')],
-          DEFAULT_FILTERS,
-        ),
-      ),
-    ).toEqual([staleReachable.key]);
+      urls(filterGroups(groups, filters({ status: 'reachable' }))),
+    ).toEqual([groups[0].key, staleReachable.key]);
+  });
+
+  it('keeps a canceled link in its own view, outside of the attention view', () => {
+    const groups = [group('cancelled'), group('broken')];
+    expect(countStatuses(groups)).toMatchObject({ attention: 1, cancelled: 1 });
+    expect(
+      urls(filterGroups(groups, filters({ status: 'cancelled' }))),
+    ).toEqual([groups[0].key]);
+  });
+
+  it('shows a refused check as not checked, outside of the attention view', () => {
+    const refused = group('unverified');
+    refused.result = { ...refused.result, reason: 'proxy-refused' };
+    expect(shownStatus(refused.result)).toBe('cancelled');
+    expect(needsAttention(refused)).toBe(false);
+    const groups = [refused, group('invalid')];
+    expect(countStatuses(groups)).toMatchObject({
+      attention: 1,
+      cancelled: 1,
+      unverified: 0,
+      invalid: 1,
+    });
+    expect(
+      urls(filterGroups(groups, filters({ status: 'cancelled' }))),
+    ).toEqual([refused.key]);
   });
 });
 
@@ -278,7 +302,7 @@ describe('counts and dimensions', () => {
     expect(counts.reachable).toBe(1);
     expect(counts.skipped).toBe(1);
     expect(counts.invalid).toBe(0);
-    expect(counts.attention).toBe(3);
+    expect(counts.attention).toBe(2);
     expect(counts.all).toBe(4);
   });
 

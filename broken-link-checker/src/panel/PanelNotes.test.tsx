@@ -38,7 +38,9 @@ describe('PanelNotes', () => {
     ).toBeInTheDocument();
     expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
     // The controls sit under the callout, never in it.
-    const browse = screen.getByRole('button', { name: 'Browse 501 issues' });
+    const browse = screen.getByRole('button', {
+      name: 'Browse 498 more fields',
+    });
     expect(callout).not.toContainElement(browse);
     await user.click(browse);
     expect(within(callout).getAllByRole('listitem')).toHaveLength(50);
@@ -52,7 +54,7 @@ describe('PanelNotes', () => {
     expect(
       within(pages).getByRole('button', { name: 'Next page' }),
     ).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Show fewer issues' }));
+    await user.click(screen.getByRole('button', { name: 'Show fewer fields' }));
     expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
@@ -67,12 +69,14 @@ describe('PanelNotes', () => {
       />,
       { ctx: panelContext() },
     );
-    await user.click(screen.getByRole('button', { name: 'Show all 5 issues' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Show 2 more fields' }),
+    );
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
-  it('says what a canceled check leaves out, and nothing while running', () => {
+  it('needs no callout for a cancel, and says nothing while running', () => {
     const report: ScanReport = {
       ...partialReport(1, []),
       state: 'cancelled',
@@ -82,9 +86,8 @@ describe('PanelNotes', () => {
       <PanelNotes report={report} running={false} uiLocale="en" />,
       { ctx: panelContext() },
     );
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      "Check canceledURLs that weren't checked show as “Not checked”.",
-    );
+    // The headline counts the links that weren't checked.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(
       'Results out of dateThe record changed after this check. Check again to refresh the results.',
     );
@@ -92,5 +95,19 @@ describe('PanelNotes', () => {
     rerender(<PanelNotes report={report} running uiLocale="en" />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('titles a canceled check that also left content unread', () => {
+    const report: ScanReport = {
+      ...partialReport(1, ['Body']),
+      state: 'cancelled',
+    };
+    renderInCanvas(
+      <PanelNotes report={report} running={false} uiLocale="en" />,
+      { ctx: panelContext() },
+    );
+    const callout = screen.getByRole('alert');
+    expect(within(callout).getByText('Check canceled')).toBeInTheDocument();
+    expect(within(callout).getByText('Body')).toBeInTheDocument();
   });
 });

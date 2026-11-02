@@ -2,12 +2,26 @@ import { ListDetail } from 'datocms-react-ui/ListDetail';
 import type { SidebarPanelCollapse } from 'datocms-react-ui/SidebarPanel';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { RecheckIcon } from '../icons';
-import type { LinkGroup } from '../types';
+import type { LinkGroup, PreparedUrl } from '../types';
 import { LinkPanel } from './LinkPanel';
 import { UsedInPanel } from './UsedInPanel';
 
 const RECHECK_BLOCKED =
-  "You can't recheck a URL while links are being checked.";
+  "You can't recheck a link while links are being checked.";
+
+/**
+ * The open link on top of the panel: its path, which tells it apart from
+ * the other links of its site, then the site. A link that can't be checked
+ * shows as it's written.
+ */
+function linkEntity({ url, hostname }: PreparedUrl) {
+  if (hostname === undefined) return { title: url };
+  const { pathname, search } = new URL(url);
+  const path = `${pathname}${search}`;
+  return path === '/'
+    ? { title: hostname }
+    : { title: path, subtitle: hostname };
+}
 
 export type LinkDetailProps = {
   /** The open URL, with its live result: a rechecked URL reads "Checking". */
@@ -29,9 +43,10 @@ export type LinkDetailProps = {
 };
 
 /**
- * The detail of the open row: the URL, its result and the records that use
- * it. The parent keys it by `group.key`, so each URL starts again (its record
- * pages, its steps). "Recheck URL" exists only for a URL that can be checked.
+ * The detail of the open row: the link, its result and the records that use
+ * it. The parent keys it by `group.key`, so each link starts again (its
+ * record pages, its steps). "Recheck link" exists only for a link that can
+ * be checked.
  */
 export function LinkDetail({
   group,
@@ -52,14 +67,14 @@ export function LinkDetail({
   const blocked = scanning || (rechecking && !rechecked);
   return (
     <ListDetail.Panel
-      title="URL"
-      entity={{ title: prepared.hostname ?? prepared.url }}
+      title="Link"
+      entity={linkEntity(prepared)}
       toolbarAction={
         prepared.status === 'queued' && (
           <Toolbar.Button
             tone="primary"
             icon={RecheckIcon}
-            label="Recheck URL"
+            label="Recheck link"
             busy={pending}
             disabled={blocked ? { reason: RECHECK_BLOCKED } : undefined}
             onClick={() => {

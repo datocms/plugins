@@ -10,7 +10,7 @@ type StatusMeta = {
 
 /**
  * Each result as a word with the tone of its dot: red for what is broken,
- * amber for what couldn't be verified, green for a reachable link, grey for
+ * amber for what couldn't be verified, green for a working link, grey for
  * what wasn't checked or needs no check.
  */
 export const STATUS_META: Record<CheckStatus, StatusMeta> = {
@@ -21,7 +21,7 @@ export const STATUS_META: Record<CheckStatus, StatusMeta> = {
   blocked: { label: 'Blocked', tone: 'neutral' },
   checking: { label: 'Checking', tone: 'neutral' },
   queued: { label: 'Pending', tone: 'neutral' },
-  reachable: { label: 'Reachable', tone: 'success' },
+  reachable: { label: 'Working', tone: 'success' },
   skipped: { label: 'Skipped', tone: 'neutral' },
 };
 

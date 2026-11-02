@@ -13,6 +13,7 @@ import { useInMemoryTableLayout } from 'datocms-react-ui/Table';
 import { useMemo, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pageContext } from '../test/fixtures';
+import { focusFromKeyboard } from '../test/focus';
 import type { CheckStatus, LinkGroup, ScanReport } from '../types';
 import { REPORT_TEXTS } from './PageToolbar';
 import {
@@ -86,7 +87,7 @@ function report(
     recordsScanned: groups.length,
     discovering: false,
     warnings: [],
-    scope: 'All models • All locales',
+    scope: 'Page • English',
     startedAt: '2026-09-23T12:00:00Z',
     finishedAt: '2026-09-23T12:01:00Z',
     ...overrides,
@@ -184,7 +185,7 @@ function rowOf(url: string): HTMLElement {
 }
 
 function detail() {
-  return within(screen.getByRole('complementary', { name: 'URL' }));
+  return within(screen.getByRole('complementary', { name: 'Link' }));
 }
 
 /** Text outside the live region, which repeats the summary's headline. */
@@ -238,7 +239,7 @@ function matchMedia(queries: readonly string[]) {
 
 /**
  * A media query whose answer a test changes, as when the frame is resized.
- * The kit reads `matches` on each render and listens with `addListener`.
+ * The kit reads `matches` on each render and listens to its `change` event.
  */
 function changingMedia(query: string, initial: boolean) {
   type Listener = (change: { media: string }) => void;
@@ -249,10 +250,10 @@ function changingMedia(query: string, initial: boolean) {
     get matches() {
       return matches;
     },
-    addListener: (listener: Listener) => {
+    addEventListener: (_type: 'change', listener: Listener) => {
       listeners.add(listener);
     },
-    removeListener: (listener: Listener) => {
+    removeEventListener: (_type: 'change', listener: Listener) => {
       listeners.delete(listener);
     },
   } as unknown as MediaQueryList;
@@ -339,13 +340,13 @@ async function pick(user: UserEvent, trigger: string, option: string) {
 
 /** The text filter of the filter row, whose search landmark is named after the list. */
 function filterField() {
-  return within(screen.getByRole('search', { name: 'URLs' })).getByRole(
+  return within(screen.getByRole('search', { name: 'Links' })).getByRole(
     'textbox',
   );
 }
 
 async function openFilter(user: UserEvent) {
-  await user.click(screen.getByRole('button', { name: 'Filter URLs' }));
+  await user.click(screen.getByRole('button', { name: 'Filter Links' }));
   return filterField();
 }
 
@@ -367,7 +368,7 @@ describe('ReportLayout', () => {
     expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[1]))).not.toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[2]))).not.toBeInTheDocument();
-    expect(screen.getByText('1 URL')).toBeInTheDocument();
+    expect(screen.getByText('1 link')).toBeInTheDocument();
     expect(title('Needs attention')).toBeInTheDocument();
   });
 
@@ -384,24 +385,24 @@ describe('ReportLayout', () => {
     // has URLs, by severity, each with its count. The count of every URL is
     // the count after the title once "All URLs" is picked.
     expect(names).toEqual([
-      'All URLs',
+      'All links',
       'Needs attention1',
       'Broken1',
-      'Reachable1',
+      'Working1',
       'Skipped1',
     ]);
     // The page's help sits at the bottom of the menu.
     expect(
       screen.getByText(/Results stay only while this page is open/),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('menuitem', { name: /^Reachable/ }));
+    await user.click(screen.getByRole('menuitem', { name: /^Working/ }));
     expect(table().getByText(urlOf(groups[1]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[0]))).not.toBeInTheDocument();
-    expect(title('Reachable')).toBeInTheDocument();
+    expect(title('Working')).toBeInTheDocument();
 
-    await pickPreset(user, /^All URLs/);
+    await pickPreset(user, /^All links/);
     expect(title()).toBeVisible();
-    expect(screen.getByText('3 URLs')).toBeInTheDocument();
+    expect(screen.getByText('3 links')).toBeInTheDocument();
   });
 
   it('lists a view only while it keeps URLs or is picked', async () => {
@@ -419,9 +420,9 @@ describe('ReportLayout', () => {
     };
     // The default view keeps no URL, but it's the one picked.
     expect(await options()).toEqual([
-      'All URLs',
+      'All links',
       'Needs attention0',
-      'Reachable1',
+      'Working1',
       'Skipped1',
     ]);
     await pickPreset(user, /^Skipped/);
@@ -429,16 +430,16 @@ describe('ReportLayout', () => {
     // Once another view is picked, "Needs attention" keeps no URL, so it
     // goes; the picked status keeps its place once it has no URL left.
     rerender({ report: report([group('reachable')]) });
-    expect(await options()).toEqual(['All URLs', 'Reachable1', 'Skipped0']);
-    await pickPreset(user, /^Reachable/);
-    expect(await options()).toEqual(['All URLs', 'Reachable1']);
+    expect(await options()).toEqual(['All links', 'Working1', 'Skipped0']);
+    await pickPreset(user, /^Working/);
+    expect(await options()).toEqual(['All links', 'Working1']);
     // It comes back as soon as a URL needs attention.
     rerender({ report: report([group('reachable'), group('broken')]) });
     expect(await options()).toEqual([
-      'All URLs',
+      'All links',
       'Needs attention1',
       'Broken1',
-      'Reachable1',
+      'Working1',
     ]);
     await pickPreset(user, /^Needs attention/);
     expect(title('Needs attention')).toBeInTheDocument();
@@ -456,7 +457,7 @@ describe('ReportLayout', () => {
 
     const search = await openFilter(user);
     // The text, the model and the locale filter one list: one search landmark.
-    const landmark = screen.getByRole('search', { name: 'URLs' });
+    const landmark = screen.getByRole('search', { name: 'Links' });
     expect(landmark).toContainElement(search);
     expect(landmark).toContainElement(
       screen.getByRole('button', { name: 'All models' }),
@@ -482,11 +483,30 @@ describe('ReportLayout', () => {
     await user.clear(search);
     await user.type(search, 'BROKEN-NEWS');
     expect(await screen.findByText(news)).toBeInTheDocument();
-    expect(screen.getByText('1 URL')).toBeInTheDocument();
+    expect(screen.getByText('1 link')).toBeInTheDocument();
 
     // The picker shows the current value, and the menu checks it.
     await user.click(screen.getByRole('button', { name: 'News' }));
     expect(screen.getByRole('menuitem', { name: 'News' })).toBeInTheDocument();
+  });
+
+  it('searches all links when the filter finds nothing in a narrower view', async () => {
+    const user = userEvent.setup();
+    const working = group('reachable');
+    renderLayout({ report: report([group('broken'), working]) });
+    const search = await openFilter(user);
+    await user.type(search, urlOf(working));
+    expect(await screen.findByText('No results', VISIBLE)).toBeInTheDocument();
+    // The same search runs across every link.
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
+    expect(table().getByText(urlOf(working))).toBeInTheDocument();
+    expect(search).toHaveValue(urlOf(working));
+    // In "All links" there is no wider view to search.
+    await user.type(search, '-not-present');
+    expect(await screen.findByText('No results', VISIBLE)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show all links' }),
+    ).not.toBeInTheDocument();
   });
 
   it('hides the model and locale pickers when the report has one of each', async () => {
@@ -514,7 +534,7 @@ describe('ReportLayout', () => {
     await user.hover(tableElement());
     pressFilterKey();
     expect(
-      await screen.findByRole('search', { name: 'URLs' }),
+      await screen.findByRole('search', { name: 'Links' }),
     ).toContainElement(filterField());
 
     // The menu's search reads each option's innerText, which jsdom lacks.
@@ -563,17 +583,17 @@ describe('ReportLayout', () => {
       group('reachable', { modelId: 'news', locale: 'it' }),
     ];
     renderLayout({ report: report(groups) });
-    await pickPreset(user, /^All URLs/);
+    await pickPreset(user, /^All links/);
     const search = await openFilter(user);
     await pick(user, 'All models', 'Page');
     await user.type(search, 'reachable');
-    expect(await screen.findByText('1 URL')).toBeInTheDocument();
+    expect(await screen.findByText('1 link')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Close the filter' }));
     expect(
-      screen.queryByRole('search', { name: 'URLs' }),
+      screen.queryByRole('search', { name: 'Links' }),
     ).not.toBeInTheDocument();
-    expect(await screen.findByText('3 URLs')).toBeInTheDocument();
+    expect(await screen.findByText('3 links')).toBeInTheDocument();
     expect(title()).toBeVisible();
 
     // Opening the filter again starts empty.
@@ -584,12 +604,12 @@ describe('ReportLayout', () => {
 
     // Escape in the text field closes the row too, and clears it.
     await user.type(filterField(), 'reachable');
-    expect(await screen.findByText('2 URLs')).toBeInTheDocument();
+    expect(await screen.findByText('2 links')).toBeInTheDocument();
     pressEscape();
     expect(
-      screen.queryByRole('search', { name: 'URLs' }),
+      screen.queryByRole('search', { name: 'Links' }),
     ).not.toBeInTheDocument();
-    expect(await screen.findByText('3 URLs')).toBeInTheDocument();
+    expect(await screen.findByText('3 links')).toBeInTheDocument();
   });
 
   it('exports while filtered, and explains why an empty or busy report cannot export', async () => {
@@ -602,14 +622,18 @@ describe('ReportLayout', () => {
     expect(onExport).toHaveBeenCalledTimes(1);
     unmount();
 
-    // A settled report with no URL: the option says why it can't run.
+    // A settled report with no URL has nothing to export or to pick: no
+    // "⋮", and the title is no menu.
     const empty = renderLayout({ report: report([]) });
-    const emptyOption = await openExport(user);
-    expect(await tooltipOf(user, emptyOption)).toBe(
-      'The report has no URLs to export.',
-    );
-    await user.click(emptyOption);
-    expect(empty.onExport).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Actions' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Link checker' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Needs attention/ }),
+    ).not.toBeInTheDocument();
     empty.unmount();
 
     // While a scan runs, URLs can still come: the option says why it can't run yet.
@@ -619,7 +643,7 @@ describe('ReportLayout', () => {
     });
     const waitingOption = await openExport(user);
     expect(await tooltipOf(user, waitingOption)).toBe(
-      'The report has no URLs to export yet.',
+      'The report has no links to export yet.',
     );
     await user.click(waitingOption);
     expect(waiting.onExport).not.toHaveBeenCalled();
@@ -636,16 +660,18 @@ describe('ReportLayout', () => {
     const broken = group('broken');
     const { onOpenRecord } = renderLayout({ report: report([broken]) });
     expect(
-      screen.queryByRole('complementary', { name: 'URL' }),
+      screen.queryByRole('complementary', { name: 'Link' }),
     ).not.toBeInTheDocument();
 
     await user.click(table().getByText(urlOf(broken)));
     expect(rowOf(urlOf(broken))).toHaveAttribute('aria-current', 'true');
+    // On top: the path, which tells the link from the others of its site, then the site.
+    expect(detail().getByText('/path')).toBeInTheDocument();
     expect(detail().getByText('broken-page.example')).toBeInTheDocument();
     expect(detail().getByText('Broken')).toBeInTheDocument();
     expect(detail().getByText('404')).toBeInTheDocument();
-    // The status word and the HTTP status already say it.
-    expect(detail().queryByText('Result: broken')).not.toBeInTheDocument();
+    // A broken link says why in plain words, under its status.
+    expect(detail().getByText('Result: broken')).toBeInTheDocument();
     expect(
       detail().getByRole('link', {
         name: `${urlOf(broken)} (opens in a new tab)`,
@@ -682,10 +708,10 @@ describe('ReportLayout', () => {
     const results = tableElement();
 
     await user.click(table().getByText(urlOf(groups[0])));
-    expect(screen.getByRole('complementary', { name: 'URL' })).toBeVisible();
+    expect(screen.getByRole('complementary', { name: 'Link' })).toBeVisible();
     pressEscape();
     expect(
-      screen.queryByRole('complementary', { name: 'URL' }),
+      screen.queryByRole('complementary', { name: 'Link' }),
     ).not.toBeInTheDocument();
     expect(tableElement()).toBe(results);
     expect(search).toHaveValue('first');
@@ -701,13 +727,13 @@ describe('ReportLayout', () => {
     const row = rowOf(urlOf(broken));
 
     await user.click(table().getByText(urlOf(broken)));
-    expect(screen.getByRole('complementary', { name: 'URL' })).toBeVisible();
+    expect(screen.getByRole('complementary', { name: 'Link' })).toBeVisible();
     expect(tableElement()).toBe(results);
 
     // The panel over the list has a way back to it.
     await user.click(detail().getByRole('button', { name: 'Hide details' }));
     expect(
-      screen.queryByRole('complementary', { name: 'URL' }),
+      screen.queryByRole('complementary', { name: 'Link' }),
     ).not.toBeInTheDocument();
     expect(tableElement()).toBe(results);
     expect(rowOf(urlOf(broken))).toBe(row);
@@ -751,10 +777,18 @@ describe('ReportLayout', () => {
       }),
       scanning: true,
     });
-    await user.click(screen.getByRole('button', { name: 'Show all 8 issues' }));
+    // The scan's state comes first, then what it couldn't read.
+    expect(
+      screen
+        .getByText(/^Scanning links…/)
+        .compareDocumentPosition(screen.getByRole('alert')),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await user.click(
+      screen.getByRole('button', { name: "Show what couldn't be read" }),
+    );
     expect(
       within(screen.getByRole('alert')).getAllByRole('listitem'),
-    ).toHaveLength(8);
+    ).toHaveLength(1);
 
     // The running scan's callout gives way to the summary, which keeps the list open.
     rerender({
@@ -764,9 +798,9 @@ describe('ReportLayout', () => {
     });
     const summary = within(screen.getByRole('alert'));
     expect(summary.getByText('Scan incomplete')).toBeInTheDocument();
-    expect(summary.getAllByRole('listitem')).toHaveLength(8);
+    expect(summary.getAllByRole('listitem')).toHaveLength(1);
     expect(
-      screen.getByRole('button', { name: 'Show fewer issues' }),
+      screen.getByRole('button', { name: "Hide what couldn't be read" }),
     ).toBeInTheDocument();
   });
 
@@ -785,8 +819,9 @@ describe('ReportLayout', () => {
     );
     expect(onChooseScope).toHaveBeenCalledTimes(1);
 
+    focusFromKeyboard();
     screen.getByRole('button', { name: 'Scan links' }).focus();
-    // A recheck disables the action with its reason: the focus stays on it.
+    // A recheck disables the action with its reason: the keyboard's focus stays on it.
     rerender({ rechecking: true });
     const blocked = screen.getByRole('button', { name: 'Scan links' });
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
@@ -805,21 +840,21 @@ describe('ReportLayout', () => {
     });
 
     await user.click(table().getByText(urlOf(broken)));
-    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
+    await user.click(detail().getByRole('button', { name: 'Recheck link' }));
     expect(onRecheck).toHaveBeenCalledWith(broken);
 
     rerender({ scanning: true });
-    const recheck = detail().getByRole('button', { name: 'Recheck URL' });
+    const recheck = detail().getByRole('button', { name: 'Recheck link' });
     expect(recheck).toHaveAttribute('aria-disabled', 'true');
     expect(await tooltipOf(user, recheck)).toBe(
-      "You can't recheck a URL while links are being checked.",
+      "You can't recheck a link while links are being checked.",
     );
 
     rerender({ scanning: false });
-    await pickPreset(user, /^All URLs/);
+    await pickPreset(user, /^All links/);
     await user.click(table().getByText(urlOf(skipped)));
     expect(
-      detail().queryByRole('button', { name: 'Recheck URL' }),
+      detail().queryByRole('button', { name: 'Recheck link' }),
     ).not.toBeInTheDocument();
   });
 
@@ -838,29 +873,31 @@ describe('ReportLayout', () => {
     expect(variant).toHaveAttribute('href', `${urlOf(broken)}#pricing`);
   });
 
-  it('keeps stale URLs in the default view and tags them', async () => {
+  it('keeps stale URLs in the view of their status and tags them', async () => {
     const user = userEvent.setup();
     const stale = group('reachable', { stale: true });
     renderLayout({
       report: report([stale], { stale: true }),
       changedRecordIds: new Set(['record-page']),
     });
+    // A changed record doesn't make a working link need attention.
+    expect(screen.getByText('Nothing needs attention')).toBeInTheDocument();
+    await pickPreset(user, /^Working/);
     expect(table().getByText(urlOf(stale))).toBeInTheDocument();
     expect(table().getByText('Content changed')).toBeInTheDocument();
-    // The stale note follows the summary as a callout of its own.
-    const [summary, staleNote] = screen.getAllByRole('note');
-    expect(within(summary).getByText('Scan complete')).toBeInTheDocument();
+    // The summary says it in one sentence: no second callout.
+    const summary = screen.getByRole('note');
     expect(
-      within(staleNote).getByText(/^Records changed after this scan/),
+      within(summary).getByText(/^Some records changed after this scan/),
     ).toBeInTheDocument();
-    // The title bar's "Scan links" scans again: the notices have no button.
-    for (const note of [summary, staleNote])
-      expect(within(note).queryByRole('button')).not.toBeInTheDocument();
+    // The title bar's "Scan links" scans again: the summary has no button.
+    expect(within(summary).queryByRole('button')).not.toBeInTheDocument();
 
+    // In the detail, the pill of the changed record says it.
     await user.click(table().getByText(urlOf(stale)));
     expect(
-      detail().getByText(/A record using this URL changed after the scan/),
-    ).toBeInTheDocument();
+      detail().queryByText(/changed after the scan/),
+    ).not.toBeInTheDocument();
     expect(detail().getByText('Content changed')).toBeInTheDocument();
   });
 
@@ -877,11 +914,21 @@ describe('ReportLayout', () => {
     expect(partial.getByText('Scan incomplete')).toBeInTheDocument();
     expect(
       partial.getByText(
-        "Some content couldn't be read, so the links in it aren't in this report:",
+        "Some content couldn't be read, so its links aren't in this report.",
       ),
     ).toBeInTheDocument();
+    // The issues show on demand.
+    expect(
+      partial.queryByText('News: Record access denied'),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: "Show what couldn't be read" }),
+    );
     expect(partial.getByText('News: Record access denied')).toBeInTheDocument();
-    expect(table().getAllByText('Not checked').length).toBeGreaterThan(0);
+    // "Needs attention" keeps the links with a problem, not those that weren't checked.
+    expect(table().getByText('Broken')).toBeInTheDocument();
+    expect(table().queryByText('Not checked')).not.toBeInTheDocument();
+    expect(screen.getByText('1 link')).toBeInTheDocument();
     // The live region says the headline of the settled state.
     expect(screen.getByRole('status')).toHaveTextContent('Scan incomplete');
     unmount();
@@ -890,13 +937,18 @@ describe('ReportLayout', () => {
       report: report(groups, { state: 'cancelled' }),
       settled: { state: 'cancelled', finishedAt: '2026-09-23T12:01:00Z' },
     });
-    const canceled = within(screen.getByRole('alert'));
-    expect(canceled.getByText('Scan canceled')).toBeInTheDocument();
+    // The user's own stop: a neutral callout with no title.
+    const canceled = within(screen.getByRole('note'));
+    expect(canceled.queryByText('Scan canceled')).not.toBeInTheDocument();
     expect(
-      canceled.getByText(/URLs that weren't checked show as “Not checked”\.$/),
+      canceled.getByText(
+        'This report covers only what was checked before you stopped the scan.',
+      ),
     ).toBeInTheDocument();
-    // The facts are a line of the summary callout.
-    expect(canceled.getByText(/• Stopped /)).toBeInTheDocument();
+    // The facts are a line of the summary callout, with the links not checked.
+    expect(
+      canceled.getByText(/• 1 not checked • Stopped /),
+    ).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Scan canceled');
   });
 
@@ -917,12 +969,12 @@ describe('ReportLayout', () => {
     ).toHaveAttribute('aria-valuenow', '75');
     expect(
       screen.getByText(
-        'Scanning links (75%)… • All models • All locales • 60 records read • 1 of 2 URLs processed',
+        'Scanning links… • Page • English • 60 records read • 1 of 2 links checked',
       ),
     ).toBeInTheDocument();
     expect(table().getByText(urlOf(broken))).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Filter URLs' }),
+      screen.getByRole('button', { name: 'Filter Links' }),
     ).toBeInTheDocument();
     // While the scan runs its live region stays empty.
     expect(screen.getByRole('status')).toHaveTextContent('');
@@ -949,11 +1001,11 @@ describe('ReportLayout', () => {
       recordTotal: 120,
       scanning: true,
     });
-    expect(screen.getByText('Scanning links (50%)…')).toBeInTheDocument();
+    expect(screen.getByText('Scanning links…')).toBeInTheDocument();
     expect(screen.getByText('60 of 120 records read')).toBeInTheDocument();
     // Nothing to filter or list yet.
     expect(
-      screen.queryByRole('button', { name: 'Filter URLs' }),
+      screen.queryByRole('button', { name: 'Filter Links' }),
     ).not.toBeInTheDocument();
     expect(document.querySelector('.Table')).not.toBeInTheDocument();
 
@@ -965,7 +1017,7 @@ describe('ReportLayout', () => {
       screen.getByRole('progressbar', { name: 'Scanning links' }),
     ).toHaveAttribute('aria-valuenow', '50');
     expect(
-      screen.getByText('60 of 120 records read • 0 of 2 URLs processed'),
+      screen.getByText('60 of 120 records read • 0 of 2 links checked'),
     ).toBeInTheDocument();
     expect(document.querySelector('.Table')).not.toBeInTheDocument();
     expect(
@@ -977,10 +1029,10 @@ describe('ReportLayout', () => {
     rerender({ report: running([...pending, broken]) });
     expect(table().getByText(urlOf(broken))).toBeInTheDocument();
     expect(
-      screen.getByText(/^Scanning links \(\d+%\)… • All models • All locales/),
+      screen.getByText(/^Scanning links… • Page • English/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Filter URLs' }),
+      screen.getByRole('button', { name: 'Filter Links' }),
     ).toBeInTheDocument();
   });
 
@@ -1016,9 +1068,9 @@ describe('ReportLayout', () => {
     expect(screen.getByText(/^Scanning links/)).toBeInTheDocument();
     rerender({ report: report([group('reachable')]), scanning: false });
     expect(screen.queryByText(/^Scanning links/)).not.toBeInTheDocument();
-    // A complete scan is a neutral callout with its facts, not an alert.
+    // A complete scan is a neutral callout with its facts and no title, not an alert.
     const summary = within(screen.getByRole('note'));
-    expect(summary.getByText('Scan complete')).toBeInTheDocument();
+    expect(summary.queryByText('Scan complete')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(summary.getByText(/• Finished /)).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Scan complete');
@@ -1036,7 +1088,7 @@ describe('ReportLayout', () => {
       scanning: true,
     });
     expect(screen.getByText('Scanning links…')).toBeInTheDocument();
-    expect(screen.getByText('All models • All locales')).toBeInTheDocument();
+    expect(screen.getByText('Page • English')).toBeInTheDocument();
     expect(screen.getByText('14 records read')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
@@ -1084,7 +1136,7 @@ describe('ReportLayout', () => {
     );
     renderLayout({ report: report(groups) });
     const pages = () =>
-      within(screen.getByRole('navigation', { name: 'URLs pagination' }));
+      within(screen.getByRole('navigation', { name: 'Links pagination' }));
     expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     expect(screen.queryByText(urlOf(groups[50]))).not.toBeInTheDocument();
     // The list was scrolled down: the Pane's content is its scroll box.
@@ -1107,7 +1159,7 @@ describe('ReportLayout', () => {
 
     await user.selectOptions(screen.getByLabelText('Items per page'), '100');
     expect(
-      screen.queryByRole('navigation', { name: 'URLs pagination' }),
+      screen.queryByRole('navigation', { name: 'Links pagination' }),
     ).not.toBeInTheDocument();
     expect(table().getByText(urlOf(groups[0]))).toBeInTheDocument();
     expect(table().getByText(urlOf(groups[59]))).toBeInTheDocument();
@@ -1133,7 +1185,7 @@ describe('ReportLayout', () => {
     pressEscape();
     expect(rowOf(urlOf(second))).not.toHaveAttribute('aria-current');
     expect(
-      screen.queryByRole('complementary', { name: 'URL' }),
+      screen.queryByRole('complementary', { name: 'Link' }),
     ).not.toBeInTheDocument();
 
     // "]" opens the last open row again.
@@ -1148,9 +1200,12 @@ describe('ReportLayout', () => {
   it('shows an empty report as "No links found"', () => {
     renderLayout({ report: report([]) });
     expect(screen.getByText('No links found')).toBeInTheDocument();
-    expect(screen.getByText(/No URLs found/)).toBeInTheDocument();
+    // The blank slate says it: the facts don't repeat it.
+    expect(screen.getByRole('note')).toHaveTextContent(
+      /^Page • English • 0 records read • Finished/,
+    );
     expect(
-      screen.queryByRole('button', { name: 'Filter URLs' }),
+      screen.queryByRole('button', { name: 'Filter Links' }),
     ).not.toBeInTheDocument();
     expect(document.querySelector('.Table')).not.toBeInTheDocument();
   });
@@ -1171,12 +1226,12 @@ describe('ReportLayout', () => {
     const scan = screen.getByRole('button', { name: 'Scan links' });
     expect(scan).toHaveAttribute('aria-disabled', 'true');
     expect(await tooltipOf(user, scan)).toBe(
-      "You can't start a scan while a URL is being rechecked.",
+      "You can't start a scan while a link is being rechecked.",
     );
     const scope = screen.getByRole('button', { name: 'More scan options' });
     expect(scope).toHaveAttribute('aria-disabled', 'true');
     expect(await tooltipOf(user, scope)).toBe(
-      "You can't choose what to scan while a URL is being rechecked.",
+      "You can't choose what to scan while a link is being rechecked.",
     );
     expect(
       screen.queryByRole('button', { name: 'Cancel scan' }),
@@ -1186,7 +1241,7 @@ describe('ReportLayout', () => {
 
     await user.click(table().getByText(urlOf(broken)));
     expect(
-      detail().getByRole('button', { name: 'Recheck URL' }),
+      detail().getByRole('button', { name: 'Recheck link' }),
     ).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -1215,14 +1270,14 @@ describe('ReportLayout', () => {
       settled: { state: 'complete', finishedAt: '2026-09-23T12:01:00Z' },
     });
     expect(within(rowOf(urlOf(broken))).getByText('Checking')).toBeVisible();
-    expect(screen.getByText('1 URL')).toBeInTheDocument();
-    expect(screen.getByText(/1 needs attention/)).toBeInTheDocument();
+    // The title bar counts the rechecked link as it was.
+    expect(screen.getByText('1 link')).toBeInTheDocument();
     expect(
       screen.queryByText('Nothing needs attention'),
     ).not.toBeInTheDocument();
   });
 
-  it('sorts by a column, cycling ascending, descending and none, from page 1', async () => {
+  it('lists the broken links first, and cycles the sort from page 1', async () => {
     const user = userEvent.setup();
     const groups = Array.from({ length: 60 }, (_, index) =>
       group(index % 2 ? 'broken' : 'unverified', {
@@ -1234,25 +1289,23 @@ describe('ReportLayout', () => {
       tableElement().querySelector('.Table__row--openable')?.textContent;
     const next = () =>
       within(
-        screen.getByRole('navigation', { name: 'URLs pagination' }),
+        screen.getByRole('navigation', { name: 'Links pagination' }),
       ).getByRole('button', { name: 'Next page' });
-    const statusHeader = () => table().getByRole('link', { name: /^Status/ });
+    const statusHeader = () => table().getByRole('button', { name: /^Status/ });
 
-    // Discovery order.
-    expect(firstRow()).toContain('url-01');
-    await user.click(next());
-    expect(firstRow()).toContain('url-51');
-
-    // Ascending severity: broken first, from page 1.
-    await user.click(statusHeader());
+    // Ascending severity at first, as in the record panel: broken first.
     expect(firstRow()).toContain('url-02');
     expect(firstRow()).toContain('Broken');
-
     await user.click(next());
+    expect(firstRow()).toContain('url-41');
+
+    // Descending, from page 1.
     await user.click(statusHeader());
     expect(firstRow()).toContain('url-01');
     expect(firstRow()).toContain('Unverified');
 
+    // No sort: discovery order.
+    await user.click(next());
     await user.click(statusHeader());
     expect(firstRow()).toContain('url-01');
     await user.click(next());
@@ -1281,11 +1334,56 @@ describe('ReportLayout', () => {
       settled: { state: 'cancelled', finishedAt: '2026-09-23T12:01:00Z' },
     });
     expect(
-      within(screen.getByRole('alert')).getByText(
-        /URLs that weren't checked show as “Not checked”\.$/,
+      within(screen.getByRole('note')).getByText(
+        'This report covers only what was checked before you stopped the scan.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('No links found')).not.toBeInTheDocument();
+  });
+
+  it('shows a scan that read nothing as a failure, in place of the report', () => {
+    renderLayout({
+      report: report([], {
+        state: 'partial',
+        recordsScanned: 0,
+        warnings: [
+          'Article: Access was refused. Reload the page and scan again.',
+          'Author: Access was refused. Reload the page and scan again.',
+        ],
+      }),
+      settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
+    });
+    // The blank slate's title, and the live region that announces it.
+    expect(screen.getAllByText("Couldn't read your records")).toHaveLength(2);
+    // The reason once, with no summary or list of issues around it.
+    expect(
+      screen.getAllByText(
+        'Access was refused. Reload the page and scan again.',
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Couldn't read your records",
+    );
+  });
+
+  it('keeps the summary of a scan whose models have no records', () => {
+    renderLayout({
+      report: report([], {
+        state: 'partial',
+        recordsScanned: 0,
+        warnings: ["Article: Some blocks couldn't be read."],
+      }),
+      settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
+      recordTotal: 0,
+    });
+    // Nothing failed to read: the summary says what the scan left out.
+    expect(
+      screen.queryByText("Couldn't read your records"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Scan incomplete');
+    expect(screen.getByText(/0 records read/)).toBeInTheDocument();
   });
 
   it('counts invalid and skipped URLs as settled while checking', () => {
@@ -1297,7 +1395,7 @@ describe('ReportLayout', () => {
       scanning: true,
     });
     expect(
-      screen.getByText(/3 records read • 1 of 3 URLs processed$/),
+      screen.getByText(/3 records read • 1 of 3 links checked$/),
     ).toBeInTheDocument();
   });
 
@@ -1311,16 +1409,79 @@ describe('ReportLayout', () => {
       }),
       settled: { state: 'partial', finishedAt: '2026-09-23T12:01:00Z' },
     });
+    fireEvent.click(
+      screen.getByRole('button', { name: "Show what couldn't be read" }),
+    );
     expect(screen.getByText('Body (English) > Hero')).toBeInTheDocument();
   });
 
-  it('says once that the link checking service refused the plugin', () => {
+  it('says once that the link checking service refused the plugin, and shows its links as not checked', async () => {
+    const user = userEvent.setup();
     const refused = group('unverified');
     refused.result = { ...refused.result, reason: 'proxy-refused' };
-    renderLayout({
-      report: report([refused, group('unverified', { slug: 'b' })]),
+    const invalid = group('invalid');
+    const { unmount } = renderLayout({ report: report([refused, invalid]) });
+    // The summary says it, in place of "Scan complete": one callout.
+    const [summary] = screen.getAllByRole('alert');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(
+      within(summary).getByText("Links couldn't be checked"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Links couldn't be checked",
+    );
+    // Only the invalid link needs attention: the refused one wasn't checked.
+    expect(table().getByText(urlOf(invalid))).toBeInTheDocument();
+    expect(table().queryByText(urlOf(refused))).not.toBeInTheDocument();
+    await pickPreset(user, /^Not checked/);
+    expect(table().getByText('Not checked')).toBeInTheDocument();
+    // The link's detail doesn't say it again.
+    await user.click(table().getByText(urlOf(refused)));
+    expect(detail().getByText('Not checked')).toBeInTheDocument();
+    expect(detail().queryByText(/marketplace/)).not.toBeInTheDocument();
+    unmount();
+
+    // With no other link, no view says the links are fine.
+    renderLayout({ report: report([refused]) });
+    expect(
+      screen.queryByText('Nothing needs attention'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("calls only the checked links clean when some weren't checked", async () => {
+    const user = userEvent.setup();
+    const reachable = group('reachable');
+    const unchecked = group('cancelled');
+    const settled = {
+      state: 'cancelled' as const,
+      finishedAt: '2026-09-23T12:01:00Z',
+    };
+    const { unmount } = renderLayout({
+      report: report([reachable, unchecked], { state: 'cancelled' }),
+      settled,
     });
-    expect(screen.getAllByText(/No link could be checked/)).toHaveLength(1);
+    expect(
+      screen.queryByText('Nothing needs attention'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No problems found')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'None of the checked links is broken, invalid or unverified.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
+    expect(table().getByText(urlOf(unchecked))).toBeInTheDocument();
+    unmount();
+
+    // With no link checked, the summary's "not checked" is all there is to say.
+    renderLayout({
+      report: report([unchecked], { state: 'cancelled' }),
+      settled,
+    });
+    expect(screen.queryByText('No problems found')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Nothing needs attention'),
+    ).not.toBeInTheDocument();
   });
 
   it('switches to all URLs from a clean view', async () => {
@@ -1328,10 +1489,10 @@ describe('ReportLayout', () => {
     const reachable = group('reachable');
     renderLayout({ report: report([reachable]) });
     expect(screen.getByText('Nothing needs attention')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show all URLs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all links' }));
     expect(table().getByText(urlOf(reachable))).toBeInTheDocument();
     expect(title()).toBeVisible();
     await user.click(table().getByText(urlOf(reachable)));
-    expect(detail().getByText('Reachable')).toBeInTheDocument();
+    expect(detail().getByText('Working')).toBeInTheDocument();
   });
 });

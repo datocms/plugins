@@ -150,20 +150,14 @@ export function extractLinks(
     if (value === null || value === undefined) return;
     const block = objectValue(value);
     if (!block) {
-      warn(
-        'Embedded block content is not loaded; some links could not be checked.',
-        context,
-      );
+      warn("Some blocks couldn't be read.", context);
       return;
     }
     const item = unwrapItem(block);
     const modelId = modelIdOf(item);
     const model = modelId ? schema.get(modelId) : undefined;
     if (!model?.isBlock) {
-      warn(
-        'An embedded block model is unavailable; some links could not be checked.',
-        context,
-      );
+      warn("Some blocks couldn't be read.", context);
       return;
     }
     visitModel(item, model, {
@@ -182,7 +176,7 @@ export function extractLinks(
     context: Context,
   ) => {
     if (typeof node.url === 'string') add(node.url, field, context);
-    else warn('A Structured Text link has no readable destination.', context);
+    else warn('A link has no web address.', context);
   };
 
   const visitDastNode = (
@@ -192,14 +186,11 @@ export function extractLinks(
   ) => {
     const node = objectValue(value);
     if (!node) {
-      warn(
-        'Structured Text contains an unreadable node; some links could not be checked.',
-        context,
-      );
+      warn("Part of this text couldn't be read.", context);
       return;
     }
     if (context.depth > MAX_DEPTH || activeObjects.has(node)) {
-      warn('Content nesting could not be fully read.', context);
+      warn("Some nested blocks couldn't be read.", context);
       return;
     }
     activeObjects.add(node);
@@ -232,10 +223,7 @@ export function extractLinks(
       document?.type !== 'root' ||
       !Array.isArray(document.children)
     ) {
-      warn(
-        'Structured Text content is not available in its saved format.',
-        context,
-      );
+      warn("This text couldn't be read.", context);
       return;
     }
     visitDastNode(document, field, context);
@@ -244,10 +232,7 @@ export function extractLinks(
   const visitModularContent = (value: unknown, context: Context) => {
     if (value === null || value === undefined) return;
     if (!Array.isArray(value)) {
-      warn(
-        'Modular content is not loaded; some links could not be checked.',
-        context,
-      );
+      warn("Some blocks couldn't be read.", context);
       return;
     }
     for (const [index, block] of value.entries())
@@ -283,7 +268,7 @@ export function extractLinks(
     parent?: Context,
   ) => {
     if ((parent?.depth ?? 0) > MAX_DEPTH || activeObjects.has(value)) {
-      warn('Content nesting could not be fully read.', parent);
+      warn("Some nested blocks couldn't be read.", parent);
       return;
     }
     activeObjects.add(value);
@@ -312,10 +297,7 @@ export function extractLinks(
     const localized = objectValue(value);
     const context = parent ?? { rootField: field, blockPath: [], depth: 0 };
     if (!localized) {
-      warn(
-        'Localized content is unavailable; some links could not be checked.',
-        context,
-      );
+      warn("This field couldn't be read.", context);
       return;
     }
     for (const locale of readableLocales(localized)) {
@@ -328,6 +310,6 @@ export function extractLinks(
   };
 
   if (rootModel) visitModel(record.values, rootModel);
-  else warn('The record model is unavailable; its links could not be checked.');
+  else warn("Its model couldn't be loaded.");
   return { occurrences, warnings: [...warnings] };
 }

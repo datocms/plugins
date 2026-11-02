@@ -52,7 +52,7 @@ export function ExternalLinkIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Checks a URL again */
+/** Checks links again */
 export function RecheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

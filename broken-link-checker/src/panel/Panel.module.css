@@ -48,7 +48,7 @@
   color: var(--color--ink-subtle);
 }
 
-/* The URLs, each one a block between two hairlines. */
+/* The links, each one a block between two hairlines. */
 .results {
   padding: 0;
   border-top: 1px solid var(--color--border);
@@ -63,35 +63,10 @@
   margin-top: var(--spacing-s);
 }
 
-/* The HTTP status after the status word. */
-.subtle {
-  color: var(--color--ink-subtle);
-}
-
 /* Why a result reads as it does, and the fragment note. */
 .note {
   font-size: var(--font-size-xs);
   color: var(--color--ink-subtle);
-}
-
-/* The places of a URL: rows that go to their field. A row keeps its text at
-   the inset of its own list (--row-inset plus the padding of its content),
-   while the content of the panel already sits at the frame's body padding.
-   So the box goes out of the column, and the text of the rows comes in line
-   with the URL and the status above it (RowList, "The inset row"), but never
-   by more than the body padding, which RecordPanel passes in: the box of a
-   row stays in the frame. */
-.places {
-  --places-text-inset: calc(var(--row-inset) + var(--spacing-m));
-
-  margin-right: calc(
-    -1 *
-    min(var(--places-text-inset), var(--frame-inset-right, 0px))
-  );
-  margin-left: calc(
-    -1 *
-    min(var(--places-text-inset), var(--frame-inset-left, 0px))
-  );
 }
 
 /* The chevron of a row that goes to its field. */

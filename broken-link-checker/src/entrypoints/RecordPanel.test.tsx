@@ -57,14 +57,18 @@ describe('record link-check panel', () => {
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     expect(ctx.formValuesToItem).toHaveBeenCalledWith(ctx.formValues, false);
     expect(
-      screen.getByText('2 URLs need attention', { ignore: '[role="status"]' }),
+      screen.getByText('2 links need attention', { ignore: '[role="status"]' }),
     ).toBeInTheDocument();
     const broken = resultFor('https://broken.example/page');
     expect(within(broken).getByText('Broken')).toBeInTheDocument();
-    expect(within(broken).getByText(/HTTP 404/)).toBeInTheDocument();
+    // Why it's broken, in plain words: the HTTP status isn't repeated here.
+    expect(
+      within(broken).getByText("The site says this page doesn't exist."),
+    ).toBeInTheDocument();
+    expect(within(broken).queryByText(/HTTP/)).not.toBeInTheDocument();
     expect(within(broken).getByText('Website')).toBeInTheDocument();
     expect(within(broken).getByText('English')).toBeInTheDocument();
     // The URL opens in a new tab.
@@ -82,13 +86,12 @@ describe('record link-check panel', () => {
     expect(ctx.editItem).not.toHaveBeenCalled();
   });
 
-  it("lets the place rows go out into the frame's side padding, never past it", () => {
+  it("passes the frame's left padding, which the focus ring of an action goes into", () => {
     render(<RecordPanel ctx={panelContext({ bodyPadding: [0, 12, 10, 8] })} />);
     const panel = screen
       .getByRole('button', { name: 'Check links' })
       .closest<HTMLElement>('[style*="--frame-inset-left"]');
     expect(panel?.style.getPropertyValue('--frame-inset-left')).toBe('8px');
-    expect(panel?.style.getPropertyValue('--frame-inset-right')).toBe('12px');
   });
 
   it('goes to the localized containing field from the whole place row', async () => {
@@ -96,7 +99,7 @@ describe('record link-check panel', () => {
     const ctx = panelContext();
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     const italian = resultFor('https://italian.example/page');
     await user.click(
       placeRow(italian, /^Website\s*Italian\s*,\s*go to field$/),
@@ -123,7 +126,7 @@ describe('record link-check panel', () => {
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
     // The form still holds an Italian value, but the record has no Italian locale.
-    await announced('1 URL needs attention');
+    await announced('1 link needs attention');
     expect(
       screen.queryByText('https://italian.example/page'),
     ).not.toBeInTheDocument();
@@ -134,7 +137,7 @@ describe('record link-check panel', () => {
     const ctx = panelContext();
     const view = render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     // Italian is removed from the record after the check.
     const removed = {
       ...ctx,
@@ -180,7 +183,7 @@ describe('record link-check panel', () => {
     const ctx = panelContext();
     const { rerender } = render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     rerender(
       <RecordPanel
         ctx={{
@@ -207,7 +210,7 @@ describe('record link-check panel', () => {
     const ctx = panelContext();
     const { rerender } = render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     // Every locale was checked, so switching the form's locale changes nothing.
     rerender(<RecordPanel ctx={{ ...ctx, locale: 'it' }} />);
     expect(
@@ -273,7 +276,7 @@ describe('record link-check panel', () => {
     expect(screen.queryByText('API Error!')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Check again' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     expect(
       screen.queryByText(/The record's fields couldn't be loaded/),
     ).not.toBeInTheDocument();
@@ -294,28 +297,44 @@ describe('record link-check panel', () => {
     expect(cancel).toHaveFocus();
     item.resolve(formItem({ en: 'https://broken.example/page' }));
     expect(
-      await screen.findByText('Checking URLs (2 left)…'),
+      await screen.findByText('Checking links (2 left)…'),
     ).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(cancel);
-    expect(await screen.findByText('Check canceled')).toBeInTheDocument();
-    expect(
-      screen.getByText("URLs that weren't checked show as “Not checked”."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Check canceled').closest('[role="alert"]'),
-    ).toBeInTheDocument();
-    // The live region says the check was canceled, then the summary.
-    await announced('Check canceled. 2 URLs need attention');
+    // The live region says the check was canceled, then the summary: the
+    // cancel needs no callout. Links left unchecked aren't counted as problems.
+    await announced("Check canceled. 2 links weren't checked");
     expect(screen.getByRole('status')).toHaveTextContent(
-      /^Check canceled\. 2 URLs need attention$/,
+      /^Check canceled\. 2 links weren't checked$/,
     );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // They wait behind the toggle, with the links without problems.
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
     expect(
       within(resultFor('https://broken.example/page')).getByText('Not checked'),
     ).toBeInTheDocument();
     expect(document.querySelector(SPINNER)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
+  });
+
+  it('says a check canceled before any link was found', async () => {
+    const user = userEvent.setup();
+    const ctx = panelContext();
+    vi.mocked(ctx.formValuesToItem).mockReturnValue(
+      new Promise<FormItem>(() => undefined),
+    );
+    render(<RecordPanel ctx={ctx} />);
+    await user.click(screen.getByRole('button', { name: 'Check links' }));
+    await screen.findByText('Reading the record…');
+    await user.click(screen.getByRole('button', { name: 'Cancel check' }));
+    await announced('Check canceled');
+    // Said once, in place of the summary.
+    expect(screen.getByRole('status')).toHaveTextContent(/^Check canceled$/);
+    expect(
+      screen.getByText('Check canceled', { ignore: '[role="status"]' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows a host alert when the field cannot be opened', async () => {
@@ -325,7 +344,7 @@ describe('record link-check panel', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('2 URLs need attention');
+    await announced('2 links need attention');
     await user.click(
       placeRow(
         resultFor('https://broken.example/page'),
@@ -355,7 +374,7 @@ describe('record link-check panel', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('names no locale on a single-locale site and can show URLs that need no attention', async () => {
+  it('names no locale on a single-locale site and can show links that need no attention', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(
       async () => new Response(null, { status: 200 }),
@@ -371,28 +390,25 @@ describe('record link-check panel', () => {
     );
     render(<RecordPanel ctx={ctx} />);
     await user.click(screen.getByRole('button', { name: 'Check links' }));
-    await announced('Nothing needs attention. 1 URL found');
+    await announced('Nothing needs attention. 1 link found');
     expect(
       screen.getByText('Nothing needs attention', {
         ignore: '[role="status"]',
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText('1 URL found')).toBeInTheDocument();
+    expect(screen.getByText('1 link found')).toBeInTheDocument();
     expect(
       screen.queryByText('https://ok.example/page#top'),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show 1 URL' }));
+    await user.click(screen.getByRole('button', { name: 'Show the link' }));
     const result = resultFor('https://ok.example/page#top');
-    expect(within(result).getByText('Reachable')).toBeInTheDocument();
+    expect(within(result).getByText('Working')).toBeInTheDocument();
     expect(placeRow(result, /^Website\s*,\s*go to field$/)).toBeInTheDocument();
     expect(
       within(result).getByText('The #fragment is not checked'),
     ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Show only URLs that need attention',
-      }),
-    );
+    // No link needs attention: the toggle only hides them again.
+    await user.click(screen.getByRole('button', { name: 'Hide links' }));
     expect(
       screen.queryByText('https://ok.example/page#top'),
     ).not.toBeInTheDocument();

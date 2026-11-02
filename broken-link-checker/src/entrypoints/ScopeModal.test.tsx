@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ALL_SCOPE, type Scope } from '../report/scope';
@@ -21,8 +21,14 @@ function params(overrides: Partial<ScopeModalParams> = {}): ScopeModalParams {
   };
 }
 
-function renderModal(parameters: Record<string, unknown>) {
-  const ctx = modalContext(parameters);
+const INTRO = 'Scans the latest saved version of each record, drafts included.';
+const UNLOCALIZED_HINT = "Fields that aren't localized are always scanned.";
+
+function renderModal(
+  parameters: Record<string, unknown>,
+  overrides?: Parameters<typeof modalContext>[1],
+) {
+  const ctx = modalContext(parameters, overrides);
   render(<ScopeModal ctx={ctx} />);
   return ctx;
 }
@@ -59,9 +65,11 @@ describe('scope modal', () => {
   it('scans everything by default', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(params());
-    expect(screen.getByText('main')).toHaveClass('IdText');
+    // The primary environment goes without saying.
+    expect(screen.getByText(INTRO)).toBeInTheDocument();
     expect(radio('All models')).toBeChecked();
     expect(radio('All locales')).toBeChecked();
+    expect(screen.queryByText(UNLOCALIZED_HINT)).not.toBeInTheDocument();
     expect(modelSelect()).not.toBeInTheDocument();
     expect(localeSelect()).not.toBeInTheDocument();
     await user.click(submit());
@@ -69,6 +77,14 @@ describe('scope modal', () => {
       modelIds: 'all',
       localeIds: 'all',
     } satisfies Scope);
+  });
+
+  it('names a sandbox environment', () => {
+    renderModal(params({ environment: 'staging' }), {
+      environment: 'staging',
+      isEnvironmentPrimary: false,
+    });
+    expect(screen.getByText('staging')).toHaveClass('IdText');
   });
 
   it('reveals the model select and asks for a model before scanning', async () => {
@@ -102,6 +118,8 @@ describe('scope modal', () => {
       params({ scope: { modelIds: ['page'], localeIds: 'all' } }),
     );
     await user.click(radio('Only some locales'));
+    // The hint qualifies the locales picked.
+    expect(screen.getByText(UNLOCALIZED_HINT)).toBeInTheDocument();
     await user.click(submit());
     expect(ctx.resolve).not.toHaveBeenCalled();
     expect(screen.getByText('Pick at least one locale.')).toBeInTheDocument();
@@ -141,6 +159,20 @@ describe('scope modal', () => {
     } satisfies Scope);
   });
 
+  it('closes with nothing to scan from its Cancel', async () => {
+    const user = userEvent.setup();
+    const ctx = renderModal(params());
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(ctx.resolve).toHaveBeenCalledWith(null);
+  });
+
+  it('closes with nothing to scan on Escape, as the host draws no cross', () => {
+    const ctx = renderModal(params());
+    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    expect(ctx.resolve).toHaveBeenCalledTimes(1);
+    expect(ctx.resolve).toHaveBeenCalledWith(null);
+  });
+
   it('has no locale choice on a single-locale site', async () => {
     const user = userEvent.setup();
     const ctx = renderModal(
@@ -161,7 +193,7 @@ describe('scope modal', () => {
   it('falls back to the whole project when the parameters are invalid', async () => {
     const user = userEvent.setup();
     const ctx = renderModal({ scope: { modelIds: 42 } });
-    expect(screen.getByText('main')).toBeInTheDocument();
+    expect(screen.getByText(INTRO)).toBeInTheDocument();
     expect(radio('All models')).toBeChecked();
     expect(screen.queryByRole('radio', { name: 'All locales' })).toBeNull();
     await user.click(submit());

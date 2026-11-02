@@ -24,12 +24,14 @@ type ChoiceMenuProps = {
 /**
  * A menu of choices whose trigger shows the current one: "All models" first,
  * then the report's own. The menu shows a search above 5 options by itself.
+ * The parts of the filter row are bare, so the trigger is ghost.
  */
 function ChoiceMenu({ allLabel, choices, value, onChange }: ChoiceMenuProps) {
   const current = choices.find((choice) => choice.value === value);
   return (
     <Dropdown
       triggerComponent={ButtonTrigger}
+      tone="ghost"
       label={value === '' ? allLabel : (current?.label ?? value)}
     >
       <Dropdown.Menu>

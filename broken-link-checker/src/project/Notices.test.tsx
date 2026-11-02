@@ -8,7 +8,7 @@ import type { CheckStatus, LinkGroup, ScanReport } from '../types';
 import { FirstRunOverview, NoAccessState, NoModelsState } from './PageStates';
 import { ResultsEmpty } from './ResultsEmpty';
 import { ScanProgressBlock, ScanProgressSlate } from './ScanProgressBlock';
-import { ScanAnnouncement, ScanSummary } from './ScanSummary';
+import { ScanAnnouncement, ScanFailed, ScanSummary } from './ScanSummary';
 
 function group(status: CheckStatus, slug: string = status): LinkGroup {
   const url = `https://${slug}.example/`;
@@ -31,7 +31,8 @@ function report(
     recordsScanned: 2,
     discovering: false,
     warnings: [],
-    scope: 'All models • All locales',
+    // The whole project: the facts don't name it.
+    scope: '',
     startedAt: '2026-09-23T12:00:00Z',
     finishedAt: '2026-09-23T12:01:00Z',
     ...overrides,
@@ -56,10 +57,13 @@ describe('page states', () => {
   it('explains the missing API access, with no scan controls', () => {
     renderInCanvas(<NoAccessState />);
     expect(
-      screen.getByRole('heading', { level: 1, name: 'API access needed' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: "Link checker can't read your records",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/You can still check the record you're editing/),
+      screen.getByText(/you can check a record from its “Broken links” panel/),
     ).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -121,19 +125,21 @@ describe('scan progress', () => {
         uiLocale="en"
       />,
     );
-    expect(screen.getByText('Scanning links (75%)…')).toBeInTheDocument();
+    // The bar shows the share: the title doesn't repeat it.
+    expect(screen.getByText('Scanning links…')).toBeInTheDocument();
     expect(screen.getByText('All models • All locales')).toBeInTheDocument();
     expect(
-      screen.getByText('60 of 120 records read • 1 of 2 URLs processed'),
+      screen.getByText('60 of 120 records read • 1 of 2 links checked'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('progressbar', { name: 'Scanning links' }),
     ).toHaveAttribute('aria-valuenow', '75');
 
+    // The whole project has no scope to name.
     rerender(
       <ScanProgressSlate
         placement="section"
-        scope="All models • All locales"
+        scope=""
         progress={{ ...progress, found: 0 }}
         fraction={null}
         discovering
@@ -142,7 +148,24 @@ describe('scan progress', () => {
     );
     expect(screen.getByText('Scanning links…')).toBeInTheDocument();
     expect(screen.getByText('60 records read')).toBeInTheDocument();
+    expect(
+      screen.queryByText('All models • All locales'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+    // Before the first record, the count tells nothing.
+    rerender(
+      <ScanProgressSlate
+        placement="area"
+        scope=""
+        progress={{ ...progress, records: 0, found: 0 }}
+        fraction={0}
+        discovering
+        recordTotal={120}
+        uiLocale="en"
+      />,
+    );
+    expect(screen.queryByText(/records read/)).not.toBeInTheDocument();
   });
 
   it('shows one line above the results, with a spinner while the share is unknown', () => {
@@ -157,7 +180,7 @@ describe('scan progress', () => {
     );
     expect(
       screen.getByText(
-        'Scanning links (50%)… • Page • English • 60 records read • 1 of 2 URLs processed',
+        'Scanning links… • Page • English • 60 records read • 1 of 2 links checked',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute(
@@ -184,10 +207,10 @@ describe('scan progress', () => {
 });
 
 describe('scan summary', () => {
-  it('says that a scan is complete, what it covered and when it finished, in the date settings', () => {
+  it('gives the facts of a complete scan, in the date settings, with no title', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-23T18:00:00Z'));
-    renderInCanvas(
+    const { rerender } = renderInCanvas(
       <ScanSummary
         report={report([group('broken'), group('blocked')])}
         notCheckedCount={0}
@@ -195,17 +218,27 @@ describe('scan summary', () => {
       />,
     );
     const callout = screen.getByRole('note');
-    expect(within(callout).getByText('Scan complete')).toBeInTheDocument();
-    expect(
-      within(callout).getByText(
-        'All models • All locales • 2 records read • 2 URLs found • 1 needs attention • 1 blocked • Finished today, 12:01',
-      ),
-    ).toBeInTheDocument();
+    // The title bar counts the links of the view: the facts don't.
+    expect(callout).toHaveTextContent(
+      /^2 records read • 2 links found • Finished today, 12:01$/,
+    );
     // The title bar's "Scan links" scans again: the summary has no button.
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+
+    // A scope the user narrowed comes first.
+    rerender(
+      <ScanSummary
+        report={report([group('broken')], { scope: 'Page • English' })}
+        notCheckedCount={0}
+        uiLocale="en"
+      />,
+    );
+    expect(screen.getByRole('note')).toHaveTextContent(
+      /^Page • English • 2 records read • 1 link found • Finished/,
+    );
   });
 
-  it('says in a note of its own that records changed after a scan', () => {
+  it('says in the summary that records changed after a scan', () => {
     renderInCanvas(
       <ScanSummary
         report={report([group('broken')], { stale: true })}
@@ -213,25 +246,63 @@ describe('scan summary', () => {
         uiLocale="en"
       />,
     );
-    // The summary, then the stale note, which says how to refresh the results.
-    const [summary, stale] = screen.getAllByRole('note');
-    expect(within(summary).getByText('Scan complete')).toBeInTheDocument();
+    // One callout: the stale sentence, then the facts.
+    const summary = screen.getByRole('note');
     expect(
-      within(summary).queryByText(/^Records changed after this scan/),
-    ).not.toBeInTheDocument();
-    expect(within(stale).getByText('Content changed')).toBeInTheDocument();
-    expect(
-      within(stale).getByText(
-        'Records changed after this scan, so some results may be out of date. Scan again to refresh them.',
+      within(summary).getByText(
+        'Some records changed after this scan: scan again to refresh the report.',
       ),
     ).toBeInTheDocument();
+    expect(within(summary).getByText(/^2 records read/)).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('says once that no link could be checked when the service refused the plugin, and what to do', () => {
+    const refused = group('unverified');
+    refused.result = { ...refused.result, reason: 'proxy-refused' };
+    renderInCanvas(
+      <ScanSummary
+        report={report([refused, group('invalid')])}
+        notCheckedCount={1}
+        uiLocale="en"
+      />,
+    );
+    const callout = screen.getByRole('alert');
+    expect(
+      within(callout).getByText("Links couldn't be checked"),
+    ).toBeInTheDocument();
+    expect(
+      within(callout).getByText(
+        "The link checking service only accepts this plugin when it's installed from the marketplace. Ask a project admin to install it from there.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Scan complete')).not.toBeInTheDocument();
+  });
+
+  it('shows a scan that read nothing as a failure, with each reason once', () => {
+    renderInCanvas(
+      <ScanFailed
+        report={report([], {
+          state: 'partial',
+          recordsScanned: 0,
+          warnings: [
+            'Article: Access was refused. Reload the page and scan again.',
+            'Author: Access was refused. Reload the page and scan again.',
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("Couldn't read your records")).toBeInTheDocument();
+    expect(
+      screen.getByText('Access was refused. Reload the page and scan again.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Article/)).not.toBeInTheDocument();
   });
 
   it('explains a canceled scan, its stop date and stale records, without an action', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-01T09:00:00Z'));
-    renderInCanvas(
+    const { rerender } = renderInCanvas(
       <ScanSummary
         report={report([group('cancelled')], {
           state: 'cancelled',
@@ -241,26 +312,44 @@ describe('scan summary', () => {
         uiLocale="en"
       />,
     );
-    const callout = screen.getByRole('alert');
-    expect(within(callout).getByText('Scan canceled')).toBeInTheDocument();
+    // The user's own stop is no alarm: no title, the neutral tone.
+    const callout = screen.getByRole('note');
     expect(
-      within(callout).getByText(
-        "It covers only the records read and the URLs processed until then. URLs that weren't checked show as “Not checked”.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(callout).getByText(/• Stopped 23\/09\/2026, 12:01$/),
-    ).toBeInTheDocument();
-    // The stale note follows the warning, as a neutral note of its own.
-    expect(
-      within(callout).queryByText(/^Records changed after this scan/),
+      within(callout).queryByText('Scan canceled'),
     ).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole('note')).getByText(
-        /^Records changed after this scan/,
+      within(callout).getByText(
+        'This report covers only what was checked before you stopped the scan.',
       ),
     ).toBeInTheDocument();
+    // The links left unchecked count apart from the problems.
+    expect(
+      within(callout).getByText(
+        /^2 records read • 1 link found • 1 not checked • Stopped 23\/09\/2026, 12:01$/,
+      ),
+    ).toBeInTheDocument();
+    // The stale sentence is in the same callout: callouts never stack.
+    expect(
+      within(callout).getByText(/^Some records changed after this scan/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+
+    // With content that couldn't be read too, it says two things: a title
+    // and the warning tone.
+    rerender(
+      <ScanSummary
+        report={report([group('cancelled')], {
+          state: 'cancelled',
+          warnings: ['News: Record access denied'],
+        })}
+        notCheckedCount={1}
+        uiLocale="en"
+      />,
+    );
+    expect(
+      within(screen.getByRole('alert')).getByText('Scan canceled'),
+    ).toBeInTheDocument();
   });
 
   it('explains an incomplete scan: the unread content, or the URLs not checked', async () => {
@@ -282,18 +371,20 @@ describe('scan summary', () => {
     expect(within(callout).getByText('Scan incomplete')).toBeInTheDocument();
     expect(
       within(callout).getByText(
-        "Some content couldn't be read, so the links in it aren't in this report:",
+        "Some content couldn't be read, so its links aren't in this report.",
       ),
     ).toBeInTheDocument();
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(5);
-    expect(within(callout).getAllByRole('listitem')[0]).toHaveTextContent(
-      'News > Body (en) > Link 0: Not found',
-    );
+    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
     // The control of the list sits right after the callout, never in it.
-    const toggle = screen.getByRole('button', { name: 'Show all 6 issues' });
+    const toggle = screen.getByRole('button', {
+      name: "Show what couldn't be read",
+    });
     expect(callout).not.toContainElement(toggle);
     await user.click(toggle);
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(6);
+    // One reason, once: the places that give it come before it.
+    expect(within(callout).getByRole('listitem')).toHaveTextContent(
+      'News > Body (en) > Link 0, News > Body (en) > Link 1, News > Body (en) > Link 2, News > Body (en) > Link 3, News > Body (en) > Link 4, News > Body (en) > Link 5: Not found',
+    );
 
     rerender(
       <ScanSummary
@@ -304,7 +395,7 @@ describe('scan summary', () => {
     );
     expect(
       within(screen.getByRole('alert')).getByText(
-        "2 URLs weren't checked. Recheck them one by one, or scan again.",
+        "2 links weren't checked. Recheck them one by one, or scan again.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
@@ -358,6 +449,17 @@ describe('scan summary', () => {
       />,
     );
     expect(status).toHaveTextContent('Scan canceled');
+    rerender(
+      <ScanAnnouncement
+        report={report([], {
+          state: 'partial',
+          recordsScanned: 0,
+          warnings: ['Article: Access was refused.'],
+        })}
+        scanning={false}
+      />,
+    );
+    expect(status).toHaveTextContent("Couldn't read your records");
   });
 });
 
@@ -368,8 +470,8 @@ describe('empty results', () => {
         kind="noLinks"
         total={0}
         partial={false}
+        showingAll={false}
         onShowAll={vi.fn()}
-        uiLocale="en"
       />,
     );
     expect(screen.getByText('No links found')).toBeInTheDocument();
@@ -379,7 +481,7 @@ describe('empty results', () => {
     );
   });
 
-  it('says that nothing needs attention, and switches to all URLs', async () => {
+  it('says that nothing needs attention, and switches to all links', async () => {
     const user = userEvent.setup();
     const onShowAll = vi.fn();
     const { rerender } = renderInCanvas(
@@ -387,16 +489,17 @@ describe('empty results', () => {
         kind="clean"
         total={1500}
         partial
+        showingAll={false}
         onShowAll={onShowAll}
-        uiLocale="en"
       />,
     );
+    // The summary above counts the links.
     expect(
       screen.getByText(
-        'None of the 1,500 URLs found is broken, invalid or unverified in the content that could be read.',
+        'None of the links found is broken, invalid or unverified in the content that could be read.',
       ),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show all URLs' }));
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
     expect(onShowAll).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -404,21 +507,23 @@ describe('empty results', () => {
         kind="cleanSoFar"
         total={3}
         partial={false}
+        showingAll={false}
         onShowAll={onShowAll}
-        uiLocale="en"
       />,
     );
     expect(screen.getByText('Nothing needs attention yet')).toBeInTheDocument();
   });
 
-  it('says that the filters keep nothing', () => {
-    const { container } = renderInCanvas(
+  it('says that the filters keep nothing, and searches all links from a narrower view', async () => {
+    const user = userEvent.setup();
+    const onShowAll = vi.fn();
+    const { container, rerender } = renderInCanvas(
       <ResultsEmpty
         kind="noMatch"
         total={3}
         partial={false}
-        onShowAll={vi.fn()}
-        uiLocale="en"
+        showingAll={false}
+        onShowAll={onShowAll}
       />,
     );
     expect(screen.getByText('No results')).toBeInTheDocument();
@@ -426,5 +531,19 @@ describe('empty results', () => {
     expect(
       container.querySelector('.blank-slate--section'),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all links' }));
+    expect(onShowAll).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ResultsEmpty
+        kind="noMatch"
+        total={3}
+        partial={false}
+        showingAll
+        onShowAll={onShowAll}
+      />,
+    );
+    expect(screen.getByText('No results')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

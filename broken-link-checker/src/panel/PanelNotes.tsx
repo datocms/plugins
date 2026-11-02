@@ -26,12 +26,15 @@ function calloutTitle(cancelled: boolean, listed: boolean) {
   return listed ? "Some content couldn't be read" : "Couldn't read the record";
 }
 
+/** The first items show above it, so it names the rest. */
 function issuesToggleLabel(count: number, expanded: boolean, uiLocale: string) {
-  if (expanded) return 'Show fewer issues';
+  if (expanded) return 'Show fewer fields';
   return countLabel(
-    count,
-    'Show 1 issue',
-    count > LARGE_WARNING_COUNT ? 'Browse {n} issues' : 'Show all {n} issues',
+    count - WARNINGS_SHOWN,
+    'Show 1 more field',
+    count > LARGE_WARNING_COUNT
+      ? 'Browse {n} more fields'
+      : 'Show {n} more fields',
     uiLocale,
   );
 }
@@ -49,10 +52,9 @@ function shownIssues(
 }
 
 /**
- * What a canceled or partial check leaves out. When nothing could be read,
- * the reason alone is the message. Otherwise the content that couldn't be
- * read is a list; its action and its pages sit right under the callout,
- * since a callout holds no buttons.
+ * The content a check couldn't read. When nothing could be read, the reason
+ * alone is the message. Otherwise it is a list; its action and its pages sit
+ * right under the callout, since a callout holds no buttons.
  */
 function CoverageCallout({
   cancelled,
@@ -72,7 +74,6 @@ function CoverageCallout({
         title={calloutTitle(cancelled, listed)}
         className={canToggle ? styles.calloutAboveControls : undefined}
       >
-        {cancelled && <p>URLs that weren't checked show as “Not checked”.</p>}
         {reasonsOnly &&
           warnings.map((warning) => (
             <p key={warning}>{formatWarning(warning, uiLocale)}</p>
@@ -116,7 +117,12 @@ function CoverageCallout({
   );
 }
 
-/** What limits the settled results: a refused check, a stale form, a canceled check, content that couldn't be read. */
+/**
+ * What limits the settled results: a refused check, a stale form, content
+ * that couldn't be read. A cancel the user just made needs no callout: the
+ * summary counts the links that weren't checked, or says "Check canceled"
+ * when none were found.
+ */
 export function PanelNotes({
   report,
   running,
@@ -137,7 +143,7 @@ export function PanelNotes({
           results.
         </Callout>
       )}
-      {(cancelled || report.warnings.length > 0) && (
+      {report.warnings.length > 0 && (
         <CoverageCallout
           cancelled={cancelled}
           warnings={report.warnings}

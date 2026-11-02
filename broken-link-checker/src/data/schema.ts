@@ -102,7 +102,7 @@ export function createSchemaLoader(ctx: SchemaContext): {
       const itemType = ctx.itemTypes[modelId];
       if (!itemType) {
         throw new Error(
-          `The schema for model ${modelId} is not available. Reload the page and try again.`,
+          "Its fields couldn't be loaded. Reload the page and try again.",
         );
       }
       // Cache one host request independently of its consumers. The SDK cannot
@@ -139,9 +139,8 @@ export function createSchemaLoader(ctx: SchemaContext): {
         } catch (error) {
           throwIfAborted(signal);
           if (id === modelId || !onWarning) throw error;
-          onWarning(
-            `The schema for embedded block model ${ctx.itemTypes[id]?.attributes.name ?? id} could not be loaded; some links could not be checked.`,
-          );
+          // One line per model, whichever of its blocks failed.
+          onWarning("Some blocks couldn't be read.");
           return undefined;
         }
       };

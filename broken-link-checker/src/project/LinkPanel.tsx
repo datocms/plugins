@@ -1,10 +1,9 @@
-import Callout from 'datocms-react-ui/Callout';
 import InfoList from 'datocms-react-ui/InfoList';
 import SidebarPanel, {
   type SidebarPanelCollapse,
 } from 'datocms-react-ui/SidebarPanel';
 import SmartDate from 'datocms-react-ui/SmartDate';
-import { hasFragment, resultExplanation } from '../report/view';
+import { hasFragment, resultExplanation, shownStatus } from '../report/view';
 import type { LinkGroup } from '../types';
 import { ExternalLink } from '../ui/ExternalLink';
 import { LogStatus } from '../ui/LogStatus';
@@ -17,24 +16,17 @@ type LinkPanelProps = {
 };
 
 /**
- * The open URL: where it points and its latest result. When its records
- * changed after the scan, a note says so above the facts; it sits in the
- * section, so the panel holds only sections and they give it its inset.
+ * The open link: where it points and its latest result. When its records
+ * changed after the scan, their pill in "Records" says so.
  */
 export function LinkPanel({ group, collapse }: LinkPanelProps) {
   const { prepared, result } = group;
   // Other results are explained by their word or the HTTP status row.
   const explanation = resultExplanation(result);
   return (
-    <SidebarPanel title="Link" collapse={collapse}>
-      {group.stale && (
-        <Callout title="Content changed after the scan">
-          A record using this URL changed after the scan. Scan again to refresh
-          where it's used; “Recheck URL” only refreshes its status.
-        </Callout>
-      )}
+    <SidebarPanel title="Result" collapse={collapse}>
       <InfoList>
-        <InfoList.Row title="URL">
+        <InfoList.Row title="Address">
           <ExternalLink url={prepared.url} />
           {hasFragment(group) && (
             <div className={styles.note}>
@@ -44,7 +36,7 @@ export function LinkPanel({ group, collapse }: LinkPanelProps) {
           )}
         </InfoList.Row>
         <InfoList.Row title="Status">
-          <LogStatus status={result.status} />
+          <LogStatus status={shownStatus(result)} />
           {explanation && <div className={styles.note}>{explanation}</div>}
         </InfoList.Row>
         {result.httpStatus !== undefined && (

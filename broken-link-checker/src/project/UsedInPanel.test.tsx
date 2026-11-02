@@ -97,7 +97,7 @@ describe('UsedInPanel', () => {
       screen.queryByRole('button', { name: /^Show/ }),
     ).not.toBeInTheDocument();
     const pages = screen.getByRole('navigation', {
-      name: 'Records using this URL pagination',
+      name: 'Records using this link pagination',
     });
     fireEvent.click(within(pages).getByRole('button', { name: 'Next page' }));
     expect(recordRows()).toHaveLength(50);

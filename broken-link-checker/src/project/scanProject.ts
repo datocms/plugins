@@ -21,9 +21,9 @@ function readFailure(error: unknown): string {
   if (error instanceof ApiError) {
     const { status } = error.response;
     if (status === 403 || error.findError('INSUFFICIENT_PERMISSIONS'))
-      return 'Your role cannot read its records.';
+      return "Your role can't see these records.";
     if (status === 401)
-      return 'The API token was rejected. Reload the page and scan again.';
+      return 'Access was refused. Reload the page and scan again.';
     return LOAD_FAILED;
   }
   if (error instanceof TimeoutError)
@@ -51,9 +51,19 @@ async function scanModel(
     let yieldedAt = performance.now();
     for await (const raw of readRecords(client, summary.id, signal)) {
       try {
-        session.addRecord(
-          extractLinks(toRecordInput(raw, model, locales[0]), schema, locales),
+        const extraction = extractLinks(
+          toRecordInput(raw, model, locales[0]),
+          schema,
+          locales,
         );
+        // A path of fields ("Sections › Hero") starts with its model, as the
+        // model's own warnings do: the same failure in many records is one line.
+        session.addRecord({
+          ...extraction,
+          warnings: extraction.warnings.map(
+            (warning) => `${summary.name} › ${warning}`,
+          ),
+        });
       } catch (error) {
         throwIfAborted(signal);
         session.addRecord({

@@ -54,33 +54,64 @@ export const STATUS_ORDER: readonly CheckStatus[] = (
   Object.keys(STATUS_RANK) as CheckStatus[]
 ).sort((a, b) => STATUS_RANK[a] - STATUS_RANK[b]);
 
+/** The statuses of a link with a known problem: what "Needs attention" keeps. */
 export const ATTENTION: ReadonlySet<CheckStatus> = new Set<CheckStatus>([
   'broken',
   'invalid',
   'unverified',
-  'cancelled',
 ]);
 
+/**
+ * The status a result shows as. A check the link checking service refused
+ * is a link that wasn't checked ("Not checked"), not one with a problem.
+ */
+export function shownStatus(result: CheckResult): CheckStatus {
+  return result.reason === 'proxy-refused' ? 'cancelled' : result.status;
+}
+
+/**
+ * A known problem. A link that wasn't checked isn't known to have one, and a
+ * refused check is the plugin's problem, not the link's: the report says it
+ * once.
+ */
+export function resultNeedsAttention(result: CheckResult): boolean {
+  return result.reason !== 'proxy-refused' && ATTENTION.has(result.status);
+}
+
+/**
+ * The scan's own result decides, as in the record panel. A link of a record
+ * changed after the scan keeps its result and shows "Content changed".
+ */
 export function needsAttention(group: LinkGroup): boolean {
-  return ATTENTION.has(group.result.status) || group.stale;
+  return resultNeedsAttention(group.result);
 }
 
 /**
  * The statuses whose result message says something the status word doesn't.
- * The others would only repeat it ("Checking this URL.") or the HTTP status,
- * and "Not checked" is explained by the canceled-check callout.
+ * The others would only repeat it ("Checking this link.") or the HTTP status,
+ * and the report's callout says why links weren't checked ("Not checked").
  */
 export const EXPLAINED_STATUSES: ReadonlySet<CheckStatus> =
-  new Set<CheckStatus>(['unverified', 'invalid', 'skipped', 'blocked']);
+  new Set<CheckStatus>([
+    'broken',
+    'unverified',
+    'invalid',
+    'skipped',
+    'blocked',
+  ]);
 
 /** The proxy refused the plugin's address: then no URL could be checked, whatever each row says. */
 export function proxyRefused(groups: readonly LinkGroup[]): boolean {
   return groups.some((group) => group.result.reason === 'proxy-refused');
 }
 
-/** The sentence to show under a result: always when the check found a specific reason ("The link's domain doesn't exist."). */
+/**
+ * The sentence to show under a result: always when the check found a specific
+ * reason ("No website exists at this address."). A refused check is explained
+ * once for the whole report, never under each link.
+ */
 export function resultExplanation(result: CheckResult): string | undefined {
-  if (!result.message) return undefined;
+  if (!result.message || result.reason === 'proxy-refused') return undefined;
   return result.reason || EXPLAINED_STATUSES.has(result.status)
     ? result.message
     : undefined;
@@ -258,7 +289,7 @@ export function hasFragment(group: LinkGroup): boolean {
 function matchesStatus(group: LinkGroup, status: StatusView): boolean {
   if (status === 'attention') return needsAttention(group);
   if (status === 'all') return true;
-  return group.result.status === status;
+  return shownStatus(group.result) === status;
 }
 
 /** One occurrence has to match the model, the locale and the query together. */
@@ -301,7 +332,7 @@ function compareBy(key: SortKey): (a: LinkGroup, b: LinkGroup) => number {
       return (a, b) => a.prepared.url.localeCompare(b.prepared.url);
     case 'status':
       return (a, b) =>
-        STATUS_RANK[a.result.status] - STATUS_RANK[b.result.status];
+        STATUS_RANK[shownStatus(a.result)] - STATUS_RANK[shownStatus(b.result)];
     case 'usedIn':
       return (a, b) => groupFacts(a).recordCount - groupFacts(b).recordCount;
   }
@@ -338,7 +369,7 @@ export function countStatuses(groups: readonly LinkGroup[]): StatusCounts {
     all: groups.length,
   };
   for (const group of groups) {
-    counts[group.result.status] += 1;
+    counts[shownStatus(group.result)] += 1;
     if (needsAttention(group)) counts.attention += 1;
   }
   return counts;

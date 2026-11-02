@@ -9,6 +9,7 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALL_SCOPE, type Scope } from '../report/scope';
 import { deferred, pageContext, rawRecord } from '../test/fixtures';
+import { focusFromKeyboard } from '../test/focus';
 import { downloadReport } from '../utils/csv';
 import ProjectPage from './ProjectPage';
 
@@ -75,8 +76,12 @@ function rowOf(url: string): HTMLElement {
 }
 
 function detail() {
-  return within(screen.getByRole('complementary', { name: 'URL' }));
+  return within(screen.getByRole('complementary', { name: 'Link' }));
 }
+
+/** A canceled scan's summary has no title: its sentence says it. */
+const CANCELED_LEAD =
+  'This report covers only what was checked before you stopped the scan.';
 
 /** The callout of an incomplete or canceled scan, outside the live region. */
 function summary(headline: string) {
@@ -152,9 +157,12 @@ describe('project page', () => {
       <ProjectPage ctx={pageContext({ currentUserAccessToken: undefined })} />,
     );
     expect(
-      screen.getByRole('heading', { level: 1, name: 'API access needed' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: "Link checker can't read your records",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/“Broken links” sidebar panel/)).toBeVisible();
+    expect(screen.getByText(/“Broken links” panel/)).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(buildClient).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -231,10 +239,9 @@ describe('project page', () => {
 
     await scanAll(user);
     await scanComplete();
-    // The summary names what the scan covered.
-    expect(
-      screen.getByText(/^All models • All locales • 2 records read • /),
-    ).toBeInTheDocument();
+    // The whole project is the default: the summary doesn't name it.
+    expect(screen.getByText(/^2 records read • /)).toBeInTheDocument();
+    expect(screen.queryByText(/All models/)).not.toBeInTheDocument();
     expect(buildClient).toHaveBeenCalledWith({
       apiToken: 'test-user-token',
       environment: 'main',
@@ -275,7 +282,8 @@ describe('project page', () => {
       id: 'scan-scope',
       title: 'Choose what to scan',
       width: 's',
-      initialHeight: 392,
+      initialHeight: 349,
+      closeDisabled: true,
       parameters: {
         environment: 'main',
         models: [
@@ -333,7 +341,7 @@ describe('project page', () => {
     render(<ProjectPage ctx={ctx} />);
     await chooseScope(user, ctx, undefined);
     expect(ctx.openModal).toHaveBeenCalledWith(
-      expect.objectContaining({ initialHeight: 234 }),
+      expect.objectContaining({ initialHeight: 215 }),
     );
   });
 
@@ -365,7 +373,7 @@ describe('project page', () => {
     expect(table().getByText('Content changed')).toBeInTheDocument();
     expect(detail().getByText('Content changed')).toBeInTheDocument();
     expect(
-      screen.getByText(/Records changed after this scan/),
+      screen.getByText(/Some records changed after this scan/),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(ctx.alert).not.toHaveBeenCalled();
@@ -404,6 +412,9 @@ describe('project page', () => {
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
     expect(await summary('Scan incomplete')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: "Show what couldn't be read" }),
+    );
     expect(screen.getByText('News: Record access denied')).toBeInTheDocument();
     expect(table().getByText(ENGLISH_URL)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Scan links' })).toBeEnabled();
@@ -420,7 +431,12 @@ describe('project page', () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Cancel scan' }));
-    expect(await summary('Scan canceled')).toBeInTheDocument();
+    expect(await summary(CANCELED_LEAD)).toBeInTheDocument();
+    // The links that weren't checked have a view of their own.
+    await user.click(screen.getByRole('button', { name: /^Link checker/ }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: /^Not checked/ }),
+    );
     expect(table().getAllByText('Not checked').length).toBeGreaterThan(0);
     expect(
       screen.queryByRole('button', { name: 'Cancel scan' }),
@@ -438,9 +454,9 @@ describe('project page', () => {
     const response = deferred<Response>();
     fetchMock.mockImplementationOnce(() => response.promise);
     await user.click(table().getByText(ENGLISH_URL));
-    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
+    await user.click(detail().getByRole('button', { name: 'Recheck link' }));
     // The rechecked URL's action keeps its label while pending.
-    const pending = detail().getByRole('button', { name: 'Recheck URL' });
+    const pending = detail().getByRole('button', { name: 'Recheck link' });
     expect(pending).toBeDisabled();
     expect(pending).toHaveAttribute('aria-busy', 'true');
     expect(within(rowOf(ENGLISH_URL)).getByText('Checking')).toBeVisible();
@@ -477,14 +493,16 @@ describe('project page', () => {
 
     await user.click(screen.getByRole('button', { name: /^Link checker/ }));
     await user.click(
-      await screen.findByRole('menuitem', { name: /^All URLs/ }),
+      await screen.findByRole('menuitem', { name: /^All links/ }),
     );
-    await user.click(screen.getByRole('button', { name: 'Filter URLs' }));
+    await user.click(screen.getByRole('button', { name: 'Filter Links' }));
     await user.type(
-      within(screen.getByRole('search', { name: 'URLs' })).getByRole('textbox'),
+      within(screen.getByRole('search', { name: 'Links' })).getByRole(
+        'textbox',
+      ),
       'italian',
     );
-    expect(await screen.findByText('1 URL')).toBeInTheDocument();
+    expect(await screen.findByText('1 link')).toBeInTheDocument();
     expect(screen.queryByText(ENGLISH_URL)).not.toBeInTheDocument();
     await user.click(await openExport(user));
     expect(downloadReport).toHaveBeenCalledTimes(1);
@@ -508,15 +526,14 @@ describe('project page', () => {
     await scanAll(user);
     await scanComplete();
     expect(table().queryByText(ITALIAN_URL)).not.toBeInTheDocument();
-    expect(screen.getByText('1 URL')).toBeInTheDocument();
+    expect(screen.getByText('1 link')).toBeInTheDocument();
 
     const response = deferred<Response>();
     fetchMock.mockImplementationOnce(() => response.promise);
     await user.click(table().getByText(ENGLISH_URL));
-    await user.click(detail().getByRole('button', { name: 'Recheck URL' }));
+    await user.click(detail().getByRole('button', { name: 'Recheck link' }));
     expect(within(rowOf(ENGLISH_URL)).getByText('Checking')).toBeVisible();
-    expect(screen.getByText('1 URL')).toBeInTheDocument();
-    expect(screen.getByText(/1 needs attention/)).toBeInTheDocument();
+    expect(screen.getByText('1 link')).toBeInTheDocument();
     expect(
       screen.queryByText('Nothing needs attention'),
     ).not.toBeInTheDocument();
@@ -552,7 +569,7 @@ describe('project page', () => {
     await scanAll(user);
     await scanComplete();
     expect(
-      screen.queryByRole('complementary', { name: 'URL' }),
+      screen.queryByRole('complementary', { name: 'Link' }),
     ).not.toBeInTheDocument();
     await user.click(table().getByText(ENGLISH_URL));
     expect(detail().getByRole('button', { name: /^Records/ })).toHaveAttribute(
@@ -562,10 +579,10 @@ describe('project page', () => {
   });
 
   it.each([
-    [apiError(403, 'Forbidden'), 'News: Your role cannot read its records.'],
+    [apiError(403, 'Forbidden'), "News: Your role can't see these records."],
     [
       apiError(401, 'Unauthorized'),
-      'News: The API token was rejected. Reload the page and scan again.',
+      'News: Access was refused. Reload the page and scan again.',
     ],
     [
       apiError(500, 'Internal Server Error'),
@@ -593,6 +610,9 @@ describe('project page', () => {
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
     await summary('Scan incomplete');
+    await user.click(
+      screen.getByRole('button', { name: "Show what couldn't be read" }),
+    );
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledWith(error);
   });
@@ -616,17 +636,37 @@ describe('project page', () => {
     expect(rawList).not.toHaveBeenCalled();
   });
 
-  it('moves focus to the new action when a scan starts and when it is canceled', async () => {
+  it('moves keyboard focus to the new action when a scan starts and when it is canceled', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    focusFromKeyboard();
+    fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
+    render(<ProjectPage ctx={pageContext()} />);
+    screen.getByRole('button', { name: 'Scan links' }).focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Cancel scan' })).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    await summary(CANCELED_LEAD);
+    expect(screen.getByRole('button', { name: 'Scan links' })).toHaveFocus();
+  });
+
+  it("doesn't move a pointer's focus, so the action keeps its normal look", async () => {
     const user = userEvent.setup();
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
     render(<ProjectPage ctx={pageContext()} />);
     await scanAll(user);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Cancel scan' })).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Cancel scan' }),
+    ).not.toHaveFocus();
 
     await user.click(screen.getByRole('button', { name: 'Cancel scan' }));
-    await summary('Scan canceled');
-    expect(screen.getByRole('button', { name: 'Scan links' })).toHaveFocus();
+    await summary(CANCELED_LEAD);
+    expect(
+      screen.getByRole('button', { name: 'Scan links' }),
+    ).not.toHaveFocus();
   });
 });

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { configContext } from '../test/fixtures';
 import ConfigScreen from './ConfigScreen';
 
-const permissionWarning = /needs permission to make API calls/;
+const permissionWarning = /permission to make API calls/;
 
 const noPermission = () =>
   configContext({
@@ -77,28 +77,17 @@ describe('config screen', () => {
     const problem = screen.getByRole('heading', { name: 'API access' });
     expect(problem).toBeInTheDocument();
     expect(screen.getByText('Not granted')).toBeInTheDocument();
-    // The same steps as the project page: grant the permission, then reload.
+    // One sentence: what to grant, and what it's for.
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Project scans are offThis plugin needs permission to make API calls on behalf of the logged-in user: ask a project admin to grant it, then reload the page. Checks from the record sidebar panel still work.',
+      /^To scan the whole project, grant this plugin permission to make API calls on behalf of the logged-in user\.$/,
     );
     // The page can't scan without it, so the screen doesn't point there.
     expect(
       screen.queryByRole('link', { name: 'Open Link checker' }),
     ).not.toBeInTheDocument();
-    // Both ways are still described: record checks keep working, and the
-    // project scans row says what they need instead of pointing to a
-    // sidebar item that the content area doesn't show.
-    expect(screen.getByText('Project scans')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Scanning the saved records of this environment needs the API access above.',
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        'Scan the saved records of this environment from “Link checker” in the content area.',
-      ),
-    ).not.toBeInTheDocument();
+    // The group above says what project scans need: their row shows only
+    // once they're available. Record checks keep working.
+    expect(screen.queryByText('Project scans')).not.toBeInTheDocument();
     expect(screen.getByText('Record checks')).toBeInTheDocument();
   });
 });

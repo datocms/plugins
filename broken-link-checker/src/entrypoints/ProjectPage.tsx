@@ -120,8 +120,12 @@ function ProjectScanner({ ctx }: PageProps) {
     closeRow();
     scanRun.current += 1;
     const run = scanRun.current;
+    // The facts name the scope only when the user narrowed it.
+    const whole =
+      models.length === loader.models.length &&
+      locales.length === siteLocales.length;
     void scan.start(
-      scopeLabel(next, loader.models, siteLocales, uiLocale),
+      whole ? '' : scopeLabel(next, loader.models, siteLocales, uiLocale),
       createProjectProducer(ctx, loader, models, locales, (total) => {
         if (run === scanRun.current) setRecordTotal(total);
       }),
@@ -145,6 +149,8 @@ function ProjectScanner({ ctx }: PageProps) {
         title: 'Choose what to scan',
         width: 's',
         initialHeight: scopeModalHeight(siteLocales.length > 1),
+        // Its footer has a Cancel, so it has no cross.
+        closeDisabled: true,
         parameters,
       });
     } catch (error) {
@@ -152,7 +158,7 @@ function ProjectScanner({ ctx }: PageProps) {
       void ctx.alert("Couldn't open the scan dialog.");
       return;
     }
-    // ✕ and Esc resolve undefined: nothing to start.
+    // Cancel and Escape resolve nothing: nothing to start.
     if (isScope(result)) startScan(result);
   };
 
