@@ -17,6 +17,12 @@ export const providerOptions: Array<SelectOption<ProviderId>> = [
   { value: 'google', label: 'Google' },
 ];
 
+/** Where an admin checks the billing of the account of a key */
+export const providerBillingUrls: Record<ProviderId, string> = {
+  openai: 'https://platform.openai.com/settings/organization/billing',
+  google: 'https://console.cloud.google.com/billing',
+};
+
 export const aspectRatioOptions: AspectRatioOption[] = [
   { value: '1:1', label: 'Square', description: '1:1' },
   { value: '2:3', label: 'Portrait', description: '2:3' },

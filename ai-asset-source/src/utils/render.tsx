@@ -6,6 +6,7 @@ import Canvas from 'datocms-react-ui/Canvas';
 import type React from 'react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { TEXTS } from '../texts';
 
 const container = document.getElementById('root');
 
@@ -25,5 +26,9 @@ export function renderWithCanvas(
   component: React.ReactNode,
   ctx: CanvasCtx,
 ): void {
-  render(<Canvas ctx={ctx}>{component}</Canvas>);
+  render(
+    <Canvas ctx={ctx} texts={TEXTS}>
+      {component}
+    </Canvas>,
+  );
 }

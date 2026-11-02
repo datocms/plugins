@@ -75,7 +75,7 @@ async function renderPrompt() {
   });
   await act(async () => {
     renderer.root
-      .findByType('input')
+      .findByType('textarea')
       .props.onChange({ target: { value: 'Mock image prompt' } });
   });
 }
@@ -97,7 +97,9 @@ test('an empty prompt shows its error on the field and starts no request', async
     await renderer.root.findByType('form').props.onSubmit();
   });
   assert.equal(pending.length, 0);
-  assert.ok(JSON.stringify(renderer.toJSON()).includes('Enter a prompt'));
+  assert.ok(
+    JSON.stringify(renderer.toJSON()).includes('Describe the image first'),
+  );
   assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 0);
 });
 
@@ -177,23 +179,22 @@ test('preview failure removes a selected image before import', async () => {
     await operation;
   });
   const image = renderer.root.findByType('img');
+  const uploadDisabled = () =>
+    renderer.root
+      .findAllByType('button')
+      .find((button) => button.children.includes('Add to the Media Area'))
+      ?.props.disabled;
+  assert.equal(uploadDisabled(), true);
   await act(async () => {
     renderer.root.findByType(MediaCard).props.selection.onSelect();
   });
-  assert.ok(
-    renderer.root
-      .findAllByType('button')
-      .some((button) => button.children.includes('Upload selected')),
-  );
+  assert.equal(uploadDisabled(), false);
   await act(async () => {
     image.props.onError();
   });
-  assert.equal(
-    renderer.root
-      .findAllByType('button')
-      .some((button) => button.children.includes('Upload selected')),
-    false,
-  );
+  // The image leaves the grid, and nothing is left to add
+  assert.equal(renderer.root.findAllByType('img').length, 0);
+  assert.equal(uploadDisabled(), undefined);
   assert.equal(selections.length, 0);
 });
 
@@ -212,7 +213,7 @@ test('repeated upload callback hands each image off only once', async () => {
   });
   const upload = renderer.root
     .findAllByType('button')
-    .find((button) => button.children.includes('Upload selected'));
+    .find((button) => button.children.includes('Add to the Media Area'));
   assert.ok(upload);
   await act(async () => {
     upload.props.onClick();
@@ -241,6 +242,6 @@ test('the ten-minute deadline aborts a stalled generation without repeating it',
   assert.ok(
     renderer.root
       .findAllByProps({ role: 'alert' })
-      .some((node) => node.children.join('').includes('timed out')),
+      .some((node) => node.children.join('').includes('was stopped')),
   );
 });

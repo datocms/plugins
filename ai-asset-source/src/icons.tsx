@@ -33,36 +33,6 @@ export function ImageIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** The status of an error */
-export function CircleExclamationIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      aria-hidden="true"
-      {...props}
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="9"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <path
-        d="M12 7.5v5.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="16.5" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
 /** The OpenAI logo, in the color of the text */
 export function OpenAiIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -83,11 +53,14 @@ export function OpenAiIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** The Google logo, in the color of the text */
+/**
+ * The Google logo, in the color of the text. The view box leaves a margin
+ * around the solid "G", so it weighs the same as the OpenAI logo.
+ */
 export function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="-4 -4 32 32"
       width="1em"
       height="1em"
       aria-hidden="true"

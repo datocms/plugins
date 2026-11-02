@@ -28,6 +28,7 @@ import {
   getModelLabel,
   imageOutputFormatOptions,
   imageQualityOptions,
+  providerBillingUrls,
   providerOptions,
   supportsOutputControls,
 } from '../utils/imageService/catalog';
@@ -54,10 +55,29 @@ const providerRadioOptions = providerOptions.map(({ value, label }) => ({
   ...providerDetails[value],
 }));
 
+/** Where an admin gets an API key for each provider */
+const apiKeyDocs: Record<ProviderId, { label: string; to: string }> = {
+  openai: {
+    label: 'Get an OpenAI API key',
+    to: 'https://platform.openai.com/api-keys',
+  },
+  google: {
+    label: 'Get a Google AI Studio API key',
+    to: 'https://aistudio.google.com/apikey',
+  },
+};
+
 type ModelOptionsState = {
   status: 'idle' | 'loading' | 'loaded' | 'error';
   options: Array<SelectOption<string>>;
   errorMessage?: string;
+  /** The provider refused the key while listing its models */
+  keyRejected?: boolean;
+  /**
+   * The account of the key is over its quota (or out of credit). The key
+   * works: a callout under the Model field tells about the billing.
+   */
+  overQuota?: boolean;
 };
 
 const emptyModelOptionsState: ModelOptionsState = {
@@ -105,11 +125,21 @@ export default function ConfigScreen({ ctx }: Props) {
       withSelectedModelOption(modelOptionsState.options, activeProviderModel),
     [activeProviderModel, modelOptionsState.options],
   );
-  const model = getModelStatus(
-    activeProviderApiKey,
-    modelOptionsState,
-    activeProviderModel,
-  );
+  const providerLabel =
+    providerOptions.find((option) => option.value === activeProvider)?.label ??
+    activeProvider;
+  const apiKeyFieldError =
+    apiKeyError ?? getApiKeyStatus(modelOptionsState, providerLabel);
+  // While the API key field shows its error, the Model field says nothing
+  // more about the key.
+  const model = apiKeyFieldError
+    ? {}
+    : getModelStatus(
+        activeProviderApiKey,
+        modelOptionsState,
+        activeProviderModel,
+        providerLabel,
+      );
   const hasAnyKey = Boolean(
     values.providers.openai.apiKey.trim() ||
       values.providers.google.apiKey.trim(),
@@ -119,7 +149,11 @@ export default function ConfigScreen({ ctx }: Props) {
     serializeConfigParameters(savedValues);
   const saveReason = saving
     ? null
-    : getSaveReason(hasAnyKey, activeProviderHasSelectedModel, isDirty);
+    : getSaveReason(
+        Boolean(activeProviderApiKey),
+        activeProviderHasSelectedModel,
+        isDirty,
+      );
 
   useEffect(() => {
     if (!activeProviderApiKey) {
@@ -166,10 +200,13 @@ export default function ConfigScreen({ ctx }: Props) {
           return;
         }
 
+        const errorMessage = readErrorMessage(error);
         setModelOptionsState({
           status: 'error',
           options: withSelectedModelOption([], selectedModel),
-          errorMessage: readErrorMessage(error),
+          errorMessage,
+          keyRejected: isKeyRejection(error),
+          overQuota: isOverQuota(error),
         });
       });
 
@@ -246,15 +283,8 @@ export default function ConfigScreen({ ctx }: Props) {
       const selectedProviderValues =
         nextValues.providers[nextValues.defaultProvider];
 
-      if (!hasAnyKey) {
-        setApiKeyError('Add at least one provider key before saving.');
-        return;
-      }
-
-      if (!selectedProviderValues.apiKey) {
-        setApiKeyError(
-          'Add an API key for the selected provider before saving.',
-        );
+      if (!hasAnyKey || !selectedProviderValues.apiKey) {
+        setApiKeyError('Enter an API key.');
         return;
       }
 
@@ -270,10 +300,12 @@ export default function ConfigScreen({ ctx }: Props) {
         await ctx.updatePluginParameters(nextValues);
         setValues(nextValues);
         setSavedValues(nextValues);
-        ctx.notice('Settings updated successfully.');
+        ctx.notice('Settings saved.');
       } catch (error) {
         console.error('Image Generator plugin', error);
-        setErrorMessage('Unable to save settings right now.');
+        setErrorMessage(
+          "The settings weren't saved. Check your connection and try again.",
+        );
       } finally {
         setSaving(false);
       }
@@ -286,7 +318,7 @@ export default function ConfigScreen({ ctx }: Props) {
       <Page.Content>
         <form onSubmit={handleSubmit}>
           <Page.Group
-            title="Image provider"
+            title="Image generation"
             footer={
               <Button
                 submit
@@ -309,7 +341,8 @@ export default function ConfigScreen({ ctx }: Props) {
             <FieldWrapper
               label="API key"
               required
-              error={apiKeyError ?? undefined}
+              docs={apiKeyDocs[activeProvider]}
+              error={apiKeyFieldError ?? undefined}
             >
               <PasswordInput
                 value={activeProviderValues.apiKey}
@@ -342,11 +375,29 @@ export default function ConfigScreen({ ctx }: Props) {
               />
             </FieldWrapper>
 
+            {modelOptionsState.overQuota && (
+              <Callout tone="danger">
+                This {providerLabel} account is over its quota.{' '}
+                <a
+                  href={providerBillingUrls[activeProvider]}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Check its billing
+                </a>
+                , then reload this page.
+              </Callout>
+            )}
+
             {showOutputControls && (
               <div className="form__field form__row">
                 <div className="form__row__cell">
-                  <FieldWrapper label="Quality">
+                  <FieldWrapper
+                    label="Quality"
+                    hint="Higher quality takes longer and costs more per image."
+                  >
                     <RadioGroupInput
+                      small
                       value={values.providers.openai.defaultQuality}
                       onChange={(next) => next && handleQualityChange(next)}
                       options={imageQualityOptions}
@@ -356,6 +407,7 @@ export default function ConfigScreen({ ctx }: Props) {
                 <div className="form__row__cell">
                   <FieldWrapper label="Output format">
                     <RadioGroupInput
+                      small
                       value={values.providers.openai.defaultOutputFormat}
                       onChange={(next) =>
                         next && handleOutputFormatChange(next)
@@ -368,7 +420,10 @@ export default function ConfigScreen({ ctx }: Props) {
             )}
 
             {showCompressionControl && (
-              <FieldWrapper label="Compression" hint="From 0 to 100.">
+              <FieldWrapper
+                label="Compression"
+                hint="Lower numbers make smaller files with less detail. 100 gives the best quality."
+              >
                 <NumberInput
                   value={values.providers.openai.defaultCompression}
                   onChange={(next) => handleCompressionChange(next ?? 100)}
@@ -407,25 +462,49 @@ function withSelectedModelOption(
   ];
 }
 
+/** The error of the API key field when the models can't load because of it */
+function getApiKeyStatus(
+  state: ModelOptionsState,
+  providerLabel: string,
+): string | null {
+  return state.keyRejected
+    ? `${providerLabel} didn't accept this key. Check that you copied the whole key.`
+    : null;
+}
+
 function getModelStatus(
   apiKey: string,
   state: ModelOptionsState,
   selectedModel: string,
+  providerLabel: string,
 ): { hint?: string; error?: string } {
   if (!apiKey) {
-    return { hint: 'Add an API key to load available models.' };
+    return { hint: 'Add an API key to load the models.' };
   }
 
+  // While the models load, the select shows its spinner
   if (state.status === 'loading') {
-    return { hint: 'Loading available models…' };
+    return {};
+  }
+
+  // The quota callout under the field tells why the list didn't load
+  if (state.status === 'error' && state.overQuota) {
+    return {};
   }
 
   if (state.status === 'error') {
-    return { error: state.errorMessage || 'Unable to load models.' };
+    return {
+      error: state.errorMessage
+        ? `${providerLabel} couldn't list the models: ${asSentence(state.errorMessage)} Reload this page to try again.`
+        : `${providerLabel} couldn't list the models. Check your connection, then reload this page.`,
+    };
   }
 
   if (state.status === 'loaded' && state.options.length === 0) {
-    return { error: 'No compatible image models were returned for this key.' };
+    return {
+      error:
+        "This key can't make images. Use a key from an account with image models.",
+    };
   }
 
   if (
@@ -434,19 +513,20 @@ function getModelStatus(
       (option) => option.value === selectedModel && option.unavailable,
     )
   ) {
-    return { error: 'This saved model was not returned by the provider.' };
+    // The value already reads "(unavailable)": the error is the step alone
+    return { error: 'Pick another model.' };
   }
 
   return {};
 }
 
 function getSaveReason(
-  hasAnyKey: boolean,
+  hasApiKey: boolean,
   hasSelectedModel: boolean,
   isDirty: boolean,
 ): string | null {
-  if (!hasAnyKey) {
-    return 'Add at least one provider key before saving.';
+  if (!hasApiKey) {
+    return 'Enter an API key before saving.';
   }
 
   if (!hasSelectedModel) {
@@ -472,10 +552,58 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
+/**
+ * The provider refused the key while listing its models: OpenAI answers 401,
+ * Google 400 "API key not valid". Other 400 and 403 errors (a region the
+ * provider doesn't serve, an API that is off) keep the provider's message.
+ */
+function isKeyRejection(error: unknown): boolean {
+  const status = readErrorStatus(error);
+
+  return (
+    status === 401 ||
+    ((status === 400 || status === 403) &&
+      /api.?key/i.test(readErrorMessage(error) ?? ''))
+  );
+}
+
+/** The account of a key that works is over its quota, or out of credit */
+function isOverQuota(error: unknown): boolean {
+  return (
+    !isKeyRejection(error) &&
+    (readErrorStatus(error) === 429 ||
+      /quota|billing/i.test(readErrorMessage(error) ?? ''))
+  );
+}
+
+function readErrorStatus(error: unknown): unknown {
+  return error && typeof error === 'object' && 'status' in error
+    ? error.status
+    : undefined;
+}
+
+/**
+ * The message of the provider. A network error has none: it has no status,
+ * and its message ("Failed to fetch") says nothing to an admin.
+ */
+function readErrorMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !error.message) {
+    return undefined;
   }
 
-  return 'Unable to load models.';
+  if (
+    readErrorStatus(error) === undefined &&
+    /fetch|network|connect/i.test(error.message)
+  ) {
+    return undefined;
+  }
+
+  return error.message;
+}
+
+/** A message of the provider as a sentence, with its final period */
+function asSentence(message: string): string {
+  const trimmed = message.trim();
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }

@@ -1,6 +1,7 @@
 import type {
   NormalizedGeneratedImage,
   NormalizedGenerationBatch,
+  NormalizedGenerationImage,
 } from './imageService/types';
 
 export const MAX_REQUESTS = 5;
@@ -56,10 +57,26 @@ export function imageBrowserReducer(
       }
       return { ...state, selectedIds };
     }
+    // An image whose preview fails can't be picked: it leaves the selection
+    // and the grid, like an image that wasn't created
     case 'unavailable': {
       const selectedIds = new Set(state.selectedIds);
       selectedIds.delete(action.id);
-      return { ...state, selectedIds };
+      const requests = state.requests.map((request) => ({
+        ...request,
+        images: request.images.map(
+          (image): NormalizedGenerationImage =>
+            image.id === action.id && image.kind === 'success'
+              ? {
+                  kind: 'error',
+                  id: image.id,
+                  position: image.position,
+                  errorMessage: 'The preview could not be displayed.',
+                }
+              : image,
+        ),
+      }));
+      return { ...state, requests, selectedIds };
     }
     case 'sent': {
       const selectedIds = new Set(state.selectedIds);

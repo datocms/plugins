@@ -1,5 +1,12 @@
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import type { ReactNode } from 'react';
+type Message = ReactNode | { id: string; values?: Record<string, unknown> };
+// A text key of the plugin shows as its id, with its values
+function text(message: Message): ReactNode {
+  return message && typeof message === 'object' && 'id' in message
+    ? `${message.id} ${JSON.stringify(message.values ?? {})}`
+    : message;
+}
 let context: RenderAssetSourceCtx;
 export function setTestContext(value: RenderAssetSourceCtx) {
   context = value;
@@ -33,7 +40,7 @@ export function Button({
     </button>
   );
 }
-export function StringInput({
+export function TextareaInput({
   value,
   onChange,
 }: {
@@ -41,7 +48,7 @@ export function StringInput({
   onChange?: (value: string | null) => void;
 }) {
   return (
-    <input
+    <textarea
       value={value ?? ''}
       onChange={(e) => onChange?.(e.target.value || null)}
     />
@@ -66,16 +73,22 @@ export function RadioGroupInput() {
 }
 export function Callout({
   tone,
+  title,
   children,
 }: {
   tone?: string;
+  title?: Message;
   children?: ReactNode;
 }) {
   return (
     <div role={tone === 'danger' || tone === 'warning' ? 'alert' : 'status'}>
+      {text(title)}
       {children}
     </div>
   );
+}
+export function Link({ to, children }: { to: string; children?: ReactNode }) {
+  return <a href={to}>{children}</a>;
 }
 export function BlankSlate({
   title,
@@ -84,16 +97,16 @@ export function BlankSlate({
   actions,
   children,
 }: {
-  title?: ReactNode;
-  description?: ReactNode;
+  title?: Message;
+  description?: Message;
   caption?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div>
-      {title}
-      {description}
+      {text(title)}
+      {text(description)}
       {caption}
       {actions}
       {children}
@@ -104,14 +117,14 @@ export function MediaCard({
   caption,
   children,
 }: {
-  caption?: ReactNode;
+  caption?: { text: ReactNode; muted?: boolean };
   selection?: { selected: boolean; onSelect?: () => void };
   children?: ReactNode;
 }) {
   return (
     <div>
       {children}
-      {caption}
+      {caption?.text}
     </div>
   );
 }

@@ -4,10 +4,14 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Link from 'datocms-react-ui/Link';
+import type { Message } from 'datocms-react-ui/Message';
 import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
-import StringInput from 'datocms-react-ui/StringInput';
+import TextareaInput from 'datocms-react-ui/TextareaInput';
 import {
   type FormEvent,
+  type ReactElement,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -33,13 +37,12 @@ import {
 import {
   aspectRatioOptions,
   getDefaultImageSize,
+  providerBillingUrls,
+  providerOptions,
   supportsOutputControls,
   variationOptions,
 } from '../utils/imageService/catalog';
-import {
-  createFailedGenerationBatch,
-  readProviderErrorDetails,
-} from '../utils/imageService/shared';
+import { readProviderErrorDetails } from '../utils/imageService/shared';
 import type {
   AspectRatio,
   GenerationStatus,
@@ -53,6 +56,7 @@ import {
   getSelectedImages,
   imageBrowserReducer,
   initialImageBrowserState,
+  MAX_REQUESTS,
 } from '../utils/imageBrowserState';
 import s from './styles.module.css';
 
@@ -60,17 +64,10 @@ const MISSING_PROVIDER_KEY_MESSAGE =
   'Add a provider API key in plugin settings before generating images.';
 const MISSING_PROVIDER_MODEL_MESSAGE =
   'Select a model in plugin settings before generating images.';
-const MISSING_PROMPT_MESSAGE = 'Enter a prompt before generating images.';
+const MISSING_PROMPT_MESSAGE = 'Describe the image first.';
 const REQUEST_TIMEOUT_MINUTES = 10;
 const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MINUTES * 60_000;
-const REQUEST_TIMEOUT_MESSAGE = `The request timed out after ${REQUEST_TIMEOUT_MINUTES} minutes. Provider processing may still complete and incur charges. Check provider usage before trying again.`;
-const GENERATION_DURATION_WARNING = 'Images can take 5-10 minutes to generate.';
-const REQUEST_CANCELLED_MESSAGE =
-  'Request cancelled. The provider may still complete processing and charge for it.';
-const SENDING_REQUEST_LABEL = 'Sending request…';
-const WAITING_FOR_IMAGES_LABEL = 'Waiting for images…';
-const STILL_WAITING_LABEL =
-  'Still waiting. Large requests can take several minutes.';
+const REQUEST_TIMEOUT_TITLE = `No images after ${REQUEST_TIMEOUT_MINUTES} minutes`;
 const aspectRatioRadioOptions = aspectRatioOptions.map(
   ({ value, label, description }) => ({ value, label, hint: description }),
 );
@@ -80,9 +77,9 @@ const variationRadioOptions = variationOptions.map(({ value, label }) => ({
 }));
 
 type UserFeedback = {
-  kind: 'error' | 'notice';
-  title: string;
-  message: string;
+  tone: 'danger' | 'warning';
+  title: Message;
+  body: ReactNode;
 };
 
 type AbortReason = 'cancel' | 'timeout';
@@ -92,6 +89,7 @@ type ActiveGenerationRequest = {
   startedAtMs: number;
   elapsedSeconds: number;
   timeoutMs: number;
+  imageCount: number;
 };
 
 type RequestLogContext = {
@@ -160,6 +158,7 @@ const AssetBrowser = () => {
     () => supportsOutputControls(provider, model),
     [model, provider],
   );
+  const providerLabel = getProviderLabel(provider);
   const hasProviderApiKey = Boolean(providerApiKey);
   const hasProviderModel = Boolean(model.trim());
   const isSubmitting = status === 'submitted';
@@ -167,6 +166,12 @@ const AssetBrowser = () => {
   const selectedImages = useMemo(
     () => getSelectedImages(browserState),
     [browserState],
+  );
+  const hasSelectableImages = requests.some((request) =>
+    request.images.some(
+      (image) =>
+        image.kind === 'success' && !browserState.sentIds.has(image.id),
+    ),
   );
 
   useEffect(() => {
@@ -184,11 +189,13 @@ const AssetBrowser = () => {
   const historyId = requests[0]?.id;
   useEffect(() => {
     if (historyId && browserState.evictedSelectedCount > 0) {
-      const count = browserState.evictedSelectedCount;
       setFeedbackMessage({
-        kind: 'notice',
-        title: 'Selected images removed',
-        message: `${count} selected ${count === 1 ? 'image' : 'images'} left the recent history. Upload selected images before generating more.`,
+        tone: 'warning',
+        title: {
+          id: 'aiAssetSource.evicted',
+          values: { count: browserState.evictedSelectedCount },
+        },
+        body: `Only the images of your last ${MAX_REQUESTS} generations are kept. Add the ones you want before you generate more.`,
       });
     }
   }, [historyId, browserState.evictedSelectedCount]);
@@ -304,6 +311,33 @@ const AssetBrowser = () => {
     dispatch({ type: 'toggle', id: imageId });
   }, []);
 
+  // A preview that fails takes its image out of the grid. When the newest
+  // request loses an image this way, the message counts it with the images
+  // that weren't created. The count comes from the state, so previews that
+  // fail together are all counted.
+  const newestRequest = requests[0];
+  const newestCountRef = useRef<{ id: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!newestRequest) {
+      return;
+    }
+
+    const count = countGeneratedImages(newestRequest);
+    const previous = newestCountRef.current;
+    newestCountRef.current = { id: newestRequest.id, count };
+    if (previous?.id !== newestRequest.id || count >= previous.count) {
+      return;
+    }
+
+    const feedback = describeMissingImages(
+      newestRequest.request.variationCount,
+      count,
+    );
+    if (feedback) {
+      setFeedbackMessage(feedback);
+    }
+  }, [newestRequest]);
+
   const handleUploadSelected = useCallback(() => {
     if (!selectedImages.length || handoffLockRef.current) return;
     handoffLockRef.current = true;
@@ -323,28 +357,28 @@ const AssetBrowser = () => {
           if (!mountedRef.current) return;
           dispatch({ type: 'rejected', id });
           setFeedbackMessage({
-            kind: 'error',
-            title: 'Upload failed',
-            message:
-              'An image could not be sent to the Media Area. Check its upload queue before retrying.',
+            tone: 'danger',
+            title: "An image couldn't be added to the Media Area",
+            body: "It's selected again, so you can try again.",
           });
         },
       );
       dispatch({ type: 'sent', ids: result.sent });
       if (result.failed.length) {
-        const count = result.failed.length;
         setFeedbackMessage({
-          kind: 'error',
-          title: 'Upload failed',
-          message: `${count} ${count === 1 ? 'image' : 'images'} could not be sent to the Media Area. They remain selected.`,
+          tone: 'danger',
+          title: {
+            id: 'aiAssetSource.uploadFailed',
+            values: { count: result.failed.length },
+          },
+          body: 'Your selection is kept, so you can try again.',
         });
       }
     } catch {
       setFeedbackMessage({
-        kind: 'error',
-        title: 'Selection too large',
-        message:
-          'This selection exceeds the asset source memory limit. Select fewer images before uploading.',
+        tone: 'danger',
+        title: 'Too many images to add at once',
+        body: 'Select fewer and try again.',
       });
     } finally {
       handoffLockRef.current = false;
@@ -360,6 +394,7 @@ const AssetBrowser = () => {
     activeControllerRef.current.abort();
   }, []);
 
+  // A request that made no image shows only its Callout: it adds no cards
   const handleRequestFailure = useCallback(
     (
       error: unknown,
@@ -373,18 +408,14 @@ const AssetBrowser = () => {
         logAbortedRequest(requestLogContext, durationMs, reason);
 
         if (reason === 'timeout') {
-          dispatch({
-            type: 'add',
-            batch: createFailedGenerationBatch(
-              normalizedRequest,
-              new Date().toISOString(),
-              REQUEST_TIMEOUT_MESSAGE,
-            ),
-          });
+          const nextStep =
+            requestLogContext.variationCount > 1
+              ? 'Try again, or ask for fewer images.'
+              : 'Try again.';
           setFeedbackMessage({
-            kind: 'error',
-            title: 'Request timed out',
-            message: REQUEST_TIMEOUT_MESSAGE,
+            tone: 'danger',
+            title: REQUEST_TIMEOUT_TITLE,
+            body: `It was stopped, and ${providerLabel} may still charge for it. ${nextStep}`,
           });
           setStatus('error');
           return;
@@ -392,7 +423,9 @@ const AssetBrowser = () => {
 
         ctx.customToast({
           type: 'warning',
-          message: REQUEST_CANCELLED_MESSAGE,
+          message: `Stopped. ${providerLabel} may still charge for ${
+            requestLogContext.variationCount === 1 ? 'the image' : 'the images'
+          }.`,
           dismissAfterTimeout: true,
         });
         setStatus('idle');
@@ -410,22 +443,18 @@ const AssetBrowser = () => {
         ...errorLogDetails,
       });
 
-      dispatch({
-        type: 'add',
-        batch: createFailedGenerationBatch(
-          normalizedRequest,
-          new Date().toISOString(),
+      setFeedbackMessage(
+        describeFailure(
+          ctx,
+          provider,
+          requestLogContext.variationCount,
+          details.status,
           nextErrorMessage,
         ),
-      });
-      setFeedbackMessage({
-        kind: 'error',
-        title: 'Generation failed',
-        message: nextErrorMessage,
-      });
+      );
       setStatus('error');
     },
-    [ctx, normalizedRequest, provider],
+    [ctx, provider, providerLabel],
   );
 
   const createRequestTimeout = useCallback(
@@ -469,8 +498,8 @@ const AssetBrowser = () => {
     [],
   );
 
-  // A missing prompt is the error of the prompt field. A missing key or model
-  // already shows in the warning callout at the top.
+  // A missing prompt is the error of the prompt field. With a missing key or
+  // model, the form doesn't show.
   const showValidationError = useCallback((message: string) => {
     if (message === MISSING_PROMPT_MESSAGE) {
       setPromptError(message);
@@ -514,6 +543,7 @@ const AssetBrowser = () => {
         startedAtMs,
         elapsedSeconds: 0,
         timeoutMs: REQUEST_TIMEOUT_MS,
+        imageCount: normalizedRequest.variationCount,
       });
 
       console.info('[asset-source] request started', requestLogContext);
@@ -535,18 +565,22 @@ const AssetBrowser = () => {
 
         if (!canUpdateRequest(controller)) return;
 
+        // A provider can send more images than asked. They show with no
+        // message (past the memory limit, only the first ones): nothing that
+        // the editor asked for is missing. A request that made no image adds
+        // nothing to the history.
+        const createdCount = countGeneratedImages(result);
         console.info('[asset-source] request completed', {
           ...withRequestDuration(requestLogContext, durationMs),
-          imageCount: countGeneratedImages(result),
+          imageCount: createdCount,
+          warnings: result.warnings,
         });
-        dispatch({ type: 'add', batch: result });
-        if (result.warnings?.length) {
-          setFeedbackMessage({
-            kind: 'notice',
-            title: 'More images than requested',
-            message: result.warnings.join(' '),
-          });
+        if (createdCount > 0) {
+          dispatch({ type: 'add', batch: result });
         }
+        setFeedbackMessage(
+          describeMissingImages(normalizedRequest.variationCount, createdCount),
+        );
         setStatus('completed');
       } catch (error) {
         const durationMs = Date.now() - startedAtMs;
@@ -568,85 +602,92 @@ const AssetBrowser = () => {
     ],
   );
 
+  if (!hasProviderApiKey || !hasProviderModel) {
+    return (
+      <SetupBlankSlate
+        ctx={ctx}
+        task={
+          hasProviderApiKey
+            ? 'pick an image model'
+            : 'add an OpenAI or Google API key'
+        }
+      />
+    );
+  }
+
+  const ratioField = (
+    <FieldWrapper label="Image ratio">
+      <RadioGroupInput
+        options={aspectRatioRadioOptions}
+        value={aspectRatio}
+        onChange={(next) => next && setAspectRatio(next)}
+      />
+    </FieldWrapper>
+  );
+
   return (
     <div className={s.page}>
-      {!hasProviderApiKey && (
-        <Callout className={s.callout} tone="warning">
-          {MISSING_PROVIDER_KEY_MESSAGE}
-        </Callout>
-      )}
-
-      {hasProviderApiKey && !hasProviderModel && (
-        <Callout className={s.callout} tone="warning">
-          {MISSING_PROVIDER_MODEL_MESSAGE}
-        </Callout>
-      )}
-
       <form onSubmit={handleSubmit}>
         <FieldWrapper
-          label="Prompt"
-          hint="Start with a detailed description."
+          label="Describe the image"
           error={promptError ?? undefined}
         >
-          <StringInput
+          <TextareaInput
             value={prompt}
             onChange={handlePromptChange}
             placeholder="High-quality photo of a monkey astronaut"
+            maxRows={6}
+            // Enter adds a line break: Cmd/Ctrl+Enter generates
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
         </FieldWrapper>
 
-        <div className="form__field form__row">
-          <div className="form__row__cell">
-            <FieldWrapper label="Image ratio">
-              <RadioGroupInput
-                options={aspectRatioRadioOptions}
-                value={aspectRatio}
-                onChange={(next) => next && setAspectRatio(next)}
-              />
-            </FieldWrapper>
+        {capabilities.supportsVariationCount ? (
+          <div className="form__field form__row">
+            <div className="form__row__cell">{ratioField}</div>
+            <div className="form__row__cell">
+              <FieldWrapper label="Number of images">
+                <RadioGroupInput
+                  small
+                  options={variationRadioOptions}
+                  value={String(variationCount)}
+                  onChange={(next) =>
+                    next && setVariationCount(Number(next) as VariationCount)
+                  }
+                />
+              </FieldWrapper>
+            </div>
           </div>
-          <div className="form__row__cell">
-            <FieldWrapper
-              label="Variations"
-              hint={
-                capabilities.supportsVariationCount
-                  ? undefined
-                  : 'This model generates one image per request.'
-              }
-            >
-              <RadioGroupInput
-                options={variationRadioOptions}
-                value={String(variationCount)}
-                onChange={(next) =>
-                  next && setVariationCount(Number(next) as VariationCount)
-                }
-                disabled={!capabilities.supportsVariationCount}
-              />
-            </FieldWrapper>
-          </div>
-        </div>
+        ) : (
+          // A model that makes one image per request has no number to pick
+          ratioField
+        )}
 
         <Button
           submit
-          tone="primary"
+          tone={totalSelectedCount > 0 ? 'soft' : 'primary'}
           label="Generate"
           expand={false}
-          busy={isSubmitting}
-          disabled={
-            submitValidationError
-              ? { reason: submitValidationError }
-              : undefined
-          }
+          disabled={getGenerateDisabled(isSubmitting, submitValidationError)}
         />
       </form>
 
       {activeRequest && (
         <BlankSlate
           placement="section"
+          small
           loading
-          title={getActiveRequestLabel(activeRequest.elapsedSeconds)}
-          description={GENERATION_DURATION_WARNING}
-          caption={`Elapsed ${formatDuration(activeRequest.elapsedSeconds)}`}
+          title={{
+            id: 'aiAssetSource.creating',
+            values: { count: activeRequest.imageCount },
+          }}
+          description="This can take a few minutes."
+          caption={`${formatDuration(activeRequest.elapsedSeconds)} so far`}
           actions={
             <Button tone="ghost" label="Cancel" onClick={handleCancelRequest} />
           }
@@ -656,58 +697,364 @@ const AssetBrowser = () => {
       {feedbackMessage && (
         <Callout
           className={s.callout}
-          tone={feedbackMessage.kind === 'error' ? 'danger' : 'warning'}
+          tone={feedbackMessage.tone}
           title={feedbackMessage.title}
         >
-          {feedbackMessage.message}
+          {feedbackMessage.body}
         </Callout>
       )}
 
-      {!hasRequests && !isSubmitting && (
+      {!hasRequests && !isSubmitting && !feedbackMessage && (
         <BlankSlate
           placement="section"
+          small
           icon={<ImageIcon />}
           title="No images yet"
-          description="Describe what you'd like to see, then click Generate."
+          description="The images you generate show here."
         />
       )}
 
-      {totalSelectedCount > 0 && (
+      {hasSelectableImages && (
         <div className={s.selection}>
-          <span>
-            {totalSelectedCount} {totalSelectedCount === 1 ? 'image' : 'images'}{' '}
-            selected
-          </span>
+          <span>{getSelectionStatus(totalSelectedCount)}</span>
           <Button
             tone="primary"
-            label="Upload selected"
+            label="Add to the Media Area"
             onClick={handleUploadSelected}
+            disabled={
+              totalSelectedCount === 0
+                ? { reason: 'Select at least one image.' }
+                : undefined
+            }
           />
         </div>
       )}
 
-      {requests.map((request) => (
-        <div key={request.id} className={s.grid}>
-          {request.images.map((image) => (
-            <Cell
-              key={image.id}
-              image={image}
-              selected={selectedImageIdSet.has(image.id)}
-              sent={browserState.sentIds.has(image.id)}
-              hasSelection={totalSelectedCount > 0}
-              onPreviewFailed={() =>
-                dispatch({ type: 'unavailable', id: image.id })
-              }
-              onToggleSelected={() => toggleImageSelected(image.id)}
-            />
-          ))}
+      {hasRequests && (
+        // One grid for all the requests, the newest first, with only the
+        // images that were created
+        <div className={s.grid}>
+          {requests.flatMap((request) =>
+            request.images
+              .filter((image) => image.kind === 'success')
+              .map((image) => (
+                <Cell
+                  key={image.id}
+                  image={image}
+                  caption={request.request.prompt}
+                  selected={selectedImageIdSet.has(image.id)}
+                  sent={browserState.sentIds.has(image.id)}
+                  onPreviewFailed={() =>
+                    dispatch({ type: 'unavailable', id: image.id })
+                  }
+                  onToggleSelected={() => toggleImageSelected(image.id)}
+                />
+              )),
+          )}
         </div>
-      ))}
+      )}
     </div>
   );
 };
 
 export default AssetBrowser;
+
+function getGenerateDisabled(
+  isSubmitting: boolean,
+  validationError: string | null,
+): { reason: string } | undefined {
+  if (isSubmitting) {
+    return { reason: 'The images are being created.' };
+  }
+
+  return validationError ? { reason: validationError } : undefined;
+}
+
+function getSelectionStatus(count: number): string {
+  if (count === 0) {
+    return 'Select the images to add';
+  }
+
+  return `${count} ${count === 1 ? 'image' : 'images'} selected`;
+}
+
+function getProviderLabel(provider: ImageOperationRequest['provider']): string {
+  return (
+    providerOptions.find((option) => option.value === provider)?.label ??
+    provider
+  );
+}
+
+/**
+ * A plugin with no key or model yet is a first use, not an error. The roles
+ * that can open the plugin settings get a button there, in a new tab, so the
+ * dialog stays open. The other roles are told to ask an admin.
+ */
+function SetupBlankSlate({
+  ctx,
+  task,
+}: {
+  ctx: RenderAssetSourceCtx;
+  task: string;
+}) {
+  if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
+    return (
+      <BlankSlate
+        placement="inline"
+        icon={<ImageIcon />}
+        title="Image generation isn't set up yet"
+        description={`Ask an admin to ${task} in the plugin settings.`}
+      />
+    );
+  }
+
+  return (
+    <BlankSlate
+      placement="inline"
+      icon={<ImageIcon />}
+      title="Image generation isn't set up yet"
+      description={`${task.charAt(0).toUpperCase()}${task.slice(1)}.`}
+      actions={
+        <Button
+          tone="primary"
+          label="Open the plugin settings"
+          to={pluginSettingsPath(ctx)}
+          newTab
+        />
+      }
+    />
+  );
+}
+
+/** The page of the plugin settings, in the current environment */
+function pluginSettingsPath(ctx: RenderAssetSourceCtx): string {
+  const environment = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+
+  return `${environment}/configuration/plugins/${ctx.plugin.id}/edit`;
+}
+
+/**
+ * The step that an admin takes in the plugin settings, as a sentence. For the
+ * roles that can open the settings, their name is a link there, in a new tab,
+ * so the dialog stays open. The other roles are told to ask an admin.
+ */
+function pluginSettingsStep(
+  ctx: RenderAssetSourceCtx,
+  task: string,
+): ReactElement {
+  if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
+    return <span>Ask an admin to {task} in the plugin settings.</span>;
+  }
+
+  // One element, so the sentence stays on one line in a description
+  return (
+    <span>
+      {task.charAt(0).toUpperCase()}
+      {task.slice(1)} in the{' '}
+      <Link to={pluginSettingsPath(ctx)} target="_blank">
+        plugin settings
+      </Link>
+      .
+    </span>
+  );
+}
+
+/**
+ * The Callout of a request that failed, in plain words with the next step.
+ * The provider's own message shows, quoted, only when no plainer one fits.
+ */
+function describeFailure(
+  ctx: RenderAssetSourceCtx,
+  provider: ImageOperationRequest['provider'],
+  imageCount: number,
+  status: number | undefined,
+  message: string,
+): UserFeedback {
+  const providerLabel = getProviderLabel(provider);
+  const accountFailure = describeAccountFailure(ctx, provider, status, message);
+
+  if (accountFailure) {
+    return accountFailure;
+  }
+
+  if (/safety|moderation|content.?policy/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: `${providerLabel} refused this description`,
+      body: `It goes against ${providerLabel}'s safety rules. Change the wording and generate again.`,
+    };
+  }
+
+  if (status && status >= 500) {
+    return {
+      tone: 'danger',
+      title: `${providerLabel} had a problem`,
+      body: 'No images were created. Try again in a few minutes.',
+    };
+  }
+
+  if (status === 429) {
+    return {
+      tone: 'danger',
+      title: 'Too many images in a short time',
+      body: 'Wait a minute, then try again.',
+    };
+  }
+
+  // The model can't make the size of the picked ratio
+  if (status === 400 && /size|aspect|resolution/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: `${providerLabel} can't make this image ratio`,
+      body: 'Pick another image ratio, then generate again.',
+    };
+  }
+
+  // A network error has no status, and its message ("Failed to fetch") says
+  // nothing to an editor
+  if (!status && /fetch|network|connect/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: `Couldn't reach ${providerLabel}`,
+      body: 'Check your connection, then try again.',
+    };
+  }
+
+  // The model answered with no image, for example with text only
+  if (/did not return image data/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: `${providerLabel} didn't create an image`,
+      body: 'Describe the image in another way, then generate again.',
+    };
+  }
+
+  // With a status, the message is the provider's answer: it shows as a quote.
+  // Without one, it is the plugin's own.
+  const trimmed = message.trim();
+  const sentence = /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return {
+    tone: 'danger',
+    title: {
+      id: 'aiAssetSource.failed',
+      values: { count: imageCount, provider: providerLabel },
+    },
+    body: (
+      <span>
+        {status ? `${providerLabel} said: “${sentence}”` : sentence} If it
+        happens again,{' '}
+        {ctx.currentRole.meta.final_permissions.can_edit_schema ? (
+          <>
+            check the{' '}
+            <Link to={pluginSettingsPath(ctx)} target="_blank">
+              plugin settings
+            </Link>
+            .
+          </>
+        ) : (
+          'ask an admin to check the plugin settings.'
+        )}
+      </span>
+    ),
+  };
+}
+
+/**
+ * The Callout of a failure that an admin fixes in the provider account: the
+ * key, the verification of the organization, the quota. For the roles that
+ * can open the plugin settings, the step is a link to the page that fixes it,
+ * in a new tab. The other roles are told to ask an admin.
+ */
+function describeAccountFailure(
+  ctx: RenderAssetSourceCtx,
+  provider: ImageOperationRequest['provider'],
+  status: number | undefined,
+  message: string,
+): UserFeedback | null {
+  const providerLabel = getProviderLabel(provider);
+  const isAdmin = ctx.currentRole.meta.final_permissions.can_edit_schema;
+
+  // OpenAI also answers 403 to a key that works, for example when the
+  // organization isn't verified: only a message about the key blames it
+  if (
+    status === 401 ||
+    ((status === 400 || status === 403) && /api.?key/i.test(message))
+  ) {
+    return {
+      tone: 'danger',
+      title: `${providerLabel} didn't accept the saved API key`,
+      body: pluginSettingsStep(ctx, 'update it'),
+    };
+  }
+
+  if (provider === 'openai' && status === 403 && /verif/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: 'OpenAI needs a verified organization',
+      body: isAdmin ? (
+        <span>
+          Verify it in the{' '}
+          <a
+            href="https://platform.openai.com/settings/organization/general"
+            target="_blank"
+            rel="noreferrer"
+          >
+            OpenAI settings
+          </a>
+          , then try again.
+        </span>
+      ) : (
+        'Ask an admin to verify the OpenAI organization.'
+      ),
+    };
+  }
+
+  if (/quota|billing/i.test(message)) {
+    return {
+      tone: 'danger',
+      title: `This ${providerLabel} account is over its quota`,
+      body: isAdmin ? (
+        <span>
+          <a
+            href={providerBillingUrls[provider]}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Check its billing
+          </a>
+          , then try again.
+        </span>
+      ) : (
+        'Ask an admin to check its billing.'
+      ),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The Callout of a request that made fewer images than asked: one message
+ * for all the images that weren't created, which get no card.
+ */
+function describeMissingImages(
+  requestedCount: number,
+  createdCount: number,
+): UserFeedback | null {
+  const missingCount = requestedCount - createdCount;
+
+  if (missingCount <= 0) {
+    return null;
+  }
+
+  return {
+    tone: createdCount > 0 ? 'warning' : 'danger',
+    title: { id: 'aiAssetSource.notCreated', values: { count: missingCount } },
+    body: createdCount > 0 ? 'Generate again to get more.' : 'Generate again.',
+  };
+}
 
 function getSubmitValidationError(
   providerApiKey: string,
@@ -729,26 +1076,10 @@ function getSubmitValidationError(
   return null;
 }
 
-function getActiveRequestLabel(elapsedSeconds: number): string {
-  if (elapsedSeconds <= 2) {
-    return SENDING_REQUEST_LABEL;
-  }
-
-  if (elapsedSeconds <= 29) {
-    return WAITING_FOR_IMAGES_LABEL;
-  }
-
-  return STILL_WAITING_LABEL;
-}
-
 function formatDuration(seconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
-
-  if (minutes === 0) {
-    return `${remainingSeconds}s`;
-  }
 
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
