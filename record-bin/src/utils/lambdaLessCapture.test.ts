@@ -38,6 +38,7 @@ const context = (token: string | undefined = 'token') => ({
   cmaBaseUrl: 'https://example.invalid',
   plugin: { attributes: { parameters: {} } },
   alert: vi.fn().mockResolvedValue(undefined),
+  customToast: vi.fn().mockResolvedValue(null),
 });
 type Request = {
   method: string;
@@ -199,6 +200,20 @@ describe('pre-deletion capture', () => {
     ctx.alert.mockReturnValue(new Promise(() => {}));
     expect((await run(['one'], ctx)).allowDeletion).toBe(false);
     expect(ctx.alert).toHaveBeenCalledTimes(1);
+  });
+  it('announces the backup without waiting for the toast to close', async () => {
+    setup();
+    const ctx = context();
+    ctx.customToast.mockReturnValue(new Promise(() => {}));
+    expect((await run(['one', 'two'], ctx)).allowDeletion).toBe(true);
+    expect(ctx.customToast).toHaveBeenCalledTimes(1);
+    expect(ctx.customToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'notice',
+        message: expect.stringContaining('2 records'),
+        dismissOnPageChange: true,
+      }),
+    );
   });
   it('blocks deletion without an access token', async () => {
     const ctx = context();

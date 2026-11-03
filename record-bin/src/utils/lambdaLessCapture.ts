@@ -108,7 +108,12 @@ export type LambdaLessCaptureResult = {
 
 export type CaptureContext = Pick<
   OnBeforeItemsDestroyCtx,
-  'plugin' | 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl' | 'alert'
+  | 'plugin'
+  | 'currentUserAccessToken'
+  | 'environment'
+  | 'cmaBaseUrl'
+  | 'alert'
+  | 'customToast'
 >;
 
 async function archiveRecord(
@@ -291,6 +296,7 @@ class CaptureOperation {
         this.ids.some((id) => typeof id !== 'string' || !id || id.includes(','))
       )
         throw new Error('Invalid deletion selection.');
+      this.announceBackup();
       const client = buildCaptureClient(this.ctx);
       const bin = await ensureRecordBinModel(client);
       await this.capture(client, bin.id);
@@ -314,6 +320,29 @@ class CaptureOperation {
         );
     }
     return this.result;
+  }
+
+  /**
+   * Tells the user why the deletion takes a few seconds. Fire-and-forget: the toast promise
+   * settles only when the toast closes, so awaiting it would hold the hook open.
+   */
+  private announceBackup() {
+    const message =
+      this.ids.length === 1
+        ? 'Record Bin is saving a copy of this record before it is deleted. This takes a few seconds.'
+        : `Record Bin is saving copies of ${this.ids.length} records before they are deleted. This takes a few seconds.`;
+    void this.ctx
+      .customToast({
+        type: 'notice',
+        message,
+        // A successful deletion leaves the record page, which closes the toast. The timeout
+        // covers failures (which show their own alert) and bulk deletions from a list.
+        dismissOnPageChange: true,
+        dismissAfterTimeout: 15000,
+      })
+      .catch((error) =>
+        this.debugLogger.warn('Could not display backup notice', error),
+      );
   }
 }
 
