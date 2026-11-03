@@ -25,10 +25,12 @@ import type {
 } from 'openai/resources/responses/responses';
 import { localActivityLabel, mcpActivityLabel } from './activityLabels';
 import { READ_ONLY_REJECTION_MESSAGE, validateMcpToolCall } from './approval';
-import type {
-  AgentProvider,
-  AnthropicReasoningEffort,
-  ReasoningEffort,
+import {
+  type AgentProvider,
+  type AnthropicReasoningEffort,
+  DEFAULT_VERCEL_MODEL,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
 } from './config';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from './conversations';
 import {
@@ -71,6 +73,7 @@ import {
 import type { LocalFileAttachmentDescriptor } from './mentions';
 import { providerModelSupportsFastMode } from './providerModels';
 import { type AgentSystemContext, buildSystemPrompt } from './systemPrompt';
+import { createVercelGatewayFetch } from './vercelGateway';
 
 export const DEFAULT_AGENT_MODEL = 'gpt-5.6-terra' as const;
 export const DEFAULT_ANTHROPIC_AGENT_MODEL = 'claude-sonnet-4-6' as const;
@@ -79,6 +82,7 @@ export const MAX_MAX_CONTINUATIONS = 100;
 export const DEFAULT_MAX_TOOL_CALLS = 20;
 export const MAX_AGENT_TOOL_CALLS_PER_TURN = 200;
 export const MAX_AGENT_REQUEST_CHARACTERS = 600_000;
+const MAX_GATEWAY_INLINE_TEXT_CHARACTERS = 100_000;
 export const MAX_TOOL_RESULT_CHARACTERS = 60_000;
 export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 16_000;
 export const DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
@@ -224,6 +228,21 @@ function attachmentMimeType(attachment: AgentRuntimeAttachment): string {
   return inferred ?? declared ?? fileType ?? 'application/octet-stream';
 }
 
+function attachmentProviderName(provider: AgentProvider): string {
+  switch (provider) {
+    case 'openai':
+      return 'OpenAI';
+    case 'anthropic':
+      return 'Anthropic';
+    case 'vercel':
+      return 'Vercel AI Gateway';
+    default: {
+      const unreachable: never = provider;
+      return unreachable;
+    }
+  }
+}
+
 function attachmentTypeSupported(
   provider: AgentProvider,
   mimeType: string,
@@ -310,10 +329,10 @@ function normalizedAttachment(
   const mimeType = attachmentMimeType(attachment);
   const filename = attachment.filename.trim();
   const legacyOfficeFile =
-    provider === 'anthropic' && isLegacyOfficeAttachment(filename, mimeType);
+    provider !== 'openai' && isLegacyOfficeAttachment(filename, mimeType);
   const providerReadable =
     !legacyOfficeFile && attachmentTypeSupported(provider, mimeType, filename);
-  const providerName = provider === 'anthropic' ? 'Anthropic' : 'OpenAI';
+  const providerName = attachmentProviderName(provider);
   const providerUnreadableReason = legacyOfficeFile
     ? 'Legacy .doc, .xls, and .ppt files cannot be read. Convert this file to DOCX, XLSX, PPTX, or PDF to make its contents readable.'
     : providerReadable
@@ -646,8 +665,13 @@ export interface AgentRuntimeConfig {
    */
   client?: AgentResponsesClient;
   /**
-   * Anthropic Messages client injection seam. Used only when provider is
-   * `anthropic`.
+   * Effort levels discovered for the selected model. The gateway runtime sends
+   * reasoning controls only when this list is non-empty.
+   */
+  modelReasoningEfforts?: readonly ReasoningEffort[];
+  /**
+   * Anthropic Messages client injection seam. Used when provider is
+   * `anthropic` or `vercel`.
    */
   anthropicClient?: AgentAnthropicMessagesClient;
   /**
@@ -2450,7 +2474,8 @@ const SENSITIVE_SCHEMA_KEY =
 function redactSensitiveString(value: string): string {
   return value
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
-    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted]');
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted]')
+    .replace(/\bvck_[A-Za-z0-9_-]{8,}\b/g, '[redacted]');
 }
 
 function stringifyModelSchemaResult(result: unknown): string {
@@ -2493,7 +2518,7 @@ function safeErrorMessage(error: unknown): string {
   return redactAndTruncateErrorMessage(message);
 }
 
-type ProviderRuntimeName = 'openai' | 'anthropic';
+type ProviderRuntimeName = 'openai' | 'anthropic' | 'vercel';
 
 class ProviderRequestFailure extends Error {
   constructor(
@@ -2534,6 +2559,11 @@ const TRANSIENT_ERROR_CODES = new Set([
   'timeout_error',
   'vector_store_timeout',
 ]);
+const BILLING_ERROR_CODES = new Set([
+  'customer_verification_required',
+  'insufficient_funds',
+  'quota_for_entity_exceeded',
+]);
 const DETERMINISTIC_REQUEST_ERROR_CODES = new Set([
   'bad_request',
   'bad_request_error',
@@ -2559,7 +2589,18 @@ const DETERMINISTIC_REQUEST_ERROR_CODES = new Set([
 ]);
 
 function providerLabel(provider: ProviderRuntimeName): string {
-  return provider === 'openai' ? 'OpenAI' : 'Anthropic';
+  switch (provider) {
+    case 'openai':
+      return 'OpenAI';
+    case 'anthropic':
+      return 'Anthropic';
+    case 'vercel':
+      return 'Vercel AI Gateway';
+    default: {
+      const unreachable: never = provider;
+      return unreachable;
+    }
+  }
 }
 
 function errorObject(error: unknown): Record<string, unknown> | undefined {
@@ -2627,6 +2668,26 @@ function isInterruptedProviderStream(message: string): boolean {
   );
 }
 
+function billingLimitMessage(provider: ProviderRuntimeName): string {
+  return provider === 'vercel'
+    ? 'Vercel AI Gateway has no credits left, or a budget was exceeded. Add credits or raise the budget in the Vercel dashboard.'
+    : `${providerLabel(provider)} rejected this request because the account cannot be billed.`;
+}
+
+function connectionFailureMessage(provider: ProviderRuntimeName): string {
+  switch (provider) {
+    case 'anthropic':
+      return 'Anthropic could not be reached from this browser. ZDR organizations require a server-side provider proxy.';
+    case 'vercel':
+      return 'Vercel AI Gateway could not be reached from this browser.';
+    case 'openai':
+      return 'OpenAI could not be reached. Check your connection and try again.';
+    default: {
+      const unreachable: never = provider;
+      return unreachable;
+    }
+  }
+}
 function authenticationMessage(provider: ProviderRuntimeName): string {
   return `${providerLabel(provider)} rejected the configured API key. Update it in plugin settings.`;
 }
@@ -2693,6 +2754,13 @@ function classifyProviderHttpStatus(
       retryable: false,
     };
   }
+  if (status === 402 || (code !== undefined && BILLING_ERROR_CODES.has(code))) {
+    return {
+      code: 'api_error',
+      message: billingLimitMessage(provider),
+      retryable: false,
+    };
+  }
   if (status === 403) {
     return {
       code: 'api_error',
@@ -2733,6 +2801,13 @@ function classifyProviderErrorCode(
       retryable: false,
     };
   }
+  if (code && BILLING_ERROR_CODES.has(code)) {
+    return {
+      code: 'api_error',
+      message: billingLimitMessage(provider),
+      retryable: false,
+    };
+  }
   if (code && PERMISSION_ERROR_CODES.has(code)) {
     return {
       code: 'api_error',
@@ -2767,10 +2842,7 @@ function classifyProviderErrorMessage(
   if (isProviderConnectionError(provider, error, message)) {
     return {
       code: 'api_error',
-      message:
-        provider === 'anthropic'
-          ? 'Anthropic could not be reached from this browser. ZDR organizations require a server-side provider proxy.'
-          : 'OpenAI could not be reached. Check your connection and try again.',
+      message: connectionFailureMessage(provider),
       retryable: true,
     };
   }
@@ -4998,18 +5070,30 @@ type DefaultAnthropicClients = {
 
 function createDefaultAnthropicClients(
   apiKey: string,
+  options?: { gateway?: boolean },
 ): DefaultAnthropicClients {
   const normalizedApiKey = apiKey.trim();
+  const gateway = options?.gateway === true;
   if (!normalizedApiKey) {
     throw new Error(
-      'An Anthropic API key or an injected Messages client is required.',
+      gateway
+        ? 'An AI Gateway API key or an injected Messages client is required.'
+        : 'An Anthropic API key or an injected Messages client is required.',
     );
   }
 
-  const client = new Anthropic({
-    apiKey: normalizedApiKey,
-    dangerouslyAllowBrowser: true,
-  });
+  const client = gateway
+    ? new Anthropic({
+        apiKey: null,
+        authToken: normalizedApiKey,
+        baseURL: 'https://ai-gateway.vercel.sh',
+        dangerouslyAllowBrowser: true,
+        fetch: createVercelGatewayFetch(),
+      })
+    : new Anthropic({
+        apiKey: normalizedApiKey,
+        dangerouslyAllowBrowser: true,
+      });
 
   return {
     messages: {
@@ -5062,6 +5146,154 @@ function resolveAnthropicEffort(
   return 'high';
 }
 
+function resolveRuntimeModel(config: AgentRuntimeConfig): string {
+  const configured = config.model?.trim();
+  if (configured) {
+    return configured;
+  }
+  return config.provider === 'vercel'
+    ? DEFAULT_VERCEL_MODEL
+    : DEFAULT_ANTHROPIC_AGENT_MODEL;
+}
+
+function resolveRuntimeReasoningEfforts(
+  config: AgentRuntimeConfig,
+  model: string,
+): readonly ReasoningEffort[] {
+  if (config.provider !== 'vercel') {
+    return [];
+  }
+  if (config.modelReasoningEfforts) {
+    return config.modelReasoningEfforts;
+  }
+  return model.startsWith('anthropic/')
+    ? ['low', 'medium', 'high', 'xhigh', 'max']
+    : [];
+}
+
+function resolveRuntimeFastMode(
+  config: AgentRuntimeConfig,
+  model: string,
+): boolean {
+  if (!config.fastMode) {
+    return false;
+  }
+  if (config.provider === 'vercel') {
+    return true;
+  }
+  return providerModelSupportsFastMode('anthropic', model);
+}
+
+function resolveAnthropicTransport(config: AgentRuntimeConfig): {
+  client: AgentAnthropicMessagesClient;
+  fileClient?: AgentAnthropicFileClient;
+} {
+  const gateway = config.provider === 'vercel';
+  const normalizedApiKey = config.apiKey?.trim();
+  const needsDefaultClient =
+    !config.anthropicClient ||
+    (!gateway && !config.anthropicFileClient && Boolean(normalizedApiKey));
+  const defaultClients = needsDefaultClient
+    ? createDefaultAnthropicClients(normalizedApiKey ?? '', { gateway })
+    : undefined;
+  const client = config.anthropicClient ?? defaultClients?.messages;
+  if (!client) {
+    throw new Error(
+      gateway
+        ? 'An AI Gateway API key or an injected Messages client is required.'
+        : 'An Anthropic API key or an injected Messages client is required.',
+    );
+  }
+  return {
+    client,
+    fileClient: gateway
+      ? undefined
+      : (config.anthropicFileClient ?? defaultClients?.files),
+  };
+}
+
+function unreadableAttachmentResult(
+  gateway: boolean,
+  attachment: NormalizedAgentRuntimeAttachment,
+): AnthropicAttachmentTransportResult {
+  return {
+    type: 'metadata_only',
+    reason:
+      attachment.providerUnreadableReason ??
+      (gateway
+        ? 'Vercel AI Gateway could not read this file type.'
+        : 'Anthropic could not read this file type.'),
+  };
+}
+
+function documentExtractionFailure(
+  cause: unknown,
+  gateway: boolean,
+  readOnly: boolean,
+): AnthropicAttachmentTransportResult | undefined {
+  if (!(cause instanceof DocumentTextExtractionError)) {
+    return undefined;
+  }
+  const providerName = gateway ? 'Vercel AI Gateway' : 'Anthropic';
+  const disposition = readOnly
+    ? 'The original file remains attached to this chat'
+    : 'The original file remains available for explicit DatoCMS asset creation';
+  return {
+    type: 'metadata_only',
+    reason: `${cause.message} ${disposition}, but ${providerName} did not receive or read its contents.`,
+  };
+}
+
+async function prepareProviderAttachment(
+  attachment: NormalizedAgentRuntimeAttachment,
+  gateway: boolean,
+  readOnly: boolean,
+  signal?: AbortSignal,
+): Promise<
+  | { type: 'ready'; attachment: NormalizedAgentRuntimeAttachment }
+  | AnthropicAttachmentTransportResult
+> {
+  if (!attachment.providerReadable) {
+    return unreadableAttachmentResult(gateway, attachment);
+  }
+  throwIfAborted(signal);
+  try {
+    return {
+      type: 'ready',
+      attachment: await materializeAnthropicDocumentText(attachment),
+    };
+  } catch (cause) {
+    const failure = documentExtractionFailure(cause, gateway, readOnly);
+    if (failure) {
+      return failure;
+    }
+    throw cause;
+  }
+}
+
+function resolveGatewayEffort(config: AgentRuntimeConfig): ReasoningEffort {
+  const activeEffort = config.reasoningEffort;
+  return REASONING_EFFORTS.find((effort) => effort === activeEffort) ?? 'high';
+}
+
+function anthropicOutputEffort(
+  effort: ReasoningEffort,
+  supported: readonly ReasoningEffort[] | undefined,
+): AnthropicReasoningEffort | undefined {
+  if (effort === 'none') {
+    return undefined;
+  }
+  if (supported && !supported.includes(effort)) {
+    return undefined;
+  }
+  return effort;
+}
+
+/**
+ * Adaptive thinking shares max_tokens with the visible reply and tool input,
+ * so even low-effort turns need room for a full write script. Anthropic bills
+ * only generated tokens; the cap is a ceiling, not a reservation.
+ */
 function resolveAnthropicMaxOutputTokens(
   effort: AnthropicReasoningEffort,
   discoveredMaximum: number | undefined,
@@ -5162,8 +5394,85 @@ function anthropicFileReferenceBlock(
   };
 }
 
+async function inlineGatewayAttachment(
+  attachment: NormalizedAgentRuntimeAttachment,
+  signal?: AbortSignal,
+): Promise<AnthropicAttachmentTransportResult> {
+  throwIfAborted(signal);
+  const bytes = new Uint8Array(await attachment.file.arrayBuffer());
+  throwIfAborted(signal);
+  if (IMAGE_ATTACHMENT_MIME_TYPES.has(attachment.mimeType)) {
+    return {
+      type: 'inline',
+      block: {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: attachment.mimeType as 'image/png',
+          data: base64FromBytes(bytes),
+        },
+      },
+    };
+  }
+  if (attachment.mimeType === 'application/pdf') {
+    return {
+      type: 'inline',
+      block: {
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: base64FromBytes(bytes),
+        },
+        title: attachment.filename,
+      },
+    };
+  }
+  return {
+    type: 'inline',
+    block: {
+      type: 'text',
+      text: gatewayInlineText(attachment.filename, bytes),
+    },
+  };
+}
+
+function gatewayInlineText(filename: string, bytes: Uint8Array): string {
+  const decoded = new TextDecoder().decode(bytes);
+  const header = `Attached file ${filename}:\n`;
+  if (decoded.length <= MAX_GATEWAY_INLINE_TEXT_CHARACTERS) {
+    return `${header}${decoded}`;
+  }
+  return `${header}${decoded.slice(0, MAX_GATEWAY_INLINE_TEXT_CHARACTERS)}\n[Truncated. The file is larger than the inline text limit.]`;
+}
+
+function anthropicRequestCharacters(
+  messages: readonly MessageParam[],
+  system: string,
+  tools: readonly AnthropicTool[],
+): number {
+  const serializedMessages = JSON.stringify(messages, (key, value: unknown) => {
+    if (key === 'data' && typeof value === 'string') {
+      return '';
+    }
+    if (
+      key === 'text' &&
+      typeof value === 'string' &&
+      value.startsWith('Attached file ')
+    ) {
+      const lineBreak = value.indexOf('\n');
+      return lineBreak === -1 ? value : value.slice(0, lineBreak + 1);
+    }
+    return value;
+  });
+  return (
+    serializedMessages.length + system.length + JSON.stringify(tools).length
+  );
+}
+
 type AnthropicAttachmentTransportResult =
   | { type: 'uploaded'; fileId: string }
+  | { type: 'inline'; block: ContentBlockParam }
   | { type: 'metadata_only'; reason: string };
 
 async function anthropicUserMessage(
@@ -5178,13 +5487,24 @@ async function anthropicUserMessage(
     return { message: { role: 'user', content: text }, usesFiles: false };
   }
 
-  const blocks: AnthropicFileReferenceBlock[] = [];
+  const blocks: ContentBlockParam[] = [];
   const availability = [...attachments];
+  let usesFiles = false;
   for (const attachment of attachments) {
     // biome-ignore lint/performance/noAwaitInLoops: Sequential provider uploads avoid memory and bandwidth spikes in a browser iframe.
     const result = await upload(attachment);
     if (result.type === 'uploaded') {
-      blocks.push(anthropicFileReferenceBlock(attachment, result.fileId));
+      blocks.push(
+        anthropicFileReferenceBlock(
+          attachment,
+          result.fileId,
+        ) as unknown as ContentBlockParam,
+      );
+      usesFiles = true;
+      continue;
+    }
+    if (result.type === 'inline') {
+      blocks.push(result.block);
       continue;
     }
     const index = availability.indexOf(attachment);
@@ -5203,9 +5523,9 @@ async function anthropicUserMessage(
           type: 'text',
           text: messageWithAttachmentAvailability(text, availability, readOnly),
         },
-      ] as unknown as ContentBlockParam[],
+      ],
     },
-    usesFiles: blocks.length > 0,
+    usesFiles,
   };
 }
 
@@ -5214,13 +5534,14 @@ async function initialAnthropicMessages(
   history: readonly AgentConversationHistoryMessage[],
   attachments: readonly AgentRuntimeAttachment[],
   readOnly: boolean,
+  provider: 'anthropic' | 'vercel',
   upload: (
     attachment: NormalizedAgentRuntimeAttachment,
   ) => Promise<AnthropicAttachmentTransportResult>,
 ): Promise<{ messages: MessageParam[]; usesFiles: boolean }> {
   const normalizedHistory = normalizeAgentHistory(history);
   const normalizedAttachments = validateAndNormalizeAttachments(
-    'anthropic',
+    provider,
     normalizedHistory,
     attachments,
   );
@@ -5386,8 +5707,10 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   private readonly mcpClient: DatoMcpClient;
   private readonly context: AgentSystemContext;
   private readonly navigation: AgentNavigationCallbacks;
-  private readonly reasoningEffort: AnthropicReasoningEffort;
+  private readonly reasoningEffort: ReasoningEffort;
+  private readonly modelReasoningEfforts: readonly ReasoningEffort[];
   private readonly fastMode: boolean;
+  private readonly gateway: boolean;
   private readonly readOnly: boolean;
   private readonly pluginReadOnly: boolean;
   private readonly mcpAccessLevel?: McpAccessLevel;
@@ -5406,12 +5729,16 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   private disposed = false;
 
   constructor(config: AgentRuntimeConfig) {
-    this.model = config.model?.trim() || DEFAULT_ANTHROPIC_AGENT_MODEL;
+    const model = resolveRuntimeModel(config);
+    const transport = resolveAnthropicTransport(config);
+    this.gateway = config.provider === 'vercel';
+    this.model = model;
     this.maxContinuations = resolveMaxContinuations(config.maxContinuations);
-    this.reasoningEffort = resolveAnthropicEffort(config);
-    this.fastMode =
-      Boolean(config.fastMode) &&
-      providerModelSupportsFastMode('anthropic', this.model);
+    this.reasoningEffort = this.gateway
+      ? resolveGatewayEffort(config)
+      : resolveAnthropicEffort(config);
+    this.modelReasoningEfforts = resolveRuntimeReasoningEfforts(config, model);
+    this.fastMode = resolveRuntimeFastMode(config, model);
     this.pluginReadOnly = Boolean(config.readOnly);
     this.mcpAccessLevel = config.mcpAccessLevel;
     this.readOnly = !agentWritesAllowed(
@@ -5419,7 +5746,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       config.mcpAccessLevel ?? 'unrestricted',
     );
     this.maxOutputTokens = resolveAnthropicMaxOutputTokens(
-      this.reasoningEffort,
+      this.reasoningEffort === 'none' ? 'high' : this.reasoningEffort,
       config.modelMaxOutputTokens,
     );
     this.additionalInstructions =
@@ -5427,20 +5754,8 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     this.hostContext = normalizeHostContext(config.hostContext);
     this.getModelSchema = config.getModelSchema;
     this.createDatoAsset = config.createDatoAsset;
-    const normalizedApiKey = config.apiKey?.trim();
-    const defaultClients =
-      !config.anthropicClient ||
-      (!config.anthropicFileClient && Boolean(normalizedApiKey))
-        ? createDefaultAnthropicClients(normalizedApiKey ?? '')
-        : undefined;
-    const messagesClient = config.anthropicClient ?? defaultClients?.messages;
-    if (!messagesClient) {
-      throw new Error(
-        'An Anthropic API key or an injected Messages client is required.',
-      );
-    }
-    this.client = messagesClient;
-    this.fileClient = config.anthropicFileClient ?? defaultClients?.files;
+    this.client = transport.client;
+    this.fileClient = transport.fileClient;
 
     const mcpAccessToken = config.mcpAccessToken.trim();
     if (!mcpAccessToken) {
@@ -5479,6 +5794,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         args.history ?? [],
         args.attachments ?? [],
         this.readOnly,
+        this.gateway ? 'vercel' : 'anthropic',
         (attachment) => this.uploadAttachment(attachment, args.signal),
       );
       return yield* this.runLoop(
@@ -5513,7 +5829,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       ) {
         return yield* this.invalidRequestStream(cause.message);
       }
-      const error = runtimeFailure('anthropic', cause, args.signal);
+      const error = runtimeFailure(this.providerName(), cause, args.signal);
       const result: AgentTurnResult = {
         status: error.code === 'aborted' ? 'aborted' : 'failed',
         text: '',
@@ -5532,36 +5848,25 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     attachment: NormalizedAgentRuntimeAttachment,
     signal?: AbortSignal,
   ): Promise<AnthropicAttachmentTransportResult> {
-    if (!attachment.providerReadable) {
-      return {
-        type: 'metadata_only',
-        reason:
-          attachment.providerUnreadableReason ??
-          'Anthropic could not read this file type.',
-      };
+    const prepared = await prepareProviderAttachment(
+      attachment,
+      this.gateway,
+      this.readOnly,
+      signal,
+    );
+    if (prepared.type !== 'ready') {
+      return prepared;
+    }
+    throwIfAborted(signal);
+    if (this.gateway) {
+      return await inlineGatewayAttachment(prepared.attachment, signal);
     }
     if (!this.fileClient) {
       throw new AgentAttachmentValidationError(
         'Anthropic file reading is unavailable for this connection. Reconnect with an Anthropic API key or configure an Anthropic Files API transport.',
       );
     }
-    throwIfAborted(signal);
-    let providerAttachment = attachment;
-    try {
-      providerAttachment = await materializeAnthropicDocumentText(attachment);
-    } catch (cause) {
-      if (cause instanceof DocumentTextExtractionError) {
-        return {
-          type: 'metadata_only',
-          reason: this.readOnly
-            ? `${cause.message} The original file remains attached to this chat, but Anthropic did not receive or read its contents.`
-            : `${cause.message} The original file remains available for explicit DatoCMS asset creation, but Anthropic did not receive or read its contents.`,
-        };
-      }
-      throw cause;
-    }
-    throwIfAborted(signal);
-    const uploaded = await this.fileClient.upload(providerAttachment, {
+    const uploaded = await this.fileClient.upload(prepared.attachment, {
       signal,
     });
     const fileId = uploaded.id.trim();
@@ -5921,7 +6226,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       }
 
       pending.phase = 'ready';
-      const error = runtimeFailure('anthropic', cause, args.signal);
+      const error = runtimeFailure(this.providerName(), cause, args.signal);
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
         status: aborted
@@ -5990,22 +6295,29 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   ): AgentAnthropicMessageCreateParamsStreaming {
     boundAnthropicToolResultHistory(state);
     if (
-      JSON.stringify(state.messages).length +
-        state.system.length +
-        JSON.stringify(tools).length >
+      anthropicRequestCharacters(state.messages, state.system, tools) >
       MAX_AGENT_REQUEST_CHARACTERS
     ) {
       throw new AgentContextLimitError(
         'The agent reached its model-context safety limit. The operation is incomplete; completed changes are not rolled back. Raw tool outputs were compacted, but signed reasoning and reviewed calls cannot be safely discarded.',
       );
     }
-    const betas = [
-      ...(state.usesFiles ? [ANTHROPIC_FILES_API_BETA] : []),
-      ...(this.fastMode ? [ANTHROPIC_FAST_MODE_BETA] : []),
-    ];
+    const betas = this.gateway
+      ? []
+      : [
+          ...(state.usesFiles ? [ANTHROPIC_FILES_API_BETA] : []),
+          ...(this.fastMode ? [ANTHROPIC_FAST_MODE_BETA] : []),
+        ];
+    const reasoningEffort = anthropicOutputEffort(
+      this.reasoningEffort,
+      this.gateway ? this.modelReasoningEfforts : undefined,
+    );
+    const includeThinking =
+      reasoningEffort !== undefined &&
+      (!this.gateway || this.resolvedModel().startsWith('anthropic/'));
 
     return {
-      model: this.model,
+      model: this.resolvedModel(),
       max_tokens: this.maxOutputTokens,
       // Keep the dispatched request immutable while later tool-loop steps append
       // to runtime state (also important for proxy/client implementations that
@@ -6017,12 +6329,36 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         type: 'auto',
         disable_parallel_tool_use: true,
       },
-      thinking: { type: 'adaptive', display: 'omitted' },
-      output_config: { effort: this.reasoningEffort },
+      ...(includeThinking
+        ? {
+            thinking: {
+              type: 'adaptive' as const,
+              display: 'omitted' as const,
+            },
+          }
+        : {}),
+      ...(reasoningEffort
+        ? { output_config: { effort: reasoningEffort } }
+        : {}),
       ...(betas.length > 0 ? { betas } : {}),
-      ...(this.fastMode ? { speed: 'fast' } : {}),
+      ...(!this.gateway && this.fastMode ? { speed: 'fast' as const } : {}),
       stream: true,
     };
+  }
+
+  private providerName(): 'anthropic' | 'vercel' {
+    return this.gateway ? 'vercel' : 'anthropic';
+  }
+
+  private resolvedModel(): string {
+    if (
+      this.gateway &&
+      this.fastMode &&
+      !this.model.toLowerCase().endsWith('-fast')
+    ) {
+      return `${this.model}-fast`;
+    }
+    return this.model;
   }
 
   private async *loadTools(
@@ -6109,7 +6445,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
             signal,
           );
         } catch (cause) {
-          throw new ProviderRequestFailure('anthropic', cause);
+          throw new ProviderRequestFailure(this.providerName(), cause);
         }
         // A consumer can abort while handling the final post-stream event.
         // Never expose tool calls or approvals from a response after that turn
@@ -6440,7 +6776,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       yield { type: 'turn_completed', result };
       return result;
     } catch (cause) {
-      const error = runtimeFailure('anthropic', cause, signal);
+      const error = runtimeFailure(this.providerName(), cause, signal);
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
         status: aborted
@@ -6731,7 +7067,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
 }
 
 export function createAgentRuntime(
-  config: AgentRuntimeConfig & { provider: 'anthropic' },
+  config: AgentRuntimeConfig & { provider: 'anthropic' | 'vercel' },
 ): AgentRuntimeHandle;
 export function createAgentRuntime(
   config: AgentRuntimeConfig & { provider?: 'openai' },
@@ -6742,7 +7078,7 @@ export function createAgentRuntime(
 export function createAgentRuntime(
   config: AgentRuntimeConfig,
 ): AgentRuntimeHandle {
-  return config.provider === 'anthropic'
+  return config.provider === 'anthropic' || config.provider === 'vercel'
     ? new AnthropicAgentRuntime(config)
     : new AgentRuntime(config);
 }

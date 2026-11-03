@@ -63,6 +63,57 @@ describe('normalizeConfig', () => {
 
     expect(normalizeConfig({ provider: 'ChatGPT' }).provider).toBe('openai');
     expect(normalizeConfig({ provider: 'unknown' }).provider).toBe('openai');
+    expect(normalizeConfig({ provider: 'AI-Gateway' }).provider).toBe('vercel');
+  });
+
+  it('normalizes Vercel AI Gateway configuration', () => {
+    expect(
+      normalizeConfig({
+        provider: ' vercel ',
+        vercelApiKey: '  vck_project  ',
+        vercelModel: '  openai/gpt-6.1-sol ',
+        vercelModelMaxOutputTokens: 128_000,
+        vercelReasoningEffort: 'max',
+        vercelModelReasoningEfforts: ['max', 'none', 'nope', 'low'],
+        vercelFastMode: true,
+        vercelShowAllModels: true,
+      }),
+    ).toMatchObject({
+      provider: 'vercel',
+      vercelApiKey: 'vck_project',
+      vercelModel: 'openai/gpt-6.1-sol',
+      vercelModelMaxOutputTokens: 128_000,
+      vercelReasoningEffort: 'max',
+      vercelModelReasoningEfforts: ['none', 'low', 'max'],
+      vercelFastMode: true,
+      vercelShowAllModels: true,
+    });
+
+    const gateway = normalizeConfig({
+      provider: 'vercel',
+      vercelApiKey: 'vck_old',
+      vercelModel: 'google/gemini-4-argon',
+      vercelModelMaxOutputTokens: 64_000,
+      vercelReasoningEffort: 'low',
+      vercelFastMode: false,
+    });
+    expect(providerLabel(gateway.provider)).toBe('Vercel AI Gateway');
+    expect(activeApiKey(gateway)).toBe('vck_old');
+    expect(activeModel(gateway)).toBe('google/gemini-4-argon');
+    expect(activeModelMaxOutputTokens(gateway)).toBe(64_000);
+    expect(activeReasoningEffort(gateway)).toBe('low');
+    const updated = withActiveModel(
+      withActiveApiKey(gateway, 'vck_new'),
+      'anthropic/claude-haiku-5.5',
+      32_000,
+      ['high'],
+    );
+    expect(activeModel(updated)).toBe('anthropic/claude-haiku-5.5');
+    expect(updated.vercelModelReasoningEfforts).toEqual(['high']);
+    expect(updated.vercelApiKey).toBe('vck_new');
+    expect(
+      withActiveReasoningEffort(updated, 'none').vercelReasoningEffort,
+    ).toBe('none');
   });
 
   it('falls back when either provider effort is unsupported', () => {

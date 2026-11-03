@@ -125,7 +125,7 @@ export interface Conversation {
    * Provider/model identity for the transient response chain. Visible chat text
    * remains portable across providers; opaque provider state never is.
    */
-  responseProvider?: 'openai' | 'anthropic';
+  responseProvider?: 'openai' | 'anthropic' | 'vercel';
   responseModel?: string;
   /**
    * Identifies the most recent host-provided CMS context snapshot already
@@ -339,7 +339,9 @@ function normalizeHostContextFingerprint(value: unknown): string | undefined {
 function normalizeResponseProvider(
   value: unknown,
 ): Conversation['responseProvider'] {
-  return value === 'openai' || value === 'anthropic' ? value : undefined;
+  return value === 'openai' || value === 'anthropic' || value === 'vercel'
+    ? value
+    : undefined;
 }
 
 function normalizeResponseModel(value: unknown): string | undefined {

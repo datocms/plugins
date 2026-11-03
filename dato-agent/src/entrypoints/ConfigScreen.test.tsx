@@ -39,6 +39,18 @@ type Option = {
   value: string;
 };
 
+function selectableOptions(
+  options: ReadonlyArray<Option | { options?: readonly Option[] }> | undefined,
+): Option[] {
+  return (options ?? []).flatMap((option) =>
+    'options' in option && Array.isArray(option.options)
+      ? [...option.options]
+      : 'value' in option
+        ? [option]
+        : [],
+  );
+}
+
 vi.mock('datocms-react-ui', () => ({
   Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
   FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -120,13 +132,13 @@ vi.mock('datocms-react-ui', () => ({
       isDisabled?: boolean;
       isLoading?: boolean;
       isMulti?: boolean;
-      options?: Option[];
+      options?: Array<Option | { label?: string; options: Option[] }>;
       required?: boolean;
     };
     value?: Option | readonly Option[] | null;
   }) => {
     const selectedOptions = Array.isArray(value) ? value : value ? [value] : [];
-    const availableOptions = selectInputProps?.options ?? [];
+    const availableOptions = selectableOptions(selectInputProps?.options);
     const renderedOptions = [
       ...availableOptions,
       ...selectedOptions.filter(
@@ -395,6 +407,55 @@ describe('ConfigScreen', () => {
       'sk-project',
       expect.any(AbortSignal),
     );
+  });
+
+  it('offers recommended gateway models and reveals the rest on request', async () => {
+    modelMocks.listProviderModels.mockResolvedValue([
+      {
+        id: 'anthropic/claude-sonnet-5.5',
+        label: 'Claude Sonnet 5.5 (Anthropic)',
+        reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        recommended: true,
+        supportsFastMode: true,
+      },
+      {
+        id: 'openai/gpt-5-nano',
+        label: 'GPT-5 nano (OpenAI)',
+        reasoningEfforts: ['low', 'high'],
+        recommended: false,
+        supportsFastMode: false,
+      },
+    ]);
+    const { ctx } = createCtx({
+      parameters: {
+        ...PARAMETERS,
+        provider: 'vercel',
+        vercelApiKey: 'vck_project',
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(screen.getByLabelText('AI Gateway API key')).toBeRequired();
+    expect(screen.getByText(/Vercel → AI Gateway → API keys/)).toBeVisible();
+    const model = screen.getByLabelText('Model');
+    expect(model).toHaveValue('anthropic/claude-sonnet-5.5');
+    expect(
+      within(model).getByRole('option', {
+        name: 'Claude Sonnet 5.5 (Anthropic)',
+      }),
+    ).toBeVisible();
+    expect(
+      within(model).queryByRole('option', { name: 'GPT-5 nano (OpenAI)' }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Show all tool-capable models'));
+    expect(
+      within(screen.getByLabelText('Model')).getByRole('option', {
+        name: 'GPT-5 nano (OpenAI)',
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/faster gateway variant/i)).toBeVisible();
   });
 
   it('switches vendor fields without losing inactive OpenAI values', async () => {
