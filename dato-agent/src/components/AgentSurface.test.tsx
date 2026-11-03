@@ -1384,6 +1384,72 @@ describe('AgentSurface', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('asks which secret-looking values to redact before copying diagnostics', async () => {
+    const onCopyFailureDiagnostics = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'review',
+        candidates: [
+          {
+            value: 'first-secret-value-0001',
+            preview: '…0001 · 23 chars',
+            path: 'conversation[0].text',
+            occurrences: 1,
+          },
+          {
+            value: 'second-secret-value-002',
+            preview: '…0002 · 23 chars',
+            path: 'turn.events[1].output',
+            occurrences: 2,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ status: 'copied' });
+    const user = userEvent.setup();
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'failed-response',
+            kind: 'message',
+            role: 'assistant',
+            content: '',
+            error: 'The request could not be completed.',
+            failure: { id: 'failure-1', retryable: false },
+          },
+        ]}
+        onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    expect(
+      screen.getByText(/2 values in the diagnostics look like secrets/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('…0002 · 23 chars')).toBeInTheDocument();
+    expect(
+      screen.queryByText('second-secret-value-002'),
+    ).not.toBeInTheDocument();
+
+    // Everything starts selected; untick one, then copy.
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(
+      checkboxes.every((checkbox) => (checkbox as HTMLInputElement).checked),
+    ).toBe(true);
+    await user.click(checkboxes[1] as HTMLElement);
+    await user.click(
+      screen.getByRole('button', { name: 'Copy with 1 redacted' }),
+    );
+
+    expect(onCopyFailureDiagnostics).toHaveBeenLastCalledWith('failure-1', [
+      'first-secret-value-0001',
+    ]);
+    expect(screen.queryByText(/look like secrets/)).not.toBeInTheDocument();
+  });
+
   it('offers compact recovery actions only for a terminal assistant failure', async () => {
     const onRetryFailedTurn = vi.fn();
     const onCopyFailureDiagnostics = vi.fn().mockResolvedValue(undefined);
@@ -1442,7 +1508,10 @@ describe('AgentSurface', () => {
 
     await user.click(copyButton);
     expect(onCopyFailureDiagnostics).toHaveBeenCalledOnce();
-    expect(onCopyFailureDiagnostics).toHaveBeenCalledWith('failure-1');
+    expect(onCopyFailureDiagnostics).toHaveBeenCalledWith(
+      'failure-1',
+      undefined,
+    );
   });
 
   it('shows only diagnostics for a non-retryable terminal failure', () => {

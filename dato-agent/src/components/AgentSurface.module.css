@@ -644,6 +644,31 @@
   line-height: 1.4;
 }
 
+.diagnosticsReview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-s) 0 0;
+  padding: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: var(--border-radius-m, 6px);
+  font-size: var(--font-size-xs);
+}
+
+.diagnosticsReview legend {
+  padding: 0 var(--spacing-xs);
+  color: var(--color--ink);
+  font-weight: 600;
+}
+
+.diagnosticsReviewItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  color: var(--color--ink-subtle);
+  word-break: break-all;
+}
+
 .activityDisclosure {
   color: var(--color--ink-subtle);
   font-size: var(--font-size-s);

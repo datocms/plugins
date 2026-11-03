@@ -9,6 +9,7 @@ import {
   type AgentRecordResultViewModel,
   AgentSurface,
   type AgentTranscriptEntry,
+  type CopyDiagnosticsResult,
   type UnsafeApprovalViewModel,
 } from '../components/AgentSurface';
 import {
@@ -126,6 +127,7 @@ import {
   revokeToken,
   waitForOAuthCallback,
 } from '../lib/oauth';
+import { findSecretCandidates, redactValues } from '../lib/secretCandidates';
 import { type AgentSurfaceKind, buildSystemPrompt } from '../lib/systemPrompt';
 import {
   createUnsafeDispatchJournalStore,
@@ -4450,13 +4452,23 @@ export default function AgentFrame(props: AgentFrameProps) {
     await submit(candidate.submission, candidate);
   };
 
-  const copyFailureDiagnostics = async (failureId: string): Promise<void> => {
+  const copyFailureDiagnostics = async (
+    failureId: string,
+    redact?: readonly string[],
+  ): Promise<CopyDiagnosticsResult> => {
     const diagnostics = failureDiagnosticsRef.current.get(failureId);
     if (!diagnostics) {
       throw new Error('Diagnostics are no longer available.');
     }
 
-    await copyTextToClipboard(diagnostics);
+    // Known secrets are already masked; ask about anything else that looks like one.
+    if (redact === undefined) {
+      const candidates = findSecretCandidates(diagnostics);
+      if (candidates.length > 0) return { status: 'review', candidates };
+    }
+
+    await copyTextToClipboard(redactValues(diagnostics, redact ?? []));
+    return { status: 'copied' };
   };
 
   const stopActiveTurn = (): void => {
