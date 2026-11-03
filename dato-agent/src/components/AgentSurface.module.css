@@ -668,6 +668,17 @@
   color: var(--color--ink-subtle);
 }
 
+.diagnosticsReviewHint {
+  margin: 0;
+  color: var(--color--ink-subtle);
+}
+
+.diagnosticsReviewItem .diagnosticsReviewAction {
+  flex: none;
+  color: var(--color--ink);
+  font-weight: 600;
+}
+
 .diagnosticsReviewItem code {
   flex: none;
   white-space: nowrap;

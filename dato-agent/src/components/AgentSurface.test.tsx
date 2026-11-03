@@ -1431,6 +1431,12 @@ describe('AgentSurface', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('…0002 · 23 chars')).toBeInTheDocument();
     expect(
+      screen.getByText(
+        'Ticked values are replaced with [redacted] in the copy.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Redact')).toHaveLength(2);
+    expect(
       screen.queryByText('second-secret-value-002'),
     ).not.toBeInTheDocument();
 

@@ -826,9 +826,11 @@ function FailureActions({
           <legend>
             {review.length === 1
               ? 'This value in the diagnostics looks like a secret.'
-              : `${review.length} values in the diagnostics look like secrets.`}{' '}
-            Redact before copying?
+              : `${review.length} values in the diagnostics look like secrets.`}
           </legend>
+          <p className={styles.diagnosticsReviewHint}>
+            Ticked values are replaced with [redacted] in the copy.
+          </p>
           {review.map((candidate) => (
             <label
               className={styles.diagnosticsReviewItem}
@@ -844,6 +846,7 @@ function FailureActions({
                 }}
                 type="checkbox"
               />
+              <span className={styles.diagnosticsReviewAction}>Redact</span>
               <code>{candidate.preview}</code>
               <span>
                 in {candidate.path || 'diagnostics'}
