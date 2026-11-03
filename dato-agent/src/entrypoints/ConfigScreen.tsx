@@ -38,6 +38,10 @@ import {
 } from '../lib/config';
 import { ACCOUNT_ROLE_ID } from '../lib/permissions';
 import {
+  loadWebPreviewFrontends,
+  type PreviewFrontend,
+} from '../lib/previewLinks';
+import {
   listProviderModels,
   type ProviderModel,
   preferredProviderModel,
@@ -797,6 +801,111 @@ function ProviderConfigurationFields({
   );
 }
 
+function WebsiteLinksSection({
+  accessToken,
+  baseUrl,
+  canEdit,
+  environment,
+  onPreviewFrontendsChange,
+  onWebsiteBaseUrlChange,
+  previewFrontends,
+  saving,
+  websiteBaseUrl,
+}: {
+  accessToken: string | null | undefined;
+  baseUrl: string;
+  canEdit: boolean;
+  environment: string;
+  onPreviewFrontendsChange: (frontends: PreviewFrontend[]) => void;
+  onWebsiteBaseUrlChange: (value: string) => void;
+  previewFrontends: readonly PreviewFrontend[];
+  saving: boolean;
+  websiteBaseUrl: string;
+}) {
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string>();
+  const [message, setMessage] = useState<string>();
+
+  const importFrontends = async () => {
+    if (!accessToken) {
+      setError('The current user access token is unavailable.');
+      setMessage(undefined);
+      return;
+    }
+
+    setImporting(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const frontends = await loadWebPreviewFrontends(
+        buildClient({
+          apiToken: accessToken,
+          environment,
+          baseUrl,
+        }),
+      );
+      if (frontends.length === 0) {
+        setError(
+          'Web Previews is not installed, or none of its frontends have a preview link endpoint.',
+        );
+        return;
+      }
+
+      onPreviewFrontendsChange(frontends);
+      const noun = frontends.length === 1 ? 'frontend' : 'frontends';
+      const pronoun = frontends.length === 1 ? 'it' : 'them';
+      setMessage(
+        `Imported ${frontends.length} ${noun}. Save settings to keep ${pronoun}.`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not read the Web Previews settings.',
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Section title="Website links">
+      <FieldGroup>
+        <TextField
+          id="website-base-url"
+          name="website-base-url"
+          label="Website address"
+          value={websiteBaseUrl}
+          placeholder="https://www.example.com"
+          hint="Used only when Web Previews does not return a link. The agent adds the record slug to this address."
+          onChange={onWebsiteBaseUrlChange}
+          textInputProps={{
+            disabled: !canEdit || saving,
+          }}
+        />
+        <Button
+          type="button"
+          buttonType="muted"
+          disabled={!canEdit || saving || importing}
+          onClick={() => {
+            void importFrontends();
+          }}
+        >
+          {importing ? 'Importing…' : 'Import from Web Previews'}
+        </Button>
+        {previewFrontends.length > 0 && (
+          <p>
+            Saved preview endpoints:{' '}
+            {previewFrontends.map((frontend) => frontend.name).join(', ')}.
+          </p>
+        )}
+        {message && <p>{message}</p>}
+        {error && <p role="alert">{error}</p>}
+      </FieldGroup>
+    </Section>
+  );
+}
+
 export default function ConfigScreen({ ctx }: Props) {
   const incomingConfig = useMemo(
     () => normalizeConfig(ctx.plugin.attributes.parameters),
@@ -1053,6 +1162,20 @@ export default function ConfigScreen({ ctx }: Props) {
               />
             </FieldGroup>
           </Section>
+
+          <WebsiteLinksSection
+            accessToken={ctx.currentUserAccessToken}
+            baseUrl={ctx.cmaBaseUrl}
+            canEdit={canEditSchema}
+            environment={ctx.environment}
+            onPreviewFrontendsChange={(frontends) =>
+              update('previewFrontends', frontends)
+            }
+            onWebsiteBaseUrlChange={(value) => update('websiteBaseUrl', value)}
+            previewFrontends={config.previewFrontends}
+            saving={saving}
+            websiteBaseUrl={config.websiteBaseUrl}
+          />
 
           <Section title="Permissions">
             <FieldGroup>

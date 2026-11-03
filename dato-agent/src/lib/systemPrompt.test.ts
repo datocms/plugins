@@ -176,6 +176,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain(
       'after successfully changing one record, call open_record',
     );
+    expect(prompt).toContain('get_record_preview_links');
     expect(prompt).toContain(
       'inside the standalone Agent inspector. Use show_records',
     );

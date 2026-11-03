@@ -12,6 +12,7 @@ import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import { createInspectorNavigator } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
+import { getRecordPreviewLinks } from '../lib/previewLinks';
 import AgentFrame from './AgentFrame';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
@@ -264,6 +265,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  const config = normalizeConfig(ctx.plugin.attributes.parameters);
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
@@ -279,11 +281,27 @@ function AuthorizedAgentInspector({ ctx }: Props) {
         scope={{ type: 'project' }}
         navigator={createInspectorNavigator(ctx)}
         mentionHost={mentionHost}
-        config={normalizeConfig(ctx.plugin.attributes.parameters)}
+        config={config}
         loadHostContext={loadHostContext}
         getModelSchema={async ({ identifier, cursor }) => ({
           schema: (await schemaResolver(identifier, cursor)).text,
         })}
+        getRecordPreviewLinks={(request, signal) =>
+          getRecordPreviewLinks(
+            {
+              siteId: ctx.site.id,
+              environment: ctx.environment,
+              locale: ctx.ui.locale,
+              cmaBaseUrl: ctx.cmaBaseUrl,
+              accessToken: ctx.currentUserAccessToken,
+              currentUser: ctx.currentUser,
+              savedFrontends: config.previewFrontends,
+              websiteBaseUrl: config.websiteBaseUrl,
+            },
+            request,
+            signal,
+          )
+        }
         onReviewApprovalDetails={(approval) =>
           openApprovalDetailsModal(ctx, approval)
         }
