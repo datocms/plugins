@@ -7,6 +7,11 @@ import { OAUTH_CLIENT_REGISTRATION_VERSION } from './credentials';
 
 export const MCP_BASE_URL = 'https://mcp.datocms.com';
 /**
+ * RFC 8707 resource indicator, exactly as advertised (with trailing slash) by
+ * https://mcp.datocms.com/.well-known/oauth-protected-resource.
+ */
+export const MCP_RESOURCE = `${MCP_BASE_URL}/`;
+/**
  * Authorization server advertised by
  * https://mcp.datocms.com/.well-known/oauth-protected-resource. The legacy
  * mcp.datocms.com/{register,authorize,token,revoke} routes reject new clients.
@@ -242,7 +247,7 @@ export async function createAuthorizationRequest(
   const params = new URLSearchParams({
     client_id: args.clientId,
     response_type: 'code',
-    resource: MCP_BASE_URL,
+    resource: MCP_RESOURCE,
     redirect_uri: redirectUri,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
@@ -492,7 +497,7 @@ export async function exchangeAuthorizationCode(
   });
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
-    resource: MCP_BASE_URL,
+    resource: MCP_RESOURCE,
     code: args.code,
     client_id: pending.clientId,
     code_verifier: pending.codeVerifier,

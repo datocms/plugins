@@ -6,6 +6,7 @@ import {
   exchangeAuthorizationCode,
   type FetchFunction,
   MCP_BASE_URL,
+  MCP_RESOURCE,
   navigateOAuthPopup,
   OAUTH_BASE_URL,
   OAUTH_ORIGIN,
@@ -138,8 +139,8 @@ describe('authorization request and token exchange', () => {
 
     const [, tokenInit] = fetchMock.mock.calls[0];
     const body = new URLSearchParams(String(tokenInit?.body));
-    expect(url.searchParams.get('resource')).toBe(MCP_BASE_URL);
-    expect(body.get('resource')).toBe(MCP_BASE_URL);
+    expect(url.searchParams.get('resource')).toBe(MCP_RESOURCE);
+    expect(body.get('resource')).toBe(MCP_RESOURCE);
     const verifier = body.get('code_verifier');
     expect(verifier).toHaveLength(43);
     const expectedChallenge = await sha256Base64Url(String(verifier));
