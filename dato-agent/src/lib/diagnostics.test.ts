@@ -50,7 +50,7 @@ describe('serializeDiagnostics', () => {
     "z": true
   },
   "prompt": "Change record 178178740",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "token": "[redacted]"
 }`);
   });

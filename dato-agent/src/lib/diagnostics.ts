@@ -1,4 +1,5 @@
-export const DIAGNOSTICS_SCHEMA_VERSION = 1;
+/** 2: configuration and OAuth state are allowlisted; secrets are never included. */
+export const DIAGNOSTICS_SCHEMA_VERSION = 2;
 
 type JsonSafeValue =
   | null

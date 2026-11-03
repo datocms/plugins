@@ -3292,11 +3292,15 @@ export default function AgentFrame(props: AgentFrameProps) {
           pendingNavigation: pendingNavigationRef.current,
         },
         {
-          // Every live secret this frame holds; masked wherever it appears in the payload.
+          // Every live secret this frame holds; masked wherever it appears in the payload. This
+          // closure can predate a token rotation, so read the live ref and the tokens the turn used.
           secrets: [
             props.config.openAiApiKey,
             props.config.anthropicApiKey,
             oauthCredentials?.token?.accessToken,
+            oauthCredentialsRef.current?.token?.accessToken,
+            turn.mcpAccessToken,
+            turn.repairOauthAccessToken,
           ],
         },
       ),
