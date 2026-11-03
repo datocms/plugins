@@ -698,11 +698,11 @@ describe('AgentFrame', () => {
         clientId: `registered-${mocks.registerClient.mock.calls.length}`,
         clientIdIssuedAt: 1,
         redirectUri,
-        registrationVersion: 2,
+        registrationVersion: 3,
       }));
     mocks.authorization.mockReset().mockImplementation(async () => ({
       state: `state-${mocks.authorization.mock.calls.length}`,
-      authorizationUrl: 'https://mcp.datocms.com/authorize',
+      authorizationUrl: 'https://oauth.datocms.com/oauth/authorize',
       expiresAt: Date.now() + 300_000,
     }));
     mocks.callback
@@ -8217,7 +8217,7 @@ describe('AgentFrame', () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
     expect(mocks.registerClient).toHaveBeenCalledOnce();
-    expect(store.load()?.credentials.client.registrationVersion).toBe(2);
+    expect(store.load()?.credentials.client.registrationVersion).toBe(3);
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
