@@ -50,14 +50,19 @@ function describeSymbol(value: symbol): string {
   }
 }
 
-const REDACTED = '[Redacted]';
+// Same marker as the plugin's other redactors (conversations, MCP client, script outcomes).
+const REDACTED = '[redacted]';
 
 const SENSITIVE_EXACT_KEYS = new Set([
   'authorization',
   'bearer',
   'codeverifier',
   'cookie',
+  'credentials',
   'idtoken',
+  'jwt',
+  'session',
+  'sessionid',
   'token',
 ]);
 
@@ -65,13 +70,29 @@ const SENSITIVE_KEY_SUFFIXES = [
   'accesstoken',
   'apikey',
   'password',
+  'privatekey',
   'refreshtoken',
   'secret',
 ];
 
 const SENSITIVE_VALUE_PATTERNS: ReadonlyArray<[RegExp, string]> = [
-  [/\bsk-[A-Za-z0-9_-]{16,}/g, REDACTED],
+  // OpenAI and Anthropic keys; 12+ matches the plugin's other redactors.
+  [/\bsk-[A-Za-z0-9_-]{12,}/g, REDACTED],
+  [/\bAIza[0-9A-Za-z_-]{20,}/g, REDACTED],
+  [/\bvck_[A-Za-z0-9_-]{16,}/g, REDACTED],
+  // DatoCMS CMA tokens are 30 lowercase hex characters.
+  [/\b[a-f0-9]{30}\b/g, REDACTED],
   [/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
+  // Query-string secrets, e.g. ?access_token=…, ?code=… (OAuth) or ?key=… (Gemini).
+  [
+    /([?&])((?:access|refresh|id)_token|token|api_?key|key|client_secret|code_verifier|code)=[^&#\s"']+/gi,
+    `$1$2=${REDACTED}`,
+  ],
+  // Unambiguous key=value secrets in free text, e.g. "api_key=…".
+  [
+    /\b((?:access|refresh|id)_token|api_?key|client_secret)=[^&#\s"']+/gi,
+    `$1=${REDACTED}`,
+  ],
 ];
 
 function isSensitiveKey(key: string): boolean {
@@ -161,14 +182,15 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
       }
 
       if (current instanceof Error) {
+        // Error messages and stacks can echo request URLs, headers or keys.
         const normalizedError: Record<string, JsonSafeValue> = {
           $type: 'Error',
           name: current.name,
-          message: current.message,
+          message: redactSensitiveSubstrings(current.message),
         };
 
         if (current.stack !== undefined) {
-          normalizedError.stack = current.stack;
+          normalizedError.stack = redactSensitiveSubstrings(current.stack);
         }
 
         if ('cause' in current) {
@@ -211,7 +233,9 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
           $type: 'Map',
           entries: Array.from(current.entries(), ([key, entryValue], index) => [
             normalize(key, `${path}.entries[${index}][0]`),
-            normalize(entryValue, `${path}.entries[${index}][1]`),
+            typeof key === 'string'
+              ? normalizeProperty(key, entryValue, `${path}.entries[${index}]`)
+              : normalize(entryValue, `${path}.entries[${index}][1]`),
           ]),
         };
       }

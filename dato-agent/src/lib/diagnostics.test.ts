@@ -46,12 +46,12 @@ describe('serializeDiagnostics', () => {
     expect(serializeDiagnostics(first)).toBe(`{
   "arguments": {
     "a": false,
-    "apiKey": "[Redacted]",
+    "apiKey": "[redacted]",
     "z": true
   },
   "prompt": "Change record 178178740",
   "schemaVersion": 1,
-  "token": "[Redacted]"
+  "token": "[redacted]"
 }`);
   });
 
@@ -85,23 +85,23 @@ describe('serializeDiagnostics', () => {
     expect(serialized).not.toContain('pkce-verifier-value');
     expect(JSON.parse(serialized)).toMatchObject({
       configuration: {
-        anthropicApiKey: '[Redacted]',
+        anthropicApiKey: '[redacted]',
         openaiApiKey: '',
-        activeApiKey: '[Redacted]',
+        activeApiKey: '[redacted]',
         anthropicModelMaxOutputTokens: 128_000,
         oauthCredentials: {
           client: { clientId: 'client-123' },
           token: {
-            accessToken: '[Redacted]',
-            refreshToken: '[Redacted]',
+            accessToken: '[redacted]',
+            refreshToken: '[redacted]',
             expiresAt: 1_800_000_000,
           },
-          pending: { codeVerifier: '[Redacted]', state: 'abc' },
+          pending: { codeVerifier: '[redacted]', state: 'abc' },
         },
       },
       error: {
         message:
-          'Request failed: Authorization: Bearer [Redacted] with key [Redacted]',
+          'Request failed: Authorization: Bearer [redacted] with key [redacted]',
       },
     });
   });
@@ -153,6 +153,42 @@ describe('serializeDiagnostics', () => {
       notANumber: '[NaN]',
       symbol: '[Symbol(private)]',
     });
+  });
+
+  it('redacts credentials inside real errors, maps, URLs and other providers’ key formats', () => {
+    // Fake values shaped like real credentials.
+    const secrets = {
+      anthropic: 'sk-ant-api03-FAKEFAKEFAKEFAKE',
+      bearer: 'FAKEtokenFAKEtokenFAKE',
+      gemini: 'AIzaSyFAKEFAKEFAKEFAKEFAKEFAKE1234',
+      vercel: 'vck_FAKEFAKEFAKEFAKEFAKE',
+      cma: 'f00dfacef00dfacef00dfacef00dfa',
+      oauth: 'FAKEoauthFAKEoauth',
+      code: 'FAKEauthorizationCODE',
+    };
+    const error = new Error(`401 for ${secrets.anthropic}`);
+    error.stack = `Error: boom\n  Authorization: Bearer ${secrets.bearer}`;
+
+    const output = serializeDiagnostics({
+      thrownError: error,
+      context: new Map([['apiKey', secrets.cma]]),
+      request: {
+        url: `https://example.com/cb?code=${secrets.code}&access_token=${secrets.oauth}`,
+      },
+      notes: [
+        `invalid key ${secrets.gemini}`,
+        `gateway rejected ${secrets.vercel}`,
+        `api_key=${secrets.oauth}`,
+      ],
+      credentials: 'anything',
+      status: 'status code=401 kept',
+    });
+
+    for (const secret of Object.values(secrets))
+      expect(output).not.toContain(secret);
+    expect(output).toContain('status code=401 kept');
+    expect(output).toContain('?code=[redacted]&access_token=[redacted]');
+    expect(output).toContain('"message": "401 for [redacted]"');
   });
 
   it('does not throw for values whose properties cannot be inspected', () => {
