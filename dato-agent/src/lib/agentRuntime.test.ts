@@ -1087,6 +1087,48 @@ describe('AgentRuntime', () => {
     expect(toolNames).not.toContain('present_fields');
     expect(toolNames).not.toContain('read_current_record_live_form_state');
     expect(toolNames).toContain('present_assets');
+    expect(toolNames).not.toContain('open_record_in_full_editor');
+  });
+
+  it('opens the full record editor and reports the URL when the tab is blocked', async () => {
+    const openCall = {
+      type: 'function_call',
+      id: 'function-full',
+      call_id: 'call-full',
+      name: 'open_record_in_full_editor',
+      arguments: JSON.stringify({
+        item_id: 'item-1',
+        item_type_id: 'article',
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-full', [openCall])),
+      eventsFor(response('resp-full-done'), ['Opened.']),
+    ]);
+    const openRecordInFullEditor = vi.fn().mockResolvedValue({
+      opened: false,
+      url: 'https://example.admin.datocms.com/editor/item_types/article/items/item-1/edit',
+    });
+    const runtime = runtimeWith(client, {
+      navigation: {
+        openRecord: vi.fn(),
+        showRecords: vi.fn(),
+        presentRecords: vi.fn(),
+        presentAssets: vi.fn(),
+        openRecordInFullEditor,
+      },
+    });
+
+    await drain(runtime.streamTurn({ message: 'Open the full editor' }));
+
+    expect(openRecordInFullEditor).toHaveBeenCalledWith({
+      itemId: 'item-1',
+      itemTypeId: 'article',
+    });
+    expect(JSON.stringify(client.requests[1]?.input)).toContain(
+      'https://example.admin.datocms.com/editor/item_types/article/items/item-1/edit',
+    );
   });
 
   it('injects host context once and keeps continuations on the stored response chain', async () => {

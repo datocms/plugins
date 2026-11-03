@@ -41,6 +41,7 @@ import {
   CopyIcon,
   DisconnectIcon,
   EditIcon,
+  ExternalLinkIcon,
   HistoryIcon,
   PlusIcon,
   RetryIcon,
@@ -296,6 +297,10 @@ export type AgentSurfaceProps = {
   onStartNewChat?: () => boolean | undefined | Promise<boolean | undefined>;
   onStop?: () => void;
   onOpenRecord?: (
+    record: AgentRecordResultViewModel,
+    entryId?: string,
+  ) => void | Promise<void>;
+  onOpenRecordInFullEditor?: (
     record: AgentRecordResultViewModel,
     entryId?: string,
   ) => void | Promise<void>;
@@ -1144,12 +1149,14 @@ function RecordsEntry({
   entry,
   mentionHost,
   onOpenRecord,
+  onOpenRecordInFullEditor,
 }: {
   disabled?: boolean;
   currentRecordId?: string;
   entry: AgentRecordsEntry;
   mentionHost: AgentMentionHost;
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
+  onOpenRecordInFullEditor?: AgentSurfaceProps['onOpenRecordInFullEditor'];
 }) {
   const modelsById = new Map(
     mentionHost.projectModels.map((model) => [model.id, model]),
@@ -1187,20 +1194,41 @@ function RecordsEntry({
                 : {}),
             });
           return (
-            <MentionDisplay
-              accessibleLabel={`Open ${mention.title}`}
-              currentRecordId={currentRecordId}
-              isClickable={!disabled && Boolean(onOpenRecord)}
+            <span
+              className={styles.mentionReceiptItem}
               key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}
-              mention={mention}
-              onClick={() => {
-                if (!disabled && onOpenRecord) {
-                  void Promise.resolve(onOpenRecord(record, entry.id)).catch(
-                    () => undefined,
-                  );
-                }
-              }}
-            />
+            >
+              <MentionDisplay
+                accessibleLabel={`Open ${mention.title}`}
+                currentRecordId={currentRecordId}
+                isClickable={!disabled && Boolean(onOpenRecord)}
+                mention={mention}
+                onClick={() => {
+                  if (!disabled && onOpenRecord) {
+                    void Promise.resolve(onOpenRecord(record, entry.id)).catch(
+                      () => undefined,
+                    );
+                  }
+                }}
+              />
+              {onOpenRecordInFullEditor && (
+                <button
+                  aria-label={`Open ${mention.title} in the full editor`}
+                  className={styles.recordExternalLink}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!disabled) {
+                      void Promise.resolve(
+                        onOpenRecordInFullEditor(record, entry.id),
+                      ).catch(() => undefined);
+                    }
+                  }}
+                  type="button"
+                >
+                  <ExternalLinkIcon />
+                </button>
+              )}
+            </span>
           );
         })}
       </div>
@@ -1799,6 +1827,7 @@ function AgentTurnEntry({
   onOpenAsset,
   onOpenField,
   onOpenRecord,
+  onOpenRecordInFullEditor,
   onRejectUnsafeAction,
   onRepairUnsafeAction,
   onRetryFailedTurn,
@@ -1814,6 +1843,7 @@ function AgentTurnEntry({
   onOpenAsset?: AgentSurfaceProps['onOpenAsset'];
   onOpenField?: AgentSurfaceProps['onOpenField'];
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
+  onOpenRecordInFullEditor?: AgentSurfaceProps['onOpenRecordInFullEditor'];
   onRejectUnsafeAction?: AgentSurfaceProps['onRejectUnsafeAction'];
   onRepairUnsafeAction?: AgentSurfaceProps['onRepairUnsafeAction'];
   onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
@@ -1859,6 +1889,7 @@ function AgentTurnEntry({
                   key={entry.id}
                   mentionHost={mentionHost}
                   onOpenRecord={onOpenRecord}
+                  onOpenRecordInFullEditor={onOpenRecordInFullEditor}
                 />
               );
             case 'fields':
@@ -1917,6 +1948,7 @@ function Transcript({
   entries,
   mentionHost,
   onOpenRecord,
+  onOpenRecordInFullEditor,
   onOpenField,
   onOpenAsset,
   onReviewUnsafeAction,
@@ -1933,6 +1965,7 @@ function Transcript({
   | 'autoApproveEnabled'
   | 'currentRecordId'
   | 'onOpenRecord'
+  | 'onOpenRecordInFullEditor'
   | 'onOpenField'
   | 'onOpenAsset'
   | 'onReviewUnsafeAction'
@@ -2026,6 +2059,7 @@ function Transcript({
                 onOpenAsset={onOpenAsset}
                 onOpenField={onOpenField}
                 onOpenRecord={onOpenRecord}
+                onOpenRecordInFullEditor={onOpenRecordInFullEditor}
                 onRejectUnsafeAction={onRejectUnsafeAction}
                 onRepairUnsafeAction={onRepairUnsafeAction}
                 onRetryFailedTurn={onRetryFailedTurn}
@@ -2151,6 +2185,7 @@ export function AgentSurface({
   onStartNewChat,
   onStop,
   onOpenRecord,
+  onOpenRecordInFullEditor,
   onOpenField,
   onOpenAsset,
   hostActionPending = false,
@@ -2372,6 +2407,7 @@ export function AgentSurface({
             onOpenAsset={onOpenAsset}
             onOpenField={onOpenField}
             onOpenRecord={onOpenRecord}
+            onOpenRecordInFullEditor={onOpenRecordInFullEditor}
             hostActionPending={hostActionPending}
             onRejectUnsafeAction={onRejectUnsafeAction}
             onRepairUnsafeAction={onRepairUnsafeAction}

@@ -550,6 +550,9 @@ export interface AgentNavigationCallbacks {
   presentUsers?(
     input: PresentUsersInput,
   ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
+  openRecordInFullEditor?(
+    input: OpenRecordInput,
+  ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
 }
 
 export interface GetModelSchemaInput {
@@ -1179,6 +1182,29 @@ export const LOCAL_NAVIGATION_TOOLS = [
   },
   {
     type: 'function',
+    name: 'open_record_in_full_editor',
+    description:
+      'Open one verified record in the standard DatoCMS record editor in a new browser tab. That page includes the normal record sidebar, including Web Previews when that plugin is installed. Use this when the editor asks for the sidebar, a preview, or the full record page. This leaves the current chat in place and never changes content. If the result says the browser blocked the tab, share the returned URL instead of claiming it opened.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        item_id: {
+          type: 'string',
+          description: 'A DatoCMS record ID from the authorized environment.',
+        },
+        item_type_id: {
+          type: ['string', 'null'],
+          description:
+            'The record model ID when known, or null. Include it so the full editor can open without another lookup.',
+        },
+      },
+      required: ['item_id', 'item_type_id'],
+    },
+  },
+  {
+    type: 'function',
     name: 'present_fields',
     description:
       'Present verified fields from the current DatoCMS record as clickable chat links that scroll the current record form. Use this for one or more useful field references instead of scrolling automatically. This does not read field values, open another record, save content, or change content.',
@@ -1240,6 +1266,9 @@ function availableLocalTools(
     }
     if (tool.name === 'present_users') {
       return Boolean(navigation.presentUsers);
+    }
+    if (tool.name === 'open_record_in_full_editor') {
+      return Boolean(navigation.openRecordInFullEditor);
     }
     return true;
   });
@@ -3182,6 +3211,20 @@ async function* executeLocalToolCalls({
           itemId: parsed.itemId,
           ...(parsed.itemTypeId ? { itemTypeId: parsed.itemTypeId } : {}),
           ...(parsed.fieldPath ? { fieldPath: parsed.fieldPath } : {}),
+        });
+      } else if (call.name === 'open_record_in_full_editor') {
+        if (!navigation.openRecordInFullEditor) {
+          throw new Error(
+            'The full record editor is not available on the current DatoCMS surface.',
+          );
+        }
+        const parsed = parseOpenRecordInput(call.arguments);
+        activityArguments = parsed;
+        const result = await navigation.openRecordInFullEditor(parsed);
+        output = stringifyCallbackResult(result, {
+          action: 'open_record_in_full_editor',
+          itemId: parsed.itemId,
+          ...(parsed.itemTypeId ? { itemTypeId: parsed.itemTypeId } : {}),
         });
       } else if (call.name === 'show_records') {
         const parsed = parseRecordListInput(call.arguments);

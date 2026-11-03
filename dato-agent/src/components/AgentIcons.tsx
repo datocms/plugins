@@ -154,6 +154,16 @@ export function CopyIcon({ className }: IconProps) {
   );
 }
 
+export function ExternalLinkIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M14 5h5v5" />
+      <path d="M19 5 10 14" />
+      <path d="M17 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4.5" />
+    </Icon>
+  );
+}
+
 export function EditIcon({ className }: IconProps) {
   return (
     <Icon className={className}>

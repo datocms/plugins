@@ -731,6 +731,38 @@ describe('AgentSurface', () => {
     );
   });
 
+  it('opens a record result in the full editor without opening it in the pane', async () => {
+    const user = userEvent.setup();
+    const onOpenRecord = vi.fn();
+    const onOpenRecordInFullEditor = vi.fn();
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'records',
+            kind: 'records',
+            title: 'Matching articles',
+            records: [{ itemId: 'two', itemTypeId: 'post', title: 'Two' }],
+          },
+        ]}
+        onOpenRecord={onOpenRecord}
+        onOpenRecordInFullEditor={onOpenRecordInFullEditor}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Two in the full editor' }),
+    );
+    expect(onOpenRecordInFullEditor).toHaveBeenCalledWith(
+      { itemId: 'two', itemTypeId: 'post', title: 'Two' },
+      'records',
+    );
+    expect(onOpenRecord).not.toHaveBeenCalled();
+  });
+
   it('opens record, field, asset, model, and user mentions directly from user messages', async () => {
     const user = userEvent.setup();
     const onOpenRecord = vi.fn();
