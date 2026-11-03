@@ -25,13 +25,13 @@ connect({
     // The host currently sends one bulk request, whose CMA limit is 200 IDs.
     // Performing deletion here would bypass other plugins' concurrent vetoes.
     if (items.length > 200) {
-      // The notice promise settles when the toast closes; awaiting it holds the hook open.
+      // The alert promise settles when the toast closes; awaiting it holds the hook open.
       void ctx
-        .notice(
+        .alert(
           'Record Bin stopped this deletion: the dashboard must support bounded bulk operations before a selection above 200 records can be deleted safely. The original records have been kept.',
         )
         .catch((error) =>
-          debugLogger.warn('Could not display deletion limit notice', error),
+          debugLogger.warn('Could not display deletion limit alert', error),
         );
       return false;
     }
