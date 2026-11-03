@@ -666,7 +666,16 @@
   align-items: baseline;
   gap: var(--spacing-xs);
   color: var(--color--ink-subtle);
-  word-break: break-all;
+}
+
+.diagnosticsReviewItem code {
+  flex: none;
+  white-space: nowrap;
+}
+
+.diagnosticsReviewItem span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .activityDisclosure {

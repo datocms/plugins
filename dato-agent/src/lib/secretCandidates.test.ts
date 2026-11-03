@@ -50,6 +50,8 @@ describe('findSecretCandidates', () => {
         stack: 'at runTurn (dato-agent/src/lib/agentRuntime.ts:4873:21)',
         url: 'https://site-api.datocms.com/items?filter[type]=article&page[limit]=100',
         timestamp: '2026-11-03T22:05:03.968Z',
+        siteName: 'claude-prtest-recordbin-2026-11-03',
+        hostContexts: [{ fingerprint: 'a1b2c3d4e5f6a7b8c9d0-12d' }],
       }),
     );
 

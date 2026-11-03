@@ -57,10 +57,10 @@ function shannonEntropy(text: string): number {
   return entropy;
 }
 
-function isRandomLooking(token: string): boolean {
+function mixesLettersAndDigits(text: string): boolean {
   let hasLetter = false;
   let hasDigit = false;
-  for (const character of token) {
+  for (const character of text) {
     if (character >= '0' && character <= '9') hasDigit = true;
     else if (
       (character >= 'a' && character <= 'z') ||
@@ -68,7 +68,18 @@ function isRandomLooking(token: string): boolean {
     )
       hasLetter = true;
   }
-  return hasLetter && hasDigit && shannonEntropy(token) >= MIN_ENTROPY;
+  return hasLetter && hasDigit;
+}
+
+/**
+ * Keys and tokens have at least one segment (between `-` / `_`) that mixes letters and digits, like
+ * `sk-ant-api03-…`. Slugs and names such as `my-site-2026-11-03` only join words and numbers.
+ */
+function isRandomLooking(token: string): boolean {
+  const segments = token.split('-').flatMap((part) => part.split('_'));
+  return (
+    segments.some(mixesLettersAndDigits) && shannonEntropy(token) >= MIN_ENTROPY
+  );
 }
 
 /** Canonical 8-4-4-4-12 hex UUIDs (conversation, request and response IDs), checked by position. */
@@ -87,13 +98,31 @@ function isUuid(token: string): boolean {
   return true;
 }
 
-/** `id`, `siteId`, `itemIds`, `item_ids`, `ID`…: record and entity identifiers, not secrets. */
+/** Identifiers and digests (`id`, `siteId`, `item_ids`, `fingerprint`, `contentHash`…), not secrets. */
 function isIdentifierKey(key: string | undefined): boolean {
   if (key === undefined) return false;
-  if (['id', 'ids', 'ID', 'IDs'].includes(key)) return true;
-  return ['Id', 'Ids', 'ID', 'IDs', '_id', '_ids'].some((suffix) =>
-    key.endsWith(suffix),
-  );
+  const exact = [
+    'id',
+    'ids',
+    'ID',
+    'IDs',
+    'fingerprint',
+    'hash',
+    'checksum',
+    'digest',
+  ];
+  if (exact.includes(key)) return true;
+  return [
+    'Id',
+    'Ids',
+    'ID',
+    'IDs',
+    '_id',
+    '_ids',
+    'Hash',
+    'Fingerprint',
+    '_hash',
+  ].some((suffix) => key.endsWith(suffix));
 }
 
 function collectCandidates(
