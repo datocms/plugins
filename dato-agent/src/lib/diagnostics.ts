@@ -75,26 +75,6 @@ const SENSITIVE_KEY_SUFFIXES = [
   'secret',
 ];
 
-const SENSITIVE_VALUE_PATTERNS: ReadonlyArray<[RegExp, string]> = [
-  // OpenAI and Anthropic keys; 12+ matches the plugin's other redactors.
-  [/\bsk-[A-Za-z0-9_-]{12,}/g, REDACTED],
-  [/\bAIza[0-9A-Za-z_-]{20,}/g, REDACTED],
-  [/\bvck_[A-Za-z0-9_-]{16,}/g, REDACTED],
-  // DatoCMS CMA tokens are 30 lowercase hex characters.
-  [/\b[a-f0-9]{30}\b/g, REDACTED],
-  [/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
-  // Query-string secrets, e.g. ?access_token=…, ?code=… (OAuth) or ?key=… (Gemini).
-  [
-    /([?&])((?:access|refresh|id)_token|token|api_?key|key|client_secret|code_verifier|code)=[^&#\s"']+/gi,
-    `$1$2=${REDACTED}`,
-  ],
-  // Unambiguous key=value secrets in free text, e.g. "api_key=…".
-  [
-    /\b((?:access|refresh|id)_token|api_?key|client_secret)=[^&#\s"']+/gi,
-    `$1=${REDACTED}`,
-  ],
-];
-
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
   return (
@@ -103,11 +83,30 @@ function isSensitiveKey(key: string): boolean {
   );
 }
 
-function redactSensitiveSubstrings(value: string): string {
-  return SENSITIVE_VALUE_PATTERNS.reduce(
-    (current, [pattern, replacement]) => current.replace(pattern, replacement),
-    value,
-  );
+/** Shorter values would mask ordinary words; real keys and tokens are far longer. */
+const MIN_SECRET_LENGTH = 8;
+
+/**
+ * Builds a masker for the plugin's own secret values (provider API keys, OAuth tokens). Replacing
+ * exact values catches them wherever they end up, e.g. echoed inside an error message, whatever
+ * their format. Longest first, so a secret that contains another is masked whole.
+ */
+function knownSecretMasker(
+  secrets: readonly (string | null | undefined)[],
+): (text: string) => string {
+  const values = [
+    ...new Set(
+      secrets.filter(
+        (secret): secret is string =>
+          typeof secret === 'string' && secret.length >= MIN_SECRET_LENGTH,
+      ),
+    ),
+  ].sort((left, right) => right.length - left.length);
+  return (text) =>
+    values.reduce(
+      (current, secret) => current.replaceAll(secret, REDACTED),
+      text,
+    );
 }
 
 function propertyPath(parentPath: string, key: string): string {
@@ -116,7 +115,10 @@ function propertyPath(parentPath: string, key: string): string {
     : `${parentPath}[${JSON.stringify(key)}]`;
 }
 
-function normalizeDiagnostics(value: unknown): JsonSafeValue {
+function normalizeDiagnostics(
+  value: unknown,
+  maskSecrets: (text: string) => string,
+): JsonSafeValue {
   const seen = new WeakMap<object, string>();
 
   const normalizeProperty = (
@@ -139,7 +141,7 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
 
       switch (typeof current) {
         case 'string':
-          return redactSensitiveSubstrings(current);
+          return maskSecrets(current);
         case 'boolean':
           return current;
         case 'number':
@@ -182,15 +184,15 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
       }
 
       if (current instanceof Error) {
-        // Error messages and stacks can echo request URLs, headers or keys.
+        // Error messages and stacks can echo request headers or keys.
         const normalizedError: Record<string, JsonSafeValue> = {
           $type: 'Error',
           name: current.name,
-          message: redactSensitiveSubstrings(current.message),
+          message: maskSecrets(current.message),
         };
 
         if (current.stack !== undefined) {
-          normalizedError.stack = redactSensitiveSubstrings(current.stack);
+          normalizedError.stack = maskSecrets(current.stack);
         }
 
         if ('cause' in current) {
@@ -292,8 +294,24 @@ function normalizeDiagnostics(value: unknown): JsonSafeValue {
   return normalize(value, '$');
 }
 
-export function serializeDiagnostics(value: unknown): string {
-  return JSON.stringify(normalizeDiagnostics(value), null, 2);
+export type DiagnosticsOptions = {
+  /** The plugin's live secret values; every exact occurrence is replaced in the output. */
+  secrets?: readonly (string | null | undefined)[];
+};
+
+/**
+ * Serializes failure diagnostics for the clipboard. Callers pass an allowlisted payload plus the
+ * secrets they hold; values under credential-like keys are also replaced as a structural backstop.
+ */
+export function serializeDiagnostics(
+  value: unknown,
+  { secrets = [] }: DiagnosticsOptions = {},
+): string {
+  return JSON.stringify(
+    normalizeDiagnostics(value, knownSecretMasker(secrets)),
+    null,
+    2,
+  );
 }
 
 function restoreFocus(element: Element | null): void {

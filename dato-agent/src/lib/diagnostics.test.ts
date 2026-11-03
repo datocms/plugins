@@ -56,28 +56,37 @@ describe('serializeDiagnostics', () => {
   });
 
   it('redacts provider keys and OAuth credentials while keeping non-secret settings', () => {
-    const serialized = serializeDiagnostics({
-      configuration: {
-        anthropicApiKey: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
-        openaiApiKey: '',
-        activeApiKey: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
-        anthropicModelMaxOutputTokens: 128_000,
-        oauthCredentials: {
-          client: { clientId: 'client-123' },
-          token: {
-            accessToken: 'dato-access-token-value',
-            refreshToken: 'dato-refresh-token-value',
-            expiresAt: 1_800_000_000,
+    const serialized = serializeDiagnostics(
+      {
+        configuration: {
+          anthropicApiKey: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
+          openaiApiKey: '',
+          activeApiKey: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
+          anthropicModelMaxOutputTokens: 128_000,
+          oauthCredentials: {
+            client: { clientId: 'client-123' },
+            token: {
+              accessToken: 'dato-access-token-value',
+              refreshToken: 'dato-refresh-token-value',
+              expiresAt: 1_800_000_000,
+            },
+            pending: { codeVerifier: 'pkce-verifier-value', state: 'abc' },
           },
-          pending: { codeVerifier: 'pkce-verifier-value', state: 'abc' },
+        },
+        turn: { mcpAccessToken: 'dato-access-token-value' },
+        error: {
+          message:
+            'Request failed: Authorization: Bearer dato-access-token-value with key sk-proj-abcdefghijklmnopqrstuvwxyz',
         },
       },
-      turn: { mcpAccessToken: 'dato-access-token-value' },
-      error: {
-        message:
-          'Request failed: Authorization: Bearer dato-access-token-value with key sk-proj-abcdefghijklmnopqrstuvwxyz',
+      {
+        secrets: [
+          'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
+          'sk-proj-abcdefghijklmnopqrstuvwxyz',
+          'dato-access-token-value',
+        ],
       },
-    });
+    );
 
     expect(serialized).not.toContain('abcdefghijklmnopqrstuvwxyz');
     expect(serialized).not.toContain('dato-access-token-value');
@@ -155,40 +164,40 @@ describe('serializeDiagnostics', () => {
     });
   });
 
-  it('redacts credentials inside real errors, maps, URLs and other providers’ key formats', () => {
-    // Fake values shaped like real credentials.
-    const secrets = {
-      anthropic: 'sk-ant-api03-FAKEFAKEFAKEFAKE',
-      bearer: 'FAKEtokenFAKEtokenFAKE',
-      gemini: 'AIzaSyFAKEFAKEFAKEFAKEFAKEFAKE1234',
-      vercel: 'vck_FAKEFAKEFAKEFAKEFAKE',
-      cma: 'f00dfacef00dfacef00dfacef00dfa',
-      oauth: 'FAKEoauthFAKEoauth',
-      code: 'FAKEauthorizationCODE',
-    };
-    const error = new Error(`401 for ${secrets.anthropic}`);
-    error.stack = `Error: boom\n  Authorization: Bearer ${secrets.bearer}`;
+  it('masks known secret values wherever they appear, whatever their format', () => {
+    // Deliberately formatless: masking must not depend on recognising a key shape.
+    const providerKey = 'not-a-known-shape-0123456789';
+    const accessToken = 'opaque.token.value~42';
+    const error = new Error(`401 for ${providerKey}`);
+    error.stack = `Error: boom\n  Authorization: Bearer ${accessToken}`;
 
-    const output = serializeDiagnostics({
-      thrownError: error,
-      context: new Map([['apiKey', secrets.cma]]),
-      request: {
-        url: `https://example.com/cb?code=${secrets.code}&access_token=${secrets.oauth}`,
+    const output = serializeDiagnostics(
+      {
+        thrownError: error,
+        context: new Map([['notASecretKeyName', providerKey]]),
+        request: {
+          url: `https://example.com/cb?state=x&access_token=${accessToken}`,
+        },
+        notes: [`the user pasted ${providerKey} into chat`],
+        status: 'status code=401 kept',
       },
-      notes: [
-        `invalid key ${secrets.gemini}`,
-        `gateway rejected ${secrets.vercel}`,
-        `api_key=${secrets.oauth}`,
-      ],
-      credentials: 'anything',
-      status: 'status code=401 kept',
-    });
+      { secrets: [providerKey, accessToken, '', undefined, 'short'] },
+    );
 
-    for (const secret of Object.values(secrets))
-      expect(output).not.toContain(secret);
-    expect(output).toContain('status code=401 kept');
-    expect(output).toContain('?code=[redacted]&access_token=[redacted]');
+    expect(output).not.toContain(providerKey);
+    expect(output).not.toContain(accessToken);
     expect(output).toContain('"message": "401 for [redacted]"');
+    expect(output).toContain('?state=x&access_token=[redacted]');
+    expect(output).toContain('status code=401 kept');
+  });
+
+  it('keeps short or empty secret values from masking ordinary text', () => {
+    expect(
+      serializeDiagnostics(
+        { note: 'a short word' },
+        { secrets: ['short', ''] },
+      ),
+    ).toContain('a short word');
   });
 
   it('does not throw for values whose properties cannot be inspected', () => {

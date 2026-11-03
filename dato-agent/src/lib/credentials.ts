@@ -363,3 +363,23 @@ function isCleanAbsoluteUrl(value: unknown): value is string {
     return false;
   }
 }
+
+/**
+ * OAuth state as it may appear in copied diagnostics: version, client registration and token
+ * metadata only. The access token itself is never included.
+ */
+export function diagnosticOAuthCredentials(
+  credentials: OAuthCredentials | null | undefined,
+) {
+  if (!credentials) return undefined;
+  return {
+    version: credentials.version,
+    client: credentials.client,
+    token: credentials.token
+      ? {
+          tokenType: credentials.token.tokenType,
+          obtainedAt: credentials.token.obtainedAt,
+        }
+      : undefined,
+  };
+}

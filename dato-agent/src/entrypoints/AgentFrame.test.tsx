@@ -6708,9 +6708,12 @@ describe('AgentFrame', () => {
 
     expect(writeText).toHaveBeenCalledOnce();
     const diagnostics = JSON.parse(String(writeText.mock.calls[0]?.[0]));
-    expect(diagnostics.configuration.openAiApiKey).toBe('[redacted]');
-    expect(diagnostics.configuration.activeApiKey).toBe('[redacted]');
-    expect(diagnostics.oauthCredentials.token.accessToken).toBe('[redacted]');
+    // Allowlisted payload: keys and tokens are absent, not just masked.
+    expect(diagnostics.configuration.openAiApiKey).toBeUndefined();
+    expect(diagnostics.configuration.activeApiKey).toBeUndefined();
+    expect(diagnostics.configuration.hasOpenAiApiKey).toBe(true);
+    expect(diagnostics.oauthCredentials.token.accessToken).toBeUndefined();
+    expect(diagnostics.oauthCredentials.token.tokenType).toBe('Bearer');
     expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
       'diagnostic-oauth-secret',
     );
