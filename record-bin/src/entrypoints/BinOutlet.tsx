@@ -210,9 +210,7 @@ export const executeRestoreWithoutLambda = async ({
       'Restored record archive cleanup failed',
       parsedResponse.cleanupError,
     );
-    alertFn(
-      'The record was restored, but its archive could not be removed.',
-    );
+    alertFn('The record was restored, but its archive could not be removed.');
   }
   noticeFn('The record has been successfully restored!');
   navigateTo(
