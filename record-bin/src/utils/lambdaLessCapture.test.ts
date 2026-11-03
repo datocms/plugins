@@ -46,6 +46,7 @@ type Request = {
   queryParams?: {
     filter: { ids: string };
     nested: boolean;
+    version?: string;
     page: { limit: number; offset: number };
   };
   body?: { data: ReturnType<typeof source> };
@@ -64,8 +65,13 @@ function setup(
       batches.push({ count: ids.length, nested: queryParams.nested });
       expect(queryParams.page.limit).toBe(ids.length);
       expect(queryParams.page.offset).toBe(0);
+      // Mirror the legacy list default, which omits never-published records.
+      const visibleIds =
+        queryParams.version === 'current'
+          ? ids
+          : ids.filter((id) => !id.startsWith('draft-'));
       return {
-        data: ids
+        data: visibleIds
           .map((id) =>
             overrides.read
               ? overrides.read(id, queryParams.nested)
@@ -180,6 +186,12 @@ describe('pre-deletion capture', () => {
       failedItemIds: ['one'],
       allowDeletion: false,
     });
+  });
+  it('captures never-published records on projects listing published versions by default', async () => {
+    const mock = setup();
+    const result = await run(['draft-1']);
+    expect(result.allowDeletion).toBe(true);
+    expect(mock.archive).toHaveLength(1);
   });
   it('rejects sources without version metadata', async () => {
     setup({ read: (id) => ({ ...source(id), meta: {} }) });
