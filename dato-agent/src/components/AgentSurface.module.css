@@ -295,9 +295,7 @@
   outline: 3px solid var(--color--focus--outline);
 }
 
-.iconButton:disabled,
-.iconButton[aria-disabled="true"],
-.iconButton[aria-disabled="true"]:hover {
+.iconButton:disabled {
   color: var(--color--disabled--ink);
   background: transparent;
   cursor: default;
@@ -329,35 +327,82 @@
   font-weight: var(--font-weight-bold);
 }
 
-.configurationNotice {
+.setupSteps {
+  display: grid;
+  gap: var(--spacing-m);
+  margin: var(--spacing-m) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setupStep {
+  display: grid;
+  gap: var(--spacing-s);
+}
+
+.setupStepHeader {
   display: flex;
-  min-height: 34px;
-  align-items: flex-start;
+  min-height: 24px;
+  align-items: center;
   gap: 8px;
-  margin-top: var(--spacing-m);
-  padding: 6px 8px;
-  border: 1px solid var(--color--border);
-  background: var(--color--surface-muted);
-  font-size: var(--font-size-s);
 }
 
-.configurationNotice + .connectionForm {
-  margin-top: var(--spacing-s);
-}
-
-.configurationNoticeBody {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.configurationNotice svg {
-  width: 15px;
-  height: 15px;
-  margin-top: 2px;
+.setupStepNumber {
+  display: grid;
+  width: 20px;
+  height: 20px;
   flex: none;
+  place-items: center;
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-full, 999px);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.setupStepTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.setupStepDone,
+.setupStepToDo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full, 999px);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.setupStepDone {
+  background: var(--color--success-soft--surface);
+  color: var(--color--success-soft--ink);
+}
+
+.setupStepToDo {
+  background: var(--color--warning-soft--surface);
   color: var(--color--warning-soft--ink);
+}
+
+.setupStepDone svg,
+.setupStepToDo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.setupStepBody {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-s);
+  margin-left: 28px;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.setupStepBody p {
+  margin: 0;
 }
 
 .recentChats {

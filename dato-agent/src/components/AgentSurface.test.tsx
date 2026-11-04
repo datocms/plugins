@@ -1803,7 +1803,8 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('Setup required')).toBeVisible();
+    expect(screen.getByText('AI provider')).toBeVisible();
+    expect(screen.getAllByText('To do')).toHaveLength(2);
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('switch', {
@@ -1855,15 +1856,9 @@ describe('AgentSurface', () => {
     const user = userEvent.setup();
     const onSelectConversation = vi.fn();
     const onStartNewChat = vi.fn();
-    const setupConnection: AgentConnectionViewModel = {
-      status: 'setup',
-      openAiConfigStatus: 'configured',
-      datoCmsStatus: 'disconnected',
-    };
-
     render(
       <AgentSurface
-        connection={setupConnection}
+        connection={connected}
         entries={[]}
         onSelectConversation={onSelectConversation}
         onStartNewChat={onStartNewChat}
@@ -1872,6 +1867,7 @@ describe('AgentSurface', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('heading', { name: 'Chats' })).toBeVisible();
     const currentChat = screen
       .getByText('Describe this project')
@@ -1897,24 +1893,13 @@ describe('AgentSurface', () => {
       screen.queryByText('This chat is outside the six-item limit'),
     ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByText('Update the homepage').closest('button') as HTMLElement,
-    );
-    expect(onSelectConversation).toHaveBeenCalledWith(recentConversations[1]);
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
-
     const newChatButton = screen.getByRole('button', { name: 'New chat' });
     expect(newChatButton).toHaveTextContent('');
     expect(within(newChatButton).queryByRole('img')).not.toBeInTheDocument();
-    await user.click(newChatButton);
-    expect(onStartNewChat).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
   });
 
-  it('blocks chats and offers the plugin settings while the AI provider is missing', async () => {
+  it('lists setup as numbered steps and links admins to the plugin settings', async () => {
     const user = userEvent.setup();
-    const onStartNewChat = vi.fn();
-    const onSelectConversation = vi.fn();
     const onOpenPluginSettings = vi.fn();
 
     render(
@@ -1927,53 +1912,46 @@ describe('AgentSurface', () => {
         }}
         entries={[]}
         onOpenPluginSettings={onOpenPluginSettings}
-        onSelectConversation={onSelectConversation}
-        onStartNewChat={onStartNewChat}
+        onStartNewChat={vi.fn()}
         onSubmit={vi.fn()}
         recentConversations={recentConversations}
       />,
     );
 
-    expect(screen.getByText('Setup required')).toBeVisible();
+    const [providerStep, datoCmsStep] = screen.getAllByRole('listitem');
+    expect(providerStep).toHaveTextContent('AI provider');
+    expect(providerStep).toHaveTextContent('To do');
+    expect(datoCmsStep).toHaveTextContent('DatoCMS account');
+    expect(datoCmsStep).toHaveTextContent('Done');
+    // Editors don't need to know which provider an admin picked.
     expect(screen.queryByText(/Anthropic/)).not.toBeInTheDocument();
+
     await user.click(
       screen.getByRole('button', { name: 'Open plugin settings' }),
     );
     expect(onOpenPluginSettings).toHaveBeenCalledOnce();
-
-    const newChatButton = screen.getByRole('button', { name: 'New chat' });
-    expect(newChatButton).toHaveAttribute('aria-disabled', 'true');
-    await user.click(newChatButton);
-    expect(onStartNewChat).not.toHaveBeenCalled();
-
-    const pastChat = screen
-      .getByText('Update the homepage')
-      .closest('button') as HTMLElement;
-    expect(pastChat).toBeDisabled();
-    expect(pastChat).toHaveAttribute(
-      'title',
-      'Chats need an AI provider to be set up first',
-    );
+    expect(
+      screen.getByText('Finish setup first to start chatting.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('tells editors who cannot edit the plugin settings to ask an admin', () => {
+  it('tells editors who cannot edit the plugin settings to ask for help', () => {
     render(
       <AgentSurface
         connection={{
           status: 'setup',
           providerConfigStatus: 'missing',
-          providerLabel: 'OpenAI (ChatGPT)',
           datoCmsStatus: 'connected',
         }}
         entries={[]}
-        onStartNewChat={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
 
-    expect(
-      screen.getByText(/Ask a developer or project admin for help/),
-    ).toBeVisible();
+    expect(screen.getByText(/Ask them for help/)).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Open plugin settings' }),
     ).not.toBeInTheDocument();
@@ -2058,7 +2036,7 @@ describe('AgentSurface', () => {
     expect(screen.getByRole('heading', { name: 'Connection' })).toBeVisible();
   });
 
-  it('disables chat history actions while the connection is in progress', () => {
+  it('shows no chat controls until both setup steps are done', () => {
     const connecting: AgentConnectionViewModel = {
       status: 'connecting',
       openAiConfigStatus: 'configured',
@@ -2076,10 +2054,14 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeDisabled();
     expect(
-      screen.getByText('Describe this project').closest('button'),
-    ).toBeDisabled();
+      screen.getByText('Finish setup first to start chatting.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Describe this project')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
   it('keeps the session-wide auto-approve control inside the chat', async () => {

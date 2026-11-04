@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from 'datocms-react-ui';
 import {
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -550,14 +551,11 @@ function DatoCmsConnectionField({
 function RecentChats({
   conversations,
   disabled,
-  blockedReason,
   onSelectConversation,
   onStartNewChat,
 }: {
   conversations: readonly AgentConversationSummaryViewModel[];
   disabled?: boolean;
-  /** Why chats can't open yet. Shown as the New chat tooltip. */
-  blockedReason?: string;
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
   ) => void;
@@ -583,19 +581,17 @@ function RecentChats({
         {onStartNewChat && (
           <Tooltip placement="left">
             <TooltipTrigger>
-              {/* aria-disabled, not disabled: a disabled button gets no hover, so its tooltip couldn't explain why. */}
               <button
-                aria-disabled={blockedReason ? true : undefined}
                 aria-label="New chat"
                 className={`${styles.iconButton} ${styles.newChatButton}`}
                 disabled={disabled}
-                onClick={blockedReason ? undefined : onStartNewChat}
+                onClick={onStartNewChat}
                 type="button"
               >
                 <PlusIcon />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{blockedReason ?? 'New chat'}</TooltipContent>
+            <TooltipContent>New chat</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -610,11 +606,9 @@ function RecentChats({
                 <button
                   aria-current={conversation.isCurrent ? 'page' : undefined}
                   className={styles.recentChat}
-                  disabled={
-                    disabled || Boolean(blockedReason) || !onSelectConversation
-                  }
+                  disabled={disabled || !onSelectConversation}
                   onClick={() => onSelectConversation?.(conversation)}
-                  title={blockedReason ?? title}
+                  title={title}
                   type="button"
                 >
                   <strong className={styles.recentChatTitle}>{title}</strong>
@@ -661,11 +655,9 @@ function CredentialPanel({
 }) {
   const providerConfigStatus =
     connection.providerConfigStatus ?? connection.openAiConfigStatus;
-  const isProviderMissing = providerConfigStatus === 'missing';
-  // Connecting DatoCMS can come after picking a chat; a missing provider can't.
-  const chatsBlockedReason = isProviderMissing
-    ? 'Chats need an AI provider to be set up first'
-    : undefined;
+  const isProviderReady = providerConfigStatus !== 'missing';
+  const isDatoCmsReady = connection.datoCmsStatus === 'connected';
+  const isSetupComplete = isProviderReady && isDatoCmsReady;
 
   return (
     <section
@@ -685,46 +677,97 @@ function CredentialPanel({
         </h2>
       </header>
 
-      {isProviderMissing && (
-        <div className={styles.configurationNotice} role="status">
-          <WarningIcon />
-          <div className={styles.configurationNoticeBody}>
-            <strong>Setup required</strong>
-            <span>
-              {onOpenPluginSettings
-                ? 'Chats need an AI provider. Add its API key and pick a model in the plugin settings.'
-                : 'Chats need an AI provider, set up in the plugin settings. Ask a developer or project admin for help.'}
-            </span>
-            {onOpenPluginSettings && (
-              <Button
-                buttonSize="xxs"
-                buttonType="primary"
-                type="button"
-                onClick={onOpenPluginSettings}
-              >
-                Open plugin settings
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       <TooltipDelayGroup delay={250}>
-        <DatoCmsConnectionField
-          connection={connection}
-          onConnectDatoCms={onConnectDatoCms}
-          onDisconnectDatoCms={onDisconnectDatoCms}
-          onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-          onRestartDatoCmsConnection={onRestartDatoCmsConnection}
-        />
-        <RecentChats
-          conversations={recentConversations}
-          disabled={conversationActionsDisabled}
-          blockedReason={chatsBlockedReason}
-          onSelectConversation={onSelectConversation}
-          onStartNewChat={onStartNewChat}
-        />
+        <ol className={styles.setupSteps}>
+          <SetupStep number={1} title="AI provider" isDone={isProviderReady}>
+            {!isProviderReady && (
+              <div className={styles.setupStepBody}>
+                <p>
+                  {onOpenPluginSettings
+                    ? 'Add an API key and pick a model in the plugin settings.'
+                    : 'A developer or project admin sets this up in the plugin settings. Ask them for help.'}
+                </p>
+                {onOpenPluginSettings && (
+                  <Button
+                    buttonSize="xxs"
+                    buttonType="primary"
+                    type="button"
+                    onClick={onOpenPluginSettings}
+                  >
+                    Open plugin settings
+                  </Button>
+                )}
+              </div>
+            )}
+          </SetupStep>
+          <SetupStep number={2} title="DatoCMS account" isDone={isDatoCmsReady}>
+            <DatoCmsConnectionField
+              connection={connection}
+              onConnectDatoCms={onConnectDatoCms}
+              onDisconnectDatoCms={onDisconnectDatoCms}
+              onCheckDatoCmsAccess={onCheckDatoCmsAccess}
+              onRestartDatoCmsConnection={onRestartDatoCmsConnection}
+            />
+          </SetupStep>
+        </ol>
+        {isSetupComplete ? (
+          <RecentChats
+            conversations={recentConversations}
+            disabled={conversationActionsDisabled}
+            onSelectConversation={onSelectConversation}
+            onStartNewChat={onStartNewChat}
+          />
+        ) : (
+          <ChatsAfterSetup />
+        )}
       </TooltipDelayGroup>
+    </section>
+  );
+}
+
+/** One numbered setup step, with a status that reads without color. */
+function SetupStep({
+  number,
+  title,
+  isDone,
+  children,
+}: {
+  number: number;
+  title: string;
+  isDone: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <li className={styles.setupStep}>
+      <div className={styles.setupStepHeader}>
+        <span aria-hidden="true" className={styles.setupStepNumber}>
+          {number}
+        </span>
+        <strong className={styles.setupStepTitle}>{title}</strong>
+        <span className={isDone ? styles.setupStepDone : styles.setupStepToDo}>
+          {isDone ? <CircleCheckIcon /> : <WarningIcon />}
+          {isDone ? 'Done' : 'To do'}
+        </span>
+      </div>
+      {children}
+    </li>
+  );
+}
+
+/** Stands in for the chat list until both setup steps are done. */
+function ChatsAfterSetup() {
+  const headingId = useId();
+  return (
+    <section className={styles.recentChats} aria-labelledby={headingId}>
+      <div className={styles.recentChatsHeader}>
+        <div className={styles.recentChatsTitle}>
+          <HistoryIcon />
+          <h3 id={headingId}>Chats</h3>
+        </div>
+      </div>
+      <div className={styles.noRecentChats}>
+        <span>Finish setup first to start chatting.</span>
+      </div>
     </section>
   );
 }
