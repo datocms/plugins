@@ -9,6 +9,7 @@ import {
   type AgentRecordResultViewModel,
   AgentSurface,
   type AgentTranscriptEntry,
+  type CopyDiagnosticsResult,
   type UnsafeApprovalViewModel,
 } from '../components/AgentSurface';
 import {
@@ -53,6 +54,7 @@ import {
   activeModel,
   activeModelMaxOutputTokens,
   activeReasoningEffort,
+  diagnosticConfiguration,
   providerLabel,
 } from '../lib/config';
 import {
@@ -71,6 +73,7 @@ import {
   type CredentialScope,
   createCredentialStore,
   createOAuthCredentials,
+  diagnosticOAuthCredentials,
   invalidateOAuthToken,
   isOAuthClientRegistrationReusable,
   type OAuthCredentials,
@@ -124,6 +127,7 @@ import {
   revokeToken,
   waitForOAuthCallback,
 } from '../lib/oauth';
+import { findSecretCandidates, redactValues } from '../lib/secretCandidates';
 import { type AgentSurfaceKind, buildSystemPrompt } from '../lib/systemPrompt';
 import {
   createUnsafeDispatchJournalStore,
@@ -3200,90 +3204,106 @@ export default function AgentFrame(props: AgentFrameProps) {
     const systemContext = runtimeSystemContext();
     failureDiagnosticsRef.current.set(
       failureId,
-      serializeDiagnostics({
-        schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
-        capturedAt,
-        plugin: {
-          name: 'Dato Agent (Beta)',
-          package: 'datocms-plugin-dato-agent',
-          version: '0.1.0',
-          url: window.location.href,
+      serializeDiagnostics(
+        {
+          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+          capturedAt,
+          plugin: {
+            name: 'Dato Agent (Beta)',
+            package: 'datocms-plugin-dato-agent',
+            version: '0.1.0',
+            url: window.location.href,
+          },
+          browser: {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            online: navigator.onLine,
+          },
+          project: {
+            pluginId: props.pluginId,
+            siteId: props.siteId,
+            siteName: props.siteName,
+            environment: props.environment,
+            isEnvironmentPrimary: props.isEnvironmentPrimary,
+            currentUserId: props.currentUserId,
+            scope: stableScope,
+            currentRecord: props.currentRecord,
+            editorHasUnsavedChanges: editorDirtyRef.current,
+          },
+          configuration: {
+            ...diagnosticConfiguration(props.config),
+            activeModel: activeModel(props.config),
+            activeModelMaxOutputTokens: activeModelMaxOutputTokens(
+              props.config,
+            ),
+            activeReasoningEffort: activeReasoningEffort(props.config),
+            autoApproveEnabled: autoApproveEnabledRef.current,
+          },
+          oauthCredentials: diagnosticOAuthCredentials(oauthCredentials),
+          conversation: {
+            beforeTurn: turn.conversationBefore,
+            current: conversationRef.current,
+            providerHistory: turn.history,
+          },
+          turn: {
+            id: turn.id,
+            source,
+            message: turn.message,
+            userEntryId: turn.userEntryId,
+            assistantEntryId: turn.assistantEntryId,
+            activityEntryId: turn.activityEntryId,
+            provider: turn.provider,
+            model: turn.model,
+            startedAt: turn.startedAt,
+            finishedAt: capturedAt,
+            durationMs: Math.max(
+              0,
+              Date.parse(capturedAt) - Date.parse(turn.startedAt),
+            ),
+            previousResponseId: turn.previousResponseId,
+            injectHostContext: turn.injectHostContext,
+            textDeltaCount: turn.textDeltaCount,
+            textDeltaCharacters: turn.textDeltaCharacters,
+            diagnosticEventOutputCharacters:
+              turn.diagnosticEventOutputCharacters,
+            diagnosticEventsDropped: turn.diagnosticEventsDropped,
+            hostContexts: turn.hostContexts,
+            userStopped: turn.userStopped,
+            unsafeOperationDispatched: turn.unsafeOperationDispatched,
+            dispatchedApprovalIds: turn.dispatchedApprovalIds,
+            cancelledBeforeDispatchApprovalIds:
+              turn.cancelledBeforeDispatchApprovalIds,
+            cancelledBeforeDispatchReason: turn.cancelledBeforeDispatchReason,
+            autoApprovalBundleCount: turn.autoApprovalBundleCount,
+            approvalSubmissions: turn.approvalSubmissions,
+            approvalOutcomes: turn.approvalOutcomes,
+            confirmedApprovalIds: turn.confirmedApprovalIds,
+            completionResult: result,
+            events: turn.events,
+            thrownError,
+            systemPrompt: buildSystemPrompt(systemContext, {
+              additionalInstructions: props.config.additionalInstructions,
+              readOnly: props.config.readOnly,
+              mcpAccessLevel: accessRef.current.snapshot.level,
+            }),
+          },
+          transcript: entriesRef.current,
+          pendingApprovals: [...pendingApprovalsRef.current.values()],
+          pendingNavigation: pendingNavigationRef.current,
         },
-        browser: {
-          userAgent: navigator.userAgent,
-          language: navigator.language,
-          online: navigator.onLine,
+        {
+          // Every live secret this frame holds; masked wherever it appears in the payload. This
+          // closure can predate a token rotation, so read the live ref and the tokens the turn used.
+          secrets: [
+            props.config.openAiApiKey,
+            props.config.anthropicApiKey,
+            oauthCredentials?.token?.accessToken,
+            oauthCredentialsRef.current?.token?.accessToken,
+            turn.mcpAccessToken,
+            turn.repairOauthAccessToken,
+          ],
         },
-        project: {
-          pluginId: props.pluginId,
-          siteId: props.siteId,
-          siteName: props.siteName,
-          environment: props.environment,
-          isEnvironmentPrimary: props.isEnvironmentPrimary,
-          currentUserId: props.currentUserId,
-          scope: stableScope,
-          currentRecord: props.currentRecord,
-          editorHasUnsavedChanges: editorDirtyRef.current,
-        },
-        configuration: {
-          ...props.config,
-          activeApiKey: activeApiKey(props.config),
-          activeModel: activeModel(props.config),
-          activeModelMaxOutputTokens: activeModelMaxOutputTokens(props.config),
-          activeReasoningEffort: activeReasoningEffort(props.config),
-          autoApproveEnabled: autoApproveEnabledRef.current,
-        },
-        oauthCredentials,
-        conversation: {
-          beforeTurn: turn.conversationBefore,
-          current: conversationRef.current,
-          providerHistory: turn.history,
-        },
-        turn: {
-          id: turn.id,
-          source,
-          message: turn.message,
-          userEntryId: turn.userEntryId,
-          assistantEntryId: turn.assistantEntryId,
-          activityEntryId: turn.activityEntryId,
-          provider: turn.provider,
-          model: turn.model,
-          startedAt: turn.startedAt,
-          finishedAt: capturedAt,
-          durationMs: Math.max(
-            0,
-            Date.parse(capturedAt) - Date.parse(turn.startedAt),
-          ),
-          previousResponseId: turn.previousResponseId,
-          injectHostContext: turn.injectHostContext,
-          textDeltaCount: turn.textDeltaCount,
-          textDeltaCharacters: turn.textDeltaCharacters,
-          diagnosticEventOutputCharacters: turn.diagnosticEventOutputCharacters,
-          diagnosticEventsDropped: turn.diagnosticEventsDropped,
-          hostContexts: turn.hostContexts,
-          userStopped: turn.userStopped,
-          unsafeOperationDispatched: turn.unsafeOperationDispatched,
-          dispatchedApprovalIds: turn.dispatchedApprovalIds,
-          cancelledBeforeDispatchApprovalIds:
-            turn.cancelledBeforeDispatchApprovalIds,
-          cancelledBeforeDispatchReason: turn.cancelledBeforeDispatchReason,
-          autoApprovalBundleCount: turn.autoApprovalBundleCount,
-          approvalSubmissions: turn.approvalSubmissions,
-          approvalOutcomes: turn.approvalOutcomes,
-          confirmedApprovalIds: turn.confirmedApprovalIds,
-          completionResult: result,
-          events: turn.events,
-          thrownError,
-          systemPrompt: buildSystemPrompt(systemContext, {
-            additionalInstructions: props.config.additionalInstructions,
-            readOnly: props.config.readOnly,
-            mcpAccessLevel: accessRef.current.snapshot.level,
-          }),
-        },
-        transcript: entriesRef.current,
-        pendingApprovals: [...pendingApprovalsRef.current.values()],
-        pendingNavigation: pendingNavigationRef.current,
-      }),
+      ),
     );
 
     retryCandidateRef.current = retryable
@@ -4436,13 +4456,23 @@ export default function AgentFrame(props: AgentFrameProps) {
     await submit(candidate.submission, candidate);
   };
 
-  const copyFailureDiagnostics = async (failureId: string): Promise<void> => {
+  const copyFailureDiagnostics = async (
+    failureId: string,
+    redact?: readonly string[],
+  ): Promise<CopyDiagnosticsResult> => {
     const diagnostics = failureDiagnosticsRef.current.get(failureId);
     if (!diagnostics) {
       throw new Error('Diagnostics are no longer available.');
     }
 
-    await copyTextToClipboard(diagnostics);
+    // Known secrets are already masked; ask about anything else that looks like one.
+    if (redact === undefined) {
+      const candidates = findSecretCandidates(diagnostics);
+      if (candidates.length > 0) return { status: 'review', candidates };
+    }
+
+    await copyTextToClipboard(redactValues(diagnostics, redact ?? []));
+    return { status: 'copied' };
   };
 
   const stopActiveTurn = (): void => {

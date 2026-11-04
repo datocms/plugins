@@ -31,6 +31,7 @@ import type {
   Mention,
 } from '../lib/mentions';
 import { fallbackAssetMention, fallbackRecordMention } from '../lib/mentions';
+import type { SecretCandidate } from '../lib/secretCandidates';
 import { MentionDisplay } from '../recordComments/entrypoints/components/shared/MentionDisplay';
 import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
 import {
@@ -313,7 +314,14 @@ export type AgentSurfaceProps = {
   onRejectUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
   onRepairUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
   onRetryFailedTurn?: (failureId: string) => void | Promise<void>;
-  onCopyFailureDiagnostics?: (failureId: string) => Promise<void>;
+  /**
+   * Copies a failure's diagnostics. Without `redact`, it may return `review` with values that look
+   * like secrets instead of copying; calling again with the values to redact (possibly none) copies.
+   */
+  onCopyFailureDiagnostics?: (
+    failureId: string,
+    redact?: readonly string[],
+  ) => Promise<CopyDiagnosticsResult | undefined>;
   autoApproveEnabled?: boolean;
   autoApproveChanging?: boolean;
   autoApproveError?: string;
@@ -695,6 +703,10 @@ function EmptyState() {
   );
 }
 
+export type CopyDiagnosticsResult =
+  | { status: 'copied' }
+  | { status: 'review'; candidates: readonly SecretCandidate[] };
+
 function FailureActions({
   failure,
   onRetry,
@@ -708,6 +720,9 @@ function FailureActions({
   const [copyState, setCopyState] = useState<
     'idle' | 'copying' | 'copied' | 'error'
   >('idle');
+  // Values that look like secrets, awaiting the user's choice; all start selected.
+  const [review, setReview] = useState<readonly SecretCandidate[]>();
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(
@@ -735,7 +750,7 @@ function FailureActions({
     }
   };
 
-  const copyDiagnostics = async () => {
+  const copyDiagnostics = async (redact?: readonly string[]) => {
     if (retryPending || copyState === 'copying' || !onCopyDiagnostics) {
       return;
     }
@@ -748,7 +763,16 @@ function FailureActions({
     setCopyState('copying');
 
     try {
-      await onCopyDiagnostics(failure.id);
+      const result = await onCopyDiagnostics(failure.id, redact);
+      if (result?.status === 'review') {
+        setReview(result.candidates);
+        setSelected(
+          new Set(result.candidates.map((candidate) => candidate.value)),
+        );
+        setCopyState('idle');
+        return;
+      }
+      setReview(undefined);
       setCopyState('copied');
       copiedTimerRef.current = setTimeout(() => {
         copiedTimerRef.current = undefined;
@@ -796,6 +820,66 @@ function FailureActions({
         <p className={styles.failureActionError} role="alert">
           Couldn’t copy diagnostics
         </p>
+      )}
+      {review && (
+        <fieldset className={styles.diagnosticsReview}>
+          <legend>
+            {review.length === 1
+              ? 'This value in the diagnostics looks like a secret.'
+              : `${review.length} values in the diagnostics look like secrets.`}
+          </legend>
+          <p className={styles.diagnosticsReviewHint}>
+            Ticked values are replaced with [redacted] in the copy.
+          </p>
+          {review.map((candidate) => (
+            <label
+              className={styles.diagnosticsReviewItem}
+              key={candidate.value}
+            >
+              <input
+                checked={selected.has(candidate.value)}
+                onChange={(event) => {
+                  const next = new Set(selected);
+                  if (event.target.checked) next.add(candidate.value);
+                  else next.delete(candidate.value);
+                  setSelected(next);
+                }}
+                type="checkbox"
+              />
+              <span className={styles.diagnosticsReviewAction}>Redact</span>
+              <code>{candidate.preview}</code>
+              <span>
+                in {candidate.path || 'diagnostics'}
+                {candidate.occurrences > 1
+                  ? ` (${candidate.occurrences}×)`
+                  : ''}
+              </span>
+            </label>
+          ))}
+          <div className={styles.failureActions}>
+            <button
+              className={`${styles.failureAction} ${styles.failureActionPrimary}`}
+              onClick={() => {
+                void copyDiagnostics([...selected]);
+              }}
+              type="button"
+            >
+              <CopyIcon />
+              <span>
+                {selected.size > 0
+                  ? `Copy with ${selected.size} redacted`
+                  : 'Copy without redacting'}
+              </span>
+            </button>
+            <button
+              className={styles.failureAction}
+              onClick={() => setReview(undefined)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </fieldset>
       )}
     </>
   );
