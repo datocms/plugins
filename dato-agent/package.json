@@ -31,6 +31,10 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts e2e/*.live.test.ts",
+    "eval": "vitest run --config vitest.live.config.ts",
+    "e2e:login": "node e2e/setup/mcp-login.ts",
+    "e2e:seed": "node e2e/setup/seed.ts",
     "lint": "biome check ./src",
     "prepublishOnly": "npm run build"
   },
@@ -68,6 +72,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^29.1.1",
+    "playwright-core": "1.63.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
