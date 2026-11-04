@@ -23,7 +23,6 @@ import {
   ANTHROPIC_FILES_API_BETA,
   createAgentRepairPolicy,
   createAgentRuntime,
-  DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
   MAX_AGENT_HISTORY_CHARACTERS,
   MAX_AGENT_REQUEST_CHARACTERS,
@@ -1494,27 +1493,27 @@ describe('AnthropicAgentRuntime', () => {
     {
       effort: 'low',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'medium',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'high',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'xhigh',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'max',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'xhigh',
@@ -1532,7 +1531,7 @@ describe('AnthropicAgentRuntime', () => {
       expectedMaximum: 8_000,
     },
   ] as const)(
-    'maps $effort effort to a model-safe $expectedMaximum token budget',
+    'requests the model maximum ($expectedMaximum) at $effort effort',
     async ({ discoveredMaximum, effort, expectedMaximum }) => {
       const anthropic = new QueueAnthropicClient([
         message(`msg-effort-${effort}-${expectedMaximum}`, [

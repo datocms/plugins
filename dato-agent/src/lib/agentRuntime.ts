@@ -80,8 +80,12 @@ export const DEFAULT_MAX_TOOL_CALLS = 20;
 export const MAX_AGENT_TOOL_CALLS_PER_TURN = 200;
 export const MAX_AGENT_REQUEST_CHARACTERS = 600_000;
 export const MAX_TOOL_RESULT_CHARACTERS = 60_000;
-export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 16_000;
-export const DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
+/**
+ * Output ceiling when the configured model's own maximum is unknown (it is
+ * normally discovered from the Models API when an admin picks the model).
+ * Every active Claude model allows at least this much (Haiku 4.5 is the smallest).
+ */
+export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
 export const MAX_AGENT_HISTORY_CHARACTERS = 120_000;
 export const MAX_TOOL_RESULT_CHARACTERS_PER_TURN = 240_000;
 export const MAX_HOST_CONTEXT_CHARACTERS = 20_000;
@@ -5083,21 +5087,19 @@ function resolveAnthropicEffort(
 }
 
 /**
- * Adaptive thinking shares max_tokens with the visible reply and tool input,
- * so even low-effort turns need room for a full write script. Anthropic bills
- * only generated tokens; the cap is a ceiling, not a reservation.
+ * Requests the model's full output maximum. max_tokens is a hard cutoff the
+ * model cannot see, so it is no tool for keeping scripts small (the system
+ * prompt does that). Anthropic bills only generated tokens, and max_tokens
+ * does not count toward output rate limits, so the ceiling costs nothing.
  */
 function resolveAnthropicMaxOutputTokens(
   discoveredMaximum: number | undefined,
 ): number {
-  const boundedMaximum =
-    typeof discoveredMaximum === 'number' &&
+  return typeof discoveredMaximum === 'number' &&
     Number.isSafeInteger(discoveredMaximum) &&
     discoveredMaximum > 0
-      ? discoveredMaximum
-      : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
-
-  return Math.min(DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS, boundedMaximum);
+    ? discoveredMaximum
+    : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
 }
 
 function anthropicInputSchema(
