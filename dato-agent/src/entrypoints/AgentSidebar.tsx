@@ -25,7 +25,7 @@ import {
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
-import { createSidebarNavigator } from '../lib/navigation';
+import { createSidebarNavigator, pluginSettingsPath } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import { usePersistedSidebarWidth } from '../lib/persistedWidth';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
@@ -493,6 +493,11 @@ function AuthorizedAgentSidebar({ ctx }: Props) {
       <ScopeMigratingAgentFrame
         key={frameKey}
         pluginId={ctx.plugin.id}
+        onOpenPluginSettings={
+          ctx.currentRole.meta.final_permissions.can_edit_schema
+            ? () => void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
+            : undefined
+        }
         siteId={ctx.site.id}
         siteName={ctx.site.attributes.name}
         environment={ctx.environment}

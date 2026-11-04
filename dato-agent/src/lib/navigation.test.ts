@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createInspectorNavigator, createSidebarNavigator } from './navigation';
+import {
+  createInspectorNavigator,
+  createSidebarNavigator,
+  pluginSettingsPath,
+} from './navigation';
 
 describe('createInspectorNavigator', () => {
   it('uses the native record list and editor', async () => {
@@ -441,5 +445,25 @@ describe('createSidebarNavigator', () => {
     expect(ctx.navigateTo).not.toHaveBeenCalled();
     expect(ctx.editItem).toHaveBeenNthCalledWith(1, 'target');
     expect(ctx.editItem).toHaveBeenNthCalledWith(2, 'another');
+  });
+});
+
+describe('pluginSettingsPath', () => {
+  it('needs no prefix on the primary environment', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'main', isEnvironmentPrimary: true },
+        'plugin-1',
+      ),
+    ).toBe('/configuration/plugins/plugin-1/edit');
+  });
+
+  it('prefixes sandbox environments', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'sandbox', isEnvironmentPrimary: false },
+        'plugin-1',
+      ),
+    ).toBe('/environments/sandbox/configuration/plugins/plugin-1/edit');
   });
 });

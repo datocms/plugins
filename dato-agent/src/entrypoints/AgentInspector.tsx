@@ -10,7 +10,10 @@ import {
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
-import { createInspectorNavigator } from '../lib/navigation';
+import {
+  createInspectorNavigator,
+  pluginSettingsPath,
+} from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import AgentFrame from './AgentFrame';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
@@ -270,6 +273,11 @@ function AuthorizedAgentInspector({ ctx }: Props) {
       <AgentFrame
         key={frameKey}
         pluginId={ctx.plugin.id}
+        onOpenPluginSettings={
+          ctx.currentRole.meta.final_permissions.can_edit_schema
+            ? () => void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
+            : undefined
+        }
         siteId={ctx.site.id}
         siteName={ctx.site.attributes.name}
         environment={ctx.environment}

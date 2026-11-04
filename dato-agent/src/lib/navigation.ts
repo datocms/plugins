@@ -133,3 +133,14 @@ export function createSidebarNavigator(
     },
   };
 }
+
+/** This plugin's settings page. Sandbox paths need the environment prefix; the primary has none. */
+export function pluginSettingsPath(
+  ctx: { environment: string; isEnvironmentPrimary: boolean },
+  pluginId: string,
+): string {
+  const prefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+  return `${prefix}/configuration/plugins/${pluginId}/edit`;
+}

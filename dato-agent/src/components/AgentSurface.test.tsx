@@ -1911,6 +1911,71 @@ describe('AgentSurface', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
   });
 
+  it('blocks chats and offers the plugin settings while the AI provider is missing', async () => {
+    const user = userEvent.setup();
+    const onStartNewChat = vi.fn();
+    const onSelectConversation = vi.fn();
+    const onOpenPluginSettings = vi.fn();
+
+    render(
+      <AgentSurface
+        connection={{
+          status: 'setup',
+          providerConfigStatus: 'missing',
+          providerLabel: 'Anthropic (Claude)',
+          datoCmsStatus: 'connected',
+        }}
+        entries={[]}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onSelectConversation={onSelectConversation}
+        onStartNewChat={onStartNewChat}
+        onSubmit={vi.fn()}
+        recentConversations={recentConversations}
+      />,
+    );
+
+    expect(screen.getByText('Anthropic (Claude) setup required')).toBeVisible();
+    await user.click(
+      screen.getByRole('button', { name: 'Open plugin settings' }),
+    );
+    expect(onOpenPluginSettings).toHaveBeenCalledOnce();
+
+    const newChatButton = screen.getByRole('button', { name: 'New chat' });
+    expect(newChatButton).toHaveAttribute('aria-disabled', 'true');
+    await user.click(newChatButton);
+    expect(onStartNewChat).not.toHaveBeenCalled();
+
+    const pastChat = screen
+      .getByText('Update the homepage')
+      .closest('button') as HTMLElement;
+    expect(pastChat).toBeDisabled();
+    expect(pastChat).toHaveAttribute(
+      'title',
+      'Chats need Anthropic (Claude) to be set up first',
+    );
+  });
+
+  it('tells editors who cannot edit the plugin settings to ask an admin', () => {
+    render(
+      <AgentSurface
+        connection={{
+          status: 'setup',
+          providerConfigStatus: 'missing',
+          providerLabel: 'OpenAI (ChatGPT)',
+          datoCmsStatus: 'connected',
+        }}
+        entries={[]}
+        onStartNewChat={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Ask a project admin/)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open plugin settings' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('closes connected settings after selecting or starting a chat', async () => {
     const user = userEvent.setup();
     const onSelectConversation = vi.fn();

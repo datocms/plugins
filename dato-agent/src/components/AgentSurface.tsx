@@ -295,6 +295,11 @@ export type AgentSurfaceProps = {
     conversation: AgentConversationSummaryViewModel,
   ) => boolean | undefined | Promise<boolean | undefined>;
   onStartNewChat?: () => boolean | undefined | Promise<boolean | undefined>;
+  /**
+   * Opens this plugin's settings page. Present only when the current user can
+   * edit them, so the setup notice offers a button instead of "ask an admin".
+   */
+  onOpenPluginSettings?: () => void;
   onStop?: () => void;
   onOpenRecord?: (
     record: AgentRecordResultViewModel,
@@ -350,6 +355,7 @@ type CredentialPanelProps = Pick<
   | 'recentConversations'
   | 'onSelectConversation'
   | 'onStartNewChat'
+  | 'onOpenPluginSettings'
 >;
 
 type AccessNoticeProps = Pick<
@@ -544,11 +550,14 @@ function DatoCmsConnectionField({
 function RecentChats({
   conversations,
   disabled,
+  blockedReason,
   onSelectConversation,
   onStartNewChat,
 }: {
   conversations: readonly AgentConversationSummaryViewModel[];
   disabled?: boolean;
+  /** Why chats can't open yet. Shown as the New chat tooltip. */
+  blockedReason?: string;
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
   ) => void;
@@ -574,17 +583,19 @@ function RecentChats({
         {onStartNewChat && (
           <Tooltip placement="left">
             <TooltipTrigger>
+              {/* aria-disabled, not disabled: a disabled button gets no hover, so its tooltip couldn't explain why. */}
               <button
+                aria-disabled={blockedReason ? true : undefined}
                 aria-label="New chat"
                 className={`${styles.iconButton} ${styles.newChatButton}`}
                 disabled={disabled}
-                onClick={onStartNewChat}
+                onClick={blockedReason ? undefined : onStartNewChat}
                 type="button"
               >
                 <PlusIcon />
               </button>
             </TooltipTrigger>
-            <TooltipContent>New chat</TooltipContent>
+            <TooltipContent>{blockedReason ?? 'New chat'}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -599,9 +610,11 @@ function RecentChats({
                 <button
                   aria-current={conversation.isCurrent ? 'page' : undefined}
                   className={styles.recentChat}
-                  disabled={disabled || !onSelectConversation}
+                  disabled={
+                    disabled || Boolean(blockedReason) || !onSelectConversation
+                  }
                   onClick={() => onSelectConversation?.(conversation)}
-                  title={title}
+                  title={blockedReason ?? title}
                   type="button"
                 >
                   <strong className={styles.recentChatTitle}>{title}</strong>
@@ -637,6 +650,7 @@ function CredentialPanel({
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
+  onOpenPluginSettings,
   isSettings,
   headingRef,
   conversationActionsDisabled,
@@ -650,6 +664,11 @@ function CredentialPanel({
   const configuredProviderLabel =
     connection.providerLabel ??
     (connection.openAiConfigStatus ? 'OpenAI' : 'AI provider');
+  const isProviderMissing = providerConfigStatus === 'missing';
+  // Connecting DatoCMS can come after picking a chat; a missing provider can't.
+  const chatsBlockedReason = isProviderMissing
+    ? `Chats need ${configuredProviderLabel} to be set up first`
+    : undefined;
 
   return (
     <section
@@ -669,10 +688,27 @@ function CredentialPanel({
         </h2>
       </header>
 
-      {providerConfigStatus === 'missing' && (
+      {isProviderMissing && (
         <div className={styles.configurationNotice} role="status">
           <WarningIcon />
-          <span>{configuredProviderLabel} setup required</span>
+          <div className={styles.configurationNoticeBody}>
+            <strong>{configuredProviderLabel} setup required</strong>
+            <span>
+              {onOpenPluginSettings
+                ? 'Chats need an API key and a model. Add them in the plugin settings.'
+                : 'Chats need an API key and a model. Ask a project admin to add them in the plugin settings.'}
+            </span>
+            {onOpenPluginSettings && (
+              <Button
+                buttonSize="xxs"
+                buttonType="primary"
+                type="button"
+                onClick={onOpenPluginSettings}
+              >
+                Open plugin settings
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -687,6 +723,7 @@ function CredentialPanel({
         <RecentChats
           conversations={recentConversations}
           disabled={conversationActionsDisabled}
+          blockedReason={chatsBlockedReason}
           onSelectConversation={onSelectConversation}
           onStartNewChat={onStartNewChat}
         />
@@ -2233,6 +2270,7 @@ export function AgentSurface({
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
+  onOpenPluginSettings,
   onStop,
   onOpenRecord,
   onOpenField,
@@ -2440,6 +2478,7 @@ export function AgentSurface({
                   }
                 : undefined
             }
+            onOpenPluginSettings={onOpenPluginSettings}
             recentConversations={recentConversations}
           />
         </div>

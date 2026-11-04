@@ -151,6 +151,8 @@ export type AgentFrameProps = {
   environment: string;
   isEnvironmentPrimary: boolean;
   currentUserId: string;
+  /** Opens the plugin settings. Pass it only when the current user can edit them. */
+  onOpenPluginSettings?: () => void;
   /**
    * The DatoCMS host surface. A record sidebar can exist before its record has
    * a saved ID, so this must not be inferred only from `currentRecord`.
@@ -6140,6 +6142,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       }))}
       onSelectConversation={selectConversation}
       onStartNewChat={startNewConversation}
+      onOpenPluginSettings={props.onOpenPluginSettings}
       onStop={stopActiveTurn}
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}
