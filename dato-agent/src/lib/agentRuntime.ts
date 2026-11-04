@@ -80,8 +80,12 @@ export const DEFAULT_MAX_TOOL_CALLS = 20;
 export const MAX_AGENT_TOOL_CALLS_PER_TURN = 200;
 export const MAX_AGENT_REQUEST_CHARACTERS = 600_000;
 export const MAX_TOOL_RESULT_CHARACTERS = 60_000;
-export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 16_000;
-export const DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
+/**
+ * Output ceiling when the configured model's own maximum is unknown (it is
+ * normally discovered from the Models API when an admin picks the model).
+ * Every active Claude model allows at least this much (Haiku 4.5 is the smallest).
+ */
+export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 64_000;
 export const MAX_AGENT_HISTORY_CHARACTERS = 120_000;
 export const MAX_TOOL_RESULT_CHARACTERS_PER_TURN = 240_000;
 export const MAX_HOST_CONTEXT_CHARACTERS = 20_000;
@@ -3013,6 +3017,20 @@ function terminalVisibleText(response: Response): string {
     .join('');
 }
 
+/** Editor-facing guidance for each reason OpenAI gives for an incomplete response. */
+function openAiIncompleteMessage(reason: string | undefined): string {
+  switch (reason) {
+    case 'max_output_tokens':
+      return 'The reply got too long and stopped early. Changes you already approved still apply. Ask for fewer records or shorter content at a time.';
+    case 'content_filter':
+      return 'OpenAI’s content filter stopped the reply. Rephrase the request and try again.';
+    case undefined:
+      return 'The model could not complete the response. Try again, or ask for a smaller step.';
+    default:
+      return `The response stopped early (${reason}). Try again, or ask for a smaller step.`;
+  }
+}
+
 function responseError(
   response: Response,
   fallbackCode: AgentRuntimeError['code'],
@@ -3020,9 +3038,7 @@ function responseError(
   if (fallbackCode === 'incomplete') {
     return {
       code: 'incomplete',
-      message: response.incomplete_details?.reason
-        ? `The response stopped early: ${response.incomplete_details.reason}.`
-        : 'The model could not complete the response.',
+      message: openAiIncompleteMessage(response.incomplete_details?.reason),
       retryable: true,
     };
   }
@@ -4866,6 +4882,37 @@ interface AnthropicLoopState {
   viewedProtectedRepairScript: boolean;
   failedRepairCallIdentities: Set<string>;
   repairPolicy?: AgentRepairPolicy;
+  outputLimitRecoveryUsed?: boolean;
+}
+
+const OUTPUT_LIMIT_RECOVERY_INSTRUCTION =
+  'Your previous response reached the output limit and was discarded before any of its tool calls ran, so nothing from it changed the project. Continue the same task in smaller steps: keep reasoning brief, and split large writes into several smaller scripts (for example two or three records per script), each reviewed separately.';
+
+/** Shown while the runtime retries a reply that hit the output limit. */
+export const OUTPUT_LIMIT_RETRY_LABEL =
+  'That reply got too long to finish, so nothing in it ran. Redoing it in smaller steps.';
+
+/** Shown when the retry also hits the limit. Editors can act on it; they can't change the model. */
+export const OUTPUT_LIMIT_ERROR_MESSAGE =
+  'The reply got too long to finish, even in smaller steps, so nothing in it ran. Changes you already approved still apply. Ask for fewer records or shorter content at a time.';
+
+export const CONTEXT_WINDOW_ERROR_MESSAGE =
+  'This chat got too long for the model to read. Changes you already approved still apply. Start a new chat and say what to do next.';
+
+function appendAnthropicUserText(messages: MessageParam[], text: string): void {
+  const last = messages.at(-1);
+  if (last?.role !== 'user') {
+    messages.push({ role: 'user', content: text });
+    return;
+  }
+  const content =
+    typeof last.content === 'string'
+      ? [{ type: 'text' as const, text: last.content }]
+      : last.content;
+  messages[messages.length - 1] = {
+    ...last,
+    content: [...content, { type: 'text', text }],
+  };
 }
 
 function anthropicToolResultCharacters(
@@ -5062,22 +5109,20 @@ function resolveAnthropicEffort(
   return 'high';
 }
 
+/**
+ * Requests the model's full output maximum. max_tokens is a hard cutoff the
+ * model cannot see, so it is no tool for keeping scripts small (the system
+ * prompt does that). Anthropic bills only generated tokens, and max_tokens
+ * does not count toward output rate limits, so the ceiling costs nothing.
+ */
 function resolveAnthropicMaxOutputTokens(
-  effort: AnthropicReasoningEffort,
   discoveredMaximum: number | undefined,
 ): number {
-  const target =
-    effort === 'xhigh' || effort === 'max'
-      ? DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS
-      : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
-  const boundedMaximum =
-    typeof discoveredMaximum === 'number' &&
+  return typeof discoveredMaximum === 'number' &&
     Number.isSafeInteger(discoveredMaximum) &&
     discoveredMaximum > 0
-      ? discoveredMaximum
-      : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
-
-  return Math.min(target, boundedMaximum);
+    ? discoveredMaximum
+    : DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS;
 }
 
 function anthropicInputSchema(
@@ -5419,7 +5464,6 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       config.mcpAccessLevel ?? 'unrestricted',
     );
     this.maxOutputTokens = resolveAnthropicMaxOutputTokens(
-      this.reasoningEffort,
       config.modelMaxOutputTokens,
     );
     this.additionalInstructions =
@@ -6011,7 +6055,18 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       // to runtime state (also important for proxy/client implementations that
       // retain the params object until serialization).
       messages: [...state.messages],
-      system: state.system,
+      // Prompt caching. Every tool-loop step resends tools, system and history.
+      // The explicit breakpoint caches tools + system for the whole turn; the
+      // top-level one moves with the growing conversation, so each step reads
+      // the previous step's prefix instead of paying full input price again.
+      system: [
+        {
+          type: 'text',
+          text: state.system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      cache_control: { type: 'ephemeral' },
       tools,
       tool_choice: {
         type: 'auto',
@@ -6116,6 +6171,39 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
         // has been stopped.
         throwIfAborted(signal);
         state.lastResponseId = summary.message.id;
+
+        if (
+          summary.message.stop_reason === 'max_tokens' &&
+          !state.outputLimitRecoveryUsed
+        ) {
+          state.outputLimitRecoveryUsed = true;
+          if (summary.text) {
+            state.accumulatedText += `${summary.text}\n\n`;
+            yield {
+              type: 'text_delta',
+              responseId: summary.message.id,
+              delta: '\n\n',
+            };
+          }
+          appendAnthropicUserText(
+            state.messages,
+            OUTPUT_LIMIT_RECOVERY_INSTRUCTION,
+          );
+          // Tell the editor why more, smaller approvals are about to follow.
+          yield {
+            type: 'activity',
+            responseId: summary.message.id,
+            activity: {
+              id: `output-limit-retry:${summary.message.id}`,
+              kind: 'continuation',
+              status: 'completed',
+              label: OUTPUT_LIMIT_RETRY_LABEL,
+            },
+          };
+          state.nextContinuation += 1;
+          continue;
+        }
+
         state.accumulatedText += summary.text;
         state.messages.push(anthropicAssistantMessage(summary.message));
 
@@ -6127,8 +6215,8 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
             code: 'incomplete',
             message:
               summary.message.stop_reason === 'max_tokens'
-                ? 'The response stopped after reaching its output limit.'
-                : 'The conversation exceeded this model’s context window.',
+                ? OUTPUT_LIMIT_ERROR_MESSAGE
+                : CONTEXT_WINDOW_ERROR_MESSAGE,
             retryable: true,
           };
           const result: AgentTurnResult = {

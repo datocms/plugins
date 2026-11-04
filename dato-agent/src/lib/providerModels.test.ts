@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  formatTokenCount,
   isCompatibleOpenAiAgentModel,
   listAnthropicProviderModels,
   listOpenAiProviderModels,
   listProviderModels,
   preferredProviderModel,
+  providerModelOptionLabel,
   providerModelSupportsFastMode,
 } from './providerModels';
 
@@ -395,5 +397,59 @@ describe('provider model discovery', () => {
     expect(String(fetchModels.mock.calls[0]?.[0])).toContain(
       'api.anthropic.com',
     );
+  });
+});
+
+describe('model selector limits', () => {
+  it('reads the context window and shows both limits in the label', async () => {
+    const fetchModels = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          {
+            ...anthropicModel({
+              id: 'claude-haiku-5-5',
+              displayName: 'Claude Haiku 5.5',
+              maxTokens: 128_000,
+            }),
+            max_input_tokens: 1_000_000,
+          },
+        ],
+        has_more: false,
+      }),
+    );
+
+    const [model] = await listAnthropicProviderModels(
+      'sk-ant-project',
+      undefined,
+      fetchModels,
+    );
+
+    expect(model).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(model && providerModelOptionLabel(model)).toBe(
+      'Claude Haiku 5.5 · 1M context · 128K output',
+    );
+  });
+
+  it('keeps the plain label when the provider reports no limits', () => {
+    expect(
+      providerModelOptionLabel({
+        id: 'gpt-5.6-terra',
+        label: 'gpt-5.6-terra',
+        reasoningEfforts: ['low'],
+      }),
+    ).toBe('gpt-5.6-terra');
+  });
+
+  it.each([
+    [1_000_000, '1M'],
+    [200_000, '200K'],
+    [64_000, '64K'],
+    [1_500_000, '1.5M'],
+    [12_345, '12,345'],
+  ])('formats %i tokens as %s', (tokens, expected) => {
+    expect(formatTokenCount(tokens)).toBe(expected);
   });
 });

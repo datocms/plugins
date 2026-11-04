@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { recordCommentsAliases } from './configAliases';
 
 export default defineConfig({
@@ -11,5 +11,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
+    // Live tests hit real APIs; they run only through vitest.live.config.ts.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 });

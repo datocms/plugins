@@ -41,6 +41,7 @@ import {
   listProviderModels,
   type ProviderModel,
   preferredProviderModel,
+  providerModelOptionLabel,
   providerModelSupportsFastMode,
 } from '../lib/providerModels';
 import styles from './ConfigScreen.module.css';
@@ -142,7 +143,7 @@ function modelOptions(
   }
 
   return models.map((model) => ({
-    label: model.label,
+    label: providerModelOptionLabel(model),
     value: model.id,
   }));
 }

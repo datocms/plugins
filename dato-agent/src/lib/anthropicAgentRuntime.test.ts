@@ -3,7 +3,6 @@ import type {
   Message,
   MessageCreateParamsStreaming,
   MessageStreamEvent,
-  StopReason,
   ToolResultBlockParam,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages/messages';
@@ -22,9 +21,9 @@ import type {
 import {
   ANTHROPIC_FAST_MODE_BETA,
   ANTHROPIC_FILES_API_BETA,
+  CONTEXT_WINDOW_ERROR_MESSAGE,
   createAgentRepairPolicy,
   createAgentRuntime,
-  DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
   MAX_AGENT_HISTORY_CHARACTERS,
   MAX_AGENT_REQUEST_CHARACTERS,
@@ -38,6 +37,8 @@ import {
   MAX_TOOL_RESULT_CHARACTERS,
   MAX_TOOL_RESULT_CHARACTERS_PER_TURN,
   normalizeAgentHistory,
+  OUTPUT_LIMIT_ERROR_MESSAGE,
+  OUTPUT_LIMIT_RETRY_LABEL,
 } from './agentRuntime';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from './conversations';
 import type {
@@ -992,6 +993,14 @@ describe('AnthropicAgentRuntime', () => {
     });
     expect(request.speed).toBeUndefined();
     expect(request.betas).toBeUndefined();
+    // Tools + system are cached for the turn; the top-level marker caches the growing history.
+    expect(request.cache_control).toEqual({ type: 'ephemeral' });
+    expect(request.system).toEqual([
+      expect.objectContaining({
+        type: 'text',
+        cache_control: { type: 'ephemeral' },
+      }),
+    ]);
     expect(JSON.stringify(request.system)).toContain(
       'models:\\n- article | Article | title:string',
     );
@@ -1195,8 +1204,10 @@ describe('AnthropicAgentRuntime', () => {
     expect(toolNames).toContain('upsert_and_execute_safe_script');
     expect(toolNames).not.toContain('upsert_and_execute_unsafe_script');
     expect(toolNames).not.toContain('create_dato_asset');
-    expect(firstRequest?.system).toContain('READ ONLY MODE');
-    expect(firstRequest?.system).not.toContain('create_dato_asset');
+    expect(JSON.stringify(firstRequest?.system)).toContain('READ ONLY MODE');
+    expect(JSON.stringify(firstRequest?.system)).not.toContain(
+      'create_dato_asset',
+    );
     expect(createDatoAsset).not.toHaveBeenCalled();
     expect(mcp.callTool).toHaveBeenCalledOnce();
     expect(mcp.callTool).toHaveBeenCalledWith(
@@ -1294,8 +1305,8 @@ describe('AnthropicAgentRuntime', () => {
     expect(JSON.stringify(request?.messages)).toContain(
       'Writing tools are unavailable because Read Only is enabled.',
     );
-    expect(request?.system).toContain('WRITABLE MODE');
-    expect(request?.system).toContain(
+    expect(JSON.stringify(request?.system)).toContain('WRITABLE MODE');
+    expect(JSON.stringify(request?.system)).toContain(
       "Plugin restrictions, OAuth access, and the account's project role all apply",
     );
     expect((request?.tools ?? []).map((tool) => tool.name)).toContain(
@@ -1485,27 +1496,27 @@ describe('AnthropicAgentRuntime', () => {
     {
       effort: 'low',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'medium',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'high',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'xhigh',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'max',
       discoveredMaximum: 128_000,
-      expectedMaximum: DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
+      expectedMaximum: 128_000,
     },
     {
       effort: 'xhigh',
@@ -1523,7 +1534,7 @@ describe('AnthropicAgentRuntime', () => {
       expectedMaximum: 8_000,
     },
   ] as const)(
-    'maps $effort effort to a model-safe $expectedMaximum token budget',
+    'requests the model maximum ($expectedMaximum) at $effort effort',
     async ({ discoveredMaximum, effort, expectedMaximum }) => {
       const anthropic = new QueueAnthropicClient([
         message(`msg-effort-${effort}-${expectedMaximum}`, [
@@ -3710,35 +3721,108 @@ describe('AnthropicAgentRuntime', () => {
     expect(mcp.close).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    ['max_tokens', 'output limit'],
-    ['model_context_window_exceeded', 'context window'],
-  ] satisfies Array<[StopReason, string]>)(
-    'maps %s to a retryable incomplete turn',
-    async (stopReason, messagePart) => {
-      const anthropic = new QueueAnthropicClient([
-        message('msg-incomplete', [textBlock('Partial answer.')], stopReason),
-      ]);
-      const mcp = mcpClientWith();
-      const runtime = runtimeWith(anthropic, mcp.client);
+  it('maps model_context_window_exceeded to a retryable incomplete turn', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-incomplete',
+        [textBlock('Partial answer.')],
+        'model_context_window_exceeded',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
 
-      const { result } = await drain(
-        runtime.streamTurn({ message: 'Describe this project.' }),
-      );
+    const { result } = await drain(
+      runtime.streamTurn({ message: 'Describe this project.' }),
+    );
 
-      expect(result).toMatchObject({
-        status: 'incomplete',
-        responseId: 'msg-incomplete',
-        text: 'Partial answer.',
-        error: {
-          code: 'incomplete',
-          retryable: true,
-          message: expect.stringContaining(messagePart),
-        },
-      });
-      expect(mcp.close).toHaveBeenCalledOnce();
-    },
-  );
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      responseId: 'msg-incomplete',
+      text: 'Partial answer.',
+      error: {
+        code: 'incomplete',
+        retryable: true,
+        message: CONTEXT_WINDOW_ERROR_MESSAGE,
+      },
+    });
+    expect(anthropic.requests).toHaveLength(1);
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
+
+  it('discards a response cut off at the output limit and retries once in smaller steps', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-truncated',
+        [
+          textBlock('Creating all sections now.'),
+          toolUse('toolu-truncated', 'upsert_and_execute_script', {}),
+        ],
+        'max_tokens',
+      ),
+      message('msg-recovered', [textBlock('Done in smaller steps.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Build the landing page.' }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-recovered',
+      text: 'Creating all sections now.\n\nDone in smaller steps.',
+    });
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(events.some((event) => event.type === 'approval_required')).toBe(
+      false,
+    );
+    expect(anthropic.requests).toHaveLength(2);
+    const retryMessages = anthropic.requests[1]?.messages ?? [];
+    expect(retryMessages.some((entry) => entry.role === 'assistant')).toBe(
+      false,
+    );
+    expect(JSON.stringify(retryMessages.at(-1))).toContain(
+      'reached the output limit',
+    );
+    // The editor learns why smaller approvals follow.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'activity',
+        activity: expect.objectContaining({
+          kind: 'continuation',
+          label: OUTPUT_LIMIT_RETRY_LABEL,
+        }),
+      }),
+    );
+  });
+
+  it('stops with a retryable incomplete turn when the retry also reaches the output limit', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-truncated-1', [textBlock('First.')], 'max_tokens'),
+      message('msg-truncated-2', [textBlock('Second.')], 'max_tokens'),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { result } = await drain(
+      runtime.streamTurn({ message: 'Build the landing page.' }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      responseId: 'msg-truncated-2',
+      text: 'First.\n\nSecond.',
+      error: {
+        code: 'incomplete',
+        retryable: true,
+        message: OUTPUT_LIMIT_ERROR_MESSAGE,
+      },
+    });
+    expect(anthropic.requests).toHaveLength(2);
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
 
   it('surfaces an Anthropic refusal explanation as a non-retryable provider error', async () => {
     const refusedMessage: Message = {
