@@ -26,9 +26,9 @@
   "dependencies": {
     "@floating-ui/react": "^0.27.19",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
-    "@fortawesome/react-fontawesome": "^0.2.6",
+    "@fortawesome/react-fontawesome": "^3.3.1",
+    "@paralleldrive/cuid2": "^2.3.1",
     "@types/lodash-es": "^4.17.12",
-    "cuid": "^3.0.0",
     "datocms-plugin-sdk": "^2.5.0",
     "datocms-react-ui": "^2.5.1",
     "final-form": "^4.20.10",
@@ -60,5 +60,9 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
+  }
 }

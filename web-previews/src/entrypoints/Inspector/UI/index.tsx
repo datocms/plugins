@@ -1,4 +1,4 @@
-import cuid from 'cuid';
+import { createId } from '@paralleldrive/cuid2';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
@@ -171,7 +171,7 @@ const UI: React.FC = () => {
               // Reset to new frontend's initial path
               setIframeState({
                 path,
-                key: cuid(),
+                key: createId(),
               });
               // Update URL
               ctx.navigateTo(

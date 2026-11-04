@@ -12,7 +12,14 @@ export type WriteFailReason =
 export type WriteFailDetail = {
   /** From the schema by field id; else the server's label or API key. */
   fieldLabel: string | null;
-  code: 'length' | 'format' | 'unique' | 'required' | 'other';
+  code:
+    | 'length'
+    | 'format'
+    | 'unique'
+    | 'required'
+    | 'number'
+    | 'whole_number'
+    | 'other';
 };
 
 export type WriteErrorClassification = {

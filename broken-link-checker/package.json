@@ -70,5 +70,9 @@
       "react-dom": "$react-dom"
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
+  }
 }

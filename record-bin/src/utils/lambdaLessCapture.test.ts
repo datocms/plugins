@@ -37,7 +37,8 @@ const context = (token: string | undefined = 'token') => ({
   environment: 'main',
   cmaBaseUrl: 'https://example.invalid',
   plugin: { attributes: { parameters: {} } },
-  notice: vi.fn().mockResolvedValue(undefined),
+  alert: vi.fn().mockResolvedValue(undefined),
+  customToast: vi.fn().mockResolvedValue(null),
 });
 type Request = {
   method: string;
@@ -45,6 +46,7 @@ type Request = {
   queryParams?: {
     filter: { ids: string };
     nested: boolean;
+    version?: string;
     page: { limit: number; offset: number };
   };
   body?: { data: ReturnType<typeof source> };
@@ -63,8 +65,13 @@ function setup(
       batches.push({ count: ids.length, nested: queryParams.nested });
       expect(queryParams.page.limit).toBe(ids.length);
       expect(queryParams.page.offset).toBe(0);
+      // Mirror the legacy list default, which omits never-published records.
+      const visibleIds =
+        queryParams.version === 'current'
+          ? ids
+          : ids.filter((id) => !id.startsWith('draft-'));
       return {
-        data: ids
+        data: visibleIds
           .map((id) =>
             overrides.read
               ? overrides.read(id, queryParams.nested)
@@ -180,6 +187,12 @@ describe('pre-deletion capture', () => {
       allowDeletion: false,
     });
   });
+  it('captures never-published records on projects listing published versions by default', async () => {
+    const mock = setup();
+    const result = await run(['draft-1']);
+    expect(result.allowDeletion).toBe(true);
+    expect(mock.archive).toHaveLength(1);
+  });
   it('rejects sources without version metadata', async () => {
     setup({ read: (id) => ({ ...source(id), meta: {} }) });
     expect((await run(['one'])).allowDeletion).toBe(false);
@@ -192,6 +205,27 @@ describe('pre-deletion capture', () => {
       allowDeletion: true,
     });
     expect(mock.writes()).toBe(0);
+  });
+  it('returns a blocked result without waiting for the alert to close', async () => {
+    setup({ read: () => undefined });
+    const ctx = context();
+    ctx.alert.mockReturnValue(new Promise(() => {}));
+    expect((await run(['one'], ctx)).allowDeletion).toBe(false);
+    expect(ctx.alert).toHaveBeenCalledTimes(1);
+  });
+  it('announces the backup without waiting for the toast to close', async () => {
+    setup();
+    const ctx = context();
+    ctx.customToast.mockReturnValue(new Promise(() => {}));
+    expect((await run(['one', 'two'], ctx)).allowDeletion).toBe(true);
+    expect(ctx.customToast).toHaveBeenCalledTimes(1);
+    expect(ctx.customToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'notice',
+        message: expect.stringContaining('2 records'),
+        dismissOnPageChange: true,
+      }),
+    );
   });
   it('blocks deletion without an access token', async () => {
     const ctx = context();

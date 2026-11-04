@@ -336,7 +336,7 @@ const SCENARIOS: Readonly<Record<ScenarioName, Scenario>> = {
     ...BASE,
     name: 'default',
     description:
-      '12 records in Article (drafts on), Page (drafts off) and Author, with Acme, ACME, acme, a slug and ™. Drafts-on records are published, except "ACME brand guidelines" (unpublished changes) and the drafts "Team offsite" and "Five desk setups".',
+      '14 records in Article (drafts on), Page (drafts off), Author and Product (HTML entities, prices, JSON, asset alt text), with Acme, ACME, acme, a slug and ™. Drafts-on records are published, except "ACME brand guidelines" (unpublished changes) and the drafts "Team offsite" and "Five desk setups".',
   },
   empty: {
     ...BASE,

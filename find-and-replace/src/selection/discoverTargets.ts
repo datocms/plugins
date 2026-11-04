@@ -10,7 +10,7 @@ import { selectionTargetIdentity } from './identity';
 import {
   fieldPathSegments,
   modelRecordTitle,
-  seoSubfieldLabel,
+  subfieldSegments,
 } from './labels';
 import {
   MatcherWorkerSession,
@@ -302,7 +302,7 @@ class RecordPresenter {
     return this.cachedBase;
   }
 
-  /** One presenter per field value; SEO matches get a per-subfield path. */
+  /** One presenter per field value; SEO and asset matches get a per-subfield path. */
   forFieldValue(
     fieldValue: TraversedFieldValue,
   ): (
@@ -316,14 +316,16 @@ class RecordPresenter {
     });
     const valuePreview = previewValue(fieldValue.value, fieldValue.ref.present);
     const fields = new Map<string, TargetPresentation['field']>();
-    const fieldFor = (subfield: string | null): TargetPresentation['field'] => {
-      const key = subfield ?? '';
+    const fieldFor = (
+      subfields: ReadonlyArray<string>,
+    ): TargetPresentation['field'] => {
+      const key = subfields.join('\n');
       const cached = fields.get(key);
       if (cached) return cached;
-      const field = this.fieldPresentation(
-        fieldValue,
-        subfield ? [...segments, subfield] : segments,
-      );
+      const field = this.fieldPresentation(fieldValue, [
+        ...segments,
+        ...subfields,
+      ]);
       fields.set(key, field);
       return field;
     };
@@ -331,9 +333,9 @@ class RecordPresenter {
     return (extras, match) => ({
       ...this.base,
       field: fieldFor(
-        match && fieldValue.field.fieldType === 'seo'
-          ? seoSubfieldLabel(match.fragments)
-          : null,
+        match
+          ? subfieldSegments(fieldValue.field.fieldType, match.fragments)
+          : [],
       ),
       valuePreview,
       ...extras,

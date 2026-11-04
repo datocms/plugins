@@ -6,6 +6,19 @@ import type {
 import { OAUTH_CLIENT_REGISTRATION_VERSION } from './credentials';
 
 export const MCP_BASE_URL = 'https://mcp.datocms.com';
+/**
+ * RFC 8707 resource indicator, exactly as advertised (with trailing slash) by
+ * https://mcp.datocms.com/.well-known/oauth-protected-resource.
+ */
+export const MCP_RESOURCE = `${MCP_BASE_URL}/`;
+/**
+ * Authorization server advertised by
+ * https://mcp.datocms.com/.well-known/oauth-protected-resource. The legacy
+ * mcp.datocms.com/{register,authorize,token,revoke} routes reject new clients.
+ */
+export const OAUTH_ORIGIN = 'https://oauth.datocms.com';
+export const OAUTH_BASE_URL = `${OAUTH_ORIGIN}/oauth`;
+const OAUTH_AUTHORIZE_PATH = '/oauth/authorize';
 export const OAUTH_SCOPES = 'read_account read_sites read_organizations';
 export const OAUTH_POPUP_MESSAGE_TYPE = 'dato-agent.oauth.callback.v1';
 export const PENDING_AUTHORIZATION_TTL_MS = 5 * 60 * 1000;
@@ -159,7 +172,7 @@ export async function registerClient(
 ): Promise<OAuthClientCredentials> {
   const cleanRedirectUri = validateRedirectUri(redirectUri);
   const fetchFunction = options.fetch ?? getBrowserFetch();
-  const response = await fetchFunction(`${MCP_BASE_URL}/register`, {
+  const response = await fetchFunction(`${OAUTH_BASE_URL}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -234,7 +247,7 @@ export async function createAuthorizationRequest(
   const params = new URLSearchParams({
     client_id: args.clientId,
     response_type: 'code',
-    resource: MCP_BASE_URL,
+    resource: MCP_RESOURCE,
     redirect_uri: redirectUri,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
@@ -243,7 +256,7 @@ export async function createAuthorizationRequest(
   });
 
   return {
-    authorizationUrl: `${MCP_BASE_URL}/authorize?${params.toString()}`,
+    authorizationUrl: `${OAUTH_ORIGIN}${OAUTH_AUTHORIZE_PATH}?${params.toString()}`,
     state,
     expiresAt: pending.expiresAt,
   };
@@ -275,7 +288,7 @@ export function navigateOAuthPopup(
   authorizationUrl: string,
 ): void {
   const url = new URL(authorizationUrl);
-  if (url.origin !== MCP_BASE_URL || url.pathname !== '/authorize') {
+  if (url.origin !== OAUTH_ORIGIN || url.pathname !== OAUTH_AUTHORIZE_PATH) {
     throw new RemoteMcpOAuthError('Invalid OAuth authorization URL');
   }
   popup.location.assign(url.href);
@@ -484,14 +497,14 @@ export async function exchangeAuthorizationCode(
   });
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
-    resource: MCP_BASE_URL,
+    resource: MCP_RESOURCE,
     code: args.code,
     client_id: pending.clientId,
     code_verifier: pending.codeVerifier,
     redirect_uri: pending.redirectUri,
   });
   const response = await (options.fetch ?? getBrowserFetch())(
-    `${MCP_BASE_URL}/token`,
+    `${OAUTH_BASE_URL}/token`,
     {
       method: 'POST',
       headers: {
@@ -542,7 +555,7 @@ export async function revokeToken(
   }
 
   const response = await (options.fetch ?? getBrowserFetch())(
-    `${MCP_BASE_URL}/revoke`,
+    `${OAUTH_BASE_URL}/revoke`,
     {
       method: 'POST',
       headers: {

@@ -6,7 +6,6 @@
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.36",
     "@fortawesome/free-solid-svg-icons": "^5.15.4",
-    "@fortawesome/react-fontawesome": "^0.1.19",
     "@types/react": "^17.0.91",
     "@types/react-dom": "^17.0.26",
     "classnames": "^2.5.1",
@@ -50,5 +49,12 @@
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html"
   },
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "@fortawesome/fontawesome-common-types": false,
+    "@fortawesome/fontawesome-svg-core": false,
+    "@fortawesome/free-solid-svg-icons": false,
+    "esbuild": true,
+    "fsevents": true
+  }
 }

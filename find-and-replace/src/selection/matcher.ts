@@ -1,4 +1,9 @@
 import { type AST, RegExpParser } from '@eslint-community/regexpp';
+import {
+  projectEncodedText,
+  projectJsonText,
+  storesMarkup,
+} from './encodedText';
 import { fingerprintString, stableSerialize } from './identity';
 import type {
   ExactMatchRef,
@@ -10,16 +15,25 @@ import type {
   StructuredTextMatch,
   TextFragment,
   TextMatch,
+  TextSubfield,
   TraversedFieldValue,
   ValuePath,
 } from './types';
 
 type UnknownRecord = Record<string, unknown>;
 
-type FlowSegment = {
+export type FlowSegment = {
   path: ValuePath;
   projectedStart: number;
   projectedEnd: number;
+  /** Offset in the string at `path` where the segment starts (default 0). */
+  rawStart?: number;
+  /**
+   * Set for one character stored encoded (an HTML entity, a JSON escape) in
+   * `rawStart` to `rawEnd`: a match covers it whole.
+   */
+  rawEnd?: number;
+  subfield?: TextSubfield;
 };
 
 export type StructuredTextFlow = {
@@ -137,8 +151,9 @@ function createRegularExpression(spec: MatcherSpec): RegExp {
     );
   }
 
-  const core =
-    spec.kind === 'literal' ? escapeRegex(spec.pattern) : spec.pattern;
+  // Texts are matched composed (see `normalizeFlow`), and so is the pattern.
+  const pattern = spec.pattern.normalize('NFC');
+  const core = spec.kind === 'literal' ? escapeRegex(pattern) : pattern;
   const flags = regexFlags(spec);
   // The raw pattern is always compiled on its own first, so a pattern such as
   // `a)(b` can never become valid (or change meaning) inside the wrapper.
@@ -516,8 +531,23 @@ function projectInlineFlow(
     if (node.type === 'link' || node.type === 'itemLink') {
       // A link boundary carries semantics in addition to formatting. Keep the
       // prose inside it independently matchable, but never create a match that
-      // starts outside the link and ends inside it (or vice versa).
+      // starts outside the link and ends inside it (or vice versa). Its URL
+      // is a text of its own.
       flush();
+      if (typeof node.url === 'string' && node.url.length > 0) {
+        flows.push({
+          text: node.url,
+          flowPath: path,
+          segments: [
+            {
+              path: [...path, 'url'],
+              projectedStart: 0,
+              projectedEnd: node.url.length,
+              subfield: 'link_url',
+            },
+          ],
+        });
+      }
       const nestedChildren = Array.isArray(node.children) ? node.children : [];
       flows.push(
         ...projectInlineFlow(nestedChildren, [...path, 'children'], path),
@@ -613,32 +643,77 @@ export function projectStructuredText(value: unknown): StructuredTextFlow[] {
   return flows;
 }
 
+/** Alt and title text set on one asset of a file or gallery field. */
+function projectAssetText(
+  value: unknown,
+  prefix: ValuePath,
+): StructuredTextFlow[] {
+  const asset = asRecord(value);
+  if (!asset) return [];
+
+  return (['alt', 'title'] as const).flatMap((key) => {
+    const text = asset[key];
+    if (typeof text !== 'string' || text.length === 0) return [];
+    const path = [...prefix, key];
+    return [
+      {
+        text,
+        flowPath: path,
+        segments: [{ path, projectedStart: 0, projectedEnd: text.length }],
+      },
+    ];
+  });
+}
+
 /**
  * Every independently matchable text of a field value, in document order. A
- * plain string is one flow whose single segment is the value itself. Values
- * that are missing or can't hold exact matches have none.
+ * plain string is one flow whose single segment is the value itself; text
+ * fields match their decoded text (see `projectEncodedText`), JSON fields
+ * their string values. Values that are missing or can't hold exact matches
+ * have none, and number fields match their value (see `numberMatches`).
  */
 export function projectFieldText(
+  fieldValue: TraversedFieldValue,
+): StructuredTextFlow[] {
+  return storedFieldText(fieldValue).map(normalizeFlow);
+}
+
+function storedFieldText(
   fieldValue: TraversedFieldValue,
 ): StructuredTextFlow[] {
   if (!fieldValue.ref.present || !fieldValue.field.exactMatchCompatible) {
     return [];
   }
 
+  const { value } = fieldValue;
   switch (fieldValue.field.fieldType) {
     case 'structured_text':
-      return projectStructuredText(fieldValue.value);
+      return projectStructuredText(value);
     case 'seo':
-      return projectSeoText(fieldValue.value);
+      return projectSeoText(value);
+    case 'text':
+      return typeof value === 'string'
+        ? projectEncodedText(value, storesMarkup(fieldValue.field))
+        : [];
+    case 'json':
+      return typeof value === 'string' ? projectJsonText(value) : [];
+    case 'file':
+      return projectAssetText(value, []);
+    case 'gallery':
+      return Array.isArray(value)
+        ? value.flatMap((asset, index) => projectAssetText(asset, [index]))
+        : [];
+    case 'float':
+    case 'integer':
+      return [];
     default: {
-      const text = fieldValue.value;
-      if (typeof text !== 'string' || text.length === 0) return [];
+      if (typeof value !== 'string' || value.length === 0) return [];
       return [
         {
-          text,
+          text: value,
           flowPath: [],
           segments: [
-            { path: [], projectedStart: 0, projectedEnd: text.length },
+            { path: [], projectedStart: 0, projectedEnd: value.length },
           ],
         },
       ];
@@ -646,23 +721,214 @@ export function projectFieldText(
   }
 }
 
+const NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/** A number typed as text ("46.9", "-3", " 1e3 "), or null. */
+export function parseNumber(text: string): number | null {
+  const trimmed = text.trim();
+  if (!NUMBER.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+function isNumberField(fieldValue: TraversedFieldValue): boolean {
+  const { fieldType } = fieldValue.field;
+  return fieldType === 'float' || fieldType === 'integer';
+}
+
+/**
+ * A number field matches like text, on its value as written ("46.9"), so
+ * whole-word matching works as it does anywhere else. A literal search for the
+ * same number written another way ("46.90") also matches the whole value.
+ */
+function numberMatches(
+  fieldValue: TraversedFieldValue,
+  spec: MatcherSpec,
+  match: () => (text: string) => TextMatch[],
+): StructuredTextMatch[] {
+  const { value } = fieldValue;
+  if (
+    !fieldValue.ref.present ||
+    typeof value !== 'number' ||
+    !Number.isFinite(value)
+  ) {
+    return [];
+  }
+
+  const text = String(value);
+  let found = match()(text);
+  if (
+    found.length === 0 &&
+    spec.kind === 'literal' &&
+    parseNumber(spec.pattern) === value
+  ) {
+    found = [
+      {
+        occurrenceIndex: 0,
+        start: 0,
+        end: text.length,
+        matchedText: text,
+        context: matchContext(text, 0, text.length),
+      },
+    ];
+  }
+
+  return found.map((candidate) => ({
+    ...candidate,
+    flowPath: [],
+    fragments: [{ path: [], start: candidate.start, end: candidate.end }],
+  }));
+}
+
+function samePath(left: ValuePath, right: ValuePath): boolean {
+  return (
+    left.length === right.length &&
+    left.every((part, index) => part === right[index])
+  );
+}
+
+/** Where projected offset `offset` of a plain segment sits in its raw string. */
+function rawOffset(segment: FlowSegment, offset: number): number {
+  return (segment.rawStart ?? 0) + offset - segment.projectedStart;
+}
+
+/**
+ * The raw range behind the part of a segment from projected `start` to
+ * `end`: all of it for an encoded segment, which a match covers whole.
+ */
+function rawRange(
+  segment: FlowSegment,
+  start: number,
+  end: number,
+): { from: number; to: number } {
+  if (segment.rawEnd !== undefined) {
+    return { from: segment.rawStart ?? 0, to: segment.rawEnd };
+  }
+  return { from: rawOffset(segment, start), to: rawOffset(segment, end) };
+}
+
+/**
+ * The raw characters behind projected `start` to `end`, when they are one
+ * stretch of one string (null when they cross into another).
+ */
+function rawSpan(
+  segments: ReadonlyArray<FlowSegment>,
+  start: number,
+  end: number,
+): Omit<FlowSegment, 'projectedStart' | 'projectedEnd'> | null {
+  let span: Omit<FlowSegment, 'projectedStart' | 'projectedEnd'> | null = null;
+  for (const segment of segments) {
+    if (segment.projectedEnd <= start || segment.projectedStart >= end) {
+      continue;
+    }
+    const { from, to } = rawRange(
+      segment,
+      Math.max(start, segment.projectedStart),
+      Math.min(end, segment.projectedEnd),
+    );
+    if (!span) {
+      span = {
+        path: segment.path,
+        rawStart: from,
+        rawEnd: to,
+        ...(segment.subfield ? { subfield: segment.subfield } : {}),
+      };
+    } else if (samePath(span.path, segment.path) && span.rawEnd === from) {
+      span.rawEnd = to;
+    } else {
+      return null;
+    }
+  }
+  return span;
+}
+
+/** A character followed by combining marks: what NFC may compose. */
+const DECOMPOSED = /\P{M}\p{M}+/gu;
+
+/**
+ * Texts are matched in the composed form (NFC), so an "ü" stored as "u" plus
+ * a combining mark is found like any other "ü". Each composed character is an
+ * encoded segment over the raw characters it stands for.
+ */
+function normalizeFlow(flow: StructuredTextFlow): StructuredTextFlow {
+  const { text } = flow;
+  if (text.normalize('NFC') === text) return flow;
+
+  let normalized = '';
+  const segments: FlowSegment[] = [];
+  let copied = 0;
+  const copyTo = (end: number): void => {
+    for (const segment of flow.segments) {
+      const start = Math.max(copied, segment.projectedStart);
+      const stop = Math.min(end, segment.projectedEnd);
+      if (start >= stop) continue;
+      const projectedStart = normalized.length + start - copied;
+      segments.push({
+        ...segment,
+        projectedStart,
+        projectedEnd: projectedStart + stop - start,
+        ...(segment.rawEnd === undefined
+          ? { rawStart: rawOffset(segment, start) }
+          : {}),
+      });
+    }
+    normalized += text.slice(copied, end);
+    copied = end;
+  };
+
+  for (const match of text.matchAll(DECOMPOSED)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const composed = match[0].normalize('NFC');
+    const span =
+      composed === match[0] ? null : rawSpan(flow.segments, start, end);
+    if (!span) continue;
+    copyTo(start);
+    segments.push({
+      ...span,
+      projectedStart: normalized.length,
+      projectedEnd: normalized.length + composed.length,
+    });
+    normalized += composed;
+    copied = end;
+  }
+  copyTo(text.length);
+  return { ...flow, text: normalized, segments };
+}
+
 function fragmentsForMatch(
   match: TextMatch,
   segments: ReadonlyArray<FlowSegment>,
 ): TextFragment[] {
-  return segments.flatMap((segment) => {
+  const fragments: TextFragment[] = [];
+
+  for (const segment of segments) {
     const projectedStart = Math.max(match.start, segment.projectedStart);
     const projectedEnd = Math.min(match.end, segment.projectedEnd);
-    if (projectedStart >= projectedEnd) return [];
+    if (projectedStart >= projectedEnd) continue;
 
-    return [
-      {
-        path: segment.path,
-        start: projectedStart - segment.projectedStart,
-        end: projectedEnd - segment.projectedStart,
-      },
-    ];
-  });
+    const { from, to } = rawRange(segment, projectedStart, projectedEnd);
+    const fragment: TextFragment = {
+      path: segment.path,
+      start: from,
+      end: to,
+      ...(segment.subfield ? { subfield: segment.subfield } : {}),
+    };
+
+    // Text next to an encoded character is one stretch of the raw string.
+    const previous = fragments[fragments.length - 1];
+    if (
+      previous &&
+      previous.end === fragment.start &&
+      samePath(previous.path, fragment.path)
+    ) {
+      fragments[fragments.length - 1] = { ...previous, end: fragment.end };
+    } else {
+      fragments.push(fragment);
+    }
+  }
+
+  return fragments;
 }
 
 function structuredMatchesFromFlows(
@@ -689,7 +955,7 @@ export function matchStructuredText(
   value: unknown,
   spec: MatcherSpec,
 ): StructuredTextMatch[] {
-  const flows = projectStructuredText(value);
+  const flows = projectStructuredText(value).map(normalizeFlow);
   const match = createTextMatcher(spec);
   return structuredMatchesFromFlows(
     flows,
@@ -738,20 +1004,31 @@ export function matchesForTraversedFields(
   spec: MatcherSpec,
 ): ExactMatchRef[][] {
   const projections = fieldValues.map(projectFieldText);
-  if (projections.every((flows) => flows.length === 0)) {
+  if (
+    projections.every((flows) => flows.length === 0) &&
+    !fieldValues.some(isNumberField)
+  ) {
     return projections.map(() => []);
   }
 
   const fingerprint = matcherFingerprint(spec);
   const match = createTextMatcher(spec);
-  return projections.map((flows, index) =>
-    exactRefsFromFlowMatches(
-      fieldValues[index],
+  return projections.map((flows, index) => {
+    const fieldValue = fieldValues[index];
+    if (isNumberField(fieldValue)) {
+      return exactRefsFromMatches(
+        fieldValue,
+        fingerprint,
+        numberMatches(fieldValue, spec, () => match),
+      );
+    }
+    return exactRefsFromFlowMatches(
+      fieldValue,
       fingerprint,
       flows,
       flows.map((flow) => match(flow.text)),
-    ),
-  );
+    );
+  });
 }
 
 export function matchesForTraversedField(
@@ -956,7 +1233,7 @@ export async function matchStructuredTextInWorker(
   worker: MatcherWorkerSession,
   signal?: AbortSignal,
 ): Promise<StructuredTextMatch[]> {
-  const flows = projectStructuredText(value);
+  const flows = projectStructuredText(value).map(normalizeFlow);
   if (flows.length === 0) return [];
   const matchesByFlow = await worker.matchTexts(
     flows.map((flow) => flow.text),
@@ -986,7 +1263,9 @@ export async function matchesForTraversedFieldsInWorker(
   };
   const projections = fieldValues.map(projectFieldText);
   const texts = projections.flatMap((flows) => flows.map((flow) => flow.text));
-  if (texts.length === 0) return projections.map(() => []);
+  if (texts.length === 0 && !fieldValues.some(isNumberField)) {
+    return projections.map(() => []);
+  }
 
   const matchesByText: TextMatch[][] = [];
   for (const chunk of chunkTexts(texts, { maxTexts, maxChars })) {
@@ -1001,12 +1280,26 @@ export async function matchesForTraversedFieldsInWorker(
   }
 
   const fingerprint = matcherFingerprint(spec);
+  // Number values are a few characters each: matched here, not in the worker.
+  let numberMatcher: ((text: string) => TextMatch[]) | null = null;
+  const matchNumber = (): ((text: string) => TextMatch[]) => {
+    numberMatcher ??= createTextMatcher(spec);
+    return numberMatcher;
+  };
   let offset = 0;
   return projections.map((flows, index) => {
+    const fieldValue = fieldValues[index];
+    if (isNumberField(fieldValue)) {
+      return exactRefsFromMatches(
+        fieldValue,
+        fingerprint,
+        numberMatches(fieldValue, spec, matchNumber),
+      );
+    }
     const matchesByFlow = matchesByText.slice(offset, offset + flows.length);
     offset += flows.length;
     return exactRefsFromFlowMatches(
-      fieldValues[index],
+      fieldValue,
       fingerprint,
       flows,
       matchesByFlow,

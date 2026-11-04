@@ -1,0 +1,15 @@
+{
+  "name": "tokenizer2",
+  "version": "2.0.1",
+  "private": true,
+  "description": "Unmodified core.js and LICENSE of tokenizer2@2.0.1, which yoastseo requires as tokenizer2/core. The upstream package is archived and deprecated on npm.",
+  "author": "smallhelm",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smallhelm/tokenizer2.git"
+  },
+  "files": [
+    "core.js"
+  ]
+}

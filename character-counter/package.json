@@ -53,5 +53,9 @@
       "react": "$react",
       "react-dom": "$react-dom"
     }
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
   }
 }

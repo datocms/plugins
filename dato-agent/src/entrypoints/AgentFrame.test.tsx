@@ -698,11 +698,11 @@ describe('AgentFrame', () => {
         clientId: `registered-${mocks.registerClient.mock.calls.length}`,
         clientIdIssuedAt: 1,
         redirectUri,
-        registrationVersion: 2,
+        registrationVersion: 3,
       }));
     mocks.authorization.mockReset().mockImplementation(async () => ({
       state: `state-${mocks.authorization.mock.calls.length}`,
-      authorizationUrl: 'https://mcp.datocms.com/authorize',
+      authorizationUrl: 'https://oauth.datocms.com/oauth/authorize',
       expiresAt: Date.now() + 300_000,
     }));
     mocks.callback
@@ -6708,10 +6708,17 @@ describe('AgentFrame', () => {
 
     expect(writeText).toHaveBeenCalledOnce();
     const diagnostics = JSON.parse(String(writeText.mock.calls[0]?.[0]));
-    expect(diagnostics.configuration.openAiApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.configuration.activeApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.oauthCredentials.token.accessToken).toBe(
+    // Allowlisted payload: keys and tokens are absent, not just masked.
+    expect(diagnostics.configuration.openAiApiKey).toBeUndefined();
+    expect(diagnostics.configuration.activeApiKey).toBeUndefined();
+    expect(diagnostics.configuration.hasOpenAiApiKey).toBe(true);
+    expect(diagnostics.oauthCredentials.token.accessToken).toBeUndefined();
+    expect(diagnostics.oauthCredentials.token.tokenType).toBe('Bearer');
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
       'diagnostic-oauth-secret',
+    );
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
+      'sk-diagnostic-secret',
     );
     expect(diagnostics.turn.message).toBe(
       'Find the private record with all of its content',
@@ -6749,6 +6756,100 @@ describe('AgentFrame', () => {
     expect(diagnostics.project.currentRecord.id).toBe('record-secret');
     expect(diagnostics.turn.completionResult.error.message).toBe(
       'Provider diagnostic failure.',
+    );
+  });
+
+  it('masks the OAuth token a turn actually used, not only the one its render closed over', async () => {
+    const frameProps = props({
+      currentUserId: `diagnostics-rotated-user-${testUser}`,
+    });
+    const credentialStore = createCredentialStore({
+      siteId: frameProps.siteId,
+      currentUserId: frameProps.currentUserId,
+    });
+    const saveToken = (accessToken: string) =>
+      credentialStore.save(
+        createOAuthCredentials(
+          {
+            clientId: 'diagnostic-client',
+            clientIdIssuedAt: 1_700_000_000,
+            redirectUri: 'https://example.test/oauth/callback',
+          },
+          { accessToken, tokenType: 'Bearer', obtainedAt: 1_700_000_000 },
+        ),
+        { remember: true },
+      );
+    saveToken('stale-oauth-secret-value');
+    const failure = {
+      code: 'api_error' as const,
+      message:
+        'MCP rejected Bearer rotated-oauth-secret-value after stale-oauth-secret-value expired.',
+      retryable: true,
+    };
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          const failed = completedResult({
+            status: 'failed',
+            responseId: 'resp_rotated',
+            error: failure,
+          });
+          await onEvent?.({
+            type: 'error',
+            responseId: 'resp_rotated',
+            error: failure,
+          });
+          await onEvent?.({ type: 'turn_completed', result: failed });
+          return failed;
+        },
+      ),
+    } as unknown as AgentRuntime;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<AgentFrame {...frameProps} />);
+    // A submit handler from before the token rotation: its render still holds the stale token.
+    const staleSubmit = mocks.surfaceProps?.onSubmit;
+    saveToken('rotated-oauth-secret-value');
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: credentialStore.key,
+          newValue: localStorage.getItem(credentialStore.key),
+          storageArea: localStorage,
+        }),
+      );
+    });
+    act(() => {
+      staleSubmit?.('Describe the project');
+    });
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+
+    const failedEntry = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'message' && entry.role === 'assistant' && entry.failure,
+    );
+    if (failedEntry?.kind !== 'message' || !failedEntry.failure) {
+      throw new Error('Expected terminal failure diagnostics.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onCopyFailureDiagnostics?.(
+        failedEntry.failure?.id ?? '',
+      );
+    });
+
+    expect(writeText).toHaveBeenCalledOnce();
+    const serialized = String(writeText.mock.calls[0]?.[0]);
+    expect(serialized).not.toContain('rotated-oauth-secret-value');
+    expect(serialized).not.toContain('stale-oauth-secret-value');
+    expect(serialized).toContain(
+      'MCP rejected Bearer [redacted] after [redacted] expired.',
     );
   });
 
@@ -8217,7 +8318,7 @@ describe('AgentFrame', () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
     expect(mocks.registerClient).toHaveBeenCalledOnce();
-    expect(store.load()?.credentials.client.registrationVersion).toBe(2);
+    expect(store.load()?.credentials.client.registrationVersion).toBe(3);
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });

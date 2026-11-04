@@ -1,5 +1,12 @@
+import {
+  attributeEncoder,
+  encodedTextEncoder,
+  jsonTextEncoder,
+  storesMarkup,
+} from '../selection/encodedText';
 import { stableSerialize } from '../selection/identity';
-import { matchesForTraversedField } from '../selection/matcher';
+import { matchesForTraversedField, parseNumber } from '../selection/matcher';
+import { isExactMatchCompatibleFieldType } from '../selection/schemaIndex';
 import type {
   ExactMatchRef,
   MatcherSpec,
@@ -36,14 +43,6 @@ export type FieldReplacementResult = {
     afterTruncated: boolean;
   };
 };
-
-const REPLACEABLE_FIELD_TYPES = new Set([
-  'string',
-  'text',
-  'slug',
-  'structured_text',
-  'seo',
-]);
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -158,19 +157,44 @@ function replacementFor(
   return typeof replacement === 'string' ? replacement : replacement(match);
 }
 
+type Encode = (text: string, match: ExactMatchRef) => string;
+
+const AS_TYPED: Encode = (text) => text;
+
+/** How the inserted text is written into the stored value. */
+function encoderFor(fieldValue: TraversedFieldValue): Encode {
+  const { value, field } = fieldValue;
+  if (typeof value !== 'string') return AS_TYPED;
+  switch (field.fieldType) {
+    case 'text': {
+      const encode = encodedTextEncoder(value, storesMarkup(field));
+      const encodeUrl = attributeEncoder(encode);
+      return (text, match) =>
+        match.fragments[0]?.subfield === 'link_url'
+          ? encodeUrl(text)
+          : encode(text);
+    }
+    case 'json':
+      return jsonTextEncoder(value);
+    default:
+      return AS_TYPED;
+  }
+}
+
 /**
  * Groups the edits by text location. The first fragment of a match receives
  * its whole replacement (keeping that span's marks); later fragments of a
- * match spanning several Structured Text spans are emptied.
+ * match spanning several Structured Text spans (or HTML tags) are emptied.
  */
 function fragmentEdits(
   matches: ReadonlyArray<ExactMatchRef>,
   replacement: MatchReplacement,
+  encode: Encode,
 ): Map<string, { path: ValuePath; edits: TextEdit[] }> {
   const groups = new Map<string, { path: ValuePath; edits: TextEdit[] }>();
 
   for (const match of matches) {
-    const inserted = replacementFor(replacement, match);
+    const inserted = encode(replacementFor(replacement, match), match);
     for (const [index, fragment] of match.fragments.entries()) {
       const key = pathKey(fragment.path);
       const group = groups.get(key) ?? {
@@ -190,13 +214,14 @@ function fragmentEdits(
 }
 
 function applyFragmentMatches(
-  value: unknown,
+  fieldValue: TraversedFieldValue,
   matches: ReadonlyArray<ExactMatchRef>,
   replacement: MatchReplacement,
 ): unknown {
-  let result = cloneValue(value);
+  let result = cloneValue(fieldValue.value);
+  const groups = fragmentEdits(matches, replacement, encoderFor(fieldValue));
 
-  for (const { path, edits } of fragmentEdits(matches, replacement).values()) {
+  for (const { path, edits } of groups.values()) {
     const text = valueAtPath(result, path);
     if (typeof text !== 'string') {
       throw new Error('The selected text location is no longer available.');
@@ -225,7 +250,58 @@ function previewFor(
 }
 
 export function isReplaceableFieldType(fieldType: string): boolean {
-  return REPLACEABLE_FIELD_TYPES.has(fieldType);
+  return isExactMatchCompatibleFieldType(
+    fieldType as TraversedFieldValue['field']['fieldType'],
+  );
+}
+
+function isNumberFieldType(fieldType: string): boolean {
+  return fieldType === 'float' || fieldType === 'integer';
+}
+
+/**
+ * The value a number field gets: the number typed, or null when the new text
+ * is empty. Text that isn't a number is kept as typed, so the write fails
+ * with `invalidNumberValue` instead of saving something else.
+ */
+function numberValue(text: string): number | string | null {
+  if (text.trim().length === 0) return null;
+  return parseNumber(text) ?? text;
+}
+
+/** A number field value that isn't a number (or a whole number) the field takes. */
+export function invalidNumberValue(
+  fieldValue: TraversedFieldValue,
+  value: unknown,
+): boolean {
+  const { fieldType } = fieldValue.field;
+  if (!isNumberFieldType(fieldType) || value === null) return false;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return true;
+  return fieldType === 'integer' && !Number.isInteger(value);
+}
+
+/** New text for a number field that the field won't take. */
+function rejectsNumberText(
+  fieldType: 'float' | 'integer',
+  text: string,
+): boolean {
+  const value = numberValue(text);
+  if (value === null) return false;
+  if (typeof value !== 'number') return true;
+  return fieldType === 'integer' && !Number.isInteger(value);
+}
+
+/**
+ * A match in a number field whose replacement leaves a number the field won't
+ * take: "abc", or a decimal in an integer field.
+ */
+export function rejectsNumberEdit(
+  fieldType: 'float' | 'integer',
+  match: Pick<ExactMatchRef, 'context'>,
+  inserted: string,
+): boolean {
+  const { before, after } = match.context;
+  return rejectsNumberText(fieldType, before + inserted + after);
 }
 
 export function replaceExactMatches(
@@ -251,7 +327,23 @@ export function replaceExactMatches(
     };
   }
 
-  const value = applyFragmentMatches(fieldValue.value, matches, replacement);
+  if (isNumberFieldType(fieldValue.field.fieldType)) {
+    const text =
+      typeof fieldValue.value === 'number' ? String(fieldValue.value) : '';
+    const edits = [
+      ...fragmentEdits(matches, replacement, AS_TYPED).values(),
+    ].flatMap((group) => group.edits);
+    const value = numberValue(applyTextEdits(text, edits));
+    return {
+      supported: true,
+      changed: value !== fieldValue.value,
+      value,
+      replacementCount: matches.length,
+      ...previewFor(matches[0], replacement),
+    };
+  }
+
+  const value = applyFragmentMatches(fieldValue, matches, replacement);
   return {
     supported: true,
     changed: stableSerialize(value) !== stableSerialize(fieldValue.value),

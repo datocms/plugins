@@ -181,6 +181,7 @@ export function replacementCheck(args: {
   find: FindInput;
   groupCount: number;
   slugFormatMatches: number;
+  numberFormatMatches: number;
 }): ReplacementCheck {
   const { replacement, find } = args;
   if (replacement.verb !== 'replace') return { problem: null, warnings: [] };
@@ -197,6 +198,9 @@ export function replacementCheck(args: {
     warnings.push({ code: 'self_match' });
   if (args.slugFormatMatches > 0) {
     warnings.push({ code: 'slug_format', count: args.slugFormatMatches });
+  }
+  if (args.numberFormatMatches > 0) {
+    warnings.push({ code: 'number_format', count: args.numberFormatMatches });
   }
   return { problem: replacement.problem, warnings };
 }
@@ -216,6 +220,8 @@ export type PlanTally = {
   slugMatches: number;
   /** Changing slug matches whose new text isn't a valid slug. */
   slugFormatMatches: number;
+  /** Changing number matches whose new text the number field won't take. */
+  numberFormatMatches: number;
   /** The first changing record (the confirm names it when it is the only one). */
   firstChangingRecord: { id: string; title: string | null } | null;
   selectableRecords: number;
@@ -234,6 +240,7 @@ export function emptyTally(): PlanTally {
     liveRecords: 0,
     slugMatches: 0,
     slugFormatMatches: 0,
+    numberFormatMatches: 0,
     firstChangingRecord: null,
     selectableRecords: 0,
     selectableAll: 0,

@@ -155,6 +155,7 @@ describe('checks', () => {
         find: regex,
         groupCount: 2,
         slugFormatMatches: 2,
+        numberFormatMatches: 3,
       }),
     ).toEqual({
       problem: null,
@@ -162,6 +163,7 @@ describe('checks', () => {
         { code: 'group_out_of_range', token: '$3', groupCount: 2 },
         { code: 'group_out_of_range', token: '$<x>', groupCount: 2 },
         { code: 'slug_format', count: 2 },
+        { code: 'number_format', count: 3 },
       ],
     });
     const removing = compileReplacement(
@@ -174,6 +176,7 @@ describe('checks', () => {
         find: literal,
         groupCount: 0,
         slugFormatMatches: 0,
+        numberFormatMatches: 0,
       }),
     ).toEqual({ problem: null, warnings: [] });
   });

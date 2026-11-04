@@ -265,6 +265,10 @@ function validationReason(detail: FailDetail | null): string {
       return `The new value must be unique in "${field}".`;
     case 'required':
       return `"${field}" can't be empty.`;
+    case 'number':
+      return `"${field}" only takes numbers.`;
+    case 'whole_number':
+      return `"${field}" only takes whole numbers.`;
     case 'other':
       return `The new value doesn't pass the validations of "${field}".`;
   }
@@ -366,6 +370,10 @@ function replacementWarningText(
       return warning.count === 1
         ? 'Slugs only allow lowercase letters, numbers, hyphens and underscores, so 1 slug change will probably fail'
         : `Slugs only allow lowercase letters, numbers, hyphens and underscores, so ${c.fmt(warning.count)} slug changes will probably fail`;
+    case 'number_format':
+      return warning.count === 1
+        ? "Number fields only take numbers (whole numbers for integer fields), so 1 change won't be saved"
+        : `Number fields only take numbers (whole numbers for integer fields), so ${c.fmt(warning.count)} changes won't be saved`;
   }
 }
 

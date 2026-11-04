@@ -87,7 +87,7 @@ describe('buildSchemaIndex', () => {
       [
         blockB.id,
         [
-          field('b-title', blockB.id, 'shared', 'integer', {
+          field('b-title', blockB.id, 'shared', 'boolean', {
             label: 'Display number',
           }),
           field('b-cycle', blockB.id, 'cycle', 'rich_text', {

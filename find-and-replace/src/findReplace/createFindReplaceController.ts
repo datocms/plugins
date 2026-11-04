@@ -6,6 +6,7 @@
 
 import { publishRecord } from '../replacement/publishRecord';
 import { replaceInRecord } from '../replacement/replaceRecord';
+import { rejectsNumberEdit } from '../replacement/valueReplacement';
 import type { DiscoveredTarget } from '../selection/discoverTargets';
 import {
   type DiscoveryTimers,
@@ -175,6 +176,14 @@ function countMatch(
   if (!plan.changing) return;
   tally.changingMatches += 1;
   counts.changing += 1;
+  const { fieldType } = match.ref.fieldValue;
+  if (
+    (fieldType === 'float' || fieldType === 'integer') &&
+    plan.inserted !== null &&
+    rejectsNumberEdit(fieldType, match.ref, plan.inserted)
+  ) {
+    tally.numberFormatMatches += 1;
+  }
   if (!match.isSlug) return;
   tally.slugMatches += 1;
   if (plan.inserted !== null && violatesSlugFormat(plan.inserted)) {
@@ -1129,6 +1138,7 @@ class FindReplaceStore {
       find: this.search.find,
       groupCount: this.groupCount(matcher),
       slugFormatMatches: tally.slugFormatMatches,
+      numberFormatMatches: tally.numberFormatMatches,
     });
   }
 

@@ -6,7 +6,6 @@ import {
   faTimes,
   faTrashAlt,
 } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Button,
   Dropdown,
@@ -19,6 +18,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { Column } from 'react-table';
 import type { Actions, Row } from '../../types';
+import { FontAwesomeIcon } from '../FontAwesomeIcon';
 import s from './style.module.css';
 
 type Props = Actions & {
