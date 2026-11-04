@@ -280,15 +280,24 @@ function extractAnthropicModel(entry: unknown): ProviderModel | undefined {
 
   const displayName =
     typeof entry.display_name === 'string' ? entry.display_name.trim() : '';
-  const maxOutputTokens = positiveSafeInteger(entry.max_tokens);
-  const contextWindowTokens = positiveSafeInteger(entry.max_input_tokens);
 
   return {
     id,
     label: displayName || id,
+    ...anthropicModelLimits(entry),
+    reasoningEfforts: [...reasoningEfforts],
+  };
+}
+
+/** Context and output limits, when the Models API reports them. */
+function anthropicModelLimits(
+  entry: Record<string, unknown>,
+): Pick<ProviderModel, 'contextWindowTokens' | 'maxOutputTokens'> {
+  const maxOutputTokens = positiveSafeInteger(entry.max_tokens);
+  const contextWindowTokens = positiveSafeInteger(entry.max_input_tokens);
+  return {
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
-    reasoningEfforts: [...reasoningEfforts],
   };
 }
 
