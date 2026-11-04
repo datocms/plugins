@@ -296,8 +296,8 @@
 }
 
 .iconButton:disabled,
-.iconButton[aria-disabled='true'],
-.iconButton[aria-disabled='true']:hover {
+.iconButton[aria-disabled="true"],
+.iconButton[aria-disabled="true"]:hover {
   color: var(--color--disabled--ink);
   background: transparent;
   cursor: default;

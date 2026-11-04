@@ -661,13 +661,10 @@ function CredentialPanel({
 }) {
   const providerConfigStatus =
     connection.providerConfigStatus ?? connection.openAiConfigStatus;
-  const configuredProviderLabel =
-    connection.providerLabel ??
-    (connection.openAiConfigStatus ? 'OpenAI' : 'AI provider');
   const isProviderMissing = providerConfigStatus === 'missing';
   // Connecting DatoCMS can come after picking a chat; a missing provider can't.
   const chatsBlockedReason = isProviderMissing
-    ? `Chats need ${configuredProviderLabel} to be set up first`
+    ? 'Chats need an AI provider to be set up first'
     : undefined;
 
   return (
@@ -692,11 +689,11 @@ function CredentialPanel({
         <div className={styles.configurationNotice} role="status">
           <WarningIcon />
           <div className={styles.configurationNoticeBody}>
-            <strong>{configuredProviderLabel} setup required</strong>
+            <strong>Setup required</strong>
             <span>
               {onOpenPluginSettings
-                ? 'Chats need an API key and a model. Add them in the plugin settings.'
-                : 'Chats need an API key and a model. Ask a project admin to add them in the plugin settings.'}
+                ? 'Chats need an AI provider. Add its API key and pick a model in the plugin settings.'
+                : 'Chats need an AI provider, set up in the plugin settings. Ask a developer or project admin for help.'}
             </span>
             {onOpenPluginSettings && (
               <Button

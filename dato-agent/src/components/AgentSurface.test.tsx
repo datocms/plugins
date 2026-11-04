@@ -1803,7 +1803,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('OpenAI setup required')).toBeVisible();
+    expect(screen.getByText('Setup required')).toBeVisible();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('switch', {
@@ -1934,7 +1934,8 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('Anthropic (Claude) setup required')).toBeVisible();
+    expect(screen.getByText('Setup required')).toBeVisible();
+    expect(screen.queryByText(/Anthropic/)).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('button', { name: 'Open plugin settings' }),
     );
@@ -1951,7 +1952,7 @@ describe('AgentSurface', () => {
     expect(pastChat).toBeDisabled();
     expect(pastChat).toHaveAttribute(
       'title',
-      'Chats need Anthropic (Claude) to be set up first',
+      'Chats need an AI provider to be set up first',
     );
   });
 
@@ -1970,7 +1971,9 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText(/Ask a project admin/)).toBeVisible();
+    expect(
+      screen.getByText(/Ask a developer or project admin for help/),
+    ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Open plugin settings' }),
     ).not.toBeInTheDocument();
