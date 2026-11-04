@@ -6030,7 +6030,18 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       // to runtime state (also important for proxy/client implementations that
       // retain the params object until serialization).
       messages: [...state.messages],
-      system: state.system,
+      // Prompt caching. Every tool-loop step resends tools, system and history.
+      // The explicit breakpoint caches tools + system for the whole turn; the
+      // top-level one moves with the growing conversation, so each step reads
+      // the previous step's prefix instead of paying full input price again.
+      system: [
+        {
+          type: 'text',
+          text: state.system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      cache_control: { type: 'ephemeral' },
       tools,
       tool_choice: {
         type: 'auto',

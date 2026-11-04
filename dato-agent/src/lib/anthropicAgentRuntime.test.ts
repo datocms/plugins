@@ -991,6 +991,14 @@ describe('AnthropicAgentRuntime', () => {
     });
     expect(request.speed).toBeUndefined();
     expect(request.betas).toBeUndefined();
+    // Tools + system are cached for the turn; the top-level marker caches the growing history.
+    expect(request.cache_control).toEqual({ type: 'ephemeral' });
+    expect(request.system).toEqual([
+      expect.objectContaining({
+        type: 'text',
+        cache_control: { type: 'ephemeral' },
+      }),
+    ]);
     expect(JSON.stringify(request.system)).toContain(
       'models:\\n- article | Article | title:string',
     );
@@ -1194,8 +1202,10 @@ describe('AnthropicAgentRuntime', () => {
     expect(toolNames).toContain('upsert_and_execute_safe_script');
     expect(toolNames).not.toContain('upsert_and_execute_unsafe_script');
     expect(toolNames).not.toContain('create_dato_asset');
-    expect(firstRequest?.system).toContain('READ ONLY MODE');
-    expect(firstRequest?.system).not.toContain('create_dato_asset');
+    expect(JSON.stringify(firstRequest?.system)).toContain('READ ONLY MODE');
+    expect(JSON.stringify(firstRequest?.system)).not.toContain(
+      'create_dato_asset',
+    );
     expect(createDatoAsset).not.toHaveBeenCalled();
     expect(mcp.callTool).toHaveBeenCalledOnce();
     expect(mcp.callTool).toHaveBeenCalledWith(
@@ -1293,8 +1303,8 @@ describe('AnthropicAgentRuntime', () => {
     expect(JSON.stringify(request?.messages)).toContain(
       'Writing tools are unavailable because Read Only is enabled.',
     );
-    expect(request?.system).toContain('WRITABLE MODE');
-    expect(request?.system).toContain(
+    expect(JSON.stringify(request?.system)).toContain('WRITABLE MODE');
+    expect(JSON.stringify(request?.system)).toContain(
       "Plugin restrictions, OAuth access, and the account's project role all apply",
     );
     expect((request?.tools ?? []).map((tool) => tool.name)).toContain(
