@@ -3017,6 +3017,20 @@ function terminalVisibleText(response: Response): string {
     .join('');
 }
 
+/** Editor-facing guidance for each reason OpenAI gives for an incomplete response. */
+function openAiIncompleteMessage(reason: string | undefined): string {
+  switch (reason) {
+    case 'max_output_tokens':
+      return 'The reply got too long and stopped early. Changes you already approved still apply. Ask for fewer records or shorter content at a time.';
+    case 'content_filter':
+      return 'OpenAI’s content filter stopped the reply. Rephrase the request and try again.';
+    case undefined:
+      return 'The model could not complete the response. Try again, or ask for a smaller step.';
+    default:
+      return `The response stopped early (${reason}). Try again, or ask for a smaller step.`;
+  }
+}
+
 function responseError(
   response: Response,
   fallbackCode: AgentRuntimeError['code'],
@@ -3024,9 +3038,7 @@ function responseError(
   if (fallbackCode === 'incomplete') {
     return {
       code: 'incomplete',
-      message: response.incomplete_details?.reason
-        ? `The response stopped early: ${response.incomplete_details.reason}.`
-        : 'The model could not complete the response.',
+      message: openAiIncompleteMessage(response.incomplete_details?.reason),
       retryable: true,
     };
   }
@@ -4876,6 +4888,17 @@ interface AnthropicLoopState {
 const OUTPUT_LIMIT_RECOVERY_INSTRUCTION =
   'Your previous response reached the output limit and was discarded before any of its tool calls ran, so nothing from it changed the project. Continue the same task in smaller steps: keep reasoning brief, and split large writes into several smaller scripts (for example two or three records per script), each reviewed separately.';
 
+/** Shown while the runtime retries a reply that hit the output limit. */
+export const OUTPUT_LIMIT_RETRY_LABEL =
+  'That reply got too long to finish, so nothing in it ran. Redoing it in smaller steps.';
+
+/** Shown when the retry also hits the limit. Editors can act on it; they can't change the model. */
+export const OUTPUT_LIMIT_ERROR_MESSAGE =
+  'The reply got too long to finish, even in smaller steps, so nothing in it ran. Changes you already approved still apply. Ask for fewer records or shorter content at a time.';
+
+export const CONTEXT_WINDOW_ERROR_MESSAGE =
+  'This chat got too long for the model to read. Changes you already approved still apply. Start a new chat and say what to do next.';
+
 function appendAnthropicUserText(messages: MessageParam[], text: string): void {
   const last = messages.at(-1);
   if (last?.role !== 'user') {
@@ -6166,6 +6189,17 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
             state.messages,
             OUTPUT_LIMIT_RECOVERY_INSTRUCTION,
           );
+          // Tell the editor why more, smaller approvals are about to follow.
+          yield {
+            type: 'activity',
+            responseId: summary.message.id,
+            activity: {
+              id: `output-limit-retry:${summary.message.id}`,
+              kind: 'continuation',
+              status: 'completed',
+              label: OUTPUT_LIMIT_RETRY_LABEL,
+            },
+          };
           state.nextContinuation += 1;
           continue;
         }
@@ -6181,8 +6215,8 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
             code: 'incomplete',
             message:
               summary.message.stop_reason === 'max_tokens'
-                ? 'The response stopped after reaching its output limit.'
-                : 'The conversation exceeded this model’s context window.',
+                ? OUTPUT_LIMIT_ERROR_MESSAGE
+                : CONTEXT_WINDOW_ERROR_MESSAGE,
             retryable: true,
           };
           const result: AgentTurnResult = {

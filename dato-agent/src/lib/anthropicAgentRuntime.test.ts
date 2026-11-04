@@ -21,6 +21,7 @@ import type {
 import {
   ANTHROPIC_FAST_MODE_BETA,
   ANTHROPIC_FILES_API_BETA,
+  CONTEXT_WINDOW_ERROR_MESSAGE,
   createAgentRepairPolicy,
   createAgentRuntime,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
@@ -36,6 +37,8 @@ import {
   MAX_TOOL_RESULT_CHARACTERS,
   MAX_TOOL_RESULT_CHARACTERS_PER_TURN,
   normalizeAgentHistory,
+  OUTPUT_LIMIT_ERROR_MESSAGE,
+  OUTPUT_LIMIT_RETRY_LABEL,
 } from './agentRuntime';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from './conversations';
 import type {
@@ -3740,7 +3743,7 @@ describe('AnthropicAgentRuntime', () => {
       error: {
         code: 'incomplete',
         retryable: true,
-        message: expect.stringContaining('context window'),
+        message: CONTEXT_WINDOW_ERROR_MESSAGE,
       },
     });
     expect(anthropic.requests).toHaveLength(1);
@@ -3783,6 +3786,16 @@ describe('AnthropicAgentRuntime', () => {
     expect(JSON.stringify(retryMessages.at(-1))).toContain(
       'reached the output limit',
     );
+    // The editor learns why smaller approvals follow.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'activity',
+        activity: expect.objectContaining({
+          kind: 'continuation',
+          label: OUTPUT_LIMIT_RETRY_LABEL,
+        }),
+      }),
+    );
   });
 
   it('stops with a retryable incomplete turn when the retry also reaches the output limit', async () => {
@@ -3804,7 +3817,7 @@ describe('AnthropicAgentRuntime', () => {
       error: {
         code: 'incomplete',
         retryable: true,
-        message: expect.stringContaining('output limit'),
+        message: OUTPUT_LIMIT_ERROR_MESSAGE,
       },
     });
     expect(anthropic.requests).toHaveLength(2);
