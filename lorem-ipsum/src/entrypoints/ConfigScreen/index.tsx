@@ -1,7 +1,6 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import TableList, { type TableListColumn } from 'datocms-react-ui/TableList';
 import { type FormEvent, useMemo, useState } from 'react';
@@ -103,48 +102,37 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the field starts the frame, with no
+  // Page around it
   return (
-    <Page>
-      <Page.Content>
-        <form onSubmit={handleSubmit}>
-          <Page.Group
-            title="Automatic rules"
-            footer={
-              <Button
-                submit
-                tone="primary"
-                expand={false}
-                label="Save"
-                busy={saving}
-                disabled={
-                  dirty
-                    ? undefined
-                    : { reason: 'There are no changes to save.' }
-                }
-              />
-            }
-          >
-            <FieldWrapper
-              label="Automatic rules"
-              labelExtras={{ hidden: true }}
-              hint="A field that matches one of these rules gets the “Generate dummy text” action, also without the add-on. The pattern is a regular expression tested on the field's API key."
-            >
-              <TableList<AutoApplyRule>
-                value={rules}
-                onChange={setRules}
-                errors={errors}
-                touched={submitAttempted}
-                columns={columns}
-                emptyMessage="No rules yet"
-                add={{
-                  label: 'Add rule',
-                  newItem: () => ({ fieldTypes: [], apiKeyRegexp: '' }),
-                }}
-              />
-            </FieldWrapper>
-          </Page.Group>
-        </form>
-      </Page.Content>
-    </Page>
+    <form onSubmit={handleSubmit}>
+      <FieldWrapper
+        label="Automatic rules"
+        hint="A field that matches one of these rules gets the “Generate dummy text” action, also without the add-on. The pattern is a regular expression tested on the field's API key."
+      >
+        <TableList<AutoApplyRule>
+          value={rules}
+          onChange={setRules}
+          errors={errors}
+          touched={submitAttempted}
+          columns={columns}
+          emptyMessage="No rules yet"
+          add={{
+            label: 'Add rule',
+            newItem: () => ({ fieldTypes: [], apiKeyRegexp: '' }),
+          }}
+        />
+      </FieldWrapper>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={saving}
+        disabled={
+          dirty ? undefined : { reason: 'There are no changes to save.' }
+        }
+      />
+    </form>
   );
 }

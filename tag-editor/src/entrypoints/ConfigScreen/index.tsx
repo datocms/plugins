@@ -1,7 +1,6 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import TableList, {
   type TableListColumn,
@@ -189,67 +188,53 @@ export default function ConfigScreen({ ctx }: Props) {
   };
 
   return (
-    <Page>
-      <Page.Content>
-        <form onSubmit={handleSubmit}>
-          <Page.Group
-            title="Automatic rules"
-            footer={
-              <Button
-                submit
-                tone="primary"
-                expand={false}
-                label="Save"
-                busy={saving}
-                disabled={
-                  dirty
-                    ? undefined
-                    : { reason: 'There are no changes to save.' }
-                }
-              />
+    <form onSubmit={handleSubmit}>
+      <FieldWrapper
+        label="Automatic rules"
+        hint="A field that matches one of these rules uses the tag editor. The pattern is a regular expression tested on the field's API key."
+      >
+        <TableList<AutoApplyRule>
+          value={rules}
+          onChange={(nextRules, change) => {
+            setRules(nextRules);
+            // The touched state follows the rows
+            if (change.type === 'remove') {
+              setTouched((rows) =>
+                rows.filter((_row, i) => i !== change.index),
+              );
             }
-          >
-            <FieldWrapper
-              label="Automatic rules"
-              labelExtras={{ hidden: true }}
-              hint="A field that matches one of these rules uses the tag editor. The pattern is a regular expression tested on the field's API key."
-            >
-              <TableList<AutoApplyRule>
-                value={rules}
-                onChange={(nextRules, change) => {
-                  setRules(nextRules);
-                  // The touched state follows the rows
-                  if (change.type === 'remove') {
-                    setTouched((rows) =>
-                      rows.filter((_row, i) => i !== change.index),
-                    );
-                  }
-                }}
-                errors={errors}
-                touched={submitAttempted ? true : touched}
-                onCellBlur={({ index, field }) =>
-                  setTouched((rows) => {
-                    // Dense, so a remove keeps the other rows in step
-                    const nextRows = Array.from(
-                      { length: Math.max(rows.length, index + 1) },
-                      (_row, i) => rows[i],
-                    );
-                    const row = nextRows[index];
-                    nextRows[index] = {
-                      ...(typeof row === 'object' ? row : {}),
-                      [field]: true,
-                    };
-                    return nextRows;
-                  })
-                }
-                columns={columns}
-                emptyMessage="No rules yet"
-                add={{ label: 'Add rule', newItem: newRule }}
-              />
-            </FieldWrapper>
-          </Page.Group>
-        </form>
-      </Page.Content>
-    </Page>
+          }}
+          errors={errors}
+          touched={submitAttempted ? true : touched}
+          onCellBlur={({ index, field }) =>
+            setTouched((rows) => {
+              // Dense, so a remove keeps the other rows in step
+              const nextRows = Array.from(
+                { length: Math.max(rows.length, index + 1) },
+                (_row, i) => rows[i],
+              );
+              const row = nextRows[index];
+              nextRows[index] = {
+                ...(typeof row === 'object' ? row : {}),
+                [field]: true,
+              };
+              return nextRows;
+            })
+          }
+          columns={columns}
+          emptyMessage="No rules yet"
+          add={{ label: 'Add rule', newItem: newRule }}
+        />
+      </FieldWrapper>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={saving}
+        disabled={
+          dirty ? undefined : { reason: 'There are no changes to save.' }
+        }
+      />
+    </form>
   );
 }

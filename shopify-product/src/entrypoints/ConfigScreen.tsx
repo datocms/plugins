@@ -2,8 +2,6 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
-import { Page } from 'datocms-react-ui/Page';
-import Pill from 'datocms-react-ui/Pill';
 import { type FormEvent, useRef, useState } from 'react';
 import AdvancedSettings from '../components/settings/AdvancedSettings';
 import { connectionSignature } from '../components/settings/draft';
@@ -21,7 +19,7 @@ type Props = {
 };
 
 /**
- * The message under the last group: one sentence, the cause is above. Field
+ * The message under the last section: one sentence, the cause is above. Field
  * errors have none: each shows under its field, which takes the focus.
  */
 const FORM_MESSAGES: Record<FormMessage, string> = {
@@ -61,8 +59,8 @@ function canSaveAnyway(form: SettingsForm): boolean {
 function SettingsScreen({ ctx }: Props) {
   const form = useSettingsForm(ctx);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  // An error in a closed group would be invisible: it opens the group, which
-  // stays open once fixed (it would close under the user's cursor).
+  // An error in a closed section would be invisible: it opens the section,
+  // which stays open once fixed (it would close under the user's cursor).
   const autoApplyError = Boolean(form.errors.autoApply);
   if (autoApplyError && !advancedOpen) setAdvancedOpen(true);
   const advancedShown = advancedOpen || autoApplyError;
@@ -94,71 +92,66 @@ function SettingsScreen({ ctx }: Props) {
     void form.save();
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the store starts the frame, with no
+  // Page around it, under the callouts about the current settings
   return (
-    <Page>
-      <Page.Content>
-        <form onSubmit={handleSubmit}>
-          {form.checks.apiVersionOutdated && (
-            <Page.Group
-              title="Shopify API version"
-              tone="warning"
-              status={<Pill tone="warning">Expired</Pill>}
-            >
-              <Callout tone="warning">{API_VERSION_MESSAGE}</Callout>
-            </Page.Group>
-          )}
-          {form.readOnly && (
-            <Callout>
-              Your role can view these settings but can't change them.
-            </Callout>
-          )}
-          {form.draft.useDemoStore && (
-            <Callout>
-              The demo store is on: editors browse sample products until you
-              switch it off in Advanced settings.
-            </Callout>
-          )}
-          <StoreList form={form} locale={ctx.ui.locale} />
-          <AdvancedSettings
-            form={form}
-            open={advancedShown}
-            onToggle={() => setAdvancedOpen(!advancedShown)}
+    <form onSubmit={handleSubmit}>
+      {form.checks.apiVersionOutdated && (
+        <Callout tone="warning" title="Shopify API version expired">
+          {API_VERSION_MESSAGE}
+        </Callout>
+      )}
+      {form.readOnly && (
+        <Callout>
+          Your role can view these settings but can't change them.
+        </Callout>
+      )}
+      {form.draft.useDemoStore && (
+        <Callout>
+          The demo store is on: editors browse sample products until you switch
+          it off in Advanced settings.
+        </Callout>
+      )}
+      <StoreList form={form} locale={ctx.ui.locale} />
+      <AdvancedSettings
+        form={form}
+        open={advancedShown}
+        onToggle={() => setAdvancedOpen(!advancedShown)}
+      />
+      {form.formMessage && (
+        <Callout tone="danger">{FORM_MESSAGES[form.formMessage]}</Callout>
+      )}
+      {/* One form spans the stores and Advanced settings, so Save follows
+          the last section. A role that can't change the settings has nothing
+          to save (the callout at the top says so). */}
+      {!form.readOnly && (
+        <div className={styles.actions}>
+          <Button
+            ref={save.ref}
+            submit
+            tone="primary"
+            label="Save"
+            busy={form.saving && !savingAnyway}
+            disabled={saveDisabled(form, savingAnyway)}
           />
-          {form.formMessage && (
-            <Callout tone="danger">{FORM_MESSAGES[form.formMessage]}</Callout>
+          {canSaveAnyway(form) && (
+            <Button
+              ref={saveAnyway.ref}
+              tone="ghost"
+              label="Save anyway"
+              busy={savingAnyway}
+              disabled={
+                form.saving && !savingAnyway
+                  ? { reason: SAVING_REASON }
+                  : undefined
+              }
+              onClick={handleSaveAnyway}
+            />
           )}
-          {/* One form spans every group, so Save follows the last one. A
-              role that can't change the settings has nothing to save (the
-              callout at the top says so). */}
-          {!form.readOnly && (
-            <div className={styles.actions}>
-              <Button
-                ref={save.ref}
-                submit
-                tone="primary"
-                label="Save"
-                busy={form.saving && !savingAnyway}
-                disabled={saveDisabled(form, savingAnyway)}
-              />
-              {canSaveAnyway(form) && (
-                <Button
-                  ref={saveAnyway.ref}
-                  tone="ghost"
-                  label="Save anyway"
-                  busy={savingAnyway}
-                  disabled={
-                    form.saving && !savingAnyway
-                      ? { reason: SAVING_REASON }
-                      : undefined
-                  }
-                  onClick={handleSaveAnyway}
-                />
-              )}
-            </div>
-          )}
-        </form>
-      </Page.Content>
-    </Page>
+        </div>
+      )}
+    </form>
   );
 }
 

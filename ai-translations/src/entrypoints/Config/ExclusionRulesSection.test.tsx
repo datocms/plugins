@@ -178,7 +178,7 @@ describe('ExclusionRulesSection', () => {
     expect(screen.getByText('deleted_model')).toBeInTheDocument();
   });
 
-  it('closes the group on its title', () => {
+  it('closes the section on its title', () => {
     const props = createProps();
     renderWithCanvas(<ExclusionRulesSection {...props} />);
 
@@ -189,7 +189,7 @@ describe('ExclusionRulesSection', () => {
     expect(props.setShowExclusionRules).toHaveBeenCalledWith(false);
   });
 
-  it('shows only the title of a closed group, with no callout without exclusions', () => {
+  it('shows only the title of a closed section, with no callout without exclusions', () => {
     renderWithCanvas(
       <ExclusionRulesSection
         {...createProps({
@@ -207,7 +207,7 @@ describe('ExclusionRulesSection', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps saying in the header of a closed group that exclusions exist', () => {
+  it('keeps saying in the title of a closed section that exclusions exist', () => {
     renderWithCanvas(
       <ExclusionRulesSection
         {...createProps({

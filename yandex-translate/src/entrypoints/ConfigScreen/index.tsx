@@ -2,7 +2,6 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import TableList, { type TableListColumn } from 'datocms-react-ui/TableList';
@@ -141,60 +140,50 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          <form onSubmit={handleSubmit}>
-            <Page.Group
-              title="Settings"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  expand={false}
-                  label="Save"
-                  busy={saving}
-                  disabled={
-                    dirty
-                      ? undefined
-                      : { reason: 'There are no changes to save.' }
-                  }
-                />
-              }
-            >
-              <FieldWrapper
-                label="Yandex API key"
-                required
-                error={submitAttempted ? apiKeyError : undefined}
-                docs={{
-                  label: 'Yandex Translate API',
-                  to: 'https://tech.yandex.com/translate/',
-                }}
-              >
-                <StringInput code value={apiKey} onChange={setApiKey} />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Automatic rules"
-                hint="A localized field that matches one of these rules gets the translate button. The pattern is a regular expression tested on the field's API key."
-              >
-                <TableList<AutoApplyRule>
-                  value={rules}
-                  onChange={setRules}
-                  errors={ruleErrors}
-                  touched={submitAttempted}
-                  columns={columns}
-                  emptyMessage="No rules yet"
-                  add={{
-                    label: 'Add rule',
-                    newItem: () => ({ fieldTypes: [], apiKeyRegexp: '' }),
-                  }}
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      <form onSubmit={handleSubmit}>
+        <FieldWrapper
+          label="Yandex API key"
+          required
+          error={submitAttempted ? apiKeyError : undefined}
+          docs={{
+            label: 'Yandex Translate API',
+            to: 'https://tech.yandex.com/translate/',
+          }}
+        >
+          <StringInput code value={apiKey} onChange={setApiKey} />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Automatic rules"
+          hint="A localized field that matches one of these rules gets the translate button. The pattern is a regular expression tested on the field's API key."
+        >
+          <TableList<AutoApplyRule>
+            value={rules}
+            onChange={setRules}
+            errors={ruleErrors}
+            touched={submitAttempted}
+            columns={columns}
+            emptyMessage="No rules yet"
+            add={{
+              label: 'Add rule',
+              newItem: () => ({ fieldTypes: [], apiKeyRegexp: '' }),
+            }}
+          />
+        </FieldWrapper>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={saving}
+          disabled={
+            dirty ? undefined : { reason: 'There are no changes to save.' }
+          }
+        />
+      </form>
     </Canvas>
   );
 }

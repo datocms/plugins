@@ -1,9 +1,9 @@
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { useCopyToClipboard } from 'datocms-react-ui/hooks/useCopyToClipboard';
-import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
-import SettingsList from 'datocms-react-ui/SettingsList';
+import { Page, type PageCollapse } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
+import type { ReactNode } from 'react';
 import { DEPLOY_PROVIDER_OPTIONS } from '../utils/deployProviders';
 import styles from './StepContent.module.css';
 import {
@@ -14,7 +14,7 @@ import {
 
 type Props = {
   config: BackupsConfig;
-  group: Pick<PageGroupProps, 'status' | 'collapse'>;
+  section: { status?: ReactNode; collapse: PageCollapse };
 };
 
 const getRemoveReason = (config: BackupsConfig) => {
@@ -35,7 +35,7 @@ const getSaveReason = (config: BackupsConfig) => {
 };
 
 /** Step 2: deploy the backup service and save its public URL. */
-export const StepDeploy = ({ config, group }: Props) => {
+export const StepDeploy = ({ config, section }: Props) => {
   const {
     canEdit,
     isBusy,
@@ -56,98 +56,85 @@ export const StepDeploy = ({ config, group }: Props) => {
   const saveReason = getSaveReason(config);
 
   return (
-    <Page.Group
-      title="2. Deploy the backup service"
-      {...group}
-      footer={
-        <div className={styles.buttons}>
-          {savedUrl.trim().length > 0 && (
-            <Button
-              tone="ghost-alert"
-              label="Remove saved deployment"
-              busy={isDisconnecting}
-              onClick={() => {
-                void removeDeployment();
-              }}
-              disabled={removeReason ? { reason: removeReason } : false}
-            />
-          )}
-          <Button
-            tone="primary"
-            label="Save URL & continue"
-            className={styles.end}
-            busy={isSavingDeployment}
-            onClick={() => {
-              void saveDeploymentUrl();
-            }}
-            disabled={saveReason ? { reason: saveReason } : false}
-          />
-        </div>
-      }
-    >
-      <SettingsList className={styles.block}>
-        <SettingsList.Row
-          title="API token"
-          description={
-            <>
+    <Page.Section>
+      <Page.SectionTitle collapse={section.collapse}>
+        2. Deploy the backup service {section.status}
+      </Page.SectionTitle>
+      {section.collapse.open && (
+        <>
+          <Page.SectionDescription>
+            <p>
               Add a full-access API token as{' '}
               <code>DATOCMS_FULLACCESS_API_TOKEN</code>.
-            </>
-          }
-          action={
+            </p>
+            <p>
+              Add the secret from step 1 as <code>CRON_SECRET</code> on Vercel,
+              or as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on Netlify or
+              Cloudflare.
+            </p>
+          </Page.SectionDescription>
+          <div className={`${styles.buttons} ${styles.block}`}>
             <Button
-              tone="ghost"
               label="Open API tokens"
               to="/project_settings/access_tokens"
               disabled={readOnly}
             />
-          }
-        />
-        <SettingsList.Row
-          title="Shared secret"
-          description={
-            <>
-              Add the secret from step 1 as <code>CRON_SECRET</code> on Vercel,
-              or as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on Netlify or
-              Cloudflare.
-            </>
-          }
-          action={
             <Button
-              tone="ghost"
               label={copied ? 'Copied' : 'Copy secret'}
               onClick={copy}
               disabled={readOnly}
             />
-          }
-        />
-      </SettingsList>
-      <div className={`${styles.buttons} ${styles.block}`}>
-        {DEPLOY_PROVIDER_OPTIONS.map((option) => (
-          <Button
-            key={option.provider}
-            label={`Deploy to ${option.label}`}
-            href={option.url}
-            newTab
-            disabled={readOnly}
-          />
-        ))}
-      </div>
-      <FieldWrapper
-        label="Deployment URL"
-        error={deploymentUrlError ?? undefined}
-      >
-        <StringInput
-          type="url"
-          code
-          value={urlInput}
-          onChange={(value) => setUrlInput(value ?? '')}
-          placeholder="https://backups.example.com"
-          autoComplete="url"
-          spellCheck={false}
-          disabled={!canEdit || isBusy}
-        />
-      </FieldWrapper>
-    </Page.Group>
+          </div>
+          <div className={`${styles.buttons} ${styles.block}`}>
+            {DEPLOY_PROVIDER_OPTIONS.map((option) => (
+              <Button
+                key={option.provider}
+                label={`Deploy to ${option.label}`}
+                href={option.url}
+                newTab
+                disabled={readOnly}
+              />
+            ))}
+          </div>
+          <FieldWrapper
+            label="Deployment URL"
+            error={deploymentUrlError ?? undefined}
+          >
+            <StringInput
+              type="url"
+              code
+              value={urlInput}
+              onChange={(value) => setUrlInput(value ?? '')}
+              placeholder="https://backups.example.com"
+              autoComplete="url"
+              spellCheck={false}
+              disabled={!canEdit || isBusy}
+            />
+          </FieldWrapper>
+          <div className={styles.buttons}>
+            <Button
+              tone="primary"
+              label="Save URL & continue"
+              busy={isSavingDeployment}
+              onClick={() => {
+                void saveDeploymentUrl();
+              }}
+              disabled={saveReason ? { reason: saveReason } : false}
+            />
+            {savedUrl.trim().length > 0 && (
+              <Button
+                tone="ghost-alert"
+                label="Remove saved deployment"
+                busy={isDisconnecting}
+                onClick={() => {
+                  void removeDeployment();
+                }}
+                disabled={removeReason ? { reason: removeReason } : false}
+              />
+            )}
+          </div>
+        </>
+      )}
+    </Page.Section>
   );
 };

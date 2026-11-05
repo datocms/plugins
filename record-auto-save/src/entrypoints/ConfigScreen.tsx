@@ -3,7 +3,6 @@ import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InputGroup from 'datocms-react-ui/InputGroup';
-import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { type FormEvent, useState } from 'react';
@@ -87,90 +86,82 @@ function ConfigScreen({ ctx }: PropTypes) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          <form onSubmit={submitHandler}>
-            <Page.Group
-              title="Auto-save"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  expand={false}
-                  label="Save"
-                  busy={saving}
-                  disabled={
-                    isFormDirty
-                      ? undefined
-                      : { reason: 'There are no changes to save.' }
-                  }
-                />
-              }
-            >
-              <FieldWrapper
-                label="Models"
-                hint="Records of these models save automatically when they have unsaved changes."
-              >
-                <SelectInput
-                  multiple
-                  value={selectedModels.map((model) => model.value)}
-                  options={allModels}
-                  acceptValueNotIncludedInOptions={(value) =>
-                    savedModels.find((model) => model.value === value)
-                  }
-                  placeholder="Pick models"
-                  onChange={(_value, options) => {
-                    setSelectedModels(options);
-                    setIsFormDirty(true);
-                  }}
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Interval"
-                required
-                hint="How long a record waits before it saves its changes."
-                error={
-                  hasAValidationError
-                    ? 'Enter a number of seconds, 1 or more.'
-                    : undefined
-                }
-              >
-                <InputGroup
-                  value={autoSaveInterval}
-                  onChange={(value) => {
-                    setAutoSaveInterval(value);
-                    setIsFormDirty(true);
-                    setHasAValidationError(false);
-                  }}
-                  post="seconds"
-                />
-              </FieldWrapper>
-              <FieldWrapper hint="Each change starts the interval again, so the record saves only after a pause in editing.">
-                <SwitchInput
-                  label="Wait until editing stops"
-                  value={startTimerAfterEditingStops}
-                  onChange={(value) => {
-                    setStartTimerAfterEditingStops(Boolean(value));
-                    setIsFormDirty(true);
-                  }}
-                />
-              </FieldWrapper>
-              <FieldWrapper>
-                <SwitchInput
-                  label="Show a notification after each auto-save"
-                  value={showNotification}
-                  onChange={(value) => {
-                    setShowNotification(Boolean(value));
-                    setIsFormDirty(true);
-                  }}
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      <form onSubmit={submitHandler}>
+        <FieldWrapper
+          label="Models"
+          hint="Records of these models save automatically when they have unsaved changes."
+        >
+          <SelectInput
+            multiple
+            value={selectedModels.map((model) => model.value)}
+            options={allModels}
+            acceptValueNotIncludedInOptions={(value) =>
+              savedModels.find((model) => model.value === value)
+            }
+            placeholder="Pick models"
+            onChange={(_value, options) => {
+              setSelectedModels(options);
+              setIsFormDirty(true);
+            }}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Interval"
+          required
+          hint="How long a record waits before it saves its changes."
+          error={
+            hasAValidationError
+              ? 'Enter a number of seconds, 1 or more.'
+              : undefined
+          }
+        >
+          <InputGroup
+            value={autoSaveInterval}
+            onChange={(value) => {
+              setAutoSaveInterval(value);
+              setIsFormDirty(true);
+              setHasAValidationError(false);
+            }}
+            post="seconds"
+          />
+        </FieldWrapper>
+        <FieldWrapper hint="Each change starts the interval again, so the record saves only after a pause in editing.">
+          <SwitchInput
+            label="Wait until editing stops"
+            value={startTimerAfterEditingStops}
+            onChange={(value) => {
+              setStartTimerAfterEditingStops(Boolean(value));
+              setIsFormDirty(true);
+            }}
+          />
+        </FieldWrapper>
+        <FieldWrapper>
+          <SwitchInput
+            label="Show a notification after each auto-save"
+            value={showNotification}
+            onChange={(value) => {
+              setShowNotification(Boolean(value));
+              setIsFormDirty(true);
+            }}
+          />
+        </FieldWrapper>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={saving}
+          disabled={
+            isFormDirty
+              ? undefined
+              : { reason: 'There are no changes to save.' }
+          }
+        />
+      </form>
     </Canvas>
   );
 }

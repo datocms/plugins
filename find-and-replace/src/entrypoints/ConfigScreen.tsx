@@ -4,7 +4,6 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import RadioGroupInput, {
   type RadioGroupOption,
 } from 'datocms-react-ui/RadioGroupInput';
@@ -341,111 +340,104 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   }
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          {!canEditSchema && (
-            <Callout>Your role can't change these settings.</Callout>
-          )}
-          <form onSubmit={handleSubmit}>
-            <Page.Group
-              title="Access"
-              footer={
-                // A role that can't change the settings has nothing to save.
-                canEditSchema ? (
-                  <Button
-                    submit
-                    tone="primary"
-                    label="Save"
-                    busy={isSaving}
-                    disabled={disabledReason}
-                  />
-                ) : undefined
+      {!canEditSchema && (
+        <Callout>Your role can't change these settings.</Callout>
+      )}
+      <form onSubmit={handleSubmit}>
+        {hasRestriction && loadError && (
+          <Callout tone="danger" title={loadError.title ?? undefined}>
+            {loadError.text}
+          </Callout>
+        )}
+        <FieldWrapper label="Who can use Find and replace">
+          <RadioGroupInput
+            value={toScope(draft.restrictToRoles)}
+            options={ROLE_SCOPES}
+            disabled={!canEditSchema}
+            onChange={(scope) =>
+              setDraft((current) => ({
+                ...current,
+                restrictToRoles: scope === 'some',
+              }))
+            }
+          />
+        </FieldWrapper>
+        {draft.restrictToRoles && (
+          <FieldWrapper
+            label="Roles"
+            hint="Only these roles see Find and replace in the navigation and can open it."
+            error={(touched.roles && roleSelectionError) || undefined}
+          >
+            <SelectInput
+              multiple
+              value={draft.allowedRoleIds}
+              options={roleOptions}
+              loading={isLoadingOptions}
+              disabled={selectsLocked}
+              acceptValueNotIncludedInOptions={savedRoleOption}
+              onBlur={touchRoles}
+              onMenuClose={touchRoles}
+              onChange={(allowedRoleIds) =>
+                setDraft((current) => ({
+                  ...current,
+                  allowedRoleIds: allowedRoleIds ?? [],
+                }))
               }
-            >
-              {hasRestriction && loadError && (
-                <Callout tone="danger" title={loadError.title ?? undefined}>
-                  {loadError.text}
-                </Callout>
-              )}
-              <FieldWrapper label="Who can use Find and replace">
-                <RadioGroupInput
-                  value={toScope(draft.restrictToRoles)}
-                  options={ROLE_SCOPES}
-                  disabled={!canEditSchema}
-                  onChange={(scope) =>
-                    setDraft((current) => ({
-                      ...current,
-                      restrictToRoles: scope === 'some',
-                    }))
-                  }
-                />
-              </FieldWrapper>
-              {draft.restrictToRoles && (
-                <FieldWrapper
-                  label="Roles"
-                  hint="Only these roles see Find and replace in the navigation and can open it."
-                  error={(touched.roles && roleSelectionError) || undefined}
-                >
-                  <SelectInput
-                    multiple
-                    value={draft.allowedRoleIds}
-                    options={roleOptions}
-                    loading={isLoadingOptions}
-                    disabled={selectsLocked}
-                    acceptValueNotIncludedInOptions={savedRoleOption}
-                    onBlur={touchRoles}
-                    onMenuClose={touchRoles}
-                    onChange={(allowedRoleIds) =>
-                      setDraft((current) => ({
-                        ...current,
-                        allowedRoleIds: allowedRoleIds ?? [],
-                      }))
-                    }
-                  />
-                </FieldWrapper>
-              )}
-              <FieldWrapper label="Models it searches">
-                <RadioGroupInput
-                  value={toScope(draft.restrictToModels)}
-                  options={MODEL_SCOPES}
-                  disabled={!canEditSchema}
-                  onChange={(scope) =>
-                    setDraft((current) => ({
-                      ...current,
-                      restrictToModels: scope === 'some',
-                    }))
-                  }
-                />
-              </FieldWrapper>
-              {draft.restrictToModels && (
-                <FieldWrapper
-                  label="Models"
-                  error={(touched.models && modelSelectionError) || undefined}
-                >
-                  <SelectInput
-                    multiple
-                    value={draft.allowedModelIds}
-                    options={modelOptions}
-                    loading={isLoadingOptions}
-                    disabled={selectsLocked}
-                    acceptValueNotIncludedInOptions={savedModelOption}
-                    onBlur={touchModels}
-                    onMenuClose={touchModels}
-                    onChange={(allowedModelIds) =>
-                      setDraft((current) => ({
-                        ...current,
-                        allowedModelIds: allowedModelIds ?? [],
-                      }))
-                    }
-                  />
-                </FieldWrapper>
-              )}
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+            />
+          </FieldWrapper>
+        )}
+        <FieldWrapper label="Models it searches">
+          <RadioGroupInput
+            value={toScope(draft.restrictToModels)}
+            options={MODEL_SCOPES}
+            disabled={!canEditSchema}
+            onChange={(scope) =>
+              setDraft((current) => ({
+                ...current,
+                restrictToModels: scope === 'some',
+              }))
+            }
+          />
+        </FieldWrapper>
+        {draft.restrictToModels && (
+          <FieldWrapper
+            label="Models"
+            error={(touched.models && modelSelectionError) || undefined}
+          >
+            <SelectInput
+              multiple
+              value={draft.allowedModelIds}
+              options={modelOptions}
+              loading={isLoadingOptions}
+              disabled={selectsLocked}
+              acceptValueNotIncludedInOptions={savedModelOption}
+              onBlur={touchModels}
+              onMenuClose={touchModels}
+              onChange={(allowedModelIds) =>
+                setDraft((current) => ({
+                  ...current,
+                  allowedModelIds: allowedModelIds ?? [],
+                }))
+              }
+            />
+          </FieldWrapper>
+        )}
+        {/* A role that can't change the settings has nothing to save */}
+        {canEditSchema && (
+          <Button
+            submit
+            tone="primary"
+            label="Save"
+            busy={isSaving}
+            disabled={disabledReason}
+          />
+        )}
+      </form>
     </Canvas>
   );
 }

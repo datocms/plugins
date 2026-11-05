@@ -1,14 +1,13 @@
 /* Placement only: the kit components draw themselves. */
 
-/*
- * The page in its self-sizing frame. The kit's 60vh minimum is meant for a
- * full-height area: with the auto-resizer, it would keep growing the frame.
- */
-.page {
-  min-height: 0;
+/* The Add field button, between the fields and the list: the space between
+   two fields */
+.block {
+  margin-bottom: var(--form-field-gap);
 }
 
-/* A block of the form that isn't a field: the space between two fields. */
-.block:not(:last-child) {
+/* Save follows the section with the space between two fields, as it follows
+   a field */
+.lastSection {
   margin-bottom: var(--form-field-gap);
 }

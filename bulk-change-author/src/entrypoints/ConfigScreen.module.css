@@ -1,8 +1,5 @@
-/*
- * The page in its self-sizing frame. The kit's 60vh minimum is meant for a
- * full-height area: with the auto-resizer, it keeps the frame taller than
- * the content.
- */
-.page {
-  min-height: 0;
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own */
+.endSection {
+  margin-bottom: 0;
 }

@@ -1,7 +1,7 @@
 /**
  * GeminiConfig.tsx
  * Configuration component for Google Gemini vendor settings: the settings
- * group with the API key and the model.
+ * section with the API key and the model.
  */
 
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
@@ -29,7 +29,8 @@ export default function GeminiConfig({
   modelList,
 }: GeminiConfigProps) {
   return (
-    <Page.Group title={vendorSettingsTitle('google')}>
+    <Page.Section>
+      <Page.SectionTitle>{vendorSettingsTitle('google')}</Page.SectionTitle>
       <FieldWrapper
         label="API key"
         required
@@ -50,6 +51,6 @@ export default function GeminiConfig({
         onChange={setGeminiModel}
         modelList={modelList}
       />
-    </Page.Group>
+    </Page.Section>
   );
 }

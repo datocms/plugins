@@ -3,14 +3,12 @@ import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import NumberInput from 'datocms-react-ui/NumberInput';
-import { Page } from 'datocms-react-ui/Page';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { type FormEvent, useState } from 'react';
 import {
   normalizeGlobalParams,
   type ValidGlobalParams,
 } from '../../utils/globalParams';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -53,60 +51,48 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page className={s.page}>
-        <Page.Content>
-          <form onSubmit={handleSubmit}>
-            <Page.Group
-              title="Sidebar panel"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  expand={false}
-                  label="Save"
-                  busy={saving}
-                  disabled={
-                    !dirty
-                      ? { reason: 'There are no changes to save.' }
-                      : invalid
-                        ? {
-                            reason: 'Enter the minimum number of fields first.',
-                          }
-                        : undefined
-                  }
-                />
-              }
-            >
-              <FieldWrapper
-                label="Minimum number of fields"
-                required
-                hint="The “Scroll to field” panel shows only on the records of models with at least this many fields."
-                error={invalid ? 'Enter a number.' : undefined}
-              >
-                <NumberInput
-                  inputMode="numeric"
-                  placeholder="5"
-                  value={draft.minFieldsToShow}
-                  onChange={(value) =>
-                    setDraft({ ...draft, minFieldsToShow: value })
-                  }
-                />
-              </FieldWrapper>
-              <FieldWrapper>
-                <SwitchInput
-                  label="Panel starts open"
-                  value={draft.startOpen}
-                  onChange={(value) =>
-                    setDraft({ ...draft, startOpen: Boolean(value) })
-                  }
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      <form onSubmit={handleSubmit}>
+        <FieldWrapper
+          label="Minimum number of fields"
+          required
+          hint="The “Scroll to field” panel shows only on the records of models with at least this many fields."
+          error={invalid ? 'Enter a number.' : undefined}
+        >
+          <NumberInput
+            inputMode="numeric"
+            placeholder="5"
+            value={draft.minFieldsToShow}
+            onChange={(value) => setDraft({ ...draft, minFieldsToShow: value })}
+          />
+        </FieldWrapper>
+        <FieldWrapper>
+          <SwitchInput
+            label="Panel starts open"
+            value={draft.startOpen}
+            onChange={(value) =>
+              setDraft({ ...draft, startOpen: Boolean(value) })
+            }
+          />
+        </FieldWrapper>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={saving}
+          disabled={
+            !dirty
+              ? { reason: 'There are no changes to save.' }
+              : invalid
+                ? { reason: 'Enter the minimum number of fields first.' }
+                : undefined
+          }
+        />
+      </form>
     </Canvas>
   );
 }

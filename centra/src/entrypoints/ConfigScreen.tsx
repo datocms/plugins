@@ -3,7 +3,6 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
@@ -115,68 +114,58 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const inputsDisabled = !canEdit || isSaving;
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          {/* noValidate: the URL errors show on their field, not in a bubble
-              of the browser */}
-          <form noValidate onSubmit={handleSubmit}>
-            {!canEdit && <Callout>{READ_ONLY_REASON}</Callout>}
-            <Page.Group
-              title="Storefront API"
-              footer={
-                canEdit && (
-                  <Button
-                    submit
-                    tone="primary"
-                    label="Save"
-                    expand={false}
-                    busy={isSaving}
-                    disabled={
-                      isDirty
-                        ? undefined
-                        : { reason: 'There are no changes to save.' }
-                    }
-                  />
-                )
-              }
-            >
-              <FieldWrapper
-                label="Storefront API URL"
-                required
-                hint="The no-session GraphQL URL from the Storefront API plugin in Centra."
-                error={errors.endpoint}
-              >
-                <StringInput
-                  type="url"
-                  code
-                  spellCheck={false}
-                  autoComplete="off"
-                  placeholder="https://example.centra.com/store-api-no-session"
-                  value={draft.endpoint}
-                  disabled={inputsDisabled}
-                  onChange={(endpoint) => update({ endpoint: endpoint ?? '' })}
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="API token"
-                required
-                hint="A read-only no-session token. Anyone who can open this project can read it."
-                error={errors.token}
-              >
-                <PasswordInput
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={draft.token}
-                  disabled={inputsDisabled}
-                  onChange={(token) => update({ token: token ?? '' })}
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      {/* noValidate: the URL errors show on their field, not in a bubble of
+          the browser */}
+      <form noValidate onSubmit={handleSubmit}>
+        {!canEdit && <Callout>{READ_ONLY_REASON}</Callout>}
+        <FieldWrapper
+          label="Storefront API URL"
+          required
+          hint="The no-session GraphQL URL from the Storefront API plugin in Centra."
+          error={errors.endpoint}
+        >
+          <StringInput
+            type="url"
+            code
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="https://example.centra.com/store-api-no-session"
+            value={draft.endpoint}
+            disabled={inputsDisabled}
+            onChange={(endpoint) => update({ endpoint: endpoint ?? '' })}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="API token"
+          required
+          hint="A read-only no-session token. Anyone who can open this project can read it."
+          error={errors.token}
+        >
+          <PasswordInput
+            autoComplete="off"
+            spellCheck={false}
+            value={draft.token}
+            disabled={inputsDisabled}
+            onChange={(token) => update({ token: token ?? '' })}
+          />
+        </FieldWrapper>
+        {canEdit && (
+          <Button
+            submit
+            tone="primary"
+            label="Save"
+            busy={isSaving}
+            disabled={
+              isDirty ? undefined : { reason: 'There are no changes to save.' }
+            }
+          />
+        )}
+      </form>
     </Canvas>
   );
 }

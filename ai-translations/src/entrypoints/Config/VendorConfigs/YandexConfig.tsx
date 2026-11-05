@@ -1,7 +1,7 @@
 /**
  * YandexConfig.tsx
  * Configuration component for Yandex Translate vendor settings: the settings
- * group with the API key, the optional folder ID and a credentials test. A
+ * section with the API key, the optional folder ID and a credentials test. A
  * passed test is a toast (a finished action); a failed one is the error of
  * the key field until the key or the folder changes, as for DeepL.
  */
@@ -18,7 +18,6 @@ import {
   normalizeProviderError,
 } from '../../../utils/translation/ProviderErrors';
 import YandexProvider from '../../../utils/translation/providers/YandexProvider';
-import styles from '../Config.module.css';
 import { vendorSettingsTitle } from '../configConstants';
 
 const SETUP_GUIDE_URL =
@@ -111,7 +110,8 @@ export default function YandexConfig({
   };
 
   return (
-    <Page.Group title={vendorSettingsTitle('yandex')}>
+    <Page.Section>
+      <Page.SectionTitle>{vendorSettingsTitle('yandex')}</Page.SectionTitle>
       <FieldWrapper
         label="API key"
         required
@@ -144,17 +144,15 @@ export default function YandexConfig({
           spellCheck={false}
         />
       </FieldWrapper>
-      <div className={styles.block}>
-        <Button
-          id={testId}
-          label="Test credentials"
-          busy={isTesting}
-          disabled={testDisabled}
-          onClick={() => {
-            void handleTestCredentials();
-          }}
-        />
-      </div>
-    </Page.Group>
+      <Button
+        id={testId}
+        label="Test credentials"
+        busy={isTesting}
+        disabled={testDisabled}
+        onClick={() => {
+          void handleTestCredentials();
+        }}
+      />
+    </Page.Section>
   );
 }

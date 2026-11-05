@@ -3,7 +3,6 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import NumberInput from 'datocms-react-ui/NumberInput';
-import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
 import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
@@ -313,135 +312,126 @@ export default function ConfigScreen({ ctx }: Props) {
     [ctx, hasAnyKey, values],
   );
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
-    <Page>
-      <Page.Content>
-        <form onSubmit={handleSubmit}>
-          <Page.Group
-            title="Image generation"
-            footer={
-              <Button
-                submit
-                tone="primary"
-                label="Save"
-                expand={false}
-                busy={saving}
-                disabled={saveReason ? { reason: saveReason } : undefined}
-              />
-            }
+    <form onSubmit={handleSubmit}>
+      <FieldWrapper label="Provider">
+        <RadioGroupInput
+          value={activeProvider}
+          onChange={(next) => next && handleProviderChange(next)}
+          options={providerRadioOptions}
+        />
+      </FieldWrapper>
+
+      <FieldWrapper
+        label="API key"
+        required
+        docs={apiKeyDocs[activeProvider]}
+        error={apiKeyFieldError ?? undefined}
+      >
+        <PasswordInput
+          value={activeProviderValues.apiKey}
+          onChange={(next) => handleApiKeyChange(next ?? '')}
+          placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
+
+      <FieldWrapper
+        label="Model"
+        required
+        hint={model.hint}
+        error={model.error}
+      >
+        <SelectInput
+          value={activeProviderModel || null}
+          onChange={(next) => next && handleModelChange(next)}
+          options={modelOptions}
+          placeholder="Pick a model"
+          clearable={false}
+          loading={modelOptionsState.status === 'loading'}
+          disabled={
+            !activeProviderApiKey ||
+            modelOptionsState.status === 'loading' ||
+            modelOptions.length === 0
+          }
+          isOptionDisabled={(option) => Boolean(option.unavailable)}
+        />
+      </FieldWrapper>
+
+      {modelOptionsState.overQuota && (
+        <Callout tone="danger">
+          This {providerLabel} account is over its quota.{' '}
+          <a
+            href={providerBillingUrls[activeProvider]}
+            target="_blank"
+            rel="noreferrer"
           >
-            <FieldWrapper label="Provider">
+            Check its billing
+          </a>
+          , then reload this page.
+        </Callout>
+      )}
+
+      {showOutputControls && (
+        <div className="form__field form__row">
+          <div className="form__row__cell">
+            <FieldWrapper
+              label="Quality"
+              hint="Higher quality takes longer and costs more per image."
+            >
               <RadioGroupInput
-                value={activeProvider}
-                onChange={(next) => next && handleProviderChange(next)}
-                options={providerRadioOptions}
+                small
+                value={values.providers.openai.defaultQuality}
+                onChange={(next) => next && handleQualityChange(next)}
+                options={imageQualityOptions}
               />
             </FieldWrapper>
-
-            <FieldWrapper
-              label="API key"
-              required
-              docs={apiKeyDocs[activeProvider]}
-              error={apiKeyFieldError ?? undefined}
-            >
-              <PasswordInput
-                value={activeProviderValues.apiKey}
-                onChange={(next) => handleApiKeyChange(next ?? '')}
-                placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
-                autoComplete="off"
-                spellCheck={false}
+          </div>
+          <div className="form__row__cell">
+            <FieldWrapper label="Output format">
+              <RadioGroupInput
+                small
+                value={values.providers.openai.defaultOutputFormat}
+                onChange={(next) => next && handleOutputFormatChange(next)}
+                options={imageOutputFormatOptions}
               />
             </FieldWrapper>
+          </div>
+        </div>
+      )}
 
-            <FieldWrapper
-              label="Model"
-              required
-              hint={model.hint}
-              error={model.error}
-            >
-              <SelectInput
-                value={activeProviderModel || null}
-                onChange={(next) => next && handleModelChange(next)}
-                options={modelOptions}
-                placeholder="Pick a model"
-                clearable={false}
-                loading={modelOptionsState.status === 'loading'}
-                disabled={
-                  !activeProviderApiKey ||
-                  modelOptionsState.status === 'loading' ||
-                  modelOptions.length === 0
-                }
-                isOptionDisabled={(option) => Boolean(option.unavailable)}
-              />
-            </FieldWrapper>
+      {showCompressionControl && (
+        <FieldWrapper
+          label="Compression"
+          hint="Lower numbers make smaller files with less detail. 100 gives the best quality."
+        >
+          <NumberInput
+            value={values.providers.openai.defaultCompression}
+            onChange={(next) => handleCompressionChange(next ?? 100)}
+            onBlur={(next) =>
+              handleCompressionChange(normalizeCompression(next))
+            }
+            placeholder="100"
+            inputMode="numeric"
+            autoComplete="off"
+          />
+        </FieldWrapper>
+      )}
 
-            {modelOptionsState.overQuota && (
-              <Callout tone="danger">
-                This {providerLabel} account is over its quota.{' '}
-                <a
-                  href={providerBillingUrls[activeProvider]}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Check its billing
-                </a>
-                , then reload this page.
-              </Callout>
-            )}
+      {errorMessage && <Callout tone="danger">{errorMessage}</Callout>}
 
-            {showOutputControls && (
-              <div className="form__field form__row">
-                <div className="form__row__cell">
-                  <FieldWrapper
-                    label="Quality"
-                    hint="Higher quality takes longer and costs more per image."
-                  >
-                    <RadioGroupInput
-                      small
-                      value={values.providers.openai.defaultQuality}
-                      onChange={(next) => next && handleQualityChange(next)}
-                      options={imageQualityOptions}
-                    />
-                  </FieldWrapper>
-                </div>
-                <div className="form__row__cell">
-                  <FieldWrapper label="Output format">
-                    <RadioGroupInput
-                      small
-                      value={values.providers.openai.defaultOutputFormat}
-                      onChange={(next) =>
-                        next && handleOutputFormatChange(next)
-                      }
-                      options={imageOutputFormatOptions}
-                    />
-                  </FieldWrapper>
-                </div>
-              </div>
-            )}
-
-            {showCompressionControl && (
-              <FieldWrapper
-                label="Compression"
-                hint="Lower numbers make smaller files with less detail. 100 gives the best quality."
-              >
-                <NumberInput
-                  value={values.providers.openai.defaultCompression}
-                  onChange={(next) => handleCompressionChange(next ?? 100)}
-                  onBlur={(next) =>
-                    handleCompressionChange(normalizeCompression(next))
-                  }
-                  placeholder="100"
-                  inputMode="numeric"
-                  autoComplete="off"
-                />
-              </FieldWrapper>
-            )}
-
-            {errorMessage && <Callout tone="danger">{errorMessage}</Callout>}
-          </Page.Group>
-        </form>
-      </Page.Content>
-    </Page>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={saving}
+        disabled={saveReason ? { reason: saveReason } : undefined}
+      />
+    </form>
   );
 }
 

@@ -4,22 +4,13 @@ import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
-import Pill from 'datocms-react-ui/Pill';
 import RadioGroupInput, {
   type RadioGroupOption,
 } from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
-import SettingsList from 'datocms-react-ui/SettingsList';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
-import {
-  type FormEvent,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { derror, setDebugEnabled } from '../lib/debugLog';
 import {
   buildAuthorizeFlow,
@@ -56,7 +47,7 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-type GroupProps = {
+type SectionProps = {
   ctx: RenderConfigScreenCtx;
   params: PromptDatoParams;
 };
@@ -241,7 +232,7 @@ async function revokeStoredToken(params: PromptDatoParams): Promise<boolean> {
   }
 }
 
-function ConnectionGroup({ ctx, params }: GroupProps) {
+function ConnectionSection({ ctx, params }: SectionProps) {
   const [connectStage, setConnectStage] = useState<ConnectStage>('idle');
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -297,60 +288,39 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
     }
   };
 
+  // The first part of the screen has no title: the host draws "Plugin
+  // settings" above it, so the description names the account
   return (
-    <Page.Group
-      title="DatoCMS connection"
-      tone={isConnected ? undefined : 'warning'}
-      status={
-        isConnected ? (
-          <Pill tone="success">Connected</Pill>
-        ) : (
-          <Pill tone="warning">Not connected</Pill>
-        )
-      }
-    >
+    <Page.Section>
+      <Page.SectionDescription>
+        {/* The busy button tells that the sign-in runs: the description only
+            tells where to go on, while the sign-in window waits */}
+        <span role="status">
+          {connectStage === 'awaiting-consent'
+            ? 'Approve the access in the sign-in window.'
+            : "Everyone's chats use your DatoCMS account and its permissions."}
+        </span>
+      </Page.SectionDescription>
       {!isConnected && (
         <Callout tone="warning">
           Chat needs this connection to read and change the project.
         </Callout>
       )}
-      <SettingsList>
-        <SettingsList.Row
-          title="DatoCMS account"
-          description={
-            // The busy button tells that the sign-in runs: the description
-            // only tells where to go on, while the sign-in window waits
-            <span role="status">
-              {connectStage === 'awaiting-consent'
-                ? 'Approve the access in the sign-in window.'
-                : "Everyone's chats use your account and its permissions."}
-            </span>
-          }
-          action={
-            isConnected ? (
-              <Button
-                tone="ghost"
-                label="Disconnect"
-                onClick={handleDisconnect}
-                busy={disconnecting}
-                disabled={
-                  connecting
-                    ? { reason: 'Wait for the connection to finish.' }
-                    : undefined
-                }
-              />
-            ) : (
-              <Button
-                tone="ghost"
-                label="Connect"
-                onClick={handleConnect}
-                busy={connecting}
-              />
-            )
+      {isConnected ? (
+        <Button
+          label="Disconnect"
+          onClick={handleDisconnect}
+          busy={disconnecting}
+          disabled={
+            connecting
+              ? { reason: 'Wait for the connection to finish.' }
+              : undefined
           }
         />
-      </SettingsList>
-    </Page.Group>
+      ) : (
+        <Button label="Connect" onClick={handleConnect} busy={connecting} />
+      )}
+    </Page.Section>
   );
 }
 
@@ -454,7 +424,7 @@ function ModelField({
   );
 }
 
-function ProviderForm({ ctx, params }: GroupProps) {
+function ProviderForm({ ctx, params }: SectionProps) {
   const [provider, setProvider] = useState<ModelProvider>(
     params.provider ?? 'current',
   );
@@ -592,22 +562,9 @@ function ProviderForm({ ctx, params }: GroupProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <Page.Group
-        title="Chat provider"
-        footer={
-          <Button
-            submit
-            tone="primary"
-            expand={false}
-            label="Save"
-            busy={savingProvider}
-            disabled={
-              saveBlockedReason ? { reason: saveBlockedReason } : undefined
-            }
-          />
-        }
-      >
+    <Page.Section>
+      <Page.SectionTitle>Chat provider</Page.SectionTitle>
+      <form onSubmit={handleSubmit}>
         <FieldWrapper label="Provider">
           <RadioGroupInput
             value={provider}
@@ -661,12 +618,21 @@ function ProviderForm({ ctx, params }: GroupProps) {
             />
           </FieldWrapper>
         )}
-      </Page.Group>
-    </form>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={savingProvider}
+          disabled={
+            saveBlockedReason ? { reason: saveBlockedReason } : undefined
+          }
+        />
+      </form>
+    </Page.Section>
   );
 }
 
-function SystemPromptForm({ ctx, params }: GroupProps) {
+function SystemPromptForm({ ctx, params }: SectionProps) {
   const [systemPrompt, setSystemPrompt] = useState(
     params.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
   );
@@ -675,7 +641,7 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
   const promptDirty =
     systemPrompt !== (params.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
   const promptIsDefault = systemPrompt === DEFAULT_SYSTEM_PROMPT;
-  // Advanced: the group opens by itself only when it holds custom
+  // Advanced: the section opens by itself only when it holds custom
   // instructions
   const [open, setOpen] = useState(!promptIsDefault);
 
@@ -708,17 +674,28 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <Page.Group
-        title="Chat instructions"
-        status={<Pill>{promptIsDefault ? 'Default' : 'Custom'}</Pill>}
-        collapse={{ open, onToggle: () => setOpen(!open) }}
-        footer={
-          <div className={s.footerActions}>
+    <Page.Section>
+      <Page.SectionTitle collapse={{ open, onToggle: () => setOpen(!open) }}>
+        Chat instructions
+      </Page.SectionTitle>
+      {open && (
+        <form onSubmit={handleSubmit}>
+          <FieldWrapper
+            label="Instructions"
+            hint="The chat follows them in every conversation."
+          >
+            <TextareaInput
+              rows={6}
+              maxRows={24}
+              value={systemPrompt}
+              onChange={(next) => setSystemPrompt(next ?? '')}
+              placeholder="Write in a warm, plain voice. Keep titles under 60 characters."
+            />
+          </FieldWrapper>
+          <div className={s.actions}>
             <Button
               submit
               tone="primary"
-              expand={false}
               label="Save"
               busy={savingPrompt}
               disabled={promptDirty ? undefined : { reason: NO_CHANGES_REASON }}
@@ -737,22 +714,9 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
               />
             )}
           </div>
-        }
-      >
-        <FieldWrapper
-          label="Instructions"
-          hint="The chat follows them in every conversation."
-        >
-          <TextareaInput
-            rows={6}
-            maxRows={24}
-            value={systemPrompt}
-            onChange={(next) => setSystemPrompt(next ?? '')}
-            placeholder="Write in a warm, plain voice. Keep titles under 60 characters."
-          />
-        </FieldWrapper>
-      </Page.Group>
-    </form>
+        </form>
+      )}
+    </Page.Section>
   );
 }
 
@@ -760,10 +724,8 @@ export default function ConfigScreen({ ctx }: Props) {
   const params = readParams(ctx);
 
   const [debugMode, setDebugMode] = useState(params.debugMode === true);
-  // Advanced: the group opens by itself only while the logging is on
+  // Advanced: the section opens by itself only while the logging is on
   const [developerOpen, setDeveloperOpen] = useState(debugMode);
-  const debugTitleId = useId();
-  const debugDescriptionId = useId();
 
   setDebugEnabled(debugMode);
 
@@ -789,42 +751,33 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the sections start the frame, with no
+  // Page around them
   return (
-    <Page>
-      <Page.Content>
-        <ConnectionGroup ctx={ctx} params={params} />
-        <ProviderForm ctx={ctx} params={params} />
-        <SystemPromptForm ctx={ctx} params={params} />
-        <Page.Group
-          title="Developer"
+    <>
+      <ConnectionSection ctx={ctx} params={params} />
+      <ProviderForm ctx={ctx} params={params} />
+      <SystemPromptForm ctx={ctx} params={params} />
+      <Page.Section>
+        <Page.SectionTitle
           collapse={{
             open: developerOpen,
             onToggle: () => setDeveloperOpen(!developerOpen),
           }}
         >
-          {/* The title of the row names the switch, and its description
-              describes it: the switch shows no label of its own */}
-          <SettingsList>
-            <SettingsList.Row
-              title={<span id={debugTitleId}>Debug logging</span>}
-              description={
-                <span id={debugDescriptionId}>
-                  Prints chat turns and DatoCMS actions in the browser console.
-                </span>
-              }
-              action={
-                <SwitchInput
-                  label=""
-                  aria-labelledby={debugTitleId}
-                  aria-describedby={debugDescriptionId}
-                  value={debugMode}
-                  onChange={(next) => handleToggleDebug(next === true)}
-                />
-              }
+          Developer
+        </Page.SectionTitle>
+        {developerOpen && (
+          <FieldWrapper hint="Prints chat turns and DatoCMS actions in the browser console.">
+            <SwitchInput
+              label="Debug logging"
+              value={debugMode}
+              onChange={(next) => handleToggleDebug(next === true)}
             />
-          </SettingsList>
-        </Page.Group>
-      </Page.Content>
-    </Page>
+          </FieldWrapper>
+        )}
+      </Page.Section>
+    </>
   );
 }

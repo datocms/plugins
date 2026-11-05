@@ -1,23 +1,16 @@
-/* Placement only: the kit components draw themselves. */
-
-/*
- * The page in its self-sizing frame. The kit's 60vh minimum is meant for a
- * full-height area: with the auto-resizer, it would keep the frame tall.
- */
-.page {
-  min-height: 0;
-}
-
-/* A block of the plugin's own between two fields. */
+/* An export of the plugin's own between two others: what it downloads, then
+   its button. It takes the space of a field under it. */
 .block:not(:last-child) {
   margin-bottom: var(--form-field-gap);
 }
 
-/* The export in progress: the bar, the status line and the note. */
+/* The export in progress: the bar, the status line and the note, then
+   Cancel, one field gap below */
 .readout {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-s);
+  margin-bottom: var(--form-field-gap);
 }
 
 .line {
@@ -29,4 +22,10 @@
 .meta {
   color: var(--color--ink-subtle);
   font-variant-numeric: tabular-nums;
+}
+
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own */
+.endSection {
+  margin-bottom: 0;
 }

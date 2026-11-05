@@ -1,13 +1,23 @@
+/* A block between two fields of the config screen: the space between two
+   fields */
 .block {
   margin-bottom: var(--form-field-gap);
 }
 
+/* The error details open under their button */
 .snippet {
   margin-top: var(--spacing-s);
 }
 
+/* Buttons side by side */
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-s);
+}
+
+/* Save follows the section of the config screen with the space between two
+   fields, as it follows a field */
+.lastSection {
+  margin-bottom: var(--form-field-gap);
 }

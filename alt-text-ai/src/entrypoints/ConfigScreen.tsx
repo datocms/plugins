@@ -5,12 +5,10 @@ import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
-import Pill from 'datocms-react-ui/Pill';
 import RadioGroupInput, {
   type RadioGroupOption,
 } from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
-import SettingsList from 'datocms-react-ui/SettingsList';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -370,175 +368,155 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          {!canEdit && <Callout>{READ_ONLY_REASON}</Callout>}
+      {!canEdit && <Callout>{READ_ONLY_REASON}</Callout>}
 
-          {hasExternalChanges && (
-            <Page.Group
-              title="Settings changed elsewhere"
-              tone="warning"
-              status={<Pill tone="warning">Out of date</Pill>}
-            >
-              <Callout tone="warning">
-                Someone saved these settings while you were editing.
-              </Callout>
-              <SettingsList>
-                <SettingsList.Row
-                  title="Latest settings"
-                  description="Replaces your unsaved changes."
-                  action={
-                    <Button
-                      tone="ghost"
-                      label="Load latest settings"
-                      disabled={isSaving}
-                      onClick={() => {
-                        setConfiguration(initialConfiguration);
-                        setSavedConfiguration(initialConfiguration);
-                        setHasExternalChanges(false);
-                      }}
-                    />
-                  }
-                />
-              </SettingsList>
-            </Page.Group>
-          )}
+      {hasExternalChanges && (
+        <>
+          <Callout tone="warning" title="Settings changed elsewhere">
+            Someone saved these settings while you were editing.
+          </Callout>
+          <Page.Section>
+            <Page.SectionDescription>
+              Replaces your unsaved changes.
+            </Page.SectionDescription>
+            <Button
+              label="Load latest settings"
+              disabled={isSaving}
+              onClick={() => {
+                setConfiguration(initialConfiguration);
+                setSavedConfiguration(initialConfiguration);
+                setHasExternalChanges(false);
+              }}
+            />
+          </Page.Section>
+        </>
+      )}
 
-          <form
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              // The Save button stays focusable while disabled, so Enter in a
-              // field can still submit the form
-              if (!canEdit || !isDirty || isSaving) return;
-              void save();
-            }}
-          >
-            <Page.Group
-              title="Alt text provider"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  label="Save"
-                  expand={false}
-                  busy={isSaving}
-                  disabled={saveReason ? { reason: saveReason } : undefined}
-                />
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          // The Save button stays focusable while disabled, so Enter in a
+          // field can still submit the form
+          if (!canEdit || !isDirty || isSaving) return;
+          void save();
+        }}
+      >
+        <FieldWrapper
+          label="Provider"
+          docs={{
+            label: 'Where to find the alt text actions',
+            to: ACTIONS_DOCUMENTATION_URL,
+          }}
+        >
+          <RadioGroupInput
+            value={provider}
+            disabled={controlsDisabled}
+            options={PROVIDER_RADIO_OPTIONS}
+            onChange={(next) => {
+              if (next) {
+                setConfiguration((current) => ({
+                  ...current,
+                  provider: next,
+                }));
               }
-            >
-              <FieldWrapper
-                label="Provider"
-                docs={{
-                  label: 'Where to find the alt text actions',
-                  to: ACTIONS_DOCUMENTATION_URL,
-                }}
-              >
-                <RadioGroupInput
-                  value={provider}
-                  disabled={controlsDisabled}
-                  options={PROVIDER_RADIO_OPTIONS}
-                  onChange={(next) => {
-                    if (next) {
-                      setConfiguration((current) => ({
-                        ...current,
-                        provider: next,
-                      }));
-                    }
-                  }}
-                />
-              </FieldWrapper>
+            }}
+          />
+        </FieldWrapper>
 
-              <FieldWrapper
-                label={details.apiKeyLabel}
-                required
-                error={fieldErrors.apiKey}
-                hint={
-                  <>
-                    Create one in the{' '}
-                    <a
-                      href={details.apiKeyUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {PROVIDER_LABELS[provider]} dashboard
-                    </a>
-                    . It's stored in the plugin settings, and the browser sends
-                    it straight to {PROVIDER_LABELS[provider]}.
-                  </>
+        <FieldWrapper
+          label={details.apiKeyLabel}
+          required
+          error={fieldErrors.apiKey}
+          hint={
+            <>
+              Create one in the{' '}
+              <a href={details.apiKeyUrl} target="_blank" rel="noreferrer">
+                {PROVIDER_LABELS[provider]} dashboard
+              </a>
+              . It's stored in the plugin settings, and the browser sends it
+              straight to {PROVIDER_LABELS[provider]}.
+            </>
+          }
+        >
+          <PasswordInput
+            value={apiKey}
+            placeholder={details.apiKeyPlaceholder}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={controlsDisabled}
+            onChange={(value) =>
+              setConfiguration((current) =>
+                withProviderApiKey(current, value ?? ''),
+              )
+            }
+          />
+        </FieldWrapper>
+
+        {isDirectProvider(provider) && (
+          <FieldWrapper
+            label={details.modelLabel || 'Model'}
+            required
+            error={fieldErrors.model}
+            hint={modelDiscoveryHint(apiKey, discovery)}
+          >
+            <SelectInput
+              value={model || null}
+              options={availableModelOptions}
+              placeholder="Pick a model"
+              clearable={false}
+              loading={discovery.isLoading}
+              disabled={controlsDisabled}
+              creatable={{
+                onCreate: (value) =>
+                  setConfiguration((current) =>
+                    withProviderModel(current, value),
+                  ),
+                formatLabel: (value) => `Use model “${value}”`,
+              }}
+              onChange={(next) => {
+                if (next) {
+                  setConfiguration((current) =>
+                    withProviderModel(current, next),
+                  );
                 }
-              >
-                <PasswordInput
-                  value={apiKey}
-                  placeholder={details.apiKeyPlaceholder}
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={controlsDisabled}
-                  onChange={(value) =>
-                    setConfiguration((current) =>
-                      withProviderApiKey(current, value ?? ''),
-                    )
-                  }
-                />
-              </FieldWrapper>
+              }}
+            />
+          </FieldWrapper>
+        )}
 
-              {isDirectProvider(provider) && (
-                <FieldWrapper
-                  label={details.modelLabel || 'Model'}
-                  required
-                  error={fieldErrors.model}
-                  hint={modelDiscoveryHint(apiKey, discovery)}
-                >
-                  <SelectInput
-                    value={model || null}
-                    options={availableModelOptions}
-                    placeholder="Pick a model"
-                    clearable={false}
-                    loading={discovery.isLoading}
-                    disabled={controlsDisabled}
-                    creatable={{
-                      onCreate: (value) =>
-                        setConfiguration((current) =>
-                          withProviderModel(current, value),
-                        ),
-                      formatLabel: (value) => `Use model “${value}”`,
-                    }}
-                    onChange={(next) => {
-                      if (next) {
-                        setConfiguration((current) =>
-                          withProviderModel(current, next),
-                        );
-                      }
-                    }}
-                  />
-                </FieldWrapper>
-              )}
-
-              {isDirectProvider(provider) && (
-                <FieldWrapper
-                  label="Prompt"
-                  required
-                  error={fieldErrors.prompt}
-                  hint="Sent with each image. {locale} and {filename} stand for the locale and the file name. Ask for the alt text alone."
-                >
-                  <TextareaInput
-                    value={configuration.prompt}
-                    disabled={controlsDisabled}
-                    onChange={(prompt) =>
-                      setConfiguration((current) => ({
-                        ...current,
-                        prompt: prompt ?? '',
-                      }))
-                    }
-                  />
-                </FieldWrapper>
-              )}
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+        {isDirectProvider(provider) && (
+          <FieldWrapper
+            label="Prompt"
+            required
+            error={fieldErrors.prompt}
+            hint="Sent with each image. {locale} and {filename} stand for the locale and the file name. Ask for the alt text alone."
+          >
+            <TextareaInput
+              value={configuration.prompt}
+              disabled={controlsDisabled}
+              onChange={(prompt) =>
+                setConfiguration((current) => ({
+                  ...current,
+                  prompt: prompt ?? '',
+                }))
+              }
+            />
+          </FieldWrapper>
+        )}
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={isSaving}
+          disabled={saveReason ? { reason: saveReason } : undefined}
+        />
+      </form>
     </Canvas>
   );
 }

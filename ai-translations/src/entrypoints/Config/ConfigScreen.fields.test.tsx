@@ -166,13 +166,13 @@ function saveButton() {
   return screen.getByRole('button', { name: 'Save' });
 }
 
-/** Opens the closed "Advanced" group, which holds the prompt and the debug logging. */
+/** Opens the closed "Advanced" section, which holds the prompt and the debug logging. */
 function openAdvanced() {
   const toggle = screen.getByRole('button', { name: 'Advanced' });
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
 }
 
-/** A change of the form: the debug logging, in the "Advanced" group. */
+/** A change of the form: the debug logging, in the "Advanced" section. */
 function toggleDebugLogging() {
   openAdvanced();
   fireEvent.click(screen.getByLabelText('Debug logging'));
@@ -368,7 +368,7 @@ describe('config screen form', () => {
     // The selects say that exclusions exist: no callout repeats it.
     expect(screen.getByLabelText('Excluded fields')).toBeInTheDocument();
     expect(screen.queryByText(/doesn't show everywhere/)).toBeNull();
-    // The advanced settings use the defaults: their group is closed.
+    // The advanced settings use the defaults: their section is closed.
     expect(screen.getByRole('button', { name: 'Advanced' })).toHaveAttribute(
       'aria-expanded',
       'false',

@@ -1,7 +1,8 @@
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
-import SettingsList from 'datocms-react-ui/SettingsList';
+import InfoList from 'datocms-react-ui/InfoList';
 import type { StoreCapabilities } from '../../types';
 import { PERMISSIONS } from './permissions';
+import styles from './Settings.module.css';
 
 /*
  * Only what the plugin uses, named after what editors get: the picker's tag
@@ -11,7 +12,7 @@ import { PERMISSIONS } from './permissions';
  *
  * Detection can't tell a missing scope from missing data: Shopify answers an
  * empty tag list (or no product at all) either way. Each hint covers both,
- * in one sentence (a SettingsList description).
+ * in one sentence (a note under the value).
  */
 const CAPABILITIES: Array<{
   name: 'tags' | 'inventory';
@@ -39,7 +40,7 @@ type Props = {
 };
 
 /**
- * A `SettingsList` row per missing capability, with how to get it. What's
+ * An `InfoList` row per missing capability, with how to get it. What's
  * available needs nothing from anyone, so it doesn't show.
  */
 export default function CapabilityList({ capabilities, tokenless }: Props) {
@@ -47,16 +48,12 @@ export default function CapabilityList({ capabilities, tokenless }: Props) {
     <>
       {CAPABILITIES.filter(({ name }) => !capabilities[name]).map(
         ({ name, label, hint, tokenlessHint }) => (
-          <SettingsList.Row
-            key={name}
-            title={label}
-            value={
-              <>
-                <FeedbackDot tone="neutral" /> Not available
-              </>
-            }
-            description={tokenless ? tokenlessHint : hint}
-          />
+          <InfoList.Row key={name} title={label}>
+            <FeedbackDot tone="neutral" /> Not available
+            <span className={styles.note}>
+              {tokenless ? tokenlessHint : hint}
+            </span>
+          </InfoList.Row>
         ),
       )}
     </>

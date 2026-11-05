@@ -1,46 +1,46 @@
-/* The body of a group is a block flow: each piece keeps the space of a
-   Callout (spacing-l) under it, and the last one none. */
-
-/* The line above the records that failed sits close to their list */
-.lead {
-  margin: 0 0 var(--spacing-s);
-}
-
-.block {
-  margin-bottom: var(--spacing-l);
+/* The blocks of the plugin's own in the legacy section take the space of a
+   field under them, and the last one none. */
+.progress,
+.results {
+  margin-bottom: var(--form-field-gap);
 
   &:last-child {
     margin-bottom: 0;
   }
 }
 
+/* A progress: the bar and its caption */
 .progress {
   display: grid;
   gap: var(--spacing-s);
-  margin-bottom: var(--spacing-l);
+}
 
-  &:last-child {
-    margin-bottom: 0;
-  }
+/* The results: the counts, then the records that failed */
+.results {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
+/* The line above the records that failed, and their list */
+.failed,
+.list {
+  display: grid;
+  gap: var(--spacing-s);
+}
+
+.list {
+  overflow-wrap: anywhere;
 }
 
 .caption {
-  margin: 0;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   color: var(--color--ink-subtle);
 }
 
-/* The records that failed: a list under the results, in the flow of the
-   group */
-.list {
-  display: grid;
+/* Find and Move comments, side by side */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-s);
-  padding-left: var(--spacing-l);
-  margin: 0 0 var(--spacing-l);
-  overflow-wrap: anywhere;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
 }

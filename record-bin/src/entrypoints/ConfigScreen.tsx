@@ -6,12 +6,12 @@ import CodeSnippet from 'datocms-react-ui/CodeSnippet';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import InfoList from 'datocms-react-ui/InfoList';
 import { Page } from 'datocms-react-ui/Page';
 import Pill, { type PillTone } from 'datocms-react-ui/Pill';
-import SettingsList from 'datocms-react-ui/SettingsList';
 import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import { useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import type { LambdaConnectionState } from '../types/types';
 import { createDebugLogger, isDebugEnabled } from '../utils/debugLogger';
 import {
@@ -277,6 +277,8 @@ function LambdaFunctionGroup({
   connectDisabled,
   onConnect,
 }: LambdaFunctionGroupProps) {
+  const hasActiveDeploymentUrl = activeDeploymentUrl.trim().length > 0;
+
   return (
     <Page.Group
       title="Lambda function"
@@ -294,13 +296,21 @@ function LambdaFunctionGroup({
         </Dropdown>
       }
       footer={
-        <Button
-          tone="primary"
-          expand={false}
-          label={connectLabel}
-          onClick={onConnect}
-          disabled={connectDisabled}
-        />
+        <div className={s.actions}>
+          <Button
+            label={connectLabel}
+            onClick={onConnect}
+            disabled={connectDisabled}
+          />
+          {hasActiveDeploymentUrl && (
+            <Button
+              tone="ghost"
+              label="Disconnect"
+              onClick={onDisconnect}
+              disabled={disconnectDisabled}
+            />
+          )}
+        </div>
       }
     >
       {showConnectionError && (
@@ -324,21 +334,10 @@ function LambdaFunctionGroup({
           )}
         </div>
       )}
-      {activeDeploymentUrl.trim().length > 0 && (
-        <SettingsList className={s.block}>
-          <SettingsList.Row
-            title="Current URL"
-            value={activeDeploymentUrl}
-            action={
-              <Button
-                tone="ghost"
-                label="Disconnect"
-                onClick={onDisconnect}
-                disabled={disconnectDisabled}
-              />
-            }
-          />
-        </SettingsList>
+      {hasActiveDeploymentUrl && (
+        <InfoList className={s.block}>
+          <InfoList.Row title="Current URL">{activeDeploymentUrl}</InfoList.Row>
+        </InfoList>
       )}
       <FieldWrapper
         label="Lambda URL"
@@ -351,76 +350,6 @@ function LambdaFunctionGroup({
           onChange={onDeploymentUrlChange}
         />
       </FieldWrapper>
-    </Page.Group>
-  );
-}
-
-type AdvancedSettingsGroupProps = {
-  open: boolean;
-  onToggle: () => void;
-  debugEnabled: boolean;
-  onDebugChange: (value: boolean) => void;
-  isLambdaFullModeEnabled: boolean;
-  lambdaSetupDisabled: boolean;
-  onLambdaModeChange: (value: boolean) => void;
-  showLambdaLessWarning: boolean;
-  saveDisabled: DisabledReason;
-  onSave: () => Promise<void>;
-};
-
-function AdvancedSettingsGroup({
-  open,
-  onToggle,
-  debugEnabled,
-  onDebugChange,
-  isLambdaFullModeEnabled,
-  lambdaSetupDisabled,
-  onLambdaModeChange,
-  showLambdaLessWarning,
-  saveDisabled,
-  onSave,
-}: AdvancedSettingsGroupProps) {
-  return (
-    <Page.Group
-      title="Advanced settings"
-      collapse={{ open, onToggle }}
-      footer={
-        <Button
-          tone="primary"
-          expand={false}
-          label="Save"
-          onClick={onSave}
-          disabled={saveDisabled}
-        />
-      }
-    >
-      <FieldWrapper hint="Logs the plugin's events and requests to the browser console.">
-        <SwitchInput
-          label="Enable debug logs"
-          value={debugEnabled}
-          onChange={(value) => onDebugChange(Boolean(value))}
-        />
-      </FieldWrapper>
-      <FieldWrapper
-        hint="Needs a Lambda function that you deploy. If you don't know what serverless functions are, keep this off."
-        docs={{
-          label: 'Runtime modes',
-          to: `${PLUGIN_README_URL}#runtime-modes`,
-        }}
-      >
-        <SwitchInput
-          label="Also save records deleted from the API"
-          value={isLambdaFullModeEnabled}
-          disabled={lambdaSetupDisabled}
-          onChange={(value) => onLambdaModeChange(Boolean(value))}
-        />
-      </FieldWrapper>
-      {showLambdaLessWarning && (
-        <Callout tone="warning">
-          Saving switches to Lambda-less mode and removes the webhook of the
-          connected Lambda function.
-        </Callout>
-      )}
     </Page.Group>
   );
 }
@@ -472,7 +401,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     ),
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const debugLogger = createDebugLogger(debugEnabled, 'ConfigScreen');
 
   const persistPluginParameters = useCallback(
@@ -1091,10 +1019,57 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     connectionState,
   });
 
+  const saveDisabled = getSaveDisabled({
+    isDisconnecting,
+    isConnecting,
+    canSaveWithLambdaMode,
+    lambdaSaveBlockReason,
+    hasUnsavedChanges,
+  });
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    // Enter in the Lambda URL field submits the form too
+    if (saveDisabled || isLoading) {
+      return;
+    }
+
+    void saveSettingsHandler();
+  };
+
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the switches start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
+      <form onSubmit={handleSubmit}>
+        <Page.Section className={s.lastSection}>
+          <FieldWrapper hint="Logs the plugin's events and requests to the browser console.">
+            <SwitchInput
+              label="Enable debug logs"
+              value={debugEnabled}
+              onChange={(value) => setDebugEnabled(Boolean(value))}
+            />
+          </FieldWrapper>
+          <FieldWrapper
+            hint="Needs a Lambda function that you deploy. If you don't know what serverless functions are, keep this off."
+            docs={{
+              label: 'Runtime modes',
+              to: `${PLUGIN_README_URL}#runtime-modes`,
+            }}
+          >
+            <SwitchInput
+              label="Also save records deleted from the API"
+              value={isLambdaFullModeEnabled}
+              disabled={lambdaSetupDisabled}
+              onChange={(value) => {
+                setRuntimeModeSelection(value ? 'lambda' : 'lambdaless');
+                clearConnectionErrorState();
+              }}
+            />
+          </FieldWrapper>
+          {/* Only for the API capture, thus right under its switch */}
           {isLambdaFullModeEnabled && (
             <LambdaFunctionGroup
               status={getLambdaStatus({
@@ -1144,32 +1119,24 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               onConnect={connectLambdaHandler}
             />
           )}
-          <AdvancedSettingsGroup
-            open={showAdvancedSettings}
-            onToggle={() => setShowAdvancedSettings((current) => !current)}
-            debugEnabled={debugEnabled}
-            onDebugChange={setDebugEnabled}
-            isLambdaFullModeEnabled={isLambdaFullModeEnabled}
-            lambdaSetupDisabled={lambdaSetupDisabled}
-            onLambdaModeChange={(value) => {
-              setRuntimeModeSelection(value ? 'lambda' : 'lambdaless');
-              clearConnectionErrorState();
-            }}
-            showLambdaLessWarning={computeShowLambdaLessWarning(
-              runtimeModeSelection,
-              hasActiveDeploymentUrl,
-            )}
-            saveDisabled={getSaveDisabled({
-              isDisconnecting,
-              isConnecting,
-              canSaveWithLambdaMode,
-              lambdaSaveBlockReason,
-              hasUnsavedChanges,
-            })}
-            onSave={saveSettingsHandler}
-          />
-        </Page.Content>
-      </Page>
+          {computeShowLambdaLessWarning(
+            runtimeModeSelection,
+            hasActiveDeploymentUrl,
+          ) && (
+            <Callout tone="warning">
+              Saving switches to Lambda-less mode and removes the webhook of the
+              connected Lambda function.
+            </Callout>
+          )}
+        </Page.Section>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={isLoading}
+          disabled={saveDisabled}
+        />
+      </form>
     </Canvas>
   );
 }

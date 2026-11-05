@@ -324,164 +324,146 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     : `/environments/${ctx.environment}`;
   const massDuplicationPath = `${environmentPrefix}/configuration/p/${ctx.plugin.id}/pages/massLocaleDuplication`;
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the sections start the frame, with no
+  // Page around them. The form spans the first section, so Save follows it
   return (
     <Canvas ctx={ctx}>
       <ErrorBoundary>
-        <Page className={s.page}>
-          <Page.Content>
-            <form onSubmit={handleSave}>
-              <Page.Section>
-                <Page.SectionDescription>
-                  The fields you add here get a copy button in the record
-                  editor. In the main locale it copies the value to every other
-                  locale. In any other locale it copies the value from the main
-                  locale.
-                </Page.SectionDescription>
-                {!client && (
-                  <Callout tone="danger" title="No access to your API token">
-                    The plugin can't list your models without it. Check the
-                    plugin's permissions.
-                  </Callout>
-                )}
-                <div className="form__field form__row">
-                  <div className="form__row__cell">
-                    <FieldWrapper
-                      label="Model"
-                      hint={getLargeSelectionHint(
-                        availableModels.length,
-                        'models',
-                      )}
-                      error={modelsError}
-                    >
-                      <SelectInput
-                        value={selectedModel?.value ?? null}
-                        options={visibleModels}
-                        // A model picked from a search stays shown after the
-                        // search ends and the visible options change
-                        acceptValueNotIncludedInOptions={() =>
-                          selectedModel ?? undefined
-                        }
-                        onChange={(_id, option) => handleModelChange(option)}
-                        clearable
-                        loading={isLoading}
-                        disabled={!client}
-                        search={
-                          availableModels.length > LARGE_SELECTION_THRESHOLD
-                            ? { onQueryChange: setModelSearch }
-                            : undefined
-                        }
-                      />
-                    </FieldWrapper>
-                  </div>
-                  <div className="form__row__cell">
-                    <FieldWrapper
-                      label="Field"
-                      hint={
-                        getLargeSelectionHint(
-                          availableFields.length,
-                          'fields',
-                        ) ??
-                        (selectedModel &&
-                        !isLoadingFields &&
-                        !fieldsError &&
-                        availableFields.length === 0
-                          ? 'This model has no other localized fields.'
-                          : 'Only localized fields can have a copy button.')
-                      }
-                      error={fieldsError}
-                    >
-                      <SelectInput
-                        value={selectedField?.value ?? null}
-                        options={visibleFields}
-                        acceptValueNotIncludedInOptions={() =>
-                          selectedField ?? undefined
-                        }
-                        onChange={(_id, option) => setSelectedField(option)}
-                        clearable
-                        loading={isLoadingFields}
-                        disabled={!selectedModel || isLoadingFields}
-                        search={
-                          availableFields.length > LARGE_SELECTION_THRESHOLD
-                            ? { onQueryChange: setFieldSearch }
-                            : undefined
-                        }
-                      />
-                    </FieldWrapper>
-                  </div>
-                </div>
-                <div className={s.block}>
-                  <Button
-                    icon={AddIcon}
-                    label="Add field"
-                    expand={false}
-                    onClick={handleAddConfiguration}
-                    disabled={
-                      selectedModel && selectedField
-                        ? undefined
-                        : { reason: 'Pick a model and a field first.' }
+        <form onSubmit={handleSave}>
+          <Page.Section className={s.lastSection}>
+            <Page.SectionDescription>
+              The fields you add here get a copy button in the record editor. In
+              the main locale it copies the value to every other locale. In any
+              other locale it copies the value from the main locale.
+            </Page.SectionDescription>
+            {!client && (
+              <Callout tone="danger" title="No access to your API token">
+                The plugin can't list your models without it. Check the plugin's
+                permissions.
+              </Callout>
+            )}
+            <div className="form__field form__row">
+              <div className="form__row__cell">
+                <FieldWrapper
+                  label="Model"
+                  hint={getLargeSelectionHint(availableModels.length, 'models')}
+                  error={modelsError}
+                >
+                  <SelectInput
+                    value={selectedModel?.value ?? null}
+                    options={visibleModels}
+                    // A model picked from a search stays shown after the
+                    // search ends and the visible options change
+                    acceptValueNotIncludedInOptions={() =>
+                      selectedModel ?? undefined
+                    }
+                    onChange={(_id, option) => handleModelChange(option)}
+                    clearable
+                    loading={isLoading}
+                    disabled={!client}
+                    search={
+                      availableModels.length > LARGE_SELECTION_THRESHOLD
+                        ? { onQueryChange: setModelSearch }
+                        : undefined
                     }
                   />
-                </div>
-                <div className={s.block}>
-                  <CardList empty={<EmptySlot message="No fields yet" />}>
-                    {savedConfigs.map((config, index) => (
-                      <CardList.Item
-                        key={`${config.modelId}-${config.fieldId}`}
-                        row={{
-                          summary: (
-                            <EntityRow
-                              layout="row"
-                              kicker={
-                                config.modelLabel ||
-                                getModelName(config.modelId)
-                              }
-                              title={
-                                config.fieldLabel ||
-                                `Field ID: ${config.fieldId}`
-                              }
-                            />
-                          ),
-                          actions: (
-                            <CardList.RemoveButton
-                              label="Remove field"
-                              onClick={() => handleRemoveConfiguration(index)}
-                            />
-                          ),
-                        }}
-                      />
-                    ))}
-                  </CardList>
-                </div>
-                <div>
-                  <Button
-                    submit
-                    tone="primary"
-                    expand={false}
-                    label="Save"
-                    busy={isSaving}
-                    disabled={
-                      hasConfigurationChanged
-                        ? undefined
-                        : { reason: 'There are no changes to save.' }
+                </FieldWrapper>
+              </div>
+              <div className="form__row__cell">
+                <FieldWrapper
+                  label="Field"
+                  hint={
+                    getLargeSelectionHint(availableFields.length, 'fields') ??
+                    (selectedModel &&
+                    !isLoadingFields &&
+                    !fieldsError &&
+                    availableFields.length === 0
+                      ? 'This model has no other localized fields.'
+                      : 'Only localized fields can have a copy button.')
+                  }
+                  error={fieldsError}
+                >
+                  <SelectInput
+                    value={selectedField?.value ?? null}
+                    options={visibleFields}
+                    acceptValueNotIncludedInOptions={() =>
+                      selectedField ?? undefined
+                    }
+                    onChange={(_id, option) => setSelectedField(option)}
+                    clearable
+                    loading={isLoadingFields}
+                    disabled={!selectedModel || isLoadingFields}
+                    search={
+                      availableFields.length > LARGE_SELECTION_THRESHOLD
+                        ? { onQueryChange: setFieldSearch }
+                        : undefined
                     }
                   />
-                </div>
-              </Page.Section>
-            </form>
-            <Page.Section>
-              <Page.SectionTitle>Mass duplication</Page.SectionTitle>
-              <Page.SectionDescription>
-                Copies all the content of one locale into another, across many
-                models at once. It overwrites the content of the target locale.
-              </Page.SectionDescription>
-              <p className="Page__content__section__text">
-                <Link to={massDuplicationPath}>
-                  Open Mass locale duplication
-                </Link>
-              </p>
-            </Page.Section>
-          </Page.Content>
-        </Page>
+                </FieldWrapper>
+              </div>
+            </div>
+            <div className={s.block}>
+              <Button
+                icon={AddIcon}
+                label="Add field"
+                onClick={handleAddConfiguration}
+                disabled={
+                  selectedModel && selectedField
+                    ? undefined
+                    : { reason: 'Pick a model and a field first.' }
+                }
+              />
+            </div>
+            <CardList empty={<EmptySlot message="No fields yet" />}>
+              {savedConfigs.map((config, index) => (
+                <CardList.Item
+                  key={`${config.modelId}-${config.fieldId}`}
+                  row={{
+                    summary: (
+                      <EntityRow
+                        layout="row"
+                        kicker={
+                          config.modelLabel || getModelName(config.modelId)
+                        }
+                        title={
+                          config.fieldLabel || `Field ID: ${config.fieldId}`
+                        }
+                      />
+                    ),
+                    actions: (
+                      <CardList.RemoveButton
+                        label="Remove field"
+                        onClick={() => handleRemoveConfiguration(index)}
+                      />
+                    ),
+                  }}
+                />
+              ))}
+            </CardList>
+          </Page.Section>
+          <Button
+            submit
+            tone="primary"
+            label="Save"
+            busy={isSaving}
+            disabled={
+              hasConfigurationChanged
+                ? undefined
+                : { reason: 'There are no changes to save.' }
+            }
+          />
+        </form>
+        <Page.Section>
+          <Page.SectionTitle>Mass duplication</Page.SectionTitle>
+          <Page.SectionDescription>
+            Copies all the content of one locale into another, across many
+            models at once. It overwrites the content of the target locale.
+          </Page.SectionDescription>
+          <p className="Page__content__section__text">
+            <Link to={massDuplicationPath}>Open Mass locale duplication</Link>
+          </p>
+        </Page.Section>
       </ErrorBoundary>
     </Canvas>
   );

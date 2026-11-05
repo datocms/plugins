@@ -1,3 +1,5 @@
+/* The progress of the analysis and of the conversion: the bar, then its
+   step and its percentage */
 .readout {
   display: flex;
   flex-direction: column;
@@ -8,17 +10,27 @@
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-m);
-  margin: 0;
 }
 
 .meta {
-  margin: 0;
   color: var(--color--ink-subtle);
   font-variant-numeric: tabular-nums;
 }
 
-.footer {
+/* Cancel and Convert, side by side */
+.buttons {
   display: flex;
-  justify-content: flex-end;
   gap: var(--spacing-s);
+}
+
+/* "Convert another block" follows the last section with the space between
+   two fields, as it follows a field */
+.lastSection {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own */
+.endSection {
+  margin-bottom: 0;
 }

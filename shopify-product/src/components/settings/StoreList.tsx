@@ -1,4 +1,4 @@
-import { Page } from 'datocms-react-ui/Page';
+import CardList from 'datocms-react-ui/CardList';
 import Pill from 'datocms-react-ui/Pill';
 import { useEffect } from 'react';
 import {
@@ -36,7 +36,10 @@ function connectionView(form: SettingsForm, store: StoreDraft) {
   };
 }
 
-/** One group per store; with several, each has a name and a "⋮" menu. */
+/**
+ * The fields of the store; with several, a card with an item per store, each
+ * with its name, the "Default" pill of the first one and a "⋮" menu.
+ */
 export default function StoreList({ form, locale }: Props) {
   const { stores } = form.draft;
   const multiple = stores.length > 1;
@@ -46,19 +49,44 @@ export default function StoreList({ form, locale }: Props) {
     document.getElementById(`${form.focusRequest.storeKey}-domain`)?.focus();
   }, [form.focusRequest]);
 
+  const fields = (store: StoreDraft, index: number) => {
+    const view = connectionView(form, store);
+    return (
+      <StoreFields
+        store={store}
+        multiple={multiple}
+        errors={form.errors.stores[index] ?? {}}
+        status={view.status}
+        capabilities={view.capabilities}
+        localization={view.localization}
+        locale={locale}
+        locked={form.fieldsLocked}
+        readOnly={form.readOnly}
+        saving={form.saving}
+        demoStore={form.draft.useDemoStore}
+        onChange={(patch) => form.updateStore(store.key, patch)}
+        onBlur={(field) => form.touchStore(store.key, field)}
+        onTest={() => void form.testStore(store.key)}
+      />
+    );
+  };
+
+  // The only store: its fields start the screen, with no title
+  const [only] = stores;
+  if (!multiple && only) return fields(only, 0);
+
   return (
-    <>
+    <CardList>
       {stores.map((store, index) => {
         const position = index + 1;
-        const view = connectionView(form, store);
         const name = storeDisplayName(store) || `Store ${position}`;
         return (
-          <Page.Group
+          <CardList.Item
             key={store.key}
-            title={multiple ? name : 'Shopify store'}
-            status={multiple && position === 1 ? <Pill>Default</Pill> : null}
-            actions={
-              multiple && !form.readOnly ? (
+            row={{
+              summary: name,
+              trailing: position === 1 ? <Pill>Default</Pill> : undefined,
+              actions: form.readOnly ? undefined : (
                 <StoreMenu
                   name={name}
                   isDefault={position === 1}
@@ -66,28 +94,12 @@ export default function StoreList({ form, locale }: Props) {
                   onMakeDefault={() => form.makeDefault(store.key)}
                   onRemove={() => form.removeStore(store.key)}
                 />
-              ) : null
-            }
-          >
-            <StoreFields
-              store={store}
-              multiple={multiple}
-              errors={form.errors.stores[index] ?? {}}
-              status={view.status}
-              capabilities={view.capabilities}
-              localization={view.localization}
-              locale={locale}
-              locked={form.fieldsLocked}
-              readOnly={form.readOnly}
-              saving={form.saving}
-              demoStore={form.draft.useDemoStore}
-              onChange={(patch) => form.updateStore(store.key, patch)}
-              onBlur={(field) => form.touchStore(store.key, field)}
-              onTest={() => void form.testStore(store.key)}
-            />
-          </Page.Group>
+              ),
+            }}
+            body={fields(store, index)}
+          />
         );
       })}
-    </>
+    </CardList>
   );
 }

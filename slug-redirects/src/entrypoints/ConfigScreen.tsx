@@ -16,26 +16,25 @@ export default function ConfigScreen({ ctx }: Props) {
   useEffect(() => {
     ctx.updatePluginParameters({ installed: true, onPublish });
   }, [onPublish, ctx.updatePluginParameters]);
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the section starts the frame, with no
+  // Page around it
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          <Page.Section>
-            <Page.SectionDescription>
-              Add “Slug Redirects” to a slug field as an add-on. Each change of
-              that slug then adds a redirect rule, with the old slug as source
-              and the new one as destination, to the “Slug Redirects” model.
-            </Page.SectionDescription>
-            <FieldWrapper hint="Saves are ignored: a rule is added when the record is published. For models with the draft/published system.">
-              <SwitchInput
-                label="Add redirect rules only on publish"
-                value={onPublish}
-                onChange={(value) => setOnPublish(Boolean(value))}
-              />
-            </FieldWrapper>
-          </Page.Section>
-        </Page.Content>
-      </Page>
+      <Page.Section>
+        <Page.SectionDescription>
+          Add “Slug Redirects” to a slug field as an add-on. Each change of that
+          slug then adds a redirect rule, with the old slug as source and the
+          new one as destination, to the “Slug Redirects” model.
+        </Page.SectionDescription>
+        <FieldWrapper hint="Saves are ignored: a rule is added when the record is published. For models with the draft/published system.">
+          <SwitchInput
+            label="Add redirect rules only on publish"
+            value={onPublish}
+            onChange={(value) => setOnPublish(Boolean(value))}
+          />
+        </FieldWrapper>
+      </Page.Section>
     </Canvas>
   );
 }

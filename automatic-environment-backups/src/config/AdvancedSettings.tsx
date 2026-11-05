@@ -2,6 +2,7 @@ import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useState } from 'react';
+import styles from './StepContent.module.css';
 
 /**
  * Collapsible advanced settings. The debug toggle persists immediately on
@@ -19,20 +20,22 @@ export const AdvancedSettings = ({
   const [open, setOpen] = useState(false);
 
   return (
-    <Page.Group
-      title="Advanced settings"
-      collapse={{ open, onToggle: () => setOpen(!open) }}
-    >
-      <FieldWrapper hint="Logs plugin events and requests to the browser console.">
-        <SwitchInput
-          label="Debug logs"
-          value={debugEnabled}
-          onChange={(value) => {
-            void onToggleDebug(Boolean(value));
-          }}
-          disabled={!canEdit}
-        />
-      </FieldWrapper>
-    </Page.Group>
+    <Page.Section className={styles.endSection}>
+      <Page.SectionTitle collapse={{ open, onToggle: () => setOpen(!open) }}>
+        Advanced settings
+      </Page.SectionTitle>
+      {open && (
+        <FieldWrapper hint="Logs plugin events and requests to the browser console.">
+          <SwitchInput
+            label="Debug logs"
+            value={debugEnabled}
+            onChange={(value) => {
+              void onToggleDebug(Boolean(value));
+            }}
+            disabled={!canEdit}
+          />
+        </FieldWrapper>
+      )}
+    </Page.Section>
   );
 };

@@ -1,10 +1,10 @@
 /**
  * DeepLConfig.tsx
- * Configuration component for DeepL vendor settings: the settings group with
- * the API key, its test, the endpoint and the formality, then the groups that
- * open and close for the tag handling and the glossaries. A passed key test
- * is a toast (a finished action); a failed one is the error of the key
- * field until the key or the endpoint changes.
+ * Configuration component for DeepL vendor settings: the settings section
+ * with the API key, its test, the endpoint and the formality, then the
+ * sections that open and close for the tag handling and the glossaries. A
+ * passed key test is a toast (a finished action); a failed one is the error
+ * of the key field until the key or the endpoint changes.
  */
 
 import type { ApiTypes } from '@datocms/cma-client-browser';
@@ -307,10 +307,11 @@ export default function DeepLConfig({
     ],
   );
 
-  // Once fixed, the group stays open where the user is working
+  // Once fixed, the section stays open where the user is working
   useEffect(() => {
     if (hasInvalidGlossaries) setShowGlossaries(true);
   }, [hasInvalidGlossaries]);
+  const glossariesOpen = showGlossaries || hasInvalidGlossaries;
 
   const handleApiKeyChange = (input: string | null) => {
     const value = input ?? '';
@@ -361,7 +362,8 @@ export default function DeepLConfig({
 
   return (
     <>
-      <Page.Group title={vendorSettingsTitle('deepl')}>
+      <Page.Section>
+        <Page.SectionTitle>{vendorSettingsTitle('deepl')}</Page.SectionTitle>
         <FieldWrapper label="API key" required error={testError ?? undefined}>
           <StringInput
             code
@@ -411,94 +413,106 @@ export default function DeepLConfig({
             options={FORMALITY_OPTIONS}
           />
         </FieldWrapper>
-      </Page.Group>
+      </Page.Section>
 
-      <Page.Group
-        title="Tag handling"
-        collapse={{ open: showTags, onToggle: () => setShowTags((v) => !v) }}
-      >
-        <FieldWrapper hint="DeepL keeps the punctuation and the casing of the source text, where it would otherwise correct them.">
-          <SwitchInput
-            name="deeplPreserveFormatting"
-            label="Preserve formatting"
-            value={deeplPreserveFormatting}
-            onChange={(next) => setDeeplPreserveFormatting(next === true)}
-          />
-        </FieldWrapper>
-        <FieldWrapper
-          label="Ignored tags"
-          hint={`The content of these tags isn't translated. Default: ${tagListHint(DEEPL_DEFAULT_IGNORE_TAGS)}.`}
+      <Page.Section>
+        <Page.SectionTitle
+          collapse={{ open: showTags, onToggle: () => setShowTags((v) => !v) }}
         >
-          <StringInput
-            code
-            name="deeplIgnoreTags"
-            value={deeplIgnoreTags}
-            onChange={toText(setDeeplIgnoreTags)}
-            spellCheck={false}
-          />
-        </FieldWrapper>
-        <FieldWrapper
-          label="Non-splitting tags"
-          hint={`These tags never split a sentence. Default: ${tagListHint(DEEPL_DEFAULT_NON_SPLITTING_TAGS)}.`}
-        >
-          <StringInput
-            code
-            name="deeplNonSplittingTags"
-            value={deeplNonSplittingTags}
-            onChange={toText(setDeeplNonSplittingTags)}
-            spellCheck={false}
-          />
-        </FieldWrapper>
-        <FieldWrapper
-          label="Splitting tags"
-          hint="These tags always start a new sentence."
-        >
-          <StringInput
-            code
-            name="deeplSplittingTags"
-            value={deeplSplittingTags}
-            onChange={toText(setDeeplSplittingTags)}
-            placeholder="p,li"
-            spellCheck={false}
-          />
-        </FieldWrapper>
-      </Page.Group>
+          Tag handling
+        </Page.SectionTitle>
+        {showTags && (
+          <>
+            <FieldWrapper hint="DeepL keeps the punctuation and the casing of the source text, where it would otherwise correct them.">
+              <SwitchInput
+                name="deeplPreserveFormatting"
+                label="Preserve formatting"
+                value={deeplPreserveFormatting}
+                onChange={(next) => setDeeplPreserveFormatting(next === true)}
+              />
+            </FieldWrapper>
+            <FieldWrapper
+              label="Ignored tags"
+              hint={`The content of these tags isn't translated. Default: ${tagListHint(DEEPL_DEFAULT_IGNORE_TAGS)}.`}
+            >
+              <StringInput
+                code
+                name="deeplIgnoreTags"
+                value={deeplIgnoreTags}
+                onChange={toText(setDeeplIgnoreTags)}
+                spellCheck={false}
+              />
+            </FieldWrapper>
+            <FieldWrapper
+              label="Non-splitting tags"
+              hint={`These tags never split a sentence. Default: ${tagListHint(DEEPL_DEFAULT_NON_SPLITTING_TAGS)}.`}
+            >
+              <StringInput
+                code
+                name="deeplNonSplittingTags"
+                value={deeplNonSplittingTags}
+                onChange={toText(setDeeplNonSplittingTags)}
+                spellCheck={false}
+              />
+            </FieldWrapper>
+            <FieldWrapper
+              label="Splitting tags"
+              hint="These tags always start a new sentence."
+            >
+              <StringInput
+                code
+                name="deeplSplittingTags"
+                value={deeplSplittingTags}
+                onChange={toText(setDeeplSplittingTags)}
+                placeholder="p,li"
+                spellCheck={false}
+              />
+            </FieldWrapper>
+          </>
+        )}
+      </Page.Section>
 
-      <Page.Group
-        title="Glossaries"
-        collapse={{
-          open: showGlossaries || hasInvalidGlossaries,
-          // An invalid saved glossary keeps the group open
-          onToggle: hasInvalidGlossaries
-            ? undefined
-            : () => setShowGlossaries((v) => !v),
-        }}
-      >
-        <FieldWrapper
-          label="Default glossary"
-          hint="DeepL uses it when no language pair below matches the translation."
-          error={defaultGlossaryError}
+      <Page.Section>
+        <Page.SectionTitle
+          collapse={{
+            open: glossariesOpen,
+            // An invalid saved glossary keeps the section open
+            onToggle: hasInvalidGlossaries
+              ? undefined
+              : () => setShowGlossaries((v) => !v),
+          }}
         >
-          <SelectInput
-            name="deeplGlossaryId"
-            value={deeplGlossaryId || null}
-            onChange={(next) => setDeeplGlossaryId(next ?? '')}
-            options={glossaryOptions}
-            acceptValueNotIncludedInOptions={rawOption}
-            loading={fetchStatus === 'loading'}
-            noOptionsMessage={glossaryNoOptionsMessage(fetchStatus)}
-            clearable
-            placeholder="Pick a glossary"
-          />
-        </FieldWrapper>
-        <GlossaryPairEditor
-          value={deeplGlossaryPairs}
-          onChange={setDeeplGlossaryPairs}
-          siteLocales={siteLocales}
-          glossaries={glossaries}
-          fetchStatus={fetchStatus}
-        />
-      </Page.Group>
+          Glossaries
+        </Page.SectionTitle>
+        {glossariesOpen && (
+          <>
+            <FieldWrapper
+              label="Default glossary"
+              hint="DeepL uses it when no language pair below matches the translation."
+              error={defaultGlossaryError}
+            >
+              <SelectInput
+                name="deeplGlossaryId"
+                value={deeplGlossaryId || null}
+                onChange={(next) => setDeeplGlossaryId(next ?? '')}
+                options={glossaryOptions}
+                acceptValueNotIncludedInOptions={rawOption}
+                loading={fetchStatus === 'loading'}
+                noOptionsMessage={glossaryNoOptionsMessage(fetchStatus)}
+                clearable
+                placeholder="Pick a glossary"
+              />
+            </FieldWrapper>
+            <GlossaryPairEditor
+              value={deeplGlossaryPairs}
+              onChange={setDeeplGlossaryPairs}
+              siteLocales={siteLocales}
+              glossaries={glossaries}
+              fetchStatus={fetchStatus}
+            />
+          </>
+        )}
+      </Page.Section>
     </>
   );
 }

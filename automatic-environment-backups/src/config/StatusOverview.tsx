@@ -1,10 +1,11 @@
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
+import CardList from 'datocms-react-ui/CardList';
+import EntityRow from 'datocms-react-ui/EntityRow';
 import Link from 'datocms-react-ui/Link';
 import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
-import SettingsList from 'datocms-react-ui/SettingsList';
 import Spinner from 'datocms-react-ui/Spinner';
 import type { BackupOverviewRow } from '../types/types';
 import {
@@ -40,34 +41,31 @@ const BackupRow = ({
   const reason = isRowBusy ? undefined : getBackupNowReason(config);
 
   return (
-    <SettingsList.Row
-      title={getCadenceLabel(row.scope)}
-      description={
-        <>
-          <div>
+    <CardList.Item
+      row={{
+        summary: (
+          <EntityRow layout="row" title={getCadenceLabel(row.scope)}>
             Last: {row.lastBackup} · Next: {row.nextBackup}
-          </div>
-          {row.environmentStatusNote && <div>{row.environmentStatusNote}</div>}
-        </>
-      }
-      value={
-        row.environmentLinked ? (
+          </EntityRow>
+        ),
+        trailing: row.environmentLinked ? (
           <Link to={config.environmentsPath}>{row.environmentName}</Link>
         ) : (
           row.environmentName
-        )
-      }
-      action={
-        <Button
-          tone="ghost"
-          label="Back up now"
-          busy={isRowBusy}
-          onClick={() => {
-            void config.backupNow(row.scope);
-          }}
-          disabled={reason ? { reason } : false}
-        />
-      }
+        ),
+        actions: (
+          <Button
+            tone="ghost"
+            label="Back up now"
+            busy={isRowBusy}
+            onClick={() => {
+              void config.backupNow(row.scope);
+            }}
+            disabled={reason ? { reason } : false}
+          />
+        ),
+      }}
+      body={row.environmentStatusNote}
     />
   );
 };
@@ -106,23 +104,20 @@ export const StatusOverview = ({
   });
 
   return (
-    <Page.Group
-      title="Backup status"
-      tone={isConfiguredAndReady ? undefined : 'warning'}
-      status={
-        isConfiguredAndReady ? (
+    <Page.Section>
+      <Page.SectionTitle>
+        Backup status{' '}
+        {isConfiguredAndReady ? (
           <Pill tone="success">Active</Pill>
         ) : (
           <Pill tone="warning">Needs attention</Pill>
-        )
-      }
-      footer={
-        isConfiguredAndReady
-          ? 'The service checks the schedule daily at 02:05 UTC.'
-          : undefined
-      }
-    >
-      {!isConfiguredAndReady && (
+        )}
+      </Page.SectionTitle>
+      {isConfiguredAndReady ? (
+        <Page.SectionDescription>
+          The service checks the schedule daily at 02:05 UTC.
+        </Page.SectionDescription>
+      ) : (
         <Callout tone="warning">Finish the setup steps above.</Callout>
       )}
       {isConnected && progressMessage && (
@@ -145,12 +140,12 @@ export const StatusOverview = ({
           />
         )}
       {isConnected && lambdaBackupStatus && (
-        <SettingsList>
+        <CardList actionsVisibility="always">
           {overviewRows.map((row) => (
             <BackupRow key={row.scope} row={row} config={config} />
           ))}
-        </SettingsList>
+        </CardList>
       )}
-    </Page.Group>
+    </Page.Section>
   );
 };

@@ -1,7 +1,7 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
-import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
+import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { AdvancedSettings } from '../config/AdvancedSettings';
@@ -68,9 +68,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   // A step not reached yet stays closed: its chevron is disabled.
-  const groupOf = (
-    step: SetupStepId,
-  ): Pick<PageGroupProps, 'status' | 'collapse'> =>
+  const sectionOf = (step: SetupStepId) =>
     statuses[step] === 'disabled'
       ? {
           status: <Pill tooltip="Finish the steps above first.">Locked</Pill>,
@@ -84,34 +82,37 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           },
         };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the introduction starts the frame, with
+  // no Page around it, and each step is a section under it
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          {!config.canEdit && (
-            <Callout>
-              Your role can view this setup but can't change it.
-            </Callout>
-          )}
-          <StepSecret config={config} group={groupOf('secret')} />
-          <StepDeploy config={config} group={groupOf('deploy')} />
-          <StepConnect config={config} group={groupOf('connect')} />
-          <StepSchedule
-            config={config}
-            group={groupOf('schedule')}
-            onFinish={() => setOpenSteps(new Set())}
-          />
-          <StatusOverview
-            config={config}
-            isConfiguredAndReady={currentStep === null}
-          />
-          <AdvancedSettings
-            canEdit={config.canEdit}
-            debugEnabled={config.debugEnabled}
-            onToggleDebug={config.saveDebug}
-          />
-        </Page.Content>
-      </Page>
+      {!config.canEdit && (
+        <Callout>Your role can view this setup but can't change it.</Callout>
+      )}
+      <Page.Section>
+        <Page.SectionDescription>
+          A service on Vercel, Netlify or Cloudflare runs the backups on a
+          schedule. Set it up in four steps.
+        </Page.SectionDescription>
+      </Page.Section>
+      <StepSecret config={config} section={sectionOf('secret')} />
+      <StepDeploy config={config} section={sectionOf('deploy')} />
+      <StepConnect config={config} section={sectionOf('connect')} />
+      <StepSchedule
+        config={config}
+        section={sectionOf('schedule')}
+        onFinish={() => setOpenSteps(new Set())}
+      />
+      <StatusOverview
+        config={config}
+        isConfiguredAndReady={currentStep === null}
+      />
+      <AdvancedSettings
+        canEdit={config.canEdit}
+        debugEnabled={config.debugEnabled}
+        onToggleDebug={config.saveDebug}
+      />
     </Canvas>
   );
 }

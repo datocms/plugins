@@ -1,14 +1,39 @@
 /* Placement only: the kit components draw themselves. */
 
-/* A block in a group body that isn't a field: the space of the fields. */
+/* A block between two fields that isn't a field: the space of the fields. */
 .block {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* The connection of a store, between two fields: what is known of it, then
+   the button that checks it again. */
+.connection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-m);
+  margin-bottom: var(--form-field-gap);
+}
+
+/* The facts of the connection take the whole width; the button keeps its own. */
+.facts {
+  align-self: stretch;
+}
+
+/* The note under a value of the connection, in the ink of a description. */
+.note {
+  display: block;
+  color: var(--color--ink-subtle);
+}
+
+/* Save follows the last section with the space between two fields, as it
+   follows a field. */
+.lastSection {
   margin-bottom: var(--form-field-gap);
 }
 
 /* Save, and Save anyway after a failed connection check. */
 .actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-m);
-  align-items: center;
+  gap: var(--spacing-s);
 }

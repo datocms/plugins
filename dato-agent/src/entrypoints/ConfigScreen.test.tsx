@@ -130,12 +130,12 @@ function combobox(name: string) {
 
 type GroupName = 'Model provider' | 'Agent behavior' | 'Access';
 
-/** The form of a group of settings: it is named after the title */
+/** The form of a topic of the settings: it is named after the topic */
 function settingsForm(group: GroupName) {
   return screen.getByRole('form', { name: group });
 }
 
-/** Each group saves its own values, with the Save in its footer */
+/** Each topic saves its own values, with the Save after its fields */
 function saveButton(group: GroupName) {
   return within(settingsForm(group)).getByRole('button', { name: 'Save' });
 }
@@ -831,19 +831,19 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishRoleDiscovery();
 
-    // Each topic is a group: a card with its title
-    const group = screen
+    // After the first topic, each topic is a section under its title
+    const section = screen
       .getByRole('heading', { name: 'Access' })
-      .closest('.Page__group');
-    expect(group).not.toBeNull();
-    expect(Array.from(group?.querySelectorAll('input') ?? [])).toEqual([
+      .closest('.Page__content__section');
+    expect(section).not.toBeNull();
+    expect(Array.from(section?.querySelectorAll('input') ?? [])).toEqual([
       screen.getByRole('checkbox', { name: 'Read-only mode' }),
       screen.getByRole('checkbox', { name: 'Show in record sidebars' }),
       combobox(ROLES_LABEL),
     ]);
-    // Each group is a form, with the Save of its own values in its footer
-    expect(document.querySelectorAll('.Page__group')).toHaveLength(3);
-    expect(document.querySelectorAll('.Page__group')[2]).toBe(group);
+    // No titled card around a topic: the host draws its own sections
+    expect(document.querySelector('.Page__group')).toBeNull();
+    // Each topic is a form, with the Save of its own values after its fields
     for (const name of [
       'Model provider',
       'Agent behavior',
@@ -851,22 +851,19 @@ describe('ConfigScreen', () => {
     ] as const) {
       const form = settingsForm(name);
       expect(form.tagName).toBe('FORM');
-      expect(
-        within(form).getByRole('heading', { level: 2, name }),
-      ).toBeVisible();
-      expect(form.querySelector('.Page__group footer')).toContainElement(
-        saveButton(name),
-      );
+      expect(form.lastElementChild).toContainElement(saveButton(name));
     }
-    expect(settingsForm('Access')).toContainElement(group as HTMLElement);
+    expect(section).toContainElement(settingsForm('Access'));
     expect(
       screen.getByText(
         'Project owners always have access. Roles you create later must be added here.',
       ),
     ).toBeVisible();
+    // The first topic has no title: the host draws "Plugin settings" above
+    // the frame
     expect(
       screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent),
-    ).toEqual(['Model provider', 'Agent behavior', 'Access']);
+    ).toEqual(['Agent behavior', 'Access']);
   });
 
   it('shows every current role as an unsaved first-run draft', async () => {

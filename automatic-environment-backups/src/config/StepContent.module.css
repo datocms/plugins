@@ -1,4 +1,4 @@
-/* A row of buttons in a group footer; wraps in a narrow frame */
+/* The buttons of a step, side by side; they wrap in a narrow frame */
 .buttons {
   display: flex;
   flex-wrap: wrap;
@@ -6,12 +6,14 @@
   gap: var(--spacing-s);
 }
 
-/* The step's primary button, at the right end of the row */
-.end {
-  margin-left: auto;
+/* A block between two parts of a step: the space between two fields
+   (Forms, "Space between fields") */
+.block {
+  margin-bottom: var(--form-field-gap);
 }
 
-/* A block of the group body that has no margin of its own */
-.block {
-  margin: 0 0 var(--form-field-gap);
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own */
+.endSection {
+  margin-bottom: 0;
 }

@@ -28,7 +28,6 @@ import InfoList from 'datocms-react-ui/InfoList';
 import Link from 'datocms-react-ui/Link';
 import { Page } from 'datocms-react-ui/Page';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
-import SettingsList from 'datocms-react-ui/SettingsList';
 import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import {
@@ -40,7 +39,6 @@ import {
   useState,
 } from 'react';
 import { COMMENTS_MODEL_API_KEY } from '@/constants';
-import { countMessage } from '@/texts';
 import { createApiClient } from '@/utils/cmaClient';
 import { logDebug, logWarn, setDebugLoggingEnabled } from '@/utils/errorLogger';
 import { formatCount, formatNumber } from '@/utils/format';
@@ -232,50 +230,50 @@ function MigrationResultsView({
   ctx: RenderConfigScreenCtx;
 }) {
   return (
-    <>
-      {/* The kit sets no margin on the list: the box gives it the space of
-          the other blocks of the group. A count of 0 is no news: only the
-          records moved always show. */}
-      <div className={styles.block}>
-        <InfoList>
-          <InfoList.Row title="Records moved">
-            {formatNumber(results.success, locale)}
+    <div className={styles.results}>
+      {/* A count of 0 is no news: only the records moved always show */}
+      <InfoList>
+        <InfoList.Row title="Records moved">
+          {formatNumber(results.success, locale)}
+        </InfoList.Row>
+        {results.skipped > 0 && (
+          <InfoList.Row title="Records already moved">
+            {formatNumber(results.skipped, locale)}
           </InfoList.Row>
-          {results.skipped > 0 && (
-            <InfoList.Row title="Records already moved">
-              {formatNumber(results.skipped, locale)}
-            </InfoList.Row>
-          )}
-          {results.failed > 0 && (
-            <InfoList.Row title="Records not moved">
-              {formatNumber(results.failed, locale)}
-            </InfoList.Row>
-          )}
-        </InfoList>
-      </div>
+        )}
+        {results.failed > 0 && (
+          <InfoList.Row title="Records not moved">
+            {formatNumber(results.failed, locale)}
+          </InfoList.Row>
+        )}
+      </InfoList>
       {/* The toast and the row of the records not moved tell what happened:
           the line says only the next step, and the list names the records
           and why each one failed */}
       {results.errors.length > 0 && (
-        <p className={styles.lead}>
-          Open these records to check their old comments, then click Move
-          comments again:
-        </p>
+        <div className={styles.failed}>
+          <p>
+            Open these records to check their old comments, then click Move
+            comments again:
+          </p>
+          <ul className={styles.list} aria-label="Records not moved">
+            {results.errors.slice(0, MAX_LISTED_ERRORS).map((error) => (
+              <MigrationErrorItem
+                key={error.recordId}
+                error={error}
+                ctx={ctx}
+              />
+            ))}
+            {results.failed > MAX_LISTED_ERRORS && (
+              <li>
+                …and {formatNumber(results.failed - MAX_LISTED_ERRORS, locale)}{' '}
+                more
+              </li>
+            )}
+          </ul>
+        </div>
       )}
-      {results.errors.length > 0 && (
-        <ul className={styles.list} aria-label="Records not moved">
-          {results.errors.slice(0, MAX_LISTED_ERRORS).map((error) => (
-            <MigrationErrorItem key={error.recordId} error={error} ctx={ctx} />
-          ))}
-          {results.failed > MAX_LISTED_ERRORS && (
-            <li>
-              …and {formatNumber(results.failed - MAX_LISTED_ERRORS, locale)}{' '}
-              more
-            </li>
-          )}
-        </ul>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -331,7 +329,7 @@ function getCdaTokenError(
     : undefined;
 }
 
-type SyncGroupProps = {
+type SyncFormProps = {
   realTimeEnabled: boolean;
   onRealTimeEnabledChange: (value: boolean) => void;
   cdaToken: string;
@@ -345,7 +343,11 @@ type SyncGroupProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-function SyncGroup({
+/**
+ * The first part of the screen, with no title: the host draws "Plugin
+ * settings" above it. Save follows the last field.
+ */
+function SyncForm({
   realTimeEnabled,
   onRealTimeEnabledChange,
   cdaToken,
@@ -356,59 +358,51 @@ function SyncGroup({
   saveDisabledReason,
   cdaTokenError,
   onSubmit,
-}: SyncGroupProps) {
+}: SyncFormProps) {
   return (
     <form onSubmit={onSubmit}>
-      <Page.Group
-        title="Sync"
-        footer={
-          <Button
-            submit
-            tone="primary"
-            label="Save"
-            busy={isSaving}
-            disabled={
-              saveDisabledReason ? { reason: saveDisabledReason } : false
-            }
-          />
-        }
-      >
-        <FieldWrapper hint="Comments from other people show up without reloading the record.">
-          <SwitchInput
-            label="Real-time updates"
-            value={realTimeEnabled}
-            onChange={(newValue) => onRealTimeEnabledChange(newValue === true)}
-          />
-        </FieldWrapper>
-        {realTimeEnabled && (
-          <FieldWrapper
-            label="Content Delivery API token"
-            required
-            hint={
-              <>
-                Create a token with read access in{' '}
-                <Link to="/project_settings/access_tokens">API tokens</Link>.
-              </>
-            }
-            error={cdaTokenError}
-          >
-            <StringInput
-              code
-              value={cdaToken}
-              onChange={(newValue) => onCdaTokenChange(newValue ?? '')}
-            />
-          </FieldWrapper>
-        )}
-        <FieldWrapper hint="Writes detailed sync diagnostics to the browser console, for troubleshooting.">
-          <SwitchInput
-            label="Debug logging"
-            value={debugLoggingEnabled}
-            onChange={(newValue) =>
-              onDebugLoggingEnabledChange(newValue === true)
-            }
+      <FieldWrapper hint="Comments from other people show up without reloading the record.">
+        <SwitchInput
+          label="Real-time updates"
+          value={realTimeEnabled}
+          onChange={(newValue) => onRealTimeEnabledChange(newValue === true)}
+        />
+      </FieldWrapper>
+      {realTimeEnabled && (
+        <FieldWrapper
+          label="Content Delivery API token"
+          required
+          hint={
+            <>
+              Create a token with read access in{' '}
+              <Link to="/project_settings/access_tokens">API tokens</Link>.
+            </>
+          }
+          error={cdaTokenError}
+        >
+          <StringInput
+            code
+            value={cdaToken}
+            onChange={(newValue) => onCdaTokenChange(newValue ?? '')}
           />
         </FieldWrapper>
-      </Page.Group>
+      )}
+      <FieldWrapper hint="Writes detailed sync diagnostics to the browser console, for troubleshooting.">
+        <SwitchInput
+          label="Debug logging"
+          value={debugLoggingEnabled}
+          onChange={(newValue) =>
+            onDebugLoggingEnabledChange(newValue === true)
+          }
+        />
+      </FieldWrapper>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={isSaving}
+        disabled={saveDisabledReason ? { reason: saveDisabledReason } : false}
+      />
     </form>
   );
 }
@@ -453,9 +447,8 @@ function getMigrateDisabled(state: LegacyState) {
 }
 
 /**
- * The two steps of the migration, as rows of settings: each one tells what it
- * does, with its action always at the right. The row of the scan shows what
- * it found as its value.
+ * The two steps of the migration: what the scan found, then the buttons of
+ * the steps, side by side
  */
 function LegacyTasks({
   state,
@@ -492,39 +485,29 @@ function LegacyTasks({
     state.migrationStatus === 'migrating' || state.isCleaningUp;
 
   return (
-    <SettingsList>
-      {showScan && (
-        <SettingsList.Row
-          title="Find legacy comments"
-          description="Looks for comments saved by older versions of the plugin."
-          value={scanValue}
-          action={
-            <Button
-              tone="ghost"
-              label={hasScanned ? 'Find again' : 'Find'}
-              busy={state.migrationStatus === 'scanning'}
-              disabled={otherTaskRunning ? WAIT_FOR_TASK : false}
-              onClick={onScan}
-            />
-          }
-        />
+    <>
+      {showScan && scanValue && (
+        <p className="Page__content__section__text">{scanValue}</p>
       )}
-      {showMigrate && (
-        <SettingsList.Row
-          title="Move legacy comments"
-          description="Moves the old comments into the comments sidebar of their records."
-          action={
-            <Button
-              tone="ghost"
-              label="Move comments"
-              busy={state.migrationStatus === 'migrating'}
-              disabled={getMigrateDisabled(state)}
-              onClick={onMigrate}
-            />
-          }
-        />
-      )}
-    </SettingsList>
+      <div className={styles.actions}>
+        {showScan && (
+          <Button
+            label={hasScanned ? 'Find again' : 'Find'}
+            busy={state.migrationStatus === 'scanning'}
+            disabled={otherTaskRunning ? WAIT_FOR_TASK : false}
+            onClick={onScan}
+          />
+        )}
+        {showMigrate && (
+          <Button
+            label="Move comments"
+            busy={state.migrationStatus === 'migrating'}
+            disabled={getMigrateDisabled(state)}
+            onClick={onMigrate}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
@@ -537,7 +520,7 @@ function LegacyBody({
   state: LegacyState;
   locale: string;
   ctx: RenderConfigScreenCtx;
-  /** The rows of the scan and the migration */
+  /** What the scan found, and the buttons of the scan and the migration */
   tasks: ReactNode;
 }) {
   const {
@@ -597,7 +580,7 @@ function LegacyBody({
   );
 }
 
-function LegacyGroup({
+function LegacySection({
   state,
   locale,
   ctx,
@@ -625,65 +608,71 @@ function LegacyGroup({
     modelsWithComments.length > 0 && migrationStatus !== 'completed';
 
   return (
-    <Page.Group
-      title="Legacy comments"
-      // A task in progress keeps the group open
-      collapse={{
-        open,
-        onToggle: isTaskRunning ? undefined : () => onOpenChange(!open),
-      }}
-    >
-      <LegacyBody
-        state={state}
-        locale={locale}
-        ctx={ctx}
-        tasks={
-          <LegacyTasks
+    <Page.Section>
+      <Page.SectionTitle
+        // A task in progress keeps the section open
+        collapse={{
+          open,
+          onToggle: isTaskRunning ? undefined : () => onOpenChange(!open),
+        }}
+      >
+        Legacy comments
+      </Page.SectionTitle>
+      {open && (
+        <>
+          <Page.SectionDescription>
+            Looks for comments saved by older versions of the plugin. Moves the
+            old comments into the comments sidebar of their records.
+          </Page.SectionDescription>
+          <LegacyBody
             state={state}
-            showScan={showScan}
-            showMigrate={showMigrate}
-            onScan={onScan}
-            onMigrate={onMigrate}
+            locale={locale}
+            ctx={ctx}
+            tasks={
+              <LegacyTasks
+                state={state}
+                showScan={showScan}
+                showMigrate={showMigrate}
+                onScan={onScan}
+                onMigrate={onMigrate}
+              />
+            }
           />
-        }
-      />
-    </Page.Group>
+        </>
+      )}
+    </Page.Section>
   );
 }
 
-function DangerZoneGroup({
+function DangerZoneSection({
   modelCount,
   isCleaningUp,
+  locale,
   onDelete,
 }: {
   modelCount: number;
   isCleaningUp: boolean;
+  locale: string;
   onDelete: () => Promise<void>;
 }) {
   return (
-    <Page.Group title="Danger zone" tone="danger">
-      <SettingsList>
-        <SettingsList.Row
-          title="Delete the legacy fields"
-          description={countMessage(
-            'recordComments.deleteLegacyFieldsDescription',
-            modelCount,
-          )}
-          action={
-            <Button
-              tone="ghost-alert"
-              label="Delete fields"
-              busy={isCleaningUp}
-              // The question comes first: the button is busy only once the
-              // fields are being deleted, not while the user decides
-              onClick={() => {
-                void onDelete();
-              }}
-            />
-          }
-        />
-      </SettingsList>
-    </Page.Group>
+    <Page.Section>
+      <Page.SectionTitle>Danger zone</Page.SectionTitle>
+      <Page.SectionDescription>
+        Checks every comment again, then deletes the comment_log field from{' '}
+        {formatCount(modelCount, 'model', 'models', locale)} for good.
+      </Page.SectionDescription>
+      <Button
+        tone="ghost-alert"
+        label="Delete fields"
+        busy={isCleaningUp}
+        // The question comes first: the button is busy only once the
+        // fields are being deleted, not while the user decides
+        onClick={() => {
+          void onDelete();
+        }}
+      />
+    </Page.Section>
   );
 }
 
@@ -971,8 +960,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         inspectionErrors: failedModels.length,
       });
 
-      // What the scan found shows in the group: the models, the models it
-      // couldn't check, or "None found" in its row. No toast repeats it.
+      // What the scan found shows in the section: the models, the models it
+      // couldn't check, or "None found". No toast repeats it.
       setHasScanned(true);
       setMigrationStatus('idle');
     } catch (error) {
@@ -1202,7 +1191,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     }
     setIsCleaningUp(true);
     // The cleanup starts in the Danger zone, but its progress shows in the
-    // legacy group, which can't be opened while the task runs
+    // legacy section, which can't be opened while the task runs
     setIsLegacyOpen(true);
     const verified = emptyMigrationResults();
     const removed = new Set<string>();
@@ -1246,49 +1235,51 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     migrationResults?.failed === 0 &&
     modelsWithComments.length > 0;
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the form starts the frame, with no
+  // Page around it
   return (
-    <Page>
-      <Page.Content>
-        <SyncGroup
-          realTimeEnabled={realTimeEnabled}
-          onRealTimeEnabledChange={setRealTimeEnabled}
-          cdaToken={cdaToken}
-          onCdaTokenChange={setCdaToken}
-          debugLoggingEnabled={debugLoggingEnabled}
-          onDebugLoggingEnabledChange={setDebugLoggingEnabledState}
-          isSaving={isSaving}
-          saveDisabledReason={saveDisabledReason}
-          cdaTokenError={getCdaTokenError(realTimeEnabled, trimmedCdaToken)}
-          onSubmit={handleSubmit}
-        />
-        <LegacyGroup
-          state={{
-            migrationStatus,
-            modelsWithComments,
-            scanProgress,
-            scanErrors,
-            hasScanned,
-            migrationProgress,
-            migrationError,
-            migrationResults,
-            isCleaningUp,
-          }}
+    <>
+      <SyncForm
+        realTimeEnabled={realTimeEnabled}
+        onRealTimeEnabledChange={setRealTimeEnabled}
+        cdaToken={cdaToken}
+        onCdaTokenChange={setCdaToken}
+        debugLoggingEnabled={debugLoggingEnabled}
+        onDebugLoggingEnabledChange={setDebugLoggingEnabledState}
+        isSaving={isSaving}
+        saveDisabledReason={saveDisabledReason}
+        cdaTokenError={getCdaTokenError(realTimeEnabled, trimmedCdaToken)}
+        onSubmit={handleSubmit}
+      />
+      <LegacySection
+        state={{
+          migrationStatus,
+          modelsWithComments,
+          scanProgress,
+          scanErrors,
+          hasScanned,
+          migrationProgress,
+          migrationError,
+          migrationResults,
+          isCleaningUp,
+        }}
+        locale={locale}
+        ctx={ctx}
+        open={isLegacyOpen}
+        onOpenChange={setIsLegacyOpen}
+        onScan={handleScan}
+        onMigrate={handleMigrate}
+      />
+      {showCleanup && (
+        <DangerZoneSection
+          modelCount={modelsWithComments.length}
+          isCleaningUp={isCleaningUp}
           locale={locale}
-          ctx={ctx}
-          open={isLegacyOpen}
-          onOpenChange={setIsLegacyOpen}
-          onScan={handleScan}
-          onMigrate={handleMigrate}
+          onDelete={confirmCleanup}
         />
-        {showCleanup && (
-          <DangerZoneGroup
-            modelCount={modelsWithComments.length}
-            isCleaningUp={isCleaningUp}
-            onDelete={confirmCleanup}
-          />
-        )}
-      </Page.Content>
-    </Page>
+      )}
+    </>
   );
 };
 

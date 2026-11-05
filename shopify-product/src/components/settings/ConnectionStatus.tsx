@@ -1,12 +1,12 @@
 import Button from 'datocms-react-ui/Button';
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
-import type { Message } from 'datocms-react-ui/Message';
-import SettingsList from 'datocms-react-ui/SettingsList';
+import InfoList from 'datocms-react-ui/InfoList';
 import SmartDate from 'datocms-react-ui/SmartDate';
 import type { ReactNode } from 'react';
 import type { StoreCapabilities } from '../../types';
 import CapabilityList from './CapabilityList';
 import { SAVING_REASON, useFocusAfterBusy } from './focus';
+import styles from './Settings.module.css';
 import type { ConnectionStatus as Status } from './useConnectionChecks';
 
 type Props = {
@@ -50,16 +50,15 @@ function readableDate(iso: string): string | null {
 }
 
 /**
- * The row's one-sentence description: why a check failed (where a failed
- * save moves focus), else the connected store's name, and when the saved
- * abilities were checked. The value stays short, so Re-check keeps its
- * place at the right. The API version shows only once it expired, in its
- * own group at the top.
+ * The one-sentence note under the status: why a check failed (where a
+ * failed save moves focus), else the connected store's name, and when the
+ * saved abilities were checked. The status stays short. The API version
+ * shows only once it expired, in its own callout at the top.
  */
 function statusDescription(
   status: Status | undefined,
   capabilities: StoreCapabilities | null,
-): Message | undefined {
+): ReactNode {
   if (status?.kind === 'failed') {
     // An alert: after Re-check, focus stays on the button, and the value
     // alone says only "Not connected".
@@ -94,11 +93,10 @@ function statusDescription(
 }
 
 /**
- * The connection of a store: the status (with why a check failed), the
- * check button and what the token can't read. A check shows one spinner: on
- * the button, or on Save while a save checks (the button then waits,
- * disabled). After a failed check the abilities aren't known, so they don't
- * show.
+ * The connection of a store: the status (with why a check failed), what the
+ * token can't read, and the check button. A check shows one spinner: on the
+ * button, or on Save while a save checks (the button then waits, disabled).
+ * After a failed check the abilities aren't known, so they don't show.
  */
 export default function ConnectionStatus({
   status,
@@ -110,34 +108,31 @@ export default function ConnectionStatus({
   const checking = status?.kind === 'checking';
   const failed = status?.kind === 'failed';
   const focus = useFocusAfterBusy(checking);
+  const description = statusDescription(status, capabilities);
 
   return (
-    <SettingsList>
-      <SettingsList.Row
-        title="Connection"
-        value={
+    <div className={styles.connection}>
+      <InfoList className={styles.facts}>
+        <InfoList.Row title="Connection">
           <span aria-live="polite">
             {statusValue(status, capabilities !== null)}
           </span>
-        }
-        description={statusDescription(status, capabilities)}
-        action={
-          <Button
-            ref={focus.ref}
-            tone="ghost"
-            label={status || capabilities ? 'Re-check' : 'Test connection'}
-            busy={checking && !saving}
-            disabled={saving ? { reason: SAVING_REASON } : undefined}
-            onClick={() => {
-              focus.follow();
-              onTest();
-            }}
-          />
-        }
+          {description && <span className={styles.note}>{description}</span>}
+        </InfoList.Row>
+        {capabilities && !failed && (
+          <CapabilityList capabilities={capabilities} tokenless={tokenless} />
+        )}
+      </InfoList>
+      <Button
+        ref={focus.ref}
+        label={status || capabilities ? 'Re-check' : 'Test connection'}
+        busy={checking && !saving}
+        disabled={saving ? { reason: SAVING_REASON } : undefined}
+        onClick={() => {
+          focus.follow();
+          onTest();
+        }}
       />
-      {capabilities && !failed && (
-        <CapabilityList capabilities={capabilities} tokenless={tokenless} />
-      )}
-    </SettingsList>
+    </div>
   );
 }

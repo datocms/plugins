@@ -2,7 +2,6 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
 import TableList, { type TableListColumn } from 'datocms-react-ui/TableList';
 import isEqual from 'lodash-es/isEqual';
@@ -101,72 +100,60 @@ export default function ConfigScreen({ ctx }: PropTypes) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page>
-        <Page.Content>
-          <form onSubmit={handleSubmit}>
-            <Page.Group
-              title="Settings"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  expand={false}
-                  label="Save"
-                  busy={saving}
-                  disabled={
-                    dirty
-                      ? undefined
-                      : { reason: 'There are no changes to save.' }
-                  }
-                />
-              }
-            >
-              <FieldWrapper
-                label="Frontend metadata endpoint"
-                required
-                hint="A CORS-enabled endpoint that returns the frontend metadata of a record. It can have a query string: the plugin adds the itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters."
-                error={
-                  submitAttempted && !url ? 'Enter the endpoint URL' : undefined
-                }
-              >
-                <StringInput
-                  code
-                  placeholder="https://www.example.com/api/seo-metadata"
-                  value={url}
-                  onChange={(value) => setUrl(value || null)}
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Custom headers"
-                hint="Sent with every request to the endpoint."
-              >
-                <TableList<CustomHeader>
-                  value={headers}
-                  onChange={setHeaders}
-                  errors={headerErrors}
-                  touched={submitAttempted}
-                  columns={columns}
-                  emptyMessage="No custom headers"
-                  add={{ label: 'Add header', newItem: newHeader }}
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Auto-apply to JSON fields with API key"
-                hint="The JSON fields with this API key use this plugin as their editor."
-              >
-                <StringInput
-                  code
-                  placeholder="seo_analysis"
-                  value={autoApply}
-                  onChange={(value) => setAutoApply(value || null)}
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      <form onSubmit={handleSubmit}>
+        <FieldWrapper
+          label="Frontend metadata endpoint"
+          required
+          hint="A CORS-enabled endpoint that returns the frontend metadata of a record. It can have a query string: the plugin adds the itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters."
+          error={submitAttempted && !url ? 'Enter the endpoint URL' : undefined}
+        >
+          <StringInput
+            code
+            placeholder="https://www.example.com/api/seo-metadata"
+            value={url}
+            onChange={(value) => setUrl(value || null)}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Custom headers"
+          hint="Sent with every request to the endpoint."
+        >
+          <TableList<CustomHeader>
+            value={headers}
+            onChange={setHeaders}
+            errors={headerErrors}
+            touched={submitAttempted}
+            columns={columns}
+            emptyMessage="No custom headers"
+            add={{ label: 'Add header', newItem: newHeader }}
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Auto-apply to JSON fields with API key"
+          hint="The JSON fields with this API key use this plugin as their editor."
+        >
+          <StringInput
+            code
+            placeholder="seo_analysis"
+            value={autoApply}
+            onChange={(value) => setAutoApply(value || null)}
+          />
+        </FieldWrapper>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={saving}
+          disabled={
+            dirty ? undefined : { reason: 'There are no changes to save.' }
+          }
+        />
+      </form>
     </Canvas>
   );
 }

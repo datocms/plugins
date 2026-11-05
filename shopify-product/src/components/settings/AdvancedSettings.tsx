@@ -18,39 +18,47 @@ const ADD_STORE_HINT_ID = 'add-store-hint';
 
 /** Everything most projects never touch: more stores, the demo store, auto-apply. */
 export default function AdvancedSettings({ form, open, onToggle }: Props) {
-  // An error must stay visible: the group can't close while it shows.
+  // An error must stay visible: the section can't close while it shows.
   const collapse = form.errors.autoApply ? { open: true } : { open, onToggle };
 
   return (
-    <Page.Group title="Advanced settings" collapse={collapse}>
-      {!form.readOnly && (
-        <div className={styles.block}>
-          <Button
-            icon={PlusIcon}
-            label="Add another store"
-            aria-describedby={ADD_STORE_HINT_ID}
-            disabled={form.saving ? { reason: SAVING_REASON } : undefined}
-            onClick={form.addStore}
+    // The last section: Save follows it
+    <Page.Section className={styles.lastSection}>
+      <Page.SectionTitle collapse={collapse}>
+        Advanced settings
+      </Page.SectionTitle>
+      {collapse.open && (
+        <>
+          {!form.readOnly && (
+            <div className={styles.block}>
+              <Button
+                icon={PlusIcon}
+                label="Add another store"
+                aria-describedby={ADD_STORE_HINT_ID}
+                disabled={form.saving ? { reason: SAVING_REASON } : undefined}
+                onClick={form.addStore}
+              />
+              <FieldHint
+                id={ADD_STORE_HINT_ID}
+                hint="Each field can then pick which store it uses."
+              />
+            </div>
+          )}
+          <DemoStoreSection
+            value={form.draft.useDemoStore}
+            disabled={form.fieldsLocked}
+            onChange={form.setUseDemoStore}
           />
-          <FieldHint
-            id={ADD_STORE_HINT_ID}
-            hint="Each field can then pick which store it uses."
+          <AutoApplySection
+            value={form.draft.autoApplyToFieldsWithApiKey}
+            error={form.errors.autoApply}
+            disabled={form.fieldsLocked && !form.readOnly}
+            readOnly={form.readOnly}
+            onChange={form.setAutoApply}
+            onBlur={form.touchAutoApply}
           />
-        </div>
+        </>
       )}
-      <DemoStoreSection
-        value={form.draft.useDemoStore}
-        disabled={form.fieldsLocked}
-        onChange={form.setUseDemoStore}
-      />
-      <AutoApplySection
-        value={form.draft.autoApplyToFieldsWithApiKey}
-        error={form.errors.autoApply}
-        disabled={form.fieldsLocked && !form.readOnly}
-        readOnly={form.readOnly}
-        onChange={form.setAutoApply}
-        onBlur={form.touchAutoApply}
-      />
-    </Page.Group>
+    </Page.Section>
   );
 }

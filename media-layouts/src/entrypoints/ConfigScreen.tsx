@@ -10,7 +10,7 @@ import TableList, {
   type TableListColumn,
   type TableListRowTouched,
 } from 'datocms-react-ui/TableList';
-import { useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { DEFAULT_WIDTH } from '../constants';
 import type {
   CustomWidthPreset,
@@ -42,7 +42,7 @@ const ASPECT_RATIO_SELECT_OPTIONS = buildAspectRatioSelectOptions({
   includeOriginal: true,
 });
 
-/** Why the Save of a group is off, if it is */
+/** Why the Save of a form is off, if it is */
 function saveDisabledReason(dirty: boolean, invalidReason: string | false) {
   if (invalidReason) return { reason: invalidReason };
   if (!dirty) return { reason: 'There are no changes to save.' };
@@ -50,33 +50,34 @@ function saveDisabledReason(dirty: boolean, invalidReason: string | false) {
 }
 
 /**
- * The plugin-wide settings, in two groups: the defaults of new assets and
- * the width presets. Each group keeps its changes until its Save.
+ * The plugin-wide settings, in two forms: the defaults of new assets and
+ * the width presets. Each form keeps its changes until its Save.
  */
 export default function ConfigScreen({ ctx }: Props) {
   const parameters = ctx.plugin.attributes.parameters;
   const saved = useMemo(() => normalizeGlobalParams(parameters), [parameters]);
 
-  // Saves the changes of one group over the saved settings, then confirms
+  // Saves the changes of one form over the saved settings, then confirms
   const save = async (changes: Partial<ValidGlobalParams>) => {
     await ctx.updatePluginParameters({ ...saved, ...changes });
     ctx.notice('Settings saved.');
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the defaults start the frame, with no
+  // Page around them
   return (
-    <Page>
-      <Page.Content>
-        <DefaultsGroup saved={saved} onSave={save} />
-        <WidthPresetsGroup
-          saved={saved.widthPresets}
-          onSave={(widthPresets) => save({ widthPresets })}
-        />
-      </Page.Content>
-    </Page>
+    <>
+      <DefaultsForm saved={saved} onSave={save} />
+      <WidthPresetsSection
+        saved={saved.widthPresets}
+        onSave={(widthPresets) => save({ widthPresets })}
+      />
+    </>
   );
 }
 
-type DefaultsGroupProps = {
+type DefaultsFormProps = {
   saved: ValidGlobalParams;
   onSave: (
     changes: Pick<ValidGlobalParams, 'defaultAspectRatio' | 'defaultWidth'>,
@@ -84,14 +85,16 @@ type DefaultsGroupProps = {
 };
 
 /**
- * The aspect ratio and the width of new assets. A width that matches no
- * option (of the saved presets) shows as Custom, with its number.
+ * The aspect ratio and the width of new assets, the first part of the
+ * screen, with no title. A width that matches no option (of the saved
+ * presets) shows as Custom, with its number.
  */
-function DefaultsGroup({ saved, onSave }: DefaultsGroupProps) {
+function DefaultsForm({ saved, onSave }: DefaultsFormProps) {
   const [aspectRatio, setAspectRatio] = useState(saved.defaultAspectRatio);
   const [width, setWidth] = useState<WidthValue>(saved.defaultWidth);
   // The text of the custom width input, once the user picked Custom or typed
   const [customWidthText, setCustomWidthText] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const widthOptions = useMemo(
     () => buildWidthOptions(saved.widthPresets),
@@ -121,21 +124,19 @@ function DefaultsGroup({ saved, onSave }: DefaultsGroupProps) {
       ? 'Fix the errors above first.'
       : !!(ratioError || widthError) && 'Fix the error above first.';
 
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!dirty || invalidReason || saving) return;
+    setSaving(true);
+    try {
+      await onSave({ defaultAspectRatio: aspectRatio, defaultWidth: width });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Page.Group
-      title="Default aspect ratio and width"
-      footer={
-        <Button
-          tone="primary"
-          label="Save"
-          expand={false}
-          disabled={saveDisabledReason(dirty, invalidReason)}
-          onClick={() =>
-            onSave({ defaultAspectRatio: aspectRatio, defaultWidth: width })
-          }
-        />
-      }
-    >
+    <form onSubmit={handleSubmit}>
       <AspectRatioFields
         value={aspectRatio}
         error={ratioError}
@@ -151,7 +152,14 @@ function DefaultsGroup({ saved, onSave }: DefaultsGroupProps) {
           setCustomWidthText(nextCustomText);
         }}
       />
-    </Page.Group>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={saving}
+        disabled={saveDisabledReason(dirty, invalidReason)}
+      />
+    </form>
   );
 }
 
@@ -237,8 +245,8 @@ function WidthFields({
     onChange(valid ? parsed : value, text);
   };
 
-  // The hint of the group, after its last field: the custom width, while it
-  // shows
+  // The hint of the defaults, after their last field: the custom width,
+  // while it shows
   const showsCustomWidth = customText !== null;
   const hint =
     'For assets that editors add to a field, unless the field sets its own.';
@@ -321,7 +329,7 @@ function samePresets(
   );
 }
 
-type WidthPresetsGroupProps = {
+type WidthPresetsSectionProps = {
   saved: CustomWidthPreset[];
   onSave: (presets: CustomWidthPreset[]) => Promise<void>;
 };
@@ -330,8 +338,9 @@ type WidthPresetsGroupProps = {
  * The named widths. A new row starts empty; Save takes the rows once each
  * has a label and a valid width of its own.
  */
-function WidthPresetsGroup({ saved, onSave }: WidthPresetsGroupProps) {
+function WidthPresetsSection({ saved, onSave }: WidthPresetsSectionProps) {
   const [rows, setRows] = useState<PresetRow[]>(() => saved.map(presetToRow));
+  const [saving, setSaving] = useState(false);
   // The cells that the user left: their errors show, as in the TableList
   // docs (an empty new row has no error until then)
   const [touched, setTouched] = useState<(TableListRowTouched | undefined)[]>(
@@ -349,6 +358,7 @@ function WidthPresetsGroup({ saved, onSave }: WidthPresetsGroupProps) {
   const errors = rows.map(validatePresetRow);
   const presets = rows.map(parsePresetRow);
   const invalid = errors.some((error) => error.label || error.width);
+  const dirty = !samePresets(presets, saved);
 
   const handleChange = (nextRows: PresetRow[], change: TableListChange) => {
     setRows(nextRows);
@@ -357,50 +367,59 @@ function WidthPresetsGroup({ saved, onSave }: WidthPresetsGroupProps) {
     }
   };
 
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!dirty || invalid || saving) return;
+    setSaving(true);
+    try {
+      await onSave(presets.flatMap((preset) => (preset ? [preset] : [])));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Page.Group
-      title="Width presets"
-      footer={
+    <Page.Section>
+      <Page.SectionTitle>Width presets</Page.SectionTitle>
+      <form onSubmit={handleSubmit}>
+        {/* The title of the section right above names the list */}
+        <FieldWrapper
+          label="Width presets"
+          labelExtras={{ hidden: true }}
+          hint="Named widths that every width menu shows, before the standard ones."
+        >
+          <TableList<PresetRow>
+            value={rows}
+            onChange={handleChange}
+            errors={errors}
+            touched={touched}
+            onCellBlur={({ index, field }) =>
+              setTouched((current) => {
+                const next = [...current];
+                const row = next[index];
+                next[index] = {
+                  ...(typeof row === 'object' ? row : {}),
+                  [field]: true,
+                };
+                return next;
+              })
+            }
+            columns={columns}
+            emptyMessage="No width presets yet"
+            add={{ label: 'Add preset', newItem: newPresetRow }}
+          />
+        </FieldWrapper>
         <Button
+          submit
           tone="primary"
           label="Save"
-          expand={false}
+          busy={saving}
           disabled={saveDisabledReason(
-            !samePresets(presets, saved),
+            dirty,
             invalid && 'Give each preset a label and a width of its own.',
           )}
-          onClick={() =>
-            onSave(presets.flatMap((preset) => (preset ? [preset] : [])))
-          }
         />
-      }
-    >
-      <FieldWrapper
-        label="Width presets"
-        labelExtras={{ hidden: true }}
-        hint="Named widths that every width menu shows, before the standard ones."
-      >
-        <TableList<PresetRow>
-          value={rows}
-          onChange={handleChange}
-          errors={errors}
-          touched={touched}
-          onCellBlur={({ index, field }) =>
-            setTouched((current) => {
-              const next = [...current];
-              const row = next[index];
-              next[index] = {
-                ...(typeof row === 'object' ? row : {}),
-                [field]: true,
-              };
-              return next;
-            })
-          }
-          columns={columns}
-          emptyMessage="No width presets yet"
-          add={{ label: 'Add preset', newItem: newPresetRow }}
-        />
-      </FieldWrapper>
-    </Page.Group>
+      </form>
+    </Page.Section>
   );
 }

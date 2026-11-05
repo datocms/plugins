@@ -23,7 +23,6 @@ import Pill from 'datocms-react-ui/Pill';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import SwitchList from 'datocms-react-ui/SwitchList';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BlockIcon, CircleExclamationIcon, OpenInNewTabIcon } from '../icons';
 import type {
@@ -130,7 +129,7 @@ function BlockPicker({
   );
 }
 
-type AnalyzedGroupsProps = {
+type AnalyzedSectionsProps = {
   analysis: BlockAnalysis;
   envPrefix: string;
   fullyReplaceBlock: boolean;
@@ -141,7 +140,7 @@ type AnalyzedGroupsProps = {
   handleConvert: () => Promise<void>;
 };
 
-function AnalyzedGroups({
+function AnalyzedSections({
   analysis,
   envPrefix,
   fullyReplaceBlock,
@@ -150,12 +149,13 @@ function AnalyzedGroups({
   setPublishAfterChanges,
   handleReset,
   handleConvert,
-}: AnalyzedGroupsProps) {
+}: AnalyzedSectionsProps) {
   const noFields = analysis.modularContentFields.length === 0;
 
   return (
     <>
-      <Page.Group title="Analysis">
+      <Page.Section>
+        <Page.SectionTitle>Analysis</Page.SectionTitle>
         <InfoList>
           <InfoList.Row title="Block">
             {analysis.block.name} <ApiKey>{analysis.block.apiKey}</ApiKey>
@@ -167,16 +167,13 @@ function AnalyzedGroups({
             {analysis.modularContentFields.length}
           </InfoList.Row>
         </InfoList>
-      </Page.Group>
+      </Page.Section>
 
-      <Page.Group title="Fields using this block" flush>
+      <Page.Section>
+        <Page.SectionTitle>Fields using this block</Page.SectionTitle>
         <CardList
           actionsVisibility="always"
-          empty={
-            <Page.GroupInset>
-              <EmptySlot message="No field uses this block" />
-            </Page.GroupInset>
-          }
+          empty={<EmptySlot message="No field uses this block" />}
         >
           {analysis.modularContentFields.map((field) => (
             <CardList.Item
@@ -212,64 +209,55 @@ function AnalyzedGroups({
             />
           ))}
         </CardList>
-      </Page.Group>
+      </Page.Section>
 
-      <Page.Group
-        title="Options"
-        footer={
-          <div className={s.footer}>
-            <Button tone="ghost" label="Cancel" onClick={handleReset} />
-            <Button
-              tone={fullyReplaceBlock ? 'alert' : 'primary'}
-              label={
-                fullyReplaceBlock ? 'Convert and replace' : 'Convert to model'
-              }
-              onClick={handleConvert}
-              disabled={
-                noFields
-                  ? {
-                      reason:
-                        'No field uses this block, so there is nothing to convert.',
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        }
-      >
-        <SwitchList>
-          <FieldWrapper hint="Deletes the original block model and its data after the conversion. The new links field takes its place.">
-            <SwitchInput
-              label="Replace the original block"
-              value={fullyReplaceBlock}
-              onChange={(v) => setFullyReplaceBlock(v === true)}
-            />
-          </FieldWrapper>
-          <FieldWrapper hint="Publishes every record that the conversion creates or updates.">
-            <SwitchInput
-              label="Publish the records after the conversion"
-              value={publishAfterChanges}
-              onChange={(v) => setPublishAfterChanges(v === true)}
-            />
-          </FieldWrapper>
-        </SwitchList>
-      </Page.Group>
+      <Page.Section>
+        <Page.SectionTitle>Options</Page.SectionTitle>
+        <FieldWrapper hint="Deletes the original block model and its data after the conversion. The new links field takes its place.">
+          <SwitchInput
+            label="Replace the original block"
+            value={fullyReplaceBlock}
+            onChange={(v) => setFullyReplaceBlock(v === true)}
+          />
+        </FieldWrapper>
+        <FieldWrapper hint="Publishes every record that the conversion creates or updates.">
+          <SwitchInput
+            label="Publish the records after the conversion"
+            value={publishAfterChanges}
+            onChange={(v) => setPublishAfterChanges(v === true)}
+          />
+        </FieldWrapper>
+        <div className={s.buttons}>
+          <Button tone="ghost" label="Cancel" onClick={handleReset} />
+          <Button
+            tone={fullyReplaceBlock ? 'alert' : 'primary'}
+            label={
+              fullyReplaceBlock ? 'Convert and replace' : 'Convert to model'
+            }
+            onClick={handleConvert}
+            disabled={
+              noFields
+                ? {
+                    reason:
+                      'No field uses this block, so there is nothing to convert.',
+                  }
+                : undefined
+            }
+          />
+        </div>
+      </Page.Section>
     </>
   );
 }
 
-type ConvertingGroupProps = {
+type ConvertingSectionProps = {
   progress: ConversionProgress;
 };
 
-function ConvertingGroup({ progress }: ConvertingGroupProps) {
+function ConvertingSection({ progress }: ConvertingSectionProps) {
   return (
-    <Page.Group
-      title="Conversion"
-      status={
-        <Pill>{`Step ${progress.currentStep} of ${progress.totalSteps}`}</Pill>
-      }
-    >
+    <Page.Section>
+      <Page.SectionTitle>Conversion</Page.SectionTitle>
       <div className={s.readout}>
         <ProgressBar
           value={progress.percentage / 100}
@@ -277,11 +265,14 @@ function ConvertingGroup({ progress }: ConvertingGroupProps) {
         />
         <p className={s.line}>
           <span>{progress.stepDescription}</span>
-          <span className={s.meta}>{Math.round(progress.percentage)}%</span>
+          <span className={s.meta}>
+            {`Step ${progress.currentStep} of ${progress.totalSteps}`} ·{' '}
+            {Math.round(progress.percentage)}%
+          </span>
         </p>
         {progress.details && <p className={s.meta}>{progress.details}</p>}
       </div>
-    </Page.Group>
+    </Page.Section>
   );
 }
 
@@ -540,20 +531,10 @@ export default function ConfigScreen({ ctx }: Props) {
   // Check for access token
   if (!ctx.currentUserAccessToken) {
     return (
-      <Page>
-        <Page.Content>
-          <Page.Group
-            title="Permissions"
-            tone="warning"
-            status={<Pill tone="warning">Missing</Pill>}
-          >
-            <Callout tone="warning">
-              Grant the plugin the “Current user access token” permission in its
-              settings, so it can read and change the schema.
-            </Callout>
-          </Page.Group>
-        </Page.Content>
-      </Page>
+      <Callout tone="warning">
+        Grant the plugin the “Current user access token” permission in its
+        settings, so it can read and change the schema.
+      </Callout>
     );
   }
 
@@ -561,71 +542,68 @@ export default function ConfigScreen({ ctx }: Props) {
     ? ''
     : `/environments/${ctx.environment}`;
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the block picker starts the frame, with
+  // no Page around it
   return (
-    <Page>
-      <Page.Content>
-        <Page.Group title="Block">
-          <BlockPicker
-            loadingBlocks={loadingBlocks}
-            loadError={loadError}
-            blockOptions={blockOptions}
-            selectedBlockId={selectedBlockId}
-            handleBlockSelect={handleBlockSelect}
-          />
-        </Page.Group>
+    <>
+      <BlockPicker
+        loadingBlocks={loadingBlocks}
+        loadError={loadError}
+        blockOptions={blockOptions}
+        selectedBlockId={selectedBlockId}
+        handleBlockSelect={handleBlockSelect}
+      />
 
-        {conversionState.status === 'analyzing' && (
-          <Page.Group title="Analysis">
-            <div className={s.readout}>
-              <ProgressBar
-                value={(conversionState.progressPercentage ?? 0) / 100}
-                ariaLabel="Analysis of the block"
-              />
-              <p className={s.line}>
-                <span>
-                  {conversionState.progressMessage ||
-                    'Analyzing block structure...'}
+      {conversionState.status === 'analyzing' && (
+        <Page.Section>
+          <Page.SectionTitle>Analysis</Page.SectionTitle>
+          <div className={s.readout}>
+            <ProgressBar
+              value={(conversionState.progressPercentage ?? 0) / 100}
+              ariaLabel="Analysis of the block"
+            />
+            <p className={s.line}>
+              <span>
+                {conversionState.progressMessage ||
+                  'Analyzing block structure...'}
+              </span>
+              {conversionState.progressPercentage !== undefined && (
+                <span className={s.meta}>
+                  {conversionState.progressPercentage}%
                 </span>
-                {conversionState.progressPercentage !== undefined && (
-                  <span className={s.meta}>
-                    {conversionState.progressPercentage}%
-                  </span>
-                )}
-              </p>
-            </div>
-          </Page.Group>
-        )}
+              )}
+            </p>
+          </div>
+        </Page.Section>
+      )}
 
-        {conversionState.status === 'analyzed' && (
-          <AnalyzedGroups
-            analysis={conversionState.analysis}
-            envPrefix={envPrefix}
-            fullyReplaceBlock={fullyReplaceBlock}
-            setFullyReplaceBlock={setFullyReplaceBlock}
-            publishAfterChanges={publishAfterChanges}
-            setPublishAfterChanges={setPublishAfterChanges}
-            handleReset={handleReset}
-            handleConvert={handleConvert}
-          />
-        )}
+      {conversionState.status === 'analyzed' && (
+        <AnalyzedSections
+          analysis={conversionState.analysis}
+          envPrefix={envPrefix}
+          fullyReplaceBlock={fullyReplaceBlock}
+          setFullyReplaceBlock={setFullyReplaceBlock}
+          publishAfterChanges={publishAfterChanges}
+          setPublishAfterChanges={setPublishAfterChanges}
+          handleReset={handleReset}
+          handleConvert={handleConvert}
+        />
+      )}
 
-        {conversionState.status === 'converting' && (
-          <ConvertingGroup progress={conversionState.progress} />
-        )}
+      {conversionState.status === 'converting' && (
+        <ConvertingSection progress={conversionState.progress} />
+      )}
 
-        {conversionState.status === 'success' && (
-          <Page.Group
-            title="Conversion"
-            status={<Pill tone="success">Done</Pill>}
-            footer={
-              <Button
-                tone="primary"
-                label="Convert another block"
-                onClick={handleReset}
-              />
-            }
-          >
+      {conversionState.status === 'success' && (
+        <>
+          {/* "Convert another block" follows the section */}
+          <Page.Section className={s.lastSection}>
+            <Page.SectionTitle>Conversion</Page.SectionTitle>
             <InfoList>
+              <InfoList.Row title="Status">
+                <Pill tone="success">Done</Pill>
+              </InfoList.Row>
               <InfoList.Row title="New model">
                 <ApiKey>{conversionState.result.newModelApiKey}</ApiKey>
               </InfoList.Row>
@@ -636,24 +614,30 @@ export default function ConfigScreen({ ctx }: Props) {
                 {conversionState.result.convertedFields}
               </InfoList.Row>
             </InfoList>
-          </Page.Group>
-        )}
+          </Page.Section>
+          <Button
+            tone="primary"
+            label="Convert another block"
+            onClick={handleReset}
+          />
+        </>
+      )}
 
-        {conversionState.status === 'error' && (
-          <Page.Group title="Conversion">
-            <BlankSlate
-              placement="inline"
-              small
-              error
-              icon={<CircleExclamationIcon />}
-              title="Something went wrong"
-              code={conversionState.message}
-              description="Pick the block again to start over."
-              actions={<Button label="Try again" onClick={handleReset} />}
-            />
-          </Page.Group>
-        )}
-      </Page.Content>
-    </Page>
+      {conversionState.status === 'error' && (
+        <Page.Section className={s.endSection}>
+          <Page.SectionTitle>Conversion</Page.SectionTitle>
+          <BlankSlate
+            placement="inline"
+            small
+            error
+            icon={<CircleExclamationIcon />}
+            title="Something went wrong"
+            code={conversionState.message}
+            description="Pick the block again to start over."
+            actions={<Button label="Try again" onClick={handleReset} />}
+          />
+        </Page.Section>
+      )}
+    </>
   );
 }

@@ -1,6 +1,5 @@
-/* The kit's minimum height of a page is for a full-height area: in this
-   frame, which sizes itself to its content, it would keep the frame from
-   shrinking */
-.page {
-  min-height: 0;
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own */
+.endSection {
+  margin-bottom: 0;
 }

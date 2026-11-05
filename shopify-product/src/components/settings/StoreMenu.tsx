@@ -5,7 +5,7 @@ import { EllipsisVerticalIcon, StarIcon, TrashIcon } from '../../icons';
 import { isFocusLost, SAVING_REASON } from './focus';
 
 type Props = {
-  /** The store's group title, for the accessible name. */
+  /** The store's name, for the accessible name. */
   name: string;
   isDefault: boolean;
   /** A save is running: the menu waits for it. */
@@ -30,7 +30,7 @@ function refocusTrigger(root: HTMLElement | null) {
   }
 }
 
-/** The "⋮" of a store group: Make default, then Remove store (last). */
+/** The "⋮" of a store item: Make default, then Remove store (last). */
 export default function StoreMenu({
   name,
   isDefault,

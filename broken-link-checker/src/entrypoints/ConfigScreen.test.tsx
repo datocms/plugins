@@ -18,16 +18,16 @@ const noPermission = () =>
 describe('config screen', () => {
   it('explains the two ways to check links, with nothing to configure', () => {
     render(<ConfigScreen ctx={configContext()} />);
+    // The first part has no title: the host draws "Plugin settings" above
+    // the frame. Record checks are the second topic.
     expect(
-      screen.getByRole('heading', { name: 'Link checker' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Project scans')).toBeInTheDocument();
+      screen.getAllByRole('heading').map((heading) => heading.textContent),
+    ).toEqual(['Record checks']);
     expect(
       screen.getByText(
         'Scan the saved records of this environment from “Link checker” in the content area.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Record checks')).toBeInTheDocument();
     expect(
       screen.getByText(
         "Check the record you're editing from its “Broken links” sidebar panel.",
@@ -68,15 +68,10 @@ describe('config screen', () => {
   it('warns, and leads nowhere, only when the current-user API permission is missing', () => {
     const { unmount } = render(<ConfigScreen ctx={configContext()} />);
     expect(screen.queryByText(permissionWarning)).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: 'API access' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     unmount();
 
     render(<ConfigScreen ctx={noPermission()} />);
-    const problem = screen.getByRole('heading', { name: 'API access' });
-    expect(problem).toBeInTheDocument();
-    expect(screen.getByText('Not granted')).toBeInTheDocument();
     // One sentence: what to grant, and what it's for.
     expect(screen.getByRole('alert')).toHaveTextContent(
       /^To scan the whole project, grant this plugin permission to make API calls on behalf of the logged-in user\.$/,
@@ -85,9 +80,19 @@ describe('config screen', () => {
     expect(
       screen.queryByRole('link', { name: 'Open Link checker' }),
     ).not.toBeInTheDocument();
-    // The group above says what project scans need: their row shows only
-    // once they're available. Record checks keep working.
-    expect(screen.queryByText('Project scans')).not.toBeInTheDocument();
-    expect(screen.getByText('Record checks')).toBeInTheDocument();
+    // The callout above says what project scans need: they show only once
+    // they're available. Record checks keep working, as the first part of the
+    // screen, with no title.
+    expect(
+      screen.queryByText(
+        'Scan the saved records of this environment from “Link checker” in the content area.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Check the record you're editing from its “Broken links” sidebar panel.",
+      ),
+    ).toBeInTheDocument();
   });
 });

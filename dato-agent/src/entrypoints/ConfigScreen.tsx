@@ -1045,10 +1045,16 @@ function saveDisabledReason(
 }
 
 type SettingsFormProps = {
+  /** The name of the form, and the title of its section */
   title: string;
-  /** Without the right to edit the schema, the group has no Save */
+  /**
+   * The first topic shows no title: the host draws "Plugin settings" above
+   * the frame
+   */
+  untitled?: boolean;
+  /** Without the right to edit the schema, the form has no Save */
   canSave: boolean;
-  /** This group saves now */
+  /** This form saves now */
   busy: boolean;
   /** Why Save can't run now, or undefined when it can */
   blockedReason?: string;
@@ -1057,18 +1063,19 @@ type SettingsFormProps = {
 };
 
 /**
- * A topic of the settings: a form in a group, with the Save of its own
- * values in the footer of the group
+ * A topic of the settings: a form with the Save of its own values after its
+ * last field. After the first topic, each one is a section under its title
  */
 function SettingsForm({
   title,
+  untitled,
   canSave,
   busy,
   blockedReason,
   onSave,
   children,
 }: SettingsFormProps) {
-  return (
+  const form = (
     <form
       aria-label={title}
       onSubmit={(event) => {
@@ -1080,26 +1087,28 @@ function SettingsForm({
         }
       }}
     >
-      <Page.Group
-        title={title}
-        footer={
-          canSave ? (
-            <Button
-              submit
-              tone="primary"
-              expand={false}
-              label="Save"
-              busy={busy}
-              disabled={
-                !busy && blockedReason ? { reason: blockedReason } : false
-              }
-            />
-          ) : undefined
-        }
-      >
-        {children}
-      </Page.Group>
+      {children}
+      {canSave && (
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={busy}
+          disabled={!busy && blockedReason ? { reason: blockedReason } : false}
+        />
+      )}
     </form>
+  );
+
+  if (untitled) {
+    return form;
+  }
+
+  return (
+    <Page.Section>
+      <Page.SectionTitle>{title}</Page.SectionTitle>
+      {form}
+    </Page.Section>
   );
 }
 
@@ -1469,74 +1478,71 @@ export default function ConfigScreen({ ctx }: Props) {
   });
 
   return (
+    // The host gives the frame its width and its padding, and draws the
+    // "Plugin settings" title above it: the forms start the frame, with no
+    // Page around them
     <Canvas ctx={ctx} texts={TEXTS}>
-      <Page>
-        <Page.Content>
-          {!canEditSchema && (
-            <Callout title="You can only view these settings">
-              Ask a project admin if something needs to change.
-            </Callout>
-          )}
+      {!canEditSchema && (
+        <Callout title="You can only view these settings">
+          Ask a project admin if something needs to change.
+        </Callout>
+      )}
 
-          <SettingsForm title="Model provider" {...formProps('provider')}>
-            <ProviderConfigurationFields
-              apiKey={apiKey}
-              attemptedSave={attemptedSave}
-              availableModelOptions={availableModelOptions}
-              availableReasoningOptions={availableReasoningOptions}
-              canEditSchema={canEditSchema}
-              config={config}
-              discovery={modelDiscovery}
-              model={model}
-              modelSelectDisabled={modelSelectDisabled}
-              reasoningEffort={reasoningEffort}
-              retryModelDiscovery={retryModelDiscovery}
-              saving={saving}
-              selectedModel={selectedModel}
-              setAttemptedSave={setAttemptedSave}
-              setConfig={setConfig}
-            />
-          </SettingsForm>
+      <SettingsForm title="Model provider" untitled {...formProps('provider')}>
+        <ProviderConfigurationFields
+          apiKey={apiKey}
+          attemptedSave={attemptedSave}
+          availableModelOptions={availableModelOptions}
+          availableReasoningOptions={availableReasoningOptions}
+          canEditSchema={canEditSchema}
+          config={config}
+          discovery={modelDiscovery}
+          model={model}
+          modelSelectDisabled={modelSelectDisabled}
+          reasoningEffort={reasoningEffort}
+          retryModelDiscovery={retryModelDiscovery}
+          saving={saving}
+          selectedModel={selectedModel}
+          setAttemptedSave={setAttemptedSave}
+          setConfig={setConfig}
+        />
+      </SettingsForm>
 
-          <SettingsForm title="Agent behavior" {...formProps('behavior')}>
-            <FieldWrapper
-              label="Additional instructions"
-              hint="Added to the built-in project and safety instructions."
-            >
-              {/* A viewer can still select and copy the instructions */}
-              <TextareaInput
-                value={config.additionalInstructions}
-                // An example only helps someone who can type
-                placeholder={
-                  canEditSchema
-                    ? 'Always use British English for public copy.'
-                    : null
-                }
-                rows={5}
-                readOnly={!canEditSchema}
-                disabled={saving}
-                onChange={(value) =>
-                  update('additionalInstructions', value ?? '')
-                }
-              />
-            </FieldWrapper>
-          </SettingsForm>
+      <SettingsForm title="Agent behavior" {...formProps('behavior')}>
+        <FieldWrapper
+          label="Additional instructions"
+          hint="Added to the built-in project and safety instructions."
+        >
+          {/* A viewer can still select and copy the instructions */}
+          <TextareaInput
+            value={config.additionalInstructions}
+            // An example only helps someone who can type
+            placeholder={
+              canEditSchema
+                ? 'Always use British English for public copy.'
+                : null
+            }
+            rows={5}
+            readOnly={!canEditSchema}
+            disabled={saving}
+            onChange={(value) => update('additionalInstructions', value ?? '')}
+          />
+        </FieldWrapper>
+      </SettingsForm>
 
-          <SettingsForm title="Access" {...formProps('access')}>
-            <AccessFields
-              allowedRoleOptions={roleSelection.selectedRoleOptions}
-              canManageUsers={canManageUsers}
-              config={config}
-              fieldsDisabled={!canEditSchema || saving}
-              hasUnsavedRoleSnapshot={roleSelection.hasUnsavedRoleSnapshot}
-              retryRoleDiscovery={retryRoleDiscovery}
-              roleDiscovery={roleDiscovery}
-              roleOptions={roleOptions}
-              update={update}
-            />
-          </SettingsForm>
-        </Page.Content>
-      </Page>
+      <SettingsForm title="Access" {...formProps('access')}>
+        <AccessFields
+          allowedRoleOptions={roleSelection.selectedRoleOptions}
+          canManageUsers={canManageUsers}
+          config={config}
+          fieldsDisabled={!canEditSchema || saving}
+          hasUnsavedRoleSnapshot={roleSelection.hasUnsavedRoleSnapshot}
+          retryRoleDiscovery={retryRoleDiscovery}
+          roleDiscovery={roleDiscovery}
+          roleOptions={roleOptions}
+          update={update}
+        />
+      </SettingsForm>
     </Canvas>
   );
 }

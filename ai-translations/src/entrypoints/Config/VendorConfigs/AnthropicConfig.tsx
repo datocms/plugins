@@ -1,7 +1,7 @@
 /**
  * AnthropicConfig.tsx
  * Configuration component for Anthropic Claude vendor settings: the settings
- * group with the API key and the model.
+ * section with the API key and the model.
  */
 
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
@@ -29,7 +29,8 @@ export default function AnthropicConfig({
   modelList,
 }: AnthropicConfigProps) {
   return (
-    <Page.Group title={vendorSettingsTitle('anthropic')}>
+    <Page.Section>
+      <Page.SectionTitle>{vendorSettingsTitle('anthropic')}</Page.SectionTitle>
       <FieldWrapper
         label="API key"
         required
@@ -50,6 +51,6 @@ export default function AnthropicConfig({
         onChange={setAnthropicModel}
         modelList={modelList}
       />
-    </Page.Group>
+    </Page.Section>
   );
 }

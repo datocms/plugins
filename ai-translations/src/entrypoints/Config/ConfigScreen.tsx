@@ -706,7 +706,7 @@ type VendorSettingsProps = {
   notice: RenderConfigScreenCtx['notice'];
 };
 
-/** The settings group of the selected vendor. */
+/** The settings section of the selected vendor. */
 function VendorSettings({
   vendorConfig,
   vendorActions,
@@ -786,7 +786,7 @@ function VendorSettings({
 /**
  * Whether the saved advanced settings differ from the defaults: a prompt of
  * their own, other field types, or the debug logging. Then the "Advanced"
- * group is open at first.
+ * section is open at first.
  */
 function hasCustomAdvancedSettings(pluginParams: ctxParamsType): boolean {
   const fields = Array.isArray(pluginParams.translationFields)
@@ -801,9 +801,9 @@ function hasCustomAdvancedSettings(pluginParams: ctxParamsType): boolean {
 }
 
 /**
- * Main config screen component: one form whose groups are the vendor, its
- * settings, the features, the exclusions and the advanced settings, with
- * Save after the last group.
+ * Main config screen component: one form with the vendor, then the sections
+ * of its settings, the features, the exclusions and the advanced settings,
+ * with Save after the last section.
  *
  * @param props - Contains the RenderConfigScreenCtx from DatoCMS
  */
@@ -1256,79 +1256,83 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     });
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the vendor starts the frame, with no
+  // Page around it. One form spans every section, so Save follows the last
+  // one. Enter in a select never saves it.
   return (
-    <Page>
-      <Page.Content>
-        {/* One form spans every group, so Save follows the last one. Enter
-            in a select never saves it. */}
-        <form onSubmit={handleSubmit} onKeyDown={keepEnterInSelects} noValidate>
-          <Page.Group title="AI vendor">
-            <FieldWrapper label="AI vendor" labelExtras={{ hidden: true }}>
-              <RadioGroupInput
-                name="vendor"
-                value={vendor}
-                onChange={(next) => {
-                  if (next) setVendor(next);
-                }}
-                options={VENDOR_OPTIONS}
-              />
-            </FieldWrapper>
-          </Page.Group>
+    <form onSubmit={handleSubmit} onKeyDown={keepEnterInSelects} noValidate>
+      <FieldWrapper label="AI vendor">
+        <RadioGroupInput
+          name="vendor"
+          value={vendor}
+          onChange={(next) => {
+            if (next) setVendor(next);
+          }}
+          options={VENDOR_OPTIONS}
+        />
+      </FieldWrapper>
 
-          <VendorSettings
-            vendorConfig={vendorConfig}
-            vendorActions={vendorActions}
-            modelLists={{
-              openai: openAIModels,
-              google: geminiModels,
-              anthropic: anthropicModels,
-            }}
-            siteLocales={siteLocales}
-            notice={ctx.notice}
+      <VendorSettings
+        vendorConfig={vendorConfig}
+        vendorActions={vendorActions}
+        modelLists={{
+          openai: openAIModels,
+          google: geminiModels,
+          anthropic: anthropicModels,
+        }}
+        siteLocales={siteLocales}
+        notice={ctx.notice}
+      />
+
+      <Page.Section>
+        <Page.SectionTitle>Features</Page.SectionTitle>
+        <SwitchList>
+          <SwitchInput
+            name="translateWholeRecord"
+            label="Whole-record translation in the sidebar"
+            value={translateWholeRecord}
+            onChange={(next) => setTranslateWholeRecord(next === true)}
           />
+          <FieldWrapper hint="Adds “Translate with AI” to the actions of the records selected in a table.">
+            <SwitchInput
+              name="translateBulkRecords"
+              label="Bulk translation of selected records"
+              value={translateBulkRecords}
+              onChange={(next) => setTranslateBulkRecords(next === true)}
+            />
+          </FieldWrapper>
+        </SwitchList>
+      </Page.Section>
 
-          <Page.Group title="Features">
-            <SwitchList>
-              <SwitchInput
-                name="translateWholeRecord"
-                label="Whole-record translation in the sidebar"
-                value={translateWholeRecord}
-                onChange={(next) => setTranslateWholeRecord(next === true)}
-              />
-              <FieldWrapper hint="Adds “Translate with AI” to the actions of the records selected in a table.">
-                <SwitchInput
-                  name="translateBulkRecords"
-                  label="Bulk translation of selected records"
-                  value={translateBulkRecords}
-                  onChange={(next) => setTranslateBulkRecords(next === true)}
-                />
-              </FieldWrapper>
-            </SwitchList>
-          </Page.Group>
+      <ExclusionRulesSection
+        showExclusionRules={showExclusionRules}
+        setShowExclusionRules={setShowExclusionRules}
+        modelsToBeExcluded={modelsToBeExcluded}
+        setModelsToBeExcluded={setModelsToBeExcluded}
+        rolesToBeExcluded={rolesToBeExcluded}
+        setRolesToBeExcluded={setRolesToBeExcluded}
+        apiKeysToBeExcluded={apiKeysToBeExcluded}
+        setApiKeysToBeExcluded={setApiKeysToBeExcluded}
+        availableModels={availableModels}
+        roles={roles}
+        rolesStatus={rolesStatus}
+        listOfFields={listOfFields}
+        fieldsLoading={fieldsLoading}
+      />
 
-          <ExclusionRulesSection
-            showExclusionRules={showExclusionRules}
-            setShowExclusionRules={setShowExclusionRules}
-            modelsToBeExcluded={modelsToBeExcluded}
-            setModelsToBeExcluded={setModelsToBeExcluded}
-            rolesToBeExcluded={rolesToBeExcluded}
-            setRolesToBeExcluded={setRolesToBeExcluded}
-            apiKeysToBeExcluded={apiKeysToBeExcluded}
-            setApiKeysToBeExcluded={setApiKeysToBeExcluded}
-            availableModels={availableModels}
-            roles={roles}
-            rolesStatus={rolesStatus}
-            listOfFields={listOfFields}
-            fieldsLoading={fieldsLoading}
-          />
-
-          <Page.Group
-            title="Advanced"
-            collapse={{
-              open: showAdvanced,
-              onToggle: () => setShowAdvanced((open) => !open),
-            }}
-          >
+      {/* The last section: Save follows it */}
+      <Page.Section className={styles.lastSection}>
+        <Page.SectionTitle
+          collapse={{
+            open: showAdvanced,
+            onToggle: () => setShowAdvanced((open) => !open),
+          }}
+        >
+          Advanced
+        </Page.SectionTitle>
+        {showAdvanced && (
+          <>
             {/* Prompt input is not applicable to native translation providers. */}
             {!isNativeTranslationVendor(vendor) && (
               <FieldWrapper label="Translation prompt" hint={PROMPT_HINT}>
@@ -1361,32 +1365,32 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 onChange={(next) => setEnableDebugging(next === true)}
               />
             </FieldWrapper>
-          </Page.Group>
+          </>
+        )}
+      </Page.Section>
 
-          {/* Restore defaults is a rare reset: quiet, so Save stays the one
-              weighted action. */}
-          <div className={styles.actions}>
-            <Button
-              tone="ghost"
-              label="Restore defaults"
-              disabled={
-                isRestoreDefaultsButtonDisabled
-                  ? { reason: 'The settings already use the defaults.' }
-                  : undefined
-              }
-              onClick={restoreDefaults}
-            />
-            <Button
-              id={saveId}
-              submit
-              tone="primary"
-              label="Save"
-              busy={isSaving}
-              disabled={saveDisabled}
-            />
-          </div>
-        </form>
-      </Page.Content>
-    </Page>
+      {/* Restore defaults is a rare reset: quiet, so Save stays the one
+          weighted action. */}
+      <div className={styles.actions}>
+        <Button
+          id={saveId}
+          submit
+          tone="primary"
+          label="Save"
+          busy={isSaving}
+          disabled={saveDisabled}
+        />
+        <Button
+          tone="ghost"
+          label="Restore defaults"
+          disabled={
+            isRestoreDefaultsButtonDisabled
+              ? { reason: 'The settings already use the defaults.' }
+              : undefined
+          }
+          onClick={restoreDefaults}
+        />
+      </div>
+    </form>
   );
 }

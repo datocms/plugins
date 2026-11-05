@@ -4,7 +4,6 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import TableList, {
@@ -475,50 +474,40 @@ function StagePagesForm({
         <Callout>Only an administrator can change these settings.</Callout>
       )}
       <form onSubmit={handleSubmit}>
-        <Page.Group
-          title="Stage pages"
-          footer={
-            canEdit ? (
-              <Button
-                submit
-                tone="primary"
-                expand={false}
-                label="Save"
-                busy={saving}
-                disabled={
-                  dirty
-                    ? undefined
-                    : { reason: 'There are no changes to save.' }
-                }
-              />
-            ) : undefined
+        <FieldWrapper
+          label="Stage pages"
+          hint={
+            canEdit && someStageFree
+              ? 'Add a stage to give it a page in the content sidebar, listing its records from every model.'
+              : 'Each stage has a page in the content sidebar, listing its records from every model.'
           }
         >
-          <FieldWrapper
-            label="Stage pages"
-            labelExtras={{ hidden: true }}
-            hint={
-              canEdit && someStageFree
-                ? 'Add a stage to give it a page in the content sidebar, listing its records from every model.'
-                : 'Each stage has a page in the content sidebar, listing its records from every model.'
+          <TableList<EntryDraft>
+            value={drafts}
+            onChange={(nextDrafts) => setDrafts(nextDrafts)}
+            errors={errors}
+            touched={touched}
+            columns={columns}
+            emptyMessage="No stages yet"
+            add={
+              canEdit && !saving && someStageFree
+                ? { label: 'Add stage', newItem: newDraft }
+                : undefined
             }
-          >
-            <TableList<EntryDraft>
-              value={drafts}
-              onChange={(nextDrafts) => setDrafts(nextDrafts)}
-              errors={errors}
-              touched={touched}
-              columns={columns}
-              emptyMessage="No stages yet"
-              add={
-                canEdit && !saving && someStageFree
-                  ? { label: 'Add stage', newItem: newDraft }
-                  : undefined
-              }
-              disabled={!canEdit || saving}
-            />
-          </FieldWrapper>
-        </Page.Group>
+            disabled={!canEdit || saving}
+          />
+        </FieldWrapper>
+        {canEdit && (
+          <Button
+            submit
+            tone="primary"
+            label="Save"
+            busy={saving}
+            disabled={
+              dirty ? undefined : { reason: 'There are no changes to save.' }
+            }
+          />
+        )}
       </form>
     </>
   );
@@ -573,13 +562,12 @@ function ConfigContent({ ctx }: Props) {
 export default function ConfigScreen({ ctx }: Props) {
   useFrameSizedToContent();
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the content starts the frame, with no
+  // Page around it
   return (
     <Canvas ctx={ctx} texts={TEXTS}>
-      <Page>
-        <Page.Content>
-          <ConfigContent ctx={ctx} />
-        </Page.Content>
-      </Page>
+      <ConfigContent ctx={ctx} />
     </Canvas>
   );
 }

@@ -1,19 +1,21 @@
 /* Placement only: the kit components draw themselves. */
 
 /*
- * A block in a group body that isn't a field (a "Test" button): the space
- * between two fields (Forms, "Space between fields"), unless it ends the
- * group.
+ * A block between two fields that isn't a field (the "Test API key" button):
+ * the space between two fields (Forms, "Space between fields").
  */
-.block:not(:last-child) {
+.block {
   margin-bottom: var(--form-field-gap);
 }
 
-/* Restore defaults and Save, after the last group. */
+/* Save follows the last section with the space between two fields, as it
+   follows a field */
+.lastSection {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* Save and Restore defaults, side by side */
 .actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-m);
-  align-items: center;
-  justify-content: flex-end;
+  gap: var(--spacing-s);
 }

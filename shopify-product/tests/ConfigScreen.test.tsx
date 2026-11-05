@@ -245,16 +245,16 @@ async function openAdvanced(user: User) {
   expect(advancedToggle()).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The settings row (Connection, Tag filters, Stock levels) with this title. */
-function settingsRow(title: string): HTMLElement {
-  return screen.getByText(title).closest('li') as HTMLElement;
+/** The row of a connection fact (Connection, Tag filters, Stock levels). */
+function infoRow(title: string): HTMLElement {
+  return screen.getByText(title).closest('.InfoList__row') as HTMLElement;
 }
 
-/** The group of a store, by the title its heading shows. */
-function storeGroup(title: string): HTMLElement {
+/** The item of a store in the card of several stores, by its name. */
+function storeItem(name: string): HTMLElement {
   return screen
-    .getByRole('heading', { name: title })
-    .closest('.Page__group') as HTMLElement;
+    .getByText(name, { selector: '.CardList__summary' })
+    .closest('li') as HTMLElement;
 }
 
 const DEMO_STORE_NOTICE =
@@ -375,9 +375,11 @@ describe('ConfigScreen: fresh install', () => {
   it('shows one empty store, a docs link for the token, and an unavailable Save', () => {
     setup({});
 
+    // The only store starts the screen, with no title: the one heading is
+    // the section after it
     expect(
-      screen.getByRole('heading', { name: 'Shopify store' }),
-    ).toBeInTheDocument();
+      screen.getAllByRole('heading').map((heading) => heading.textContent),
+    ).toEqual(['Advanced settings']);
     expect(domainInputs()).toHaveLength(1);
     expect(domainInputs()[0]).toHaveValue('');
     expect(tokenInputs()[0]).toHaveValue('');
@@ -583,15 +585,15 @@ describe('ConfigScreen: saved settings', () => {
     setup(v3([SAVED_STORE]));
 
     expect(await screen.findByText('DatoCMS Demo')).toBeInTheDocument();
-    const connection = settingsRow('Connection');
+    const connection = infoRow('Connection');
     expect(connection).toHaveTextContent('Connected');
-    // The API version shows only once it expired, in its own group.
+    // The API version shows only once it expired, in its own callout.
     expect(connection).toHaveTextContent(
       'DatoCMS Demo, checked on 09/28/2026.',
     );
     expect(connection).not.toHaveTextContent('API');
     expect(
-      within(settingsRow('Stock levels')).getByText('Not available'),
+      within(infoRow('Stock levels')).getByText('Not available'),
     ).toBeInTheDocument();
     // What's available needs nothing: no row.
     expect(screen.queryByText('Tag filters')).not.toBeInTheDocument();
@@ -638,7 +640,7 @@ describe('ConfigScreen: saved settings', () => {
       expect(screen.queryByText(/checked on/i)).not.toBeInTheDocument(),
     );
     expect(
-      within(settingsRow('Stock levels')).getByText(
+      within(infoRow('Stock levels')).getByText(
         'Enable "Read product inventory" in Headless → Storefront API permissions, or publish some products to this storefront.',
       ),
     ).toBeInTheDocument();
@@ -660,8 +662,8 @@ describe('ConfigScreen: saved settings', () => {
       expect(screen.queryByText(/checked on/i)).not.toBeInTheDocument(),
     );
     // Connection, then the one missing ability (tags are there: no row).
-    const rows = within(settingsRow('Connection').parentElement as HTMLElement);
-    expect(rows.getAllByRole('listitem')).toHaveLength(2);
+    const rows = within(infoRow('Connection').parentElement as HTMLElement);
+    expect(rows.getAllByRole('term')).toHaveLength(2);
     expect(screen.queryByText(/metafield/i)).not.toBeInTheDocument();
     // Only metafields changed: nothing worth saving.
     expectUnavailable(saveButton());
@@ -679,7 +681,7 @@ describe('ConfigScreen: saved settings', () => {
         "Couldn't reach Shopify: check your internet connection or ad blocker.",
       ),
     ).toHaveAttribute('role', 'alert');
-    expect(settingsRow('Connection')).toHaveTextContent('Not connected');
+    expect(infoRow('Connection')).toHaveTextContent('Not connected');
     expect(
       screen.queryByRole('button', { name: 'Save anyway' }),
     ).not.toBeInTheDocument();
@@ -703,19 +705,20 @@ describe('ConfigScreen: saved settings', () => {
         'Shopify no longer supports the version this plugin uses. Update the plugin from the plugins list to keep it working.',
       ),
     ).toBeInTheDocument();
+    // A warning at the top, titled with the problem
     const problem = screen
-      .getByRole('heading', { name: 'Shopify API version' })
-      .closest('.Page__group') as HTMLElement;
-    expect(within(problem).getByText('Expired')).toBeInTheDocument();
+      .getByText('Shopify API version expired')
+      .closest('.Callout') as HTMLElement;
+    expect(problem).toHaveTextContent(/no longer supports the version/);
     // Said once: the Connection row doesn't repeat it.
-    expect(settingsRow('Connection')).not.toHaveTextContent('expired');
+    expect(infoRow('Connection')).not.toHaveTextContent('expired');
   });
 
   it('shows the API version problem when the client warns', async () => {
     setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');
     expect(
-      screen.queryByRole('heading', { name: 'Shopify API version' }),
+      screen.queryByText('Shopify API version expired'),
     ).not.toBeInTheDocument();
 
     act(() => {
@@ -923,10 +926,10 @@ describe('ConfigScreen: two stores', () => {
     );
 
     expect(
-      within(storeGroup('acme.myshopify.com')).getByText('Default'),
+      within(storeItem('acme.myshopify.com')).getByText('Default'),
     ).toBeInTheDocument();
     expect(
-      within(storeGroup('Europe')).queryByText('Default'),
+      within(storeItem('Europe')).queryByText('Default'),
     ).not.toBeInTheDocument();
     expect(screen.getAllByLabelText('Label')[1]).toHaveValue('Europe');
     await waitFor(() => expect(client.connectionTest).toHaveBeenCalledTimes(2));
@@ -950,7 +953,7 @@ describe('ConfigScreen: two stores', () => {
       expect(domainInputs()[0]).toHaveValue('acme-eu.myshopify.com'),
     );
     expect(domainInputs()[1]).toHaveValue('acme.myshopify.com');
-    expect(within(storeGroup('Europe')).getByText('Default')).toBeVisible();
+    expect(within(storeItem('Europe')).getByText('Default')).toBeVisible();
 
     await user.click(saveButton());
     await waitFor(() => expect(updatePluginParameters).toHaveBeenCalled());
@@ -986,9 +989,10 @@ describe('ConfigScreen: two stores', () => {
       }),
     );
     await waitFor(() => expect(domainInputs()).toHaveLength(1));
+    // The store left has no name, no pill and no menu
     expect(
-      screen.getByRole('heading', { name: 'Shopify store' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /^Actions for / }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('Default')).not.toBeInTheDocument();
     expectAvailable(saveButton());
   });
@@ -1019,7 +1023,7 @@ describe('ConfigScreen: saving edge cases', () => {
     await user.click(screen.getByRole('button', { name: 'Add another store' }));
 
     expect(domainInputs()).toHaveLength(2);
-    expect(screen.getByRole('heading', { name: 'Store 2' })).toBeVisible();
+    expect(storeItem('Store 2')).toBeVisible();
     expectUnavailable(saveButton());
   });
 
@@ -1198,7 +1202,7 @@ describe('ConfigScreen: errors and focus', () => {
     expect(screen.getByText('Not checked yet')).toBeInTheDocument();
   });
 
-  it('says an expired version once, in its own group', async () => {
+  it('says an expired version once, in its own callout', async () => {
     client.connectionTest.mockResolvedValue(
       connectionResult({
         apiVersionOutdated: true,
@@ -1282,8 +1286,8 @@ describe('ConfigScreen: removing stores', () => {
   it('marks the default store with its pill, not with a label hint', () => {
     setup(v3([SAVED_STORE, SECOND]));
 
-    const first = storeGroup('acme.myshopify.com');
-    const second = storeGroup('Europe');
+    const first = storeItem('acme.myshopify.com');
+    const second = storeItem('Europe');
     expect(within(first).getByText('Default')).toBeInTheDocument();
     expect(within(second).queryByText('Default')).not.toBeInTheDocument();
     expect(within(second).getByLabelText('Label')).toHaveValue('Europe');
@@ -1630,7 +1634,7 @@ describe('ConfigScreen: connection copy', () => {
 
     await screen.findByText('Stock levels');
     expect(
-      within(settingsRow('Stock levels')).getByText('Not available'),
+      within(infoRow('Stock levels')).getByText('Not available'),
     ).toBeInTheDocument();
     expect(client.connectionTest).toHaveBeenCalledTimes(1);
     expectAvailable(saveButton());
@@ -1656,7 +1660,7 @@ describe('ConfigScreen: connection copy', () => {
 
     await user.type(tokenInputs()[0], '{Backspace}');
 
-    expect(settingsRow('Connection')).toHaveTextContent(
+    expect(infoRow('Connection')).toHaveTextContent(
       'DatoCMS Demo. Re-check to detect stock levels and tag filters.',
     );
     expect(screen.queryByText('Tag filters')).not.toBeInTheDocument();
@@ -1703,7 +1707,7 @@ describe('ConfigScreen: automatic setup', () => {
   });
 });
 
-describe('ConfigScreen: collapsed groups', () => {
+describe('ConfigScreen: collapsed sections', () => {
   it('keeps Advanced settings closed until opened', async () => {
     const { user } = setup(v3([SAVED_STORE]));
     await screen.findByText('DatoCMS Demo');

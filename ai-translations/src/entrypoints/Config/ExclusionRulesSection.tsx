@@ -1,7 +1,7 @@
 /**
  * ExclusionRulesSection.tsx
- * The "Exclusions" group of the config screen: the models, roles and fields
- * where the plugin doesn't show. The group opens and closes; it is open at
+ * The "Exclusions" section of the config screen: the models, roles and fields
+ * where the plugin doesn't show. The section opens and closes; it is open at
  * first when some exclusion exists.
  */
 
@@ -133,83 +133,87 @@ export default function ExclusionRulesSection({
     [listOfFields],
   );
 
-  // The header keeps saying that exclusions exist while the group is closed.
+  // The title keeps saying that exclusions exist while the section is closed.
   const exclusionCount =
     modelsToBeExcluded.length +
     rolesToBeExcluded.length +
     apiKeysToBeExcluded.length;
 
   return (
-    <Page.Group
-      title="Exclusions"
-      status={
-        exclusionCount > 0 ? (
+    <Page.Section>
+      <Page.SectionTitle
+        collapse={{
+          open: showExclusionRules,
+          onToggle: () => setShowExclusionRules(!showExclusionRules),
+        }}
+      >
+        Exclusions{' '}
+        {exclusionCount > 0 && (
           <Pill>
             {`${formatCount(exclusionCount, locale)} ${
               exclusionCount === 1 ? 'exclusion' : 'exclusions'
             }`}
           </Pill>
-        ) : undefined
-      }
-      collapse={{
-        open: showExclusionRules,
-        onToggle: () => setShowExclusionRules(!showExclusionRules),
-      }}
-    >
-      <FieldWrapper
-        label="Excluded models"
-        hint="The plugin doesn't translate the records of these models."
-      >
-        <SelectInput
-          multiple
-          name="modelsToBeExcludedFromTranslation"
-          value={modelsToBeExcluded}
-          onChange={(value) => setModelsToBeExcluded(value ?? [])}
-          options={modelOptions}
-          acceptValueNotIncludedInOptions={savedTokenOption}
-          formatOptionLabel={formatApiKeyOptionLabel}
-          noOptionsMessage={noModels}
-          placeholder="Pick models"
-        />
-      </FieldWrapper>
-      <FieldWrapper
-        label="Excluded roles"
-        hint="Users with these roles can't use the plugin."
-        error={
-          rolesStatus === 'error'
-            ? "Couldn't load the roles. Reload the page to try again."
-            : undefined
-        }
-      >
-        <SelectInput
-          multiple
-          name="rolesToBeExcludedFromTranslation"
-          value={rolesToBeExcluded}
-          onChange={(value) => setRolesToBeExcluded(value ?? [])}
-          options={roleOptions}
-          loading={rolesStatus === 'loading'}
-          acceptValueNotIncludedInOptions={savedTokenOption}
-          noOptionsMessage={noRoles}
-          placeholder="Pick roles"
-        />
-      </FieldWrapper>
-      <FieldWrapper
-        label="Excluded fields"
-        hint="The plugin never translates these fields."
-      >
-        <SelectInput
-          multiple
-          name="apiKeysToBeExcludedFromTranslation"
-          value={apiKeysToBeExcluded}
-          onChange={(value) => setApiKeysToBeExcluded(value ?? [])}
-          options={fieldOptions}
-          acceptValueNotIncludedInOptions={savedFieldOption}
-          formatOptionLabel={formatApiKeyOptionLabel}
-          loading={fieldsLoading}
-          noOptionsMessage={noFields}
-          placeholder="Pick fields"
-        />
-      </FieldWrapper>
-    </Page.Group>
+        )}
+      </Page.SectionTitle>
+      {showExclusionRules && (
+        <>
+          <FieldWrapper
+            label="Excluded models"
+            hint="The plugin doesn't translate the records of these models."
+          >
+            <SelectInput
+              multiple
+              name="modelsToBeExcludedFromTranslation"
+              value={modelsToBeExcluded}
+              onChange={(value) => setModelsToBeExcluded(value ?? [])}
+              options={modelOptions}
+              acceptValueNotIncludedInOptions={savedTokenOption}
+              formatOptionLabel={formatApiKeyOptionLabel}
+              noOptionsMessage={noModels}
+              placeholder="Pick models"
+            />
+          </FieldWrapper>
+          <FieldWrapper
+            label="Excluded roles"
+            hint="Users with these roles can't use the plugin."
+            error={
+              rolesStatus === 'error'
+                ? "Couldn't load the roles. Reload the page to try again."
+                : undefined
+            }
+          >
+            <SelectInput
+              multiple
+              name="rolesToBeExcludedFromTranslation"
+              value={rolesToBeExcluded}
+              onChange={(value) => setRolesToBeExcluded(value ?? [])}
+              options={roleOptions}
+              loading={rolesStatus === 'loading'}
+              acceptValueNotIncludedInOptions={savedTokenOption}
+              noOptionsMessage={noRoles}
+              placeholder="Pick roles"
+            />
+          </FieldWrapper>
+          <FieldWrapper
+            label="Excluded fields"
+            hint="The plugin never translates these fields."
+          >
+            <SelectInput
+              multiple
+              name="apiKeysToBeExcludedFromTranslation"
+              value={apiKeysToBeExcluded}
+              onChange={(value) => setApiKeysToBeExcluded(value ?? [])}
+              options={fieldOptions}
+              acceptValueNotIncludedInOptions={savedFieldOption}
+              formatOptionLabel={formatApiKeyOptionLabel}
+              loading={fieldsLoading}
+              noOptionsMessage={noFields}
+              placeholder="Pick fields"
+            />
+          </FieldWrapper>
+        </>
+      )}
+    </Page.Section>
   );
 }

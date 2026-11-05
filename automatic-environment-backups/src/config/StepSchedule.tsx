@@ -1,8 +1,9 @@
 import Button from 'datocms-react-ui/Button';
-import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
+import { Page, type PageCollapse } from 'datocms-react-ui/Page';
 import Spinner from 'datocms-react-ui/Spinner';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import SwitchList from 'datocms-react-ui/SwitchList';
+import type { ReactNode } from 'react';
 import { BACKUP_CADENCES, getCadenceLabel } from '../utils/backupSchedule';
 import styles from './StepContent.module.css';
 import {
@@ -13,7 +14,7 @@ import {
 
 type Props = {
   config: BackupsConfig;
-  group: Pick<PageGroupProps, 'status' | 'collapse'>;
+  section: { status?: ReactNode; collapse: PageCollapse };
   onFinish: () => void;
 };
 
@@ -34,7 +35,7 @@ const getSaveReason = (config: BackupsConfig) => {
  * schedule and then ensures a backup environment exists for each enabled
  * cadence, reporting progress while the initial sandboxes are created.
  */
-export const StepSchedule = ({ config, group, onFinish }: Props) => {
+export const StepSchedule = ({ config, section, onFinish }: Props) => {
   const {
     canEdit,
     isBusy,
@@ -55,42 +56,43 @@ export const StepSchedule = ({ config, group, onFinish }: Props) => {
   };
 
   return (
-    <Page.Group
-      title="4. Choose a backup schedule"
-      {...group}
-      footer={
-        <div className={styles.buttons}>
-          {isSavingSchedule && (
-            <span>
-              <Spinner inline label={false} />{' '}
-              {progressMessage ??
-                'Saving the schedule and creating the first backups…'}
-            </span>
-          )}
-          <Button
-            tone="primary"
-            label="Save schedule & finish"
-            className={styles.end}
-            busy={isSavingSchedule}
-            onClick={() => {
-              void handleSave();
-            }}
-            disabled={saveReason ? { reason: saveReason } : false}
-          />
-        </div>
-      }
-    >
-      <SwitchList>
-        {BACKUP_CADENCES.map((cadence) => (
-          <SwitchInput
-            key={cadence}
-            label={getCadenceLabel(cadence)}
-            value={cadenceSelection.includes(cadence)}
-            onChange={(value) => setCadenceEnabled(cadence, Boolean(value))}
-            disabled={!canEdit || isBusy}
-          />
-        ))}
-      </SwitchList>
-    </Page.Group>
+    <Page.Section>
+      <Page.SectionTitle collapse={section.collapse}>
+        4. Choose a backup schedule {section.status}
+      </Page.SectionTitle>
+      {section.collapse.open && (
+        <>
+          <SwitchList className={styles.block}>
+            {BACKUP_CADENCES.map((cadence) => (
+              <SwitchInput
+                key={cadence}
+                label={getCadenceLabel(cadence)}
+                value={cadenceSelection.includes(cadence)}
+                onChange={(value) => setCadenceEnabled(cadence, Boolean(value))}
+                disabled={!canEdit || isBusy}
+              />
+            ))}
+          </SwitchList>
+          <div className={styles.buttons}>
+            <Button
+              tone="primary"
+              label="Save schedule & finish"
+              busy={isSavingSchedule}
+              onClick={() => {
+                void handleSave();
+              }}
+              disabled={saveReason ? { reason: saveReason } : false}
+            />
+            {isSavingSchedule && (
+              <span>
+                <Spinner inline label={false} />{' '}
+                {progressMessage ??
+                  'Saving the schedule and creating the first backups…'}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </Page.Section>
   );
 };

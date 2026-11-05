@@ -1,5 +1,5 @@
-/* Two buttons side by side in the footer of a group */
-.footerActions {
+/* Save and Reset to default, side by side */
+.actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-s);

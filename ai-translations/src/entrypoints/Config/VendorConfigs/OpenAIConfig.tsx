@@ -1,6 +1,6 @@
 /**
  * OpenAIConfig.tsx
- * Configuration component for OpenAI vendor settings: the settings group with
+ * Configuration component for OpenAI vendor settings: the settings section with
  * the API key and the model.
  *
  * DESIGN DECISION: OpenAI, Gemini, and Anthropic configs are kept as separate
@@ -41,7 +41,8 @@ export default function OpenAIConfig({
   modelList,
 }: OpenAIConfigProps) {
   return (
-    <Page.Group title={vendorSettingsTitle('openai')}>
+    <Page.Section>
+      <Page.SectionTitle>{vendorSettingsTitle('openai')}</Page.SectionTitle>
       <FieldWrapper
         label="API key"
         required
@@ -62,6 +63,6 @@ export default function OpenAIConfig({
         onChange={setGptModel}
         modelList={modelList}
       />
-    </Page.Group>
+    </Page.Section>
   );
 }

@@ -2,10 +2,10 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import CodeSnippet from 'datocms-react-ui/CodeSnippet';
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
-import { Page, type PageGroupProps } from 'datocms-react-ui/Page';
-import SettingsList from 'datocms-react-ui/SettingsList';
+import InfoList from 'datocms-react-ui/InfoList';
+import { Page, type PageCollapse } from 'datocms-react-ui/Page';
 import Spinner from 'datocms-react-ui/Spinner';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import styles from './StepContent.module.css';
 import {
   type BackupsConfig,
@@ -15,7 +15,7 @@ import {
 
 type Props = {
   config: BackupsConfig;
-  group: Pick<PageGroupProps, 'status' | 'collapse'>;
+  section: { status?: ReactNode; collapse: PageCollapse };
 };
 
 const getConnectionValue = (
@@ -76,7 +76,7 @@ const getTestReason = (config: BackupsConfig, isTesting: boolean) => {
 };
 
 /** Step 3: test the saved deployment URL and shared secret. */
-export const StepConnect = ({ config, group }: Props) => {
+export const StepConnect = ({ config, section }: Props) => {
   const {
     testConnection,
     isConnecting,
@@ -90,74 +90,70 @@ export const StepConnect = ({ config, group }: Props) => {
   const activeError = getActiveError(config);
   const testReason = getTestReason(config, isTesting);
   const testDisabled = testReason ? { reason: testReason } : false;
+  const hasDetails =
+    !isTesting &&
+    Boolean(activeError.summary) &&
+    activeError.details.length > 0;
 
   return (
-    <Page.Group
-      title="3. Test the connection"
-      {...group}
-      footer={
-        (!isConnected || isTesting) && (
-          <div className={styles.buttons}>
-            <Button
-              tone="primary"
-              label="Verify connection & continue"
-              className={styles.end}
-              busy={isTesting}
-              onClick={() => {
-                void testConnection();
-              }}
-              disabled={testDisabled}
-            />
-          </div>
-        )
-      }
-    >
-      <SettingsList className={styles.block}>
-        <SettingsList.Row
-          title="Connection"
-          description={savedUrl}
-          value={getConnectionValue(
-            isTesting,
-            isConnected,
-            Boolean(activeError.summary),
+    <Page.Section>
+      <Page.SectionTitle collapse={section.collapse}>
+        3. Test the connection {section.status}
+      </Page.SectionTitle>
+      {section.collapse.open && (
+        <>
+          <InfoList className={styles.block}>
+            <InfoList.Row title="Deployment URL">{savedUrl}</InfoList.Row>
+            <InfoList.Row title="Connection">
+              {getConnectionValue(
+                isTesting,
+                isConnected,
+                Boolean(activeError.summary),
+              )}
+            </InfoList.Row>
+          </InfoList>
+          {!isTesting && activeError.summary && (
+            <Callout
+              tone="danger"
+              title={activeError.message ? activeError.summary : undefined}
+            >
+              {activeError.message ?? activeError.summary}
+            </Callout>
           )}
-          action={
-            isConnected &&
-            !isTesting && (
+          <div className={styles.buttons}>
+            {isConnected && !isTesting ? (
               <Button
-                tone="ghost"
                 label="Test again"
                 onClick={() => {
                   void testConnection();
                 }}
                 disabled={testDisabled}
               />
-            )
-          }
-        />
-      </SettingsList>
-      {!isTesting && activeError.summary && (
-        <>
-          <Callout
-            tone="danger"
-            title={activeError.message ? activeError.summary : undefined}
-          >
-            {activeError.message ?? activeError.summary}
-          </Callout>
-          {activeError.details.length > 0 && (
-            <Button
-              tone="ghost"
-              label={
-                showDetails
-                  ? 'Hide technical details'
-                  : 'Show technical details'
-              }
-              aria-expanded={showDetails}
-              className={styles.block}
-              onClick={() => setShowDetails(!showDetails)}
-            />
-          )}
-          {activeError.details.length > 0 && showDetails && (
+            ) : (
+              <Button
+                tone="primary"
+                label="Verify connection & continue"
+                busy={isTesting}
+                onClick={() => {
+                  void testConnection();
+                }}
+                disabled={testDisabled}
+              />
+            )}
+            {hasDetails && (
+              <Button
+                tone="ghost"
+                label={
+                  showDetails
+                    ? 'Hide technical details'
+                    : 'Show technical details'
+                }
+                aria-expanded={showDetails}
+                onClick={() => setShowDetails(!showDetails)}
+              />
+            )}
+          </div>
+          {hasDetails && showDetails && (
             <CodeSnippet
               ariaLabel="Technical details"
               code={activeError.details.join('\n')}
@@ -165,6 +161,6 @@ export const StepConnect = ({ config, group }: Props) => {
           )}
         </>
       )}
-    </Page.Group>
+    </Page.Section>
   );
 };
