@@ -33,7 +33,12 @@ async function executeBatch(
   }
 }
 
-type BatchOutcome = { successful: number; failed: number; error?: string };
+type BatchOutcome = {
+  successful: number;
+  failed: number;
+  error?: string;
+  cause?: unknown;
+};
 
 async function runBatch(
   client: BulkClient,
@@ -53,6 +58,7 @@ async function runBatch(
       successful: 0,
       failed: batch.length,
       error: error instanceof Error ? error.message : 'The request failed.',
+      cause: error,
     };
   }
 }
@@ -140,6 +146,7 @@ export async function executeBulkOperation(
     report();
     if (outcome.error) {
       result.error = outcome.error;
+      result.cause = outcome.cause;
       break;
     }
   }

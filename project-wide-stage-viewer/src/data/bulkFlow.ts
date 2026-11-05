@@ -7,7 +7,7 @@ import {
   evaluateMoveSelection,
 } from '../operations/candidates';
 import { identityKey } from '../operations/permissions';
-import { bulkResultMessage } from '../operations/results';
+import { bulkResultMessage, PAST_TENSE } from '../operations/results';
 import type {
   BulkOperationRequest,
   BulkOperationResult,
@@ -46,20 +46,48 @@ const OPERATION_LABEL: Record<SelectionAction, string> = {
   unpublish: 'Unpublish',
 };
 
-function recordsCount(count: number): string {
-  return `${count} ${count === 1 ? 'record' : 'records'}`;
+/**
+ * The question of a confirm: "Delete 2 records?", or "Delete the record?"
+ * when the user selected one record. A part of a larger selection keeps its
+ * number: "Publish 1 record?"
+ */
+function confirmationTitle(
+  label: string,
+  { selectedCount, eligibleCount }: SelectionEvaluation,
+  ending = '',
+): string {
+  if (selectedCount === 1) return `${label} the record${ending}?`;
+  const records = eligibleCount === 1 ? 'record' : 'records';
+  return `${label} ${eligibleCount} ${records}${ending}?`;
 }
 
+/**
+ * What the title does not say: the selected records that the action leaves
+ * as they are, else what changes for them, and that a delete can't be undone.
+ */
 export function confirmationContent(
   action: SelectionAction | 'move_to_stage',
   evaluation: SelectionEvaluation,
 ): string {
-  const eligible = recordsCount(evaluation.eligibleCount);
-  const scope =
-    evaluation.excludedCount > 0
-      ? `${eligible} of ${evaluation.selectedCount} selected records are eligible.`
-      : `${eligible} will be affected.`;
-  return action === 'delete' ? `${scope} This action cannot be undone.` : scope;
+  const { eligibleCount, excludedCount, selectedCount } = evaluation;
+  const one = eligibleCount === 1;
+  const parts: string[] = [];
+  if (excludedCount > 0) {
+    parts.push(
+      `Only ${eligibleCount} of the ${selectedCount} selected records can be ${PAST_TENSE[action]}.`,
+      excludedCount === 1
+        ? 'The other stays as it is.'
+        : `The other ${excludedCount} stay as they are.`,
+    );
+  } else if (action === 'publish') {
+    parts.push(
+      one ? 'Its latest changes go live.' : 'Their latest changes go live.',
+    );
+  } else if (action === 'unpublish') {
+    parts.push(one ? 'It goes back to draft.' : 'They go back to draft.');
+  }
+  if (action === 'delete') parts.push("You can't undo this.");
+  return parts.join(' ');
 }
 
 export async function confirmSelectionAction(
@@ -70,7 +98,7 @@ export async function confirmSelectionAction(
   const label = OPERATION_LABEL[action];
   return Boolean(
     await ctx.openConfirm({
-      title: `${label} selected records`,
+      title: confirmationTitle(label, evaluation),
       content: confirmationContent(action, evaluation),
       choices: [
         {
@@ -84,12 +112,23 @@ export async function confirmSelectionAction(
   );
 }
 
+/**
+ * The toast of the result: a notice when everything was done, a warning
+ * when the user stopped the action, and an alert when records failed.
+ */
 export function reportBulkResult(
   ctx: RenderPageCtx,
   result: BulkOperationResult,
+  destination?: string,
 ): void {
-  const message = bulkResultMessage(result);
-  if (result.failed > 0 || result.unprocessed) {
+  const message = bulkResultMessage(result, destination);
+  if (result.cancelled) {
+    void ctx.customToast({
+      type: 'warning',
+      message,
+      dismissAfterTimeout: true,
+    });
+  } else if (result.successful < result.requested) {
     void ctx.alert(message);
   } else {
     void ctx.notice(message);
@@ -97,9 +136,9 @@ export function reportBulkResult(
 }
 
 /**
- * Checks the stage picked in the menu against the stages read again, then
- * confirms the move. Only stages that at least one selected record may move
- * to are allowed.
+ * Checks the stage picked in the menu against the stages read again. Only
+ * stages that at least one selected record may move to are allowed. A move
+ * is easy to undo, so it asks only when some selected records can't move.
  */
 export async function prepareMoveOperation(args: {
   ctx: RenderPageCtx;
@@ -136,19 +175,20 @@ export async function prepareMoveOperation(args: {
     return null;
   }
 
+  const request: BulkOperationRequest = {
+    operation: 'move_to_stage',
+    itemIds: evaluation.itemIds,
+    stage: destination.id,
+  };
+  if (evaluation.excludedCount === 0) return request;
+
   const confirmed = await args.ctx.openConfirm({
-    title: `Move selected records to ${destination.name}`,
-    content: `${confirmationContent('move_to_stage', evaluation)} Destination: ${destination.name}.`,
-    choices: [{ label: 'Move to stage', value: true, intent: 'positive' }],
+    title: confirmationTitle('Move', evaluation, ` to ${destination.name}`),
+    content: confirmationContent('move_to_stage', evaluation),
+    choices: [{ label: 'Move', value: true, intent: 'positive' }],
     cancel: { label: 'Cancel', value: false },
   });
-  return confirmed
-    ? {
-        operation: 'move_to_stage',
-        itemIds: evaluation.itemIds,
-        stage: destination.id,
-      }
-    : null;
+  return confirmed ? request : null;
 }
 
 const MISSING_SELECTION =

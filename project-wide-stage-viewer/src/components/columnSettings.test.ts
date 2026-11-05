@@ -11,12 +11,12 @@ import {
 } from './columnSettings';
 
 describe('column settings', () => {
-  it('uses the CMS-compatible default widths', () => {
+  it('uses default widths where the status and the date fit', () => {
     expect(DEFAULT_COLUMN_SETTINGS).toEqual([
-      { id: '_preview', width: 0.45 },
-      { id: '_model', width: 0.2 },
-      { id: '_status', width: 0.15 },
-      { id: '_updated_at', width: 0.2 },
+      { id: '_preview', width: 0.4 },
+      { id: '_model', width: 0.15 },
+      { id: '_status', width: 0.2 },
+      { id: '_updated_at', width: 0.25 },
     ]);
   });
 

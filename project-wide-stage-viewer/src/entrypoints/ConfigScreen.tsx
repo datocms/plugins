@@ -26,7 +26,12 @@ import {
   ListCheckIcon,
   RefreshIcon,
 } from '../icons';
-import { buildCmaClient, describeError, fetchWorkflows } from '../lib/cma';
+import {
+  buildCmaClient,
+  describeError,
+  fetchWorkflows,
+  retryAdvice,
+} from '../lib/cma';
 import { ICON_OPTIONS, iconByName } from '../lib/icons';
 import {
   buildPageId,
@@ -50,7 +55,12 @@ type EntryDraft = {
   saved?: StageMenuItem;
 };
 
-type StageOption = { value: string; label: string; workflowName: string };
+type StageOption = {
+  value: string;
+  label: string;
+  /** The workflow, which the field names after the stage when needed */
+  workflowNote?: string;
+};
 type StageGroup = { label: string; options: StageOption[] };
 type IconOption = { value: string; label: string };
 
@@ -112,27 +122,41 @@ function draftError(
   workflows: Workflow[],
 ): string | undefined {
   if (!draft.pageId) return 'Pick a stage';
-  if (!findStage(workflows, draft.pageId)) return 'This stage no longer exists';
+  if (!findStage(workflows, draft.pageId)) {
+    return 'This stage no longer exists: remove this row';
+  }
   return undefined;
 }
 
+// The menu groups the stages by workflow. The field names the workflow only
+// when another workflow has a stage of the same name, as the sidebar does.
 function stageGroups(workflows: Workflow[]): StageGroup[] {
+  const workflowCount = new Map<string, number>();
+  for (const workflow of workflows) {
+    for (const name of new Set(workflow.stages.map((stage) => stage.name))) {
+      workflowCount.set(name, (workflowCount.get(name) ?? 0) + 1);
+    }
+  }
   return workflows.map((workflow) => ({
     label: workflow.name,
     options: workflow.stages.map((stage) => ({
       value: buildPageId(workflow.id, stage.id),
       label: stage.name,
-      workflowName: workflow.name,
+      workflowNote:
+        (workflowCount.get(stage.name) ?? 0) > 1 ? workflow.name : undefined,
     })),
   }));
 }
 
-/** The option of a saved stage that was deleted since the settings were saved */
+/**
+ * The option of a saved stage that was deleted since the settings were saved.
+ * It is in no group of the menu: the field names its workflow.
+ */
 function savedStageOption(draft: EntryDraft, pageId: string): StageOption {
   return {
     value: pageId,
     label: draft.saved?.stageName ?? pageId,
-    workflowName: draft.saved?.workflowName ?? '',
+    workflowNote: draft.saved?.workflowName,
   };
 }
 
@@ -143,18 +167,20 @@ function stageName(draft: EntryDraft, workflows: Workflow[]): string | null {
   return match?.stage.name ?? draft.saved?.stageName ?? draft.pageId;
 }
 
-const ICON_SELECT_OPTIONS: IconOption[] = ICON_OPTIONS.map(({ value }) => ({
-  value,
-  label: value,
-}));
+const ICON_SELECT_OPTIONS: IconOption[] = ICON_OPTIONS.map(
+  ({ value, label }) => ({ value, label }),
+);
 
+// A saved name that the plugin no longer offers shows as it is
 const unknownIconOption = (value: string): IconOption => ({
   value,
   label: value,
 });
 
 /** The parts people edit here; names are refreshed on every save anyway. */
-function editableParts(items: StageMenuItem[]): string {
+function editableParts(
+  items: Pick<StageMenuItem, 'id' | 'label' | 'icon'>[],
+): string {
   return JSON.stringify(
     items.map(({ id, label, icon }) => [
       id,
@@ -201,28 +227,52 @@ function StageOptionLabel({
   context: 'menu' | 'value';
   taken: boolean;
 }) {
-  // The menu groups the stages by workflow: the value names the workflow
+  // The field shows one line
   if (context === 'value') {
     return (
       <span className={s.optionLabel}>
         <span className={s.optionText}>{option.label}</span>
-        {option.workflowName ? (
-          <span className={s.optionNote}>{option.workflowName}</span>
+        {option.workflowNote ? (
+          <span className={s.optionNote}>{option.workflowNote}</span>
         ) : null}
       </span>
     );
   }
+  // In the menu a long name wraps: the whole name shows while the user picks
   return (
     <span className={s.optionLabel}>
-      <span className={s.optionText}>{option.label}</span>
-      {taken ? <span className={s.optionNote}>Already added</span> : null}
+      <span className={s.menuText}>{option.label}</span>
+      {taken ? (
+        <span className={`${s.optionNote} ${s.menuNote}`}>Already added</span>
+      ) : null}
     </span>
   );
 }
 
-function IconOptionLabel({ name }: { name: string }) {
-  const definition = iconByName(name);
+// The menu shows each icon with its name. The field shows the chosen icon
+// alone, named by its label, thus the narrow column needs no ellipsis; a
+// saved name the plugin no longer offers shows as text.
+function IconOptionLabel({
+  option,
+  context,
+}: {
+  option: IconOption;
+  context: 'menu' | 'value';
+}) {
+  const definition = iconByName(option.value);
   const Glyph = definition ? iconComponent(definition) : null;
+  if (Glyph && context === 'value') {
+    return (
+      <span className={s.optionLabel}>
+        <Glyph
+          className={s.glyph}
+          role="img"
+          aria-hidden={undefined}
+          aria-label={option.label}
+        />
+      </span>
+    );
+  }
   return (
     <span className={s.optionLabel}>
       {Glyph ? (
@@ -230,7 +280,7 @@ function IconOptionLabel({ name }: { name: string }) {
       ) : (
         <span className={s.glyph} aria-hidden="true" />
       )}
-      <span className={s.optionText}>{name}</span>
+      <span className={s.optionText}>{option.label}</span>
     </span>
   );
 }
@@ -254,7 +304,7 @@ function useColumns(
         id: 'stage',
         field: 'pageId',
         label: 'Workflow stage',
-        grow: 5,
+        grow: 6,
         // The class of the cell input is for a text input: the select does
         // not take it
         render: ({
@@ -279,6 +329,9 @@ function useColumns(
               clearable={false}
               variant="embedded"
               classNamePrefix="TableList__select"
+              // The menu opens at its full height, also near the bottom of
+              // the settings: the frame grows to fit it
+              minMenuHeight={300}
               isOptionDisabled={(option) => takenByOther(option.value)}
               formatOptionLabel={(option, { context }) => (
                 <StageOptionLabel
@@ -314,7 +367,7 @@ function useColumns(
         id: 'icon',
         field: 'icon',
         label: 'Icon',
-        grow: 4,
+        grow: 3,
         render: ({
           index,
           value,
@@ -333,8 +386,8 @@ function useColumns(
             isSearchable
             variant="embedded"
             classNamePrefix="TableList__select"
-            formatOptionLabel={(option) => (
-              <IconOptionLabel name={option.value} />
+            formatOptionLabel={(option, { context }) => (
+              <IconOptionLabel option={option} context={context} />
             )}
             acceptValueNotIncludedInOptions={unknownIconOption}
           />
@@ -376,9 +429,16 @@ function StagePagesForm({
           : undefined,
       );
   const nextItems = buildMenuItems(drafts, workflows);
+  // The rows as they are: a saved stage that no longer exists is a change
+  // only once its row is removed
   const dirty =
-    drafts.length !== savedItems.length ||
-    editableParts(nextItems) !== editableParts(savedItems);
+    editableParts(
+      drafts.map(({ pageId, label, icon }) => ({
+        id: pageId ?? '',
+        label: label.trim() || undefined,
+        icon,
+      })),
+    ) !== editableParts(savedItems);
   const takenPageIds = new Set(drafts.map(({ pageId }) => pageId));
   const someStageFree = workflows.some((workflow) =>
     workflow.stages.some(
@@ -403,7 +463,7 @@ function StagePagesForm({
       setSubmitted(false);
       ctx.notice('Settings saved.');
     } catch {
-      ctx.alert("Couldn't save the settings.");
+      ctx.alert("Couldn't save the settings. Try again.");
     } finally {
       setSaving(false);
     }
@@ -412,9 +472,7 @@ function StagePagesForm({
   return (
     <>
       {canEdit ? null : (
-        <Callout>
-          You need permission to edit the schema to change these settings.
-        </Callout>
+        <Callout>Only an administrator can change these settings.</Callout>
       )}
       <form onSubmit={handleSubmit}>
         <Page.Group
@@ -439,7 +497,11 @@ function StagePagesForm({
           <FieldWrapper
             label="Stage pages"
             labelExtras={{ hidden: true }}
-            hint="Each stage gets its own page in the content sidebar, listing every record in that stage across all the models that use its workflow."
+            hint={
+              canEdit && someStageFree
+                ? 'Add a stage to give it a page in the content sidebar, listing its records from every model.'
+                : 'Each stage has a page in the content sidebar, listing its records from every model.'
+            }
           >
             <TableList<EntryDraft>
               value={drafts}
@@ -480,7 +542,7 @@ function ConfigContent({ ctx }: Props) {
         icon={<CircleExclamationIcon />}
         title="Couldn't load the workflows"
         code={describeError(state.error) ?? undefined}
-        description="Check your connection, then try again."
+        description={retryAdvice(state.error)}
         actions={
           <Button icon={RefreshIcon} label="Try again" onClick={retry} />
         }
@@ -494,7 +556,7 @@ function ConfigContent({ ctx }: Props) {
         placement="inline"
         icon={<ListCheckIcon />}
         title="No workflows yet"
-        description="Each workflow stage you pick here gets its own page in the content sidebar, listing every record in that stage across all models. Create a workflow in Settings, under Workflows, then come back to pick its stages."
+        description="Create a workflow in Settings, under Workflows, then come back to pick its stages."
       />
     );
   }

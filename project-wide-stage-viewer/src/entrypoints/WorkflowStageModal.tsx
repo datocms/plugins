@@ -110,7 +110,7 @@ export default function WorkflowStageModal({ ctx }: Props) {
             small
             icon={<ListCheckIcon />}
             title="No stages to move to"
-            description="Close this dialog, then choose Move to stage again."
+            description="The workflow has no other stage to move the records to."
           />
           <div className={s.footer}>{cancel}</div>
         </>

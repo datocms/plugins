@@ -44,6 +44,7 @@ import {
   buildCmaClient,
   describeError,
   MissingAccessTokenError,
+  retryAdvice,
 } from '../lib/cma';
 import { modelSummary, type RecordRow } from '../lib/records';
 import { pluginSettingsPath, recordEditorPath } from '../lib/routes';
@@ -93,11 +94,17 @@ function formatRecordCount(locale: string, count: number): string {
     : `${number} records`;
 }
 
+/** The roles that can open the settings of the plugin, and fix them */
+function canEditSettings(ctx: RenderPageCtx): boolean {
+  return ctx.currentRole.meta.final_permissions.can_edit_schema;
+}
+
 /** The link to the settings of the plugin, for the roles that can open them */
 function settingsButton(ctx: RenderPageCtx): ReactNode {
   return (
-    ctx.currentRole.meta.final_permissions.can_edit_schema && (
+    canEditSettings(ctx) && (
       <Button
+        tone="primary"
         label="Open plugin settings"
         to={pluginSettingsPath(ctx, ctx.plugin.id)}
       />
@@ -114,7 +121,7 @@ function UnknownStagePage({ ctx }: { ctx: RenderPageCtx }) {
         titleLevel={1}
         icon={<ListCheckIcon />}
         title="This page is no longer available"
-        description="Its workflow stage was removed from the plugin settings, where you pick the stages that get a page in the content sidebar."
+        description="Its stage was removed from the plugin settings."
         actions={settingsButton(ctx)}
       />
     </Main>
@@ -177,8 +184,12 @@ function stageBlankSlate(args: {
         titleLevel={1}
         error
         icon={<CircleExclamationIcon />}
-        title="No access to your API token"
-        description="This page needs the “Current user access token” permission. Turn it on in the plugin settings, then reload the page."
+        title="This page needs a permission"
+        description={
+          canEditSettings(ctx)
+            ? 'Turn on “Current user access token” in the plugin settings, then reload the page.'
+            : 'Ask an administrator to turn on “Current user access token” in the plugin settings.'
+        }
         actions={settingsButton(ctx)}
       />
     );
@@ -197,6 +208,10 @@ function stageBlankSlate(args: {
     />
   );
   if (state.data.stageMissing) {
+    // Reloading can't bring it back: only the settings fix the page
+    const what = state.data.workflow
+      ? `The ${names.stage} stage was removed from the ${names.workflow} workflow.`
+      : `The ${names.workflow} workflow was deleted.`;
     return (
       <BlankSlate
         placement="area"
@@ -204,13 +219,12 @@ function stageBlankSlate(args: {
         error
         icon={<CircleExclamationIcon />}
         title="This stage no longer exists"
-        description={`The ${names.stage} stage was removed from the ${names.workflow} workflow, or the workflow was deleted. Remove this page in the plugin settings.`}
-        actions={
-          <>
-            {settingsButton(ctx)}
-            {reload}
-          </>
+        description={
+          canEditSettings(ctx)
+            ? `${what} Remove this page in the plugin settings.`
+            : `${what} Ask an administrator to remove this page.`
         }
+        actions={settingsButton(ctx)}
       />
     );
   }
@@ -221,7 +235,11 @@ function stageBlankSlate(args: {
         titleLevel={1}
         icon={<EntryIcon name={args.menuItem.icon} />}
         title="No models use this workflow"
-        description={`Assign the ${names.workflow} workflow to a model in its settings, and its records in the ${names.stage} stage show up here.`}
+        description={
+          canEditSettings(ctx)
+            ? `Assign the ${names.workflow} workflow to a model in that model's settings. Its records in the ${names.stage} stage then show here.`
+            : `Records in the ${names.stage} stage show here once an administrator assigns the ${names.workflow} workflow to a model.`
+        }
         actions={reload}
       />
     );
@@ -233,7 +251,7 @@ function stageBlankSlate(args: {
         titleLevel={1}
         icon={<EntryIcon name={args.menuItem.icon} />}
         title={args.title}
-        description={`No records are in this stage right now. Records show here when they move to the ${names.stage} stage of the ${names.workflow} workflow.`}
+        description={`Records show here when they move to this stage of the ${names.workflow} workflow.`}
         actions={reload}
       />
     );
@@ -270,11 +288,8 @@ function ErrorPane({
           error
           icon={<CircleExclamationIcon />}
           title="Couldn't load the records"
-          code={
-            describeError(error) ??
-            (error instanceof Error ? error.message : undefined)
-          }
-          description="Check your connection, then try again."
+          code={describeError(error) ?? undefined}
+          description={retryAdvice(error)}
           actions={
             <Button icon={RefreshIcon} label="Try again" onClick={onRetry} />
           }
@@ -310,7 +325,7 @@ function RecordsTitleBar({
   busy: boolean;
   refreshing: boolean;
   onReload: () => void;
-  /** The progress of an action of more than one job */
+  /** The progress of an action of more than one job: it replaces the spinner */
   progressText: string | undefined;
   /** Stops the jobs of the action that did not start yet */
   onCancel: () => void;
@@ -323,7 +338,7 @@ function RecordsTitleBar({
           {title}
         </Toolbar.Title>
         <Toolbar.Subtitle>{count}</Toolbar.Subtitle>
-        <Toolbar.Spinner show={spinning} />
+        <Toolbar.Spinner show={spinning && !progressText} />
         <Toolbar.Space />
         <Toolbar.Group>
           {models.length > 1 && (
@@ -362,7 +377,7 @@ function RecordsTitleBar({
             <Toolbar.Note>
               <span role="status">{progressText}</span>
             </Toolbar.Note>
-            <Toolbar.Button label="Cancel remaining" onClick={onCancel} />
+            <Toolbar.Button label="Stop" onClick={onCancel} />
           </>
         )}
         <Toolbar.Button
@@ -429,8 +444,11 @@ function selectionBarActions(args: {
     [
       bulk.selectAllMatching && {
         id: 'selectAllMatching',
+        // "matching" only while a search or a filter narrows the records
         label: {
-          id: 'stageViewer.selectAllMatching',
+          id: table.filtering
+            ? 'stageViewer.selectAllMatching'
+            : 'stageViewer.selectAll',
           values: { count: table.matchingRows.length },
         },
         disabled: waitReason,
@@ -553,7 +571,8 @@ function RecordsPane({
         <RecordsTitleBar
           title={title}
           names={names}
-          count={formatRecordCount(ctx.ui.locale, table.matchingRows.length)}
+          // The listed records: the matching ones, or the selected ones
+          count={formatRecordCount(ctx.ui.locale, table.displayedRows.length)}
           spinning={refreshing || busy}
           models={models}
           table={table}

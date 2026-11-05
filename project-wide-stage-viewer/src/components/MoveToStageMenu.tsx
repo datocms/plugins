@@ -1,9 +1,10 @@
 import type { Client } from '@datocms/cma-client-browser';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import { useEffect, useMemo, useState } from 'react';
-import { CircleExclamationIcon } from '../icons';
-import { describeError } from '../lib/cma';
+import { CircleExclamationIcon, RefreshIcon } from '../icons';
+import { describeError, retryAdvice } from '../lib/cma';
 import { availableMoveDestinationIds } from '../operations/candidates';
 import type { SelectionInput } from '../operations/types';
 import type { WorkflowStageOption } from '../types';
@@ -25,10 +26,10 @@ export type MoveToStageMenuProps = {
 type WorkflowState =
   | { status: 'loading' }
   | { status: 'loaded'; stages: readonly WorkflowStageOption[] }
-  | { status: 'failed'; message: string | undefined };
+  | { status: 'failed'; error: unknown };
 
 // The menu renders this part only while it is open, thus each opening loads
-// the current stages of the workflow.
+// the current stages of the workflow. "Try again" loads them again.
 function StageOptions({
   client,
   workflowId,
@@ -38,7 +39,9 @@ function StageOptions({
   const [workflow, setWorkflow] = useState<WorkflowState>({
     status: 'loading',
   });
+  const [attempt, setAttempt] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is the retry trigger
   useEffect(() => {
     let active = true;
     setWorkflow({ status: 'loading' });
@@ -55,18 +58,13 @@ function StageOptions({
       },
       (error: unknown) => {
         if (!active) return;
-        setWorkflow({
-          status: 'failed',
-          message:
-            describeError(error) ??
-            (error instanceof Error ? error.message : undefined),
-        });
+        setWorkflow({ status: 'failed', error });
       },
     );
     return () => {
       active = false;
     };
-  }, [client, workflowId]);
+  }, [client, workflowId, attempt]);
 
   const destinations = useMemo(() => {
     if (workflow.status !== 'loaded') return [];
@@ -101,8 +99,15 @@ function StageOptions({
           error
           icon={<CircleExclamationIcon />}
           title="Couldn't load the stages"
-          code={workflow.message}
-          description="Close the menu, then open it again."
+          code={describeError(workflow.error) ?? undefined}
+          description={retryAdvice(workflow.error)}
+          actions={
+            <Button
+              icon={RefreshIcon}
+              label="Try again"
+              onClick={() => setAttempt((value) => value + 1)}
+            />
+          }
         />
       </div>
     );

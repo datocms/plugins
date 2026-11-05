@@ -13,10 +13,10 @@ export const ALL_COLUMN_IDS: readonly ColumnId[] = [
 ];
 
 export const DEFAULT_COLUMN_SETTINGS: readonly ColumnSetting[] = [
-  { id: '_preview', width: 0.45 },
-  { id: '_model', width: 0.2 },
-  { id: '_status', width: 0.15 },
-  { id: '_updated_at', width: 0.2 },
+  { id: '_preview', width: 0.4 },
+  { id: '_model', width: 0.15 },
+  { id: '_status', width: 0.2 },
+  { id: '_updated_at', width: 0.25 },
 ];
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;

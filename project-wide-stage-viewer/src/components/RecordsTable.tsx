@@ -6,6 +6,7 @@ import {
   type TableSort,
   type TableSortState,
 } from 'datocms-react-ui/Table';
+import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
 import StatusCell, {
   type StatusCellProps,
 } from 'datocms-react-ui/Table/cells/StatusCell';
@@ -24,7 +25,6 @@ import {
   fromTableLayout,
   toTableLayout,
 } from './columnSettings';
-import s from './RecordsTable.module.css';
 import type { TableRecord } from './types';
 
 export type RecordsTableProps = {
@@ -39,10 +39,10 @@ export type RecordsTableProps = {
   orderBy: OrderBy;
   /** The columns the user can sort by now; undefined when all can */
   sortableColumnIds?: ReadonlySet<ColumnId>;
-  /** False while the records load or an action runs: the headers do not sort */
+  /** False while the records load or an action runs: a click on a header does nothing */
   sortingEnabled: boolean;
   onOrderByChange: (orderBy: OrderBy | null) => void;
-  /** False while the records load or an action runs */
+  /** False while the records load or an action runs: the checkboxes do nothing */
   selectionEnabled: boolean;
   onToggleRow: (id: string) => void;
   onTogglePage: (selected: boolean) => void;
@@ -86,19 +86,20 @@ function tableSort(orderBy: OrderBy): TableSort | null {
   return null;
 }
 
+// The title of the record, with its image and its validity triangles
 function TitleCell({ row }: { row: TableRecord }) {
   return (
-    <span className={s.titleCell}>
-      {row.imageUrl && (
-        <img alt="" className={s.thumbnail} src={row.imageUrl} />
-      )}
-      <span className={s.titleText}>{row.title}</span>
-      <ItemValidityTriangles
-        publishedValid={row.publishedValid}
-        currentValid={row.currentValid}
-        draftModeActive={row.draftModeActive}
-      />
-    </span>
+    <EntityCell
+      title={row.title}
+      image={row.imageUrl && <img alt="" src={row.imageUrl} />}
+      afterTitle={
+        <ItemValidityTriangles
+          publishedValid={row.publishedValid}
+          currentValid={row.currentValid}
+          draftModeActive={row.draftModeActive}
+        />
+      }
+    />
   );
 }
 
@@ -117,9 +118,8 @@ function buildColumns(key: string): TableColumn<TableRecord>[] {
   return [
     {
       name: '_preview',
-      label: 'Preview',
+      label: 'Title',
       sortable: sortable('_preview'),
-      truncate: false,
       minWidth: 200,
       priority: 5,
       renderCell: (row) => <TitleCell row={row} />,
@@ -213,23 +213,24 @@ export function RecordsTable({
   );
 
   // The latest handlers, so that the rows keep one stable callback
-  const latest = useRef({ onToggleRow, onOrderByChange });
-  latest.current = { onToggleRow, onOrderByChange };
+  const latest = useRef({ onToggleRow, onOrderByChange, onTogglePage });
+  latest.current = { onToggleRow, onOrderByChange, onTogglePage };
   const toggleRow = useCallback(
     (id: string) => latest.current.onToggleRow(id),
     [],
   );
 
+  // The header keeps its sort buttons and its checkbox while they wait, thus
+  // the labels and the arrow of the order do not move.
   const sort = useMemo<TableSortState>(() => {
     const value = tableSort(orderBy);
-    if (!sortingEnabled) return { value };
     return {
       value,
       // The table goes from DESC to no order with `null`, which names no
       // column: the sorted column then runs the cycle of nextOrder().
       onChange: (next) => {
         const columnName = next?.columnName ?? value?.columnName;
-        if (!columnName || !isColumnId(columnName)) return;
+        if (!sortingEnabled || !columnName || !isColumnId(columnName)) return;
         latest.current.onOrderByChange(nextOrder(orderBy, columnName));
       },
     };
@@ -237,6 +238,15 @@ export function RecordsTable({
 
   const allPageSelected =
     rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+  const selectAll = useMemo(
+    () => ({
+      selected: allPageSelected,
+      onChange: (selected: boolean) => {
+        if (selectionEnabled) latest.current.onTogglePage(selected);
+      },
+    }),
+    [allPageSelected, selectionEnabled],
+  );
 
   return (
     <Table
@@ -246,13 +256,7 @@ export function RecordsTable({
       sort={sort}
       checkboxes={{ alwaysVisible: selectedIds.size > 0 }}
     >
-      <Table.Header
-        selectAll={
-          selectionEnabled && rows.length > 0
-            ? { selected: allPageSelected, onChange: onTogglePage }
-            : undefined
-        }
-      />
+      <Table.Header selectAll={rows.length > 0 ? selectAll : undefined} />
       <Table.Body>
         {rows.map((row) => (
           <RecordRow

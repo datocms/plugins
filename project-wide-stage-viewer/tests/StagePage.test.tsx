@@ -235,9 +235,9 @@ async function filterBy(current: string, option: string) {
   await pick(option);
 }
 
-// The sortable headers are links named by their label
+// The sortable headers are buttons named by their label
 function sortHeader(label: string) {
-  return screen.queryByRole('link', { name: label });
+  return screen.queryByRole('button', { name: label });
 }
 
 // The bar slides out: it leaves the page once its transition ends
@@ -337,11 +337,7 @@ describe('StagePage', () => {
     expect(screen.getByText('1 record')).toBeInTheDocument();
 
     await search('zzz');
-    expect(
-      screen.getByText(
-        'No records match the filters. Try other filters, or clear some of them.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Nothing matches the filter.')).toBeInTheDocument();
     expect(screen.getByText('0 records')).toBeInTheDocument();
 
     await search('');
@@ -367,7 +363,7 @@ describe('StagePage', () => {
     renderPage();
     await screen.findByText('Newest article');
 
-    await userEvent.click(sortHeader('Preview') as HTMLElement);
+    await userEvent.click(sortHeader('Title') as HTMLElement);
 
     expect(rowTitles()).toEqual([
       'Jane Doe',
@@ -391,7 +387,7 @@ describe('StagePage', () => {
     renderPage();
 
     expect(
-      await screen.findByText(/No records are in this stage right now/),
+      await screen.findByText(/Records show here when they move to this stage/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 1, name: 'In review' }),
@@ -414,17 +410,58 @@ describe('StagePage', () => {
     expect(
       screen.getByRole('link', { name: 'Open plugin settings' }),
     ).toHaveAttribute('href', '/configuration/plugins/plugin-1/edit');
+    // Reloading can't bring the stage back
+    expect(
+      screen.queryByRole('button', { name: 'Reload' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks an editor to have an administrator remove a deleted stage', async () => {
+    client.workflows.find.mockResolvedValue({
+      ...STAGES,
+      stages: [{ id: 'draft', name: 'Draft' }],
+    });
+    renderPage({ canEditSchema: false });
+
+    expect(
+      await screen.findByText(/Ask an administrator to remove this page/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Open plugin settings' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('tells an editor that an administrator assigns the workflow to a model', async () => {
+    const ctx = buildPageCtx({
+      parameters,
+      itemTypes: [],
+      fields,
+      canEditSchema: false,
+    });
+    render(<StagePage ctx={ctx} menuItem={menuItem} />);
+
+    expect(
+      await screen.findByText(
+        'Records in the In review stage show here once an administrator assigns the Editorial workflow to a model.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
   });
 
   it('offers a retry when the records can’t be loaded', async () => {
-    client.items.rawList.mockRejectedValueOnce(new Error('Network down'));
+    client.items.rawList.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
     renderPage();
 
     expect(
       await screen.findByText("Couldn't load the records"),
     ).toBeInTheDocument();
-    expect(screen.getByText('Network down')).toBeInTheDocument();
+    // A failed connection shows the advice alone, not the browser's message
+    expect(
+      screen.getByText('Check your connection, then try again.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
     // The title bar stays
     expect(
       screen.getByRole('heading', { level: 1, name: 'In review' }),
@@ -457,7 +494,7 @@ describe('StagePage', () => {
     render(<StagePage ctx={ctx} menuItem={menuItem} />);
 
     expect(
-      screen.getByRole('heading', { name: 'No access to your API token' }),
+      screen.getByRole('heading', { name: 'This page needs a permission' }),
     ).toBeInTheDocument();
     expect(client.items.rawList).not.toHaveBeenCalled();
   });
@@ -496,8 +533,8 @@ describe('selection and bulk actions', () => {
     await waitFor(() => expect(client.items.rawBulkPublish).toHaveBeenCalled());
     expect(ctx.openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Publish selected records',
-        content: '2 records will be affected.',
+        title: 'Publish 2 records?',
+        content: 'Their latest changes go live.',
       }),
     );
     const sent = client.items.rawBulkPublish.mock.calls[0][0] as BulkPayload;
@@ -529,14 +566,10 @@ describe('selection and bulk actions', () => {
     await pick('Draft');
 
     await waitFor(() =>
-      expect(ctx.notice).toHaveBeenCalledWith('3 records moved.'),
+      expect(ctx.notice).toHaveBeenCalledWith('3 records moved to Draft.'),
     );
-    expect(ctx.openConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Move selected records to Draft',
-        content: '3 records will be affected. Destination: Draft.',
-      }),
-    );
+    // Every selected record can move, and a move is easy to undo: no question
+    expect(ctx.openConfirm).not.toHaveBeenCalled();
     expect(ctx.openModal).not.toHaveBeenCalled();
     const batches = client.items.rawBulkMoveToStage.mock.calls.map(
       ([payload]) =>
@@ -547,7 +580,7 @@ describe('selection and bulk actions', () => {
     expect(batches).toEqual([['r1', 'r2'], ['r3']]);
     // Moved records leave the stage.
     expect(
-      await screen.findByText(/No records are in this stage right now/),
+      await screen.findByText(/Records show here when they move to this stage/),
     ).toBeInTheDocument();
   });
 
@@ -561,8 +594,8 @@ describe('selection and bulk actions', () => {
     await waitFor(() => expect(client.items.rawBulkDestroy).toHaveBeenCalled());
     expect(ctx.openConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Delete selected records',
-        content: '1 record will be affected. This action cannot be undone.',
+        title: 'Delete the record?',
+        content: "You can't undo this.",
         choices: [{ label: 'Delete', value: true, intent: 'negative' }],
       }),
     );
@@ -608,6 +641,47 @@ describe('selection and bulk actions', () => {
     );
   });
 
+  it('says what was not done when the selection left the stage', async () => {
+    const ctx = renderPage();
+    await screen.findByText('Newest article');
+    await selectRow('Jane Doe');
+    const moved = store.find((item) => item.id === 'r3');
+    if (moved) moved.meta.stage = 'ready';
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() =>
+      expect(ctx.alert).toHaveBeenCalledWith(
+        "The record wasn't published: it's no longer in this stage.",
+      ),
+    );
+    expect(client.items.rawBulkPublish).not.toHaveBeenCalled();
+  });
+
+  it('counts the records that a partial selection acts on', async () => {
+    const ctx = renderPage({
+      permissions: {
+        positive: [
+          { action: 'publish', item_type: 'm1', on_creator: 'anyone' },
+        ],
+      },
+    });
+    await screen.findByText('Newest article');
+    await selectRow('Newest article');
+    await selectRow('Jane Doe');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(client.items.rawBulkPublish).toHaveBeenCalled());
+    expect(ctx.openConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Publish 1 record?',
+        content:
+          'Only 1 of the 2 selected records can be published. The other stays as it is.',
+      }),
+    );
+  });
+
   it('selects every matching record across pages', async () => {
     store = manyArticles(60);
     renderPage();
@@ -619,7 +693,7 @@ describe('selection and bulk actions', () => {
     expect(screen.getByText('50 records selected')).toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Select all 60 matching records' }),
+      screen.getByRole('button', { name: 'Select all 60 records' }),
     );
     expect(screen.getByText('60 records selected')).toBeInTheDocument();
 
@@ -720,7 +794,7 @@ describe('review regressions', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows progress and Cancel while a move runs one job per model', async () => {
+  it('runs a move one job per model while the other actions wait', async () => {
     const firstJob = deferred<unknown>();
     const original = client.items.rawBulkMoveToStage.getMockImplementation();
     if (!original) throw new Error('Missing mock');
@@ -736,20 +810,52 @@ describe('review regressions', () => {
     await openMenu('Move to stage');
     await pick('Ready');
 
-    expect(
-      await screen.findByRole('button', { name: 'Cancel remaining' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/0 of 2 processed/)).toBeInTheDocument();
     // The other actions wait, and say why
-    expect(screen.getByRole('button', { name: 'Publish' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Publish' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      ),
     );
+    // Two records split by model need no progress
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
     firstJob.resolve(undefined);
     await waitFor(() =>
       expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument(),
     );
     expect(rowTitles()).toEqual(['Older article']);
+  });
+
+  it('shows the progress and Stop while more records than one job run', async () => {
+    store = manyArticles(250);
+    const firstJob = deferred<unknown>();
+    const original = client.items.rawBulkPublish.getMockImplementation();
+    if (!original) throw new Error('Missing mock');
+    client.items.rawBulkPublish.mockImplementationOnce(async (payload) => {
+      await firstJob.promise;
+      return original(payload);
+    });
+    const ctx = renderPage();
+    await screen.findByText('250 records');
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all records on this page' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Select all 250 records' }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Stop' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Publishing 250 records…')).toBeInTheDocument();
+    firstJob.resolve(undefined);
+    await waitFor(() =>
+      expect(ctx.notice).toHaveBeenCalledWith('250 records published.'),
+    );
   });
 
   it('asks nothing once the page is left mid-action', async () => {

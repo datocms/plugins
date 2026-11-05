@@ -81,7 +81,10 @@ export type BulkOperationResult = {
   unprocessed?: number;
   cancelled?: boolean;
   remainingItemIds?: string[];
+  /** The raw message of the request that failed and stopped the run */
   error?: string;
+  /** The error of that request, for the reason the toast gives */
+  cause?: unknown;
 };
 
 export type BulkOperationProgress = {

@@ -70,8 +70,8 @@ function renderTable(initial: RecordsTableProps) {
   return (next: RecordsTableProps) => rerender(view(next));
 }
 
-// The sortable headers are links named by their label; the others are text
-const header = (label: string) => screen.getByRole('link', { name: label });
+// The sortable headers are buttons named by their label; the others are text
+const header = (label: string) => screen.getByRole('button', { name: label });
 
 describe('RecordsTable ordering', () => {
   it('cycles the default descending Last update directly to ascending', () => {
@@ -97,7 +97,7 @@ describe('RecordsTable ordering', () => {
     expect(onOrderByChange).toHaveBeenLastCalledWith(null);
   });
 
-  it('cycles Preview and Model from unsorted to ascending, descending and back', () => {
+  it('cycles Title and Model from unsorted to ascending, descending and back', () => {
     const onOrderByChange = vi.fn();
     const sortable = ['_preview', '_model', '_status'] as const;
     const rerender = renderTable(
@@ -106,15 +106,15 @@ describe('RecordsTable ordering', () => {
 
     fireEvent.click(header('Model'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_model_ASC');
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_preview_ASC');
 
     rerender(props('_preview_ASC', sortable, { onOrderByChange }));
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith('_preview_DESC');
 
     rerender(props('_preview_DESC', sortable, { onOrderByChange }));
-    fireEvent.click(header('Preview'));
+    fireEvent.click(header('Title'));
     expect(onOrderByChange).toHaveBeenLastCalledWith(null);
 
     rerender(props('_model_DESC', sortable, { onOrderByChange }));
@@ -127,16 +127,22 @@ describe('RecordsTable ordering', () => {
 
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Status' }),
+      screen.queryByRole('button', { name: 'Status' }),
     ).not.toBeInTheDocument();
     expect(header('Model')).toBeInTheDocument();
   });
 
-  it('has no sorting headers while the records load or an action runs', () => {
-    renderTable(props(DEFAULT_ORDER_BY, undefined, { sortingEnabled: false }));
+  it('keeps its headers but does not sort while the records load or an action runs', () => {
+    const onOrderByChange = vi.fn();
+    renderTable(
+      props(DEFAULT_ORDER_BY, undefined, {
+        sortingEnabled: false,
+        onOrderByChange,
+      }),
+    );
 
-    expect(screen.getByText('Model')).toBeInTheDocument();
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    fireEvent.click(header('Model'));
+    expect(onOrderByChange).not.toHaveBeenCalled();
   });
 });
 
@@ -196,20 +202,22 @@ describe('RecordsTable rows', () => {
   });
 
   it('locks the selection while the records load', () => {
+    const onTogglePage = vi.fn();
     renderTable(
       props(DEFAULT_ORDER_BY, undefined, {
         rows: [RECORD],
         selectionEnabled: false,
+        onTogglePage,
       }),
     );
 
     expect(
       screen.getByRole('checkbox', { name: 'Hello world' }),
     ).toBeDisabled();
-    expect(
-      screen.queryByRole('checkbox', {
-        name: 'Select all records on this page',
-      }),
-    ).not.toBeInTheDocument();
+    // The header keeps its checkbox, thus the labels do not move
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all records on this page' }),
+    );
+    expect(onTogglePage).not.toHaveBeenCalled();
   });
 });

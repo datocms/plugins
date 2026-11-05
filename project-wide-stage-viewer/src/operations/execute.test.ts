@@ -1,3 +1,4 @@
+import { ApiError } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
 import { MAX_BULK_ITEMS } from '../constants';
 import { buildBatches, executeBulkOperation } from './execute';
@@ -154,7 +155,7 @@ describe('bulk result helpers', () => {
     };
     expect(isPartialBulkResult(partial)).toBe(true);
     expect(bulkResultMessage(partial)).toBe(
-      '1 record unpublished; 1 record failed.',
+      "1 record unpublished. The other couldn't be unpublished. Try again in a moment.",
     );
     expect(
       bulkResultMessage({
@@ -163,13 +164,79 @@ describe('bulk result helpers', () => {
         successful: 0,
         failed: 2,
       }),
-    ).toBe('No records were deleted; 2 records failed.');
-    expect(bulkErrorMessage('move_to_stage', new Error('Network error'))).toBe(
-      'Could not move the selected records: Network error',
+    ).toBe('No records were deleted. Try again in a moment.');
+    expect(
+      bulkErrorMessage('move_to_stage', new TypeError('Failed to fetch')),
+    ).toBe(
+      "Couldn't move the selected records. Check your connection, then try again.",
     );
     expect(bulkErrorMessage('delete', null)).toBe(
-      'Could not delete the selected records.',
+      "Couldn't delete the selected records. Try again in a moment.",
     );
+  });
+
+  it('names a move with its stage, and a stop as a stop', () => {
+    expect(
+      bulkResultMessage(
+        {
+          operation: 'move_to_stage',
+          requested: 2,
+          successful: 2,
+          failed: 0,
+          unprocessed: 0,
+        },
+        'Approved',
+      ),
+    ).toBe('2 records moved to Approved.');
+    expect(
+      bulkResultMessage({
+        operation: 'publish',
+        requested: 452,
+        successful: 200,
+        failed: 0,
+        unprocessed: 252,
+        cancelled: true,
+      }),
+    ).toBe(
+      'Stopped. 200 records published; the other 252 were left as they were.',
+    );
+  });
+
+  it('gives the reason of a refused request, never its raw text', () => {
+    const refused = new ApiError({
+      request: {
+        url: 'https://site-api.datocms.com/items/bulk/publish',
+        method: 'POST',
+        headers: {},
+      },
+      response: {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        body: {
+          data: [
+            {
+              id: 'err',
+              type: 'api_error',
+              attributes: { code: 'INSUFFICIENT_PERMISSIONS', details: {} },
+            },
+          ],
+        },
+      },
+    });
+    const message = bulkResultMessage({
+      operation: 'publish',
+      requested: 2,
+      successful: 0,
+      failed: 2,
+      unprocessed: 0,
+      error: refused.message,
+      cause: refused,
+    });
+    expect(message).toBe(
+      "No records were published: you don't have permission to publish them.",
+    );
+    expect(message).not.toContain('POST');
   });
 });
 
@@ -208,7 +275,9 @@ describe('multi-batch bulk execution', () => {
       remainingItemIds: ids.slice(200),
     });
     expect(mocks.rawBulkDestroy).toHaveBeenCalledTimes(2);
-    expect(bulkResultMessage(result)).toContain('Records no longer exist.');
+    expect(bulkResultMessage(result)).toBe(
+      "200 records deleted. The other 250 couldn't be deleted. Try again in a moment.",
+    );
   });
 
   it('awaits an accepted job before honoring cancellation of remaining batches', async () => {

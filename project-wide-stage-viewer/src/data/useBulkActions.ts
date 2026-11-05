@@ -1,6 +1,7 @@
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MAX_BULK_ITEMS } from '../constants';
 import type { RecordRow } from '../lib/records';
 import {
   availableMoveDestinationIds,
@@ -8,8 +9,8 @@ import {
   getMoveSelectionContext,
   potentialMoveDestinationIds,
 } from '../operations/candidates';
-import { buildBatches, executeBulkOperation } from '../operations/execute';
-import { bulkErrorMessage } from '../operations/results';
+import { executeBulkOperation } from '../operations/execute';
+import { bulkErrorMessage, selectionGoneMessage } from '../operations/results';
 import type {
   BulkOperationProgress,
   BulkOperationRequest,
@@ -91,13 +92,29 @@ function whenEligible(
   return evaluation.eligibleCount > 0 ? run : undefined;
 }
 
-// The numbers have the separators of the locale of the user ("1,234"), as
-// the count of the title bar
-function progressLabel(locale: string, progress: BulkOperationProgress | null) {
-  if (!progress) return undefined;
+const PROGRESS_VERB: Record<BusyAction, string> = {
+  delete: 'Deleting',
+  publish: 'Publishing',
+  unpublish: 'Unpublishing',
+  move: 'Moving',
+};
+
+// "Publishing 200 of 452…", with the failures only when there are some. The
+// numbers have the separators of the locale of the user ("1,234"), as the
+// count of the title bar.
+function progressLabel(
+  locale: string,
+  action: BusyAction | null,
+  progress: BulkOperationProgress | null,
+) {
+  if (!action || !progress) return undefined;
   const numbers = new Intl.NumberFormat(locale);
   const n = (value: number) => numbers.format(value);
-  return `${n(progress.completed)} of ${n(progress.requested)} processed; ${n(progress.successful)} succeeded; ${n(progress.failed)} failed`;
+  const verb = PROGRESS_VERB[action];
+  if (progress.completed === 0)
+    return `${verb} ${n(progress.requested)} records…`;
+  const failed = progress.failed > 0 ? `, ${n(progress.failed)} failed` : '';
+  return `${verb} ${n(progress.completed)} of ${n(progress.requested)}${failed}…`;
 }
 
 /**
@@ -165,6 +182,12 @@ export function useBulkActions(args: Args) {
     () => ({ items: selectedItems, modelsById, permissions }),
     [modelsById, permissions, selectedItems],
   );
+  // Publish applies while a selected record has something to publish, and
+  // Unpublish while one is published
+  const statuses = useMemo(
+    () => new Set(selectedItems.map((item) => item.meta.status ?? 'published')),
+    [selectedItems],
+  );
   const evaluations = useMemo(
     () => ({
       delete: evaluateSelection({ ...selectionInput, action: 'delete' }),
@@ -185,11 +208,12 @@ export function useBulkActions(args: Args) {
     [selectionInput, args.stages, permissions],
   );
 
-  function begin(action: BusyAction): AbortController | null {
+  // The page shows the action as running (busyAction) only once the user
+  // has confirmed it
+  function begin(): AbortController | null {
     if (controllerRef.current) return null;
     const controller = new AbortController();
     controllerRef.current = controller;
-    setBusyAction(action);
     return controller;
   }
 
@@ -225,6 +249,7 @@ export function useBulkActions(args: Args) {
     controller: AbortController,
     selection: SelectionInput,
     request: BulkOperationRequest,
+    destination: string | undefined,
   ) {
     setShowingSelected(false);
     const modelOf = new Map(
@@ -244,15 +269,14 @@ export function useBulkActions(args: Args) {
       {
         signal: controller.signal,
         batchKey,
-        // Progress and "Cancel remaining" whenever there's more than one job.
+        // Progress and "Stop" when the records take more than one job of
+        // the API, not for a few records split by model.
         onProgress:
-          buildBatches(request.itemIds, batchKey).length > 1
-            ? setProgress
-            : undefined,
+          request.itemIds.length > MAX_BULK_ITEMS ? setProgress : undefined,
       },
     );
     if (controllerRef.current !== controller) return;
-    reportBulkResult(ctx, result);
+    reportBulkResult(ctx, result, destination);
     // Keep what wasn't submitted, or was in a batch that didn't fully succeed.
     const retained = new Set(result.remainingItemIds);
     const submitted = new Set(request.itemIds);
@@ -276,24 +300,32 @@ export function useBulkActions(args: Args) {
   async function perform(
     client: Client,
     controller: AbortController,
+    action: BusyAction,
     prepare: Prepare,
+    operation: SelectionAction | 'move_to_stage',
+    destination: string | undefined,
   ) {
+    const selectedCount = selectedItems.length;
     const selection = await currentSelection(client, controller);
     if (!isActive(controller)) return;
     if (selection.items.length === 0) {
-      void ctx.alert('The selected records are no longer in this stage.');
+      void ctx.alert(
+        selectionGoneMessage(operation, selectedCount, destination),
+      );
       args.reload();
       return;
     }
     const request = await prepare(selection, client, controller.signal);
     if (!request || !isActive(controller)) return;
-    await execute(client, controller, selection, request);
+    setBusyAction(action);
+    await execute(client, controller, selection, request, destination);
   }
 
   async function run(
     action: BusyAction,
     prepare: Prepare,
     operation: SelectionAction | 'move_to_stage',
+    destination?: string,
   ) {
     const client = args.getClient();
     if (!client) {
@@ -302,10 +334,17 @@ export function useBulkActions(args: Args) {
       );
       return;
     }
-    const controller = begin(action);
+    const controller = begin();
     if (!controller) return;
     try {
-      await perform(client, controller, prepare);
+      await perform(
+        client,
+        controller,
+        action,
+        prepare,
+        operation,
+        destination,
+      );
     } catch (error) {
       if (isActive(controller)) {
         void ctx.alert(bulkErrorMessage(operation, error));
@@ -356,6 +395,7 @@ export function useBulkActions(args: Args) {
         });
       },
       'move_to_stage',
+      destination.name,
     );
   }
 
@@ -363,12 +403,16 @@ export function useBulkActions(args: Args) {
     delete: whenEligible(evaluations.delete, () =>
       runSelectionAction('delete'),
     ),
-    publish: whenEligible(evaluations.publish, () =>
-      runSelectionAction('publish'),
-    ),
-    unpublish: whenEligible(evaluations.unpublish, () =>
-      runSelectionAction('unpublish'),
-    ),
+    publish:
+      statuses.has('draft') || statuses.has('updated')
+        ? whenEligible(evaluations.publish, () => runSelectionAction('publish'))
+        : undefined,
+    unpublish:
+      statuses.has('published') || statuses.has('updated')
+        ? whenEligible(evaluations.unpublish, () =>
+            runSelectionAction('unpublish'),
+          )
+        : undefined,
   };
 
   // The selection is exactly the matching records already.
@@ -388,7 +432,7 @@ export function useBulkActions(args: Args) {
     /** The selection, for the stages that the move menu offers */
     selectionInput,
     moveToStage,
-    progressText: progressLabel(ctx.ui.locale, progress),
+    progressText: progressLabel(ctx.ui.locale, busyAction, progress),
     /** Stops the jobs that did not start yet */
     onCancel: () => controllerRef.current?.abort(),
     toggleRow: (row: RecordRow) =>

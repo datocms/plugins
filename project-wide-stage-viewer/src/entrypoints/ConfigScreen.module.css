@@ -1,6 +1,6 @@
 /* The label of an option of the stage and icon selects: a glyph or a name,
-   then a quieter note (the workflow, or "Already added"). The name keeps its
-   room and the note gives way first. */
+   then a quieter note (the workflow, or "Already added"). In the field, the
+   name keeps its room and the note gives way first. */
 .optionLabel {
   display: inline-flex;
   gap: var(--spacing-s);
@@ -16,9 +16,11 @@
   white-space: nowrap;
 }
 
+/* It never shrinks while the note has room: only a name longer than the
+   field gets an ellipsis */
 .optionText {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
+  max-width: 100%;
 }
 
 /* It shrinks long before the name does */
@@ -27,6 +29,17 @@
   min-width: 0;
   font-size: var(--font-size-xs);
   color: var(--color--ink-subtle);
+}
+
+/* In the menu of the stages, a long name wraps, and the note keeps its
+   place beside it */
+.menuText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.menuNote {
+  flex: none;
 }
 
 /* The preview of a sidebar icon: the glyph of the host's icon, in the color

@@ -49,6 +49,23 @@ export function describeError(error: unknown): string | null {
   return null;
 }
 
+/** The code of the error of a refused request ("INSUFFICIENT_PERMISSIONS"), if any. */
+export function apiErrorCode(error: unknown): string | undefined {
+  return error instanceof ApiError
+    ? error.errors[0]?.attributes.code
+    : undefined;
+}
+
+/**
+ * What to do after a failed request: check the connection when it never
+ * reached the API (fetch fails with a TypeError), else try again later.
+ */
+export function retryAdvice(error: unknown): string {
+  return error instanceof TypeError
+    ? 'Check your connection, then try again.'
+    : 'Try again in a moment.';
+}
+
 export async function fetchWorkflows(client: Client): Promise<Workflow[]> {
   const workflows = await client.workflows.list();
   return workflows

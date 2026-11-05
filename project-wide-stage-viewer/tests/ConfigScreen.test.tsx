@@ -58,15 +58,31 @@ describe('ConfigScreen', () => {
 
     const label = await screen.findByLabelText('Sidebar label');
     expect(label).toHaveValue('Reviews');
-    // The stage shows its live name, with the workflow beside it.
+    // The stage shows its live name. No other workflow has an "In review"
+    // stage, thus the field does not name the workflow.
     expect(screen.getByText('In review')).toBeInTheDocument();
-    expect(screen.getByText('Editorial')).toBeInTheDocument();
-    // The old Font Awesome 5 name shows as its Font Awesome 6 name.
-    expect(screen.getByText('list-check')).toBeInTheDocument();
+    expect(screen.queryByText('Editorial')).not.toBeInTheDocument();
+    // The old Font Awesome 5 name shows as the icon of its Font Awesome 6 name.
+    expect(screen.getByRole('img', { name: 'Checklist' })).toBeInTheDocument();
     expect(isDisabled(saveButton())).toBe(true);
 
     await userEvent.type(label, '!');
     expect(isDisabled(saveButton())).toBe(false);
+  });
+
+  it('names the workflow of a stage that another workflow also has', async () => {
+    client.workflows.list.mockResolvedValue([
+      ...workflows,
+      {
+        id: 'wf2',
+        name: 'Translation',
+        stages: [{ id: 'check', name: 'In review' }],
+      },
+    ]);
+    render(<ConfigScreen ctx={buildConfigCtx({ parameters: saved })} />);
+
+    expect(await screen.findByText('In review')).toBeInTheDocument();
+    expect(screen.getByText('Editorial')).toBeInTheDocument();
   });
 
   it('saves the entries, keeping other parameters and refreshing names', async () => {
@@ -111,7 +127,9 @@ describe('ConfigScreen', () => {
     await userEvent.click(saveButton());
 
     await waitFor(() =>
-      expect(ctx.alert).toHaveBeenCalledWith("Couldn't save the settings."),
+      expect(ctx.alert).toHaveBeenCalledWith(
+        "Couldn't save the settings. Try again.",
+      ),
     );
     expect(ctx.notice).not.toHaveBeenCalled();
   });
@@ -136,7 +154,7 @@ describe('ConfigScreen', () => {
     const [, icon] = screen.getAllByLabelText('Icon');
     await userEvent.click(icon);
     await userEvent.keyboard('{ArrowDown}');
-    await userEvent.click(await screen.findByRole('option', { name: 'flag' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Flag' }));
     // Every stage is used: no more rows to add
     expect(
       screen.queryByRole('button', { name: 'Add stage' }),
@@ -209,10 +227,23 @@ describe('ConfigScreen', () => {
       'This stage no longer exists',
     );
     expect(screen.getByText('Review (old name)')).toBeInTheDocument();
+    // Nothing changed yet: Save waits until the row is removed
+    expect(isDisabled(saveButton())).toBe(true);
 
     await userEvent.click(saveButton());
 
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove row' }));
+    expect(isDisabled(saveButton())).toBe(false);
+    await userEvent.click(saveButton());
+
+    await waitFor(() =>
+      expect(ctx.updatePluginParameters).toHaveBeenCalledWith({
+        otherSetting: true,
+        menuItems: [],
+      }),
+    );
   });
 
   it('is read-only without schema permissions', async () => {
@@ -224,7 +255,7 @@ describe('ConfigScreen', () => {
 
     expect(
       await screen.findByText(
-        'You need permission to edit the schema to change these settings.',
+        'Only an administrator can change these settings.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Sidebar label')).toBeDisabled();
