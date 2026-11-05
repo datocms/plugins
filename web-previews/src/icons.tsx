@@ -14,6 +14,7 @@ import {
   faGlobe,
   faRuler,
   fas,
+  faTableColumns,
   faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons';
 import snakeCase from 'lodash-es/snakeCase';
@@ -72,6 +73,7 @@ export const CustomSizeIcon = svgIcon(faRuler);
 /** The icon of a viewport preset whose icon name is unknown */
 export const DisplayIcon = svgIcon(faDisplay);
 export const GlobeIcon = svgIcon(faGlobe);
+/** The sidebar of the record form */
 export const WarningIcon = svgIcon(faTriangleExclamation);
 export const ErrorIcon = svgIcon(faCircleExclamation);
 
@@ -189,3 +191,4 @@ export function searchIconNames(query: string): string[] {
     .filter((name) => name.includes(lowerCaseQuery))
     .sort((a, b) => rank(a) - rank(b));
 }
+export const SidebarIcon = svgIcon(faTableColumns);

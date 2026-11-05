@@ -16,6 +16,7 @@ import {
 } from '../../utils/failures';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 import { pluginSettingsUrl } from '../../utils/urls';
+import { requestedPreviewLinkOf } from './previewLinkSelection';
 import styles from './styles.module.css';
 import { usePreviewLinkSelection } from './usePreviewLinkSelection';
 import { WebsitePreview } from './WebsitePreview';
@@ -130,6 +131,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   const { selectedPreviewLink, selectPreviewLink } = usePreviewLinkSelection({
     statusByFrontend,
+    requested: requestedPreviewLinkOf(ctx.parameters),
   });
 
   if (frontends.length === 0) {

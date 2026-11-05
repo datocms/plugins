@@ -1,5 +1,45 @@
 import type { Frontend, PreviewLinkWithFrontend } from '../../types';
 
+/**
+ * The link that another entry point of the plugin asked the sidebar to show,
+ * through `ctx.openItemFormSidebar()` (see `FormPreviewLinks`)
+ */
+export type RequestedPreviewLink = {
+  frontendName: string;
+  url: string;
+  /** The time of the request: the same link asked twice is a new request */
+  openedAt: number | undefined;
+};
+
+/** The requested link in the `parameters` of the sidebar, if there is one */
+export function requestedPreviewLinkOf(
+  parameters: Record<string, unknown>,
+): RequestedPreviewLink | undefined {
+  const { frontend, url, openedAt } = parameters;
+
+  if (typeof frontend !== 'string' || typeof url !== 'string') {
+    return undefined;
+  }
+
+  return {
+    frontendName: frontend,
+    url,
+    openedAt: typeof openedAt === 'number' ? openedAt : undefined,
+  };
+}
+
+/** The link of the response that a request names, if the response has it */
+export function findRequestedPreviewLink(
+  requested: RequestedPreviewLink,
+  previewLinks: PreviewLinkWithFrontend[],
+): PreviewLinkWithFrontend | undefined {
+  return previewLinks.find(
+    (candidate) =>
+      candidate.frontendName === requested.frontendName &&
+      candidate.url === requested.url,
+  );
+}
+
 export type SidebarVisualEditingInfo = {
   alreadyInDraftMode: boolean;
   path: string;

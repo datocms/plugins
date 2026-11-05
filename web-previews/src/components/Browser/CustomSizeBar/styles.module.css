@@ -1,9 +1,0 @@
-/* The bar grows for the error under the field, and the field stays where it
-   is without the error (as the address of the Visual tab does): the padding
-   keeps the space above it, since a field is a little lower than the bar */
-.field {
-  padding-block: max(
-    0px,
-    calc((var(--Toolbar-height) - var(--control-height)) / 2)
-  );
-}

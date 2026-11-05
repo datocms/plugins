@@ -125,7 +125,7 @@ const { frontends } = normalizeParameters(ctx.plugin.attributes.parameters);
 The plugin **never** builds preview URLs itself. Always call the configured API endpoint. The frontend knows its routing, the plugin doesn't.
 
 ### Don't Share State Between Entry Points
-Each entry point is isolated (separate React render). Use `ctx.parameters` or `ctx.notice()` to coordinate, not global state.
+Each entry point is isolated (separate React render). Use `ctx.parameters` or `ctx.notice()` to coordinate, not global state. The form outlet shows a link in the sidebar through the host: `ctx.openItemFormSidebar('webPreviews', { parameters })`, and the sidebar reads the link from `ctx.parameters` (`requestedPreviewLinkOf` in `src/entrypoints/SidebarFrame/previewLinkSelection.ts`).
 
 ### Don't Mutate ctx.item
 The context object is read-only. To update records, use DatoCMS SDK methods on `ctx.item.meta`.

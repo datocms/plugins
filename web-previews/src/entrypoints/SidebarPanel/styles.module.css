@@ -1,23 +1,15 @@
-/* The actions at the end of a row, side by side */
-.actions {
-  display: flex;
-  flex: none;
-  align-items: center;
+/* The name of a frontend above its rows: a label in the subtle ink, in
+   line with the images of the rows */
+.frontendName {
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink-subtle);
 }
 
-/* The icon after the path keeps its size, also when the path ends with an
-   ellipsis */
-.newTabIcon {
-  display: flex;
-  flex: none;
-}
-
-/* The place of the "⋮" in a row that has no menu: as wide as a micro
-   icon-only button (one line plus the padding of a micro button, 0.3em on
-   each side), thus the eyes of all the rows line up */
-.menuSlot {
-  flex: none;
-  width: calc(1lh + 2 * 0.3em);
+/* The links of the next frontend keep their distance from the rows above */
+.frontend + .frontend {
+  margin-block-start: var(--spacing-m);
 }
 
 /* The place of the first message of a failed frontend, under the rows */

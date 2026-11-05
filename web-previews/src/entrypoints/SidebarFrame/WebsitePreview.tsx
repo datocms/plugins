@@ -2,7 +2,6 @@ import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import Pane from 'datocms-react-ui/Pane';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { useCallback, useEffect, useState } from 'react';
-import { CustomSizeBar } from '../../components/Browser/CustomSizeBar';
 import { PreviewFrame } from '../../components/Browser/PreviewFrame';
 import { ViewportMenu } from '../../components/Browser/ViewportMenu';
 import type { ViewportState } from '../../components/Browser/viewport';
@@ -101,60 +100,51 @@ export function WebsitePreview({
   return (
     <Pane
       header={
-        <>
-          <Toolbar>
-            <Toolbar.Fill className={styles.fill}>
-              <PreviewLinkMenu
-                frontends={frontends}
-                statusByFrontend={statusByFrontend}
-                selectedPreviewLink={selectedPreviewLink}
-                onChange={onSelectPreviewLink}
-              />
-            </Toolbar.Fill>
-            {/* Pages with real-time updates refresh themselves, so they need
-                no button */}
-            {selectedPreviewLink.realtimeUpdates !== true && (
-              <Toolbar.Button
-                iconOnly
-                icon={ReloadIcon}
-                label="Refresh the preview"
-                onClick={reload}
-              />
-            )}
-            <ViewportMenu
-              value={viewport.choice}
-              onChange={viewport.setChoice}
-              fitLabel="Fit to sidebar"
-              iconOnly={false}
-              minWidth={VIEWPORT_SELECTOR_MIN_WIDTH}
+        <Toolbar>
+          <Toolbar.Fill className={styles.fill}>
+            <PreviewLinkMenu
+              frontends={frontends}
+              statusByFrontend={statusByFrontend}
+              selectedPreviewLink={selectedPreviewLink}
+              onChange={onSelectPreviewLink}
             />
-            <div className={styles.actions}>
-              <Toolbar.Group>
-                {visualTabUrl && (
-                  <Toolbar.Button
-                    iconOnly
-                    icon={EyeIcon}
-                    label="Edit in Visual Editing"
-                    to={visualTabUrl}
-                  />
-                )}
-                <Toolbar.Button
-                  iconOnly
-                  icon={OpenInNewTabIcon}
-                  label="Open in a new tab"
-                  href={selectedPreviewLink.url}
-                  newTab
-                />
-              </Toolbar.Group>
-            </div>
-          </Toolbar>
-          {viewport.choice === 'custom' && (
-            <CustomSizeBar
-              size={viewport.customSize}
-              onChange={viewport.setCustomSize}
+          </Toolbar.Fill>
+          {/* Pages with real-time updates refresh themselves, so they need
+                no button */}
+          {selectedPreviewLink.realtimeUpdates !== true && (
+            <Toolbar.Button
+              iconOnly
+              icon={ReloadIcon}
+              label="Refresh the preview"
+              onClick={reload}
             />
           )}
-        </>
+          <ViewportMenu
+            viewport={viewport}
+            fitLabel="Fit to sidebar"
+            iconOnly={false}
+            minWidth={VIEWPORT_SELECTOR_MIN_WIDTH}
+          />
+          <div className={styles.actions}>
+            <Toolbar.Group>
+              {visualTabUrl && (
+                <Toolbar.Button
+                  iconOnly
+                  icon={EyeIcon}
+                  label="Edit in Visual Editing"
+                  to={visualTabUrl}
+                />
+              )}
+              <Toolbar.Button
+                iconOnly
+                icon={OpenInNewTabIcon}
+                label="Open in a new tab"
+                href={selectedPreviewLink.url}
+                newTab
+              />
+            </Toolbar.Group>
+          </div>
+        </Toolbar>
       }
     >
       <PreviewFrame

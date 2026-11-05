@@ -12,12 +12,19 @@ import {
 } from '../../../icons';
 import { normalizeParameters, type Parameters } from '../../../types';
 import { BoundedLabel } from '../../BoundedLabel';
-import { isSameChoice, type ViewportChoice } from '../viewport';
+import {
+  isSameChoice,
+  type ViewportChoice,
+  type ViewportState,
+} from '../viewport';
+import { CustomSizeForm } from './CustomSizeForm';
 
 type Props = {
-  value: ViewportChoice;
-  onChange: (choice: ViewportChoice) => void;
-  /** The option that fits the page to the free space: "Fit to sidebar" */
+  viewport: ViewportState;
+  /**
+   * The option that fits the page to the free space: "Fit to sidebar". The
+   * trigger shows only "Fit", which the toolbar of a narrow frame can hold.
+   */
   fitLabel: string;
   /**
    * The trigger shows only the icon of the choice, in a narrow frame: the
@@ -29,17 +36,16 @@ type Props = {
 };
 
 /**
- * The icon and the name of a choice, for the trigger: the fit has the name
- * of its option. A preset has the name that the settings give it, which can
- * be long.
+ * The icon and the name of a choice, for the trigger. A preset has the name
+ * that the settings give it, which can be long.
  */
-function describe(choice: ViewportChoice, fitLabel: string) {
+function describe(choice: ViewportChoice) {
   if (choice === 'responsive') {
-    return { icon: FitIcon, label: fitLabel, named: false };
+    return { icon: FitIcon, label: 'Fit', named: false };
   }
 
   if (choice === 'custom') {
-    return { icon: CustomSizeIcon, label: 'Custom size', named: false };
+    return { icon: CustomSizeIcon, label: 'Custom', named: false };
   }
 
   return {
@@ -54,17 +60,17 @@ function describe(choice: ViewportChoice, fitLabel: string) {
  * of the plugin settings, or a size that the user types.
  */
 export function ViewportMenu({
-  value,
-  onChange,
+  viewport,
   fitLabel,
   iconOnly,
   minWidth = 0,
 }: Props) {
+  const { choice: value, setChoice: onChange } = viewport;
   const ctx = useCtx();
   const { defaultViewports } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-  const { icon, label, named } = describe(value, fitLabel);
+  const { icon, label, named } = describe(value);
 
   // The query reads the width of the frame. With no minimum it never matches
   const tooNarrow = useMediaQuery(`(max-width: ${minWidth - 0.02}px)`).matches;
@@ -119,13 +125,14 @@ export function ViewportMenu({
             </Dropdown.Option>
           );
         })}
-        <Dropdown.Option
-          active={value === 'custom'}
-          icon={<CustomSizeIcon />}
-          onPick={() => onChange('custom')}
-        >
-          Custom size
-        </Dropdown.Option>
+        <Dropdown.Separator />
+        <CustomSizeForm
+          size={viewport.customSize}
+          onApply={(size) => {
+            viewport.setCustomSize(size);
+            onChange('custom');
+          }}
+        />
       </Dropdown.Menu>
     </Dropdown>
   );

@@ -3,7 +3,6 @@ import { useCtx } from 'datocms-react-ui/Canvas';
 import Pane from 'datocms-react-ui/Pane';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { useEffect, useMemo } from 'react';
-import { CustomSizeBar } from '../../../components/Browser/CustomSizeBar';
 import {
   useCompactVisualTabBar,
   useNarrowVisualTabBar,
@@ -139,80 +138,71 @@ const UI = () => {
   return (
     <Pane
       header={
-        <>
-          <Toolbar fields>
-            {/* The parts stay in line with the address field, also while it
+        <Toolbar fields>
+          {/* The parts stay in line with the address field, also while it
                 shows its error under it */}
-            <div className={styles.row}>
-              {visualEditingFrontends.length > 1 && (
-                <div className={styles.cell}>
-                  <FrontendSelector
-                    frontends={visualEditingFrontends}
-                    currentFrontend={selectedFrontend}
-                    onChange={changeFrontend}
-                  />
-                </div>
-              )}
-              {/* A new frontend starts a new address, with no error. While
-                  the page connects, the frame and the records panel say that
-                  they load: the bar adds no spinner of its own */}
-              <AddressBar
-                key={selectedFrontend.name}
-                frontend={selectedFrontend}
-                disabledReason={disabledReason(contentLink)}
-              />
+          <div className={styles.row}>
+            {visualEditingFrontends.length > 1 && (
               <div className={styles.cell}>
-                <Toolbar.Button
-                  iconOnly
-                  icon={ReloadIcon}
-                  label="Refresh the preview"
-                  onClick={reloadIframe}
+                <FrontendSelector
+                  frontends={visualEditingFrontends}
+                  currentFrontend={selectedFrontend}
+                  onChange={changeFrontend}
                 />
               </div>
-              {/* The viewport menu hides, and the preview fits the frame,
+            )}
+            {/* A new frontend starts a new address, with no error. While
+                  the page connects, the frame and the records panel say that
+                  they load: the bar adds no spinner of its own */}
+            <AddressBar
+              key={selectedFrontend.name}
+              frontend={selectedFrontend}
+              disabledReason={disabledReason(contentLink)}
+            />
+            <div className={styles.cell}>
+              <Toolbar.Button
+                iconOnly
+                icon={ReloadIcon}
+                label="Refresh the preview"
+                onClick={reloadIframe}
+              />
+            </div>
+            {/* The viewport menu hides, and the preview fits the frame,
                   while the frame is narrower than the default width of the
                   Website preview tab */}
-              <div className={styles.part}>
-                <Toolbar.Divider />
-                <div className={styles.cell}>
-                  <ViewportMenu
-                    value={viewport.choice}
-                    onChange={viewport.setChoice}
-                    fitLabel="Fit to window"
-                    iconOnly={compactBar}
-                    minWidth={
-                      previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH
-                    }
-                  />
-                </div>
-              </div>
-              <div className={styles.part}>
-                <Toolbar.Divider />
-                <div className={styles.cell}>
-                  <EditModeSwitch
-                    showHint={!narrowBar}
-                    pressed={
-                      contentLink.type === 'connected' &&
-                      contentLink.state.clickToEditEnabled
-                    }
-                    temporary={
-                      contentLink.type === 'connected' &&
-                      contentLink.clickToEditTemporary
-                    }
-                    onToggle={handleToggleClickToEdit}
-                    disabledReason={disabledReason(contentLink)}
-                  />
-                </div>
+            <div className={styles.part}>
+              <Toolbar.Divider />
+              <div className={styles.cell}>
+                <ViewportMenu
+                  viewport={viewport}
+                  fitLabel="Fit to window"
+                  iconOnly={compactBar}
+                  minWidth={
+                    previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH
+                  }
+                />
               </div>
             </div>
-          </Toolbar>
-          {viewport.choice === 'custom' && (
-            <CustomSizeBar
-              size={viewport.customSize}
-              onChange={viewport.setCustomSize}
-            />
-          )}
-        </>
+            <div className={styles.part}>
+              <Toolbar.Divider />
+              <div className={styles.cell}>
+                <EditModeSwitch
+                  showHint={!narrowBar}
+                  pressed={
+                    contentLink.type === 'connected' &&
+                    contentLink.state.clickToEditEnabled
+                  }
+                  temporary={
+                    contentLink.type === 'connected' &&
+                    contentLink.clickToEditTemporary
+                  }
+                  onToggle={handleToggleClickToEdit}
+                  disabledReason={disabledReason(contentLink)}
+                />
+              </div>
+            </div>
+          </div>
+        </Toolbar>
       }
     >
       <PreviewFrame
