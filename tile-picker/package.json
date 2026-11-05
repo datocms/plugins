@@ -12,7 +12,7 @@
   "datoCmsPlugin": {
     "title": "Tile Picker",
     "coverImage": "docs/cover.png",
-    "previewImage": "docs/demo.mp4",
+    "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
     "permissions": []
   },
