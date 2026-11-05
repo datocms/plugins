@@ -2095,8 +2095,8 @@ describe('AgentSurface', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(enableButton).toHaveAttribute('aria-pressed', 'false');
-    expect(enableButton).toHaveTextContent('Auto');
-    expect(enableButton).not.toHaveTextContent('Danger!');
+    expect(enableButton).toHaveTextContent('Auto-approve is off');
+    expect(enableButton).not.toHaveTextContent('Danger');
     await user.click(enableButton);
     expect(onAutoApproveChange).toHaveBeenCalledWith(true);
 
@@ -2130,8 +2130,8 @@ describe('AgentSurface', () => {
       name: 'Turn off auto-approve',
     });
     expect(disableButton).toHaveAttribute('aria-pressed', 'true');
-    expect(disableButton).toHaveTextContent('Auto');
-    expect(disableButton).toHaveTextContent('Danger!');
+    expect(disableButton).toHaveTextContent('Auto: On');
+    expect(disableButton).toHaveTextContent('Danger');
     await user.click(disableButton);
     expect(onAutoApproveChange).toHaveBeenLastCalledWith(false);
   });
@@ -2375,6 +2375,28 @@ describe('AgentSurface', () => {
       screen.getByRole('button', { name: 'Check access again' }),
     );
     expect(onCheckDatoCmsAccess).toHaveBeenCalledOnce();
+  });
+
+  it('shows no unverified-access notice before the first access check returns', () => {
+    render(
+      <AgentSurface
+        connection={{
+          ...connected,
+          oauthAccessLevel: 'unknown',
+          accessChecking: true,
+          accessCheckPending: true,
+        }}
+        entries={[]}
+        onSubmit={vi.fn()}
+        onCheckDatoCmsAccess={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByText(/access is not verified/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Checking access…' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows OAuth access separately from plugin Read Only and explains how to change it', async () => {

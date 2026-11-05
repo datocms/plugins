@@ -137,6 +137,16 @@ export function BoltIcon({ className }: IconProps) {
   );
 }
 
+/** The bolt with a slash through it: auto-approve is off. */
+export function BoltOffIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M13.4 2 5.5 13h6l-.9 9L18.5 11h-6l.9-9Z" />
+      <path d="M3 3l18 18" />
+    </Icon>
+  );
+}
+
 export function RetryIcon({ className }: IconProps) {
   return (
     <Icon className={className}>

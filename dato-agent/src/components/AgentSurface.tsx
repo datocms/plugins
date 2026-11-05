@@ -37,6 +37,7 @@ import { MentionDisplay } from '../recordComments/entrypoints/components/shared/
 import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
 import {
   BoltIcon,
+  BoltOffIcon,
   CheckIcon,
   CircleCheckIcon,
   ConnectionIcon,
@@ -82,6 +83,8 @@ export type AgentConnectionViewModel = {
   oauthAccessLevel?: McpAccessLevel;
   pluginReadOnly?: boolean;
   accessChecking?: boolean;
+  /** True until the first access check for the current sign-in returns. */
+  accessCheckPending?: boolean;
 };
 
 export type AgentConversationSummaryViewModel = {
@@ -416,7 +419,12 @@ function UnverifiedAccessNotice({
   connection,
   onCheckDatoCmsAccess,
 }: AccessNoticeProps) {
-  if (connection.oauthAccessLevel !== 'unknown') return null;
+  // Before the first check returns, "unknown" only means "not checked yet".
+  if (
+    connection.oauthAccessLevel !== 'unknown' ||
+    connection.accessCheckPending
+  )
+    return null;
   return (
     <div className={styles.authorizationNotice} role="status">
       <p>
@@ -2208,6 +2216,34 @@ function Transcript({
   );
 }
 
+/** Icon and text of the auto-approve toggle: a slashed bolt when off, a danger badge when on. */
+function AutoApproveLabel({
+  isChanging,
+  isEnabled,
+}: {
+  isChanging: boolean;
+  isEnabled: boolean;
+}) {
+  const icon = isChanging ? (
+    <Spinner size={14} />
+  ) : isEnabled ? (
+    <BoltIcon />
+  ) : (
+    <BoltOffIcon />
+  );
+  return (
+    <>
+      {icon}
+      <span>{isEnabled ? 'Auto: On' : 'Auto-approve is off'}</span>
+      {isEnabled && (
+        <span aria-hidden="true" className={styles.autoApproveDanger}>
+          Danger
+        </span>
+      )}
+    </>
+  );
+}
+
 function UtilityControls({
   connected,
   chatsOpen,
@@ -2280,13 +2316,10 @@ function UtilityControls({
               }}
               type="button"
             >
-              {autoApproveChanging ? <Spinner size={14} /> : <BoltIcon />}
-              <span>Auto</span>
-              {autoApproveEnabled && (
-                <span aria-hidden="true" className={styles.autoApproveDanger}>
-                  Danger!
-                </span>
-              )}
+              <AutoApproveLabel
+                isChanging={Boolean(autoApproveChanging)}
+                isEnabled={Boolean(autoApproveEnabled)}
+              />
             </button>
           </TooltipTrigger>
           <TooltipContent>{autoApproveLabel}</TooltipContent>

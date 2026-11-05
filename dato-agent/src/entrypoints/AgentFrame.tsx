@@ -1992,6 +1992,8 @@ export default function AgentFrame(props: AgentFrameProps) {
   const forceFreshRegistrationRef = useRef(false);
   const oauthFlowGenerationRef = useRef(0);
   const [accessChecking, setAccessChecking] = useState(false);
+  /** The token whose first access check has finished, so "unknown" means unverified, not "not checked yet". */
+  const [accessCheckedToken, setAccessCheckedToken] = useState('');
   const accessLevel =
     accessState.token === oauthCredentials?.token?.accessToken
       ? accessState.snapshot.level
@@ -2925,7 +2927,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       .current(controller.signal)
       .catch(() => undefined)
       .finally(() => {
-        if (!controller.signal.aborted) setAccessChecking(false);
+        if (controller.signal.aborted) return;
+        setAccessChecking(false);
+        setAccessCheckedToken(token);
       });
     return () => controller.abort();
   }, [accessSession, oauthCredentials?.token?.accessToken]);
@@ -6091,6 +6095,9 @@ export default function AgentFrame(props: AgentFrameProps) {
         oauthAccessLevel: accessLevel,
         pluginReadOnly: props.config.readOnly,
         accessChecking,
+        accessCheckPending:
+          hasDatoCmsConnection &&
+          accessCheckedToken !== oauthCredentials?.token?.accessToken,
         datoCmsAccountLabel: hasDatoCmsConnection ? 'DatoCMS' : undefined,
         datoCmsError: oauthError,
       }}
