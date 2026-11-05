@@ -2199,14 +2199,14 @@ function Transcript({
 /** One line on what the current DatoCMS access lets the agent do. */
 function accessSummary(connection: AgentConnectionViewModel): string {
   if (connection.pluginReadOnly)
-    return 'Plugin Read Only is on, so the agent changes nothing.';
+    return 'Plugin Read Only is on, so the agent can change nothing.';
   switch (connection.oauthAccessLevel) {
     case 'content_view_only':
-      return 'It can read content, but not change it.';
+      return 'The agent can read content, but not change it.';
     case 'content_only':
-      return 'It can edit content, but not the schema.';
+      return 'The agent can edit content, but not the schema.';
     case 'unrestricted':
-      return 'It can do anything your role allows.';
+      return 'The agent can do anything your role allows.';
     default:
       return 'Not verified yet.';
   }
@@ -2254,17 +2254,18 @@ function AgentOptionsMenu({
             disabled={!onOpenPluginSettings}
             onClick={onOpenPluginSettings}
           >
-            Plugin settings
+            AI settings
           </DropdownOption>
           {!onOpenPluginSettings && (
             <DropdownText>
-              Only users who can edit the schema can change the plugin settings.
+              Only users who can edit the schema can change the AI settings.
             </DropdownText>
           )}
           <DropdownSeparator />
           <DropdownText>
             <span className={styles.optionsAccess}>
-              DatoCMS access: <strong>{mcpAccessLabel(accessLevel)}</strong>
+              Current DatoCMS access level:{' '}
+              <strong>{mcpAccessLabel(accessLevel)}</strong>
               <span>{accessSummary(connection)}</span>
             </span>
           </DropdownText>

@@ -1868,7 +1868,7 @@ describe('AgentSurface', () => {
     await user.click(screen.getByRole('button', { name: 'Agent options' }));
     expect(
       screen.getByText(
-        'Only users who can edit the schema can change the plugin settings.',
+        'Only users who can edit the schema can change the AI settings.',
       ),
     ).toBeVisible();
     await user.click(screen.getByText('Reconnect to change access…'));
@@ -2457,10 +2457,12 @@ describe('AgentSurface', () => {
     await user.click(screen.getByRole('button', { name: 'Agent options' }));
     expect(screen.getByText('Read and edit content')).toBeVisible();
     expect(
-      screen.getByText('Plugin Read Only is on, so the agent changes nothing.'),
+      screen.getByText(
+        'Plugin Read Only is on, so the agent can change nothing.',
+      ),
     ).toBeVisible();
     expect(screen.getByText('Reconnect to change access…')).toBeVisible();
-    await user.click(screen.getByText('Plugin settings'));
+    await user.click(screen.getByText('AI settings'));
     expect(onOpenPluginSettings).toHaveBeenCalledOnce();
   });
 });
