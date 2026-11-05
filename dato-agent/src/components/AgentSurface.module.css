@@ -395,7 +395,7 @@
 .setupStepBody {
   display: grid;
   justify-items: start;
-  gap: var(--spacing-s);
+  gap: var(--spacing-m);
   margin-left: 28px;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-xs);
@@ -403,6 +403,38 @@
 
 .setupStepBody p {
   margin: 0;
+}
+
+/* The access notices line up with the step's own text inside a setup step. */
+.setupStepBody .authorizationNotice {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-s);
+  margin: 0;
+}
+
+.accessChoices {
+  display: grid;
+  gap: 4px;
+}
+
+.accessChoices ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.accessChoices li + li {
+  margin-top: 2px;
+}
+
+.chatsAfterSetup {
+  display: grid;
+  gap: var(--spacing-s);
+  margin-top: 6px;
+}
+
+.chatsAfterSetup textarea {
+  resize: none;
 }
 
 .recentChats {

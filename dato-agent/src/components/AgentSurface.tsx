@@ -1,8 +1,9 @@
 import {
   BackIcon,
   Button,
-  Form,
+  FieldError,
   Spinner,
+  TextareaInput,
   Tooltip,
   TooltipContent,
   TooltipDelayGroup,
@@ -17,7 +18,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import datoMarkUrl from '../assets/dato-mark.svg';
 import { DEFAULT_MAX_CONVERSATIONS } from '../lib/conversations';
 import {
   MCP_ACCESS_CHANGE_GUIDANCE,
@@ -41,7 +41,6 @@ import {
   CircleCheckIcon,
   ConnectionIcon,
   CopyIcon,
-  DisconnectIcon,
   EditIcon,
   HistoryIcon,
   PlusIcon,
@@ -460,75 +459,65 @@ function DatoCmsConnectionField({
       : 'DatoCMS';
 
   return (
-    <Form
-      className={styles.connectionForm}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onConnectDatoCms?.();
-      }}
-    >
-      <div>
-        <div className={styles.connectionRow}>
-          <span className={styles.datoMark}>
-            <img alt="" aria-hidden="true" src={datoMarkUrl} />
-          </span>
-          <strong className={styles.connectionLabel}>{connectedLabel}</strong>
-          <span className={styles.connectionActions}>
-            {datoCmsConnecting ? (
-              <span
-                aria-label="Connecting to DatoCMS"
-                className={styles.connectionSpinner}
-                role="status"
-              >
-                <Spinner size={16} />
-              </span>
-            ) : datoCmsConnected ? (
-              <>
-                <span
-                  aria-label="Connected"
-                  className={styles.connectedStatus}
-                  role="img"
-                >
-                  <CircleCheckIcon />
-                </span>
-                {onDisconnectDatoCms && (
-                  <Tooltip placement="left">
-                    <TooltipTrigger>
-                      <button
-                        aria-label="Disconnect DatoCMS"
-                        className={`${styles.iconButton} ${styles.disconnectButton}`}
-                        onClick={onDisconnectDatoCms}
-                        type="button"
-                      >
-                        <DisconnectIcon />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Disconnect</TooltipContent>
-                  </Tooltip>
-                )}
-              </>
-            ) : (
-              <Button
-                buttonSize="xxs"
-                buttonType="primary"
-                disabled={!onConnectDatoCms}
-                type="submit"
-              >
-                {connection.datoCmsStatus === 'mcp_auth_required'
-                  ? 'Reconnect DatoCMS'
-                  : 'Connect'}
-              </Button>
-            )}
-          </span>
-        </div>
-
-        {!datoCmsConnected && (
-          <p className={styles.authorizationNotice} role="note">
-            When DatoCMS asks which projects to authorize, select{' '}
-            <strong>only the project where this plugin is installed.</strong>
+    <div className={styles.setupStepBody}>
+      {datoCmsConnected ? (
+        <>
+          <p>
+            Connected to <strong>{connectedLabel}</strong>.
           </p>
-        )}
-      </div>
+          {onDisconnectDatoCms && (
+            <Button
+              buttonSize="xxs"
+              buttonType="muted"
+              type="button"
+              onClick={onDisconnectDatoCms}
+            >
+              Disconnect
+            </Button>
+          )}
+        </>
+      ) : (
+        <>
+          <p role="note">
+            Sign in to DatoCMS. When it asks which projects to authorize, select
+            only the project where this plugin is installed.
+          </p>
+          <div className={styles.accessChoices}>
+            <p>The access you pick there sets what the agent can do:</p>
+            <ul>
+              <li>
+                <strong>Only read content:</strong> it can look things up, but
+                never change anything.
+              </li>
+              <li>
+                <strong>Read and edit content:</strong> it can also create,
+                publish and delete records and assets.
+              </li>
+              <li>
+                <strong>Anything you can:</strong> it can also change the
+                schema, settings, users and API tokens.
+              </li>
+            </ul>
+            <p>
+              Your project role still applies, and you approve each change
+              unless you turn on auto-approve.
+            </p>
+          </div>
+          <Button
+            buttonSize="xxs"
+            buttonType="primary"
+            disabled={!onConnectDatoCms || datoCmsConnecting}
+            type="button"
+            onClick={onConnectDatoCms}
+          >
+            {datoCmsConnecting
+              ? 'Connecting…'
+              : connection.datoCmsStatus === 'mcp_auth_required'
+                ? 'Reconnect DatoCMS'
+                : 'Connect'}
+          </Button>
+        </>
+      )}
 
       <OAuthAccessNotice
         connection={connection}
@@ -544,7 +533,7 @@ function DatoCmsConnectionField({
           )}
         </p>
       )}
-    </Form>
+    </div>
   );
 }
 
@@ -673,13 +662,17 @@ function CredentialPanel({
           ref={headingRef}
           tabIndex={isSettings ? -1 : undefined}
         >
-          Connection
+          Agent setup
         </h2>
       </header>
 
       <TooltipDelayGroup delay={250}>
         <ol className={styles.setupSteps}>
-          <SetupStep number={1} title="AI provider" isDone={isProviderReady}>
+          <SetupStep
+            number={1}
+            title="Choose AI provider & model"
+            isDone={isProviderReady}
+          >
             {!isProviderReady && (
               <div className={styles.setupStepBody}>
                 <p>
@@ -700,7 +693,11 @@ function CredentialPanel({
               </div>
             )}
           </SetupStep>
-          <SetupStep number={2} title="DatoCMS account" isDone={isDatoCmsReady}>
+          <SetupStep
+            number={2}
+            title="Connect AI to DatoCMS MCP"
+            isDone={isDatoCmsReady}
+          >
             <DatoCmsConnectionField
               connection={connection}
               onConnectDatoCms={onConnectDatoCms}
@@ -757,6 +754,7 @@ function SetupStep({
 /** Stands in for the chat list until both setup steps are done. */
 function ChatsAfterSetup() {
   const headingId = useId();
+  const errorId = useId();
   return (
     <section className={styles.recentChats} aria-labelledby={headingId}>
       <div className={styles.recentChatsHeader}>
@@ -765,8 +763,17 @@ function ChatsAfterSetup() {
           <h3 id={headingId}>Chats</h3>
         </div>
       </div>
-      <div className={styles.noRecentChats}>
-        <span>Finish setup first to start chatting.</span>
+      <div className={styles.chatsAfterSetup}>
+        <TextareaInput
+          aria-describedby={errorId}
+          aria-label="Message"
+          disabled
+          placeholder="Ask about this project…"
+          rows={2}
+        />
+        <div id={errorId}>
+          <FieldError>Finish setup first to start chatting.</FieldError>
+        </div>
       </div>
     </section>
   );

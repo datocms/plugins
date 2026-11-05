@@ -1803,7 +1803,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('AI provider')).toBeVisible();
+    expect(screen.getByText('Choose AI provider & model')).toBeVisible();
     expect(screen.getAllByText('To do')).toHaveLength(2);
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(
@@ -1837,17 +1837,16 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Connection' })).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Agent setup' })).toHaveFocus();
     expect(screen.getByText('Marketing website')).toBeVisible();
-    expect(screen.getByRole('img', { name: 'Connected' })).toBeVisible();
+    expect(screen.getAllByText('Done')).toHaveLength(2);
     expect(screen.queryByText('Remote MCP connection')).not.toBeInTheDocument();
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     const disconnectButton = screen.getByRole('button', {
-      name: 'Disconnect DatoCMS',
+      name: 'Disconnect',
     });
-    expect(disconnectButton).toHaveTextContent('');
-    expect(within(disconnectButton).queryByRole('img')).not.toBeInTheDocument();
+    expect(disconnectButton).toHaveTextContent('Disconnect');
     await user.click(disconnectButton);
     expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
   });
@@ -1919,9 +1918,9 @@ describe('AgentSurface', () => {
     );
 
     const [providerStep, datoCmsStep] = screen.getAllByRole('listitem');
-    expect(providerStep).toHaveTextContent('AI provider');
+    expect(providerStep).toHaveTextContent('Choose AI provider & model');
     expect(providerStep).toHaveTextContent('To do');
-    expect(datoCmsStep).toHaveTextContent('DatoCMS account');
+    expect(datoCmsStep).toHaveTextContent('Connect AI to DatoCMS MCP');
     expect(datoCmsStep).toHaveTextContent('Done');
     // Editors don't need to know which provider an admin picked.
     expect(screen.queryByText(/Anthropic/)).not.toBeInTheDocument();
@@ -2033,7 +2032,7 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(screen.getByRole('button', { name: 'New chat' }));
-    expect(screen.getByRole('heading', { name: 'Connection' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Agent setup' })).toBeVisible();
   });
 
   it('shows no chat controls until both setup steps are done', () => {
@@ -2061,7 +2060,11 @@ describe('AgentSurface', () => {
       screen.queryByRole('button', { name: 'New chat' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Describe this project')).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    const messageBox = screen.getByRole('textbox', { name: 'Message' });
+    expect(messageBox).toBeDisabled();
+    expect(messageBox).toHaveAccessibleDescription(
+      'Finish setup first to start chatting.',
+    );
   });
 
   it('keeps the session-wide auto-approve control inside the chat', async () => {
