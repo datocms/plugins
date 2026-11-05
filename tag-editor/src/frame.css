@@ -1,0 +1,12 @@
+/*
+ * Imported right after 'datocms-react-ui/styles.css'.
+ *
+ * The kit's styles.css gives html and body `height: 100%`. The SDK's
+ * auto-resizer measures the body, so with that rule the measure is never less
+ * than the current frame height: the field could grow when its menu opens,
+ * but never shrink back after it closes.
+ */
+html,
+body {
+  height: auto;
+}

@@ -1,6 +1,7 @@
 import { connect } from 'datocms-plugin-sdk';
 import Canvas from 'datocms-react-ui/Canvas';
 import 'datocms-react-ui/styles.css';
+import './frame.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import { type Config, isValidParams, normalizeParams } from './types';
