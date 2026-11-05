@@ -3,7 +3,6 @@ import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import NumberInput from 'datocms-react-ui/NumberInput';
-import { Page } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
 import isEqual from 'lodash-es/isEqual';
 import { type FormEvent, useState } from 'react';
@@ -13,7 +12,6 @@ import {
   type ValidGlobalParams,
 } from '../utils/globalParams';
 import { validateMaxRating, validateStarsColor } from './FieldConfigScreen';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -58,79 +56,71 @@ export default function ConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the fields start the frame, with no
+  // Page around them
   return (
     <Canvas ctx={ctx}>
-      <Page className={s.page}>
-        <Page.Content>
-          <form onSubmit={handleSubmit}>
-            <Page.Group
-              title="Settings"
-              footer={
-                <Button
-                  submit
-                  tone="primary"
-                  expand={false}
-                  label="Save"
-                  busy={saving}
-                  disabled={
-                    !dirty
-                      ? { reason: 'There are no changes to save.' }
-                      : invalid
-                        ? { reason: 'Fix the errors above first.' }
-                        : undefined
-                  }
-                />
-              }
-            >
-              <FieldWrapper
-                label="Maximum rating"
-                required
-                hint="From 2 to 10. Each field can set its own."
-                error={maxRatingError}
-              >
-                <NumberInput
-                  inputMode="numeric"
-                  placeholder="5"
-                  value={draft.defaultMaxRating}
-                  onChange={(value) =>
-                    setDraft({ ...draft, defaultMaxRating: value })
-                  }
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Stars color"
-                required
-                hint="The color of the selected stars. Each field can set its own."
-                error={starsColorError}
-              >
-                <ColorInput
-                  value={draft.defaultStarsColor}
-                  onChange={(value) =>
-                    setDraft({ ...draft, defaultStarsColor: value })
-                  }
-                />
-              </FieldWrapper>
-              <FieldWrapper
-                label="Auto-apply to Integer fields with API key"
-                labelExtras={{ optional: true }}
-                hint="A regular expression. The Integer fields whose API key matches it use the star rating editor."
-              >
-                <StringInput
-                  code
-                  placeholder="star_rating"
-                  value={draft.autoApplyToFieldsWithApiKey}
-                  onChange={(value) =>
-                    setDraft({
-                      ...draft,
-                      autoApplyToFieldsWithApiKey: value ?? '',
-                    })
-                  }
-                />
-              </FieldWrapper>
-            </Page.Group>
-          </form>
-        </Page.Content>
-      </Page>
+      <form onSubmit={handleSubmit}>
+        <FieldWrapper
+          label="Maximum rating"
+          required
+          hint="From 2 to 10. Each field can set its own."
+          error={maxRatingError}
+        >
+          <NumberInput
+            inputMode="numeric"
+            placeholder="5"
+            value={draft.defaultMaxRating}
+            onChange={(value) =>
+              setDraft({ ...draft, defaultMaxRating: value })
+            }
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Stars color"
+          required
+          hint="The color of the selected stars. Each field can set its own."
+          error={starsColorError}
+        >
+          <ColorInput
+            value={draft.defaultStarsColor}
+            onChange={(value) =>
+              setDraft({ ...draft, defaultStarsColor: value })
+            }
+          />
+        </FieldWrapper>
+        <FieldWrapper
+          label="Auto-apply to Integer fields with API key"
+          labelExtras={{ optional: true }}
+          hint="A regular expression. The Integer fields whose API key matches it use the star rating editor."
+        >
+          <StringInput
+            code
+            placeholder="star_rating"
+            value={draft.autoApplyToFieldsWithApiKey}
+            onChange={(value) =>
+              setDraft({
+                ...draft,
+                autoApplyToFieldsWithApiKey: value ?? '',
+              })
+            }
+          />
+        </FieldWrapper>
+        <Button
+          submit
+          tone="primary"
+          label="Save"
+          busy={saving}
+          disabled={
+            !dirty
+              ? { reason: 'There are no changes to save.' }
+              : invalid
+                ? { reason: 'Fix the errors above first.' }
+                : undefined
+          }
+        />
+      </form>
     </Canvas>
   );
 }

@@ -1,0 +1,39 @@
+.stars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+/* An empty star is a muted graphic mark, a full one takes the stars color */
+.star {
+  display: grid;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--color--ink-muted);
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.star[data-on] {
+  color: var(--stars-color);
+}
+
+.star:disabled {
+  cursor: default;
+}
+
+.star:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.star svg {
+  inline-size: 22px;
+  block-size: 22px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}

@@ -2,23 +2,24 @@
    swatch visible */
 .swatch {
   display: block;
-  inline-size: 1em;
-  block-size: 1em;
+  inline-size: 1.125em;
+  block-size: 1.125em;
   border-radius: var(--radius-xs);
   outline: 1px solid var(--color--border);
   outline-offset: -1px;
+  margin-inline-end: var(--spacing-s);
 }
 
 .presets {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-s);
-  margin-top: var(--spacing-s);
+  margin-top: var(--spacing-m);
 }
 
 .preset {
-  inline-size: 1.75em;
-  block-size: 1.75em;
+  inline-size: 1.375em;
+  block-size: 1.375em;
   padding: 0;
   border: 0;
   border-radius: var(--radius-s);

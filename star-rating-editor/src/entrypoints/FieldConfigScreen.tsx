@@ -29,10 +29,10 @@ export function validateStarsColor(value: string | null): string | undefined {
     return 'Enter a color.';
   }
 
-  const s = new Option().style;
-  s.color = value;
+  const style = new Option().style;
+  style.color = value;
 
-  if (s.color === '') {
+  if (style.color === '') {
     return 'Enter a valid CSS color, such as #FFB400.';
   }
 }
