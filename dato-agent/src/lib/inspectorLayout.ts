@@ -1,6 +1,10 @@
 const FALLBACK_BROWSER_WIDTH = 1440;
 const MINIMUM_RECORD_PANE_WIDTH = 550;
-const TARGET_AGENT_PANE_WIDTH = 420;
+/**
+ * The Agent tab's starting chat width, and the narrowest it stays usable: below
+ * it, the tab covers the chat with a "too narrow" notice.
+ */
+export const AGENT_PANE_WIDTH = 300;
 
 export function inspectorRecordPaneWidth(
   browserOuterWidth: number | undefined,
@@ -14,6 +18,6 @@ export function inspectorRecordPaneWidth(
 
   return Math.max(
     MINIMUM_RECORD_PANE_WIDTH,
-    Math.round(browserWidth - TARGET_AGENT_PANE_WIDTH),
+    Math.round(browserWidth - AGENT_PANE_WIDTH),
   );
 }

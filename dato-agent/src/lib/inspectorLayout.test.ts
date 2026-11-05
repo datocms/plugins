@@ -3,11 +3,11 @@ import { inspectorRecordPaneWidth } from './inspectorLayout';
 
 describe('inspectorRecordPaneWidth', () => {
   it.each([
-    [1710, 1290],
-    [1440, 1020],
-    [1280, 860],
+    [1710, 1410],
+    [1440, 1140],
+    [1280, 980],
   ])(
-    'keeps a compact 420px agent beside a %ipx browser',
+    'starts the agent at 300px beside a %ipx browser',
     (browserWidth, expected) => {
       expect(inspectorRecordPaneWidth(browserWidth)).toBe(expected);
     },
@@ -18,7 +18,7 @@ describe('inspectorRecordPaneWidth', () => {
   });
 
   it('uses a desktop fallback when browser sizing is unavailable', () => {
-    expect(inspectorRecordPaneWidth(undefined)).toBe(1020);
-    expect(inspectorRecordPaneWidth(Number.NaN)).toBe(1020);
+    expect(inspectorRecordPaneWidth(undefined)).toBe(1140);
+    expect(inspectorRecordPaneWidth(Number.NaN)).toBe(1140);
   });
 });

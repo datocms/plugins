@@ -9,6 +9,7 @@ import {
   createModelSchemaResolver,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import { AGENT_PANE_WIDTH } from '../lib/inspectorLayout';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import {
   createInspectorNavigator,
@@ -269,7 +270,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
   const isTooNarrow = useMediaQuery(
-    `(max-width: ${MIN_INSPECTOR_CHAT_WIDTH - 1}px)`,
+    `(max-width: ${AGENT_PANE_WIDTH - 1}px)`,
   ).matches;
 
   return (
@@ -318,13 +319,6 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     </Canvas>
   );
 }
-
-/**
- * Below this frame width the Agent tab's chat is too cramped to use. The CMS
- * owns the divider (the plugin SDK only sets a starting width), so the tab
- * covers the chat with a notice instead.
- */
-export const MIN_INSPECTOR_CHAT_WIDTH = 200;
 
 export default function AgentInspector({ ctx }: Props) {
   const config = normalizeConfig(ctx.plugin.attributes.parameters);
