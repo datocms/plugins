@@ -1836,6 +1836,25 @@ function recoverUnsafeDispatchJournal(
   return loadStoredConversations(conversationStore);
 }
 
+/**
+ * Sign-in failures in words an editor can act on. Connect registers a fresh
+ * OAuth client by itself when DatoCMS rejects the stored one, so every failure
+ * here is fixed by clicking Connect again.
+ */
+function datoCmsSignInErrorMessage(error: unknown): string {
+  const retry = 'Click Connect to try again.';
+  if (error instanceof RemoteMcpOAuthError) {
+    if (error.code === 'access_denied')
+      return `The DatoCMS sign-in was cancelled or denied. ${retry}`;
+    if (error.code === 'invalid_grant')
+      return `This sign-in code expired. ${retry}`;
+  }
+  const detail = error instanceof Error ? error.message.trim() : '';
+  return detail
+    ? `Could not connect to DatoCMS: ${detail.replace(/\.?$/, '.')} ${retry}`
+    : `Could not connect to DatoCMS. ${retry}`;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This frame coordinates the chat, OAuth, persistence, native navigation, and approval state that must share one React lifecycle.
 export default function AgentFrame(props: AgentFrameProps) {
   const mentionHost = useMemo<AgentMentionHost>(
@@ -5556,13 +5575,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         mountedRef.current &&
         oauthFlowGenerationRef.current === flowGeneration
       ) {
-        setOauthError(
-          error instanceof RemoteMcpOAuthError && error.code === 'invalid_grant'
-            ? 'This sign-in code is no longer valid. Start sign-in again to get a new code.'
-            : error instanceof Error
-              ? error.message
-              : 'Could not connect to DatoCMS.',
-        );
+        setOauthError(datoCmsSignInErrorMessage(error));
       }
     } finally {
       if (oauthFlowGenerationRef.current === flowGeneration) {
@@ -6141,7 +6154,6 @@ export default function AgentFrame(props: AgentFrameProps) {
           .catch(() => undefined)
           .finally(() => setAccessChecking(false));
       }}
-      onRestartDatoCmsConnection={() => void connectDatoCms(true)}
       recentConversations={storedConversations.map((stored) => ({
         id: stored.id,
         title: stored.title,

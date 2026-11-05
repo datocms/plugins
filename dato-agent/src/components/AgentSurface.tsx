@@ -19,12 +19,7 @@ import {
   useState,
 } from 'react';
 import { DEFAULT_MAX_CONVERSATIONS } from '../lib/conversations';
-import {
-  MCP_ACCESS_CHANGE_GUIDANCE,
-  MCP_ACCESS_CHANGE_URL,
-  type McpAccessLevel,
-  mcpAccessLabel,
-} from '../lib/mcpAccess';
+import { type McpAccessLevel, mcpAccessLabel } from '../lib/mcpAccess';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import type {
   AgentComposerSubmission,
@@ -292,7 +287,6 @@ export type AgentSurfaceProps = {
   onConnectDatoCms?: () => void;
   onDisconnectDatoCms?: () => void;
   onCheckDatoCmsAccess?: () => void;
-  onRestartDatoCmsConnection?: () => void;
   recentConversations?: readonly AgentConversationSummaryViewModel[];
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
@@ -354,7 +348,6 @@ type CredentialPanelProps = Pick<
   | 'onConnectDatoCms'
   | 'onDisconnectDatoCms'
   | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
   | 'recentConversations'
   | 'onSelectConversation'
   | 'onStartNewChat'
@@ -366,23 +359,23 @@ type AccessNoticeProps = Pick<
   'connection' | 'onCheckDatoCmsAccess'
 >;
 
+/** What the current DatoCMS connection lets the agent do. */
 function OAuthAccessNotice({
   connection,
-  onCheckDatoCmsAccess,
-}: AccessNoticeProps) {
+}: Pick<AccessNoticeProps, 'connection'>) {
   if (connection.datoCmsStatus !== 'connected' || !connection.oauthAccessLevel)
     return null;
   return (
     <div className={styles.authorizationNotice} role="status">
       <p>
-        OAuth access:{' '}
+        Current access level:{' '}
         <strong>{mcpAccessLabel(connection.oauthAccessLevel)}</strong>
       </p>
       {connection.pluginReadOnly && (
         <p>Plugin Read Only is enabled. All agent writes are disabled.</p>
       )}
       {connection.oauthAccessLevel === 'unknown' && (
-        <p>Read-only work is available. Check access before making changes.</p>
+        <p>Not verified yet. Read-only work is available until it is.</p>
       )}
       {connection.oauthAccessLevel === 'content_only' && (
         <p>
@@ -393,24 +386,6 @@ function OAuthAccessNotice({
       {connection.oauthAccessLevel === 'content_view_only' && (
         <p>All agent writes, including asset creation, are disabled.</p>
       )}
-      {(connection.oauthAccessLevel === 'content_view_only' ||
-        connection.oauthAccessLevel === 'content_only') && (
-        <p>
-          {MCP_ACCESS_CHANGE_GUIDANCE}{' '}
-          <a href={MCP_ACCESS_CHANGE_URL} target="_blank" rel="noreferrer">
-            Account settings
-          </a>
-        </p>
-      )}
-      <Button
-        buttonSize="xxs"
-        buttonType="muted"
-        type="button"
-        disabled={connection.accessChecking || !onCheckDatoCmsAccess}
-        onClick={onCheckDatoCmsAccess}
-      >
-        {connection.accessChecking ? 'Checking access…' : 'Check access again'}
-      </Button>
     </div>
   );
 }
@@ -448,15 +423,9 @@ function DatoCmsConnectionField({
   connection,
   onConnectDatoCms,
   onDisconnectDatoCms,
-  onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
 }: Pick<
   CredentialPanelProps,
-  | 'connection'
-  | 'onConnectDatoCms'
-  | 'onDisconnectDatoCms'
-  | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
+  'connection' | 'onConnectDatoCms' | 'onDisconnectDatoCms'
 >) {
   const datoCmsConnected = connection.datoCmsStatus === 'connected';
   const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
@@ -473,14 +442,17 @@ function DatoCmsConnectionField({
           <p>
             Connected to <strong>{connectedLabel}</strong>.
           </p>
+          <OAuthAccessNotice connection={connection} />
           {onDisconnectDatoCms && (
+            // Each connection is its own OAuth client with its own access level,
+            // so a fresh Connect is how an editor picks a different one.
             <Button
               buttonSize="xxs"
               buttonType="muted"
               type="button"
               onClick={onDisconnectDatoCms}
             >
-              Disconnect
+              Disconnect to change access
             </Button>
           )}
         </>
@@ -527,18 +499,9 @@ function DatoCmsConnectionField({
         </>
       )}
 
-      <OAuthAccessNotice
-        connection={connection}
-        onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-      />
       {connection.datoCmsError && (
         <p className={styles.inlineError} role="alert">
           {connection.datoCmsError}
-          {!datoCmsConnecting && onRestartDatoCmsConnection && (
-            <button type="button" onClick={onRestartDatoCmsConnection}>
-              Start sign-in again with a new registration
-            </button>
-          )}
         </p>
       )}
     </div>
@@ -637,7 +600,6 @@ function CredentialPanel({
   onConnectDatoCms,
   onDisconnectDatoCms,
   onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
@@ -710,8 +672,6 @@ function CredentialPanel({
               connection={connection}
               onConnectDatoCms={onConnectDatoCms}
               onDisconnectDatoCms={onDisconnectDatoCms}
-              onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-              onRestartDatoCmsConnection={onRestartDatoCmsConnection}
             />
           </SetupStep>
         </ol>
@@ -2346,7 +2306,6 @@ export function AgentSurface({
   onConnectDatoCms,
   onDisconnectDatoCms,
   onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
@@ -2541,7 +2500,6 @@ export function AgentSurface({
             onConnectDatoCms={onConnectDatoCms}
             onDisconnectDatoCms={onDisconnectDatoCms}
             onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-            onRestartDatoCmsConnection={onRestartDatoCmsConnection}
             onSelectConversation={
               onSelectConversation
                 ? (conversation) => {

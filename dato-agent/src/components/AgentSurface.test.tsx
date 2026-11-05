@@ -1844,9 +1844,8 @@ describe('AgentSurface', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     const disconnectButton = screen.getByRole('button', {
-      name: 'Disconnect',
+      name: 'Disconnect to change access',
     });
-    expect(disconnectButton).toHaveTextContent('Disconnect');
     await user.click(disconnectButton);
     expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
   });
@@ -2408,6 +2407,7 @@ describe('AgentSurface', () => {
           pluginReadOnly: true,
         }}
         entries={[]}
+        onDisconnectDatoCms={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
@@ -2421,14 +2421,16 @@ describe('AgentSurface', () => {
     expect(
       screen.getByText(/Schema and management changes are unavailable/),
     ).toBeVisible();
+    expect(screen.getByText(/Current access level/)).toBeVisible();
+    // Each connection is its own OAuth client, so reconnecting changes the level.
     expect(
-      screen.getByRole('link', { name: 'Account settings' }),
-    ).toHaveAttribute(
-      'href',
-      'https://dashboard.datocms.com/personal-account/account',
-    );
-    expect(
-      screen.getByText(/This affects all MCP clients of your account/),
+      screen.getByRole('button', { name: 'Disconnect to change access' }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Check access again' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Account settings' }),
+    ).not.toBeInTheDocument();
   });
 });
