@@ -124,11 +124,26 @@
   object-fit: contain;
 }
 
-/* The preview cell of an option row: a small box at the inset of the text
-   of the other cells */
+/* The options table has four columns in the narrow frame of the settings:
+   its cells take the medium inset, so each column keeps room for its text */
+.options :global(.TableList) {
+  --TableList-horizontal-cell-padding: var(--spacing-m);
+}
+
+/* The preview of an option, in the cell of its color or image URL: a small
+   box at the inset of the cell, before the text input */
 .preview {
   max-width: 2.5em;
-  padding-inline: var(--TableList-horizontal-cell-padding);
+  padding-inline-start: var(--TableList-horizontal-cell-padding);
+}
+
+/* The text input takes the rest of the cell. The preview keeps its width,
+   as both share the free space and the preview stops at its maximum. A
+   long file name ends with an ellipsis. */
+.sourceInput {
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 /* The plugin settings */
