@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { inspectorRecordPaneWidth } from './inspectorLayout';
+import { renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  inspectorRecordPaneWidth,
+  readAgentPaneWidth,
+  useRememberedAgentPaneWidth,
+} from './inspectorLayout';
 
 describe('inspectorRecordPaneWidth', () => {
   it.each([
@@ -20,5 +25,47 @@ describe('inspectorRecordPaneWidth', () => {
   it('uses a desktop fallback when browser sizing is unavailable', () => {
     expect(inspectorRecordPaneWidth(undefined)).toBe(1140);
     expect(inspectorRecordPaneWidth(Number.NaN)).toBe(1140);
+  });
+});
+
+describe('remembered Agent tab width', () => {
+  const resizeTo = ({ inner, outer }: { inner: number; outer: number }) => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: inner,
+    });
+    Object.defineProperty(window, 'outerWidth', {
+      configurable: true,
+      value: outer,
+    });
+    window.dispatchEvent(new Event('resize'));
+  };
+
+  afterEach(() => localStorage.clear());
+
+  it('leaves the remembered width to the chat when the tab opens', () => {
+    expect(inspectorRecordPaneWidth(1440, 500)).toBe(940);
+  });
+
+  it('remembers the latest width per project', () => {
+    resizeTo({ inner: 300, outer: 1440 });
+    const { unmount } = renderHook(() => useRememberedAgentPaneWidth('site-1'));
+
+    resizeTo({ inner: 520, outer: 1440 });
+    expect(readAgentPaneWidth('site-1')).toBe(520);
+    expect(readAgentPaneWidth('site-2')).toBeUndefined();
+
+    // Some browsers report the iframe's own size as outerWidth during a drag.
+    resizeTo({ inner: 610, outer: 610 });
+    expect(readAgentPaneWidth('site-1')).toBe(610);
+    unmount();
+  });
+
+  it('does not remember a width too narrow to use', () => {
+    resizeTo({ inner: 300, outer: 1440 });
+    const { unmount } = renderHook(() => useRememberedAgentPaneWidth('site-1'));
+    resizeTo({ inner: 180, outer: 1440 });
+    expect(readAgentPaneWidth('site-1')).toBeUndefined();
+    unmount();
   });
 });

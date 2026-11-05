@@ -9,7 +9,10 @@ import {
   createModelSchemaResolver,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
-import { AGENT_PANE_WIDTH } from '../lib/inspectorLayout';
+import {
+  AGENT_PANE_WIDTH,
+  useRememberedAgentPaneWidth,
+} from '../lib/inspectorLayout';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import {
   createInspectorNavigator,
@@ -269,6 +272,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  useRememberedAgentPaneWidth(ctx.site.id);
   const isTooNarrow = useMediaQuery(
     `(max-width: ${AGENT_PANE_WIDTH - 1}px)`,
   ).matches;

@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 const FALLBACK_BROWSER_WIDTH = 1440;
 const MINIMUM_RECORD_PANE_WIDTH = 550;
 /**
@@ -6,8 +8,10 @@ const MINIMUM_RECORD_PANE_WIDTH = 550;
  */
 export const AGENT_PANE_WIDTH = 300;
 
+/** Record pane width for the Agent tab, leaving `agentWidth` for the chat. */
 export function inspectorRecordPaneWidth(
   browserOuterWidth: number | undefined,
+  agentWidth: number = AGENT_PANE_WIDTH,
 ): number {
   const browserWidth =
     typeof browserOuterWidth === 'number' &&
@@ -18,6 +22,49 @@ export function inspectorRecordPaneWidth(
 
   return Math.max(
     MINIMUM_RECORD_PANE_WIDTH,
-    Math.round(browserWidth - AGENT_PANE_WIDTH),
+    Math.round(browserWidth - agentWidth),
   );
+}
+
+/** Per project: the plugin's origin is shared by every project this browser opens. */
+const agentWidthKey = (siteId: string) =>
+  `dato-agent:inspector-width:${siteId}`;
+
+/** The chat width this editor last dragged the Agent tab to, in this browser. */
+export function readAgentPaneWidth(siteId: string): number | undefined {
+  try {
+    const width = Number.parseInt(
+      localStorage.getItem(agentWidthKey(siteId)) ?? '',
+      10,
+    );
+    return Number.isFinite(width) && width >= AGENT_PANE_WIDTH
+      ? width
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Remembers the Agent tab's chat width whenever it changes, like the record
+ * sidebar does. A width too narrow to use isn't saved, so the default comes
+ * back instead. (Telling a drag from a window resize by `outerWidth` fails in
+ * browsers that report the iframe's own size there, which lost every drag.)
+ */
+export function useRememberedAgentPaneWidth(siteId: string): void {
+  useEffect(() => {
+    const remember = () => {
+      if (window.innerWidth < AGENT_PANE_WIDTH) return;
+      try {
+        localStorage.setItem(
+          agentWidthKey(siteId),
+          String(Math.round(window.innerWidth)),
+        );
+      } catch {
+        // Dragging still works when iframe storage is blocked.
+      }
+    };
+    window.addEventListener('resize', remember);
+    return () => window.removeEventListener('resize', remember);
+  }, [siteId]);
 }
