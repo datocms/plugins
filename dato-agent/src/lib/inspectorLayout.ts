@@ -26,15 +26,18 @@ export function inspectorRecordPaneWidth(
   );
 }
 
-/** Per project: the plugin's origin is shared by every project this browser opens. */
-const agentWidthKey = (siteId: string) =>
-  `dato-agent:inspector-width:${siteId}`;
+/**
+ * One width per browser, so an editor gets it in every project. Not keyed by
+ * user ID: a collaborator's ID differs in each project, which would make it
+ * per-project again. A browser profile already belongs to one person.
+ */
+const AGENT_WIDTH_KEY = 'dato-agent:inspector-width';
 
 /** The chat width this editor last dragged the Agent tab to, in this browser. */
-export function readAgentPaneWidth(siteId: string): number | undefined {
+export function readAgentPaneWidth(): number | undefined {
   try {
     const width = Number.parseInt(
-      localStorage.getItem(agentWidthKey(siteId)) ?? '',
+      localStorage.getItem(AGENT_WIDTH_KEY) ?? '',
       10,
     );
     return Number.isFinite(width) && width >= AGENT_PANE_WIDTH
@@ -51,13 +54,13 @@ export function readAgentPaneWidth(siteId: string): number | undefined {
  * back instead. (Telling a drag from a window resize by `outerWidth` fails in
  * browsers that report the iframe's own size there, which lost every drag.)
  */
-export function useRememberedAgentPaneWidth(siteId: string): void {
+export function useRememberedAgentPaneWidth(): void {
   useEffect(() => {
     const remember = () => {
       if (window.innerWidth < AGENT_PANE_WIDTH) return;
       try {
         localStorage.setItem(
-          agentWidthKey(siteId),
+          AGENT_WIDTH_KEY,
           String(Math.round(window.innerWidth)),
         );
       } catch {
@@ -66,5 +69,5 @@ export function useRememberedAgentPaneWidth(siteId: string): void {
     };
     window.addEventListener('resize', remember);
     return () => window.removeEventListener('resize', remember);
-  }, [siteId]);
+  }, []);
 }

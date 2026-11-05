@@ -65,7 +65,7 @@ if (!handledOAuthCallback) {
             // for the record and leaves the agent as a compact companion.
             preferredWidth: inspectorRecordPaneWidth(
               window.outerWidth,
-              readAgentPaneWidth(ctx.site.id),
+              readAgentPaneWidth(),
             ),
             initialInspectorPanel: {
               panelId: 'dato-agent-empty',

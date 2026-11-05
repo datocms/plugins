@@ -47,25 +47,24 @@ describe('remembered Agent tab width', () => {
     expect(inspectorRecordPaneWidth(1440, 500)).toBe(940);
   });
 
-  it('remembers the latest width per project', () => {
+  it('remembers the latest width for every project in this browser', () => {
     resizeTo({ inner: 300, outer: 1440 });
-    const { unmount } = renderHook(() => useRememberedAgentPaneWidth('site-1'));
+    const { unmount } = renderHook(() => useRememberedAgentPaneWidth());
 
     resizeTo({ inner: 520, outer: 1440 });
-    expect(readAgentPaneWidth('site-1')).toBe(520);
-    expect(readAgentPaneWidth('site-2')).toBeUndefined();
+    expect(readAgentPaneWidth()).toBe(520);
 
     // Some browsers report the iframe's own size as outerWidth during a drag.
     resizeTo({ inner: 610, outer: 610 });
-    expect(readAgentPaneWidth('site-1')).toBe(610);
+    expect(readAgentPaneWidth()).toBe(610);
     unmount();
   });
 
   it('does not remember a width too narrow to use', () => {
     resizeTo({ inner: 300, outer: 1440 });
-    const { unmount } = renderHook(() => useRememberedAgentPaneWidth('site-1'));
+    const { unmount } = renderHook(() => useRememberedAgentPaneWidth());
     resizeTo({ inner: 180, outer: 1440 });
-    expect(readAgentPaneWidth('site-1')).toBeUndefined();
+    expect(readAgentPaneWidth()).toBeUndefined();
     unmount();
   });
 });

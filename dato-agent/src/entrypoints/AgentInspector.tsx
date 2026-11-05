@@ -272,7 +272,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
-  useRememberedAgentPaneWidth(ctx.site.id);
+  useRememberedAgentPaneWidth();
   const isTooNarrow = useMediaQuery(
     `(max-width: ${AGENT_PANE_WIDTH - 1}px)`,
   ).matches;
