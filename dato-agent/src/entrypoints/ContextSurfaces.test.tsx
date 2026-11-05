@@ -18,8 +18,11 @@ const frameMocks = vi.hoisted(() => ({
   unmountCount: 0,
 }));
 
+const mediaQuery = vi.hoisted(() => ({ matches: false }));
+
 vi.mock('datocms-react-ui', () => ({
   Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useMediaQuery: () => ({ matches: mediaQuery.matches }),
 }));
 
 vi.mock('../lib/persistedWidth', () => ({
@@ -628,6 +631,32 @@ describe('AgentInspector host context', () => {
       expect(snapshot.text).toContain('schema_on_demand=Use get_model_schema');
     },
   );
+
+  it('covers a too-narrow Agent tab with a notice and keeps the chat mounted', () => {
+    mediaQuery.matches = true;
+    try {
+      const article = model({
+        id: 'article-id',
+        apiKey: 'article',
+        fieldIds: [],
+      });
+      const { container } = render(
+        <AgentInspector
+          ctx={inspectorContext({
+            itemTypes: [article],
+            fields: [],
+            loadItemTypeFields: vi.fn(async () => []),
+          })}
+        />,
+      );
+      expect(screen.getByText('Sidebar too narrow')).toBeVisible();
+      // Unmounting the chat would drop a reply in progress; it only goes inert.
+      expect(frameMocks.mountCount).toBe(1);
+      expect(container.querySelector('[inert]')).not.toBeNull();
+    } finally {
+      mediaQuery.matches = false;
+    }
+  });
 
   it('keeps the project frame mounted while highlight and location change', async () => {
     const article = model({

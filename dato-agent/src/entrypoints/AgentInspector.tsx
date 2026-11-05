@@ -1,5 +1,5 @@
 import type { Field, ItemType, RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import { Canvas, useMediaQuery } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef } from 'react';
 import { openApprovalDetailsModal } from '../lib/approvalDetailsModal';
 import { confirmEnableAutoApproval } from '../lib/autoApproval';
@@ -16,6 +16,7 @@ import {
 } from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import AgentFrame from './AgentFrame';
+import styles from './AgentInspector.module.css';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
 type Props = {
@@ -267,43 +268,63 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  const isTooNarrow = useMediaQuery(
+    `(max-width: ${MIN_INSPECTOR_CHAT_WIDTH - 1}px)`,
+  ).matches;
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <AgentFrame
-        key={frameKey}
-        pluginId={ctx.plugin.id}
-        onOpenPluginSettings={
-          ctx.currentRole.meta.final_permissions.can_edit_schema
-            ? () => void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
-            : undefined
-        }
-        siteId={ctx.site.id}
-        siteName={ctx.site.attributes.name}
-        environment={ctx.environment}
-        isEnvironmentPrimary={ctx.isEnvironmentPrimary}
-        currentUserId={ctx.currentUser.id}
-        surface="project"
-        scope={{ type: 'project' }}
-        navigator={createInspectorNavigator(ctx)}
-        mentionHost={mentionHost}
-        config={normalizeConfig(ctx.plugin.attributes.parameters)}
-        loadHostContext={loadHostContext}
-        getModelSchema={async ({ identifier, cursor }) => ({
-          schema: (await schemaResolver(identifier, cursor)).text,
-        })}
-        onReviewApprovalDetails={(approval) =>
-          openApprovalDetailsModal(ctx, approval)
-        }
-        onConfirmEnableAutoApprove={() =>
-          confirmEnableAutoApproval(ctx, {
-            siteName: ctx.site.attributes.name,
-          })
-        }
-      />
+      {isTooNarrow && (
+        <div className={styles.tooNarrow} role="status">
+          <strong>Sidebar too narrow</strong>
+          <span>Drag its edge wider to see the Dato Agent.</span>
+        </div>
+      )}
+      {/* The chat stays mounted under the notice, so a reply in progress survives. */}
+      <div className={styles.frame} inert={isTooNarrow}>
+        <AgentFrame
+          key={frameKey}
+          pluginId={ctx.plugin.id}
+          onOpenPluginSettings={
+            ctx.currentRole.meta.final_permissions.can_edit_schema
+              ? () =>
+                  void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
+              : undefined
+          }
+          siteId={ctx.site.id}
+          siteName={ctx.site.attributes.name}
+          environment={ctx.environment}
+          isEnvironmentPrimary={ctx.isEnvironmentPrimary}
+          currentUserId={ctx.currentUser.id}
+          surface="project"
+          scope={{ type: 'project' }}
+          navigator={createInspectorNavigator(ctx)}
+          mentionHost={mentionHost}
+          config={normalizeConfig(ctx.plugin.attributes.parameters)}
+          loadHostContext={loadHostContext}
+          getModelSchema={async ({ identifier, cursor }) => ({
+            schema: (await schemaResolver(identifier, cursor)).text,
+          })}
+          onReviewApprovalDetails={(approval) =>
+            openApprovalDetailsModal(ctx, approval)
+          }
+          onConfirmEnableAutoApprove={() =>
+            confirmEnableAutoApproval(ctx, {
+              siteName: ctx.site.attributes.name,
+            })
+          }
+        />
+      </div>
     </Canvas>
   );
 }
+
+/**
+ * Below this frame width the Agent tab's chat is too cramped to use. The CMS
+ * owns the divider (the plugin SDK only sets a starting width), so the tab
+ * covers the chat with a notice instead.
+ */
+export const MIN_INSPECTOR_CHAT_WIDTH = 200;
 
 export default function AgentInspector({ ctx }: Props) {
   const config = normalizeConfig(ctx.plugin.attributes.parameters);
