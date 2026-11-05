@@ -1,93 +1,83 @@
-# Web Previews DatoCMS plugin
+# Web Previews
 
-The plugin adds several touchpoints to the DatoCMS UI:
+Web Previews shows your website inside DatoCMS. Editors see the page of the record they're editing next to its form, and can click anything on the page to edit it.
 
-- **A "Visual" tab in the main navigation**: a full-screen, side-by-side editing view where the website preview sits next to the editing panel. Editors click on any element in the preview, and the corresponding record and field open right there. The tab includes:
-  - An address bar for navigating the preview
-  - Viewport controls for testing responsive layouts
-  - A frontend selector for switching between environments (e.g. production vs. staging)
+![The Visual Editing tab: the home page of a website with its heading outlined, and the Home record open next to it at its Hero title field](docs/visual-editing.png)
 
-- **Preview links in the record sidebar**: when editors open any record, they see quick links to view that content on the actual website. The plugin determines which URL corresponds to each record by calling an API endpoint on your frontend.
+- **Visual Editing tab**: browse your website in draft mode and click any text or image to open the record and the field behind it.
+- **Website preview tab**: the page of a record next to its form, at the size of a phone, a tablet or a desktop.
+- **Preview links**: the pages of a record, at the top of its form and in its sidebar.
+- **Several frontends**: production, staging or several websites, each with the features you choose.
 
-- **A full iframe preview in the sidebar**: beyond just links, editors can expand an inline preview of the page directly in the sidebar, with viewport presets (mobile, tablet, desktop) and auto-reload on save.
+> **Your website needs some setup.** Preview links come from an endpoint on your website, and Visual Editing needs a route that turns on draft mode. A developer adds them once: see [The Preview Links API endpoint](#the-preview-links-api-endpoint) and [The Enable Draft Mode route](#the-enable-draft-mode-route).
 
-The plugin supports **multiple frontends**, so if your content powers different websites or environments, editors can switch between them from a single dropdown.
+## Installation
 
-Each feature can be enabled independently per frontend — they work great together, but each is useful on its own.
+1. Install Web Previews from the marketplace.
+2. In its settings, click **Add frontend** and give it a name, like "Production".
+3. Turn on what your website supports:
+   - **Enable Preview Links for this frontend**: enter the **Preview Links endpoint URL**, and any **Custom headers sent to the endpoint**.
+   - **Enable Visual Editing for this frontend**: enter the **Draft mode URL**. The **Start page** is the page the Visual Editing tab opens first (`/` when empty).
+4. Click **Save**.
 
-> **Important:** This plugin requires configuration and development work. You'll need to implement API endpoints on your frontend website(s) for it to function. Read more in the following sections.
+A frontend can offer Preview Links, Visual Editing or both. **Hide this frontend from editors** keeps its settings but removes it from the editors' screens.
 
-## Installation and configuration
+### Where editors find it
 
-Once the plugin is installed, you'll see four configuration sections:
+Under **Display**, choose the places that show Web Previews. They're all on by default.
 
-### 1. Frontends
+| Setting | What it adds |
+|---|---|
+| **Show the Visual Editing tab in the main navigation** | The Visual Editing tab, when a frontend has Visual Editing |
+| **Show Preview Links in a record sidebar panel** | The Preview links panel of the record sidebar. **Start with the panel expanded** opens it on every record |
+| **Show Preview Links at the top of the record form** | The Preview links card above the fields of a record |
+| **Show the Website preview tab in the record sidebar** | The Website preview tab. **Default tab width** sets its first width (900 px) |
 
-Configure your project's frontends and the features each provides (e.g., "Production", "Staging", "Marketing Site"). For each frontend, you can enable:
+**Viewports** are the sizes in the size menus of the previews: Mobile, Tablet and Desktop until you add your own, each with a name, a width, a height and an icon. **Iframe permissions** sets the `allow` attribute of the preview, for a website that needs the camera or the microphone.
 
-#### Feature 1: Preview Links
+## Edit on the page: the Visual Editing tab
 
-When enabled, the plugin calls your API endpoint to retrieve preview URLs for the current record. You can then control how these links are displayed in the Record Sidebar (see section below).
+1. Click **Visual Editing** in the main navigation. Your website opens in draft mode, next to the list of the **Records on this page**.
+2. Move the pointer over the page. The text and images you can edit get an outline.
+3. Click one. Its record opens on the right, at the field to change.
+4. Edit the field and save the record.
 
-**Required configuration:**
-- **API endpoint URL** — The endpoint that returns preview links (e.g., `https://yourwebsite.com/api/preview-links`)
-- **Custom Headers (Optional)** — Additional headers to send with the API request
+Point at a record in **Records on this page** to scroll the page to it and outline it, and click it to open it.
 
-#### Feature 2: Visual Editing
+Above the page, type a path to open another page, refresh it, or pick a size: **Fit to window**, a viewport or a **Custom size**. Turn off the **Visual editing** switch to use the page as a visitor (links, menus) without the outlines, or hold Alt (⌥ on a Mac) to hide them for a moment. With several frontends, a menu at the left switches websites.
 
-When enabled, editors can open a full-screen, side-by-side view with click-to-edit overlays on your actual website. Visual Editing shows your website in an iframe and adds interactive editing capabilities.
+## Preview a record: the Website preview tab
 
-**Required configuration:**
-- **Enable Draft Mode route** — The route that enables draft/preview mode (e.g., `https://yourwebsite.com/api/draft`). This route receives a `redirect` query parameter with the path to load.
-- **Initial Path (Optional)** — The default path to load when opening Visual Editing (defaults to `/` if not specified)
+![A blog post next to its Website preview tab, which shows the draft version of the post on the website](docs/website-preview.png)
 
-#### Valid configurations per frontend
+Open **Website preview** in the sidebar of a record to see its page next to the form. Its bar lets you:
 
-- ✅ **Only Preview Links** — Sidebar with preview URLs (optionally shown as links or in an iframe)
-- ✅ **Only Visual Editing** — Direct access to full-screen side-by-side editing with overlays
-- ✅ **Both features together** — Full integration with sidebar preview links and visual editing
+- pick one of the record's links, like the draft or the published version;
+- refresh the page, or pick a size: **Fit to sidebar**, a viewport or a **Custom size**;
+- open the page in the Visual Editing tab (the eye) or in a new browser tab.
 
-#### Multiple frontends support
+Drag the edge of the tab to resize it. A new record shows its preview after its first save.
 
-You can configure multiple frontends, each with their own combination of features. When multiple frontends have Visual Editing enabled, a frontend selector dropdown appears in the Visual Editing toolbar, allowing editors to switch between different environments.
+## Open a page: preview links
 
-### 2. Record Sidebar display settings
+![A blog post with its Preview links card above the title, and the same link in the Preview links panel of the sidebar](docs/preview-links.png)
 
-Configure display options for preview links shown in a DatoCMS record sidebar. When Preview Links is enabled for at least one frontend, you can control how the preview URLs are displayed:
+The **Preview links** card at the top of the form and the panel in the sidebar list the pages of the record, one row per frontend. Click a link to open the page in a new tab. The eye opens it in the Visual Editing tab, and the **⋮** menu holds the record's other links, like **Open Published version**.
 
-#### Sidebar Panel
-**Toggle:** Enable Sidebar Panel
+## Good to know
 
-Shows a small panel in the record sidebar with quick links to preview URLs. Links open in a new browser tab when clicked.
+- **Nothing is guessed:** every link and page comes from your website's endpoint and draft mode route. The plugin never builds URLs itself.
+- **A blank preview** usually means the website doesn't allow framing: see [Content Security Policy](#content-security-policy).
+- **Another environment:** when the page shows content from another DatoCMS environment, the Visual Editing tab says so instead of listing its records.
+- **No outlines on a page** means the website doesn't load DatoCMS Content Link yet. The Visual Editing tab tells the editor to ask a developer.
 
-![Preview Links Panel](docs/preview-links-panel.png)
+## Development
 
-**Optional settings:**
-- **Start with the panel open by default** — The panel will be expanded when users open a record
-
-#### Full Preview Sidebar
-**Toggle:** Enable Full Preview Sidebar
-
-Shows a full sidebar with an iframe preview of the selected URL. This provides a side-by-side view of your website directly within DatoCMS.
-
-![Full Preview Sidebar](docs/preview-links-sidebar-1.png)
-
-![Full Preview Sidebar with Multiple Links](docs/preview-links-sidebar-2.png)
-
-**Optional settings:**
-- **Default sidebar width (px)** — The initial width when the sidebar is opened
-
-**Note:** Both the Sidebar Panel and Full Preview Sidebar can be enabled together. The Full Preview Sidebar shows the same URLs returned by your API endpoint, but renders them in an iframe for in-app preview.
-
-### 3. Custom viewports
-
-Configure viewport size presets for testing different screen sizes in iframe previews. Define custom viewport dimensions (name, width, height, icon) to quickly test responsive layouts.
-
-### 4. Iframe Security Settings
-
-Configure iframe permissions and security settings:
-
-- **Iframe `allow` attribute** — Defines what features will be available to the `<iframe>` pointing to the frontend (e.g., access to microphone, camera). [Learn more](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow)
+```bash
+npm install
+npm run dev     # serves the plugin on http://localhost:3000
+npm run build
+```
 
 ## Content Security Policy
 
