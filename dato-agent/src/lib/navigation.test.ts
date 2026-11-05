@@ -37,6 +37,31 @@ describe('createInspectorNavigator', () => {
     expect(ctx.editUpload).toHaveBeenCalledWith('upload-a');
   });
 
+  it('fills the record list when it opens a record, so Back never lands on an empty list', async () => {
+    const ctx = {
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
+      setInspectorMode: vi.fn().mockResolvedValue(undefined),
+    };
+    const navigator = createInspectorNavigator(ctx as never);
+
+    await navigator.openRecord({ itemId: 'a' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['a'],
+    });
+
+    await navigator.openRecord({ itemId: 'b' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['b', 'a'],
+    });
+    // The list is filled before the editor opens.
+    expect(
+      ctx.setInspectorItemListData.mock.invocationCallOrder.at(-1),
+    ).toBeLessThan(ctx.setInspectorMode.mock.invocationCallOrder.at(-1) ?? 0);
+  });
+
   it('reports when the native asset editor deletes an upload', async () => {
     const ctx = {
       editUpload: vi.fn().mockResolvedValue({ deleted: true }),

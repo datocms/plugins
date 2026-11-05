@@ -33,12 +33,30 @@ export type AgentNavigator = {
   openAsset(target: AssetTarget): Promise<OpenAssetResult>;
 };
 
+/** How many records the inspector's fallback list keeps. */
+const MAX_LISTED_RECORDS = 50;
+
 export function createInspectorNavigator(
   ctx: RenderInspectorCtx,
 ): AgentNavigator {
+  // The record editor's back arrow switches the right pane to the record list,
+  // and the CMS shows an empty list as an endless spinner. So the list always
+  // holds the records the chat showed or opened, and Back lands somewhere real.
+  let list = { title: 'Records opened from the chat', itemIds: [] as string[] };
+
   return {
     supportsRecordList: true,
     async openRecord(target) {
+      if (!list.itemIds.includes(target.itemId)) {
+        list = {
+          ...list,
+          itemIds: [target.itemId, ...list.itemIds].slice(
+            0,
+            MAX_LISTED_RECORDS,
+          ),
+        };
+      }
+      await ctx.setInspectorItemListData(list);
       await ctx.setInspectorMode({
         type: 'itemEditor',
         itemId: target.itemId,
@@ -50,10 +68,8 @@ export function createInspectorNavigator(
         ...new Set(target.records.map((record) => record.itemId)),
       ];
 
-      await ctx.setInspectorItemListData({
-        title: target.title || 'Records',
-        itemIds,
-      });
+      list = { title: target.title || 'Records', itemIds };
+      await ctx.setInspectorItemListData(list);
       await ctx.setInspectorMode({ type: 'itemList' });
     },
     async openAsset(target) {
