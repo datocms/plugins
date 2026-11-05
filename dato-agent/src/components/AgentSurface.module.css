@@ -46,6 +46,69 @@
     background-color 0.2s var(--material-ease);
 }
 
+.utilityActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  inset: 0;
+  padding: var(--spacing-m);
+  place-items: center;
+  background: var(--color--backdrop--surface, rgb(0 0 0 / 40%));
+}
+
+.dialog {
+  display: grid;
+  width: min(360px, 100%);
+  gap: var(--spacing-m);
+  padding: var(--spacing-l, 18px);
+  border: 1px solid var(--color--border);
+  border-radius: 6px;
+  color: var(--color--ink);
+  background: var(--color--surface);
+  box-shadow: var(--shadow--lifted, 0 12px 32px rgb(0 0 0 / 30%));
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: var(--font-size-m);
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
+.optionsButton {
+  width: 30px;
+  height: 30px;
+}
+
+.optionsAccess {
+  display: grid;
+  gap: 2px;
+  max-width: 240px;
+  white-space: normal;
+}
+
+.optionsAccess span {
+  color: var(--color--ink-subtle);
+}
+
 .autoApproveControl {
   display: flex;
   height: 30px;
@@ -435,6 +498,12 @@
 
 .chatsAfterSetup textarea {
   resize: none;
+}
+
+.chatHistory .recentChats {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .recentChats {

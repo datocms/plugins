@@ -1,6 +1,11 @@
 import {
   BackIcon,
   Button,
+  Dropdown,
+  DropdownMenu,
+  DropdownOption,
+  DropdownSeparator,
+  DropdownText,
   FieldError,
   Spinner,
   TextareaInput,
@@ -39,6 +44,7 @@ import {
   CopyIcon,
   EditIcon,
   HistoryIcon,
+  MoreIcon,
   PlusIcon,
   RetryIcon,
   WarningIcon,
@@ -425,11 +431,7 @@ function UnverifiedAccessNotice({
 function DatoCmsConnectionField({
   connection,
   onConnectDatoCms,
-  onReconnectDatoCms,
-}: Pick<
-  CredentialPanelProps,
-  'connection' | 'onConnectDatoCms' | 'onReconnectDatoCms'
->) {
+}: Pick<CredentialPanelProps, 'connection' | 'onConnectDatoCms'>) {
   const datoCmsConnected = connection.datoCmsStatus === 'connected';
   const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
   const accountLabel = connection.datoCmsAccountLabel?.trim();
@@ -446,19 +448,6 @@ function DatoCmsConnectionField({
             Connected to <strong>{connectedLabel}</strong>.
           </p>
           <OAuthAccessNotice connection={connection} />
-          {onReconnectDatoCms && (
-            // Each connection is its own OAuth client with its own access level,
-            // so a fresh sign-in is how an editor picks a different one.
-            <Button
-              buttonSize="xxs"
-              buttonType="muted"
-              disabled={datoCmsConnecting}
-              type="button"
-              onClick={onReconnectDatoCms}
-            >
-              Reconnect to change access
-            </Button>
-          )}
         </>
       ) : (
         <>
@@ -515,11 +504,14 @@ function DatoCmsConnectionField({
 function RecentChats({
   conversations,
   disabled,
+  headingRef,
   onSelectConversation,
   onStartNewChat,
 }: {
   conversations: readonly AgentConversationSummaryViewModel[];
   disabled?: boolean;
+  /** Takes the focus when the chats panel opens. */
+  headingRef?: RefObject<HTMLHeadingElement | null>;
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
   ) => void;
@@ -531,7 +523,8 @@ function RecentChats({
     DEFAULT_MAX_CONVERSATIONS,
   );
 
-  if (visibleConversations.length === 0 && !onStartNewChat) {
+  // The chats panel always shows its heading; inside setup the list can hide.
+  if (visibleConversations.length === 0 && !onStartNewChat && !headingRef) {
     return null;
   }
 
@@ -540,7 +533,13 @@ function RecentChats({
       <div className={styles.recentChatsHeader}>
         <div className={styles.recentChatsTitle}>
           <HistoryIcon />
-          <h3 id={headingId}>Chats</h3>
+          <h3
+            id={headingId}
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+          >
+            Chats
+          </h3>
         </div>
         {onStartNewChat && (
           <Tooltip placement="left">
@@ -622,6 +621,24 @@ function CredentialPanel({
   const isDatoCmsReady = connection.datoCmsStatus === 'connected';
   const isSetupComplete = isProviderReady && isDatoCmsReady;
 
+  // Once set up, the chats panel is only the chat history: the access level and
+  // the settings live in the toolbar's "⋮" menu, out of the way.
+  if (isSettings) {
+    return (
+      <div className={`${styles.credentials} ${styles.chatHistory}`}>
+        <TooltipDelayGroup delay={250}>
+          <RecentChats
+            conversations={recentConversations}
+            disabled={conversationActionsDisabled}
+            headingRef={headingRef}
+            onSelectConversation={onSelectConversation}
+            onStartNewChat={onStartNewChat}
+          />
+        </TooltipDelayGroup>
+      </div>
+    );
+  }
+
   return (
     <section
       className={styles.credentials}
@@ -675,7 +692,6 @@ function CredentialPanel({
             <DatoCmsConnectionField
               connection={connection}
               onConnectDatoCms={onConnectDatoCms}
-              onReconnectDatoCms={onReconnectDatoCms}
             />
           </SetupStep>
         </ol>
@@ -2180,6 +2196,164 @@ function Transcript({
   );
 }
 
+/** One line on what the current DatoCMS access lets the agent do. */
+function accessSummary(connection: AgentConnectionViewModel): string {
+  if (connection.pluginReadOnly)
+    return 'Plugin Read Only is on, so the agent changes nothing.';
+  switch (connection.oauthAccessLevel) {
+    case 'content_view_only':
+      return 'It can read content, but not change it.';
+    case 'content_only':
+      return 'It can edit content, but not the schema.';
+    case 'unrestricted':
+      return 'It can do anything your role allows.';
+    default:
+      return 'Not verified yet.';
+  }
+}
+
+/**
+ * The "⋮" menu of the chat toolbar: plugin settings, and the DatoCMS access.
+ * Reconnecting asks inside the menu, not in a host dialog: the sign-in popup
+ * opens only from a click in this frame, so the confirming click must be here.
+ */
+function AgentOptionsMenu({
+  connection,
+  disabled,
+  onOpenPluginSettings,
+  onReconnectDatoCms,
+}: {
+  connection: AgentConnectionViewModel;
+  disabled: boolean;
+  onOpenPluginSettings?: () => void;
+  onReconnectDatoCms?: () => void;
+}) {
+  const [isConfirmingReconnect, setIsConfirmingReconnect] = useState(false);
+  const accessLevel = connection.oauthAccessLevel ?? 'unknown';
+
+  return (
+    <>
+      <Dropdown
+        renderTrigger={({ open, onClick }) => (
+          <button
+            aria-expanded={open}
+            aria-haspopup="menu"
+            aria-label="Agent options"
+            className={`${styles.iconButton} ${styles.optionsButton}`}
+            disabled={disabled}
+            onClick={onClick}
+            title="Agent options"
+            type="button"
+          >
+            <MoreIcon />
+          </button>
+        )}
+      >
+        <DropdownMenu alignment="right">
+          <DropdownOption
+            disabled={!onOpenPluginSettings}
+            onClick={onOpenPluginSettings}
+          >
+            Plugin settings
+          </DropdownOption>
+          {!onOpenPluginSettings && (
+            <DropdownText>
+              Only users who can edit the schema can change the plugin settings.
+            </DropdownText>
+          )}
+          <DropdownSeparator />
+          <DropdownText>
+            <span className={styles.optionsAccess}>
+              DatoCMS access: <strong>{mcpAccessLabel(accessLevel)}</strong>
+              <span>{accessSummary(connection)}</span>
+            </span>
+          </DropdownText>
+          {onReconnectDatoCms && (
+            <DropdownOption onClick={() => setIsConfirmingReconnect(true)}>
+              Reconnect to change access…
+            </DropdownOption>
+          )}
+        </DropdownMenu>
+      </Dropdown>
+      {isConfirmingReconnect && onReconnectDatoCms && (
+        <ReconnectDialog
+          onCancel={() => setIsConfirmingReconnect(false)}
+          onConfirm={() => {
+            setIsConfirmingReconnect(false);
+            onReconnectDatoCms();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Asks before reconnecting. It lives in this frame, not in a host dialog: the
+ * sign-in popup opens only from a click in this frame.
+ */
+function ReconnectDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // The kit's Button takes no ref, so focus Reconnect through the dialog.
+    dialogRef.current
+      ?.querySelector<HTMLButtonElement>(
+        '[data-reconnect-confirm] button, button[data-reconnect-confirm]',
+      )
+      ?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div className={styles.dialogBackdrop}>
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className={styles.dialog}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <h2 id={titleId}>Reconnect to change access?</h2>
+        <p>
+          You'll sign in to DatoCMS again and pick a new access level on its
+          consent screen. Your current connection ends when you finish.
+        </p>
+        <div className={styles.dialogActions}>
+          <Button
+            buttonSize="s"
+            buttonType="muted"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <span data-reconnect-confirm="">
+            <Button
+              buttonSize="s"
+              buttonType="primary"
+              type="button"
+              onClick={onConfirm}
+            >
+              Reconnect
+            </Button>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Icon and text of the auto-approve toggle: a slashed bolt when off, a danger badge when on. */
 function AutoApproveLabel({
   isChanging,
@@ -2209,6 +2383,9 @@ function AutoApproveLabel({
 }
 
 function UtilityControls({
+  connection,
+  onOpenPluginSettings,
+  onReconnectDatoCms,
   connected,
   chatsOpen,
   autoApproveEnabled,
@@ -2220,6 +2397,9 @@ function UtilityControls({
   onCloseChats,
   onOpenChats,
 }: {
+  connection: AgentConnectionViewModel;
+  onOpenPluginSettings?: () => void;
+  onReconnectDatoCms?: () => void;
   connected: boolean;
   chatsOpen: boolean;
   autoApproveEnabled: boolean;
@@ -2267,28 +2447,36 @@ function UtilityControls({
           <HistoryIcon />
         )}
       </button>
-      {!chatsOpen && (
-        <Tooltip placement="bottom">
-          <TooltipTrigger>
-            <button
-              aria-label={autoApproveLabel}
-              aria-pressed={autoApproveEnabled}
-              className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
-              disabled={autoApproveDisabled}
-              onClick={() => {
-                void onAutoApproveChange?.(!autoApproveEnabled);
-              }}
-              type="button"
-            >
-              <AutoApproveLabel
-                isChanging={Boolean(autoApproveChanging)}
-                isEnabled={Boolean(autoApproveEnabled)}
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{autoApproveLabel}</TooltipContent>
-        </Tooltip>
-      )}
+      <div className={styles.utilityActions}>
+        {!chatsOpen && (
+          <Tooltip placement="bottom">
+            <TooltipTrigger>
+              <button
+                aria-label={autoApproveLabel}
+                aria-pressed={autoApproveEnabled}
+                className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
+                disabled={autoApproveDisabled}
+                onClick={() => {
+                  void onAutoApproveChange?.(!autoApproveEnabled);
+                }}
+                type="button"
+              >
+                <AutoApproveLabel
+                  isChanging={Boolean(autoApproveChanging)}
+                  isEnabled={Boolean(autoApproveEnabled)}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{autoApproveLabel}</TooltipContent>
+          </Tooltip>
+        )}
+        <AgentOptionsMenu
+          connection={connection}
+          disabled={disabled}
+          onOpenPluginSettings={onOpenPluginSettings}
+          onReconnectDatoCms={onReconnectDatoCms}
+        />
+      </div>
       {autoApproveError && !chatsOpen && (
         <span className={styles.autoApproveToolbarError} role="alert">
           {autoApproveError}
@@ -2475,6 +2663,9 @@ export function AgentSurface({
   return (
     <div className={styles.root}>
       <UtilityControls
+        connection={connection}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onReconnectDatoCms={onReconnectDatoCms}
         autoApproveChanging={autoApproveChanging}
         autoApproveEnabled={autoApproveEnabled}
         autoApproveError={autoApproveError}

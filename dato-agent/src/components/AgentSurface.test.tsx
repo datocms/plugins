@@ -1,13 +1,16 @@
 import {
   act,
+  render as baseRender,
   cleanup,
   fireEvent,
-  render,
+  type RenderOptions,
   screen,
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+// The kit's Dropdown reads the plugin ctx, which <Canvas> normally provides.
+import { CtxContext } from 'datocms-react-ui/dist/cjs/Canvas';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import type { AgentMentionHost } from '../lib/mentionHost';
@@ -52,6 +55,22 @@ afterEach(() => {
   vi.useRealTimers();
   scrollIntoView.mockClear();
 });
+
+const stubCtx = {
+  theme: {},
+  cssDesignTokens: {},
+  bodyPadding: [0, 0, 0, 0],
+} as never;
+
+/** render() inside the plugin ctx, as the CMS mounts the surface. */
+function render(ui: ReactElement, options?: RenderOptions) {
+  return baseRender(ui, {
+    wrapper: ({ children }) => (
+      <CtxContext.Provider value={stubCtx}>{children}</CtxContext.Provider>
+    ),
+    ...options,
+  });
+}
 
 const connected: AgentConnectionViewModel = {
   status: 'connected',
@@ -1837,16 +1856,37 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Agent setup' })).toHaveFocus();
-    expect(screen.getByText('Marketing website')).toBeVisible();
-    expect(screen.getAllByText('Done')).toHaveLength(2);
-    expect(screen.queryByText('Remote MCP connection')).not.toBeInTheDocument();
-    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    // Once set up, the chats panel is only the chat history.
+    expect(screen.getByRole('heading', { name: 'Chats' })).toHaveFocus();
+    expect(
+      screen.queryByRole('heading', { name: 'Agent setup' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Done')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    const reconnectButton = screen.getByRole('button', {
-      name: 'Reconnect to change access',
+
+    // Reconnecting lives in the "⋮" menu and asks first.
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    expect(
+      screen.getByText(
+        'Only users who can edit the schema can change the plugin settings.',
+      ),
+    ).toBeVisible();
+    await user.click(screen.getByText('Reconnect to change access…'));
+    const dialog = screen.getByRole('dialog', {
+      name: 'Reconnect to change access?',
     });
-    await user.click(reconnectButton);
+    expect(onReconnectDatoCms).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onReconnectDatoCms).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Reconnect to change access…'));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Reconnect',
+      }),
+    );
     expect(onReconnectDatoCms).toHaveBeenCalledOnce();
   });
 
@@ -2031,7 +2071,7 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(screen.getByRole('button', { name: 'New chat' }));
-    expect(screen.getByRole('heading', { name: 'Agent setup' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Chats' })).toBeVisible();
   });
 
   it('shows no chat controls until both setup steps are done', () => {
@@ -2398,7 +2438,9 @@ describe('AgentSurface', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows OAuth access separately from plugin Read Only and explains how to change it', async () => {
+  it('shows the DatoCMS access level and plugin Read Only in the options menu', async () => {
+    const user = userEvent.setup();
+    const onOpenPluginSettings = vi.fn();
     render(
       <AgentSurface
         connection={{
@@ -2407,30 +2449,18 @@ describe('AgentSurface', () => {
           pluginReadOnly: true,
         }}
         entries={[]}
+        onOpenPluginSettings={onOpenPluginSettings}
         onReconnectDatoCms={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
     expect(screen.getByText('Read and edit content')).toBeVisible();
     expect(
-      screen.getByText(
-        'Plugin Read Only is enabled. All agent writes are disabled.',
-      ),
+      screen.getByText('Plugin Read Only is on, so the agent changes nothing.'),
     ).toBeVisible();
-    expect(
-      screen.getByText(/Schema and management changes are unavailable/),
-    ).toBeVisible();
-    expect(screen.getByText(/Current access level/)).toBeVisible();
-    // Each connection is its own OAuth client, so reconnecting changes the level.
-    expect(
-      screen.getByRole('button', { name: 'Reconnect to change access' }),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole('button', { name: 'Check access again' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: 'Account settings' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText('Reconnect to change access…')).toBeVisible();
+    await user.click(screen.getByText('Plugin settings'));
+    expect(onOpenPluginSettings).toHaveBeenCalledOnce();
   });
 });
