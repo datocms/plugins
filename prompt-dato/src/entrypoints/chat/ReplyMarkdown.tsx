@@ -90,8 +90,9 @@ function HeadingText({ children }: { children?: ReactNode }) {
 }
 
 /**
- * A wide table scrolls by itself. The box scrolls, not the table: a table
- * with another display loses its rows and cells for some screen readers.
+ * A table that cannot fit, even with its cells wrapped, scrolls by itself.
+ * The box scrolls, not the table: a table with another display loses its
+ * rows and cells for some screen readers.
  */
 function ScrollingTable({ children }: { children?: ReactNode }) {
   return (
@@ -114,9 +115,25 @@ const STATIC_COMPONENTS: Components = {
   code: InlineCode,
 };
 
+/**
+ * The tooltip of a field link, with the name of the field as the form shows
+ * it: "Go to Excerpt · EN". A nested path names its field.
+ */
+function fieldLinkTooltip(
+  target: FieldNavigationTarget,
+  fields: FieldInfo[],
+): string {
+  const [apiKey] = target.fieldPath.split('.');
+  const field = fields.find((candidate) => candidate.apiKey === apiKey);
+  if (!field) return 'Go to the field';
+  const locale = target.locale ? ` · ${target.locale.toUpperCase()}` : '';
+  return `Go to ${field.label}${locale}`;
+}
+
 type FieldLinkProps = {
   target: FieldNavigationTarget;
   children?: ReactNode;
+  fields: FieldInfo[];
   /** The CMS path of the form of the record, or null without a record */
   recordEditPath: string | null;
   onScrollToField: (target: FieldNavigationTarget) => void;
@@ -131,6 +148,7 @@ type FieldLinkProps = {
 function FieldLink({
   target,
   children,
+  fields,
   recordEditPath,
   onScrollToField,
 }: FieldLinkProps) {
@@ -140,7 +158,7 @@ function FieldLink({
       {target.locale ? ` · ${target.locale.toUpperCase()}` : null}
     </>
   );
-  const tooltip = `Go to ${target.fieldPath}`;
+  const tooltip = fieldLinkTooltip(target, fields);
 
   if (!target.localized && recordEditPath) {
     return (
@@ -217,6 +235,7 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
           return (
             <FieldLink
               target={target}
+              fields={fields}
               recordEditPath={recordEditPath}
               onScrollToField={onScrollToField}
             >

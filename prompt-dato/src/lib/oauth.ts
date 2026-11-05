@@ -188,6 +188,10 @@ export type WaitForOAuthCallbackResult = {
   state: string;
 };
 
+/** The error of `waitForOAuthCallback` when the user closes the popup */
+export const OAUTH_POPUP_CLOSED_MESSAGE =
+  'OAuth popup was closed before completion';
+
 export function waitForOAuthCallback(
   popup: Window,
   expectedState: string,
@@ -256,7 +260,7 @@ export function waitForOAuthCallback(
     const closedPoller = window.setInterval(() => {
       if (popup.closed) {
         settle(
-          () => reject(new Error('OAuth popup was closed before completion')),
+          () => reject(new Error(OAUTH_POPUP_CLOSED_MESSAGE)),
           () => {},
         );
       }

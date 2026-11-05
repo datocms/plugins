@@ -20,8 +20,10 @@ import { dlog, setDebugEnabled } from '../lib/debugLog';
 import {
   DEFAULT_REASONING_EFFORT,
   getProviderApiKey,
+  getProviderLabel,
   getProviderMainModel,
   isFullyConfigured,
+  type PromptDatoParams,
   readParams,
 } from '../lib/pluginParams';
 import {
@@ -78,7 +80,7 @@ import {
   getHashFieldPath,
 } from './chat/fieldLinks';
 import { Transcript } from './chat/Transcript';
-import { AddIcon, RecordIcon, SettingsIcon } from './icons';
+import { AddIcon, ChatIcon, RecordIcon } from './icons';
 import s from './PromptSidebar.module.css';
 import { useActivityTimeline } from './useActivityTimeline';
 
@@ -587,21 +589,55 @@ function UnsavedRecordNotice() {
   );
 }
 
+/** The user can open the plugin settings */
+function canOpenSettings(ctx: RenderItemFormSidebarCtx): boolean {
+  return ctx.currentRole.meta.final_permissions.can_edit_schema === true;
+}
+
+/** The CMS path of the plugin settings, or null when the user can't open them */
+function settingsPathFor(ctx: RenderItemFormSidebarCtx): string | null {
+  return canOpenSettings(ctx) ? pluginSettingsPath(ctx) : null;
+}
+
+/** What the plugin settings still need, as the end of a sentence */
+function missingSetup(params: PromptDatoParams): string {
+  const steps: string[] = [];
+  if (!params.datoAccessToken) steps.push('connect DatoCMS');
+  if (!getProviderApiKey(params) || !getProviderMainModel(params)) {
+    steps.push('add an API key for a chat provider');
+  }
+  return `${steps.join(' and ')} in the plugin settings`;
+}
+
+/**
+ * Chat can't run yet. An administrator reads what is missing, with a button
+ * to the plugin settings. An editor can't open them: the only step is to ask
+ * an administrator, who sees what is missing in the settings.
+ */
 function SetupNotice({ ctx }: Props) {
+  const missing = missingSetup(readParams(ctx));
+  const isAdmin = canOpenSettings(ctx);
+
   return (
     <SidebarFrame>
       <BlankSlate
         placement="area"
         small
-        icon={<SettingsIcon />}
-        title="Prompt Dato isn't set up"
-        description="Connect to DatoCMS and add an API key for a chat provider in the plugin settings."
+        icon={<ChatIcon />}
+        title="Chat isn't set up yet"
+        description={
+          isAdmin
+            ? `${missing.charAt(0).toUpperCase()}${missing.slice(1)}.`
+            : 'Ask an administrator to finish setting it up in the plugin settings.'
+        }
         actions={
-          <Button
-            tone="primary"
-            label="Open plugin settings"
-            to={pluginSettingsPath(ctx)}
-          />
+          isAdmin ? (
+            <Button
+              tone="primary"
+              label="Open plugin settings"
+              to={pluginSettingsPath(ctx)}
+            />
+          ) : undefined
         }
       />
     </SidebarFrame>
@@ -646,7 +682,8 @@ type ChatHeaderProps = {
 /**
  * The bar of an open chat: back to the list, the title, the "⋮" with the
  * delete, and a new chat. Leaving the chat waits for the reply to finish,
- * because the reply writes to this chat.
+ * because the reply writes to this chat: Back and New chat show only when
+ * the chat can be left. An empty chat is already a new chat.
  */
 function ChatHeader({
   thread,
@@ -656,8 +693,7 @@ function ChatHeader({
   onNewChat,
 }: ChatHeaderProps) {
   const waitForReply = isSending ? WAIT_FOR_REPLY : undefined;
-  // An empty chat has nothing to delete: Back removes it
-  const canDelete = thread !== null && !isSidebarThreadEmpty(thread);
+  const isEmpty = thread === null || isSidebarThreadEmpty(thread);
   const title = thread?.title ?? 'New chat';
 
   return (
@@ -666,7 +702,8 @@ function ChatHeader({
         <Toolbar.GoBack onClick={onBack} ariaLabel="Back to chats" />
       )}
       <ChatTitle title={title} />
-      <Toolbar.DotsDropdown hidden={!canDelete} label={`Actions for ${title}`}>
+      {/* An empty chat has nothing to delete: Back removes it */}
+      <Toolbar.DotsDropdown hidden={isEmpty} label={`Actions for ${title}`}>
         <Dropdown.Option
           alert
           disabled={waitForReply}
@@ -678,12 +715,14 @@ function ChatHeader({
         </Dropdown.Option>
       </Toolbar.DotsDropdown>
       <Toolbar.Space />
-      <Toolbar.Button
-        icon={AddIcon}
-        label="New chat"
-        disabled={waitForReply}
-        onClick={onNewChat}
-      />
+      {!isSending && !isEmpty && (
+        <Toolbar.Button
+          iconOnly
+          icon={AddIcon}
+          label="New chat"
+          onClick={onNewChat}
+        />
+      )}
     </Toolbar>
   );
 }
@@ -1124,10 +1163,11 @@ function PromptSidebarChat({ ctx }: Props) {
     [allFields, scopedFieldIds],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the log scrolls to the last message on every change of the conversation
+  // The log scrolls to the last message on every change of the conversation.
+  // The greeting of an empty chat stays at its top.
   useEffect(() => {
     const el = messagesRef.current;
-    if (!el) return;
+    if (!el || conversation.length === 0) return;
     el.scrollTop = el.scrollHeight;
   }, [conversation]);
 
@@ -1856,7 +1896,7 @@ function PromptSidebarChat({ ctx }: Props) {
     const confirmed = await ctx.openConfirm({
       title: 'Auto-approve every change?',
       content:
-        'Changes run in your project without your review: creating, updating and deleting records, changing the schema and running scripts. Auto-approve stays on until you turn it off, go back to the chats, start or open another chat, or leave this record.',
+        'The chat then makes every change without asking you, even deleting records or changing models. Auto-approve turns off when you leave this chat.',
       choices: [
         {
           label: 'Auto-approve changes',
@@ -2080,10 +2120,11 @@ function PromptSidebarChat({ ctx }: Props) {
             isActivityOpen={isActivityOpen}
             toggleActivity={toggleActivity}
             supportsWriteApprovals={supportsWriteApprovals}
+            providerLabel={getProviderLabel(configuredProvider)}
             isSending={isSending}
             resolveApproval={resolveApproval}
             toggleApprovalDetails={toggleApprovalDetails}
-            settingsPath={pluginSettingsPath(ctx)}
+            settingsPath={settingsPathFor(ctx)}
           />
         </div>
       </Pane>

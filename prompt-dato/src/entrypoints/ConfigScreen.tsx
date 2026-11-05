@@ -10,17 +10,22 @@ import RadioGroupInput, {
 } from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SettingsList from 'datocms-react-ui/SettingsList';
-import Spinner from 'datocms-react-ui/Spinner';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import SwitchList from 'datocms-react-ui/SwitchList';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { derror, setDebugEnabled } from '../lib/debugLog';
 import {
   buildAuthorizeFlow,
   computeRedirectUri,
   exchangeCodeForToken,
-  MCP_BASE_URL,
+  OAUTH_POPUP_CLOSED_MESSAGE,
   openBlankPopup,
   registerClient,
   revokeToken,
@@ -63,14 +68,6 @@ type ConnectStage =
   | 'exchanging'
   | 'saving';
 
-const STAGE_LABELS: Record<ConnectStage, string> = {
-  idle: '',
-  registering: 'Registering the plugin with DatoCMS…',
-  'awaiting-consent': 'Waiting for your approval in the popup…',
-  exchanging: 'Exchanging the authorization code…',
-  saving: 'Saving the connection…',
-};
-
 type ModelsState = 'idle' | 'loading' | 'ready' | 'error';
 type ReasoningEffortOption = {
   id: ReasoningEffort;
@@ -78,10 +75,13 @@ type ReasoningEffortOption = {
 };
 
 const OAUTH_CLIENT_MAX_AGE_SECONDS = 25 * 24 * 60 * 60;
-const MCP_HOST = new URL(MCP_BASE_URL).host;
 
+const POPUP_BLOCKED =
+  'The browser blocked the sign-in window. Allow pop-ups for this page, then connect again.';
+const POPUP_CLOSED =
+  'The sign-in window closed before you approved. Connect again to finish.';
 const REVOKE_WARNING =
-  "You're disconnected here, but the token couldn't be revoked. Connect again if the access still shows elsewhere.";
+  "You're disconnected, but DatoCMS may still list this access. Remove it under Authorized applications in your DatoCMS account.";
 const NO_CHANGES_REASON = 'There are no changes to save.';
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffortOption[] = [
@@ -161,6 +161,12 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/** What failed, then why: "The setting couldn't be saved. You are offline." */
+function failureMessage(what: string, error: unknown): string {
+  const reason = error instanceof Error ? error.message.trim() : '';
+  return reason ? `${what} ${reason}` : what;
+}
+
 // The OAuth flow after the popup opened: register a client when needed,
 // send the popup to the consent page, wait for the code and store the token.
 // A client that the server no longer knows is registered again, once.
@@ -235,51 +241,21 @@ async function revokeStoredToken(params: PromptDatoParams): Promise<boolean> {
   }
 }
 
-function ConnectionValue({
-  stage,
-  disconnecting,
-}: {
-  stage: ConnectStage;
-  disconnecting: boolean;
-}) {
-  if (stage !== 'idle' || disconnecting) {
-    return (
-      <span role="status">
-        <Spinner inline label={false} />{' '}
-        {disconnecting ? 'Revoking the access…' : STAGE_LABELS[stage]}
-      </span>
-    );
-  }
-  return <>{MCP_HOST}</>;
-}
-
-function connectionStatus(isConnected: boolean, connecting: boolean) {
-  if (isConnected) return <Pill tone="success">Connected</Pill>;
-  if (connecting) return undefined;
-  return <Pill tone="warning">Not connected</Pill>;
-}
-
 function ConnectionGroup({ ctx, params }: GroupProps) {
   const [connectStage, setConnectStage] = useState<ConnectStage>('idle');
   const [disconnecting, setDisconnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
-  const [connectWarning, setConnectWarning] = useState<string | null>(null);
 
   const connecting = connectStage !== 'idle';
   const isConnected = Boolean(params.datoAccessToken);
-  const needsConnection = !isConnected && !connecting;
 
   // Synchronous: the popup must open inside the click, or the browser
   // blocks it
   const handleConnect = () => {
-    setConnectError(null);
-    setConnectWarning(null);
-
     let popup: Window;
     try {
       popup = openBlankPopup();
-    } catch (error) {
-      setConnectError(errorMessage(error, "The popup couldn't be opened."));
+    } catch {
+      ctx.alert(POPUP_BLOCKED);
       return;
     }
 
@@ -290,7 +266,14 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
         await runConnectFlow(ctx, popup, setConnectStage);
       } catch (error) {
         if (!popup.closed) popup.close();
-        setConnectError(errorMessage(error, 'The connection failed.'));
+        if (
+          error instanceof Error &&
+          error.message === OAUTH_POPUP_CLOSED_MESSAGE
+        ) {
+          void ctx.customToast({ type: 'warning', message: POPUP_CLOSED });
+        } else {
+          ctx.alert(failureMessage("DatoCMS couldn't be connected.", error));
+        }
       } finally {
         setConnectStage('idle');
       }
@@ -298,18 +281,17 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
   };
 
   const handleDisconnect = async () => {
-    setConnectError(null);
-    setConnectWarning(null);
     setDisconnecting(true);
     try {
       const revokeFailed = await revokeStoredToken(readParams(ctx));
       await mergeParams(ctx, { datoAccessToken: undefined });
-      ctx.notice('Disconnected from DatoCMS.');
       if (revokeFailed) {
-        setConnectWarning(REVOKE_WARNING);
+        void ctx.customToast({ type: 'warning', message: REVOKE_WARNING });
+      } else {
+        ctx.notice('Disconnected from DatoCMS.');
       }
     } catch (error) {
-      setConnectError(errorMessage(error, "The disconnection didn't work."));
+      ctx.alert(failureMessage("DatoCMS couldn't be disconnected.", error));
     } finally {
       setDisconnecting(false);
     }
@@ -318,23 +300,31 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
   return (
     <Page.Group
       title="DatoCMS connection"
-      tone={needsConnection ? 'warning' : undefined}
-      status={connectionStatus(isConnected, connecting)}
+      tone={isConnected ? undefined : 'warning'}
+      status={
+        isConnected ? (
+          <Pill tone="success">Connected</Pill>
+        ) : (
+          <Pill tone="warning">Not connected</Pill>
+        )
+      }
     >
-      {needsConnection && (
+      {!isConnected && (
         <Callout tone="warning">
           Chat needs this connection to read and change the project.
         </Callout>
       )}
       <SettingsList>
         <SettingsList.Row
-          title="DatoCMS MCP server"
-          description="Chat signs in with your DatoCMS account through OAuth, so there's no API token to copy."
-          value={
-            <ConnectionValue
-              stage={connectStage}
-              disconnecting={disconnecting}
-            />
+          title="DatoCMS account"
+          description={
+            // The busy button tells that the sign-in runs: the description
+            // only tells where to go on, while the sign-in window waits
+            <span role="status">
+              {connectStage === 'awaiting-consent'
+                ? 'Approve the access in the sign-in window.'
+                : "Everyone's chats use your account and its permissions."}
+            </span>
           }
           action={
             isConnected ? (
@@ -342,6 +332,7 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
                 tone="ghost"
                 label="Disconnect"
                 onClick={handleDisconnect}
+                busy={disconnecting}
                 disabled={
                   connecting
                     ? { reason: 'Wait for the connection to finish.' }
@@ -359,39 +350,63 @@ function ConnectionGroup({ ctx, params }: GroupProps) {
           }
         />
       </SettingsList>
-      {connectError && (
-        <Callout tone="danger" className={s.afterList}>
-          {connectError}
-        </Callout>
-      )}
-      {connectWarning && (
-        <Callout tone="warning" className={s.afterList}>
-          {connectWarning}
-        </Callout>
-      )}
     </Page.Group>
   );
 }
 
+// After an error, the error of the key or of the list tells why the field
+// is off
 function modelHint(provider: ModelProvider, modelsState: ModelsState) {
-  if (modelsState === 'idle' || modelsState === 'error') {
-    return `Enter a valid ${getProviderLabel(provider)} key to load the models.`;
+  if (modelsState === 'loading') return 'Loading the models…';
+  if (modelsState === 'idle') {
+    return `Enter the ${getProviderLabel(provider)} API key to load the models.`;
   }
-  return 'The model that answers in the chat.';
+  return undefined;
 }
 
-function modelError(
+/**
+ * Why Save of the provider can't run: there is nothing to save, or a switch
+ * to a provider without a key would leave the chat not set up. The key of
+ * the saved provider can still be cleared.
+ */
+function providerSaveReason(
+  dirty: boolean,
+  switchesProvider: boolean,
+  key: string,
+  providerLabel: string,
+): string | undefined {
+  if (!dirty) return NO_CHANGES_REASON;
+  if (switchesProvider && !key) {
+    return `Enter the ${providerLabel} API key first.`;
+  }
+  return undefined;
+}
+
+/** The provider refused the key itself (see fetchProviderModels) */
+function isKeyRejection(modelsError: string | null): boolean {
+  return modelsError?.includes('key was rejected') ?? false;
+}
+
+/** The error of the key: the provider refused it, or it gives no models */
+function apiKeyError(
+  provider: ModelProvider,
   modelsState: ModelsState,
   modelsError: string | null,
   modelsCount: number,
 ) {
-  if (modelsState === 'error') {
-    return modelsError ?? "The models couldn't be loaded.";
+  if (modelsState === 'error' && isKeyRejection(modelsError)) {
+    return `${getProviderLabel(provider)} didn't accept this key. Check it and paste it again.`;
   }
   if (modelsState === 'ready' && modelsCount === 0) {
-    return 'This key returns no compatible models.';
+    return `This key can't use any chat model. Check its permissions at ${getProviderLabel(provider)}, or use another key.`;
   }
   return undefined;
+}
+
+/** The error of the list of models, when it fails for another reason */
+function modelError(modelsState: ModelsState, modelsError: string | null) {
+  if (modelsState !== 'error' || isKeyRejection(modelsError)) return undefined;
+  return modelsError ?? "The models couldn't be loaded.";
 }
 
 type ModelFieldProps = {
@@ -421,7 +436,7 @@ function ModelField({
       label="Model"
       required
       hint={modelHint(provider, modelsState)}
-      error={modelError(modelsState, modelsError, models.length)}
+      error={modelError(modelsState, modelsError)}
     >
       <SelectInput
         value={value}
@@ -464,9 +479,10 @@ function ProviderForm({ ctx, params }: GroupProps) {
     providerMainModels[provider] ?? DEFAULT_MAIN_MODEL_BY_PROVIDER[provider];
   const trimmedKey = selectedApiKey.trim();
   const hasPlausibleKey = trimmedKey.length >= 8;
+  const savedProvider = params.provider ?? 'current';
 
   const providerDirty =
-    provider !== (params.provider ?? 'current') ||
+    provider !== savedProvider ||
     !providerMapsEqual(
       cleanProviderMap(providerApiKeys),
       cleanProviderMap(params.providerApiKeys ?? {}),
@@ -476,6 +492,13 @@ function ProviderForm({ ctx, params }: GroupProps) {
       cleanProviderMap(params.providerMainModels ?? {}),
     ) ||
     reasoningEffort !== (params.reasoningEffort ?? DEFAULT_REASONING_EFFORT);
+
+  const saveBlockedReason = providerSaveReason(
+    providerDirty,
+    provider !== savedProvider,
+    trimmedKey,
+    providerLabel,
+  );
 
   // The list follows the provider and the key only: picking a model doesn't
   // load it again
@@ -556,7 +579,7 @@ function ProviderForm({ ctx, params }: GroupProps) {
       setProviderMainModels(nextModels);
       ctx.notice('Chat provider saved.');
     } catch (error) {
-      ctx.alert(errorMessage(error, "The chat provider couldn't be saved."));
+      ctx.alert(failureMessage("The chat provider couldn't be saved.", error));
     } finally {
       setSavingProvider(false);
     }
@@ -564,7 +587,7 @@ function ProviderForm({ ctx, params }: GroupProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!providerDirty || savingProvider) return;
+    if (saveBlockedReason || savingProvider) return;
     await handleSaveProvider();
   };
 
@@ -579,7 +602,9 @@ function ProviderForm({ ctx, params }: GroupProps) {
             expand={false}
             label="Save"
             busy={savingProvider}
-            disabled={providerDirty ? undefined : { reason: NO_CHANGES_REASON }}
+            disabled={
+              saveBlockedReason ? { reason: saveBlockedReason } : undefined
+            }
           />
         }
       >
@@ -596,6 +621,7 @@ function ProviderForm({ ctx, params }: GroupProps) {
           label={`${providerLabel} API key`}
           required
           hint={`Saved in the plugin settings. This browser sends it straight to ${providerLabel}.`}
+          error={apiKeyError(provider, modelsState, modelsError, models.length)}
         >
           <PasswordInput
             value={selectedApiKey}
@@ -640,12 +666,6 @@ function ProviderForm({ ctx, params }: GroupProps) {
   );
 }
 
-function resetPromptDisabled(promptIsDefault: boolean, savingPrompt: boolean) {
-  if (promptIsDefault) return { reason: 'The prompt is already the default.' };
-  if (savingPrompt) return { reason: 'Wait for the prompt to save.' };
-  return undefined;
-}
-
 function SystemPromptForm({ ctx, params }: GroupProps) {
   const [systemPrompt, setSystemPrompt] = useState(
     params.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
@@ -655,6 +675,9 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
   const promptDirty =
     systemPrompt !== (params.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
   const promptIsDefault = systemPrompt === DEFAULT_SYSTEM_PROMPT;
+  // Advanced: the group opens by itself only when it holds custom
+  // instructions
+  const [open, setOpen] = useState(!promptIsDefault);
 
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
@@ -666,9 +689,9 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
           ? undefined
           : trimmed;
       await mergeParams(ctx, { systemPrompt: storeValue });
-      ctx.notice('System prompt saved.');
+      ctx.notice('Instructions saved.');
     } catch (error) {
-      ctx.alert(errorMessage(error, "The system prompt couldn't be saved."));
+      ctx.alert(failureMessage("The instructions couldn't be saved.", error));
     } finally {
       setSavingPrompt(false);
     }
@@ -687,8 +710,9 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
   return (
     <form onSubmit={handleSubmit}>
       <Page.Group
-        title="System prompt"
+        title="Chat instructions"
         status={<Pill>{promptIsDefault ? 'Default' : 'Custom'}</Pill>}
+        collapse={{ open, onToggle: () => setOpen(!open) }}
         footer={
           <div className={s.footerActions}>
             <Button
@@ -699,24 +723,32 @@ function SystemPromptForm({ ctx, params }: GroupProps) {
               busy={savingPrompt}
               disabled={promptDirty ? undefined : { reason: NO_CHANGES_REASON }}
             />
-            <Button
-              tone="ghost"
-              label="Reset to default"
-              onClick={handleResetPrompt}
-              disabled={resetPromptDisabled(promptIsDefault, savingPrompt)}
-            />
+            {/* Instructions that are the default have nothing to reset */}
+            {!promptIsDefault && (
+              <Button
+                tone="ghost"
+                label="Reset to default"
+                onClick={handleResetPrompt}
+                disabled={
+                  savingPrompt
+                    ? { reason: 'Wait for the prompt to save.' }
+                    : undefined
+                }
+              />
+            )}
           </div>
         }
       >
         <FieldWrapper
-          label="Base prompt"
-          hint="Sent at the start of every turn. The project, the current record and the fields added to the context are appended after it."
+          label="Instructions"
+          hint="The chat follows them in every conversation."
         >
           <TextareaInput
-            rows={12}
+            rows={6}
             maxRows={24}
             value={systemPrompt}
             onChange={(next) => setSystemPrompt(next ?? '')}
+            placeholder="Write in a warm, plain voice. Keep titles under 60 characters."
           />
         </FieldWrapper>
       </Page.Group>
@@ -728,6 +760,10 @@ export default function ConfigScreen({ ctx }: Props) {
   const params = readParams(ctx);
 
   const [debugMode, setDebugMode] = useState(params.debugMode === true);
+  // Advanced: the group opens by itself only while the logging is on
+  const [developerOpen, setDeveloperOpen] = useState(debugMode);
+  const debugTitleId = useId();
+  const debugDescriptionId = useId();
 
   setDebugEnabled(debugMode);
 
@@ -749,7 +785,7 @@ export default function ConfigScreen({ ctx }: Props) {
     } catch (error) {
       setDebugMode(!next);
       setDebugEnabled(!next);
-      ctx.alert(errorMessage(error, "The setting couldn't be saved."));
+      ctx.alert(failureMessage("Debug logging couldn't be saved.", error));
     }
   };
 
@@ -759,16 +795,34 @@ export default function ConfigScreen({ ctx }: Props) {
         <ConnectionGroup ctx={ctx} params={params} />
         <ProviderForm ctx={ctx} params={params} />
         <SystemPromptForm ctx={ctx} params={params} />
-        <Page.Group title="Developer">
-          <SwitchList>
-            <FieldWrapper hint="Prints chat turns and DatoCMS actions in the browser console. Credentials, tokens and OAuth codes are redacted. Errors are always logged.">
-              <SwitchInput
-                label="Debug logging"
-                value={debugMode}
-                onChange={(next) => handleToggleDebug(next === true)}
-              />
-            </FieldWrapper>
-          </SwitchList>
+        <Page.Group
+          title="Developer"
+          collapse={{
+            open: developerOpen,
+            onToggle: () => setDeveloperOpen(!developerOpen),
+          }}
+        >
+          {/* The title of the row names the switch, and its description
+              describes it: the switch shows no label of its own */}
+          <SettingsList>
+            <SettingsList.Row
+              title={<span id={debugTitleId}>Debug logging</span>}
+              description={
+                <span id={debugDescriptionId}>
+                  Prints chat turns and DatoCMS actions in the browser console.
+                </span>
+              }
+              action={
+                <SwitchInput
+                  label=""
+                  aria-labelledby={debugTitleId}
+                  aria-describedby={debugDescriptionId}
+                  value={debugMode}
+                  onChange={(next) => handleToggleDebug(next === true)}
+                />
+              }
+            />
+          </SettingsList>
         </Page.Group>
       </Page.Content>
     </Page>

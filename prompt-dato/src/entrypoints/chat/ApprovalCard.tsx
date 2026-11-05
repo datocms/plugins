@@ -1,29 +1,30 @@
 import Button from 'datocms-react-ui/Button';
+import { DisclosureChevron } from 'datocms-react-ui/Chevron';
 import CodeSnippet from 'datocms-react-ui/CodeSnippet';
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
+import RawButton from 'datocms-react-ui/RawButton';
 import { useEffect, useId, useState } from 'react';
 import type { SidebarApprovalItem } from '../../lib/sidebarChatHistory';
-import { InlineCode } from './InlineCode';
 import s from './Transcript.module.css';
 
 /** The height of the arguments before they scroll, in CSS pixels */
 const ARGUMENTS_MAX_HEIGHT = 260;
 
 const WAIT_REASON = 'Wait for the reply to finish.';
-const PROVIDER_REASON = "The chat provider in the settings can't run changes.";
 
-export function approvalTitle(toolName: string): string {
-  if (toolName === 'upsert_and_execute_unsafe_script') {
-    return 'Apply project changes?';
-  }
-  return 'Run project action?';
+function isScript(toolName: string): boolean {
+  return toolName === 'upsert_and_execute_unsafe_script';
 }
 
-export function approvalSummary(toolName: string): string {
-  if (toolName === 'upsert_and_execute_unsafe_script') {
-    return 'This will apply changes to your project.';
+/**
+ * A question while the user decides, and a name once the card only tells
+ * the outcome. The reply above the card says what changes.
+ */
+function approvalTitle(toolName: string, asking: boolean): string {
+  if (isScript(toolName)) {
+    return asking ? 'Make these changes?' : 'Project changes';
   }
-  return 'This will run a project action.';
+  return asking ? 'Run this action?' : 'Project action';
 }
 
 function stringifyPreviewValue(value: unknown): string {
@@ -52,31 +53,17 @@ function formatArguments(value: unknown): string {
 }
 
 /**
- * The name of the region of the arguments. A chat can ask more than once for
- * the same action, so the second one on is numbered: "Arguments of
- * upsert_record 2".
+ * The name of the region of the arguments. A chat can ask for more than one
+ * approval, so the second one on is numbered: "Technical details 2".
  */
-function argumentsName(toolName: string, ordinal: number): string {
-  const name = `Arguments of ${toolName}`;
-  return ordinal > 1 ? `${name} ${ordinal}` : name;
+function argumentsName(ordinal: number): string {
+  return ordinal > 1 ? `Technical details ${ordinal}` : 'Technical details';
 }
 
 type Decision = 'approve' | 'deny';
 
-/** Why no decision can start now, or null when one can */
-function lockReason(
-  canDecide: boolean,
-  busyElsewhere: boolean,
-  submitting: boolean,
-): string | null {
-  if (!canDecide) return PROVIDER_REASON;
-  if (busyElsewhere || submitting) return WAIT_REASON;
-  return null;
-}
-
 type DecisionProps = {
   submitting: boolean;
-  canDecide: boolean;
   busyElsewhere: boolean;
   onApprove: () => unknown;
   onDeny: () => unknown;
@@ -88,7 +75,6 @@ type DecisionProps = {
  */
 function DecisionButtons({
   submitting,
-  canDecide,
   busyElsewhere,
   onApprove,
   onDeny,
@@ -105,9 +91,9 @@ function DecisionButtons({
   const busyDecision: Decision | null = submitting
     ? (clicked ?? 'approve')
     : null;
-  const reason = lockReason(canDecide, busyElsewhere, submitting);
+  const locked = busyElsewhere || submitting;
   const disabledFor = (decision: Decision) =>
-    busyDecision === decision || !reason ? undefined : { reason };
+    busyDecision === decision || !locked ? undefined : { reason: WAIT_REASON };
 
   const decide = (decision: Decision) => {
     setClicked(decision);
@@ -134,16 +120,30 @@ function DecisionButtons({
   );
 }
 
-function Outcome({ approved }: { approved: boolean }) {
+/** The state of a card that asks no more: decided, or that nobody can decide */
+function Outcome({
+  state,
+  providerLabel,
+}: {
+  state: 'approved' | 'denied' | 'blocked';
+  providerLabel: string;
+}) {
   return (
     <p className={s.approvalOutcome}>
-      {approved ? (
+      {state === 'approved' && (
         <>
           <FeedbackDot tone="success" /> Approved
         </>
-      ) : (
+      )}
+      {state === 'denied' && (
         <>
-          <FeedbackDot tone="neutral" /> Denied. Nothing ran.
+          <FeedbackDot tone="neutral" /> Denied. Nothing changed.
+        </>
+      )}
+      {state === 'blocked' && (
+        <>
+          <FeedbackDot tone="neutral" /> {providerLabel} can only read the
+          project, so this change can't run.
         </>
       )}
     </p>
@@ -152,10 +152,12 @@ function Outcome({ approved }: { approved: boolean }) {
 
 type Props = {
   item: SidebarApprovalItem;
-  /** The position of the item among the approvals of the same action, from 1 */
+  /** The position of the item among the approvals of the chat, from 1 */
   ordinal: number;
   /** The provider of the settings can submit decisions */
   canDecide: boolean;
+  /** The name of the provider of the settings: "Google" */
+  providerLabel: string;
   /** Another turn runs, so no decision can start */
   busyElsewhere: boolean;
   onApprove: () => unknown;
@@ -164,14 +166,17 @@ type Props = {
 };
 
 /**
- * A project action that waits for the user's decision: what it does, its
- * arguments behind "Show details", and Deny and Approve. Once decided, its
- * decision is one line with the outcome.
+ * A project action that waits for the user's decision: a short question
+ * (the reply above says what changes), the arguments behind the "Technical
+ * details" disclosure, and Deny and Approve at the bottom. Once decided, or
+ * when the provider of the settings cannot decide it, the card tells the
+ * outcome in one line, with the same disclosure under it.
  */
 export function ApprovalCard({
   item,
   ordinal,
   canDecide,
+  providerLabel,
   busyElsewhere,
   onApprove,
   onDeny,
@@ -179,65 +184,56 @@ export function ApprovalCard({
 }: Props) {
   const titleId = useId();
   const detailsId = useId();
-  const resolved = item.state === 'approved' || item.state === 'denied';
-
-  const detailsToggle = (
-    <Button
-      tone="ghost"
-      label={item.detailsOpen ? 'Hide details' : 'Show details'}
-      aria-expanded={item.detailsOpen}
-      aria-controls={detailsId}
-      onClick={onToggleDetails}
-    />
-  );
+  const outcome =
+    item.state === 'approved' || item.state === 'denied'
+      ? item.state
+      : canDecide
+        ? null
+        : 'blocked';
 
   return (
     <div role="group" aria-labelledby={titleId} className={s.approval}>
       <div className={s.approvalText}>
         <p id={titleId} className={s.approvalTitle}>
-          {approvalTitle(item.toolName)}
+          {approvalTitle(item.toolName, outcome === null)}
         </p>
-        {resolved ? null : (
+        {/* While a decision submits, its busy button tells what happens */}
+        {outcome ? (
+          <Outcome state={outcome} providerLabel={providerLabel} />
+        ) : item.state === 'submitting' ? null : (
           <p className={s.approvalSummary}>
-            {approvalSummary(item.toolName)} Review the details before you
-            approve.
+            Nothing changes until you approve.
           </p>
         )}
       </div>
-      <div
-        id={detailsId}
-        hidden={!item.detailsOpen}
-        className={s.approvalDetails}
-      >
-        {item.detailsOpen ? (
-          <>
-            <p className={s.approvalTool}>
-              Action <InlineCode>{item.toolName}</InlineCode>
-            </p>
+      {/* The same disclosure as the activity of a reply: the chevron before
+          the title, the arguments under it */}
+      <div className={s.approvalDetails}>
+        <RawButton
+          className={s.disclosure}
+          expandable={{ open: item.detailsOpen, controls: detailsId }}
+          onClick={onToggleDetails}
+        >
+          <DisclosureChevron open={item.detailsOpen} />
+          <span className={s.disclosureTitle}>Technical details</span>
+        </RawButton>
+        <div id={detailsId} hidden={!item.detailsOpen}>
+          {item.detailsOpen ? (
             <CodeSnippet
-              ariaLabel={argumentsName(item.toolName, ordinal)}
+              ariaLabel={argumentsName(ordinal)}
               code={formatArguments(item.argumentsJson)}
               maxHeight={ARGUMENTS_MAX_HEIGHT}
             />
-          </>
-        ) : null}
+          ) : null}
+        </div>
       </div>
-      {resolved ? (
-        <div className={s.approvalActions}>
-          <Outcome approved={item.state === 'approved'} />
-          {detailsToggle}
-        </div>
-      ) : (
-        <div className={s.approvalActions}>
-          {detailsToggle}
-          <DecisionButtons
-            submitting={item.state === 'submitting'}
-            canDecide={canDecide}
-            busyElsewhere={busyElsewhere}
-            onApprove={onApprove}
-            onDeny={onDeny}
-          />
-        </div>
+      {outcome ? null : (
+        <DecisionButtons
+          submitting={item.state === 'submitting'}
+          busyElsewhere={busyElsewhere}
+          onApprove={onApprove}
+          onDeny={onDeny}
+        />
       )}
     </div>
   );

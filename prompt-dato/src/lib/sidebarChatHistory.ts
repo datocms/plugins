@@ -72,7 +72,13 @@ const SIDEBAR_CHAT_HISTORY_VERSION = 1;
 export const SIDEBAR_CHAT_MAX_ITEMS = 80;
 export const SIDEBAR_CHAT_MAX_THREADS = 20;
 export const INTERRUPTED_TURN_MESSAGE =
+  'The page reloaded before the reply finished. The change may already be in the record: check it before you send the request again.';
+/** The text of the replies without text that older versions saved for a reload */
+export const LEGACY_INTERRUPTED_TURN_MESSAGE =
   'The page refreshed before the final reply was saved. The DatoCMS action may still have completed, so check the record before sending the request again.';
+/** The text of the error entries that older versions saved for a reload */
+export const LEGACY_INTERRUPTED_REQUEST_MESSAGE =
+  'The previous request was interrupted by an editor reload. Your messages were restored; check the record before sending the request again.';
 
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
@@ -177,6 +183,21 @@ function readConversationItem(
   return null;
 }
 
+type MessageItem = Extract<SidebarConversationItem, { kind: 'message' }>;
+
+/** A reply that a reload stopped: without text, it tells what happened */
+function interruptedReply(item: MessageItem): MessageItem {
+  return {
+    ...item,
+    text: item.text.trim() ? item.text : INTERRUPTED_TURN_MESSAGE,
+    process: interruptProcessTrace(item.process, INTERRUPTED_TURN_MESSAGE),
+  };
+}
+
+function tellsInterruption(item: SidebarConversationItem): boolean {
+  return item.kind === 'message' && item.text === INTERRUPTED_TURN_MESSAGE;
+}
+
 function readConversationItems(value: unknown): ConversationReadResult {
   if (!Array.isArray(value)) {
     return { conversation: [], interrupted: false };
@@ -203,22 +224,18 @@ function readConversationItems(value: unknown): ConversationReadResult {
       }
 
       hadInterruptedTurn = true;
-      items.push({
-        ...item,
-        text: item.text.trim() ? item.text : INTERRUPTED_TURN_MESSAGE,
-        process: interruptProcessTrace(item.process, INTERRUPTED_TURN_MESSAGE),
-      });
+      items.push(interruptedReply(item));
       continue;
     }
     items.push(item);
   }
 
-  if (hadPending) {
+  // A reply that tells the interruption needs no other message
+  if (hadPending && !items.some(tellsInterruption)) {
     items.push({
       kind: 'error',
       id: generateId('m'),
-      message:
-        'The previous request was interrupted by an editor reload. Your messages were restored; check the record before sending the request again.',
+      message: INTERRUPTED_TURN_MESSAGE,
       reauth: false,
     });
   }
@@ -549,6 +566,22 @@ export function getSidebarThreadTitle(value: string): string {
   return titleFromText(value);
 }
 
+/**
+ * The text of a reply without its Markdown marks: the text of the links,
+ * no quote, heading or list markers, no emphasis or code ticks, and the
+ * cells of a table in a row
+ */
+function plainTextOf(markdown: string): string {
+  return markdown
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[ \t]*\|?[ \t:|-]*-[ \t:|-]*$/gm, '')
+    .replace(/^[ \t]*(?:>[ \t]?|#{1,6}[ \t]+|[-*+][ \t]+|\d+[.)][ \t]+)+/gm, '')
+    .replace(/\*\*|~~|[*`]/g, '')
+    .replace(/\|/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function getSidebarThreadPreview(thread: SidebarChatThread): string {
   const draft = thread.text.trim().replace(/\s+/g, ' ');
   if (draft) return `Draft: ${draft}`;
@@ -556,10 +589,14 @@ export function getSidebarThreadPreview(thread: SidebarChatThread): string {
   for (let index = thread.conversation.length - 1; index >= 0; index -= 1) {
     const item = thread.conversation[index];
     if (item?.kind === 'message') {
-      return item.text.trim().replace(/\s+/g, ' ') || 'No message text';
+      const text =
+        item.role === 'assistant'
+          ? plainTextOf(item.text)
+          : item.text.trim().replace(/\s+/g, ' ');
+      return text || 'No message text';
     }
     if (item?.kind === 'error') return 'Ended with an error';
-    if (item?.kind === 'approval') return 'Waiting for an action decision';
+    if (item?.kind === 'approval') return 'Waiting for your approval';
   }
 
   return 'No messages yet';

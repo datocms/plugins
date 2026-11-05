@@ -56,11 +56,12 @@
   min-width: 0;
 }
 
-/* The disclosure has no look of its own (RawButton): a quiet line of subtle
+/* A disclosure of the log (the activity of a reply, the technical details
+   of an action) has no look of its own (RawButton): a quiet line of subtle
    text, with the surface of an inset row on hover and keyboard focus (the
    base styles add the focus ring). The negative margin keeps its text on the
    edge of the column. */
-.activityToggle {
+.disclosure {
   display: inline-flex;
   gap: var(--spacing-s);
   align-items: center;
@@ -83,7 +84,17 @@
   }
 }
 
-.activityTitle {
+/* The same line as plain text, when its panel would add nothing: the
+   placeholder of the chevron keeps its text in line with the toggles */
+.activityLine {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  min-width: 0;
+  color: var(--color--ink-subtle);
+}
+
+.disclosureTitle {
   flex: none;
   color: var(--color--ink);
 }
@@ -153,32 +164,19 @@
   overflow-wrap: anywhere;
 }
 
-/* The hidden attribute keeps the box out while the details are closed */
-.approvalDetails:not([hidden]) {
+/* The disclosure of the technical details, and the arguments under it */
+.approvalDetails {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-s);
   min-width: 0;
 }
 
-.approvalTool {
-  color: var(--color--ink-subtle);
-  overflow-wrap: anywhere;
-}
-
-/* "Show details" at the left, the decision at the right */
-.approvalActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-s);
-  align-items: center;
-  justify-content: space-between;
-}
-
+/* Deny and Approve, at the right of the bottom of the card */
 .decision {
   display: flex;
   gap: var(--spacing-s);
-  margin-left: auto;
+  justify-content: flex-end;
 }
 
 .approvalOutcome {
@@ -193,10 +191,4 @@
    slate in the center (see Greeting) */
 .greeting {
   min-height: 100%;
-}
-
-/* The starters of an empty chat: inset rows whose text stays on the edge of
-   the text of the blank slate */
-.starters {
-  margin: 0 calc(-1 * (var(--row-inset) + var(--spacing-m)));
 }

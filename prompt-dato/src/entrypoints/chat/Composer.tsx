@@ -29,7 +29,8 @@ export function focusComposer() {
   );
 }
 
-const PENDING_APPROVAL = 'Approve or deny the pending change first.';
+const PENDING_APPROVAL = 'Approve or deny the change above first.';
+const WAIT_FOR_REPLY = 'Wait for the reply to finish.';
 
 const AUTO_APPROVE_ON_HINT =
   'Changes run without your review until you turn it off.';
@@ -44,9 +45,9 @@ type Props = {
   isSending: boolean;
   /** A change waits for a decision: the message waits too */
   hasPendingApproval: boolean;
-  /** The fields added to the context of the chat */
+  /** The fields mentioned in the chat: the chat focuses on them */
   scopedFields: FieldInfo[];
-  /** The fields that can still go in the context */
+  /** The fields that can still be mentioned */
   unscopedFields: FieldInfo[];
   onAddScope: (fieldId: string) => void;
   onRemoveScope: (fieldId: string) => void;
@@ -60,8 +61,10 @@ type Props = {
 
 function sendDisabledReason(
   text: string,
+  isSending: boolean,
   hasPendingApproval: boolean,
 ): { reason: string } | undefined {
+  if (isSending) return { reason: WAIT_FOR_REPLY };
   if (hasPendingApproval) return { reason: PENDING_APPROVAL };
   if (!text.trim()) return { reason: 'Write a message first.' };
   return undefined;
@@ -75,28 +78,33 @@ function fieldPickerDisabledReason(
   return {
     reason:
       scopedFields.length > 0
-        ? 'Every field is already in the context.'
+        ? 'Every field is already mentioned.'
         : 'This model has no fields.',
   };
 }
 
-/** What the chat gets besides the message: the record, and the added fields */
+/**
+ * What the chat gets besides the message, once the user mentions a field:
+ * the record, which it always gets, and the mentioned fields
+ */
 function ContextRow({
   scopedFields,
   onRemoveScope,
 }: Pick<Props, 'scopedFields' | 'onRemoveScope'>) {
+  if (scopedFields.length === 0) return null;
+
   return (
-    <div role="group" aria-label="Context" className={s.context}>
-      <Pill tooltip="Chat always gets this record.">This record</Pill>
+    <div role="group" aria-label="Mentioned fields" className={s.context}>
+      <Pill tooltip="The chat always sees this record.">This record</Pill>
       {scopedFields.map((field) => (
         <span key={field.id} className={s.scopedField}>
-          <EntityRow layout="inline" title={`@${field.label}`} />
+          <EntityRow layout="inline" title={field.label} />
           <Button
             tone="ghost"
             size="micro"
             iconOnly
             icon={CloseIcon}
-            label={`Remove ${field.label} from the context`}
+            label={`Remove ${field.label}`}
             onClick={() => onRemoveScope(field.id)}
           />
         </span>
@@ -123,7 +131,7 @@ function closesMenu(event: KeyboardEvent): boolean {
 }
 
 /**
- * The field picker: adds a field of the model to the context. Its search
+ * The field picker: mentions a field of the model in the chat. Its search
  * field takes the focus. Opened by typing "@" (the `open()` of
  * `fieldPickerRef`), it gives the focus back to the message when it closes
  * with Escape or Tab, thus the user goes on typing. Opened with its button,
@@ -177,7 +185,7 @@ function FieldPicker({
       <Dropdown
         triggerComponent={IconTrigger}
         icon={AtIcon}
-        label="Add a field to the context"
+        label="Mention a field"
         controlRef={dropdownRef}
         disabled={fieldPickerDisabledReason(scopedFields, unscopedFields)}
       >
@@ -186,7 +194,7 @@ function FieldPicker({
         <Dropdown.Menu
           placement="top-start"
           optionPaddingY={6}
-          contextualSearch={{ placeholder: 'Search fields...' }}
+          contextualSearch={{ placeholder: 'Search fields…' }}
         >
           {unscopedFields.map((field) => (
             <Dropdown.Option
@@ -194,9 +202,7 @@ function FieldPicker({
               keywords={[field.apiKey]}
               onPick={() => onAddScope(field.id)}
             >
-              <EntityRow layout="row" title={field.label}>
-                {field.fieldType}
-              </EntityRow>
+              <EntityRow layout="row" title={field.label} />
             </Dropdown.Option>
           ))}
         </Dropdown.Menu>
@@ -206,7 +212,7 @@ function FieldPicker({
 }
 
 /**
- * The message of the next turn: what goes in the context, the text, and the
+ * The message of the next turn: the mentioned fields, the text, and the
  * bar with auto-approve, the field picker and Send. Enter sends, and
  * Shift+Enter adds a line.
  */
@@ -226,15 +232,17 @@ export function Composer({
   autoApproveEdits,
   onAutoApproveClick,
 }: Props) {
-  const disabledReason = isSending
-    ? undefined
-    : sendDisabledReason(text, hasPendingApproval);
+  const disabledReason = sendDisabledReason(
+    text,
+    isSending,
+    hasPendingApproval,
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // A disabled Send keeps the focus (aria-disabled): the form ignores any
     // submit that Send could not make
-    if (isSending || disabledReason) return;
+    if (disabledReason) return;
     void onSend();
   };
 
@@ -254,7 +262,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             rows={2}
             maxRows={7}
-            placeholder="Summarize the body in five bullets"
+            placeholder="What is missing in this record?"
             disabled={hasPendingApproval}
           />
         </FieldWrapper>
@@ -286,13 +294,13 @@ export function Composer({
         />
         <Toolbar.Space />
         {/* The main action of the composer: primary, with its label (an
-            icon-only button is ghost) */}
+            icon-only button is ghost). The message goes in the log at once:
+            the line of the reply tells that it runs, thus Send only waits */}
         <Toolbar.Button
           submit
           tone="primary"
           icon={SendIcon}
           label="Send"
-          busy={isSending}
           disabled={disabledReason}
         />
       </Toolbar>

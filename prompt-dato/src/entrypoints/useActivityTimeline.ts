@@ -4,7 +4,6 @@ import {
   ACTIVITY_AUTO_OPEN_DELAY_MS,
   shouldAutoOpenActivity,
   shouldDisplayActivityOpen,
-  shouldForceOpenActivity,
   type ActivityOpenMode,
 } from '../lib/activityOpenState';
 import type { ProcessTrace } from '../lib/processTrace';
@@ -42,10 +41,7 @@ export function useActivityTimeline(messages: ActivityMessage[]) {
       for (const message of messages) {
         const mode = next[message.id];
         if (mode === 'manual-open' || mode === 'manual-closed') continue;
-        if (
-          shouldForceOpenActivity(message.process) ||
-          shouldAutoOpenActivity(message.process)
-        ) {
+        if (shouldAutoOpenActivity(message.process)) {
           setNext(message.id, 'auto');
         }
       }
@@ -75,7 +71,9 @@ export function useActivityTimeline(messages: ActivityMessage[]) {
         );
       }
 
-      if (trace.status === 'completed' && mode === 'auto') {
+      // Once the turn stops running, the activity that opened by itself
+      // closes again
+      if (trace.status !== 'running' && mode === 'auto') {
         timers.push(
           window.setTimeout(() => {
             setOpenModes((previous) => {

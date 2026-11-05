@@ -54,14 +54,17 @@
     border-left: 3px solid var(--color--border);
   }
 
-  /* The text of the cells stays on one line: the box scrolls */
+  /* The text of the cells wraps between words, thus the table fits the
+     sidebar: the box scrolls only for a table that cannot fit. The cells
+     break a word only when it is longer than the cell, while the paragraphs
+     break anywhere, for the long URLs. */
   table {
     border-collapse: collapse;
-    white-space: nowrap;
   }
 
   :is(th, td) {
     padding: var(--spacing-s) var(--spacing-m);
+    overflow-wrap: break-word;
     text-align: left;
     vertical-align: top;
     border: 1px solid var(--color--border);

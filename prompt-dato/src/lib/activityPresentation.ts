@@ -82,7 +82,7 @@ export function buildActivityView(trace: ProcessTrace): ActivityView {
       .map((group) => labelForGroup(group, trace.status)),
     visibleSteps: steps,
     debugEntries,
-    stepCount: Math.max(groups.length, 1),
+    stepCount: Math.max(completedGroups.length, 1),
     duration: formatDuration(trace.startedAt, trace.endedAt),
   };
 }
@@ -214,26 +214,23 @@ function pickVisibleGroups(
   activeGroup: ActivityGroup | undefined,
   status: ProcessTraceStatus,
 ): ActivityGroup[] {
-  if (
-    activeGroup &&
-    (status === 'waiting' || status === 'failed' || status === 'interrupted')
-  ) {
-    return [activeGroup];
-  }
-
   const byUpdatedAt = [...groups].sort((a, b) => a.updatedAt - b.updatedAt);
+  const doneGroups = byUpdatedAt.filter((group) => group.state === 'done');
+
+  // A turn that no longer runs lists the steps that it finished: its card or
+  // its message tells where it stopped
+  if (status !== 'running') return doneGroups;
 
   if (activeGroup) {
-    const completedBeforeActive = byUpdatedAt.filter(
+    const completedBeforeActive = doneGroups.filter(
       (group) =>
         group.category !== activeGroup.category &&
-        group.state === 'done' &&
         group.updatedAt <= activeGroup.updatedAt,
     );
     return [...completedBeforeActive.slice(-2), activeGroup];
   }
 
-  return byUpdatedAt.filter((group) => group.state === 'done').slice(-3);
+  return doneGroups.slice(-3);
 }
 
 function findActiveGroup(
@@ -316,39 +313,41 @@ function labelForGroup(
   if (recovering) return 'Trying another approach';
 
   if (group.category === 'load-actions') {
-    if (failed) return 'Could not load project actions';
-    return running ? 'Loading project actions' : 'Loaded project actions';
+    if (failed) return "Couldn't open the project";
+    return running ? 'Opening the project' : 'Opened the project';
   }
 
   if (group.category === 'read-schema') {
-    if (failed) return 'Could not read project schema';
-    return running ? 'Reading project schema' : 'Read project schema';
+    if (failed) return "Couldn't read the models and fields";
+    return running
+      ? 'Reading the models and fields'
+      : 'Read the models and fields';
   }
 
   if (group.category === 'read-data') {
-    if (failed) return 'Could not read project data';
-    return running ? 'Reading project data' : 'Read project data';
+    if (failed) return "Couldn't read the content";
+    return running ? 'Reading the content' : 'Read the content';
   }
 
   if (group.category === 'apply-changes') {
-    if (failed) return 'Could not apply project changes';
-    return running ? 'Applying project changes' : 'Applied project changes';
+    if (failed) return "Couldn't change the content";
+    return running ? 'Changing the content' : 'Changed the content';
   }
 
   if (group.category === 'approval') {
-    if (group.state === 'waiting') return 'Waiting for approval';
-    if (group.state === 'stopped') return 'Action denied';
-    return 'Action approved';
+    if (group.state === 'waiting') return 'Waiting for your approval';
+    if (group.state === 'stopped') return 'Changes denied';
+    return 'Changes approved';
   }
 
   if (group.category === 'writing') {
-    return running ? 'Writing response' : 'Wrote response';
+    return running ? 'Writing the reply' : 'Wrote the reply';
   }
 
-  if (group.category === 'error') return 'Could not finish request';
+  if (group.category === 'error') return "Couldn't finish";
 
-  if (failed) return 'Could not check project data';
-  return running ? 'Checking project data' : 'Checked project data';
+  if (failed) return "Couldn't check the project";
+  return running ? 'Checking the project' : 'Checked the project';
 }
 
 function visualStateForGroup(
@@ -393,15 +392,16 @@ function statusTextForTrace(status: ProcessTraceStatus): string {
   return 'Stopped';
 }
 
+// The summaries of processTrace, in the words of the steps
 function labelForSummary(summary: string): string {
-  if (!summary.trim()) return 'Preparing response';
-  if (summary.includes('Approval needed')) return 'Waiting for approval';
-  if (summary.includes('Writing response')) return 'Writing response';
-  if (summary.includes('Preparing response')) return 'Preparing response';
-  if (summary.includes('Request failed')) return 'Could not finish request';
+  if (!summary.trim()) return 'Preparing the reply';
+  if (summary.includes('Approval needed')) return 'Waiting for your approval';
+  if (summary.includes('Writing response')) return 'Writing the reply';
+  if (summary.includes('Preparing response')) return 'Preparing the reply';
+  if (summary.includes('Request failed')) return "Couldn't finish";
   if (summary.includes('Completed')) return 'Completed';
-  if (summary.includes('Continuing work')) return 'Continuing work';
-  if (summary.includes('schema')) return 'Reading project schema';
-  if (summary.includes('DatoCMS action')) return 'Checking project data';
+  if (summary.includes('Continuing work')) return 'Continuing';
+  if (summary.includes('schema')) return 'Reading the models and fields';
+  if (summary.includes('DatoCMS action')) return 'Checking the project';
   return summary;
 }

@@ -4,8 +4,3 @@
   flex-wrap: wrap;
   gap: var(--spacing-s);
 }
-
-/* A message under the settings list of a group: the list has no margin */
-.afterList {
-  margin-top: var(--spacing-l);
-}

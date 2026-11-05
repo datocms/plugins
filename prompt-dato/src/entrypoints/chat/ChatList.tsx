@@ -1,11 +1,13 @@
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
+import { useDateSettings } from 'datocms-react-ui/DateSettings';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import Pane from 'datocms-react-ui/Pane';
 import RowList from 'datocms-react-ui/RowList';
 import SmartDate from 'datocms-react-ui/SmartDate';
 import Toolbar from 'datocms-react-ui/Toolbar';
+import { isToday } from 'datocms-react-ui/utils/formatDate';
 import {
   getSidebarThreadPreview,
   type SidebarChatThread,
@@ -44,6 +46,7 @@ export function ChatList({
   onDeleteAll,
 }: Props) {
   const { chats } = useFormatters();
+  const dateSettings = useDateSettings();
   const hasChats = threads.length > 0;
 
   return (
@@ -85,20 +88,27 @@ export function ChatList({
     >
       {hasChats ? (
         <RowList>
-          {threads.map((thread) => (
-            <RowList.Item
-              key={thread.id}
-              onClick={() => onOpenThread(thread.id)}
-            >
-              <EntityRow
-                layout="row"
-                title={thread.title}
-                aside={<SmartDate value={updatedAt(thread)} />}
+          {threads.map((thread) => {
+            // Today's chats show the time, the older ones only their date:
+            // the title keeps the room that tells the chats apart
+            const date = updatedAt(thread);
+            const show =
+              date && isToday(date, dateSettings) ? 'dateTime' : 'date';
+            return (
+              <RowList.Item
+                key={thread.id}
+                onClick={() => onOpenThread(thread.id)}
               >
-                {getSidebarThreadPreview(thread)}
-              </EntityRow>
-            </RowList.Item>
-          ))}
+                <EntityRow
+                  layout="row"
+                  title={thread.title}
+                  aside={<SmartDate value={date} show={show} />}
+                >
+                  {getSidebarThreadPreview(thread)}
+                </EntityRow>
+              </RowList.Item>
+            );
+          })}
         </RowList>
       ) : (
         <BlankSlate
@@ -106,7 +116,7 @@ export function ChatList({
           small
           icon={<ChatIcon />}
           title="No chats yet"
-          description="Chats about this record are saved in this browser."
+          description="Ask to rewrite or summarize this record. Chats are saved in this browser."
           actions={
             <Button
               tone="primary"

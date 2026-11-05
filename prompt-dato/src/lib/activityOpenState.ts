@@ -6,14 +6,16 @@ export type ActivityOpenMode = 'auto' | 'manual-open' | 'manual-closed';
 export const ACTIVITY_AUTO_OPEN_DELAY_MS = 2000;
 export const ACTIVITY_AUTO_COLLAPSE_DELAY_MS = 1500;
 
+/**
+ * The activity opens by itself only while its turn runs: a turn that waits,
+ * failed or stopped has its card or its message below, which tells it
+ */
 export function shouldDisplayActivityOpen(
   trace: ProcessTrace | undefined,
   mode: ActivityOpenMode | undefined,
 ): boolean {
   if (!trace) return false;
-  if (mode === 'manual-open' || mode === 'auto') return true;
-  if (mode === 'manual-closed') return false;
-  return trace.status === 'waiting' || trace.status === 'failed' || trace.status === 'interrupted';
+  return mode === 'manual-open' || mode === 'auto';
 }
 
 export function shouldAutoOpenActivity(
@@ -23,13 +25,4 @@ export function shouldAutoOpenActivity(
   if (!trace || trace.status !== 'running') return false;
   if (traceHasProjectActivity(trace)) return true;
   return now - trace.startedAt >= ACTIVITY_AUTO_OPEN_DELAY_MS;
-}
-
-export function shouldForceOpenActivity(trace: ProcessTrace | undefined): boolean {
-  return Boolean(
-    trace &&
-      (trace.status === 'waiting' ||
-        trace.status === 'failed' ||
-        trace.status === 'interrupted'),
-  );
 }

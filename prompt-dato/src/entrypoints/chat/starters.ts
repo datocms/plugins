@@ -6,32 +6,40 @@ export type Starter = {
   title: string;
   hint: string;
   icon: IconComponent;
+  /** It asks for changes: a provider that can only read can't do it */
+  changesRecord?: boolean;
 };
 
-/** The requests that an empty chat offers to start with */
+/**
+ * The requests that an empty chat offers to start with. They fit a record of
+ * any model, thus they name no field.
+ */
 export const STARTERS: readonly Starter[] = [
   {
-    prompt: 'Write a compelling excerpt from the body of this record.',
-    title: 'Generate an excerpt',
-    hint: 'From the body',
-    icon: STARTER_ICONS.edit,
-  },
-  {
-    prompt: 'Rewrite the title so it is more engaging and under 60 characters.',
-    title: 'Improve the title',
-    hint: 'For SEO and click-through',
-    icon: STARTER_ICONS.title,
-  },
-  {
-    prompt: 'Summarize the body into 5 bullet points.',
-    title: 'Summarize in bullets',
-    hint: 'Five key takeaways',
+    prompt: 'Summarize this record in a few short bullet points.',
+    title: 'Summarize this record',
+    hint: 'The main points in a few lines',
     icon: STARTER_ICONS.bullets,
   },
   {
-    prompt: 'Prepare this record for publish.',
-    title: 'Prepare for publishing',
-    hint: 'Fill the meta, slug and excerpt',
+    prompt:
+      'Check the spelling and grammar of every text field of this record.',
+    title: 'Check spelling and grammar',
+    hint: 'In every text field',
     icon: STARTER_ICONS.check,
+  },
+  {
+    prompt: 'Suggest clearer and shorter wording for the texts of this record.',
+    title: 'Improve the wording',
+    hint: 'Clearer and shorter',
+    icon: STARTER_ICONS.edit,
+  },
+  {
+    prompt:
+      'Fill the empty fields of this record from the rest of its content.',
+    title: 'Fill the empty fields',
+    hint: 'From the rest of the record',
+    icon: STARTER_ICONS.sparkle,
+    changesRecord: true,
   },
 ];
