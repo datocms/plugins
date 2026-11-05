@@ -27,11 +27,10 @@ export function FrontendsSection({ form }: Props) {
 
   return (
     <Page.Section>
-      <Page.SectionTitle>Frontends</Page.SectionTitle>
       <Page.SectionDescription>
         <p>
-          The websites that show your records. Each frontend can return preview
-          links, offer visual editing, or both.
+          Frontends are the websites that show your records. Each one can return
+          preview links, offer visual editing, or both.
         </p>
       </Page.SectionDescription>
       <CardList

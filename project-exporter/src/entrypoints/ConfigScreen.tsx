@@ -234,11 +234,11 @@ export default function ConfigScreen({ ctx }: Props) {
           ) : (
             <>
               <Page.Section>
-                <Page.SectionTitle>Project dump</Page.SectionTitle>
                 <Page.SectionDescription>
-                  One zip with every record, asset and asset folder of the{' '}
-                  <code>{ctx.environment}</code> environment, which the DatoCMS
-                  CLI can compare with any environment and restore from. See the{' '}
+                  A project dump is one zip with every record, asset and asset
+                  folder of the <code>{ctx.environment}</code> environment,
+                  which the DatoCMS CLI can compare with any environment and
+                  restore from. See the{' '}
                   <a href={CLI_README_URL} target="_blank" rel="noreferrer">
                     DatoCMS CLI readme
                   </a>

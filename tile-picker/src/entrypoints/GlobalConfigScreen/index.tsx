@@ -109,10 +109,9 @@ export default function GlobalConfigScreen({ ctx }: Props) {
         {/* One form spans the list, so Save follows it */}
         <form onSubmit={handleSubmit}>
           <Page.Section>
-            <Page.SectionTitle>Presets</Page.SectionTitle>
             <Page.SectionDescription>
-              Named sets of options that many fields can share. A field that
-              uses a preset shows its options before its own.
+              Presets are named sets of options that many fields can share. A
+              field that uses a preset shows its options before its own.
             </Page.SectionDescription>
             <CardList
               add={addPreset}

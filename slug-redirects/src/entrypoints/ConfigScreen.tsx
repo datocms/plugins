@@ -21,7 +21,6 @@ export default function ConfigScreen({ ctx }: Props) {
       <Page>
         <Page.Content>
           <Page.Section>
-            <Page.SectionTitle>Redirects</Page.SectionTitle>
             <Page.SectionDescription>
               Add “Slug Redirects” to a slug field as an add-on. Each change of
               that slug then adds a redirect rule, with the old slug as source

@@ -15,7 +15,6 @@ export default function ConfigScreen({ ctx }: Props) {
       <Page className={styles.page}>
         <Page.Content>
           <Page.Section>
-            <Page.SectionTitle>How to use</Page.SectionTitle>
             <Page.SectionDescription>
               Add “Tree-like slugs” to a slug field as an add-on, in a model
               with hierarchical sorting. When you save a record with a changed

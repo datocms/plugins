@@ -331,11 +331,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           <Page.Content>
             <form onSubmit={handleSave}>
               <Page.Section>
-                <Page.SectionTitle>Copy buttons</Page.SectionTitle>
                 <Page.SectionDescription>
-                  These fields get a button in the record editor. In the main
-                  locale it copies the value to every other locale. In any other
-                  locale it copies the value from the main locale.
+                  The fields you add here get a copy button in the record
+                  editor. In the main locale it copies the value to every other
+                  locale. In any other locale it copies the value from the main
+                  locale.
                 </Page.SectionDescription>
                 {!client && (
                   <Callout tone="danger" title="No access to your API token">
