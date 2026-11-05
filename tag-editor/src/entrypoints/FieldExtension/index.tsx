@@ -81,8 +81,14 @@ function readTags(value: unknown, fieldType: ValidFieldType): string[] | null {
   }
 }
 
-function noOptionsMessage() {
-  return null;
+// Every option is a selected tag, and a multiple select hides the selected
+// options, thus the menu never lists options: it says how to add a tag, or
+// that the typed tag is already there. A null message would show no menu at
+// all, so a click on the field would seem to do nothing
+function noOptionsMessage({ inputValue }: { inputValue: string }) {
+  return inputValue.trim()
+    ? 'This tag is already there'
+    : 'Type a tag, then press Enter';
 }
 
 // A prop of the creatable react-select, which SelectInput passes through
@@ -162,8 +168,6 @@ export default function FieldExtension({ ctx }: Props) {
         options={options}
         onChange={(nextTags) => write(nextTags ?? [])}
         creatable={{ onCreate: (text) => addTags([text]) }}
-        // Every option is a selected tag, and a multiple select hides the
-        // selected options: the menu opens only to create a tag
         noOptionsMessage={noOptionsMessage}
         placeholder="Add a tag"
         // A multiple select clears all its values unless told otherwise:
