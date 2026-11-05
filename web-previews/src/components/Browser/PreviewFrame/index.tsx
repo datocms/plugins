@@ -1,5 +1,6 @@
+import BlankSlate from 'datocms-react-ui/BlankSlate';
 import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
-import { type CSSProperties, type Ref, useRef } from 'react';
+import { type CSSProperties, type Ref, useRef, useState } from 'react';
 import { useMergeRefs } from 'react-merge-refs';
 import type { ViewportSize, ViewportSizing } from '../viewport';
 import styles from './styles.module.css';
@@ -15,7 +16,6 @@ type Props = {
   sizing: ViewportSizing;
   /** The allow attribute of the iframe, from the plugin settings */
   allow?: string;
-  onLoad?: () => void;
   iframeRef?: Ref<HTMLIFrameElement>;
 };
 
@@ -70,14 +70,14 @@ function focusOnHover(iframe: HTMLIFrameElement | null) {
 
 /**
  * The website in an iframe, filling the content of the pane. A fixed size
- * is centered and scaled down to fit the free space.
+ * is centered and scaled down to fit the free space. Until the page loads,
+ * the area says so.
  */
 export function PreviewFrame({
   src,
   reloadKey,
   sizing,
   allow,
-  onLoad,
   iframeRef,
 }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -86,6 +86,10 @@ export function PreviewFrame({
   const { width, height } = useElementLayout(stageRef);
   const mergedRef = useMergeRefs([focusOnHover, iframeRef]);
 
+  // Each key is a new iframe: it loads until its load event
+  const [loadedKey, setLoadedKey] = useState<string>();
+  const loading = loadedKey !== reloadKey;
+
   const fixedSize = sizing === 'responsive' ? undefined : sizing;
   const iframeStyle: CSSProperties | undefined = fixedSize && {
     width: `${fixedSize.width}px`,
@@ -93,11 +97,22 @@ export function PreviewFrame({
     transform: `translate(-50%, -50%) scale(${fitScale(fixedSize, { width, height })})`,
   };
 
+  const frameClassName = [
+    styles.frame,
+    fixedSize && styles.fixed,
+    loading && styles.loading,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div
-      className={fixedSize ? `${styles.frame} ${styles.fixed}` : styles.frame}
-    >
+    <div className={frameClassName}>
       <div ref={stageRef} className={styles.stage}>
+        {/* Under the iframe, which has no background while it loads: the
+            website covers it as soon as it paints */}
+        {loading && (
+          <BlankSlate placement="area" small loading title="Loading the page" />
+        )}
         <iframe
           key={reloadKey}
           ref={mergedRef}
@@ -106,7 +121,7 @@ export function PreviewFrame({
           title="Website preview"
           allow={allow}
           style={iframeStyle}
-          onLoad={onLoad}
+          onLoad={() => setLoadedKey(reloadKey)}
         />
       </div>
     </div>

@@ -1,5 +1,7 @@
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
+import Button from 'datocms-react-ui/Button';
+import { useCtx } from 'datocms-react-ui/Canvas';
 import type { ReactNode } from 'react';
 import { useViewport } from '../../components/Browser/viewport';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
@@ -7,12 +9,13 @@ import { ErrorIcon, GlobeIcon } from '../../icons';
 import type { Frontend } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
 import {
-  errorMessage,
-  failedLinksNextStep,
+  FAILED_LINKS_NEXT_STEP,
+  failureLine,
   type StatusByFrontend,
   useLogFailures,
 } from '../../utils/failures';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
+import { pluginSettingsUrl } from '../../utils/urls';
 import styles from './styles.module.css';
 import { usePreviewLinkSelection } from './usePreviewLinkSelection';
 import { WebsitePreview } from './WebsitePreview';
@@ -53,6 +56,8 @@ function NoPreviewLinks({
   statusByFrontend: StatusByFrontend;
   saved: boolean;
 }) {
+  const ctx = useCtx();
+  const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
   const failures = failuresOf(frontends, statusByFrontend);
 
   if (failures.length > 0) {
@@ -67,11 +72,35 @@ function NoPreviewLinks({
         code={
           <div>
             {failures.map(({ frontend, error }) => (
-              <div key={frontend}>{`${frontend}: ${errorMessage(error)}`}</div>
+              <div key={frontend}>
+                {failureLine({
+                  frontend,
+                  error,
+                  named: frontends.length > 1,
+                })}
+              </div>
             ))}
           </div>
         }
-        description={failedLinksNextStep(failures.length)}
+        description={FAILED_LINKS_NEXT_STEP}
+        // The roles that can change the settings get the way to them
+        actions={
+          canEditSchema ? (
+            <Button label="Open plugin settings" to={pluginSettingsUrl(ctx)} />
+          ) : undefined
+        }
+      />
+    );
+  }
+
+  // The frontends get the saved record: the title says what to do
+  if (!saved) {
+    return (
+      <BlankSlate
+        placement="area"
+        small
+        icon={<GlobeIcon />}
+        title="Save the record to preview it"
       />
     );
   }
@@ -82,13 +111,6 @@ function NoPreviewLinks({
       small
       icon={<GlobeIcon />}
       title="No preview links for this record"
-      description={
-        !saved
-          ? 'Save the record to load its preview links.'
-          : frontends.length === 1
-            ? 'The frontend returned no pages for this record.'
-            : 'The frontends returned no pages for this record.'
-      }
     />
   );
 }

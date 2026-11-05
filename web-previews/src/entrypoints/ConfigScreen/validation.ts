@@ -69,13 +69,13 @@ function validateCustomHeaders(headers: CustomHeader[]): HeaderErrors[] {
     const headerErrors: HeaderErrors = {};
 
     if (!header.name) {
-      headerErrors.key = { id: 'webPreviews.errors.enterHeaderName' };
+      headerErrors.key = { id: 'webPreviews.errors.required' };
     } else if (headers.filter((h) => h.name === header.name).length > 1) {
       headerErrors.key = { id: 'webPreviews.errors.repeatedHeaderName' };
     }
 
     if (!header.value) {
-      headerErrors.value = { id: 'webPreviews.errors.enterValue' };
+      headerErrors.value = { id: 'webPreviews.errors.required' };
     }
 
     return headerErrors;
@@ -130,19 +130,19 @@ export function validateViewport(viewport: RawViewport): ViewportErrors {
   const errors: ViewportErrors = {};
 
   if (!viewport.name) {
-    errors.name = { id: 'webPreviews.errors.enterName' };
+    errors.name = { id: 'webPreviews.errors.required' };
   }
 
   if (!viewport.width) {
-    errors.width = { id: 'webPreviews.errors.enterWidth' };
+    errors.width = { id: 'webPreviews.errors.required' };
   }
 
   if (!viewport.height) {
-    errors.height = { id: 'webPreviews.errors.enterHeight' };
+    errors.height = { id: 'webPreviews.errors.required' };
   }
 
   if (!viewport.icon) {
-    errors.icon = { id: 'webPreviews.errors.chooseIcon' };
+    errors.icon = { id: 'webPreviews.errors.required' };
   } else if (!isValidIconName(viewport.icon)) {
     errors.icon = { id: 'webPreviews.errors.chooseListedIcon' };
   }
@@ -165,7 +165,7 @@ export function validateSettings(
     // The old input was a number input: only digits make a width in pixels
     defaultSidebarWidth:
       !draft.previewLinksSidebarDisabled && width && !/^\d+$/.test(width)
-        ? 'Enter a width in pixels'
+        ? 'Enter only the number, like 900'
         : undefined,
     viewports: (draft.defaultViewports ?? []).map(validateViewport),
   };

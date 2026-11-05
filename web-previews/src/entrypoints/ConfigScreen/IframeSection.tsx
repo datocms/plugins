@@ -2,8 +2,7 @@ import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import StringInput from 'datocms-react-ui/StringInput';
 import { useState } from 'react';
-import { DocLinks } from './DocLinks';
-import { IFRAME_ALLOW_DOCS_URL, IFRAME_DOC_LINKS } from './links';
+import { CSP_DOCS_URL, DOCS } from './links';
 import type { SettingsForm } from './useSettingsForm';
 
 type Props = {
@@ -22,16 +21,19 @@ export function IframeSection({ form }: Props) {
       {open && (
         <>
           <Page.SectionDescription>
-            <p>What the website can do inside the preview.</p>
-            <DocLinks links={IFRAME_DOC_LINKS} />
+            <p>
+              What the website can do inside the preview. If the preview stays
+              blank, the website may need to allow DatoCMS in its{' '}
+              <a href={CSP_DOCS_URL} target="_blank" rel="noreferrer">
+                Content Security Policy
+              </a>
+              .
+            </p>
           </Page.SectionDescription>
           <FieldWrapper
             label="Allow attribute"
-            hint="The allow attribute of the preview iframe, for example to use the camera or the microphone."
-            docs={{
-              label: 'The allow attribute on MDN',
-              to: IFRAME_ALLOW_DOCS_URL,
-            }}
+            hint="Permissions separated by semicolons."
+            docs={DOCS.allowAttribute}
           >
             <StringInput
               code

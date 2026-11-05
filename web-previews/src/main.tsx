@@ -7,6 +7,7 @@ import ConfigScreen from './entrypoints/ConfigScreen';
 import FormPreviewLinks from './entrypoints/FormPreviewLinks';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
+import NotConnectedPanel from './entrypoints/NotConnectedPanel';
 import SidebarFrame from './entrypoints/SidebarFrame';
 import SidebarPanel from './entrypoints/SidebarPanel';
 import WrongEnvironmentPanel from './entrypoints/WrongEnvironmentPanel';
@@ -149,10 +150,16 @@ connect({
             <WrongEnvironmentPanel ctx={ctx} />
           </Canvas>,
         );
+      case 'WEBSITE_NOT_CONNECTED':
+        return render(
+          <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
+            <NotConnectedPanel />
+          </Canvas>,
+        );
       default:
         return render(
           <Canvas ctx={ctx} texts={TEXTS} noAutoResizer>
-            <InspectorLoading />
+            <InspectorLoading ctx={ctx} />
           </Canvas>,
         );
     }

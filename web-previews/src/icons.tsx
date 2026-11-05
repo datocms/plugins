@@ -140,13 +140,52 @@ export function allIconNames(): string[] {
   return iconNames;
 }
 
-/** The icon names that contain the query, in lower case */
+/** The icons of devices, which the icon select lists before a search */
+const DEVICE_ICON_NAMES = [
+  'mobile-screen-button',
+  'mobile',
+  'tablet-screen-button',
+  'tablet',
+  'laptop',
+  'desktop',
+  'display',
+  'tv',
+];
+
+/**
+ * The icons that the select lists before a search: the current one (an
+ * alias stays as it is), then the devices that don't have the same glyph
+ */
+export function suggestedIconNames(current: string): string[] {
+  const currentIcon = iconByName(current);
+
+  return [
+    ...(currentIcon ? [current] : []),
+    ...DEVICE_ICON_NAMES.filter((name) => iconByName(name) !== currentIcon),
+  ];
+}
+
+/**
+ * The icon names that contain the query, in lower case: first the names
+ * that start with it, then the names with a word that starts with it, then
+ * the others, each group in alphabetical order
+ */
 export function searchIconNames(query: string): string[] {
   if (!query.trim()) {
     return allIconNames();
   }
 
   const lowerCaseQuery = query.toLowerCase();
+  const rank = (name: string) => {
+    if (name.startsWith(lowerCaseQuery)) {
+      return 0;
+    }
 
-  return allIconNames().filter((name) => name.includes(lowerCaseQuery));
+    return name.includes(`-${lowerCaseQuery}`) ? 1 : 2;
+  };
+
+  // The sort is stable: each group keeps the alphabetical order
+  return allIconNames()
+    .filter((name) => name.includes(lowerCaseQuery))
+    .sort((a, b) => rank(a) - rank(b));
 }

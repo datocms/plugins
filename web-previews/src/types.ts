@@ -124,8 +124,11 @@ export function normalizeParameters({
       : {
           startOpen: Boolean(startOpen),
         },
-    // Opt-in: installations predating this setting keep their record form unchanged
-    previewLinksFormOutlet: Boolean(previewLinksFormOutlet),
+    // On unless explicitly turned off, also for installations predating it
+    previewLinksFormOutlet:
+      typeof previewLinksFormOutlet === 'boolean'
+        ? previewLinksFormOutlet
+        : true,
     // If not explicitly disabled (backwards compatible), create the sidebar config
     previewLinksSidebar: previewLinksSidebarDisabled
       ? undefined

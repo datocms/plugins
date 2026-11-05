@@ -87,10 +87,8 @@ export function WebsitePreview({
   const reload = useCallback(() => setReloadCounter((old) => old + 1), []);
   useReloadOnRecordUpdate(selectedPreviewLink, reload);
 
-  // A new URL or a reload is a new iframe: it loads until its load event
+  // A new URL or a reload is a new iframe
   const reloadKey = `${selectedPreviewLink.url}-${reloadCounter}`;
-  const [loadedKey, setLoadedKey] = useState<string>();
-  const iframeLoading = loadedKey !== reloadKey;
 
   const visualTabUrl =
     showVisualTab && visualEditing
@@ -113,7 +111,6 @@ export function WebsitePreview({
                 onChange={onSelectPreviewLink}
               />
             </Toolbar.Fill>
-            <Toolbar.Spinner show={iframeLoading} />
             {/* Pages with real-time updates refresh themselves, so they need
                 no button */}
             {selectedPreviewLink.realtimeUpdates !== true && (
@@ -166,7 +163,6 @@ export function WebsitePreview({
         sizing={viewport.sizing}
         allow={iframeAllowAttribute}
         iframeRef={connectContentLink ? iframeRef : undefined}
-        onLoad={() => setLoadedKey(reloadKey)}
       />
     </Pane>
   );

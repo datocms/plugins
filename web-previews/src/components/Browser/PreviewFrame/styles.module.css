@@ -56,6 +56,12 @@
   box-shadow: var(--shadow--resting);
 }
 
+/* While the page loads, the iframe lets the loading message under it show,
+   until the website paints its own background */
+.loading .iframe {
+  background-color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .iframe {
     transition: none;

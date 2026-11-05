@@ -28,8 +28,9 @@ export default function ConfigScreen({ ctx }: PropTypes) {
           <ViewportsSection form={form} />
           <IframeSection form={form} />
           {form.saveFailed && (
-            <Callout tone="danger" title="Some settings aren't valid">
-              Fix the fields that show an error, then save.
+            <Callout tone="danger">
+              Some settings aren't valid: fix the fields that show an error,
+              then save.
             </Callout>
           )}
           <Button

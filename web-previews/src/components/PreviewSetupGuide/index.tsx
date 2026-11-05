@@ -23,8 +23,8 @@ type Props = {
 
 /**
  * What the record sidebar panel and the preview sidebar show while no
- * frontend returns preview links: where to read how to set one up and, for
- * the roles that can change it, the way to the plugin settings.
+ * frontend returns preview links. The roles that can change the settings get
+ * the way to them and the guide; the others, whom to ask.
  */
 export function PreviewSetupGuide({ placement, small }: Props) {
   const ctx = useCtx();
@@ -36,8 +36,12 @@ export function PreviewSetupGuide({ placement, small }: Props) {
       small={small}
       icon={<GlobeIcon />}
       title="No website to preview"
-      description="Web Previews is installed, but no frontend returns preview links yet. A developer can add one in the plugin settings."
-      docs={DOCS}
+      description={
+        canEditSchema
+          ? 'A developer can connect one in the plugin settings.'
+          : 'Ask a developer or an administrator to connect one.'
+      }
+      docs={canEditSchema ? DOCS : undefined}
       actions={
         canEditSchema ? (
           <Button

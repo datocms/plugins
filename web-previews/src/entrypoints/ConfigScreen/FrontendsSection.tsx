@@ -3,17 +3,15 @@ import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
-import { DocLinks } from './DocLinks';
 import { FrontendFields } from './FrontendFields';
-import { FRONTEND_DOC_LINKS } from './links';
 import type { SettingsForm } from './useSettingsForm';
 import { type FeatureSwitches, hasErrors } from './validation';
 
 /** What the frontend offers, under its name: the features turned on */
 function featureSummary(switches: FeatureSwitches) {
   const features = [
-    switches.previewLinks ? 'Preview links' : undefined,
-    switches.visualEditing ? 'Visual editing' : undefined,
+    switches.previewLinks ? 'Preview Links' : undefined,
+    switches.visualEditing ? 'Visual Editing' : undefined,
   ].filter(Boolean);
 
   return features.length > 0 ? features.join(' · ') : 'Nothing turned on';
@@ -35,7 +33,6 @@ export function FrontendsSection({ form }: Props) {
           The websites that show your records. Each frontend can return preview
           links, offer visual editing, or both.
         </p>
-        <DocLinks links={FRONTEND_DOC_LINKS} />
       </Page.SectionDescription>
       <CardList
         add={add}
@@ -63,10 +60,12 @@ export function FrontendsSection({ form }: Props) {
                     {featureSummary(switches)}
                   </EntityRow>
                 ),
-                // After a failed save, the row tells which frontend holds an
-                // error, also while its card is closed
+                // After a failed save, a closed card tells that it holds an
+                // error: an open one shows the error itself
                 trailing:
-                  form.submitAttempted && hasErrors(errors) ? (
+                  form.submitAttempted &&
+                  hasErrors(errors) &&
+                  !form.openFrontends.has(key) ? (
                     <Pill tone="danger">Has errors</Pill>
                   ) : undefined,
                 actions: (

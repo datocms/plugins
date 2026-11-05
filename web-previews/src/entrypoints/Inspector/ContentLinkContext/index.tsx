@@ -124,6 +124,8 @@ export function ContentLinkContextProvider({
     InspectorPanelSyncState | undefined
   >(undefined);
   const lastSyncedInspectorPanelKeyRef = useRef<string | undefined>(undefined);
+  // The panel says once that the website didn't connect
+  const failurePanelShownRef = useRef(false);
   // The last URL that the Visual tab asked the host for, which the panel sync
   // doesn't push again: after a frontend change, the first page that the new
   // website reports is that URL already
@@ -217,7 +219,7 @@ export function ContentLinkContextProvider({
         });
       } else {
         ctx.setInspectorItemListData({
-          title: 'Records in this page',
+          title: 'Records on this page',
           itemIds: currentEnvItems,
         });
         setInspectorPanelSyncState({ type: 'itemList', path: safePath });
@@ -327,6 +329,28 @@ export function ContentLinkContextProvider({
       ctx.navigateTo(url);
     }
   }, [frontend.name, inspectorPanelSyncState, ctx]);
+
+  // A website that doesn't connect reports no records: the panel says why,
+  // in place of the records of the last page. The next page that connects
+  // shows its records again.
+  useEffect(() => {
+    if (connection.type !== 'failed') {
+      failurePanelShownRef.current = false;
+      return;
+    }
+
+    if (failurePanelShownRef.current) {
+      return;
+    }
+
+    failurePanelShownRef.current = true;
+    setInspectorPanelSyncState(undefined);
+    lastSyncedInspectorPanelKeyRef.current = undefined;
+    ctx.setInspectorMode(
+      { type: 'customPanel', panelId: 'WEBSITE_NOT_CONNECTED' },
+      { ignoreIfUnsavedChanges: true },
+    );
+  }, [connection.type, ctx]);
 
   useEffect(() => {
     const clickToEditEnabled = contentLinkState?.clickToEditEnabled ?? false;

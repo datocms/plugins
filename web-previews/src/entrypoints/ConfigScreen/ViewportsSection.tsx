@@ -5,17 +5,19 @@ import type { RawViewport } from '../../types';
 import { IconCell } from './IconPickerInput/IconCell';
 import type { SettingsForm } from './useSettingsForm';
 
+// The icon names are long ("mobile-screen-button"), the sizes have four
+// digits at most
 const COLUMNS: TableListColumn<RawViewport>[] = [
   { id: 'name', field: 'name', label: 'Name', grow: 3 },
   {
     id: 'icon',
     field: 'icon',
     label: 'Icon',
-    grow: 3,
+    grow: 4,
     render: (cell) => <IconCell cell={cell} />,
   },
-  { id: 'width', field: 'width', label: 'Width', grow: 2 },
-  { id: 'height', field: 'height', label: 'Height', grow: 2 },
+  { id: 'width', field: 'width', label: 'Width', grow: 1.5 },
+  { id: 'height', field: 'height', label: 'Height', grow: 1.5 },
 ];
 
 const newViewport = (): RawViewport => ({
@@ -63,7 +65,7 @@ export function ViewportsSection({ form }: Props) {
             touched={form.submitAttempted || form.touchedViewports}
             onCellBlur={form.touchViewportCell}
             columns={COLUMNS}
-            emptyMessage="No viewports: editors can still fit the preview or type a size."
+            emptyMessage="No viewports"
             add={{ label: 'Add viewport', newItem: newViewport }}
           />
         </>

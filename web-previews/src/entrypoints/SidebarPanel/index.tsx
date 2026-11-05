@@ -2,7 +2,7 @@ import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
-import { useCtx } from 'datocms-react-ui/Canvas';
+import { type BaseCtx, useCtx } from 'datocms-react-ui/Canvas';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
 import EntityRow from 'datocms-react-ui/EntityRow';
@@ -10,13 +10,7 @@ import Link from 'datocms-react-ui/Link';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import Tooltip from 'datocms-react-ui/Tooltip';
-import {
-  type CSSProperties,
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useRef,
-} from 'react';
+import { type RefObject, useCallback, useRef } from 'react';
 import { PreviewSetupGuide } from '../../components/PreviewSetupGuide';
 import {
   ActionToggleIcon,
@@ -32,9 +26,9 @@ import {
 } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import {
-  errorMessage,
-  failedLinksNextStep,
-  failedLinksNextStepLead,
+  FAILED_LINKS_NEXT_STEP,
+  FAILED_LINKS_NEXT_STEP_LEAD,
+  failureLine,
   PLUGIN_SETTINGS_WORDS,
   type StatusByFrontend,
   useLogFailures,
@@ -53,38 +47,11 @@ const NO_LINKS = 'No preview links for this record';
 
 // A record that isn't saved yet asks no frontend: the Website preview
 // sidebar says the same
-const NOT_SAVED = 'Save the record to load its preview links.';
+const NOT_SAVED = 'Save the record to preview it';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
 };
-
-/**
- * The rows of the panel. The frame already has an inset (its body padding),
- * so the box of the list goes out into it: the text of the rows stays in
- * line with the text of the panel (RowList, “The inset row”). In a
- * Page.Group, the inset is the padding of the group instead.
- */
-function InsetRowList({
-  children,
-  inGroup,
-}: {
-  children: ReactNode;
-  inGroup?: boolean;
-}) {
-  const { bodyPadding } = useCtx();
-  const [, right = 0, , left = 0] = bodyPadding;
-  const frameInsets = {
-    '--frame-inset-left': `${left}px`,
-    '--frame-inset-right': `${right}px`,
-  } as CSSProperties;
-
-  return (
-    <div className={styles.rows} style={inGroup ? undefined : frameInsets}>
-      <RowList>{children}</RowList>
-    </div>
-  );
-}
 
 /**
  * The link the path opens: the draft-mode one when we can tell (by the
@@ -159,12 +126,18 @@ function PreviewPageRow({
   page,
   links,
   showFrontend,
+  menuColumn,
 }: {
   frontend: Frontend;
   page: string;
   links: PreviewLink[];
   /** With several frontends, the row names the one that returned it */
   showFrontend: boolean;
+  /**
+   * A row of the list has the menu of the other links: each row keeps its
+   * column, thus the eyes of all the rows line up
+   */
+  menuColumn: boolean;
 }) {
   const ctx = useCtx();
   // The actions are as tall as the ⋮, so the menu opens under their bottom
@@ -193,13 +166,18 @@ function PreviewPageRow({
         layout="row"
         kicker={showFrontend ? frontend.name : undefined}
         title={
-          <Tooltip label={`Open ${primaryLink.label}: ${page}`}>
+          <Tooltip long label={`Open ${primaryLink.label}: ${page}`}>
             <a href={primaryLink.url} target="_blank" rel="noreferrer">
               {displayPath(primaryLink.url)}
             </a>
           </Tooltip>
         }
-        afterTitle={<OpenInNewTabIcon />}
+        // The icon keeps its size when the path ends with an ellipsis
+        afterTitle={
+          <span className={styles.newTabIcon}>
+            <OpenInNewTabIcon />
+          </span>
+        }
         trailing={
           <span ref={actions} className={styles.actions}>
             {visualEditingPath && (
@@ -215,7 +193,7 @@ function PreviewPageRow({
                 })}
               />
             )}
-            {otherLinks.length > 0 && (
+            {otherLinks.length > 0 ? (
               <Dropdown
                 triggerComponent={IconTrigger}
                 icon={ActionToggleIcon}
@@ -232,11 +210,13 @@ function PreviewPageRow({
                         otherLinks.length > 1 ? <OpenInNewTabIcon /> : undefined
                       }
                     >
-                      {`Open ${link.label} version`}
+                      {`Open ${link.label}`}
                     </Dropdown.Option>
                   ))}
                 </Dropdown.Menu>
               </Dropdown>
+            ) : (
+              menuColumn && <span className={styles.menuSlot} />
             )}
           </span>
         }
@@ -245,32 +225,42 @@ function PreviewPageRow({
   );
 }
 
-/** The rows of the pages of each frontend, in one list */
+/**
+ * The rows of the pages of each frontend, in one list. The panel frame and
+ * the group of the form already have an inset: the compact list keeps the
+ * text of the rows on its edge.
+ */
 export function PreviewPageRows({
   linksByFrontend,
   showFrontend,
-  inGroup,
 }: {
   linksByFrontend: { frontend: Frontend; previewLinks: PreviewLink[] }[];
   /** Each row names its frontend (with several frontends) */
   showFrontend: boolean;
-  /** The list is in a Page.Group, not straight in the frame */
-  inGroup?: boolean;
 }) {
+  const pages = linksByFrontend.flatMap(({ frontend, previewLinks }) =>
+    linksByPage(previewLinks).map(([page, links]) => ({
+      frontend,
+      page,
+      links,
+    })),
+  );
+  // A page with more than one link has the menu of the others
+  const menuColumn = pages.some(({ links }) => links.length > 1);
+
   return (
-    <InsetRowList inGroup={inGroup}>
-      {linksByFrontend.flatMap(({ frontend, previewLinks }) =>
-        linksByPage(previewLinks).map(([page, links]) => (
-          <PreviewPageRow
-            key={`${frontend.name}\n${page}`}
-            frontend={frontend}
-            page={page}
-            links={links}
-            showFrontend={showFrontend}
-          />
-        )),
-      )}
-    </InsetRowList>
+    <RowList density="compact">
+      {pages.map(({ frontend, page, links }) => (
+        <PreviewPageRow
+          key={`${frontend.name}\n${page}`}
+          frontend={frontend}
+          page={page}
+          links={links}
+          showFrontend={showFrontend}
+          menuColumn={menuColumn}
+        />
+      ))}
+    </RowList>
   );
 }
 
@@ -296,15 +286,25 @@ function FailedFrontendNextStep() {
   const ctx = useCtx();
 
   if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
-    return <>{failedLinksNextStep(1)}</>;
+    return <>{FAILED_LINKS_NEXT_STEP}</>;
   }
 
   return (
     <>
-      {failedLinksNextStepLead(1)}{' '}
+      {FAILED_LINKS_NEXT_STEP_LEAD}{' '}
       <Link to={pluginSettingsUrl(ctx)}>{PLUGIN_SETTINGS_WORDS}</Link>.
     </>
   );
+}
+
+/**
+ * The action of an error state: the roles that can change the settings get
+ * the way to them, the others none
+ */
+function settingsAction(ctx: BaseCtx) {
+  return ctx.currentRole.meta.final_permissions.can_edit_schema ? (
+    <Button label="Open plugin settings" to={pluginSettingsUrl(ctx)} />
+  ) : undefined;
 }
 
 /** The links of the only frontend, or why there are none */
@@ -315,6 +315,8 @@ function FrontendResult({
   status: FrontendStatus;
   frontend: Frontend;
 }) {
+  const ctx = useCtx();
+
   if ('error' in status) {
     return (
       <BlankSlate
@@ -323,8 +325,13 @@ function FrontendResult({
         error
         icon={<ErrorIcon />}
         title="The preview links didn't load"
-        code={errorMessage(status.error)}
-        description={failedLinksNextStep(1)}
+        code={failureLine({
+          frontend: frontend.name,
+          error: status.error,
+          named: false,
+        })}
+        description={FAILED_LINKS_NEXT_STEP}
+        actions={settingsAction(ctx)}
       />
     );
   }
@@ -343,7 +350,7 @@ function FrontendResult({
 
 /**
  * The links of several frontends in one list, each row naming its frontend.
- * A frontend that failed gets a message above the list; a frontend with no
+ * A frontend that failed gets a message under the list; a frontend with no
  * links (or no result yet) is left out. With no link at all, the failures are
  * the whole content.
  */
@@ -354,6 +361,7 @@ function SeveralFrontendsResult({
   frontends: Frontend[];
   statusByFrontend: StatusByFrontend;
 }) {
+  const ctx = useCtx();
   const failures = frontends.flatMap((frontend) => {
     const status = statusByFrontend[frontend.name];
     return status && 'error' in status
@@ -380,28 +388,33 @@ function SeveralFrontendsResult({
           <div>
             {failures.map(({ frontend, error }) => (
               <div key={frontend.name}>
-                {`${frontend.name}: ${errorMessage(error)}`}
+                {failureLine({ frontend: frontend.name, error, named: true })}
               </div>
             ))}
           </div>
         }
-        description={failedLinksNextStep(failures.length)}
+        description={FAILED_LINKS_NEXT_STEP}
+        actions={settingsAction(ctx)}
       />
     );
   }
 
+  // The links that work come first, where the editor expects them
   return (
     <>
-      {failures.map(({ frontend }) => (
+      <PreviewPageRows linksByFrontend={linksByFrontend} showFrontend />
+      {failures.map(({ frontend }, index) => (
         <Callout
           key={frontend.name}
+          // The compact list has no margin: the first callout keeps its
+          // distance from the rows
+          className={index === 0 ? styles.afterRows : undefined}
           tone="danger"
           title={`“${frontend.name}” didn't return its preview links`}
         >
           <FailedFrontendNextStep />
         </Callout>
       ))}
-      <PreviewPageRows linksByFrontend={linksByFrontend} showFrontend />
     </>
   );
 }

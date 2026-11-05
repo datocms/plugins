@@ -1,4 +1,3 @@
-import { useCtx } from 'datocms-react-ui/Canvas';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import type { TableListCell } from 'datocms-react-ui/TableList';
 import { useMemo, useState } from 'react';
@@ -6,8 +5,8 @@ import {
   ICON_RESULTS_LIMIT,
   iconByName,
   searchIconNames,
+  suggestedIconNames,
 } from '../../../icons';
-import { iconCountText } from '../../../texts';
 import type { RawViewport } from '../../../types';
 import s from './styles.module.css';
 
@@ -51,29 +50,33 @@ export function IconCell({ cell }: Props) {
   const { className: _className, ...inputProps } = cell.inputProps;
   const name = typeof value === 'string' ? value : '';
   const [query, setQuery] = useState('');
-  const { locale } = useCtx().ui;
 
-  // The solid set has about 2,000 names: the menu shows only the first
-  // matches, and typing narrows them. The title of the one group tells how
-  // many match, thus the first names don't look like the whole set.
+  // The solid set has about 2,000 names. Before a search, the menu lists the
+  // current icon and the devices, under the title that tells to type. A
+  // search lists its first matches: the title then tells to type more.
   const options = useMemo(() => {
+    if (!query.trim()) {
+      return [
+        {
+          label: 'Type to search all icons',
+          options: suggestedIconNames(name).map(toOption),
+        },
+      ];
+    }
+
     const matches = searchIconNames(query);
 
-    if (matches.length === 0) {
-      return [];
+    if (matches.length <= ICON_RESULTS_LIMIT) {
+      return matches.map(toOption);
     }
 
     return [
       {
-        label: iconCountText({
-          count: matches.length,
-          limit: ICON_RESULTS_LIMIT,
-          locale,
-        }),
+        label: 'Type more to narrow the list',
         options: matches.slice(0, ICON_RESULTS_LIMIT).map(toOption),
       },
     ];
-  }, [query, locale]);
+  }, [query, name]);
 
   return (
     <SelectInput

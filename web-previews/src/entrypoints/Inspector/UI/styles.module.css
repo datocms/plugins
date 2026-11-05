@@ -29,3 +29,16 @@
 .cell:empty {
   display: none;
 }
+
+/* A group of the bar after a hairline: the size of the preview, then edit
+   mode. A group with no control (the viewport menu in a narrow frame) hides
+   with its hairline */
+.part {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-m);
+}
+
+.part:has(> .cell:empty) {
+  display: none;
+}

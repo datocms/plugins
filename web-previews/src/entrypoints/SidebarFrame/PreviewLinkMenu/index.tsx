@@ -4,7 +4,11 @@ import Tooltip from 'datocms-react-ui/Tooltip';
 import type { Frontend, PreviewLinkWithFrontend } from '../../../types';
 import type { FrontendStatus } from '../../../utils/common';
 import { displayPath } from '../../../utils/urls';
-import { PreviewLinkText, PreviewLinkTrigger } from './PreviewLinkTrigger';
+import {
+  PreviewLinkText,
+  PreviewLinkTrigger,
+  usePreviewLinkTooltip,
+} from './PreviewLinkTrigger';
 import styles from './styles.module.css';
 
 type Props = {
@@ -18,6 +22,18 @@ type Props = {
 function hasNoLinks(status: FrontendStatus | undefined) {
   return (
     !status || ('previewLinks' in status && status.previewLinks.length === 0)
+  );
+}
+
+/**
+ * Whether the links of a frontend open different pages: only then does each
+ * option show its path under its label
+ */
+function hasSeveralPaths(status: FrontendStatus | undefined) {
+  return (
+    !!status &&
+    'previewLinks' in status &&
+    new Set(status.previewLinks.map((link) => displayPath(link.url))).size > 1
   );
 }
 
@@ -37,6 +53,8 @@ function FrontendOptions({
     return <Dropdown.Text>The preview links didn't load.</Dropdown.Text>;
   }
 
+  const showPath = hasSeveralPaths(status);
+
   return (
     <>
       {status?.previewLinks.map((previewLink) => (
@@ -51,7 +69,7 @@ function FrontendOptions({
           }
         >
           <EntityRow layout="row" title={previewLink.label}>
-            {displayPath(previewLink.url)}
+            {showPath ? displayPath(previewLink.url) : undefined}
           </EntityRow>
         </Dropdown.Option>
       ))}
@@ -70,6 +88,7 @@ export function PreviewLinkMenu({
   onChange,
 }: Props) {
   const showFrontendName = frontends.length > 1;
+  const [textRef, tooltip] = usePreviewLinkTooltip(selectedPreviewLink);
 
   // A single link (e.g. a model without draft/published): nothing to choose
   const statuses = Object.values(statusByFrontend);
@@ -84,8 +103,8 @@ export function PreviewLinkMenu({
   if (linkCount === 1 && !hasErrors) {
     // The same text in the same place, as plain text: no menu, no chevron
     return (
-      <Tooltip label={selectedPreviewLink.url} placement="bottom-start">
-        <span className={styles.text}>
+      <Tooltip long label={tooltip} placement="bottom-start">
+        <span ref={textRef} className={styles.text}>
           <PreviewLinkText
             previewLink={selectedPreviewLink}
             showFrontendName={showFrontendName}
@@ -104,7 +123,10 @@ export function PreviewLinkMenu({
       previewLink={selectedPreviewLink}
       showFrontendName={showFrontendName}
     >
-      <Dropdown.Menu optionPaddingY={6}>
+      {/* Options on two lines (label and path) take more room */}
+      <Dropdown.Menu
+        optionPaddingY={statuses.some(hasSeveralPaths) ? 6 : undefined}
+      >
         {frontends.length === 1 ? (
           <FrontendOptions
             frontend={frontends[0]}

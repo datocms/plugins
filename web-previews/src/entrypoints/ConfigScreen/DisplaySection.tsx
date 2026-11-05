@@ -2,9 +2,9 @@ import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InputGroup from 'datocms-react-ui/InputGroup';
 import { Page } from 'datocms-react-ui/Page';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
+import SwitchList from 'datocms-react-ui/SwitchList';
 import { useState } from 'react';
-import { DocLinks } from './DocLinks';
-import { DISPLAY_DOC_LINKS } from './links';
+import s from './styles.module.css';
 import type { SettingsForm } from './useSettingsForm';
 
 type Props = {
@@ -41,16 +41,13 @@ export function DisplaySection({ form }: Props) {
         <>
           <Page.SectionDescription>
             <p>Where editors find Web Previews.</p>
-            <DocLinks links={DISPLAY_DOC_LINKS} />
           </Page.SectionDescription>
-          <FieldWrapper>
+          <SwitchList className={s.switches}>
             <SwitchInput
               label="Show the Visual Editing tab in the main navigation"
               value={draft.showVisualTab ?? true}
               onChange={(on) => update({ showVisualTab: Boolean(on) })}
             />
-          </FieldWrapper>
-          <FieldWrapper>
             <SwitchInput
               label="Show Preview Links in a record sidebar panel"
               value={panelOn}
@@ -58,33 +55,25 @@ export function DisplaySection({ form }: Props) {
                 update({ previewLinksSidebarPanelDisabled: !on })
               }
             />
-          </FieldWrapper>
-          {/* The fields that show only while the switch above is on */}
-          {panelOn && (
-            <Page.Group title="Preview links panel" titleLevel={3}>
-              <FieldWrapper>
-                <SwitchInput
-                  label="Start with the panel expanded"
-                  value={Boolean(draft.startOpen)}
-                  onChange={(on) => update({ startOpen: Boolean(on) })}
-                />
-              </FieldWrapper>
-            </Page.Group>
-          )}
-          <FieldWrapper>
+            {/* Only for the panel, thus right under its switch */}
+            {panelOn && (
+              <SwitchInput
+                label="Start with the panel expanded"
+                value={Boolean(draft.startOpen)}
+                onChange={(on) => update({ startOpen: Boolean(on) })}
+              />
+            )}
             <SwitchInput
               label="Show Preview Links at the top of the record form"
-              value={Boolean(draft.previewLinksFormOutlet)}
+              value={draft.previewLinksFormOutlet ?? true}
               onChange={(on) => update({ previewLinksFormOutlet: Boolean(on) })}
             />
-          </FieldWrapper>
-          <FieldWrapper>
             <SwitchInput
               label="Show the Website preview tab in the record sidebar"
               value={sidebarOn}
               onChange={(on) => update({ previewLinksSidebarDisabled: !on })}
             />
-          </FieldWrapper>
+          </SwitchList>
           {sidebarOn && (
             <Page.Group title="Website preview tab" titleLevel={3}>
               <FieldWrapper label="Default tab width" error={widthError}>

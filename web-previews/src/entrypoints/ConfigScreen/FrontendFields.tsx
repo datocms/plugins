@@ -8,6 +8,7 @@ import StringInput from 'datocms-react-ui/StringInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import type { TableListChange } from 'datocms-react-ui/TableList';
 import type { RawFrontend } from '../../types';
+import { DOCS } from './links';
 import type { RowsTouched } from './useSettingsForm';
 import type { FeatureSwitches, FrontendErrors } from './validation';
 
@@ -71,10 +72,7 @@ export function FrontendFields({
 
   return (
     <>
-      {submitAttempted && errors.feature && (
-        <Callout tone="danger">{errors.feature}</Callout>
-      )}
-      <FieldWrapper label="Name" required error={errorOf('name')}>
+      <FieldWrapper label="Name" error={errorOf('name')}>
         <StringInput
           placeholder="Staging"
           value={frontend.name}
@@ -82,6 +80,10 @@ export function FrontendFields({
           onBlur={() => onBlur('name')}
         />
       </FieldWrapper>
+      {/* Next to the switches that fix it */}
+      {submitAttempted && errors.feature && (
+        <Callout tone="danger">{errors.feature}</Callout>
+      )}
       <FieldWrapper>
         <SwitchInput
           label="Enable Preview Links for this frontend"
@@ -94,8 +96,8 @@ export function FrontendFields({
         <>
           <FieldWrapper
             label="Preview Links endpoint URL"
-            required
             error={errorOf('previewWebhook')}
+            docs={DOCS.previewLinksEndpoint}
           >
             <StringInput
               code
@@ -105,7 +107,10 @@ export function FrontendFields({
               onBlur={() => onBlur('previewWebhook')}
             />
           </FieldWrapper>
-          <FieldWrapper label="Custom headers sent to the endpoint">
+          <FieldWrapper
+            label="Custom headers sent to the endpoint"
+            labelExtras={{ optional: true }}
+          >
             <KeyValueList
               texts={HEADER_TEXTS}
               value={toTuples(frontend.customHeaders ?? [])}
@@ -120,7 +125,7 @@ export function FrontendFields({
           </FieldWrapper>
         </>
       )}
-      <FieldWrapper>
+      <FieldWrapper docs={DOCS.visualEditing}>
         <SwitchInput
           label="Enable Visual Editing for this frontend"
           value={switches.visualEditing}
@@ -131,8 +136,8 @@ export function FrontendFields({
         <>
           <FieldWrapper
             label="Draft mode URL"
-            required
             error={errorOf('draftModeUrl')}
+            docs={DOCS.draftModeRoute}
           >
             <StringInput
               code

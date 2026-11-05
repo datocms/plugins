@@ -1,34 +1,26 @@
-/* The text of a row starts at the inset of the row list plus the padding of
-   the content of the row. The kit sets that padding, --RowList-content-padding,
-   on each row, thus the list can't read it: it is --spacing-m in a frame as
-   narrow as a sidebar. The box of the list goes out of the column by that
-   much (RowList, "The inset row"), so the text of the rows lines up with the
-   text of the panel, but never past the body padding of the frame, which the
-   component passes in: the rows stay in the frame. In a Page.Group (the
-   record form), the component passes nothing and the padding of the group
-   takes its place: the text of the rows lines up with the title. */
-.rows {
-  --rows-text-inset: calc(var(--row-inset) + var(--spacing-m));
-
-  margin-right: calc(
-    -1 *
-    min(
-      var(--rows-text-inset),
-      var(--frame-inset-right, var(--Page__group-padding, 0px))
-    )
-  );
-  margin-left: calc(
-    -1 *
-    min(
-      var(--rows-text-inset),
-      var(--frame-inset-left, var(--Page__group-padding, 0px))
-    )
-  );
-}
-
 /* The actions at the end of a row, side by side */
 .actions {
   display: flex;
   flex: none;
   align-items: center;
+}
+
+/* The icon after the path keeps its size, also when the path ends with an
+   ellipsis */
+.newTabIcon {
+  display: flex;
+  flex: none;
+}
+
+/* The place of the "⋮" in a row that has no menu: as wide as a micro
+   icon-only button (one line plus the padding of a micro button, 0.3em on
+   each side), thus the eyes of all the rows line up */
+.menuSlot {
+  flex: none;
+  width: calc(1lh + 2 * 0.3em);
+}
+
+/* The place of the first message of a failed frontend, under the rows */
+.afterRows {
+  margin-block-start: var(--spacing-m);
 }

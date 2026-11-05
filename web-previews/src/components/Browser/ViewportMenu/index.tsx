@@ -24,17 +24,18 @@ type Props = {
    * name of the choice is then its tooltip
    */
   iconOnly: boolean;
-  /** Hides the menu, falling back to "Fit", when the frame is narrower */
+  /** Hides the menu, falling back to the fit, when the frame is narrower */
   minWidth?: number;
 };
 
 /**
- * The icon and the short name of a choice, for the trigger. A preset has the
- * name that the settings give it, which can be long.
+ * The icon and the name of a choice, for the trigger: the fit has the name
+ * of its option. A preset has the name that the settings give it, which can
+ * be long.
  */
-function describe(choice: ViewportChoice) {
+function describe(choice: ViewportChoice, fitLabel: string) {
   if (choice === 'responsive') {
-    return { icon: FitIcon, label: 'Fit', named: false };
+    return { icon: FitIcon, label: fitLabel, named: false };
   }
 
   if (choice === 'custom') {
@@ -63,7 +64,7 @@ export function ViewportMenu({
   const { defaultViewports } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-  const { icon, label, named } = describe(value);
+  const { icon, label, named } = describe(value, fitLabel);
 
   // The query reads the width of the frame. With no minimum it never matches
   const tooNarrow = useMediaQuery(`(max-width: ${minWidth - 0.02}px)`).matches;

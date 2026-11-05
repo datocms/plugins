@@ -9,3 +9,9 @@
 .page {
   min-height: 0;
 }
+
+/* The switches of Display: the group of the Website preview tab under them
+   gets the space of a field */
+.switches:has(+ *) {
+  margin-bottom: var(--form-field-gap);
+}

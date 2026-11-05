@@ -31,8 +31,8 @@ const DOCS: BlankSlateDocsLink[] = [
 
 /**
  * The Visual tab opened from its URL while no frontend has visual editing
- * (the tab itself shows only when one has it): where to read how to set it
- * up and, for the roles that can change it, the way to the plugin settings.
+ * (the tab itself shows only when one has it). The roles that can change the
+ * settings get the way to them and the guide; the others, whom to ask.
  */
 function NoVisualEditingFrontend({ ctx }: PropTypes) {
   const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
@@ -42,9 +42,13 @@ function NoVisualEditingFrontend({ ctx }: PropTypes) {
       placement="area"
       titleLevel={1}
       icon={<GlobeIcon />}
-      title="No frontend offers visual editing"
-      description="Turn on visual editing for a frontend in the plugin settings."
-      docs={DOCS}
+      title="Visual editing isn't set up yet"
+      description={
+        canEditSchema
+          ? 'Turn on visual editing for a frontend in the plugin settings.'
+          : 'Ask a developer or an administrator to turn it on.'
+      }
+      docs={canEditSchema ? DOCS : undefined}
       actions={
         canEditSchema ? (
           <Button

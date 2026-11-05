@@ -2,7 +2,7 @@ import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import Pane from 'datocms-react-ui/Pane';
 import Toolbar from 'datocms-react-ui/Toolbar';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { CustomSizeBar } from '../../../components/Browser/CustomSizeBar';
 import {
   useCompactVisualTabBar,
@@ -27,58 +27,40 @@ import styles from './styles.module.css';
 
 type ContentLink = ReturnType<typeof useContentLink>['contentLink'];
 
-/** Why edit mode cannot change now, while the page is not connected */
-function editModeDisabledReason(contentLink: ContentLink): string | undefined {
-  switch (contentLink.type) {
-    case 'connecting':
-      return 'Wait for the page to connect.';
-    case 'error':
-      return "The website doesn't respond. Check that DatoCMS Content Link is installed on it.";
-    default:
-      return undefined;
+/**
+ * Why the address and edit mode cannot change now, while the page is not
+ * connected
+ */
+function disabledReason(contentLink: ContentLink): string | undefined {
+  if (contentLink.type === 'connecting') {
+    return 'The page is still loading.';
   }
+
+  if (contentLink.type === 'error') {
+    // The panel of the inspector says it too, with the next step
+    return contentLink.reason === 'failed-connection'
+      ? "Visual editing isn't available on this website."
+      : 'The page stopped responding. Refresh the preview to try again.';
+  }
+
+  return undefined;
 }
 
 /**
- * A connection that fails gets one alert for each reason. A heartbeat that
- * stops only goes to the console.
+ * A heartbeat that stops only goes to the console: brief stalls of the
+ * website recover on their own, and should not interrupt the editors
  */
-function useReportContentLinkErrors(
-  contentLink: ContentLink,
-  alert: (message: string) => Promise<void>,
-) {
-  const reportedErrorReasonRef = useRef<string | null>(null);
-
-  const contentLinkErrorReason =
-    contentLink.type === 'error' ? contentLink.reason : undefined;
+function useLogStalledPreview(contentLink: ContentLink) {
+  const stalled =
+    contentLink.type === 'error' && contentLink.reason === 'no-ping';
 
   useEffect(() => {
-    if (!contentLinkErrorReason) {
-      reportedErrorReasonRef.current = null;
-      return;
-    }
-
-    if (reportedErrorReasonRef.current === contentLinkErrorReason) {
-      return;
-    }
-
-    reportedErrorReasonRef.current = contentLinkErrorReason;
-
-    if (contentLinkErrorReason === 'failed-connection') {
-      alert(
-        "The website doesn't respond to the Visual Editing tab. Check that DatoCMS Content Link is installed on the website.",
-      );
-    }
-
-    if (contentLinkErrorReason === 'no-ping') {
-      // Based on editor feedback, transient preview stalls should not interrupt
-      // normal users. Keep the heartbeat as a developer diagnostic, but avoid a
-      // visible alert because brief script hangs can recover on their own.
+    if (stalled) {
       console.log(
         '[Web Previews] Preview heartbeat stopped. The iframe may have navigated away, stalled, or temporarily stopped responding.',
       );
     }
-  }, [contentLinkErrorReason, alert]);
+  }, [stalled]);
 }
 
 /**
@@ -132,8 +114,8 @@ const UI = () => {
   // changes
   const viewport = useViewport();
   // In a narrow frame the viewport trigger shows only its icon (the icon of
-  // its choice), and in a very narrow one edit mode shows only its switch:
-  // the address keeps the width. The frontend trigger keeps its name
+  // its choice), and in a very narrow one edit mode drops the hint of the Alt
+  // key: the address keeps the width. The frontend trigger keeps its name
   const compactBar = useCompactVisualTabBar();
   const narrowBar = useNarrowVisualTabBar();
 
@@ -152,7 +134,7 @@ const UI = () => {
     );
   };
 
-  useReportContentLinkErrors(contentLink, ctx.alert);
+  useLogStalledPreview(contentLink);
 
   return (
     <Pane
@@ -171,16 +153,14 @@ const UI = () => {
                   />
                 </div>
               )}
-              {/* A new frontend starts a new address, with no error */}
+              {/* A new frontend starts a new address, with no error. While
+                  the page connects, the frame and the records panel say that
+                  they load: the bar adds no spinner of its own */}
               <AddressBar
                 key={selectedFrontend.name}
                 frontend={selectedFrontend}
+                disabledReason={disabledReason(contentLink)}
               />
-              {contentLink.type === 'connecting' && (
-                <div className={styles.cell}>
-                  <Toolbar.Spinner show />
-                </div>
-              )}
               <div className={styles.cell}>
                 <Toolbar.Button
                   iconOnly
@@ -192,31 +172,37 @@ const UI = () => {
               {/* The viewport menu hides, and the preview fits the frame,
                   while the frame is narrower than the default width of the
                   Website preview tab */}
-              <div className={styles.cell}>
-                <ViewportMenu
-                  value={viewport.choice}
-                  onChange={viewport.setChoice}
-                  fitLabel="Fit to window"
-                  iconOnly={compactBar}
-                  minWidth={
-                    previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH
-                  }
-                />
+              <div className={styles.part}>
+                <Toolbar.Divider />
+                <div className={styles.cell}>
+                  <ViewportMenu
+                    value={viewport.choice}
+                    onChange={viewport.setChoice}
+                    fitLabel="Fit to window"
+                    iconOnly={compactBar}
+                    minWidth={
+                      previewLinksSidebar?.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH
+                    }
+                  />
+                </div>
               </div>
-              <div className={styles.cell}>
-                <EditModeSwitch
-                  iconOnly={narrowBar}
-                  pressed={
-                    contentLink.type === 'connected' &&
-                    contentLink.state.clickToEditEnabled
-                  }
-                  temporary={
-                    contentLink.type === 'connected' &&
-                    contentLink.clickToEditTemporary
-                  }
-                  onToggle={handleToggleClickToEdit}
-                  disabledReason={editModeDisabledReason(contentLink)}
-                />
+              <div className={styles.part}>
+                <Toolbar.Divider />
+                <div className={styles.cell}>
+                  <EditModeSwitch
+                    showHint={!narrowBar}
+                    pressed={
+                      contentLink.type === 'connected' &&
+                      contentLink.state.clickToEditEnabled
+                    }
+                    temporary={
+                      contentLink.type === 'connected' &&
+                      contentLink.clickToEditTemporary
+                    }
+                    onToggle={handleToggleClickToEdit}
+                    disabledReason={disabledReason(contentLink)}
+                  />
+                </div>
               </div>
             </div>
           </Toolbar>

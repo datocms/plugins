@@ -1,6 +1,8 @@
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
 import InputGroup from 'datocms-react-ui/InputGroup';
 import Toolbar from 'datocms-react-ui/Toolbar';
+import Tooltip from 'datocms-react-ui/Tooltip';
 import {
   type ClipboardEvent,
   type FormEvent,
@@ -57,15 +59,27 @@ function pathOfWebsiteUrl(text: string, origin: string): string | undefined {
   return isRelativeUrl(text) ? undefined : pathToOpen(text, origin);
 }
 
+/**
+ * The field shows the host of the website before the path only from this
+ * width. The kit cuts a long addon at half the field: in a narrower field a
+ * common host would end with an ellipsis, and the path would lose its room.
+ */
+const HOST_MIN_FIELD_WIDTH = 400;
+
 interface AddressBarProps {
   frontend: Frontend;
+  /**
+   * Why the field is disabled, while the page is not connected: the same
+   * text as the edit mode switch
+   */
+  disabledReason?: string;
 }
 
 /**
  * The address of the page that the preview shows: the origin of the website
  * is fixed, and the user types the path of another page. Enter opens it.
  */
-function AddressBar({ frontend }: AddressBarProps) {
+function AddressBar({ frontend, disabledReason }: AddressBarProps) {
   const enableDraftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
 
   if (!enableDraftModeUrl) {
@@ -75,6 +89,11 @@ function AddressBar({ frontend }: AddressBarProps) {
   }
 
   const visualEditingOrigin = new URL(enableDraftModeUrl).origin;
+  // The host, as a browser shows it
+  const host = new URL(visualEditingOrigin).host;
+
+  const formRef = useRef<HTMLFormElement>(null);
+  const showHost = useElementLayout(formRef).width >= HOST_MIN_FIELD_WIDTH;
 
   const { contentLink, iframeState } = useContentLink();
 
@@ -159,8 +178,8 @@ function AddressBar({ frontend }: AddressBarProps) {
     }
   };
 
-  // A pasted URL of the website keeps only its page, since the origin shows
-  // before the field
+  // A pasted URL of the website keeps only its page: the field holds the
+  // path, and the host shows before it when there is room
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     const path = pathOfWebsiteUrl(
       event.clipboardData.getData('text').trim(),
@@ -175,31 +194,32 @@ function AddressBar({ frontend }: AddressBarProps) {
 
   return (
     <Toolbar.Fill className={styles.fill}>
-      <form className={styles.form} onSubmit={handleSubmit}>
-        {/* The input names itself, so the field has no label: a hidden one
-            would still take room above the box, and the box would sit lower
-            than the buttons of the bar */}
-        <FieldWrapper
-          error={
-            hasError ? `Enter a page of ${visualEditingOrigin}` : undefined
-          }
-        >
-          <InputGroup
-            aria-label="Page"
-            // The host, as a browser shows it: the kit cuts a long addon at
-            // half the field, which the scheme would fill
-            pre={new URL(visualEditingOrigin).host}
-            placeholder="/"
-            value={inputValue}
-            onChange={(value) => setInputValue(value ?? '')}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            disabled={disabled}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </FieldWrapper>
-      </form>
+      {/* A disabled input takes no focus: the tooltip opens on hover */}
+      <Tooltip label={disabled && disabledReason}>
+        <form ref={formRef} className={styles.form} onSubmit={handleSubmit}>
+          {/* The input names itself, so the field has no label: a hidden one
+              would still take room above the box, and the box would sit lower
+              than the buttons of the bar */}
+          <FieldWrapper
+            error={hasError ? `Only pages of ${host} open here` : undefined}
+          >
+            {/* The host shows only before a path: a full URL that the user
+                types or pastes shows alone, as it is */}
+            <InputGroup
+              aria-label="Page"
+              pre={showHost && isRelativeUrl(inputValue) ? host : undefined}
+              placeholder="/"
+              value={inputValue}
+              onChange={(value) => setInputValue(value ?? '')}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              disabled={disabled}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </FieldWrapper>
+        </form>
+      </Tooltip>
     </Toolbar.Fill>
   );
 }

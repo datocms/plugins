@@ -27,7 +27,6 @@ export default function FormPreviewLinks({ ctx }: PropTypes) {
       <PreviewPageRows
         linksByFrontend={linksByFrontend}
         showFrontend={linksByFrontend.length > 1}
-        inGroup
       />
     </Page.Group>
   );

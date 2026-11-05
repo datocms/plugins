@@ -1,5 +1,5 @@
-/* The hint, then the switch, with the gap between two parts of the bar. It
-   is also the box that the Tooltip anchors to */
+/* The hint, then the label and the switch, with the gap between two parts of
+   the bar. It is also the box that the Tooltip anchors to */
 .root {
   display: flex;
   flex: none;
@@ -7,12 +7,13 @@
   gap: var(--spacing-m);
 }
 
-/* A text and its widest version in one cell: the cell is as wide as the
-   widest, and only the text shows. The widest is hidden from screen readers
-   too */
+/* A label and its widest version in one cell: the cell is as wide as the
+   widest, and only the label shows, next to the switch. The widest is hidden
+   from screen readers too */
 .stable {
   display: grid;
   align-items: center;
+  justify-items: end;
 }
 
 .stable > * {
@@ -23,7 +24,8 @@
   visibility: hidden;
 }
 
-/* The hint stays next to the switch: the room is before it */
-.hint {
-  justify-items: end;
+/* The hint of a switch that doesn't work yet keeps its place, so the bar
+   doesn't move when the page connects, and doesn't show */
+.idle {
+  visibility: hidden;
 }
