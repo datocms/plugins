@@ -29,71 +29,35 @@
   gap: var(--spacing-m);
 }
 
-/* The title of a group of results, which opens and closes it */
-.groupToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-s);
-  background: none;
-  font: inherit;
-  font-weight: var(--font-weight-strong);
-  color: var(--color--ink);
-  cursor: pointer;
-}
-
-.groupToggle:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.count {
-  font-weight: var(--font-weight-regular);
-  color: var(--color--ink-subtle);
-}
-
-.items {
-  display: grid;
-  gap: var(--spacing-s);
-  margin: var(--spacing-s) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-s);
-}
-
-.itemBody {
-  flex: 1;
-  min-width: 0;
-}
-
-/* The text of a result is the HTML of Yoast */
-.itemBody p {
+/* The sentence of a result is the HTML of Yoast: the name of the check,
+   which links to its explanation, then the result and a link to fix it */
+.resultText {
   margin: 0;
 }
 
-.itemBody a {
+.resultText a {
   color: var(--color--ink-link);
 }
 
+/* The name of the check leads the sentence, in the ink of the text */
+.resultText > a:first-child {
+  font-weight: var(--font-weight-strong);
+  color: var(--color--ink);
+  text-decoration: none;
+}
+
+.resultText > a:first-child:hover {
+  text-decoration: underline;
+}
+
+/* The sentences of the text that the result is about */
 .marks {
-  margin-top: var(--spacing-s);
-  border: 1px solid var(--color--border);
-  border-radius: var(--radius-s);
+  display: grid;
+  gap: var(--spacing-m);
 }
 
 .mark {
-  padding: var(--spacing-m);
-}
-
-.mark + .mark {
-  border-top: 1px solid var(--color--border);
+  margin: 0;
 }
 
 .mark * {

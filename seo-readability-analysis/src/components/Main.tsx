@@ -15,6 +15,7 @@ import type {
   Analysis,
   AnalysisAssessment,
   CustomHeader,
+  Mark,
   ValidParameters,
 } from '../types';
 import Results from './Results';
@@ -65,12 +66,54 @@ const logPluginError = (context: string, error: unknown) => {
   );
 };
 
-const removeResultsWithNoText = (
+// The draft page of a frontend with Content Link hides its edit links in its
+// texts, as invisible characters (stega). Yoast reads them as words.
+const STEGA_CHARACTERS = /[​-‍⁠-⁣﻿\u{1D173}-\u{1D17A}]/gu;
+
+const withoutStega = (text: string) => text.replace(STEGA_CHARACTERS, '');
+
+const pageWithoutStega = (page: Page | null): Page | null =>
+  page && {
+    ...page,
+    title: withoutStega(page.title),
+    description: withoutStega(page.description),
+    content: withoutStega(page.content),
+  };
+
+// Yoast gives the marks of some checks (sentence length, paragraph length)
+// only as a range of the page's HTML: their text is that range without tags
+const fillMarkTexts = (marks: Mark[], content: string): Mark[] =>
+  marks
+    .map((mark) => {
+      const { marked, position } = mark._properties;
+
+      if (marked || !position) {
+        return mark;
+      }
+
+      const html = content.slice(position.startOffset, position.endOffset);
+      const text = new DOMParser()
+        .parseFromString(html, 'text/html')
+        .body.textContent?.replace(/\s+/g, ' ')
+        .trim();
+
+      return { _properties: { ...mark._properties, original: text ?? '' } };
+    })
+    .filter((mark) => mark._properties.marked || mark._properties.original);
+
+const prepareResults = (
   data: AnalysisAssessment,
+  content: string,
 ): AnalysisAssessment => {
   return {
     ...data,
-    results: data.results.filter((result) => result.text?.length > 0),
+    results: data.results
+      .filter((result) => result.text?.length > 0)
+      .map((result) =>
+        result.marks
+          ? { ...result, marks: fillMarkTexts(result.marks, content) }
+          : result,
+      ),
   };
 };
 
@@ -229,7 +272,7 @@ const Main = ({ ctx }: PropTypes) => {
         throw new Error(`Missing keys in response: ${missingKeys.join(', ')}`);
       }
 
-      setPage(response);
+      setPage(pageWithoutStega(response));
     } catch (e) {
       setPageError(e as Error);
       logPluginError('Failed to fetch frontend metadata', e);
@@ -291,11 +334,14 @@ const Main = ({ ctx }: PropTypes) => {
               : null;
 
           const deserializedResult = {
-            readability: removeResultsWithNoText(analyzeResult.readability),
-            seo: removeResultsWithNoText(analyzeResult.seo['']),
+            readability: prepareResults(
+              analyzeResult.readability,
+              page.content,
+            ),
+            seo: prepareResults(analyzeResult.seo[''], page.content),
             relatedKeywordsSeo: relatedResults
               ? relatedKeywords.map((_, i) =>
-                  removeResultsWithNoText(relatedResults.seo[i]),
+                  prepareResults(relatedResults.seo[i], page.content),
                 )
               : [],
           };

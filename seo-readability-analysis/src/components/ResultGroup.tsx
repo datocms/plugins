@@ -1,7 +1,6 @@
 import Button from 'datocms-react-ui/Button';
-import { DisclosureChevron } from 'datocms-react-ui/Chevron';
-import RawButton from 'datocms-react-ui/RawButton';
-import { useEffect, useRef, useState } from 'react';
+import CardList from 'datocms-react-ui/CardList';
+import { memo, useEffect, useRef, useState } from 'react';
 import { EyeIcon } from '../icons';
 import type { AnalysisResult } from '../types';
 import ScoreIcon from './ScoreIcon';
@@ -14,14 +13,12 @@ import s from './styles.module.css';
  */
 const TrustedHtml = ({
   html,
-  tag: Tag = 'p',
   className,
 }: {
   html: string;
-  tag?: 'p' | 'div';
   className?: string;
 }) => {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (ref.current) {
@@ -29,7 +26,7 @@ const TrustedHtml = ({
     }
   }, [html]);
 
-  return <Tag ref={ref as React.RefObject<never>} className={className} />;
+  return <p ref={ref} className={className} />;
 };
 
 export type Group = {
@@ -38,52 +35,65 @@ export type Group = {
   items: AnalysisResult[];
 };
 
-const ResultItem = ({ item }: { item: AnalysisResult }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const Marks = ({ marks }: { marks: NonNullable<AnalysisResult['marks']> }) => (
+  <div className={s.marks}>
+    {marks.map((mark) => {
+      const { marked, original, position } = mark._properties;
+      const key = position ? String(position.startOffset) : original;
+
+      // A mark by position is a whole sentence or paragraph, as plain text
+      if (!marked) {
+        return (
+          <p key={key} className={s.mark}>
+            {original}
+          </p>
+        );
+      }
+
+      const wholeSentenceHighlighted =
+        marked.indexOf('<yoastmark') === 0 &&
+        marked.endsWith('</yoastmark>') &&
+        marked.split('</yoastmark>').length === 2;
+
+      return (
+        <TrustedHtml
+          key={key}
+          html={marked}
+          className={
+            wholeSentenceHighlighted
+              ? s.mark
+              : `${s.mark} ${s.markWithHighlights}`
+          }
+        />
+      );
+    })}
+  </div>
+);
+
+const ResultItem = memo(({ item }: { item: AnalysisResult }) => {
+  const [marksOpen, setMarksOpen] = useState(false);
+  const marks = item.marks && item.marks.length > 0 ? item.marks : null;
 
   return (
-    <li className={s.item}>
-      <ScoreIcon score={item.score} />
-      <div className={s.itemBody}>
-        <TrustedHtml html={item.text} tag="p" />
-        {isOpen && (
-          <div className={s.marks}>
-            {item.marks?.map((mark) => {
-              const wholeSentenceHighlighted =
-                mark._properties.marked.indexOf('<yoastmark') === 0 &&
-                mark._properties.marked.endsWith('</yoastmark>') &&
-                mark._properties.marked.split('</yoastmark>').length === 2;
-
-              return (
-                <TrustedHtml
-                  key={mark._properties.original}
-                  html={mark._properties.marked}
-                  tag="div"
-                  className={
-                    wholeSentenceHighlighted
-                      ? s.mark
-                      : `${s.mark} ${s.markWithHighlights}`
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
-      {item.marks && item.marks.length > 0 && (
-        <Button
-          tone="ghost"
-          size="micro"
-          iconOnly
-          icon={EyeIcon}
-          label="Show the marked text"
-          pressed={isOpen}
-          onClick={() => setIsOpen((open) => !open)}
-        />
-      )}
-    </li>
+    <CardList.Item
+      row={{
+        summary: <TrustedHtml html={item.text} className={s.resultText} />,
+        actions: marks && (
+          <Button
+            tone="ghost"
+            size="micro"
+            iconOnly
+            icon={EyeIcon}
+            label="Show the marked text"
+            pressed={marksOpen}
+            onClick={() => setMarksOpen((open) => !open)}
+          />
+        ),
+      }}
+      body={marks && marksOpen ? <Marks marks={marks} /> : undefined}
+    />
   );
-};
+});
 
 type PropTypes = {
   rating: string;
@@ -95,24 +105,18 @@ export default function ResultGroup({ rating, result, startOpen }: PropTypes) {
   const [isOpen, setIsOpen] = useState(startOpen);
 
   return (
-    <div>
-      <RawButton
-        className={s.groupToggle}
-        expandable={{ open: isOpen }}
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <DisclosureChevron open={isOpen} />
-        <ScoreIcon rating={rating} />
-        {result.title}
-        <span className={s.count}>{result.items.length}</span>
-      </RawButton>
-      {isOpen && (
-        <ul className={s.items}>
-          {result.items.map((item) => (
-            <ResultItem item={item} key={item._identifier} />
-          ))}
-        </ul>
-      )}
-    </div>
+    <CardList
+      header={{
+        image: <ScoreIcon rating={rating} />,
+        title: result.title,
+        aside: String(result.items.length),
+        collapse: { open: isOpen, onToggle: () => setIsOpen((open) => !open) },
+      }}
+      actionsVisibility="always"
+    >
+      {result.items.map((item) => (
+        <ResultItem item={item} key={item._identifier} />
+      ))}
+    </CardList>
   );
 }

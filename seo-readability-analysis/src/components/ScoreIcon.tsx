@@ -1,5 +1,4 @@
 import FeedbackDot from 'datocms-react-ui/FeedbackDot';
-import * as interpreters from 'yoastseo/build/scoring/interpreters';
 
 const TONES: Partial<Record<string, 'danger' | 'warning' | 'success'>> = {
   bad: 'danger',
@@ -7,13 +6,7 @@ const TONES: Partial<Record<string, 'danger' | 'warning' | 'success'>> = {
   good: 'success',
 };
 
-type PropTypes = {
-  score?: number | null;
-  rating?: string | null;
-};
-
-export default function ScoreIcon({ rating, score }: PropTypes) {
-  const scoreRating = rating || interpreters.scoreToRating(score);
-
-  return <FeedbackDot tone={TONES[scoreRating] ?? 'neutral'} />;
+/** The dot of a group of results, next to its title */
+export default function ScoreIcon({ rating }: { rating: string }) {
+  return <FeedbackDot tone={TONES[rating] ?? 'neutral'} />;
 }
