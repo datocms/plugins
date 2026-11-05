@@ -1475,6 +1475,8 @@ describe('model filter', () => {
 
     act(() => trigger().focus());
     press(trigger(), 'Enter', 13);
+    // The menu takes the focus once it is placed
+    await waitFor(() => expect(trigger()).not.toHaveFocus());
     press(openMenu(), 'Escape', 27);
     await menuClosed();
     expect(trigger()).toHaveFocus();

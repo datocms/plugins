@@ -39,7 +39,7 @@
     "@fortawesome/free-regular-svg-icons": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "datocms-plugin-sdk": "^2.6.0-next.1",
-    "datocms-react-ui": "^3.1.0-next.2",
+    "datocms-react-ui": "^3.1.0-next.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

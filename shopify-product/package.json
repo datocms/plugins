@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "datocms-plugin-sdk": "^2.6.0-next.1",
-    "datocms-react-ui": "^3.1.0-next.2",
+    "datocms-react-ui": "^3.1.0-next.5",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

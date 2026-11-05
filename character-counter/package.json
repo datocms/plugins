@@ -22,7 +22,7 @@
   "type": "module",
   "dependencies": {
     "datocms-plugin-sdk": "^2.6.0-next.1",
-    "datocms-react-ui": "^3.1.0-next.2",
+    "datocms-react-ui": "^3.1.0-next.5",
     "datocms-structured-text-slate-utils": "^6.0.1",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",

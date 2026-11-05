@@ -690,7 +690,11 @@ describe('comment accessibility and semantics', () => {
     await withRangeLayout(async () => {
       const view = startEditing([ARTICLE_MODEL]);
       try {
+        // The editor takes the focus on the next frame
+        await nextFrame();
         const { trigger } = openMentionMenu(view.container);
+        // The menu takes the focus once it is placed
+        await nextFrame();
         const focused = document.activeElement ?? document.body;
 
         // The kit menu reads the code of the key
