@@ -1,17 +1,13 @@
 /* Placement only: the kit components draw themselves. */
 
-/*
- * The page in its frame. The frame sizes itself to the page (the SDK's
- * auto-resizer), so the page can't also take a share of the frame's height
- * (the kit's 60vh minimum, meant for a full-height area): the frame would
- * keep part of its old height after an item or a section closes.
- */
-.page {
-  min-height: 0;
-}
-
 /* The switches of Display: the group of the Website preview tab under them
    gets the space of a field */
 .switches:has(+ *) {
+  margin-bottom: var(--form-field-gap);
+}
+
+/* Save follows the last section with the space between two fields, as it
+   follows a field */
+.lastSection {
   margin-bottom: var(--form-field-gap);
 }

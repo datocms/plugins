@@ -146,11 +146,8 @@
   text-overflow: ellipsis;
 }
 
-/* The plugin settings */
-
-/* The kit's minimum height of a page is for a full-height area: in this
-   frame, which sizes itself to its content, it would keep the frame from
-   shrinking */
-.page {
-  min-height: 0;
+/* Save follows the last section of the plugin settings with the space
+   between two fields, as it follows a field */
+.lastSection {
+  margin-bottom: var(--form-field-gap);
 }

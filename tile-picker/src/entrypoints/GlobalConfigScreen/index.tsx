@@ -103,85 +103,78 @@ export default function GlobalConfigScreen({ ctx }: Props) {
     }
   };
 
+  // The host gives the frame its width and its padding, and draws the
+  // "Plugin settings" title above it: the section starts the frame, with no
+  // Page around it. One form spans the list, so Save follows it
   return (
-    <Page variant="large" className={s.page}>
-      <Page.Content>
-        {/* One form spans the list, so Save follows it */}
-        <form onSubmit={handleSubmit}>
-          <Page.Section>
-            <Page.SectionDescription>
-              Presets are named sets of options that many fields can share. A
-              field that uses a preset shows its options before its own.
-            </Page.SectionDescription>
-            <CardList
-              add={addPreset}
-              empty={<EmptySlot message="No presets yet" action={addPreset} />}
-            >
-              {draft.map((preset, index) => (
-                <CardList.Item
-                  // biome-ignore lint/suspicious/noArrayIndexKey: presets have no id, and names can be empty or repeat
-                  key={index}
-                  row={{
-                    summary: preset.name || `Preset ${index + 1}`,
-                    trailing: isIncomplete(preset) ? (
-                      <Pill tone="danger">Incomplete</Pill>
-                    ) : undefined,
-                    actions: (
-                      <CardList.RemoveButton
-                        label="Remove preset"
-                        onClick={() => removePreset(index)}
+    <form onSubmit={handleSubmit}>
+      <Page.Section className={s.lastSection}>
+        <Page.SectionDescription>
+          Presets are named sets of options that many fields can share. A field
+          that uses a preset shows its options before its own.
+        </Page.SectionDescription>
+        <CardList
+          add={addPreset}
+          empty={<EmptySlot message="No presets yet" action={addPreset} />}
+        >
+          {draft.map((preset, index) => (
+            <CardList.Item
+              // biome-ignore lint/suspicious/noArrayIndexKey: presets have no id, and names can be empty or repeat
+              key={index}
+              row={{
+                summary: preset.name || `Preset ${index + 1}`,
+                trailing: isIncomplete(preset) ? (
+                  <Pill tone="danger">Incomplete</Pill>
+                ) : undefined,
+                actions: (
+                  <CardList.RemoveButton
+                    label="Remove preset"
+                    onClick={() => removePreset(index)}
+                  />
+                ),
+              }}
+              expandable={{
+                open: openPresets.has(index),
+                onToggle: () => togglePreset(index),
+                body: (
+                  <>
+                    <FieldWrapper
+                      label="Name"
+                      required
+                      error={preset.name.trim() ? undefined : 'Enter a name'}
+                    >
+                      <StringInput
+                        value={preset.name}
+                        onChange={(name) =>
+                          updatePreset(index, { name: name ?? '' })
+                        }
+                        placeholder="Brand colors"
                       />
-                    ),
-                  }}
-                  expandable={{
-                    open: openPresets.has(index),
-                    onToggle: () => togglePreset(index),
-                    body: (
-                      <>
-                        <FieldWrapper
-                          label="Name"
-                          required
-                          error={
-                            preset.name.trim() ? undefined : 'Enter a name'
-                          }
-                        >
-                          <StringInput
-                            value={preset.name}
-                            onChange={(name) =>
-                              updatePreset(index, { name: name ?? '' })
-                            }
-                            placeholder="Brand colors"
-                          />
-                        </FieldWrapper>
-                        <OptionsList
-                          value={preset.options}
-                          onChange={(options) =>
-                            updatePreset(index, { options })
-                          }
-                        />
-                      </>
-                    ),
-                  }}
-                />
-              ))}
-            </CardList>
-          </Page.Section>
-          <Button
-            submit
-            tone="primary"
-            expand
-            label="Save"
-            busy={saving}
-            disabled={
-              !dirty
-                ? { reason: 'There are no changes to save.' }
-                : invalid
-                  ? { reason: 'Fill in the required fields first.' }
-                  : undefined
-            }
-          />
-        </form>
-      </Page.Content>
-    </Page>
+                    </FieldWrapper>
+                    <OptionsList
+                      value={preset.options}
+                      onChange={(options) => updatePreset(index, { options })}
+                    />
+                  </>
+                ),
+              }}
+            />
+          ))}
+        </CardList>
+      </Page.Section>
+      <Button
+        submit
+        tone="primary"
+        label="Save"
+        busy={saving}
+        disabled={
+          !dirty
+            ? { reason: 'There are no changes to save.' }
+            : invalid
+              ? { reason: 'Fill in the required fields first.' }
+              : undefined
+        }
+      />
+    </form>
   );
 }
