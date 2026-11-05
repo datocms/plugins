@@ -286,6 +286,8 @@ export type AgentSurfaceProps = {
   mentionHost?: AgentMentionHost;
   onConnectDatoCms?: () => void;
   onDisconnectDatoCms?: () => void;
+  /** Signs in again so the editor can pick another access level. */
+  onReconnectDatoCms?: () => void;
   onCheckDatoCmsAccess?: () => void;
   recentConversations?: readonly AgentConversationSummaryViewModel[];
   onSelectConversation?: (
@@ -347,6 +349,7 @@ type CredentialPanelProps = Pick<
   | 'connection'
   | 'onConnectDatoCms'
   | 'onDisconnectDatoCms'
+  | 'onReconnectDatoCms'
   | 'onCheckDatoCmsAccess'
   | 'recentConversations'
   | 'onSelectConversation'
@@ -422,10 +425,10 @@ function UnverifiedAccessNotice({
 function DatoCmsConnectionField({
   connection,
   onConnectDatoCms,
-  onDisconnectDatoCms,
+  onReconnectDatoCms,
 }: Pick<
   CredentialPanelProps,
-  'connection' | 'onConnectDatoCms' | 'onDisconnectDatoCms'
+  'connection' | 'onConnectDatoCms' | 'onReconnectDatoCms'
 >) {
   const datoCmsConnected = connection.datoCmsStatus === 'connected';
   const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
@@ -443,16 +446,17 @@ function DatoCmsConnectionField({
             Connected to <strong>{connectedLabel}</strong>.
           </p>
           <OAuthAccessNotice connection={connection} />
-          {onDisconnectDatoCms && (
+          {onReconnectDatoCms && (
             // Each connection is its own OAuth client with its own access level,
-            // so a fresh Connect is how an editor picks a different one.
+            // so a fresh sign-in is how an editor picks a different one.
             <Button
               buttonSize="xxs"
               buttonType="muted"
+              disabled={datoCmsConnecting}
               type="button"
-              onClick={onDisconnectDatoCms}
+              onClick={onReconnectDatoCms}
             >
-              Disconnect to change access
+              Reconnect to change access
             </Button>
           )}
         </>
@@ -598,7 +602,7 @@ function RecentChats({
 function CredentialPanel({
   connection,
   onConnectDatoCms,
-  onDisconnectDatoCms,
+  onReconnectDatoCms,
   onCheckDatoCmsAccess,
   recentConversations = [],
   onSelectConversation,
@@ -671,7 +675,7 @@ function CredentialPanel({
             <DatoCmsConnectionField
               connection={connection}
               onConnectDatoCms={onConnectDatoCms}
-              onDisconnectDatoCms={onDisconnectDatoCms}
+              onReconnectDatoCms={onReconnectDatoCms}
             />
           </SetupStep>
         </ol>
@@ -2304,7 +2308,7 @@ export function AgentSurface({
   onSubmit,
   mentionHost,
   onConnectDatoCms,
-  onDisconnectDatoCms,
+  onReconnectDatoCms,
   onCheckDatoCmsAccess,
   recentConversations = [],
   onSelectConversation,
@@ -2498,7 +2502,7 @@ export function AgentSurface({
             headingRef={settingsOpen ? settingsHeadingRef : undefined}
             isSettings={connected}
             onConnectDatoCms={onConnectDatoCms}
-            onDisconnectDatoCms={onDisconnectDatoCms}
+            onReconnectDatoCms={onReconnectDatoCms}
             onCheckDatoCmsAccess={onCheckDatoCmsAccess}
             onSelectConversation={
               onSelectConversation

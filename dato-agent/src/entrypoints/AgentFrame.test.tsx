@@ -8413,6 +8413,40 @@ describe('AgentFrame', () => {
     expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
   });
 
+  it('reconnects with a fresh client and revokes the previous token', async () => {
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.registerClient).toHaveBeenCalledOnce();
+    mocks.exchange.mockResolvedValueOnce({
+      accessToken: 'second-token',
+      tokenType: 'Bearer',
+      obtainedAt: 3,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    act(() => {
+      mocks.surfaceProps?.onReconnectDatoCms?.();
+    });
+
+    // A fresh client means DatoCMS shows the consent screen and its access choices.
+    await waitFor(() => expect(mocks.registerClient).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        fetchSpy.mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/oauth/revoke') &&
+            new URLSearchParams(String(init?.body)).get('token') ===
+              'opaque.bridge/token+value==',
+        ),
+      ).toBe(true),
+    );
+    expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+  });
+
   it('says a denied sign-in can be retried with Connect', async () => {
     mocks.callback.mockRejectedValueOnce(
       new RemoteMcpOAuthError(

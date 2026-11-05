@@ -1818,7 +1818,7 @@ describe('AgentSurface', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }));
     expect(onConnectDatoCms).toHaveBeenCalledOnce();
 
-    const onDisconnectDatoCms = vi.fn();
+    const onReconnectDatoCms = vi.fn();
     rerender(
       <AgentSurface
         connection={connected}
@@ -1830,7 +1830,7 @@ describe('AgentSurface', () => {
             content: 'Hello',
           },
         ]}
-        onDisconnectDatoCms={onDisconnectDatoCms}
+        onReconnectDatoCms={onReconnectDatoCms}
         onSubmit={vi.fn()}
       />,
     );
@@ -1843,11 +1843,11 @@ describe('AgentSurface', () => {
     expect(screen.queryByText('Remote MCP connection')).not.toBeInTheDocument();
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    const disconnectButton = screen.getByRole('button', {
-      name: 'Disconnect to change access',
+    const reconnectButton = screen.getByRole('button', {
+      name: 'Reconnect to change access',
     });
-    await user.click(disconnectButton);
-    expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
+    await user.click(reconnectButton);
+    expect(onReconnectDatoCms).toHaveBeenCalledOnce();
   });
 
   it('shows only six provided recent chats on the connection page', async () => {
@@ -2407,7 +2407,7 @@ describe('AgentSurface', () => {
           pluginReadOnly: true,
         }}
         entries={[]}
-        onDisconnectDatoCms={vi.fn()}
+        onReconnectDatoCms={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
@@ -2424,7 +2424,7 @@ describe('AgentSurface', () => {
     expect(screen.getByText(/Current access level/)).toBeVisible();
     // Each connection is its own OAuth client, so reconnecting changes the level.
     expect(
-      screen.getByRole('button', { name: 'Disconnect to change access' }),
+      screen.getByRole('button', { name: 'Reconnect to change access' }),
     ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Check access again' }),

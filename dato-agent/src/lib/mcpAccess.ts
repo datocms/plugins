@@ -13,7 +13,7 @@ export const MCP_ACCESS_CHECK_TIMEOUT_MS = 10_000;
  * access level for that client only. A fresh Connect is how an editor changes it.
  */
 export const MCP_ACCESS_CHANGE_GUIDANCE =
-  'To change the access level, use "Disconnect to change access" in the agent setup, then connect again and pick another level. This changes only this plugin\'s connection. The project role can still limit access.';
+  'To change the access level, use "Reconnect to change access" in the agent setup and pick another level on the DatoCMS consent screen. This changes only this plugin\'s connection. The project role can still limit access.';
 
 export function mcpAccessLabel(level: McpAccessLevel): string {
   return {

@@ -5585,6 +5585,39 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   };
 
+  /**
+   * Signs in again with a fresh OAuth client, so DatoCMS shows the consent
+   * screen and its access choices, then revokes the previous token. The access
+   * level belongs to each client, so this is how an editor changes it. Connect
+   * opens the popup before any await, so browsers don't block it.
+   */
+  const reconnectDatoCms = async () => {
+    if (
+      running ||
+      activeTurnRef.current ||
+      pendingApprovalsRef.current.size > 0 ||
+      approvalDispatchRef.current.size > 0
+    ) {
+      setOauthError(
+        'Finish or deny the pending operation before reconnecting.',
+      );
+      return;
+    }
+    const previous = oauthCredentialsRef.current;
+    await connectDatoCms(true);
+    const previousToken = previous?.token?.accessToken;
+    if (
+      previous &&
+      previousToken &&
+      oauthCredentialsRef.current?.token?.accessToken !== previousToken
+    ) {
+      await revokeToken({
+        accessToken: previousToken,
+        clientId: previous.client.clientId,
+      }).catch(() => undefined);
+    }
+  };
+
   const disconnectDatoCms = async () => {
     if (
       running ||
@@ -6148,6 +6181,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       onCopyFailureDiagnostics={copyFailureDiagnostics}
       onConnectDatoCms={() => void connectDatoCms()}
       onDisconnectDatoCms={() => void disconnectDatoCms()}
+      onReconnectDatoCms={() => void reconnectDatoCms()}
       onCheckDatoCmsAccess={() => {
         setAccessChecking(true);
         void refreshMcpAccess()
