@@ -3,7 +3,6 @@ import type { CentraDisplayItem, CentraItem } from '../src/lib/centraClient';
 import {
   availabilityLabel,
   countLabel,
-  fallbackIdentity,
   hasExactItemMatch,
   imageUrl,
   itemDetail,
@@ -35,7 +34,7 @@ describe('titles', () => {
     expect(productTitle(displayItem({ productNumber: 'P-100' }))).toBe(
       'Product P-100',
     );
-    expect(productTitle(displayItem())).toBe('DisplayItem 2752');
+    expect(productTitle(displayItem())).toBe('Product ID 2752');
   });
 
   it('falls back from the SKU name to its size, SKU and item ID', () => {
@@ -43,13 +42,6 @@ describe('titles', () => {
     expect(itemTitle(item({ productSizeId: 4, sku: 'S-1' }))).toBe('Size 4');
     expect(itemTitle(item({ sku: 'S-1' }))).toBe('S-1');
     expect(itemTitle(item())).toBe('Item item-1');
-  });
-
-  it('keeps the saved IDs as the fallback identity', () => {
-    expect(fallbackIdentity({ displayItemId: 558 })).toBe('DisplayItem 558');
-    expect(fallbackIdentity({ displayItemId: 558, itemId: 'item-2' })).toBe(
-      'Item item-2 · DisplayItem 558',
-    );
   });
 
   it('leaves the size label out of a SKU detail when it is the SKU', () => {

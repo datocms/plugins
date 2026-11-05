@@ -86,8 +86,8 @@ describe('Centra parameter normalization', () => {
 describe('Centra connection validation', () => {
   it('requires a valid endpoint and token', () => {
     expect(validateConnection({}).errors).toEqual({
-      endpoint: 'Enter the Centra Storefront GraphQL endpoint.',
-      token: 'Enter the no-session Storefront API token.',
+      endpoint: 'Enter the Storefront API URL.',
+      token: 'Enter the API token.',
     });
     expect(
       isConnectionComplete({
@@ -99,17 +99,19 @@ describe('Centra connection validation', () => {
   });
 
   it('requires HTTPS except for local development', () => {
-    expect(validateEndpoint('http://example.com/graphql')).toContain('HTTPS');
+    expect(validateEndpoint('http://example.com/graphql')).toContain(
+      'https://',
+    );
     expect(validateEndpoint('http://localhost:4000/graphql')).toBeNull();
     expect(validateEndpoint('https://example.com/graphql')).toBeNull();
   });
 
   it('rejects embedded URL credentials and fragments', () => {
     expect(validateEndpoint('https://user:pass@example.com/graphql')).toContain(
-      'credentials',
+      'password',
     );
     expect(validateEndpoint('https://example.com/graphql#token')).toContain(
-      'fragment',
+      'after #',
     );
   });
 });

@@ -315,7 +315,7 @@ describe('FieldExtension', () => {
     render(<FieldExtension ctx={ctx} />);
 
     expect(screen.getByText('Loading the products')).toBeInTheDocument();
-    expect(screen.queryByText('DisplayItem 2752')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unknown product')).not.toBeInTheDocument();
 
     await act(async () => {
       pending.resolve([resolved(2752, 'Dog Toy')]);
@@ -357,16 +357,21 @@ describe('FieldExtension', () => {
     expect(
       screen.getByRole('progressbar', { name: 'Loading the product' }),
     ).toBeInTheDocument();
-    expect(screen.queryByText('DisplayItem 558')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unknown product')).not.toBeInTheDocument();
 
     pending.reject(new Error('Centra is temporarily unavailable.'));
 
     expect(
-      await screen.findByText("Couldn't load the Centra details"),
+      await screen.findByText("Couldn't load the products from Centra"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Centra is temporarily unavailable/)).toBeVisible();
+    // The raw message stays out of the field
+    expect(
+      screen.queryByText(/Centra is temporarily unavailable/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'plugin settings' })).toBeVisible();
     expect(screen.getByText('Dog Toy')).toBeInTheDocument();
-    expect(screen.getByText('DisplayItem 558')).toBeInTheDocument();
+    expect(screen.getByText('Unknown product')).toBeInTheDocument();
+    expect(screen.getByText('558')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
@@ -380,11 +385,13 @@ describe('FieldExtension', () => {
     });
     render(<FieldExtension ctx={ctx} />);
 
-    expect(screen.getByText("The saved value isn't valid")).toBeInTheDocument();
     expect(
-      screen.getByText(/unsupported Centra reference version 2/),
+      screen.getByText("Can't show what's saved in this field"),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Clear value' })).toBeVisible();
+    expect(
+      screen.getByText(/A newer version of the Centra plugin saved it/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear field' })).toBeVisible();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
@@ -407,10 +414,7 @@ describe('FieldExtension', () => {
 
     render(<FieldExtension ctx={ctx} />);
 
-    expect(
-      await screen.findByText('No longer the primary variant'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('The saved ID is unchanged.')).toBeInTheDocument();
+    expect(await screen.findByText('Main variant changed')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 
@@ -426,10 +430,11 @@ describe('FieldExtension', () => {
     render(<FieldExtension ctx={ctx} />);
 
     expect(
-      await screen.findByText("Couldn't load the Centra details"),
+      await screen.findByText("Couldn't load the products from Centra"),
     ).toBeInTheDocument();
-    expect(screen.getByText('DisplayItem 2752')).toBeInTheDocument();
-    expect(screen.getByText('DisplayItem 558')).toBeInTheDocument();
+    expect(screen.getAllByText('Unknown product')).toHaveLength(2);
+    expect(screen.getByText('2752')).toBeInTheDocument();
+    expect(screen.getByText('558')).toBeInTheDocument();
     expect(setFieldValue).not.toHaveBeenCalled();
   });
 

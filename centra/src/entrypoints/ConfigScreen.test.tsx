@@ -8,6 +8,7 @@ import {
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { canvasCtx } from '../../tests/canvasCtx';
+import { CentraClientError } from '../lib/centraClient';
 import type { CentraPluginParametersV2 } from '../types';
 import ConfigScreen from './ConfigScreen';
 
@@ -18,7 +19,8 @@ const clientMocks = vi.hoisted(() => ({
   searchDisplayItems: vi.fn(),
 }));
 
-vi.mock('../lib/centraClient', () => ({
+vi.mock('../lib/centraClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/centraClient')>()),
   CentraClient: class {
     constructor(connection: unknown) {
       clientMocks.constructor(connection);
@@ -141,7 +143,7 @@ describe('ConfigScreen', () => {
     fireEvent.click(saveButton());
 
     expect(
-      await screen.findByText(/Use an HTTPS endpoint/i),
+      await screen.findByText('The URL must start with https://.'),
     ).toBeInTheDocument();
     // The error is the field's: the input gets the invalid state
     expect(endpoint).toHaveAttribute('aria-invalid', 'true');
@@ -151,15 +153,64 @@ describe('ConfigScreen', () => {
     fireEvent.click(saveButton());
 
     expect(
-      await screen.findByText('Enter a valid absolute URL.'),
+      await screen.findByText('Enter a full URL, starting with https://.'),
     ).toBeInTheDocument();
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expect(clientMocks.searchDisplayItems).not.toHaveBeenCalled();
   });
 
-  it('does not save when Centra rejects the connection', async () => {
+  it('does not save when Centra refuses the token, and says so on the token', async () => {
     clientMocks.searchDisplayItems.mockRejectedValue(
-      new Error(`Invalid token ${VALID_PARAMETERS.token}`),
+      new CentraClientError(
+        'http',
+        `Centra returned HTTP 401: Invalid token ${VALID_PARAMETERS.token}`,
+        { status: 401 },
+      ),
+    );
+    const { ctx, updatePluginParameters, alert } = createCtx({
+      parameters: { ...VALID_PARAMETERS, paramsVersion: '1' },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+
+    fireEvent.click(saveButton());
+
+    expect(
+      await screen.findByText("Centra didn't accept this token."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/API token/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(alert).not.toHaveBeenCalled();
+    expect(updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it('says so on the URL when Centra cannot be reached', async () => {
+    clientMocks.searchDisplayItems.mockRejectedValue(
+      new CentraClientError('network', 'Could not reach Centra: offline'),
+    );
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...VALID_PARAMETERS, paramsVersion: '1' },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+
+    fireEvent.click(saveButton());
+
+    expect(
+      await screen.findByText("Couldn't reach Centra at this URL."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Storefront API URL/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it('alerts without the raw reply when the failure has no field', async () => {
+    clientMocks.searchDisplayItems.mockRejectedValue(
+      new CentraClientError('http', 'Centra returned HTTP 500: {"errors":[]}', {
+        status: 500,
+      }),
     );
     const { ctx, updatePluginParameters, alert } = createCtx({
       parameters: { ...VALID_PARAMETERS, paramsVersion: '1' },
@@ -169,7 +220,9 @@ describe('ConfigScreen', () => {
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(alert).toHaveBeenCalledOnce());
-    expect(alert).toHaveBeenCalledWith('Invalid token [redacted]');
+    expect(alert).toHaveBeenCalledWith(
+      "Couldn't connect to Centra. Check the URL and the token, then save again.",
+    );
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
 
@@ -223,10 +276,9 @@ describe('ConfigScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Storefront API URL/)).toBeDisabled();
     expect(screen.getByLabelText(/API token/)).toBeDisabled();
-    expect(saveButton()).toHaveAttribute('aria-disabled', 'true');
-
-    fireEvent.click(saveButton());
-
+    expect(
+      screen.queryByRole('button', { name: 'Save' }),
+    ).not.toBeInTheDocument();
     expect(clientMocks.searchDisplayItems).not.toHaveBeenCalled();
   });
 });

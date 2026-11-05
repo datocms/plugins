@@ -124,10 +124,12 @@ describe('FieldConfigScreen', () => {
     });
     render(<FieldConfigScreen ctx={ctx} />);
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'These settings come from another version of the plugin.',
-    );
-    expect(screen.getByText('Unsupported settings')).toBeInTheDocument();
+    // The kind of another version shows no option as chosen; the valid
+    // cardinality stays chosen
+    for (const option of screen.getAllByRole('radio').slice(0, 3)) {
+      expect(option).not.toBeChecked();
+    }
+    expect(radio(/^Multiple/)).toBeChecked();
     expect(setParameters).not.toHaveBeenCalled();
 
     fireEvent.click(radio(/^SKUs/));

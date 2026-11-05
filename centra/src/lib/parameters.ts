@@ -94,29 +94,29 @@ export function normalizeFieldParameters(
 export function validateEndpoint(endpoint: string): string | null {
   const normalized = endpoint.trim();
   if (normalized.length === 0) {
-    return 'Enter the Centra Storefront GraphQL endpoint.';
+    return 'Enter the Storefront API URL.';
   }
 
   let url: URL;
   try {
     url = new URL(normalized);
   } catch {
-    return 'Enter a valid absolute URL.';
+    return 'Enter a full URL, starting with https://.';
   }
 
   if (url.username.length > 0 || url.password.length > 0) {
-    return 'Do not include credentials in the endpoint URL.';
+    return 'Remove the user name and password from the URL.';
   }
 
   if (url.hash.length > 0) {
-    return 'Remove the fragment from the endpoint URL.';
+    return 'Remove the part after # from the URL.';
   }
 
   const isLocalHttp =
     url.protocol === 'http:' &&
     (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
   if (url.protocol !== 'https:' && !isLocalHttp) {
-    return 'Use an HTTPS endpoint (HTTP is allowed only for localhost).';
+    return 'The URL must start with https://.';
   }
 
   return null;
@@ -133,7 +133,7 @@ export function validateConnection(
   }
 
   if (connection.token.length === 0) {
-    errors.token = 'Enter the no-session Storefront API token.';
+    errors.token = 'Enter the API token.';
   }
 
   return { valid: Object.keys(errors).length === 0, errors };
@@ -143,9 +143,7 @@ export function isConnectionComplete(connection: CentraConnection): boolean {
   return validateConnection(connection).valid;
 }
 
-export function resolveConnection(
-  parametersValue: unknown,
-): CentraConnection {
+export function resolveConnection(parametersValue: unknown): CentraConnection {
   const parameters = normalizePluginParameters(parametersValue);
   return { endpoint: parameters.endpoint, token: parameters.token };
 }

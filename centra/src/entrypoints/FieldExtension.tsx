@@ -15,12 +15,14 @@ import {
 import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import FieldHint from 'datocms-react-ui/FieldHint';
+import IdText from 'datocms-react-ui/IdText';
 import Link from 'datocms-react-ui/Link';
 import Pill from 'datocms-react-ui/Pill';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import get from 'lodash-es/get';
 import isEqual from 'lodash-es/isEqual';
 import {
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -40,6 +42,7 @@ import {
 } from '../icons';
 import {
   CentraClient,
+  CentraClientError,
   type HydratedCentraReference,
 } from '../lib/centraClient';
 import {
@@ -51,6 +54,7 @@ import {
   buildReferenceDocument,
   moveReference,
   parseReferenceDocument,
+  type ReferenceDocumentErrorCode,
   referenceKey,
 } from '../lib/references';
 import type {
@@ -61,7 +65,6 @@ import type {
 import {
   type CountNouns,
   displayItemDetail,
-  fallbackIdentity,
   imageUrl,
   isRecord,
   itemDetail,
@@ -97,8 +100,11 @@ type HydrationState =
       status: 'error';
       entries: CachedHydratedReference[];
       referenceKeys: string[];
-      error: string;
+      problem: HydrationProblem;
     };
+
+/** Why the catalog data didn't load: a refused token, no answer, or other */
+type HydrationProblem = 'token' | 'network' | 'other';
 
 /** A saved reference, with its catalog data once hydrated */
 type ReferenceRow = {
@@ -171,10 +177,14 @@ function validFieldParameters(value: unknown): boolean {
   );
 }
 
-function friendlyError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Couldn't load the saved items from Centra.";
+function hydrationProblem(error: unknown): HydrationProblem {
+  if (!(error instanceof CentraClientError)) return 'other';
+  if (error.status === 401 || error.status === 403) return 'token';
+  return error.code === 'network' ? 'network' : 'other';
+}
+
+function canEditSchema(ctx: RenderFieldExtensionCtx): boolean {
+  return ctx.currentRole.meta.final_permissions.can_edit_schema;
 }
 
 function readPickerResult(value: unknown): PickerModalResult | null {
@@ -184,45 +194,36 @@ function readPickerResult(value: unknown): PickerModalResult | null {
   return { references: value.references as CentraReference[] };
 }
 
-function referenceWarning(
-  hydrated: HydratedCentraReference | undefined,
-): { title: string; text: string } | undefined {
-  if (hydrated?.status === 'resolved' && hydrated.primaryDrift) {
+/**
+ * The title and the details line of a row. Without catalog data (Centra
+ * doesn't have it, or it didn't load) the row is an unknown one, with the
+ * saved IDs as its details.
+ */
+function rowText(
+  { reference, hydrated, loading }: ReferenceRow,
+  noun: string,
+): { title: string; details: ReactNode } {
+  if (loading) return { title: 'Loading…', details: null };
+  const displayItem = hydrated?.displayItem;
+  if (!displayItem) {
+    const productId = <IdText id={String(reference.displayItemId)} />;
     return {
-      title: 'No longer the primary variant',
-      text: 'The saved ID is unchanged.',
+      title: `Unknown ${noun}`,
+      details:
+        'itemId' in reference ? (
+          <>
+            SKU ID <IdText id={reference.itemId} /> · Product ID {productId}
+          </>
+        ) : (
+          <>ID {productId}</>
+        ),
     };
   }
-  if (hydrated?.status === 'unresolved') {
-    return hydrated.reason === 'itemNotFound'
-      ? {
-          title: 'Centra no longer has this SKU',
-          text: 'The saved IDs are unchanged.',
-        }
-      : {
-          title: 'Centra no longer has this product',
-          text: 'The saved ID is unchanged.',
-        };
-  }
-  return undefined;
-}
-
-/**
- * The title and the details line of a row. Without catalog data the title
- * is the saved IDs; an unresolved row adds them to its details.
- */
-function rowText({ reference, hydrated, loading }: ReferenceRow) {
-  if (loading) return { title: 'Loading…', details: '' };
-  const displayItem = hydrated?.displayItem;
-  if (!displayItem) return { title: fallbackIdentity(reference), details: '' };
 
   const item = hydrated?.status === 'resolved' ? hydrated.item : undefined;
   const details = item
     ? itemDetail(displayItem, item)
     : displayItemDetail(displayItem);
-  if (hydrated?.status === 'unresolved') {
-    details.push(fallbackIdentity(reference));
-  }
   return { title: productTitle(displayItem), details: details.join(' · ') };
 }
 
@@ -339,7 +340,7 @@ type ReferenceItemProps = Omit<RowMenuProps, 'title'> & {
 
 /**
  * One saved reference: its image, title, statuses and details, then the "⋮"
- * with its changes. A warning about the saved IDs shows under the row.
+ * with its changes
  */
 function ReferenceItem({
   row,
@@ -352,8 +353,7 @@ function ReferenceItem({
   const displayItem = hydrated?.displayItem;
   const item = hydrated?.status === 'resolved' ? hydrated.item : undefined;
   const status = referenceStatus(displayItem, item);
-  const warning = referenceWarning(hydrated);
-  const { title, details } = rowText(row);
+  const { title, details } = rowText(row, noun);
 
   return (
     <CardList.Item
@@ -372,7 +372,20 @@ function ReferenceItem({
               afterTitle={
                 <>
                   {hydrated?.status === 'unresolved' && (
-                    <Pill tone="warning">Not found</Pill>
+                    <Pill
+                      tone="warning"
+                      tooltip={`Centra no longer has this ${noun}. Replace or remove it.`}
+                    >
+                      Not found
+                    </Pill>
+                  )}
+                  {hydrated?.status === 'resolved' && hydrated.primaryDrift && (
+                    <Pill
+                      tone="warning"
+                      tooltip="Centra now uses another variant as the main one for this product. Replace it to use the new one."
+                    >
+                      Main variant changed
+                    </Pill>
                   )}
                   {status && <Pill tone="warning">{status}</Pill>}
                   {item?.preorder && <Pill>Preorder</Pill>}
@@ -384,23 +397,12 @@ function ReferenceItem({
             {loading && (
               <ProgressBar placement="edge" ariaLabel={`Loading the ${noun}`} />
             )}
-            {/* The row is positioned: without a body, the drop line goes on
-                its edges */}
-            {!warning && sortable.dropIndicator}
+            {/* The row is positioned: the drop line goes on its edges */}
+            {sortable.dropIndicator}
           </>
         ),
         actions: !disabled && !loading && <RowMenu title={title} {...menu} />,
       }}
-      body={
-        warning ? (
-          <>
-            {sortable.dropIndicator}
-            <Callout tone="warning" title={warning.title}>
-              {warning.text}
-            </Callout>
-          </>
-        ) : undefined
-      }
     />
   );
 }
@@ -443,7 +445,7 @@ function ReferenceList({
   };
 
   return (
-    <div className={reorderable ? styles.gutter : undefined} aria-busy={busy}>
+    <div aria-busy={busy}>
       {/* Always rendered, so the rows don't remount when reordering starts
           to apply: the list is only disabled */}
       <SortableList
@@ -485,31 +487,55 @@ function ReferenceList({
   );
 }
 
+/**
+ * What's wrong with a saved value that the editor can't read, and the next
+ * step: clearing it, or for a newer version's value, updating the plugin
+ */
+function invalidValueText(
+  code: ReferenceDocumentErrorCode,
+  nouns: CountNouns,
+  { schemaEditor, canClear }: { schemaEditor: boolean; canClear: boolean },
+): string {
+  const clear = canClear ? ' Clear the field to choose again.' : '';
+  switch (code) {
+    case 'unsupported-version':
+      return `A newer version of the Centra plugin saved it. ${
+        schemaEditor
+          ? 'Update the plugin to show it.'
+          : 'Ask an administrator to update the plugin.'
+      }`;
+    case 'kind-mismatch':
+      return `The field now picks ${nouns.other}, but something else is saved in it.${clear}`;
+    case 'cardinality-mismatch':
+      return `The field now holds one ${nouns.one}, but more are saved in it.${clear}`;
+    default:
+      return `The saved content is damaged.${clear}`;
+  }
+}
+
 /** A saved value that the editor can't read, kept until an editor clears it */
 function InvalidValue({
-  message,
+  text,
   disabled,
   onClear,
 }: {
-  message: string;
+  text: string;
   disabled: boolean;
   onClear: () => Promise<void>;
 }) {
   return (
     <>
-      <Callout tone="danger" title="The saved value isn't valid">
-        {message}
+      <Callout tone="danger" title="Can't show what's saved in this field">
+        {text}
       </Callout>
-      {!disabled && (
-        <Button tone="ghost-alert" label="Clear value" onClick={onClear} />
-      )}
+      {!disabled && <Button label="Clear field" onClick={onClear} />}
     </>
   );
 }
 
-/** The connection is missing: the next step is the plugin settings */
-function NotConnected({ ctx }: Props) {
-  const settings = ctx.currentRole.meta.final_permissions.can_edit_schema ? (
+/** The link to the plugin's settings, for the roles that can change them */
+function SettingsLink({ ctx }: Props) {
+  return (
     <Link
       to={pluginSettingsPath({
         pluginId: ctx.plugin.id,
@@ -519,13 +545,58 @@ function NotConnected({ ctx }: Props) {
     >
       plugin settings
     </Link>
-  ) : (
-    'plugin settings'
   );
+}
 
+/** The connection is missing: the next step is the plugin settings */
+function NotConnected({ ctx }: Props) {
   return (
     <Callout tone="warning" title="Centra isn't connected">
-      Add the Storefront API URL and token in the {settings}.
+      {canEditSchema(ctx) ? (
+        <>
+          Add the Storefront API URL and token in the <SettingsLink ctx={ctx} />
+          .
+        </>
+      ) : (
+        'Ask an administrator to connect Centra.'
+      )}
+    </Callout>
+  );
+}
+
+/** The saved references stay, without their catalog data */
+function HydrationError({
+  ctx,
+  problem,
+  nouns,
+}: Props & { problem: HydrationProblem; nouns: CountNouns }) {
+  let text: ReactNode;
+  if (problem === 'network') {
+    text = "Centra can't be reached right now. Reload the page to try again.";
+  } else if (!canEditSchema(ctx)) {
+    text =
+      problem === 'token'
+        ? "Centra didn't accept the API token. Ask an administrator to check the connection."
+        : 'Ask an administrator to check the Centra connection.';
+  } else {
+    text =
+      problem === 'token' ? (
+        <>
+          Centra didn't accept the token in the <SettingsLink ctx={ctx} />.
+        </>
+      ) : (
+        <>
+          Check the connection in the <SettingsLink ctx={ctx} />.
+        </>
+      );
+  }
+
+  return (
+    <Callout
+      tone="warning"
+      title={`Couldn't load the ${nouns.other} from Centra`}
+    >
+      {text}
     </Callout>
   );
 }
@@ -660,7 +731,7 @@ export default function FieldExtension({ ctx }: Props) {
           status: 'error',
           entries: current.entries,
           referenceKeys: requestedKeys,
-          error: friendlyError(error),
+          problem: hydrationProblem(error),
         }));
         setHydrationSettled(true);
       });
@@ -742,11 +813,10 @@ export default function FieldExtension({ ctx }: Props) {
   const clearInvalidValue = async () => {
     if (ctx.disabled) return;
     const confirmed = await ctx.openConfirm({
-      title: 'Clear the saved value?',
-      content:
-        "The raw JSON of this field is removed. You can't undo this from the plugin.",
-      choices: [{ label: 'Clear value', value: 'clear', intent: 'negative' }],
-      cancel: { label: 'Keep value', value: 'cancel' },
+      title: 'Clear this field?',
+      content: "What's saved in it is removed when you save the record.",
+      choices: [{ label: 'Clear field', value: 'clear', intent: 'negative' }],
+      cancel: { label: 'Cancel', value: 'cancel' },
     });
     if (confirmed === 'clear') {
       await ctx.setFieldValue(ctx.fieldPath, null);
@@ -794,8 +864,9 @@ export default function FieldExtension({ ctx }: Props) {
     return (
       <Canvas ctx={ctx}>
         <Callout tone="warning" title="Unsupported field settings">
-          Open the field settings, choose what editors pick and how many, then
-          save the field.
+          {canEditSchema(ctx)
+            ? 'Open the field settings, choose what editors pick and how many, then save the field.'
+            : 'Ask an administrator to finish setting up this field.'}
         </Callout>
       </Canvas>
     );
@@ -805,7 +876,10 @@ export default function FieldExtension({ ctx }: Props) {
     return (
       <Canvas ctx={ctx}>
         <InvalidValue
-          message={parsed.error.message}
+          text={invalidValueText(parsed.error.code, nouns, {
+            schemaEditor: canEditSchema(ctx),
+            canClear: !ctx.disabled,
+          })}
           disabled={ctx.disabled}
           onClear={clearInvalidValue}
         />
@@ -821,41 +895,49 @@ export default function FieldExtension({ ctx }: Props) {
     );
   }
 
+  // A multiple field keeps the drag handles' gutter at the left of its card
+  // (and of the message above it) from the first item on, so the card
+  // doesn't move when a second item makes the rows reorderable
+  const gutter =
+    fieldParameters.cardinality === 'multiple' &&
+    !ctx.disabled &&
+    rows.length > 0;
+
   return (
     <Canvas ctx={ctx}>
-      {hydration.status === 'error' && (
-        <Callout tone="warning" title="Couldn't load the Centra details">
-          The saved IDs are unchanged. {hydration.error}
-        </Callout>
-      )}
+      <div className={gutter ? styles.gutter : undefined}>
+        {hydration.status === 'error' && (
+          <HydrationError ctx={ctx} problem={hydration.problem} nouns={nouns} />
+        )}
 
-      {rows.length > 0 && !hydrationSettled ? (
-        <BlankSlate
-          placement="inline"
-          small
-          loading
-          title={`Loading the ${nouns.other}`}
-        />
-      ) : (
-        <ReferenceList
-          rows={rows}
-          nouns={nouns}
-          multiple={fieldParameters.cardinality === 'multiple'}
-          reorderable={sortingEnabled}
-          disabled={ctx.disabled}
-          busy={hydration.status === 'loading'}
-          onAdd={() => void openAndPersist()}
-          onReplace={(index) => void replaceAt(index)}
-          onRemove={(index) =>
-            void persist(
-              references.filter(
-                (_candidate, candidateIndex) => candidateIndex !== index,
-              ),
-            )
-          }
-          onReorder={reorder}
-        />
-      )}
+        {rows.length > 0 && !hydrationSettled ? (
+          <BlankSlate
+            placement="inline"
+            small
+            loading
+            title={`Loading the ${nouns.other}`}
+          />
+        ) : (
+          <ReferenceList
+            rows={rows}
+            nouns={nouns}
+            multiple={fieldParameters.cardinality === 'multiple'}
+            reorderable={sortingEnabled}
+            disabled={ctx.disabled}
+            busy={hydration.status === 'loading'}
+            onAdd={() => void openAndPersist()}
+            onReplace={(index) => void replaceAt(index)}
+            onRemove={(index) =>
+              void persist(
+                references.filter(
+                  (_candidate, candidateIndex) => candidateIndex !== index,
+                ),
+              )
+            }
+            onReorder={reorder}
+          />
+        )}
+      </div>
 
       {ctx.disabled && <FieldHint hint="This field is read-only." />}
     </Canvas>

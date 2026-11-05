@@ -52,17 +52,8 @@ function errorMessage(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function isValidV1Parameters(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const parameters = value as Record<string, unknown>;
-  return (
-    parameters.paramsVersion === '1' &&
-    isReferenceKind(parameters.kind) &&
-    isCardinality(parameters.cardinality)
-  );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isEmptyParameterPayload(value: unknown): boolean {
@@ -81,9 +72,14 @@ export default function FieldConfigScreen({ ctx }: Props) {
   );
   const lastParametersSignatureRef = useRef<string | null>(null);
   const isJsonField = ctx.pendingField.attributes.field_type === 'json';
-  const hasUnsupportedParameters =
-    !isEmptyParameterPayload(ctx.parameters) &&
-    !isValidV1Parameters(ctx.parameters);
+  // A stored value that this version doesn't understand shows no option as
+  // chosen, as the host's error under the group says (see main.tsx). A new
+  // field gets the defaults.
+  const stored = isRecord(ctx.parameters) ? ctx.parameters : {};
+  const isNew = isEmptyParameterPayload(ctx.parameters);
+  const kindKnown =
+    isNew || (stored.paramsVersion === '1' && isReferenceKind(stored.kind));
+  const cardinalityKnown = isNew || isCardinality(stored.cardinality);
 
   useEffect(() => {
     const signature = JSON.stringify(ctx.parameters);
@@ -128,16 +124,10 @@ export default function FieldConfigScreen({ ctx }: Props) {
 
   return (
     <Canvas ctx={ctx}>
-      {hasUnsupportedParameters && (
-        <Callout tone="warning" title="Unsupported settings">
-          These settings come from another version of the plugin. They stay as
-          they are until you change an option below.
-        </Callout>
-      )}
       <FieldWrapper label="Editors pick" error={errorMessage(ctx.errors.kind)}>
         <RadioGroupInput
           options={KIND_OPTIONS}
-          value={parameters.kind}
+          value={kindKnown ? parameters.kind : null}
           onChange={(kind) => {
             if (isReferenceKind(kind)) updateParameters({ kind });
           }}
@@ -149,7 +139,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
       >
         <RadioGroupInput
           options={CARDINALITY_OPTIONS}
-          value={parameters.cardinality}
+          value={cardinalityKnown ? parameters.cardinality : null}
           onChange={(cardinality) => {
             if (isCardinality(cardinality)) updateParameters({ cardinality });
           }}

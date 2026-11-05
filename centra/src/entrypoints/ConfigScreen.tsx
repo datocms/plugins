@@ -7,7 +7,7 @@ import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { CentraClient } from '../lib/centraClient';
+import { CentraClient, CentraClientError } from '../lib/centraClient';
 import {
   normalizePluginParameters,
   validateConnection,
@@ -26,21 +26,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function disabledReason(
-  canEdit: boolean,
-  isDirty: boolean,
-): string | undefined {
-  if (!canEdit) return READ_ONLY_REASON;
-  if (!isDirty) return 'There are no changes to save.';
-  return undefined;
-}
-
-function safeErrorMessage(error: unknown, token: string): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : "Couldn't reach Centra with these credentials.";
-  return token ? message.split(token).join('[redacted]') : message;
+/**
+ * The error of the field that a failed check points to: the token that
+ * Centra refused, or a URL that doesn't answer. Null when it could be either.
+ */
+function connectionError(error: unknown): ConnectionErrors | null {
+  if (!(error instanceof CentraClientError)) return null;
+  if (error.status === 401 || error.status === 403) {
+    return { token: "Centra didn't accept this token." };
+  }
+  if (error.code === 'network') {
+    return { endpoint: "Couldn't reach Centra at this URL." };
+  }
+  if (error.status === 404) {
+    return { endpoint: "There's no Storefront API at this URL." };
+  }
+  return null;
 }
 
 export default function ConfigScreen({ ctx }: Props) {
@@ -88,11 +89,18 @@ export default function ConfigScreen({ ctx }: Props) {
         'Centra connected. Add the Centra editor to a JSON field to use it.',
       );
     } catch (error) {
-      // The alert stays open until the user closes it: the saving state ends
-      // without waiting for it
-      void ctx
-        .alert(safeErrorMessage(error, normalized.token))
-        .catch(() => undefined);
+      const fieldError = connectionError(error);
+      if (fieldError) {
+        setErrors(fieldError);
+      } else {
+        // The alert stays open until the user closes it: the saving state
+        // ends without waiting for it
+        void ctx
+          .alert(
+            "Couldn't connect to Centra. Check the URL and the token, then save again.",
+          )
+          .catch(() => undefined);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -106,7 +114,6 @@ export default function ConfigScreen({ ctx }: Props) {
   }
 
   const inputsDisabled = !canEdit || isSaving;
-  const saveDisabledReason = disabledReason(canEdit, isDirty);
 
   return (
     <Canvas ctx={ctx}>
@@ -119,18 +126,20 @@ export default function ConfigScreen({ ctx }: Props) {
             <Page.Group
               title="Storefront API"
               footer={
-                <Button
-                  submit
-                  tone="primary"
-                  label="Save"
-                  expand={false}
-                  busy={isSaving}
-                  disabled={
-                    saveDisabledReason
-                      ? { reason: saveDisabledReason }
-                      : undefined
-                  }
-                />
+                canEdit && (
+                  <Button
+                    submit
+                    tone="primary"
+                    label="Save"
+                    expand={false}
+                    busy={isSaving}
+                    disabled={
+                      isDirty
+                        ? undefined
+                        : { reason: 'There are no changes to save.' }
+                    }
+                  />
+                )
               }
             >
               <FieldWrapper

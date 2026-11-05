@@ -1,5 +1,5 @@
 import type { CentraDisplayItem, CentraItem } from '../lib/centraClient';
-import type { CentraReference, CentraReferenceKind } from '../types';
+import type { CentraReferenceKind } from '../types';
 
 // The texts that the field editor and the picker derive from Centra's catalog
 // data: titles with their fallbacks, details, images, availability, the SKU
@@ -22,11 +22,11 @@ export function productTitle(displayItem: CentraDisplayItem): string {
   );
 }
 
-/** "Product <number>", or "DisplayItem <id>" without a product number */
-export function productIdentity(displayItem: CentraDisplayItem): string {
+/** "Product <number>", or "Product ID <id>" without a product number */
+function productIdentity(displayItem: CentraDisplayItem): string {
   return displayItem.productNumber
     ? `Product ${displayItem.productNumber}`
-    : `DisplayItem ${displayItem.id}`;
+    : `Product ID ${displayItem.id}`;
 }
 
 /** The picker's variant line: "name · number", or undefined when both lack */
@@ -181,13 +181,6 @@ export function rankItems(
         Number(right.exact) - Number(left.exact) || left.index - right.index,
     )
     .map(({ item }) => item);
-}
-
-/** The saved IDs of a reference, for a row without catalog data */
-export function fallbackIdentity(reference: CentraReference): string {
-  return 'itemId' in reference
-    ? `Item ${reference.itemId} · DisplayItem ${reference.displayItemId}`
-    : `DisplayItem ${reference.displayItemId}`;
 }
 
 export type CountNouns = { one: string; other: string };

@@ -1,7 +1,6 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import { useDebouncedValue } from 'datocms-react-ui/hooks/useDebouncedValue';
@@ -55,7 +54,6 @@ import {
   itemTitle,
   KIND_NOUNS,
   productDetail,
-  productIdentity,
   productTitle,
   rankItems,
 } from '../utils/catalog';
@@ -73,7 +71,6 @@ type SearchState = {
   page: number;
   /** The text of the last settled search */
   query: string;
-  totalCount?: number;
   error?: string;
 };
 
@@ -147,17 +144,11 @@ function pageCountForResult(result: {
   return Math.max(1, result.page + (result.hasMore ? 1 : 0));
 }
 
-/**
- * What the results list, and the name of the list: the SKU picker lists
- * products, with their SKUs
- */
-const LISTED: Record<
-  CentraReferenceKind,
-  { nouns: CountNouns; label: string }
-> = {
-  primaryProduct: { nouns: KIND_NOUNS.primaryProduct, label: 'Products' },
-  variant: { nouns: KIND_NOUNS.variant, label: 'Product variants' },
-  item: { nouns: KIND_NOUNS.primaryProduct, label: 'Products' },
+/** The name of the list: the SKU picker lists products, with their SKUs */
+const LIST_LABELS: Record<CentraReferenceKind, string> = {
+  primaryProduct: 'Products',
+  variant: 'Product variants',
+  item: 'Products',
 };
 
 // ---------------------------------------------------------------------------
@@ -190,9 +181,7 @@ function NameCell({ row }: { row: ResultRow }) {
         layout="row"
         title={itemTitle(row.item)}
         afterTitle={row.item.preorder ? <Pill>Preorder</Pill> : undefined}
-      >
-        Item <IdText id={row.item.id} />
-      </EntityRow>
+      />
     );
   }
 
@@ -208,9 +197,7 @@ function NameCell({ row }: { row: ResultRow }) {
         ) : undefined
       }
     >
-      {[productIdentity(displayItem), productDetail(displayItem)]
-        .filter(Boolean)
-        .join(' · ')}
+      {productDetail(displayItem)}
     </EntityRow>
   );
 }
@@ -262,11 +249,11 @@ const COLUMNS: TableColumn<ResultRow>[] = [
   },
 ];
 
+/** The GTIN shows from the columns menu */
 const SKU_LAYOUT = {
   columns: [
     { name: 'name', width: 5 },
     { name: 'sku', width: 2 },
-    { name: 'gtin', width: 2 },
     { name: 'price', width: 1.2 },
     { name: 'availability', width: 2 },
   ],
@@ -467,8 +454,6 @@ function PickerHeader({ query, onQueryChange, reloading }: PickerHeaderProps) {
 }
 
 type PickerFooterProps = {
-  /** The number of results, when Centra gives it */
-  count: string | null;
   selectedLabel: string;
   page: number;
   pageCount: number;
@@ -478,7 +463,6 @@ type PickerFooterProps = {
 };
 
 function PickerFooter({
-  count,
   selectedLabel,
   page,
   pageCount,
@@ -489,7 +473,6 @@ function PickerFooter({
   return (
     <Toolbar>
       <Toolbar.Subtitle>
-        {count !== null && `${count} · `}
         <span role="status" aria-live="polite">
           {selectedLabel}
         </span>
@@ -513,14 +496,25 @@ function PickerFooter({
 
 type NoResultsProps = {
   nouns: CountNouns;
+  /** The role can change the plugin settings */
+  schemaEditor: boolean;
   pending: boolean;
   /** The last settled search */
   search: SearchState;
   onRetry: () => void;
 };
 
-/** The results area with no item: the first load, a failure or no match */
-function NoResults({ nouns, pending, search, onRetry }: NoResultsProps) {
+/**
+ * The results area with no item: the first load, a failure (of the first
+ * page or of another one) or no match
+ */
+function NoResults({
+  nouns,
+  schemaEditor,
+  pending,
+  search,
+  onRetry,
+}: NoResultsProps) {
   if (pending) {
     return (
       <BlankSlate
@@ -539,7 +533,11 @@ function NoResults({ nouns, pending, search, onRetry }: NoResultsProps) {
         icon={<CircleExclamationIcon />}
         title="Couldn't load the catalog"
         code={search.error}
-        description="Check the connection in the plugin settings, then try again."
+        description={
+          schemaEditor
+            ? 'Check the connection in the plugin settings, then try again.'
+            : 'Try again, or ask an administrator to check the Centra connection.'
+        }
         actions={<Button label="Try again" onClick={onRetry} />}
       />
     );
@@ -666,7 +664,6 @@ export default function PickerModal({ ctx }: Props) {
           items: result.items,
           page: result.page,
           query: debouncedQuery,
-          totalCount: result.totalCount,
         });
         setLoaded(true);
         setPageCount(pageCountForResult(result));
@@ -723,12 +720,18 @@ export default function PickerModal({ ctx }: Props) {
     );
   }
 
+  const schemaEditor = ctx.currentRole.meta.final_permissions.can_edit_schema;
+
   if (!isConnectionComplete(connection)) {
     return (
       <SetupProblem
         ctx={ctx}
         title="Centra isn't connected"
-        description="Add the Storefront API URL and token in the plugin settings, then open the picker again."
+        description={
+          schemaEditor
+            ? 'Add the Storefront API URL and token in the plugin settings, then open the picker again.'
+            : 'Ask an administrator to connect Centra.'
+        }
       />
     );
   }
@@ -782,7 +785,6 @@ export default function PickerModal({ ctx }: Props) {
         items: result.items,
         page: result.page,
         query: debouncedQuery,
-        totalCount: result.totalCount,
       });
       setPageCount((current) =>
         result.totalCount === undefined
@@ -815,11 +817,13 @@ export default function PickerModal({ ctx }: Props) {
   };
 
   const { kind } = fieldParameters;
-  const listed = LISTED[kind];
   const queryIsDebouncing = query.trim() !== debouncedQuery;
   const searchIsPending = queryIsDebouncing || search.status === 'loading';
   const isBusy = searchIsPending || isChangingPage;
-  const hasResults = search.items.length > 0;
+  // A failed page replaces the last results: they would stay on screen
+  // without working. Try again loads the list from its start.
+  const showResults =
+    loaded && search.items.length > 0 && search.status !== 'error';
   const toggleExpanded = (displayItemId: number) => {
     setExpandedDisplayItemId((current) =>
       current === displayItemId ? null : displayItemId,
@@ -840,7 +844,7 @@ export default function PickerModal({ ctx }: Props) {
         }}
       >
         <Pane
-          ariaLabel={listed.label}
+          ariaLabel={LIST_LABELS[kind]}
           header={
             <PickerHeader
               query={query}
@@ -850,11 +854,6 @@ export default function PickerModal({ ctx }: Props) {
           }
           footer={
             <PickerFooter
-              count={
-                typeof search.totalCount === 'number'
-                  ? countLabel(search.totalCount, listed.nouns, ctx.ui.locale)
-                  : null
-              }
               selectedLabel={`${countLabel(
                 selection.length,
                 KIND_NOUNS[kind],
@@ -869,14 +868,11 @@ export default function PickerModal({ ctx }: Props) {
           }
         >
           <ListArea>
-            {search.status === 'error' && hasResults && (
-              <Callout tone="danger">{search.error}</Callout>
-            )}
-            {hasResults ? (
+            {showResults ? (
               <div
                 ref={resultsRef}
                 aria-busy={isBusy}
-                inert={isBusy || search.status === 'error' ? true : undefined}
+                inert={isBusy ? true : undefined}
               >
                 {kind === 'item' ? (
                   <SkuTable
@@ -893,6 +889,7 @@ export default function PickerModal({ ctx }: Props) {
             ) : (
               <NoResults
                 nouns={KIND_NOUNS[kind]}
+                schemaEditor={schemaEditor}
                 pending={!loaded}
                 search={search}
                 onRetry={() => {

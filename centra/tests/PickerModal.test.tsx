@@ -74,6 +74,7 @@ function createCtx(fieldParameters: CentraFieldParametersV1) {
     },
     environment: 'main',
     isEnvironmentPrimary: true,
+    currentRole: { meta: { final_permissions: { can_edit_schema: true } } },
     resolve,
     setHeight,
   } as unknown as RenderModalCtx;
@@ -82,13 +83,6 @@ function createCtx(fieldParameters: CentraFieldParametersV1) {
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-/** The deepest element whose whole text is `text` (a text split by markup) */
-function byWholeText(text: string) {
-  return (_content: string, element: Element | null) =>
-    element?.textContent === text &&
-    Array.from(element.children).every((child) => child.textContent !== text);
 }
 
 /** The footer bar: the one that holds Apply selection */
@@ -165,8 +159,9 @@ describe('PickerModal', () => {
     // A click on the row, or on its checkbox, toggles the product
     const checkbox = await screen.findByRole('checkbox', { name: /^Dog Toy/ });
     const row = screen.getByText('Dog Toy');
-    // The count of the results leads the footer, before the selection
-    expect(footer()).toHaveTextContent('1 product · 0 products selected');
+    // The footer counts the selection only
+    expect(footer()).toHaveTextContent('0 products selected');
+    expect(footer()).not.toHaveTextContent('1 product ·');
 
     fireEvent.click(row);
     expect(checkbox).toBeChecked();
@@ -246,12 +241,12 @@ describe('PickerModal', () => {
       await screen.findByRole('checkbox', { name: /^Product 54321/ }),
     ).not.toBeChecked();
     expect(screen.getByText('Product 54321')).toBeInTheDocument();
-    expect(screen.getByText('Product 54321 · 54321R001')).toBeInTheDocument();
+    expect(screen.getByText('54321R001')).toBeInTheDocument();
     expect(screen.getByText('Out of stock')).toBeInTheDocument();
     expect(screen.getByText('€12.00')).toBeInTheDocument();
   });
 
-  it('opens the SKUs of a product and keeps duplicate SKUs apart by their item ID', async () => {
+  it('opens the SKUs of a product and keeps duplicate SKUs apart', async () => {
     vi.mocked(scrollToNearestEdge).mockClear();
     vi.spyOn(CentraClient.prototype, 'searchItems').mockResolvedValue({
       items: [
@@ -291,8 +286,9 @@ describe('PickerModal', () => {
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(scrollToNearestEdge).toHaveBeenCalled();
-    expect(screen.getByText(byWholeText('Item item-1'))).toBeInTheDocument();
-    expect(screen.getByText(byWholeText('Item item-2'))).toBeInTheDocument();
+    expect(screen.getAllByText('SHARED-SKU')).toHaveLength(2);
+    // The SKU rows show no internal item ID
+    expect(screen.queryByText('item-1')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /^Medium/ }));
     expect(screen.getByRole('checkbox', { name: /^Medium/ })).toBeChecked();
@@ -378,9 +374,8 @@ describe('PickerModal', () => {
 
     fireEvent.click(await screen.findByRole('checkbox', { name: /^Dog Toy/ }));
     const bar = footer();
-    expect(bar).toHaveTextContent(
-      '48 product variants · 1 product variant selected',
-    );
+    expect(bar).toHaveTextContent('1 product variant selected');
+    expect(bar).not.toHaveTextContent('48 product variants');
     const pagination = within(bar).getByRole('navigation', {
       name: 'Product variants pagination',
     });
@@ -411,7 +406,7 @@ describe('PickerModal', () => {
     });
   });
 
-  it('keeps the current page after a page failure and lets the pagination try again', async () => {
+  it('replaces the results with the error after a page failure, and keeps the pagination', async () => {
     vi.spyOn(CentraClient.prototype, 'searchDisplayItems').mockImplementation(
       async ({ page }) => {
         if (page === 1) {
@@ -435,10 +430,15 @@ describe('PickerModal', () => {
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Go to page 2' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The next page is temporarily unavailable.',
-    );
-    expect(screen.getByText('Dog Toy')).toBeInTheDocument();
+    expect(
+      await screen.findByText("Couldn't load the catalog"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('The next page is temporarily unavailable.'),
+    ).toBeInTheDocument();
+    // The last results don't stay on screen without working
+    expect(screen.queryByText('Dog Toy')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Go to page 2' })).toBeEnabled();
   });
 
@@ -499,7 +499,7 @@ describe('PickerModal', () => {
     expect(screen.getByText('No products found')).toBeInTheDocument();
     expect(screen.queryByText('No results')).not.toBeInTheDocument();
     expect(screen.queryByText('Loading the products')).not.toBeInTheDocument();
-    expect(footer()).toHaveTextContent('0 products · 0 products selected');
+    expect(footer()).toHaveTextContent('0 products selected');
 
     settleSearch(empty);
     expect(await screen.findByText('No results')).toBeInTheDocument();
@@ -530,11 +530,11 @@ describe('PickerModal', () => {
       { target: { value: 'match-me' } },
     );
 
-    await screen.findByText('item-exact', {}, { timeout: 1_500 });
-    const itemIds = screen
-      .getAllByText(/^item-/)
+    await screen.findByText('MATCH-ME', {}, { timeout: 1_500 });
+    const skus = screen
+      .getAllByText(/^(MATCH-ME|OTHER-SKU)$/)
       .map((element) => element.textContent);
-    expect(itemIds).toEqual(['item-exact', 'item-other']);
+    expect(skus).toEqual(['MATCH-ME', 'OTHER-SKU']);
   });
 
   it('does not restart search for an equivalent SDK context object', async () => {
