@@ -1,5 +1,5 @@
 import type { Field, ItemType, RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import { Canvas, useMediaQuery } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef } from 'react';
 import { openApprovalDetailsModal } from '../lib/approvalDetailsModal';
 import { confirmEnableAutoApproval } from '../lib/autoApproval';
@@ -9,10 +9,18 @@ import {
   createModelSchemaResolver,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import {
+  AGENT_PANE_WIDTH,
+  useRememberedAgentPaneWidth,
+} from '../lib/inspectorLayout';
 import { createAgentMentionHost } from '../lib/mentionHost';
-import { createInspectorNavigator } from '../lib/navigation';
+import {
+  createInspectorNavigator,
+  pluginSettingsPath,
+} from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import AgentFrame from './AgentFrame';
+import styles from './AgentInspector.module.css';
 import AgentUnavailableFrame from './AgentUnavailableFrame';
 
 type Props = {
@@ -264,35 +272,54 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  useRememberedAgentPaneWidth();
+  const isTooNarrow = useMediaQuery(
+    `(max-width: ${AGENT_PANE_WIDTH - 1}px)`,
+  ).matches;
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <AgentFrame
-        key={frameKey}
-        pluginId={ctx.plugin.id}
-        siteId={ctx.site.id}
-        siteName={ctx.site.attributes.name}
-        environment={ctx.environment}
-        isEnvironmentPrimary={ctx.isEnvironmentPrimary}
-        currentUserId={ctx.currentUser.id}
-        surface="project"
-        scope={{ type: 'project' }}
-        navigator={createInspectorNavigator(ctx)}
-        mentionHost={mentionHost}
-        config={normalizeConfig(ctx.plugin.attributes.parameters)}
-        loadHostContext={loadHostContext}
-        getModelSchema={async ({ identifier, cursor }) => ({
-          schema: (await schemaResolver(identifier, cursor)).text,
-        })}
-        onReviewApprovalDetails={(approval) =>
-          openApprovalDetailsModal(ctx, approval)
-        }
-        onConfirmEnableAutoApprove={() =>
-          confirmEnableAutoApproval(ctx, {
-            siteName: ctx.site.attributes.name,
-          })
-        }
-      />
+      {isTooNarrow && (
+        <div className={styles.tooNarrow} role="status">
+          <strong>Sidebar too narrow</strong>
+          <span>Drag its edge wider to see the Dato Agent.</span>
+        </div>
+      )}
+      {/* The chat stays mounted under the notice, so a reply in progress survives. */}
+      <div className={styles.frame} inert={isTooNarrow}>
+        <AgentFrame
+          key={frameKey}
+          pluginId={ctx.plugin.id}
+          onOpenPluginSettings={
+            ctx.currentRole.meta.final_permissions.can_edit_schema
+              ? () =>
+                  void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
+              : undefined
+          }
+          siteId={ctx.site.id}
+          siteName={ctx.site.attributes.name}
+          environment={ctx.environment}
+          isEnvironmentPrimary={ctx.isEnvironmentPrimary}
+          currentUserId={ctx.currentUser.id}
+          surface="project"
+          scope={{ type: 'project' }}
+          navigator={createInspectorNavigator(ctx)}
+          mentionHost={mentionHost}
+          config={normalizeConfig(ctx.plugin.attributes.parameters)}
+          loadHostContext={loadHostContext}
+          getModelSchema={async ({ identifier, cursor }) => ({
+            schema: (await schemaResolver(identifier, cursor)).text,
+          })}
+          onReviewApprovalDetails={(approval) =>
+            openApprovalDetailsModal(ctx, approval)
+          }
+          onConfirmEnableAutoApprove={() =>
+            confirmEnableAutoApproval(ctx, {
+              siteName: ctx.site.attributes.name,
+            })
+          }
+        />
+      </div>
     </Canvas>
   );
 }

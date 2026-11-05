@@ -137,6 +137,27 @@ export function BoltIcon({ className }: IconProps) {
   );
 }
 
+/** Three vertical dots: the "more options" menu. */
+export function MoreIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </Icon>
+  );
+}
+
+/** The bolt with a slash through it: auto-approve is off. */
+export function BoltOffIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M13.4 2 5.5 13h6l-.9 9L18.5 11h-6l.9-9Z" />
+      <path d="M3 3l18 18" />
+    </Icon>
+  );
+}
+
 export function RetryIcon({ className }: IconProps) {
   return (
     <Icon className={className}>

@@ -1,0 +1,23 @@
+.frame {
+  height: 100%;
+}
+
+.tooNarrow {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  inset: 0;
+  align-content: center;
+  justify-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.tooNarrow strong {
+  color: var(--color--ink);
+  font-size: var(--font-size-m);
+}

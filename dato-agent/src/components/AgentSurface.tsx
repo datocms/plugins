@@ -1,14 +1,21 @@
 import {
   BackIcon,
   Button,
-  Form,
+  Dropdown,
+  DropdownMenu,
+  DropdownOption,
+  DropdownSeparator,
+  DropdownText,
+  FieldError,
   Spinner,
+  TextareaInput,
   Tooltip,
   TooltipContent,
   TooltipDelayGroup,
   TooltipTrigger,
 } from 'datocms-react-ui';
 import {
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -16,14 +23,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import datoMarkUrl from '../assets/dato-mark.svg';
 import { DEFAULT_MAX_CONVERSATIONS } from '../lib/conversations';
-import {
-  MCP_ACCESS_CHANGE_GUIDANCE,
-  MCP_ACCESS_CHANGE_URL,
-  type McpAccessLevel,
-  mcpAccessLabel,
-} from '../lib/mcpAccess';
+import { type McpAccessLevel, mcpAccessLabel } from '../lib/mcpAccess';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import type {
   AgentComposerSubmission,
@@ -36,13 +37,14 @@ import { MentionDisplay } from '../recordComments/entrypoints/components/shared/
 import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
 import {
   BoltIcon,
+  BoltOffIcon,
   CheckIcon,
   CircleCheckIcon,
   ConnectionIcon,
   CopyIcon,
-  DisconnectIcon,
   EditIcon,
   HistoryIcon,
+  MoreIcon,
   PlusIcon,
   RetryIcon,
   WarningIcon,
@@ -82,6 +84,8 @@ export type AgentConnectionViewModel = {
   oauthAccessLevel?: McpAccessLevel;
   pluginReadOnly?: boolean;
   accessChecking?: boolean;
+  /** True until the first access check for the current sign-in returns. */
+  accessCheckPending?: boolean;
 };
 
 export type AgentConversationSummaryViewModel = {
@@ -288,13 +292,19 @@ export type AgentSurfaceProps = {
   mentionHost?: AgentMentionHost;
   onConnectDatoCms?: () => void;
   onDisconnectDatoCms?: () => void;
+  /** Signs in again so the editor can pick another access level. */
+  onReconnectDatoCms?: () => void;
   onCheckDatoCmsAccess?: () => void;
-  onRestartDatoCmsConnection?: () => void;
   recentConversations?: readonly AgentConversationSummaryViewModel[];
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
   ) => boolean | undefined | Promise<boolean | undefined>;
   onStartNewChat?: () => boolean | undefined | Promise<boolean | undefined>;
+  /**
+   * Opens this plugin's settings page. Present only when the current user can
+   * edit them, so the setup notice offers a button instead of "ask an admin".
+   */
+  onOpenPluginSettings?: () => void;
   onStop?: () => void;
   onOpenRecord?: (
     record: AgentRecordResultViewModel,
@@ -345,11 +355,12 @@ type CredentialPanelProps = Pick<
   | 'connection'
   | 'onConnectDatoCms'
   | 'onDisconnectDatoCms'
+  | 'onReconnectDatoCms'
   | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
   | 'recentConversations'
   | 'onSelectConversation'
   | 'onStartNewChat'
+  | 'onOpenPluginSettings'
 >;
 
 type AccessNoticeProps = Pick<
@@ -357,23 +368,23 @@ type AccessNoticeProps = Pick<
   'connection' | 'onCheckDatoCmsAccess'
 >;
 
+/** What the current DatoCMS connection lets the agent do. */
 function OAuthAccessNotice({
   connection,
-  onCheckDatoCmsAccess,
-}: AccessNoticeProps) {
+}: Pick<AccessNoticeProps, 'connection'>) {
   if (connection.datoCmsStatus !== 'connected' || !connection.oauthAccessLevel)
     return null;
   return (
     <div className={styles.authorizationNotice} role="status">
       <p>
-        OAuth access:{' '}
+        Current access level:{' '}
         <strong>{mcpAccessLabel(connection.oauthAccessLevel)}</strong>
       </p>
       {connection.pluginReadOnly && (
         <p>Plugin Read Only is enabled. All agent writes are disabled.</p>
       )}
       {connection.oauthAccessLevel === 'unknown' && (
-        <p>Read-only work is available. Check access before making changes.</p>
+        <p>Not verified yet. Read-only work is available until it is.</p>
       )}
       {connection.oauthAccessLevel === 'content_only' && (
         <p>
@@ -384,24 +395,6 @@ function OAuthAccessNotice({
       {connection.oauthAccessLevel === 'content_view_only' && (
         <p>All agent writes, including asset creation, are disabled.</p>
       )}
-      {(connection.oauthAccessLevel === 'content_view_only' ||
-        connection.oauthAccessLevel === 'content_only') && (
-        <p>
-          {MCP_ACCESS_CHANGE_GUIDANCE}{' '}
-          <a href={MCP_ACCESS_CHANGE_URL} target="_blank" rel="noreferrer">
-            Account settings
-          </a>
-        </p>
-      )}
-      <Button
-        buttonSize="xxs"
-        buttonType="muted"
-        type="button"
-        disabled={connection.accessChecking || !onCheckDatoCmsAccess}
-        onClick={onCheckDatoCmsAccess}
-      >
-        {connection.accessChecking ? 'Checking access…' : 'Check access again'}
-      </Button>
     </div>
   );
 }
@@ -410,7 +403,12 @@ function UnverifiedAccessNotice({
   connection,
   onCheckDatoCmsAccess,
 }: AccessNoticeProps) {
-  if (connection.oauthAccessLevel !== 'unknown') return null;
+  // Before the first check returns, "unknown" only means "not checked yet".
+  if (
+    connection.oauthAccessLevel !== 'unknown' ||
+    connection.accessCheckPending
+  )
+    return null;
   return (
     <div className={styles.authorizationNotice} role="status">
       <p>
@@ -433,17 +431,7 @@ function UnverifiedAccessNotice({
 function DatoCmsConnectionField({
   connection,
   onConnectDatoCms,
-  onDisconnectDatoCms,
-  onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
-}: Pick<
-  CredentialPanelProps,
-  | 'connection'
-  | 'onConnectDatoCms'
-  | 'onDisconnectDatoCms'
-  | 'onCheckDatoCmsAccess'
-  | 'onRestartDatoCmsConnection'
->) {
+}: Pick<CredentialPanelProps, 'connection' | 'onConnectDatoCms'>) {
   const datoCmsConnected = connection.datoCmsStatus === 'connected';
   const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
   const accountLabel = connection.datoCmsAccountLabel?.trim();
@@ -453,102 +441,77 @@ function DatoCmsConnectionField({
       : 'DatoCMS';
 
   return (
-    <Form
-      className={styles.connectionForm}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onConnectDatoCms?.();
-      }}
-    >
-      <div>
-        <div className={styles.connectionRow}>
-          <span className={styles.datoMark}>
-            <img alt="" aria-hidden="true" src={datoMarkUrl} />
-          </span>
-          <strong className={styles.connectionLabel}>{connectedLabel}</strong>
-          <span className={styles.connectionActions}>
-            {datoCmsConnecting ? (
-              <span
-                aria-label="Connecting to DatoCMS"
-                className={styles.connectionSpinner}
-                role="status"
-              >
-                <Spinner size={16} />
-              </span>
-            ) : datoCmsConnected ? (
-              <>
-                <span
-                  aria-label="Connected"
-                  className={styles.connectedStatus}
-                  role="img"
-                >
-                  <CircleCheckIcon />
-                </span>
-                {onDisconnectDatoCms && (
-                  <Tooltip placement="left">
-                    <TooltipTrigger>
-                      <button
-                        aria-label="Disconnect DatoCMS"
-                        className={`${styles.iconButton} ${styles.disconnectButton}`}
-                        onClick={onDisconnectDatoCms}
-                        type="button"
-                      >
-                        <DisconnectIcon />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Disconnect</TooltipContent>
-                  </Tooltip>
-                )}
-              </>
-            ) : (
-              <Button
-                buttonSize="xxs"
-                buttonType="primary"
-                disabled={!onConnectDatoCms}
-                type="submit"
-              >
-                {connection.datoCmsStatus === 'mcp_auth_required'
-                  ? 'Reconnect DatoCMS'
-                  : 'Connect'}
-              </Button>
-            )}
-          </span>
-        </div>
-
-        {!datoCmsConnected && (
-          <p className={styles.authorizationNotice} role="note">
-            When DatoCMS asks which projects to authorize, select{' '}
-            <strong>only the project where this plugin is installed.</strong>
+    <div className={styles.setupStepBody}>
+      {datoCmsConnected ? (
+        <>
+          <p>
+            Connected to <strong>{connectedLabel}</strong>.
           </p>
-        )}
-      </div>
+          <OAuthAccessNotice connection={connection} />
+        </>
+      ) : (
+        <>
+          <p role="note">
+            Sign in to DatoCMS. When it asks which projects to authorize, select
+            only the project where this plugin is installed.
+          </p>
+          <div className={styles.accessChoices}>
+            <p>The access you pick there sets what the agent can do:</p>
+            <ul>
+              <li>
+                <strong>Only read content:</strong> it can look things up, but
+                never change anything.
+              </li>
+              <li>
+                <strong>Read and edit content:</strong> it can also create,
+                publish and delete records and assets.
+              </li>
+              <li>
+                <strong>Anything you can:</strong> it can also change the
+                schema, settings, users and API tokens.
+              </li>
+            </ul>
+            <p>
+              Your project role still applies, and you approve each change
+              unless you turn on auto-approve.
+            </p>
+          </div>
+          <Button
+            buttonSize="xxs"
+            buttonType="primary"
+            disabled={!onConnectDatoCms || datoCmsConnecting}
+            type="button"
+            onClick={onConnectDatoCms}
+          >
+            {datoCmsConnecting
+              ? 'Connecting…'
+              : connection.datoCmsStatus === 'mcp_auth_required'
+                ? 'Reconnect DatoCMS'
+                : 'Connect'}
+          </Button>
+        </>
+      )}
 
-      <OAuthAccessNotice
-        connection={connection}
-        onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-      />
       {connection.datoCmsError && (
         <p className={styles.inlineError} role="alert">
           {connection.datoCmsError}
-          {!datoCmsConnecting && onRestartDatoCmsConnection && (
-            <button type="button" onClick={onRestartDatoCmsConnection}>
-              Start sign-in again with a new registration
-            </button>
-          )}
         </p>
       )}
-    </Form>
+    </div>
   );
 }
 
 function RecentChats({
   conversations,
   disabled,
+  headingRef,
   onSelectConversation,
   onStartNewChat,
 }: {
   conversations: readonly AgentConversationSummaryViewModel[];
   disabled?: boolean;
+  /** Takes the focus when the chats panel opens. */
+  headingRef?: RefObject<HTMLHeadingElement | null>;
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
   ) => void;
@@ -560,7 +523,8 @@ function RecentChats({
     DEFAULT_MAX_CONVERSATIONS,
   );
 
-  if (visibleConversations.length === 0 && !onStartNewChat) {
+  // The chats panel always shows its heading; inside setup the list can hide.
+  if (visibleConversations.length === 0 && !onStartNewChat && !headingRef) {
     return null;
   }
 
@@ -569,7 +533,13 @@ function RecentChats({
       <div className={styles.recentChatsHeader}>
         <div className={styles.recentChatsTitle}>
           <HistoryIcon />
-          <h3 id={headingId}>Chats</h3>
+          <h3
+            id={headingId}
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+          >
+            Chats
+          </h3>
         </div>
         {onStartNewChat && (
           <Tooltip placement="left">
@@ -631,12 +601,12 @@ function RecentChats({
 function CredentialPanel({
   connection,
   onConnectDatoCms,
-  onDisconnectDatoCms,
+  onReconnectDatoCms,
   onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
+  onOpenPluginSettings,
   isSettings,
   headingRef,
   conversationActionsDisabled,
@@ -647,9 +617,27 @@ function CredentialPanel({
 }) {
   const providerConfigStatus =
     connection.providerConfigStatus ?? connection.openAiConfigStatus;
-  const configuredProviderLabel =
-    connection.providerLabel ??
-    (connection.openAiConfigStatus ? 'OpenAI' : 'AI provider');
+  const isProviderReady = providerConfigStatus !== 'missing';
+  const isDatoCmsReady = connection.datoCmsStatus === 'connected';
+  const isSetupComplete = isProviderReady && isDatoCmsReady;
+
+  // Once set up, the chats panel is only the chat history: the access level and
+  // the settings live in the toolbar's "⋮" menu, out of the way.
+  if (isSettings) {
+    return (
+      <div className={`${styles.credentials} ${styles.chatHistory}`}>
+        <TooltipDelayGroup delay={250}>
+          <RecentChats
+            conversations={recentConversations}
+            disabled={conversationActionsDisabled}
+            headingRef={headingRef}
+            onSelectConversation={onSelectConversation}
+            onStartNewChat={onStartNewChat}
+          />
+        </TooltipDelayGroup>
+      </div>
+    );
+  }
 
   return (
     <section
@@ -665,32 +653,116 @@ function CredentialPanel({
           ref={headingRef}
           tabIndex={isSettings ? -1 : undefined}
         >
-          Connection
+          Agent setup
         </h2>
       </header>
 
-      {providerConfigStatus === 'missing' && (
-        <div className={styles.configurationNotice} role="status">
-          <WarningIcon />
-          <span>{configuredProviderLabel} setup required</span>
-        </div>
-      )}
-
       <TooltipDelayGroup delay={250}>
-        <DatoCmsConnectionField
-          connection={connection}
-          onConnectDatoCms={onConnectDatoCms}
-          onDisconnectDatoCms={onDisconnectDatoCms}
-          onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-          onRestartDatoCmsConnection={onRestartDatoCmsConnection}
-        />
-        <RecentChats
-          conversations={recentConversations}
-          disabled={conversationActionsDisabled}
-          onSelectConversation={onSelectConversation}
-          onStartNewChat={onStartNewChat}
-        />
+        <ol className={styles.setupSteps}>
+          <SetupStep
+            number={1}
+            title="Choose AI provider & model"
+            isDone={isProviderReady}
+          >
+            {!isProviderReady && (
+              <div className={styles.setupStepBody}>
+                <p>
+                  {onOpenPluginSettings
+                    ? 'Add an API key and pick a model in the plugin settings.'
+                    : 'A developer or project admin sets this up in the plugin settings. Ask them for help.'}
+                </p>
+                {onOpenPluginSettings && (
+                  <Button
+                    buttonSize="xxs"
+                    buttonType="primary"
+                    type="button"
+                    onClick={onOpenPluginSettings}
+                  >
+                    Open plugin settings
+                  </Button>
+                )}
+              </div>
+            )}
+          </SetupStep>
+          <SetupStep
+            number={2}
+            title="Connect AI to DatoCMS MCP"
+            isDone={isDatoCmsReady}
+          >
+            <DatoCmsConnectionField
+              connection={connection}
+              onConnectDatoCms={onConnectDatoCms}
+            />
+          </SetupStep>
+        </ol>
+        {isSetupComplete ? (
+          <RecentChats
+            conversations={recentConversations}
+            disabled={conversationActionsDisabled}
+            onSelectConversation={onSelectConversation}
+            onStartNewChat={onStartNewChat}
+          />
+        ) : (
+          <ChatsAfterSetup />
+        )}
       </TooltipDelayGroup>
+    </section>
+  );
+}
+
+/** One numbered setup step, with a status that reads without color. */
+function SetupStep({
+  number,
+  title,
+  isDone,
+  children,
+}: {
+  number: number;
+  title: string;
+  isDone: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <li className={styles.setupStep}>
+      <div className={styles.setupStepHeader}>
+        <span aria-hidden="true" className={styles.setupStepNumber}>
+          {number}
+        </span>
+        <strong className={styles.setupStepTitle}>{title}</strong>
+        <span className={isDone ? styles.setupStepDone : styles.setupStepToDo}>
+          {isDone ? <CircleCheckIcon /> : <WarningIcon />}
+          {isDone ? 'Done' : 'To do'}
+        </span>
+      </div>
+      {children}
+    </li>
+  );
+}
+
+/** Stands in for the chat list until both setup steps are done. */
+function ChatsAfterSetup() {
+  const headingId = useId();
+  const errorId = useId();
+  return (
+    <section className={styles.recentChats} aria-labelledby={headingId}>
+      <div className={styles.recentChatsHeader}>
+        <div className={styles.recentChatsTitle}>
+          <HistoryIcon />
+          <h3 id={headingId}>Chats</h3>
+        </div>
+      </div>
+      <div className={styles.chatsAfterSetup}>
+        <TextareaInput
+          aria-describedby={errorId}
+          aria-label="Message"
+          disabled
+          placeholder="Ask about this project…"
+          rows={2}
+        />
+        <div id={errorId}>
+          <FieldError>Finish setup first to start chatting.</FieldError>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2124,7 +2196,197 @@ function Transcript({
   );
 }
 
+/** One line on what the current DatoCMS access lets the agent do. */
+function accessSummary(connection: AgentConnectionViewModel): string {
+  if (connection.pluginReadOnly)
+    return 'Plugin Read Only is on, so the agent can change nothing.';
+  switch (connection.oauthAccessLevel) {
+    case 'content_view_only':
+      return 'The agent can read content, but not change it.';
+    case 'content_only':
+      return 'The agent can edit content, but not the schema.';
+    case 'unrestricted':
+      return 'The agent can do anything your role allows.';
+    default:
+      return 'Not verified yet.';
+  }
+}
+
+/**
+ * The "⋮" menu of the chat toolbar: plugin settings, and the DatoCMS access.
+ * Reconnecting asks inside the menu, not in a host dialog: the sign-in popup
+ * opens only from a click in this frame, so the confirming click must be here.
+ */
+function AgentOptionsMenu({
+  connection,
+  disabled,
+  onOpenPluginSettings,
+  onReconnectDatoCms,
+}: {
+  connection: AgentConnectionViewModel;
+  disabled: boolean;
+  onOpenPluginSettings?: () => void;
+  onReconnectDatoCms?: () => void;
+}) {
+  const [isConfirmingReconnect, setIsConfirmingReconnect] = useState(false);
+  const accessLevel = connection.oauthAccessLevel ?? 'unknown';
+
+  return (
+    <>
+      <Dropdown
+        renderTrigger={({ open, onClick }) => (
+          <button
+            aria-expanded={open}
+            aria-haspopup="menu"
+            aria-label="Agent options"
+            className={`${styles.iconButton} ${styles.optionsButton}`}
+            disabled={disabled}
+            onClick={onClick}
+            title="Agent options"
+            type="button"
+          >
+            <MoreIcon />
+          </button>
+        )}
+      >
+        <DropdownMenu alignment="right">
+          <DropdownOption
+            disabled={!onOpenPluginSettings}
+            onClick={onOpenPluginSettings}
+          >
+            AI settings
+          </DropdownOption>
+          {!onOpenPluginSettings && (
+            <DropdownText>
+              Only users who can edit the schema can change the AI settings.
+            </DropdownText>
+          )}
+          <DropdownSeparator />
+          <DropdownText>
+            <span className={styles.optionsAccess}>
+              Current DatoCMS access level:{' '}
+              <strong>{mcpAccessLabel(accessLevel)}</strong>
+              <span>{accessSummary(connection)}</span>
+            </span>
+          </DropdownText>
+          {onReconnectDatoCms && (
+            <DropdownOption onClick={() => setIsConfirmingReconnect(true)}>
+              Reconnect to change access…
+            </DropdownOption>
+          )}
+        </DropdownMenu>
+      </Dropdown>
+      {isConfirmingReconnect && onReconnectDatoCms && (
+        <ReconnectDialog
+          onCancel={() => setIsConfirmingReconnect(false)}
+          onConfirm={() => {
+            setIsConfirmingReconnect(false);
+            onReconnectDatoCms();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Asks before reconnecting. It lives in this frame, not in a host dialog: the
+ * sign-in popup opens only from a click in this frame.
+ */
+function ReconnectDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // The kit's Button takes no ref, so focus Reconnect through the dialog.
+    dialogRef.current
+      ?.querySelector<HTMLButtonElement>(
+        '[data-reconnect-confirm] button, button[data-reconnect-confirm]',
+      )
+      ?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div className={styles.dialogBackdrop}>
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className={styles.dialog}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <h2 id={titleId}>Reconnect to change access?</h2>
+        <p>
+          You'll sign in to DatoCMS again and pick a new access level on its
+          consent screen. Your current connection ends when you finish.
+        </p>
+        <div className={styles.dialogActions}>
+          <Button
+            buttonSize="s"
+            buttonType="muted"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <span data-reconnect-confirm="">
+            <Button
+              buttonSize="s"
+              buttonType="primary"
+              type="button"
+              onClick={onConfirm}
+            >
+              Reconnect
+            </Button>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Icon and text of the auto-approve toggle: a slashed bolt when off, a danger badge when on. */
+function AutoApproveLabel({
+  isChanging,
+  isEnabled,
+}: {
+  isChanging: boolean;
+  isEnabled: boolean;
+}) {
+  const icon = isChanging ? (
+    <Spinner size={14} />
+  ) : isEnabled ? (
+    <BoltIcon />
+  ) : (
+    <BoltOffIcon />
+  );
+  return (
+    <>
+      {icon}
+      <span>{isEnabled ? 'Auto: On' : 'Auto-approve is off'}</span>
+      {isEnabled && (
+        <span aria-hidden="true" className={styles.autoApproveDanger}>
+          Danger
+        </span>
+      )}
+    </>
+  );
+}
+
 function UtilityControls({
+  connection,
+  onOpenPluginSettings,
+  onReconnectDatoCms,
   connected,
   chatsOpen,
   autoApproveEnabled,
@@ -2136,6 +2398,9 @@ function UtilityControls({
   onCloseChats,
   onOpenChats,
 }: {
+  connection: AgentConnectionViewModel;
+  onOpenPluginSettings?: () => void;
+  onReconnectDatoCms?: () => void;
   connected: boolean;
   chatsOpen: boolean;
   autoApproveEnabled: boolean;
@@ -2183,31 +2448,36 @@ function UtilityControls({
           <HistoryIcon />
         )}
       </button>
-      {!chatsOpen && (
-        <Tooltip placement="bottom">
-          <TooltipTrigger>
-            <button
-              aria-label={autoApproveLabel}
-              aria-pressed={autoApproveEnabled}
-              className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
-              disabled={autoApproveDisabled}
-              onClick={() => {
-                void onAutoApproveChange?.(!autoApproveEnabled);
-              }}
-              type="button"
-            >
-              {autoApproveChanging ? <Spinner size={14} /> : <BoltIcon />}
-              <span>Auto</span>
-              {autoApproveEnabled && (
-                <span aria-hidden="true" className={styles.autoApproveDanger}>
-                  Danger!
-                </span>
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{autoApproveLabel}</TooltipContent>
-        </Tooltip>
-      )}
+      <div className={styles.utilityActions}>
+        {!chatsOpen && (
+          <Tooltip placement="bottom">
+            <TooltipTrigger>
+              <button
+                aria-label={autoApproveLabel}
+                aria-pressed={autoApproveEnabled}
+                className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
+                disabled={autoApproveDisabled}
+                onClick={() => {
+                  void onAutoApproveChange?.(!autoApproveEnabled);
+                }}
+                type="button"
+              >
+                <AutoApproveLabel
+                  isChanging={Boolean(autoApproveChanging)}
+                  isEnabled={Boolean(autoApproveEnabled)}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{autoApproveLabel}</TooltipContent>
+          </Tooltip>
+        )}
+        <AgentOptionsMenu
+          connection={connection}
+          disabled={disabled}
+          onOpenPluginSettings={onOpenPluginSettings}
+          onReconnectDatoCms={onReconnectDatoCms}
+        />
+      </div>
       {autoApproveError && !chatsOpen && (
         <span className={styles.autoApproveToolbarError} role="alert">
           {autoApproveError}
@@ -2227,12 +2497,12 @@ export function AgentSurface({
   onSubmit,
   mentionHost,
   onConnectDatoCms,
-  onDisconnectDatoCms,
+  onReconnectDatoCms,
   onCheckDatoCmsAccess,
-  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
+  onOpenPluginSettings,
   onStop,
   onOpenRecord,
   onOpenField,
@@ -2394,6 +2664,9 @@ export function AgentSurface({
   return (
     <div className={styles.root}>
       <UtilityControls
+        connection={connection}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onReconnectDatoCms={onReconnectDatoCms}
         autoApproveChanging={autoApproveChanging}
         autoApproveEnabled={autoApproveEnabled}
         autoApproveError={autoApproveError}
@@ -2421,9 +2694,8 @@ export function AgentSurface({
             headingRef={settingsOpen ? settingsHeadingRef : undefined}
             isSettings={connected}
             onConnectDatoCms={onConnectDatoCms}
-            onDisconnectDatoCms={onDisconnectDatoCms}
+            onReconnectDatoCms={onReconnectDatoCms}
             onCheckDatoCmsAccess={onCheckDatoCmsAccess}
-            onRestartDatoCmsConnection={onRestartDatoCmsConnection}
             onSelectConversation={
               onSelectConversation
                 ? (conversation) => {
@@ -2440,6 +2712,7 @@ export function AgentSurface({
                   }
                 : undefined
             }
+            onOpenPluginSettings={onOpenPluginSettings}
             recentConversations={recentConversations}
           />
         </div>

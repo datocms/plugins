@@ -151,6 +151,8 @@ export type AgentFrameProps = {
   environment: string;
   isEnvironmentPrimary: boolean;
   currentUserId: string;
+  /** Opens the plugin settings. Pass it only when the current user can edit them. */
+  onOpenPluginSettings?: () => void;
   /**
    * The DatoCMS host surface. A record sidebar can exist before its record has
    * a saved ID, so this must not be inferred only from `currentRecord`.
@@ -1834,6 +1836,25 @@ function recoverUnsafeDispatchJournal(
   return loadStoredConversations(conversationStore);
 }
 
+/**
+ * Sign-in failures in words an editor can act on. Connect registers a fresh
+ * OAuth client by itself when DatoCMS rejects the stored one, so every failure
+ * here is fixed by clicking Connect again.
+ */
+function datoCmsSignInErrorMessage(error: unknown): string {
+  const retry = 'Click Connect to try again.';
+  if (error instanceof RemoteMcpOAuthError) {
+    if (error.code === 'access_denied')
+      return `The DatoCMS sign-in was cancelled or denied. ${retry}`;
+    if (error.code === 'invalid_grant')
+      return `This sign-in code expired. ${retry}`;
+  }
+  const detail = error instanceof Error ? error.message.trim() : '';
+  return detail
+    ? `Could not connect to DatoCMS: ${detail.replace(/\.?$/, '.')} ${retry}`
+    : `Could not connect to DatoCMS. ${retry}`;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This frame coordinates the chat, OAuth, persistence, native navigation, and approval state that must share one React lifecycle.
 export default function AgentFrame(props: AgentFrameProps) {
   const mentionHost = useMemo<AgentMentionHost>(
@@ -1990,6 +2011,8 @@ export default function AgentFrame(props: AgentFrameProps) {
   const forceFreshRegistrationRef = useRef(false);
   const oauthFlowGenerationRef = useRef(0);
   const [accessChecking, setAccessChecking] = useState(false);
+  /** The token whose first access check has finished, so "unknown" means unverified, not "not checked yet". */
+  const [accessCheckedToken, setAccessCheckedToken] = useState('');
   const accessLevel =
     accessState.token === oauthCredentials?.token?.accessToken
       ? accessState.snapshot.level
@@ -2923,7 +2946,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       .current(controller.signal)
       .catch(() => undefined)
       .finally(() => {
-        if (!controller.signal.aborted) setAccessChecking(false);
+        if (controller.signal.aborted) return;
+        setAccessChecking(false);
+        setAccessCheckedToken(token);
       });
     return () => controller.abort();
   }, [accessSession, oauthCredentials?.token?.accessToken]);
@@ -5550,19 +5575,46 @@ export default function AgentFrame(props: AgentFrameProps) {
         mountedRef.current &&
         oauthFlowGenerationRef.current === flowGeneration
       ) {
-        setOauthError(
-          error instanceof RemoteMcpOAuthError && error.code === 'invalid_grant'
-            ? 'This sign-in code is no longer valid. Start sign-in again to get a new code.'
-            : error instanceof Error
-              ? error.message
-              : 'Could not connect to DatoCMS.',
-        );
+        setOauthError(datoCmsSignInErrorMessage(error));
       }
     } finally {
       if (oauthFlowGenerationRef.current === flowGeneration) {
         oauthPopupRef.current = undefined;
         setOauthConnecting(false);
       }
+    }
+  };
+
+  /**
+   * Signs in again with a fresh OAuth client, so DatoCMS shows the consent
+   * screen and its access choices, then revokes the previous token. The access
+   * level belongs to each client, so this is how an editor changes it. Connect
+   * opens the popup before any await, so browsers don't block it.
+   */
+  const reconnectDatoCms = async () => {
+    if (
+      running ||
+      activeTurnRef.current ||
+      pendingApprovalsRef.current.size > 0 ||
+      approvalDispatchRef.current.size > 0
+    ) {
+      setOauthError(
+        'Finish or deny the pending operation before reconnecting.',
+      );
+      return;
+    }
+    const previous = oauthCredentialsRef.current;
+    await connectDatoCms(true);
+    const previousToken = previous?.token?.accessToken;
+    if (
+      previous &&
+      previousToken &&
+      oauthCredentialsRef.current?.token?.accessToken !== previousToken
+    ) {
+      await revokeToken({
+        accessToken: previousToken,
+        clientId: previous.client.clientId,
+      }).catch(() => undefined);
     }
   };
 
@@ -6089,6 +6141,9 @@ export default function AgentFrame(props: AgentFrameProps) {
         oauthAccessLevel: accessLevel,
         pluginReadOnly: props.config.readOnly,
         accessChecking,
+        accessCheckPending:
+          hasDatoCmsConnection &&
+          accessCheckedToken !== oauthCredentials?.token?.accessToken,
         datoCmsAccountLabel: hasDatoCmsConnection ? 'DatoCMS' : undefined,
         datoCmsError: oauthError,
       }}
@@ -6126,13 +6181,13 @@ export default function AgentFrame(props: AgentFrameProps) {
       onCopyFailureDiagnostics={copyFailureDiagnostics}
       onConnectDatoCms={() => void connectDatoCms()}
       onDisconnectDatoCms={() => void disconnectDatoCms()}
+      onReconnectDatoCms={() => void reconnectDatoCms()}
       onCheckDatoCmsAccess={() => {
         setAccessChecking(true);
         void refreshMcpAccess()
           .catch(() => undefined)
           .finally(() => setAccessChecking(false));
       }}
-      onRestartDatoCmsConnection={() => void connectDatoCms(true)}
       recentConversations={storedConversations.map((stored) => ({
         id: stored.id,
         title: stored.title,
@@ -6140,6 +6195,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       }))}
       onSelectConversation={selectConversation}
       onStartNewChat={startNewConversation}
+      onOpenPluginSettings={props.onOpenPluginSettings}
       onStop={stopActiveTurn}
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}

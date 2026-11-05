@@ -12,7 +12,10 @@ import OAuthCallbackPage from './entrypoints/OAuthCallbackPage';
 import { APPROVAL_DETAILS_MODAL_ID } from './lib/approvalDetailsModal';
 import { normalizeConfig } from './lib/config';
 import { FILE_DETAILS_MODAL_ID } from './lib/fileDetailsModal';
-import { inspectorRecordPaneWidth } from './lib/inspectorLayout';
+import {
+  inspectorRecordPaneWidth,
+  readAgentPaneWidth,
+} from './lib/inspectorLayout';
 import { handleOAuthCallbackIfPresent } from './lib/oauth';
 import { canRoleUseDatoAgent } from './lib/permissions';
 import { DEFAULT_SIDEBAR_WIDTH, readSidebarWidth } from './lib/persistedWidth';
@@ -60,7 +63,10 @@ if (!handledOAuthCallback) {
             // Inspector tabs render the CMS record in the right-hand secondary
             // pane, so this value deliberately reserves most of the viewport
             // for the record and leaves the agent as a compact companion.
-            preferredWidth: inspectorRecordPaneWidth(window.outerWidth),
+            preferredWidth: inspectorRecordPaneWidth(
+              window.outerWidth,
+              readAgentPaneWidth(),
+            ),
             initialInspectorPanel: {
               panelId: 'dato-agent-empty',
             },

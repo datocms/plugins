@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createInspectorNavigator, createSidebarNavigator } from './navigation';
+import {
+  createInspectorNavigator,
+  createSidebarNavigator,
+  pluginSettingsPath,
+} from './navigation';
 
 describe('createInspectorNavigator', () => {
   it('uses the native record list and editor', async () => {
@@ -31,6 +35,31 @@ describe('createInspectorNavigator', () => {
       navigator.openAsset({ uploadId: 'upload-a' }),
     ).resolves.toEqual({ deleted: false });
     expect(ctx.editUpload).toHaveBeenCalledWith('upload-a');
+  });
+
+  it('fills the record list when it opens a record, so Back never lands on an empty list', async () => {
+    const ctx = {
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
+      setInspectorMode: vi.fn().mockResolvedValue(undefined),
+    };
+    const navigator = createInspectorNavigator(ctx as never);
+
+    await navigator.openRecord({ itemId: 'a' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['a'],
+    });
+
+    await navigator.openRecord({ itemId: 'b' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['b', 'a'],
+    });
+    // The list is filled before the editor opens.
+    expect(
+      ctx.setInspectorItemListData.mock.invocationCallOrder.at(-1),
+    ).toBeLessThan(ctx.setInspectorMode.mock.invocationCallOrder.at(-1) ?? 0);
   });
 
   it('reports when the native asset editor deletes an upload', async () => {
@@ -441,5 +470,25 @@ describe('createSidebarNavigator', () => {
     expect(ctx.navigateTo).not.toHaveBeenCalled();
     expect(ctx.editItem).toHaveBeenNthCalledWith(1, 'target');
     expect(ctx.editItem).toHaveBeenNthCalledWith(2, 'another');
+  });
+});
+
+describe('pluginSettingsPath', () => {
+  it('needs no prefix on the primary environment', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'main', isEnvironmentPrimary: true },
+        'plugin-1',
+      ),
+    ).toBe('/configuration/plugins/plugin-1/edit');
+  });
+
+  it('prefixes sandbox environments', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'sandbox', isEnvironmentPrimary: false },
+        'plugin-1',
+      ),
+    ).toBe('/environments/sandbox/configuration/plugins/plugin-1/edit');
   });
 });

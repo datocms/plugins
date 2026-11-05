@@ -8380,8 +8380,8 @@ describe('AgentFrame', () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
     expect(mocks.exchange).toHaveBeenCalledOnce();
-    expect(mocks.surfaceProps?.connection.datoCmsError).toContain(
-      'Start sign-in again',
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'This sign-in code expired. Click Connect to try again.',
     );
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
@@ -8393,7 +8393,7 @@ describe('AgentFrame', () => {
     ]);
   });
 
-  it('offers an explicit fresh-registration retry after no callback can be returned', async () => {
+  it('recovers with a plain Connect after the sign-in popup was closed', async () => {
     mocks.callback.mockRejectedValueOnce(
       new Error('The sign-in popup was closed before authorization completed'),
     );
@@ -8401,13 +8401,66 @@ describe('AgentFrame', () => {
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
-    expect(mocks.registerClient).toHaveBeenCalledOnce();
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'Could not connect to DatoCMS: The sign-in popup was closed before authorization completed. Click Connect to try again.',
+    );
     await act(async () => {
-      await mocks.surfaceProps?.onRestartDatoCmsConnection?.();
+      await mocks.surfaceProps?.onConnectDatoCms?.();
     });
+    // The registered client is still valid, so Connect reuses it.
     expect(mocks.openPopup).toHaveBeenCalledTimes(2);
-    expect(mocks.registerClient).toHaveBeenCalledTimes(2);
+    expect(mocks.registerClient).toHaveBeenCalledOnce();
     expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+  });
+
+  it('reconnects with a fresh client and revokes the previous token', async () => {
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.registerClient).toHaveBeenCalledOnce();
+    mocks.exchange.mockResolvedValueOnce({
+      accessToken: 'second-token',
+      tokenType: 'Bearer',
+      obtainedAt: 3,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    act(() => {
+      mocks.surfaceProps?.onReconnectDatoCms?.();
+    });
+
+    // A fresh client means DatoCMS shows the consent screen and its access choices.
+    await waitFor(() => expect(mocks.registerClient).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        fetchSpy.mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/oauth/revoke') &&
+            new URLSearchParams(String(init?.body)).get('token') ===
+              'opaque.bridge/token+value==',
+        ),
+      ).toBe(true),
+    );
+    expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+  });
+
+  it('says a denied sign-in can be retried with Connect', async () => {
+    mocks.callback.mockRejectedValueOnce(
+      new RemoteMcpOAuthError(
+        'OAuth authorization failed (access_denied): The resource owner or authorization server denied the request.',
+        { code: 'access_denied' },
+      ),
+    );
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'The DatoCMS sign-in was cancelled or denied. Click Connect to try again.',
+    );
   });
 
   it.each(['unknown', 'content_view_only', 'content_only'] as const)(

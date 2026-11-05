@@ -1,13 +1,16 @@
 import {
   act,
+  render as baseRender,
   cleanup,
   fireEvent,
-  render,
+  type RenderOptions,
   screen,
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+// The kit's Dropdown reads the plugin ctx, which <Canvas> normally provides.
+import { CtxContext } from 'datocms-react-ui/dist/cjs/Canvas';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import type { AgentMentionHost } from '../lib/mentionHost';
@@ -52,6 +55,22 @@ afterEach(() => {
   vi.useRealTimers();
   scrollIntoView.mockClear();
 });
+
+const stubCtx = {
+  theme: {},
+  cssDesignTokens: {},
+  bodyPadding: [0, 0, 0, 0],
+} as never;
+
+/** render() inside the plugin ctx, as the CMS mounts the surface. */
+function render(ui: ReactElement, options?: RenderOptions) {
+  return baseRender(ui, {
+    wrapper: ({ children }) => (
+      <CtxContext.Provider value={stubCtx}>{children}</CtxContext.Provider>
+    ),
+    ...options,
+  });
+}
 
 const connected: AgentConnectionViewModel = {
   status: 'connected',
@@ -1803,7 +1822,8 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByText('OpenAI setup required')).toBeVisible();
+    expect(screen.getByText('Choose AI provider & model')).toBeVisible();
+    expect(screen.getAllByText('To do')).toHaveLength(2);
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('switch', {
@@ -1817,7 +1837,7 @@ describe('AgentSurface', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }));
     expect(onConnectDatoCms).toHaveBeenCalledOnce();
 
-    const onDisconnectDatoCms = vi.fn();
+    const onReconnectDatoCms = vi.fn();
     rerender(
       <AgentSurface
         connection={connected}
@@ -1829,41 +1849,54 @@ describe('AgentSurface', () => {
             content: 'Hello',
           },
         ]}
-        onDisconnectDatoCms={onDisconnectDatoCms}
+        onReconnectDatoCms={onReconnectDatoCms}
         onSubmit={vi.fn()}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Connection' })).toHaveFocus();
-    expect(screen.getByText('Marketing website')).toBeVisible();
-    expect(screen.getByRole('img', { name: 'Connected' })).toBeVisible();
-    expect(screen.queryByText('Remote MCP connection')).not.toBeInTheDocument();
-    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    // Once set up, the chats panel is only the chat history.
+    expect(screen.getByRole('heading', { name: 'Chats' })).toHaveFocus();
+    expect(
+      screen.queryByRole('heading', { name: 'Agent setup' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Done')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
-    const disconnectButton = screen.getByRole('button', {
-      name: 'Disconnect DatoCMS',
+
+    // Reconnecting lives in the "⋮" menu and asks first.
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    expect(
+      screen.getByText(
+        'Only users who can edit the schema can change the AI settings.',
+      ),
+    ).toBeVisible();
+    await user.click(screen.getByText('Reconnect to change access…'));
+    const dialog = screen.getByRole('dialog', {
+      name: 'Reconnect to change access?',
     });
-    expect(disconnectButton).toHaveTextContent('');
-    expect(within(disconnectButton).queryByRole('img')).not.toBeInTheDocument();
-    await user.click(disconnectButton);
-    expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
+    expect(onReconnectDatoCms).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onReconnectDatoCms).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Reconnect to change access…'));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Reconnect',
+      }),
+    );
+    expect(onReconnectDatoCms).toHaveBeenCalledOnce();
   });
 
   it('shows only six provided recent chats on the connection page', async () => {
     const user = userEvent.setup();
     const onSelectConversation = vi.fn();
     const onStartNewChat = vi.fn();
-    const setupConnection: AgentConnectionViewModel = {
-      status: 'setup',
-      openAiConfigStatus: 'configured',
-      datoCmsStatus: 'disconnected',
-    };
-
     render(
       <AgentSurface
-        connection={setupConnection}
+        connection={connected}
         entries={[]}
         onSelectConversation={onSelectConversation}
         onStartNewChat={onStartNewChat}
@@ -1872,6 +1905,7 @@ describe('AgentSurface', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(screen.getByRole('heading', { name: 'Chats' })).toBeVisible();
     const currentChat = screen
       .getByText('Describe this project')
@@ -1897,18 +1931,68 @@ describe('AgentSurface', () => {
       screen.queryByText('This chat is outside the six-item limit'),
     ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByText('Update the homepage').closest('button') as HTMLElement,
-    );
-    expect(onSelectConversation).toHaveBeenCalledWith(recentConversations[1]);
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
-
     const newChatButton = screen.getByRole('button', { name: 'New chat' });
     expect(newChatButton).toHaveTextContent('');
     expect(within(newChatButton).queryByRole('img')).not.toBeInTheDocument();
-    await user.click(newChatButton);
-    expect(onStartNewChat).toHaveBeenCalledOnce();
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeVisible();
+  });
+
+  it('lists setup as numbered steps and links admins to the plugin settings', async () => {
+    const user = userEvent.setup();
+    const onOpenPluginSettings = vi.fn();
+
+    render(
+      <AgentSurface
+        connection={{
+          status: 'setup',
+          providerConfigStatus: 'missing',
+          providerLabel: 'Anthropic (Claude)',
+          datoCmsStatus: 'connected',
+        }}
+        entries={[]}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onStartNewChat={vi.fn()}
+        onSubmit={vi.fn()}
+        recentConversations={recentConversations}
+      />,
+    );
+
+    const [providerStep, datoCmsStep] = screen.getAllByRole('listitem');
+    expect(providerStep).toHaveTextContent('Choose AI provider & model');
+    expect(providerStep).toHaveTextContent('To do');
+    expect(datoCmsStep).toHaveTextContent('Connect AI to DatoCMS MCP');
+    expect(datoCmsStep).toHaveTextContent('Done');
+    // Editors don't need to know which provider an admin picked.
+    expect(screen.queryByText(/Anthropic/)).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open plugin settings' }),
+    );
+    expect(onOpenPluginSettings).toHaveBeenCalledOnce();
+    expect(
+      screen.getByText('Finish setup first to start chatting.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('tells editors who cannot edit the plugin settings to ask for help', () => {
+    render(
+      <AgentSurface
+        connection={{
+          status: 'setup',
+          providerConfigStatus: 'missing',
+          datoCmsStatus: 'connected',
+        }}
+        entries={[]}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Ask them for help/)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open plugin settings' }),
+    ).not.toBeInTheDocument();
   });
 
   it('closes connected settings after selecting or starting a chat', async () => {
@@ -1987,10 +2071,10 @@ describe('AgentSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(screen.getByRole('button', { name: 'New chat' }));
-    expect(screen.getByRole('heading', { name: 'Connection' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Chats' })).toBeVisible();
   });
 
-  it('disables chat history actions while the connection is in progress', () => {
+  it('shows no chat controls until both setup steps are done', () => {
     const connecting: AgentConnectionViewModel = {
       status: 'connecting',
       openAiConfigStatus: 'configured',
@@ -2008,10 +2092,18 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeDisabled();
     expect(
-      screen.getByText('Describe this project').closest('button'),
-    ).toBeDisabled();
+      screen.getByText('Finish setup first to start chatting.'),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'New chat' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Describe this project')).not.toBeInTheDocument();
+    const messageBox = screen.getByRole('textbox', { name: 'Message' });
+    expect(messageBox).toBeDisabled();
+    expect(messageBox).toHaveAccessibleDescription(
+      'Finish setup first to start chatting.',
+    );
   });
 
   it('keeps the session-wide auto-approve control inside the chat', async () => {
@@ -2042,8 +2134,8 @@ describe('AgentSurface', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(enableButton).toHaveAttribute('aria-pressed', 'false');
-    expect(enableButton).toHaveTextContent('Auto');
-    expect(enableButton).not.toHaveTextContent('Danger!');
+    expect(enableButton).toHaveTextContent('Auto-approve is off');
+    expect(enableButton).not.toHaveTextContent('Danger');
     await user.click(enableButton);
     expect(onAutoApproveChange).toHaveBeenCalledWith(true);
 
@@ -2077,8 +2169,8 @@ describe('AgentSurface', () => {
       name: 'Turn off auto-approve',
     });
     expect(disableButton).toHaveAttribute('aria-pressed', 'true');
-    expect(disableButton).toHaveTextContent('Auto');
-    expect(disableButton).toHaveTextContent('Danger!');
+    expect(disableButton).toHaveTextContent('Auto: On');
+    expect(disableButton).toHaveTextContent('Danger');
     await user.click(disableButton);
     expect(onAutoApproveChange).toHaveBeenLastCalledWith(false);
   });
@@ -2324,7 +2416,31 @@ describe('AgentSurface', () => {
     expect(onCheckDatoCmsAccess).toHaveBeenCalledOnce();
   });
 
-  it('shows OAuth access separately from plugin Read Only and explains how to change it', async () => {
+  it('shows no unverified-access notice before the first access check returns', () => {
+    render(
+      <AgentSurface
+        connection={{
+          ...connected,
+          oauthAccessLevel: 'unknown',
+          accessChecking: true,
+          accessCheckPending: true,
+        }}
+        entries={[]}
+        onSubmit={vi.fn()}
+        onCheckDatoCmsAccess={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByText(/access is not verified/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Checking access…' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the DatoCMS access level and plugin Read Only in the options menu', async () => {
+    const user = userEvent.setup();
+    const onOpenPluginSettings = vi.fn();
     render(
       <AgentSurface
         connection={{
@@ -2333,27 +2449,20 @@ describe('AgentSurface', () => {
           pluginReadOnly: true,
         }}
         entries={[]}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onReconnectDatoCms={vi.fn()}
         onSubmit={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
     expect(screen.getByText('Read and edit content')).toBeVisible();
     expect(
       screen.getByText(
-        'Plugin Read Only is enabled. All agent writes are disabled.',
+        'Plugin Read Only is on, so the agent can change nothing.',
       ),
     ).toBeVisible();
-    expect(
-      screen.getByText(/Schema and management changes are unavailable/),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('link', { name: 'Account settings' }),
-    ).toHaveAttribute(
-      'href',
-      'https://dashboard.datocms.com/personal-account/account',
-    );
-    expect(
-      screen.getByText(/This affects all MCP clients of your account/),
-    ).toBeVisible();
+    expect(screen.getByText('Reconnect to change access…')).toBeVisible();
+    await user.click(screen.getByText('AI settings'));
+    expect(onOpenPluginSettings).toHaveBeenCalledOnce();
   });
 });

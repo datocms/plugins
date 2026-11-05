@@ -46,6 +46,69 @@
     background-color 0.2s var(--material-ease);
 }
 
+.utilityActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  inset: 0;
+  padding: var(--spacing-m);
+  place-items: center;
+  background: var(--color--backdrop--surface, rgb(0 0 0 / 40%));
+}
+
+.dialog {
+  display: grid;
+  width: min(360px, 100%);
+  gap: var(--spacing-m);
+  padding: var(--spacing-l, 18px);
+  border: 1px solid var(--color--border);
+  border-radius: 6px;
+  color: var(--color--ink);
+  background: var(--color--surface);
+  box-shadow: var(--shadow--lifted, 0 12px 32px rgb(0 0 0 / 30%));
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: var(--font-size-m);
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
+.optionsButton {
+  width: 30px;
+  height: 30px;
+}
+
+.optionsAccess {
+  display: grid;
+  gap: 2px;
+  max-width: 240px;
+  white-space: normal;
+}
+
+.optionsAccess span {
+  color: var(--color--ink-subtle);
+}
+
 .autoApproveControl {
   display: flex;
   height: 30px;
@@ -327,27 +390,120 @@
   font-weight: var(--font-weight-bold);
 }
 
-.configurationNotice {
+.setupSteps {
+  display: grid;
+  gap: var(--spacing-m);
+  margin: var(--spacing-m) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setupStep {
+  display: grid;
+  gap: var(--spacing-s);
+}
+
+.setupStepHeader {
   display: flex;
-  min-height: 34px;
+  min-height: 24px;
   align-items: center;
   gap: 8px;
-  margin-top: var(--spacing-m);
-  padding: 6px 8px;
-  border: 1px solid var(--color--border);
-  background: var(--color--surface-muted);
-  font-size: var(--font-size-s);
 }
 
-.configurationNotice + .connectionForm {
-  margin-top: var(--spacing-s);
-}
-
-.configurationNotice svg {
-  width: 15px;
-  height: 15px;
+.setupStepNumber {
+  display: grid;
+  width: 20px;
+  height: 20px;
   flex: none;
+  place-items: center;
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-full, 999px);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.setupStepTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.setupStepDone,
+.setupStepToDo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full, 999px);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.setupStepDone {
+  background: var(--color--success-soft--surface);
+  color: var(--color--success-soft--ink);
+}
+
+.setupStepToDo {
+  background: var(--color--warning-soft--surface);
   color: var(--color--warning-soft--ink);
+}
+
+.setupStepDone svg,
+.setupStepToDo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.setupStepBody {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-m);
+  margin-left: 28px;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.setupStepBody p {
+  margin: 0;
+}
+
+/* The access notices line up with the step's own text inside a setup step. */
+.setupStepBody .authorizationNotice {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-s);
+  margin: 0;
+}
+
+.accessChoices {
+  display: grid;
+  gap: 4px;
+}
+
+.accessChoices ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.accessChoices li + li {
+  margin-top: 2px;
+}
+
+.chatsAfterSetup {
+  display: grid;
+  gap: var(--spacing-s);
+  margin-top: 6px;
+}
+
+.chatsAfterSetup textarea {
+  resize: none;
+}
+
+.chatHistory .recentChats {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .recentChats {
@@ -485,7 +641,7 @@
 
 .transcriptInner {
   box-sizing: border-box;
-  width: 100%;
+  width: min(100%, 760px);
   min-height: 100%;
   margin: 0 auto;
   padding: 14px 14px 18px;
@@ -1170,7 +1326,7 @@
 
 .composerInner {
   box-sizing: border-box;
-  width: 100%;
+  width: min(100%, 760px);
   margin: 0 auto;
   padding: 10px 14px 12px;
 }
