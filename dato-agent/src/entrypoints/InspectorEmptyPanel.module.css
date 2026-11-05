@@ -10,7 +10,13 @@
 }
 
 .empty p {
+  max-width: 36ch;
   margin: 0;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-m);
+}
+
+.empty p + p {
+  margin-top: var(--spacing-s);
+  font-size: var(--font-size-s);
 }
