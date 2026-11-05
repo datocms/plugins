@@ -46,11 +46,13 @@ const VisualSelect = ({ ctx }: VisualSelectProps) => {
     [ctx.formValues, ctx.fieldPath],
   );
 
-  const hasValidValue = useMemo(() => {
-    return [...options, { value: null }]
-      .map((o) => o.value)
-      .includes(currentValue);
-  }, [options, currentValue]);
+  // An empty field (null, or "" in a field added after the record) has no
+  // value to match: only a value that no option has gets the warning
+  const hasValidValue = useMemo(
+    () =>
+      !currentValue || options.some((option) => option.value === currentValue),
+    [options, currentValue],
+  );
 
   const isCarousel = presentation.type === 'carousel';
 
