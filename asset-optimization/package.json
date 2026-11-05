@@ -36,7 +36,7 @@
   "dependencies": {
     "@datocms/cma-client-browser": "^6.1.0",
     "datocms-plugin-sdk": "^2.6.0-next.1",
-    "datocms-react-ui": "^3.1.0-next.1",
+    "datocms-react-ui": "^3.1.0-next.2",
     "lodash.debounce": "^4.0.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
