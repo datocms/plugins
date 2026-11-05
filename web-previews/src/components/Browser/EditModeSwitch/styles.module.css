@@ -1,4 +1,4 @@
-/* The hint, then the label and the switch, with the gap between two parts of
+/* The hint, then the switch and its label, with the gap between two parts of
    the bar. It is also the box that the Tooltip anchors to */
 .root {
   display: flex;
@@ -13,7 +13,7 @@
 .stable {
   display: grid;
   align-items: center;
-  justify-items: end;
+  justify-items: start;
 }
 
 .stable > * {

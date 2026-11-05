@@ -12,12 +12,10 @@ import type {
 } from '../AgentSurface';
 import styles from './Transcript.module.css';
 
-const ACTIVITY_LABELS: Record<
-  Exclude<AgentActivityStatus, 'success'>,
-  string
-> = {
+const ACTIVITY_LABELS: Record<AgentActivityStatus, string> = {
   pending: 'Waiting',
   running: 'In progress',
+  success: 'Done',
   error: 'Failed',
   cancelled: 'Cancelled',
 };
@@ -70,17 +68,13 @@ function activityPresentation(entry: AgentActivityEntry): {
   return { summary: stepCount(activities.length), showSpinner: false };
 }
 
-/** The state of a step, when it did not simply succeed */
+/** The state of a step, in words next to its dot */
 function activityStatusLabel(
   activity: AgentActivityViewModel,
   phase: AgentActivityPhase,
-): string | undefined {
+): string {
   if (activity.timestampLabel) {
     return activity.timestampLabel;
-  }
-
-  if (activity.status === 'success') {
-    return undefined;
   }
 
   if (activity.status !== 'error' || phase === 'failed') {
@@ -134,9 +128,7 @@ function ActivityItem({
       <div className={styles.stepBody}>
         <p className={styles.stepHeading}>
           <span>{activity.label}</span>
-          {statusLabel && (
-            <span className={styles.stepStatus}>{statusLabel}</span>
-          )}
+          <span className={styles.stepStatus}>{statusLabel}</span>
         </p>
         {activity.description && (
           <p className={styles.stepDescription}>{activity.description}</p>

@@ -1,3 +1,4 @@
+import type { DateSettings } from 'datocms-react-ui/DateSettings';
 import type { RawItem, RawItemType } from '../types';
 import {
   getFieldValue,
@@ -53,7 +54,10 @@ export type PresentationResolverOptions = PresentationLoaders & {
   uploads?: readonly RawUpload[];
   locales: readonly string[];
   preferredLocale?: string;
-  timeZone?: string;
+  /** The date settings of the user, for a date title and a calendar image */
+  dateSettings?: DateSettings;
+  /** The color scheme of the user, for the generated images (light by default) */
+  colorScheme?: 'light' | 'dark';
   imgixHost?: string;
   googleMapsApiToken?: string;
   maxTitleLength?: number;
@@ -446,8 +450,7 @@ export function createPresentationResolver(
 
     return formatFieldTitle(value, field, {
       maxLength: options.maxTitleLength,
-      locales: options.locales,
-      timeZone: options.timeZone,
+      dateSettings: options.dateSettings,
     });
   }
 
@@ -476,21 +479,21 @@ export function createPresentationResolver(
 
   function colorImage(value: unknown): PresentationImage | null {
     return isRgbaColor(value)
-      ? directPresentationImage(generateColorPreview(value))
+      ? directPresentationImage(
+          generateColorPreview(value, options.colorScheme ?? 'light'),
+        )
       : null;
   }
 
-  function calendarImage(
-    value: unknown,
-    dateOnly: boolean,
-  ): PresentationImage | null {
-    if (typeof value !== 'string') return null;
-    const url = generateCalendarPreview(value, {
-      dateOnly,
-      locale: options.locales[0],
-      timeZone: options.timeZone,
-    });
-    return url ? directPresentationImage(url) : null;
+  function calendarImage(value: unknown): PresentationImage | null {
+    if (typeof value !== 'string' || !options.dateSettings) return null;
+    return directPresentationImage(
+      generateCalendarPreview(
+        value,
+        options.dateSettings,
+        options.colorScheme ?? 'light',
+      ),
+    );
   }
 
   function mapImage(value: unknown): PresentationImage | null {
@@ -506,8 +509,8 @@ export function createPresentationResolver(
     >
   > = {
     color: colorImage,
-    date: (value) => calendarImage(value, true),
-    date_time: (value) => calendarImage(value, false),
+    date: calendarImage,
+    date_time: calendarImage,
     lat_lon: mapImage,
   };
 
@@ -603,7 +606,7 @@ export function createPresentationResolver(
       : null;
 
     return {
-      title: title || `Record #${item.id}`,
+      title: title || `Record ${item.id}`,
       image,
       status,
       statusLabel: status ? ITEM_STATUS_LABEL[status] : null,

@@ -42,7 +42,11 @@ export function localeName(code: string, uiLocale: string): string {
   }
 }
 
-/** Whole-string plural branches: `other` receives the formatted count as `{n}`. */
+/**
+ * Whole-string plural branches: `other` receives the formatted count as `{n}`.
+ * For a count in a plain string; a count in a Message prop is a text of
+ * `TEXTS` (`src/texts.ts`).
+ */
 export function countLabel(
   n: number,
   one: string,

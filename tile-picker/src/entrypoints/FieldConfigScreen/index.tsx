@@ -70,6 +70,12 @@ export default function FieldConfigScreen({ ctx }: Props) {
     update({ ...state, presentation: { ...state.presentation, ...changes } });
 
   const layout = state.presentation?.type ?? 'grid';
+  // The input has no min: a grid needs a whole number of columns, 1 or more
+  const columns = state.presentation?.columns;
+  const columnsError =
+    columns != null && !(Number.isInteger(columns) && columns >= 1)
+      ? 'Enter a whole number, 1 or more.'
+      : undefined;
 
   return (
     <>
@@ -102,7 +108,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
         />
       </FieldWrapper>
       {layout === 'grid' ? (
-        <FieldWrapper label="Columns">
+        <FieldWrapper label="Columns" error={columnsError}>
           <NumberInput
             value={state.presentation?.columns ?? null}
             onChange={(columns) =>

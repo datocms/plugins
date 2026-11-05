@@ -2,7 +2,7 @@ import Callout from 'datocms-react-ui/Callout';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import { useState } from 'react';
-import { countLabel, formatWarning } from '../report/format';
+import { formatWarning } from '../report/format';
 import { pageSlice, proxyRefused } from '../report/view';
 import type { ScanReport } from '../types';
 import { ProxyRefusedCallout } from '../ui/ProxyRefusedCallout';
@@ -27,16 +27,15 @@ function calloutTitle(cancelled: boolean, listed: boolean) {
 }
 
 /** The first items show above it, so it names the rest. */
-function issuesToggleLabel(count: number, expanded: boolean, uiLocale: string) {
+function issuesToggleLabel(count: number, expanded: boolean) {
   if (expanded) return 'Show fewer fields';
-  return countLabel(
-    count - WARNINGS_SHOWN,
-    'Show 1 more field',
-    count > LARGE_WARNING_COUNT
-      ? 'Browse {n} more fields'
-      : 'Show {n} more fields',
-    uiLocale,
-  );
+  return {
+    id:
+      count > LARGE_WARNING_COUNT
+        ? 'brokenLinkChecker.browseMoreFields'
+        : 'brokenLinkChecker.showMoreFields',
+    values: { count: count - WARNINGS_SHOWN },
+  };
 }
 
 /** The content that couldn't be read, as a list: 3 at first, then all, or pages of 50 above 200. */
@@ -53,8 +52,9 @@ function shownIssues(
 
 /**
  * The content a check couldn't read. When nothing could be read, the reason
- * alone is the message. Otherwise it is a list; its action and its pages sit
- * right under the callout, since a callout holds no buttons.
+ * alone is the message. Otherwise it is a list, with its action and its
+ * pages, right under the callout, since a callout holds no list and no
+ * buttons.
  */
 function CoverageCallout({
   cancelled,
@@ -72,31 +72,31 @@ function CoverageCallout({
       <Callout
         tone="warning"
         title={calloutTitle(cancelled, listed)}
-        className={canToggle ? styles.calloutAboveControls : undefined}
+        className={listed ? styles.calloutAboveControls : undefined}
       >
         {reasonsOnly &&
           warnings.map((warning) => (
             <p key={warning}>{formatWarning(warning, uiLocale)}</p>
           ))}
         {listed && (
-          <>
-            <p>
-              {cancelled
-                ? "Some content couldn't be read, so its links weren't checked:"
-                : "Its links weren't checked:"}
-            </p>
-            <ul>
-              {shownIssues(warnings, expanded, page).map((warning) => (
-                <li key={warning}>{formatWarning(warning, uiLocale)}</li>
-              ))}
-            </ul>
-          </>
+          <p>
+            {cancelled
+              ? "Some content couldn't be read, so its links weren't checked."
+              : "Its links weren't checked."}
+          </p>
         )}
       </Callout>
+      {listed && (
+        <ul>
+          {shownIssues(warnings, expanded, page).map((warning) => (
+            <li key={warning}>{formatWarning(warning, uiLocale)}</li>
+          ))}
+        </ul>
+      )}
       {canToggle && (
         <div className={styles.controls}>
           <SidebarPanel.Action
-            label={issuesToggleLabel(warnings.length, expanded, uiLocale)}
+            label={issuesToggleLabel(warnings.length, expanded)}
             onClick={() => setExpanded((value) => !value)}
           />
         </div>

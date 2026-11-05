@@ -67,11 +67,12 @@ describe('the states of the body', () => {
     cleanup();
 
     renderBody({ ...idle, findRow: { ...idle.findRow, enterToSearch: true } });
+    // The Enter key shows as a key cap (↵), with its name for screen readers
     expect(
-      screen.getByText(
-        'Matches show here when you press Enter. Nothing changes until you review them and confirm.',
-      ),
-    ).toBeInTheDocument();
+      screen.getByText(/^Matches show here when you press/),
+    ).toHaveTextContent(
+      'Matches show here when you press ↵Enter. Nothing changes until you review them and confirm.',
+    );
   });
 
   it('shows nothing for a blank body, nor while the progress row shows the search', () => {
@@ -167,11 +168,9 @@ describe('no results', () => {
       note: { kind: 'searchStopped', searched: 1200, total: 3400 },
     });
     expect(screen.getByText('Some matches may be missing')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'The search stopped after 1,200 of 3,400 records. Press Enter in Find to search them all.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/^The search stopped after/)).toHaveTextContent(
+      'The search stopped after 1,200 of 3,400 records. Press ↵Enter in Find to search them all.',
+    );
     expect(
       screen.getByText('Every match has been replaced'),
     ).toBeInTheDocument();

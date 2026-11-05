@@ -11,6 +11,13 @@ import { buildField, buildItem, buildItemType } from './fixtures';
 
 const locales = { locales: ['en', 'it'] };
 const noLocales = { locales: [] };
+// The date settings of the user, as Canvas gives them
+const DATE_SETTINGS = {
+  locale: 'en',
+  dateFormat: 'MM/dd/yyyy',
+  timezone: 'Europe/Rome',
+  twentyFourHour: false,
+};
 
 describe('buildRow', () => {
   it('uses the presentation title field, in the first locale with a value', () => {
@@ -126,20 +133,23 @@ describe('buildRow', () => {
     );
   });
 
-  it('still formats dates when the browser rejects the timezone', () => {
+  it('names the record by ID when the browser rejects the timezone', () => {
     const field = buildField('f', 'when', { type: 'date_time' });
     const row = buildRow(
       buildItem('r1', { when: '2026-10-03T10:00:00Z' }),
       buildModelPresentation(buildItemType('m', 'M', { titleFieldId: 'f' }), [
         field,
       ]),
-      { locales: ['en'], timeZone: 'Mars/Olympus_Mons' },
+      {
+        locales: ['en'],
+        dateSettings: { ...DATE_SETTINGS, timezone: 'Mars/Olympus_Mons' },
+      },
     );
-    expect(row.title).toMatch(/2026/);
+    expect(row.title).toBe('Record r1');
   });
 
   it('formats date, color, and coordinate titles', () => {
-    const options = { locales: ['en'], timeZone: 'Europe/Rome' };
+    const options = { locales: ['en'], dateSettings: DATE_SETTINGS };
     const titleOf = (field: ReturnType<typeof buildField>, value: unknown) =>
       buildRow(
         buildItem('r1', { [field.attributes.api_key]: value }),
@@ -154,7 +164,10 @@ describe('buildRow', () => {
         buildField('f', 'when', { type: 'date_time' }),
         '2026-10-03T10:00:00Z',
       ),
-    ).toBe('Oct 3, 2026, 12:00 PM');
+    ).toBe('10/03/2026, 12:00 PM');
+    expect(
+      titleOf(buildField('f', 'day', { type: 'date' }), '2026-10-03'),
+    ).toBe('10/03/2026');
     expect(
       titleOf(buildField('f', 'shade', { type: 'color' }), {
         red: 255,
@@ -179,7 +192,7 @@ describe('buildRow', () => {
       ]),
       locales,
     );
-    expect(row).toMatchObject({ title: 'Record #r1', titleLinkId: 'linked-1' });
+    expect(row).toMatchObject({ title: 'Record r1', titleLinkId: 'linked-1' });
   });
 
   it('names untitled records by ID', () => {
@@ -188,7 +201,7 @@ describe('buildRow', () => {
       buildModelPresentation(buildItemType('m1', 'Page'), []),
       locales,
     );
-    expect(row.title).toBe('Record #r42');
+    expect(row.title).toBe('Record r42');
   });
 
   it('reads the status from the record, defaulting to published', () => {

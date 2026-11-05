@@ -31,17 +31,19 @@ describe('CoverageCallout', () => {
     const user = userEvent.setup();
     const callout = show(8);
     // The callout stays short: its sentence, and the issues behind a button.
-    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
     const toggle = screen.getByRole('button', { name: SHOW_UNREAD });
     // A callout holds no buttons.
     expect(callout).not.toContainElement(toggle);
     await user.click(toggle);
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(8);
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
+    // Nor a list: the issues show under it.
+    expect(callout).not.toContainElement(screen.getByRole('list'));
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('button', { name: "Hide what couldn't be read" }),
     );
-    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
   });
 
   it('names a model once when a field of it gives the same reason', async () => {
@@ -95,16 +97,16 @@ describe('CoverageCallout', () => {
     const user = userEvent.setup();
     const callout = show(120);
     await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(50);
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
     const pages = screen.getByRole('navigation', {
       name: 'Content issues pagination',
     });
     expect(callout).not.toContainElement(pages);
     fireEvent.click(within(pages).getByRole('button', { name: 'Next page' }));
-    expect(within(callout).getByText('Issue 50')).toBeInTheDocument();
+    expect(screen.getByText('Issue 50')).toBeInTheDocument();
     fireEvent.click(within(pages).getByRole('button', { name: 'Next page' }));
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(20);
-    expect(within(callout).getByText('Issue 119')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(20);
+    expect(screen.getByText('Issue 119')).toBeInTheDocument();
   });
 
   it('warns about unread content while a scan runs, and says nothing otherwise', async () => {
@@ -128,7 +130,7 @@ describe('CoverageCallout', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: SHOW_UNREAD }));
     // Warning paths read with " > ".
-    expect(within(callout).getByRole('listitem')).toHaveTextContent(
+    expect(screen.getByRole('listitem')).toHaveTextContent(
       'Hero > Body (en) > Link: Not found',
     );
   });

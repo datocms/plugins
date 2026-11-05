@@ -89,7 +89,6 @@ function FieldListState({
           onRetry && (
             <Button
               tone="ghost"
-              size="micro"
               label="Try again"
               onMouseDown={(event) => {
                 // The editor keeps the focus, and the panel stays open

@@ -1,8 +1,17 @@
+import { render } from '@testing-library/react';
+import Canvas from 'datocms-react-ui/Canvas';
+import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { DisabledReason, NoResultsView } from '../contract';
 import { createCopy, optionsLabel, quote, whereLabel, whereName } from './copy';
+import { createMockCtx } from './testing/mockCtx';
 
 const copy = createCopy('en');
+
+/** The text of a message: a key shows as its key cap (↵), then its name */
+const textOf = (message: ReactNode) =>
+  render(<Canvas ctx={createMockCtx().ctx}>{message}</Canvas>).container
+    .textContent;
 
 describe('counts', () => {
   it('uses whole-string plurals and the locale for digits', () => {
@@ -178,7 +187,7 @@ describe('primary', () => {
     const reasons: Record<DisabledReason, string> = {
       no_matches: 'Find some matches to remove first.',
       search_running: 'Wait for the search to finish.',
-      press_enter: 'Press Enter to search first.',
+      press_enter: 'Search first.',
       invalid_pattern: 'Fix the text in Find first.',
       no_replacement:
         'Type a replacement first, or pick Replace with nothing in Options.',
@@ -389,14 +398,14 @@ describe('callouts above the results', () => {
       'Showing the next 10,000 matches. Replace them, then search again for the rest.',
     );
     expect(
-      copy.note({ kind: 'searchStopped', searched: 1200, total: null }),
+      textOf(copy.note({ kind: 'searchStopped', searched: 1200, total: null })),
     ).toBe(
-      'The search stopped after 1,200 records. Press Enter in Find to search them all.',
+      'The search stopped after 1,200 records. Press ↵Enter in Find to search them all.',
     );
     expect(
-      copy.note({ kind: 'searchStopped', searched: 1200, total: 3400 }),
+      textOf(copy.note({ kind: 'searchStopped', searched: 1200, total: 3400 })),
     ).toBe(
-      'The search stopped after 1,200 of 3,400 records. Press Enter in Find to search them all.',
+      'The search stopped after 1,200 of 3,400 records. Press ↵Enter in Find to search them all.',
     );
     // Each note has two sentences, under a title.
     expect(
@@ -419,16 +428,15 @@ describe('callouts above the results', () => {
       text: "Couldn't search the “Author” model.",
     });
     // Capped results: no retry button, Enter in Find searches again.
-    expect(
-      copy.modelsFailed({
-        kind: 'modelsFailed',
-        modelNames: ['Author', 'Page'],
-        retryable: false,
-      }),
-    ).toEqual({
-      title: "Some models weren't searched",
-      text: "Couldn't search the “Author” and “Page” models. Press Enter in Find to search again.",
+    const notRetryable = copy.modelsFailed({
+      kind: 'modelsFailed',
+      modelNames: ['Author', 'Page'],
+      retryable: false,
     });
+    expect(notRetryable.title).toBe("Some models weren't searched");
+    expect(textOf(notRetryable.text)).toBe(
+      "Couldn't search the “Author” and “Page” models. Press ↵Enter in Find to search again.",
+    );
     expect(models(['A', 'B', 'C']).text).toBe(
       "Couldn't search the “A”, “B” and “C” models.",
     );

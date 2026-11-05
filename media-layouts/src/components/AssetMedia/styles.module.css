@@ -11,23 +11,19 @@
   border-radius: var(--radius-s) var(--radius-s) 0 0;
 }
 
-/* A file that is not an image: its icon and its format, at the same ratio */
+/* A file that is not an image: the icon of its type, at the same ratio */
 .filePlaceholder {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-xl);
-  color: var(--color--ink-subtle);
   background-color: var(--color--surface-muted);
   border-radius: var(--radius-s) var(--radius-s) 0 0;
 }
 
-/* The format, under the icon */
-.formatLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-strong);
+/* The icon has the size of its class (FileTypeIcon) */
+.fileIcon {
+  width: 45px;
+  height: auto;
 }
 
 /* The frame of the media in a gallery: one shape for every card, thus the

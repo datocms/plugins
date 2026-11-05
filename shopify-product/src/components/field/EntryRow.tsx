@@ -123,7 +123,6 @@ function rowFix({
     return (
       <Button
         tone="ghost"
-        size="milli"
         label="Replace"
         disabled={disabled}
         onClick={() => actions.replace(index)}
@@ -135,7 +134,6 @@ function rowFix({
   return (
     <Button
       tone="ghost"
-      size="milli"
       label="Update address"
       disabled={disabled}
       onClick={() => actions.updateHandle(row.key, handle)}

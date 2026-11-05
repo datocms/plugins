@@ -319,7 +319,7 @@ function SelectionIntro({
  * The field selects of many models, behind "Fields of each model": closed,
  * a note says which fields are translated. A model that needs the user (its
  * fields failed to load, it has none to translate, none is picked) keeps
- * them open.
+ * them open, and the note under the disabled toggle says why.
  */
 function ManyModelsDisclosure({
   needsUser,
@@ -333,6 +333,7 @@ function ManyModelsDisclosure({
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
+  const reasonId = useId();
   const show = open || needsUser;
   return (
     <>
@@ -341,17 +342,24 @@ function ManyModelsDisclosure({
           className={s.disclosure}
           expandable={{ open: show, controls: id }}
           disabled={needsUser ? 'focusable' : undefined}
+          aria-describedby={needsUser ? reasonId : undefined}
           onClick={() => setOpen((value) => !value)}
         >
           <DisclosureChevron open={show} />
           Fields of each model
         </RawButton>
-        {!show && (
-          <p className={s.disclosureNote}>
-            {allFieldsPicked
-              ? 'All the fields of every model are translated.'
-              : 'Only the fields you picked are translated.'}
+        {needsUser ? (
+          <p id={reasonId} className={s.disclosureNote}>
+            A model needs your attention, so the fields stay open.
           </p>
+        ) : (
+          !show && (
+            <p className={s.disclosureNote}>
+              {allFieldsPicked
+                ? 'All the fields of every model are translated.'
+                : 'Only the fields you picked are translated.'}
+            </p>
+          )
         )}
       </div>
       <div id={id} hidden={!show}>

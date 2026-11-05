@@ -1,4 +1,5 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import { useDateSettings } from 'datocms-react-ui/DateSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildCmaClient } from '../lib/cma';
 import type { StageMenuItem } from '../types';
@@ -28,6 +29,8 @@ export function useStageData(
   const workflowId = menuItem?.workflowId;
   const stageId = menuItem?.stageId;
   const environment = ctx.environment;
+  // Date titles follow the date settings of the user
+  const dateSettings = useDateSettings();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadToken and environment are reload triggers
   useEffect(() => {
@@ -48,7 +51,7 @@ export function useStageData(
             client: buildCmaClient(latest),
             itemTypes: latest.itemTypes,
             locales: latest.site.attributes.locales,
-            timeZone: latest.site.attributes.timezone ?? undefined,
+            dateSettings,
             loadItemTypeFields: latest.loadItemTypeFields,
           },
           { workflowId, stageId },
@@ -66,7 +69,7 @@ export function useStageData(
     void run();
 
     return () => controller.abort();
-  }, [workflowId, stageId, environment, reloadToken]);
+  }, [workflowId, stageId, environment, reloadToken, dateSettings]);
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 

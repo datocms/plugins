@@ -105,6 +105,25 @@ describe('conversation persistence', () => {
     expect(projectKey).toContain('user-1');
   });
 
+  it('moves the chats saved under the old datocms-agent keys', () => {
+    const saved = new MemoryStorage();
+    createConversationStore(baseContext, saved).save(
+      conversation('saved', '2026-07-28T10:00:00.000Z'),
+    );
+    const storage = new MemoryStorage();
+    for (const [key, value] of saved.values) {
+      storage.setItem(
+        key.replace('dato-agent:', 'datocms-agent:'),
+        value.replaceAll('"dato-agent:', '"datocms-agent:'),
+      );
+    }
+
+    const store = createConversationStore(baseContext, storage);
+
+    expect(storage.values).toEqual(saved.values);
+    expect(store.list().map((item) => item.id)).toEqual(['saved']);
+  });
+
   it('keeps only the six newest conversations in each scoped path by default', () => {
     expect(DEFAULT_MAX_CONVERSATIONS).toBe(6);
 

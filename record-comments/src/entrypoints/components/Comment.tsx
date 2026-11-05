@@ -237,7 +237,6 @@ function CommentUpvoteButton({
     <Tooltip label={upvoterNames}>
       <Button
         tone="ghost"
-        size="micro"
         icon={UpvoteIcon}
         pressed={userUpvoted}
         label={
@@ -336,13 +335,7 @@ function CommentFooter({
         locale={locale}
       />
       {onReply && (
-        <Button
-          tone="ghost"
-          size="micro"
-          icon={ReplyIcon}
-          label="Reply"
-          onClick={onReply}
-        />
+        <Button tone="ghost" icon={ReplyIcon} label="Reply" onClick={onReply} />
       )}
       <CommentReplyToggle
         replyCount={replyCount}

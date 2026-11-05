@@ -228,46 +228,6 @@ const executeRestoreWithoutLambda = async ({
   );
 };
 
-const getPrimaryErrorLine = (restorationError: errorObject): string => {
-  const details = restorationError.simplifiedError.details;
-  const detailMessage =
-    (typeof details.field === 'string' && details.field) ||
-    (Array.isArray(details.extraneous_attributes) &&
-    details.extraneous_attributes.length > 0
-      ? details.extraneous_attributes.join(', ')
-      : undefined) ||
-    (typeof details.message === 'string' && details.message) ||
-    'No details available';
-
-  return `${restorationError.simplifiedError.code || 'UNKNOWN'}: ${detailMessage}`;
-};
-
-const getSecondaryErrorLine = (
-  restorationError: errorObject,
-): string | undefined => {
-  const details = restorationError.simplifiedError.details;
-
-  if (typeof details.code === 'string' && details.code.trim().length > 0) {
-    return `Details code: ${details.code}`;
-  }
-
-  if (
-    typeof details.field_id === 'string' &&
-    details.field_id.trim().length > 0
-  ) {
-    return `Field ID: ${details.field_id}`;
-  }
-
-  if (
-    typeof details.field_label === 'string' &&
-    details.field_label.trim().length > 0
-  ) {
-    return `Field label: ${details.field_label}`;
-  }
-
-  return undefined;
-};
-
 const runLambdaModeRestore = async ({
   parsedRecordBody,
   pluginParameters,
@@ -432,20 +392,12 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
     });
   };
 
-  const primaryErrorLine = error ? getPrimaryErrorLine(error) : undefined;
-  const secondaryErrorLine = error ? getSecondaryErrorLine(error) : undefined;
-
   return (
     <Canvas ctx={ctx}>
       {error && (
         <Callout tone="danger" title="Couldn't restore the record">
-          <p>{primaryErrorLine}</p>
-          {secondaryErrorLine && <p>{secondaryErrorLine}</p>}
-          <p>
-            It can fail when the record links to records that no longer exist.
-            Fix the <code>record_body</code> JSON, save the record, and try
-            again.
-          </p>
+          It can fail when the record links to records that no longer exist. Fix
+          the <code>record_body</code> JSON, save the record, and try again.
         </Callout>
       )}
       <div className={s.actions}>

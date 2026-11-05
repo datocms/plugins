@@ -1,4 +1,6 @@
 import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { DateSettings } from 'datocms-react-ui/DateSettings';
+import { formatDate } from 'datocms-react-ui/utils/formatDate';
 import type { LatLonValue, RgbaColor } from './formatters';
 
 export type RawUpload = RawApiTypes.Upload;
@@ -164,58 +166,43 @@ function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-export function generateColorPreview(color: RgbaColor): string {
+// An image can't read the color tokens: the generated images have a value
+// for each color scheme
+const PREVIEW_COLORS = {
+  light: { tile: '#fff', check: '#e0e0e0', border: '#d0d0d0', day: '#000' },
+  dark: { tile: '#2e2e33', check: '#3d3d43', border: '#4c4c52', day: '#fff' },
+} as const;
+
+export function generateColorPreview(
+  color: RgbaColor,
+  colorScheme: 'light' | 'dark',
+): string {
+  const { tile, check } = PREVIEW_COLORS[colorScheme];
   const alpha = Math.max(0, Math.min(1, color.alpha / 255));
   const rgb = `rgb(${color.red},${color.green},${color.blue})`;
 
   return svgDataUrl(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="124" height="124" viewBox="0 0 124 124"><defs><pattern id="c" width="20" height="20" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="#fff"/><path d="M0 0h10v10H0zM10 10h10v10H10z" fill="#e0e0e0"/></pattern></defs><rect width="124" height="124" rx="10" fill="url(#c)"/><path d="M0 0h62v124H0z" fill="${rgb}"/><path d="M62 0h62v124H62z" fill="${rgb}" fill-opacity="${alpha}"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="124" height="124" viewBox="0 0 124 124"><defs><pattern id="c" width="20" height="20" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="${tile}"/><path d="M0 0h10v10H0zM10 10h10v10H10z" fill="${check}"/></pattern></defs><rect width="124" height="124" rx="10" fill="url(#c)"/><path d="M0 0h62v124H0z" fill="${rgb}"/><path d="M62 0h62v124H62z" fill="${rgb}" fill-opacity="${alpha}"/></svg>`,
   );
 }
 
-function dateParts(
-  value: string,
-  options: {
-    dateOnly: boolean;
-    locale?: string;
-    timeZone?: string;
-  },
-): { day: string; month: string } | null {
-  const date = new Date(options.dateOnly ? `${value}T00:00:00.000Z` : value);
-  if (Number.isNaN(date.valueOf())) {
-    return null;
-  }
-
-  const formatter = new Intl.DateTimeFormat(options.locale, {
-    day: 'numeric',
-    month: 'short',
-    timeZone: options.dateOnly ? 'UTC' : options.timeZone,
-  });
-  const parts = formatter.formatToParts(date);
-
-  return {
-    day: parts.find((part) => part.type === 'day')?.value ?? '',
-    month: (
-      parts.find((part) => part.type === 'month')?.value ?? ''
-    ).toUpperCase(),
-  };
-}
-
+// The month and the day of a date, in the time zone of the user (a plain
+// date is the same day everywhere), with an English month as in the date
+// format of the user
 export function generateCalendarPreview(
   value: string,
-  options: {
-    dateOnly: boolean;
-    locale?: string;
-    timeZone?: string;
-  },
-): string | null {
-  const parts = dateParts(value, options);
-  if (!parts) {
-    return null;
-  }
+  dateSettings: DateSettings,
+  colorScheme: 'light' | 'dark',
+): string {
+  const { tile, border, day } = PREVIEW_COLORS[colorScheme];
+  const month = formatDate(value, {
+    ...dateSettings,
+    dateFormat: 'MMM',
+  }).toUpperCase();
+  const dayOfMonth = formatDate(value, { ...dateSettings, dateFormat: 'd' });
 
   return svgDataUrl(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="124" height="124" viewBox="0 0 124 124"><rect x="1" y="1" width="122" height="122" rx="10" fill="#fff" stroke="#d0d0d0"/><path d="M2 12A10 10 0 0 1 12 2h100a10 10 0 0 1 10 10v30H2z" fill="#f00"/><text x="62" y="25" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#fff">${parts.month}</text><text x="62" y="84" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="56" font-weight="700" fill="#000">${parts.day}</text></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="124" height="124" viewBox="0 0 124 124"><rect x="1" y="1" width="122" height="122" rx="10" fill="${tile}" stroke="${border}"/><path d="M2 12A10 10 0 0 1 12 2h100a10 10 0 0 1 10 10v30H2z" fill="#f00"/><text x="62" y="25" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#fff">${month}</text><text x="62" y="84" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="56" font-weight="700" fill="${day}">${dayOfMonth}</text></svg>`,
   );
 }
 

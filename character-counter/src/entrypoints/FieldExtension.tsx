@@ -25,14 +25,27 @@ const DETAILED_FIELD_TYPES = new Set<AnalyticsFieldType>([
   'structured_text',
 ]);
 
-function formatMetric(value: number): string {
-  return value.toLocaleString();
+/** A count, with the separators of the language of the user */
+function formatMetric(value: number, locale: string): string {
+  return value.toLocaleString(locale);
 }
 
-function Metric({ value, noun }: { value: number; noun: string }) {
+/**
+ * A count and its noun. The text is in a RawButton, which takes no `{ id }`
+ * message, so the English plural is written here.
+ */
+function Metric({
+  value,
+  noun,
+  locale,
+}: {
+  value: number;
+  noun: string;
+  locale: string;
+}) {
   return (
     <span>
-      <span className={s.value}>{formatMetric(value)}</span>{' '}
+      <span className={s.value}>{formatMetric(value, locale)}</span>{' '}
       {value === 1 ? noun : `${noun}s`}
     </span>
   );
@@ -97,6 +110,7 @@ export default function FieldExtension({ ctx }: Props) {
     supportsStopwords,
   ]);
 
+  const locale = ctx.ui.locale;
   const characterCount = includeSpaces
     ? analysis.charactersWithSpaces
     : analysis.charactersWithoutSpaces;
@@ -110,16 +124,25 @@ export default function FieldExtension({ ctx }: Props) {
       >
         <DisclosureChevron open={detailsOpen} />
         <span className={s.metrics}>
-          <Metric value={characterCount} noun="character" />
+          <Metric value={characterCount} noun="character" locale={locale} />
           {isDetailedField && (
             <>
-              <Metric value={analysis.words} noun="word" />
+              <Metric value={analysis.words} noun="word" locale={locale} />
               <Metric
                 value={analysis.specialCharacters}
                 noun="special character"
+                locale={locale}
               />
-              <Metric value={analysis.sentences} noun="sentence" />
-              <Metric value={analysis.paragraphs} noun="paragraph" />
+              <Metric
+                value={analysis.sentences}
+                noun="sentence"
+                locale={locale}
+              />
+              <Metric
+                value={analysis.paragraphs}
+                noun="paragraph"
+                locale={locale}
+              />
             </>
           )}
         </span>
@@ -146,12 +169,12 @@ export default function FieldExtension({ ctx }: Props) {
             (commonWordsSummary.topWords.length > 0 ? (
               <InfoList>
                 <InfoList.Row title="Unique words">
-                  {formatMetric(commonWordsSummary.uniqueWords)}
+                  {formatMetric(commonWordsSummary.uniqueWords, locale)}
                 </InfoList.Row>
                 <InfoList.Group title="Most common words">
                   {commonWordsSummary.topWords.map((word) => (
                     <InfoList.Row key={word.word} title={word.word}>
-                      {formatMetric(word.count)}
+                      {formatMetric(word.count, locale)}
                     </InfoList.Row>
                   ))}
                 </InfoList.Group>

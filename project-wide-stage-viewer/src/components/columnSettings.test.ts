@@ -108,7 +108,30 @@ describe('column settings', () => {
         environment: 'sandbox',
         userId: 'user',
       }),
-    ).toBe('datocms-stage-viewer:site:sandbox:user:columns');
+    ).toBe('project-wide-stage-viewer:site:sandbox:user:columns');
+  });
+
+  it('moves the settings saved under the old storage key', () => {
+    const values = new Map([
+      [
+        'datocms-stage-viewer:site:main:user:columns',
+        '[{"id":"id","width":1}]',
+      ],
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    };
+    expect(
+      loadColumnSettings(
+        storage,
+        'project-wide-stage-viewer:site:main:user:columns',
+      ),
+    ).toEqual([{ id: 'id', width: 1 }]);
+    expect([...values.keys()]).toEqual([
+      'project-wide-stage-viewer:site:main:user:columns',
+    ]);
   });
 
   it('round trips valid settings and falls back on invalid JSON', () => {
@@ -116,6 +139,7 @@ describe('column settings', () => {
     const storage = {
       getItem: vi.fn((key: string) => values.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
     };
     const columns = [
       { id: '_preview' as const, width: 0.6 },

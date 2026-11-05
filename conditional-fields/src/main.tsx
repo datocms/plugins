@@ -97,4 +97,13 @@ connect({
   ) {
     render(<PerFieldConfigScreen ctx={ctx} />);
   },
+  validateManualFieldExtensionParameters(_fieldExtensionId, parameters) {
+    // The settings screen shows old settings in the new shape
+    const { targetFieldsApiKey } = isValidParameters(parameters)
+      ? parameters
+      : normalizeParams(parameters);
+    return targetFieldsApiKey.length > 0
+      ? {}
+      : { targetFieldsApiKey: 'Pick at least one field.' };
+  },
 });

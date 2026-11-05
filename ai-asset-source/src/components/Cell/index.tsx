@@ -6,6 +6,8 @@ type Props = {
   /** The description that made the image: the name of the card */
   caption: string;
   selected: boolean;
+  /** An image of the grid is selected: every checkbox shows, not only on hover */
+  anySelected: boolean;
   sent: boolean;
   onPreviewFailed: () => void;
   onToggleSelected: () => void;
@@ -18,6 +20,7 @@ export default function Cell({
   image,
   caption,
   selected,
+  anySelected,
   sent,
   onPreviewFailed,
   onToggleSelected,
@@ -54,7 +57,7 @@ export default function Cell({
       selection={{
         selected,
         onSelect: onToggleSelected,
-        checkbox: 'always',
+        checkbox: anySelected ? 'always' : 'hover',
       }}
     >
       {preview}

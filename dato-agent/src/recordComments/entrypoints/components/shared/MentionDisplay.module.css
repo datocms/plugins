@@ -12,13 +12,10 @@
   border-radius: var(--radius-s);
 }
 
-/* The avatar of a user in a pill: it never shrinks. The small avatar is
-   2px taller than the line of the pill: it takes the 1px padding above and
-   below, so a user's pill keeps the height of the other references. */
+/* The avatar of a user in a pill: it never shrinks */
 .avatar {
   display: flex;
   flex: none;
-  margin-block: -1px;
 }
 
 /* A record or model emoji in a pill: it never shrinks */

@@ -522,7 +522,7 @@ function settleReadOnlyCancellationEntry(
     return {
       ...entry,
       ...(!entry.content.trim()
-        ? { content: READ_ONLY_REJECTION_MESSAGE }
+        ? { content: blockedChangeMessage(READ_ONLY_REJECTION_MESSAGE) }
         : {}),
       streaming: false,
       interrupted: false,

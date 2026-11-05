@@ -3,9 +3,15 @@ import type { Value } from '../../types';
 
 type Props = {
   onChange: (newValue: Value | null) => void;
+  disabled?: boolean;
 };
 
-export const Empty = ({ onChange }: Props) => {
+export const Empty = ({ onChange, disabled }: Props) => {
+  // A disabled field can't get a table: the slot shows only its message
+  if (disabled) {
+    return <EmptySlot message="No table yet" />;
+  }
+
   return (
     <EmptySlot
       message="No table yet"

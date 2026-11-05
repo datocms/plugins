@@ -1,4 +1,5 @@
 import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { DateSettings } from 'datocms-react-ui/DateSettings';
 import { formatFieldTitle, truncate } from './formatters';
 
 type Field = RawApiTypes.Field;
@@ -97,7 +98,8 @@ export function readFieldValue(
 
 export type TitleOptions = {
   locales: readonly string[];
-  timeZone?: string;
+  /** The date settings of the user, for date and date-time titles */
+  dateSettings?: DateSettings;
 };
 
 /** Link and single-block titles show the linked record's own title. */
@@ -130,14 +132,13 @@ export function formatTitle(
     // Collapse whitespace before cutting, so line breaks don't eat the length.
     const title = formatFieldTitle(value, field, {
       maxLength: Number.POSITIVE_INFINITY,
-      locales: options.locales,
-      timeZone: options.timeZone,
+      dateSettings: options.dateSettings,
     })
       ?.replace(/\s+/g, ' ')
       .trim();
     return title ? truncate(title, TITLE_MAX_LENGTH) : null;
   } catch {
-    // One odd value shouldn't fail the page: show "Record #id" instead.
+    // One odd value shouldn't fail the page: show "Record <id>" instead.
     return null;
   }
 }

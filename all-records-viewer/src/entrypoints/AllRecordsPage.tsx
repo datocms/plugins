@@ -3,6 +3,7 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
+import { useDateSettings } from 'datocms-react-ui/DateSettings';
 import ListArea from 'datocms-react-ui/ListArea';
 import { getPaginatedListState } from 'datocms-react-ui/ListDetail';
 import Main from 'datocms-react-ui/Main';
@@ -849,8 +850,8 @@ function RecordsTitleBar({
 }) {
   return (
     <>
-      <Toolbar>
-        <Toolbar.Title
+      <Pane.Header>
+        <Pane.Header.Title
           level={1}
           help={
             <Toolbar.Help>
@@ -860,37 +861,36 @@ function RecordsTitleBar({
           }
         >
           All records
-        </Toolbar.Title>
-        <Toolbar.Subtitle hidden={subtitle === null}>
-          {subtitle}
-        </Toolbar.Subtitle>
-        <Toolbar.Spinner show={busy} />
-        <Toolbar.Space />
-        <Toolbar.Group>
-          <FilterDropdown
-            tooltip="Filter by model"
-            value={queryState.model ?? ''}
-            options={modelOptions}
-            disabled={filtersDisabled}
-            onChange={(value) => onFilter({ model: value || null })}
-          />
-          <FilterDropdown
-            tooltip="Filter by status"
-            value={queryState.status ?? ''}
-            options={STATUS_FILTER_OPTIONS}
-            disabled={filtersDisabled}
-            onChange={(value) =>
-              onFilter({ status: (value as QueryState['status']) || null })
-            }
-          />
-          <Toolbar.FilterToggle
-            pressed={filter.open}
-            // Closing the filter clears the search: not while it is locked
-            onClick={filter.open && searchLocked ? ignore : filter.onToggle}
-            onOpen={filter.onOpen}
-          />
-        </Toolbar.Group>
-      </Toolbar>
+        </Pane.Header.Title>
+        <Pane.Header.Subtitle>{subtitle}</Pane.Header.Subtitle>
+        {busy && <Pane.Header.Spinner />}
+        <Pane.Header.Button>
+          <Toolbar.Group>
+            <FilterDropdown
+              tooltip="Filter by model"
+              value={queryState.model ?? ''}
+              options={modelOptions}
+              disabled={filtersDisabled}
+              onChange={(value) => onFilter({ model: value || null })}
+            />
+            <FilterDropdown
+              tooltip="Filter by status"
+              value={queryState.status ?? ''}
+              options={STATUS_FILTER_OPTIONS}
+              disabled={filtersDisabled}
+              onChange={(value) =>
+                onFilter({ status: (value as QueryState['status']) || null })
+              }
+            />
+            <Toolbar.FilterToggle
+              pressed={filter.open}
+              // Closing the filter clears the search: not while it is locked
+              onClick={filter.open && searchLocked ? ignore : filter.onToggle}
+              onOpen={filter.onOpen}
+            />
+          </Toolbar.Group>
+        </Pane.Header.Button>
+      </Pane.Header>
       {filter.open && (
         // Escape in the field closes the filter, as the toggle does
         <Toolbar fields onClose={searchLocked ? undefined : filter.onClose}>
@@ -1084,6 +1084,15 @@ const PANE_STATES: ReadonlySet<PageState> = new Set([
 ]);
 
 export default function AllRecordsPage({ ctx }: Props) {
+  return (
+    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
+      <RecordsPage ctx={ctx} />
+    </Canvas>
+  );
+}
+
+// The page, inside its Canvas, which gives it the date settings of the user
+function RecordsPage({ ctx }: Props) {
   const queryState = useMemo(
     () => parseQueryState(ctx.location.search),
     [ctx.location.search],
@@ -1256,6 +1265,7 @@ export default function AllRecordsPage({ ctx }: Props) {
     updateLocation,
   ]);
 
+  const dateSettings = useDateSettings();
   const presentationResolver = useMemo(() => {
     // A record refresh must also reload cached references and upload previews.
     void refreshVersion;
@@ -1267,7 +1277,8 @@ export default function AllRecordsPage({ ctx }: Props) {
       itemTypes,
       locales: ctx.site.attributes.locales,
       preferredLocale: undefined,
-      timeZone: ctx.site.attributes.timezone,
+      dateSettings,
+      colorScheme: ctx.colorScheme,
       imgixHost: ctx.site.attributes.imgix_host ?? undefined,
       googleMapsApiToken:
         ctx.site.attributes.google_maps_api_token ?? undefined,
@@ -1282,11 +1293,12 @@ export default function AllRecordsPage({ ctx }: Props) {
     });
   }, [
     client,
+    ctx.colorScheme,
     ctx.loadItemTypeFields,
     ctx.site.attributes.google_maps_api_token,
     ctx.site.attributes.imgix_host,
     ctx.site.attributes.locales,
-    ctx.site.attributes.timezone,
+    dateSettings,
     itemTypes,
     refreshVersion,
   ]);
@@ -1382,7 +1394,7 @@ export default function AllRecordsPage({ ctx }: Props) {
 
         return {
           id: item.id,
-          title: presentation?.title ?? `Record #${item.id}`,
+          title: presentation?.title ?? `Record ${item.id}`,
           imageUrl: presentation?.image?.url,
           model: model?.name ?? 'Unknown model',
           status,
@@ -2022,14 +2034,8 @@ export default function AllRecordsPage({ ctx }: Props) {
   );
 
   return (
-    <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
-      <Main className={s.layout}>
-        {PANE_STATES.has(pageState) ? (
-          pane
-        ) : (
-          <PageBlankSlate state={pageState} />
-        )}
-      </Main>
-    </Canvas>
+    <Main className={s.layout}>
+      {PANE_STATES.has(pageState) ? pane : <PageBlankSlate state={pageState} />}
+    </Main>
   );
 }

@@ -23,6 +23,7 @@ import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
+import Link from 'datocms-react-ui/Link';
 import RowList from 'datocms-react-ui/RowList';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
@@ -168,15 +169,14 @@ function VendorNotSetUp({ ctx }: PropTypes) {
   }
 
   return (
-    <>
-      <SidebarPanel.Blank message="No AI vendor is set up yet." />
-      <SidebarPanel.Action
-        label="Open plugin settings"
-        onClick={() => {
-          void ctx.navigateTo(buildPluginSettingsPath(ctx));
-        }}
-      />
-    </>
+    <SidebarPanel.Blank
+      message={
+        <>
+          No AI vendor is set up yet. Set one up in the{' '}
+          <Link to={buildPluginSettingsPath(ctx)}>plugin settings</Link>.
+        </>
+      }
+    />
   );
 }
 
@@ -477,7 +477,6 @@ function RecordTranslator({
         </FieldWrapper>
         <Button
           id={translateId}
-          expand
           label="Translate all fields"
           disabled={isReady ? undefined : { reason: NOT_READY_REASON }}
           onClick={() => {
@@ -515,7 +514,6 @@ function RecordTranslator({
           <Button
             key="done"
             ref={doneRef}
-            expand
             label="Done"
             onClick={() => setPhase('form')}
           />
@@ -524,7 +522,6 @@ function RecordTranslator({
             key="cancel"
             ref={cancelRef}
             tone="ghost"
-            expand
             label="Cancel"
             busy={isCancelling}
             onClick={handleCancelTranslation}

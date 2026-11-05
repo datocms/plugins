@@ -6,7 +6,7 @@ import {
   saveColumnSettings,
 } from './columnSettings';
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
+type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** localStorage, or null where reading it throws (blocked site data, previews). */
 function storage(): StorageLike | null {

@@ -74,7 +74,6 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <Button
-        expand
         label="Download this record"
         onClick={downloadRecord}
         disabled={

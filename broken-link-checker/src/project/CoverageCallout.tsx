@@ -92,7 +92,7 @@ type CoverageCalloutProps = {
   /** Introduces the list of content issues; without it there is no list. */
   listIntro?: string;
   warnings: readonly string[];
-  /** The last lines of the callout, after the list: the facts of a settled scan. */
+  /** The last lines of the callout: the facts of a settled scan. */
   children?: ReactNode;
   /** The list pane is narrow: the pages of the list show fewer numbers. */
   compactPagination?: boolean;
@@ -103,12 +103,13 @@ type CoverageCalloutProps = {
 
 /**
  * A callout about what the report covers. The content that couldn't be read
- * is a list that shows on demand, so the callout stays short: then all of
- * it, or pages of 50 above 100. Each reason shows once, after the places
- * that give it. A callout holds no buttons, so the list's
- * controls sit right after it. The wrapper keeps them close to it, and it
- * stays the same while the list grows, so the callout never mounts again (a
- * warning callout is an alert, read when it appears).
+ * is a list that shows on demand, under the callout, so the callout stays
+ * short: then all of it, or pages of 50 above 100. Each reason shows once,
+ * after the places that give it. A callout holds no list and no buttons, so
+ * the toggle, the list and its pages sit right after it. The wrapper keeps
+ * them close to it, and it stays the same while the list grows, so the
+ * callout never mounts again (a warning callout is an alert, read when it
+ * appears).
  */
 export function CoverageCallout({
   tone,
@@ -149,13 +150,6 @@ export function CoverageCallout({
       <Callout tone={tone} title={title} className={styles.callout}>
         {lead && <p>{lead}</p>}
         {listed && <p>{listIntro}</p>}
-        {listed && expanded && (
-          <ul>
-            {shown.map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        )}
         {children}
       </Callout>
       {listed && (
@@ -165,6 +159,13 @@ export function CoverageCallout({
             label={toggleLabel(expanded)}
             onClick={() => setExpanded((value) => !value)}
           />
+          {expanded && (
+            <ul>
+              {shown.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
           {expanded && paginated && (
             <Toolbar className={styles.pages}>
               <Toolbar.Pagination

@@ -1,4 +1,4 @@
-const DEFAULT_FLAG = 'schemaDebug';
+const DEFAULT_FLAG = 'import-export-schema.debug';
 
 function readFlag(flag: string): boolean {
   try {

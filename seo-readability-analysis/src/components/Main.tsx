@@ -18,7 +18,6 @@ import type {
   ValidParameters,
 } from '../types';
 import Results from './Results';
-import ScoreIcon from './ScoreIcon';
 import Seo from './Seo';
 import s from './styles.module.css';
 
@@ -128,7 +127,6 @@ const serializeFieldValue = (
   value: Partial<FieldValue> | null | undefined,
 ): string => JSON.stringify(normalizeFieldValue(value));
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the field editor keeps its logic as it was, with the states of its tabs.
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl, customHeaders } = ctx.plugin.attributes
     .parameters as ValidParameters;
@@ -357,25 +355,6 @@ const Main = ({ ctx }: PropTypes) => {
     return () => window.clearTimeout(timeoutId);
   }, [keyword, synonyms, relatedKeywords, comparableRawFieldValue]);
 
-  const validRelatedIndices = relatedKeywords
-    .map((related, i) => ({ related, i }))
-    .filter(
-      ({ related, i }) =>
-        related.keyword &&
-        analysis?.relatedKeywordsSeo &&
-        i in analysis.relatedKeywordsSeo,
-    )
-    .map(({ i }) => i);
-
-  const overallSeoScore =
-    analysis && keyword
-      ? validRelatedIndices.reduce(
-          (acc, i) => acc + analysis.relatedKeywordsSeo[i].score / 10,
-          analysis.seo.score / 10,
-        ) /
-        (1.0 + validRelatedIndices.length)
-      : 0;
-
   // The page loads or its first analysis runs
   const firstAnalysisPending =
     !workerError && !analysisError && (pageFetchingInProgress || page !== null);
@@ -422,11 +401,7 @@ const Main = ({ ctx }: PropTypes) => {
       tabs={[
         {
           id: 'seo',
-          label: (
-            <span>
-              <ScoreIcon score={overallSeoScore} ariaLabel /> SEO
-            </span>
-          ),
+          label: 'SEO',
           content: (
             <Seo
               keyword={keyword}
@@ -441,15 +416,7 @@ const Main = ({ ctx }: PropTypes) => {
         },
         {
           id: 'readability',
-          label: (
-            <span>
-              <ScoreIcon
-                score={analysis && analysis.readability.score / 10}
-                ariaLabel={analysis !== null}
-              />{' '}
-              Readability
-            </span>
-          ),
+          label: 'Readability',
           content: analysis ? (
             <Results assessment={analysis.readability} />
           ) : firstAnalysisPending ? (

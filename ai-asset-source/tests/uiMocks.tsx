@@ -17,6 +17,11 @@ export function useCtx<T>() {
 export function Canvas({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
+// The tests run the actions through their buttons: the keys aren't tested
+export function useRegisterActions() {}
+export function Actions() {
+  return null;
+}
 export function Button({
   label,
   submit,

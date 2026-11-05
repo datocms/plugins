@@ -30,7 +30,6 @@ const RECORD: TableRecord = {
   imageUrl: 'https://www.datocms-assets.com/1/hello.png',
   model: 'Article',
   status: 'updated',
-  statusLabel: 'Unpublished changes',
   updatedAt: '2026-10-15T09:30:00Z',
   createdAt: '2026-10-01T09:30:00Z',
   publishedValid: true,

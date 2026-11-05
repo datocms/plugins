@@ -44,7 +44,7 @@ connect({
     if (actionId === 'showDebug') {
       await ctx.openModal({
         id: 'debugModal',
-        title: `${ctx.fieldPath}`,
+        title: `JSON value of “${ctx.field.attributes.label}”`,
         width: 'xl',
         parameters: { value: ctx.formValues[ctx.fieldPath] },
       });

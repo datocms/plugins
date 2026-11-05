@@ -15,28 +15,3 @@
   flex-wrap: wrap;
   gap: var(--spacing-s);
 }
-
-/* A long list of errors scrolls in place */
-.more {
-  max-height: 240px;
-  overflow: auto;
-}
-
-/* The text of a row starts at the inset of the row list plus the padding of
-   the content of the row (--RowList-content-padding, --spacing-m in a frame
-   as narrow as a sidebar). The box of the list goes out of the column by that
-   much (RowList, "The inset row"), so the text of the rows lines up with the
-   text of the panel, but never past the body padding of the frame, which the
-   component passes in: the rows stay in the frame. */
-.rows {
-  --rows-text-inset: calc(var(--row-inset) + var(--spacing-m));
-
-  margin-right: calc(
-    -1 *
-    min(var(--rows-text-inset), var(--frame-inset-right, 0px))
-  );
-  margin-left: calc(
-    -1 *
-    min(var(--rows-text-inset), var(--frame-inset-left, 0px))
-  );
-}

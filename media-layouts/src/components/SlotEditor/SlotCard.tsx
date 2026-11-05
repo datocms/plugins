@@ -21,7 +21,6 @@ import {
   LoadingAsset,
   useMediaCardMenus,
 } from '../AssetMedia';
-import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -57,10 +56,7 @@ type SlotHeaderProps = {
   originalHeight?: number | null;
 };
 
-/**
- * The name of the slot, whether it needs an asset, and its size. With or
- * without its pill, the header has one height.
- */
+/** The name of the slot, whether it needs an asset, and its size */
 function SlotHeader({
   slot,
   widthOptions,
@@ -68,22 +64,20 @@ function SlotHeader({
   originalHeight,
 }: SlotHeaderProps) {
   return (
-    <div className={s.header}>
-      <EntityRow
-        layout="row"
-        title={slotTitle(slot)}
-        afterTitle={slot.required ? <Pill>Required</Pill> : undefined}
-      >
-        {describeSize({
-          aspectRatio: slot.aspectRatio,
-          customAspectRatio: slot.customAspectRatio,
-          width: slot.width,
-          widthOptions,
-          originalWidth,
-          originalHeight,
-        })}
-      </EntityRow>
-    </div>
+    <EntityRow
+      layout="row"
+      title={slotTitle(slot)}
+      afterTitle={slot.required ? <Pill>Required</Pill> : undefined}
+    >
+      {describeSize({
+        aspectRatio: slot.aspectRatio,
+        customAspectRatio: slot.customAspectRatio,
+        width: slot.width,
+        widthOptions,
+        originalWidth,
+        originalHeight,
+      })}
+    </EntityRow>
   );
 }
 

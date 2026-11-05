@@ -1,4 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
+import EmptySlot from 'datocms-react-ui/EmptySlot';
 import RowList from 'datocms-react-ui/RowList';
 import sortBy from 'lodash-es/sortBy';
 import { Field } from './Field';
@@ -16,7 +17,7 @@ type Props = {
  */
 export function FieldList({ fields, fieldsets }: Props) {
   if (fields.length + fieldsets.length === 0) {
-    return <p className={s.fieldListEmpty}>No fields</p>;
+    return <EmptySlot message="No fields" />;
   }
 
   const entries: Array<SchemaTypes.Field | SchemaTypes.Fieldset> = sortBy(

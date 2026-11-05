@@ -7,6 +7,8 @@ import {
   conversationStorageKey,
   createConversationStore,
   DEFAULT_MAX_CONVERSATIONS,
+  moveLegacyConversationKeys,
+  STORAGE_KEY_PREFIX,
   type StorageLike,
 } from './conversations';
 
@@ -60,7 +62,7 @@ function isRecoverableNewRecordMigration(
 function pendingScopeMigrationStorageKey(
   targetContext: ConversationStorageContext,
 ): string {
-  return `datocms-agent-pending-scope-migration:v${PENDING_SCOPE_MIGRATION_VERSION}:${encodeURIComponent(
+  return `${STORAGE_KEY_PREFIX}-pending-scope-migration:v${PENDING_SCOPE_MIGRATION_VERSION}:${encodeURIComponent(
     conversationStorageKey(targetContext),
   )}`;
 }
@@ -272,6 +274,7 @@ export function pendingConversationScopeMigrationSourceInBrowser(
   }
 
   try {
+    moveLegacyConversationKeys(window.localStorage);
     return pendingConversationScopeMigrationSource(
       targetContext,
       window.localStorage,
@@ -290,6 +293,7 @@ export function migrateConversationScopeInBrowser(
   }
 
   try {
+    moveLegacyConversationKeys(window.localStorage);
     return migrateConversationScope(
       sourceContext,
       targetContext,

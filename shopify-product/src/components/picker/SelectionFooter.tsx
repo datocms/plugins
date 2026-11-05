@@ -152,6 +152,7 @@ export default function SelectionFooter({
         <span role="status" aria-live="polite">
           {atMaxReason ? `${counted}. ${atMaxReason}` : counted}
         </span>
+        {count === 0 && kind === 'variant' && `. ${VARIANTS_OPEN_HINT}`}
       </Toolbar.Subtitle>
       {/* The tray takes the free width, and gives it up first. */}
       {count > 0 ? (
@@ -174,12 +175,7 @@ export default function SelectionFooter({
           </ul>
         </Toolbar.Fill>
       ) : (
-        <>
-          <Toolbar.Space />
-          {kind === 'variant' && (
-            <Toolbar.Note>{VARIANTS_OPEN_HINT}</Toolbar.Note>
-          )}
-        </>
+        <Toolbar.Space />
       )}
       <Toolbar.Button
         label="Clear"

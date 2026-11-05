@@ -280,7 +280,9 @@ const SettingsForm = ({
             optimization_settings: JSON.stringify(newSettings),
           });
         } catch (error) {
-          console.error('Error saving settings:', error);
+          const message =
+            error instanceof Error ? error.message : String(error);
+          await ctx.alert(`Couldn't save the settings: ${message}`);
         }
       },
       500,

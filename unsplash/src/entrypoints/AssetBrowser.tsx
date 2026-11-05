@@ -358,7 +358,9 @@ const AssetBrowser = () => {
         <Button
           className={s.loadMore}
           label="Load more"
-          disabled={searching}
+          disabled={
+            searching ? { reason: 'Wait for the search to finish.' } : undefined
+          }
           onClick={handleLoadMore}
         />
       )}

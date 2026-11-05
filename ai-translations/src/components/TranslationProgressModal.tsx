@@ -21,6 +21,7 @@ import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import InfoList from 'datocms-react-ui/InfoList';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
+import RowList from 'datocms-react-ui/RowList';
 import Spinner from 'datocms-react-ui/Spinner';
 import {
   useCallback,
@@ -72,7 +73,6 @@ import {
   recordCountWas,
 } from './BulkTranslations/bulkCopy';
 import { ProgressRow } from './BulkTranslations/ProgressRow';
-import { InsetRowList } from './InsetRowList';
 import s from './TranslationProgressModal.module.css';
 
 /**
@@ -1006,7 +1006,7 @@ export default function TranslationProgressModal({
       {/* Before the first records load, the spinning status line says
           that the run goes on. */}
       {recordUpdates.length > 0 && (
-        <InsetRowList bodyPadding={ctx.bodyPadding} className={s.updates}>
+        <RowList density="compact" className={s.updates}>
           {recordUpdates.map((update) => (
             <ProgressRow
               key={update.recordId}
@@ -1015,7 +1015,7 @@ export default function TranslationProgressModal({
               runEnded={!isRunning}
             />
           ))}
-        </InsetRowList>
+        </RowList>
       )}
 
       {recordUpdateCount > recordUpdates.length && (

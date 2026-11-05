@@ -374,7 +374,7 @@ describe('scan summary', () => {
         "Some content couldn't be read, so its links aren't in this report.",
       ),
     ).toBeInTheDocument();
-    expect(within(callout).queryByRole('listitem')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
     // The control of the list sits right after the callout, never in it.
     const toggle = screen.getByRole('button', {
       name: "Show what couldn't be read",
@@ -382,7 +382,8 @@ describe('scan summary', () => {
     expect(callout).not.toContainElement(toggle);
     await user.click(toggle);
     // One reason, once: the places that give it come before it.
-    expect(within(callout).getByRole('listitem')).toHaveTextContent(
+    expect(callout).not.toContainElement(screen.getByRole('list'));
+    expect(screen.getByRole('listitem')).toHaveTextContent(
       'News > Body (en) > Link 0, News > Body (en) > Link 1, News > Body (en) > Link 2, News > Body (en) > Link 3, News > Body (en) > Link 4, News > Body (en) > Link 5: Not found',
     );
 

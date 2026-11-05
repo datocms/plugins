@@ -376,7 +376,7 @@ export function ModelFieldPicker({
           multiple
           loading
           disabled
-          placeholder="Loading fields…"
+          placeholder="Pick fields"
           value={[]}
           options={[]}
         />

@@ -1,3 +1,5 @@
+import { Shortcut } from 'datocms-react-ui/Actions';
+import type { ReactElement } from 'react';
 import {
   type CalloutView,
   DEFAULT_LIMITS,
@@ -30,6 +32,9 @@ import {
  * whole-string plurals, digits formatted with the user's locale.
  */
 
+/** The key that searches, in a text: Enter in Find */
+const ENTER = <Shortcut keys={{ key: 'enter' }} />;
+
 /** Strings that never depend on a count. */
 export const STRINGS = {
   title: 'Find and replace',
@@ -43,7 +48,7 @@ export const STRINGS = {
   findPlaceholder: 'Find',
   pressEnter: 'Press Enter to search.',
   /** The meta after the title while Find holds settings not searched yet: the count shown is the earlier search's. */
-  awaitingEnter: 'Press Enter to search',
+  awaitingEnter: 'Not searched yet',
   clearSearch: 'Clear search',
   /** The menu of the find options, after Find. */
   options: 'Options',
@@ -96,8 +101,13 @@ export const STRINGS = {
   idleTitle: 'No search yet',
   idleLine:
     'Matches show here as you type. Nothing changes until you review them and confirm.',
-  idleLineEnter:
-    'Matches show here when you press Enter. Nothing changes until you review them and confirm.',
+  /** One element: the description of a blank slate lays out each child apart */
+  idleLineEnter: (
+    <span>
+      Matches show here when you press {ENTER}. Nothing changes until you review
+      them and confirm.
+    </span>
+  ),
   showAllModels: 'Show all models',
   everyMatchReplaced: 'Every match has been replaced',
   everyMatchRemoved: 'Every match has been removed',
@@ -251,7 +261,7 @@ const DISABLED_REASONS: Record<DisabledReason, (verb: ReplaceVerb) => string> =
   {
     no_matches: (verb) => `Find some matches to ${verb} first.`,
     search_running: () => 'Wait for the search to finish.',
-    press_enter: () => 'Press Enter to search first.',
+    press_enter: () => 'Search first.',
     invalid_pattern: () => 'Fix the text in Find first.',
     no_replacement: () =>
       'Type a replacement first, or pick Replace with nothing in Options.',
@@ -403,7 +413,7 @@ function noteTitle(note: NoteView): string {
     : 'Some matches may be missing';
 }
 
-function noteText(c: Counts, note: NoteView): string {
+function noteText(c: Counts, note: NoteView): string | ReactElement {
   if (note.kind === 'capped') {
     // Searching again after replacing reads on from where this search stopped.
     return `Showing the ${note.continued ? 'next' : 'first'} ${c.fmt(DEFAULT_LIMITS.maxMatches)} matches. Replace them, then search again for the rest.`;
@@ -412,7 +422,12 @@ function noteText(c: Counts, note: NoteView): string {
     note.total === null
       ? c.records(note.searched)
       : `${c.fmt(note.searched)} of ${c.records(note.total)}`;
-  return `The search stopped after ${searched}. Press Enter in Find to search them all.`;
+  return (
+    <>
+      The search stopped after {searched}. Press {ENTER} in Find to search them
+      all.
+    </>
+  );
 }
 
 /**
@@ -424,7 +439,7 @@ export type CalloutCopy = {
   /** The problem in a few words, when the text has two sentences; else null. */
   title: string | null;
   /** The whole message: the callout holds only this text. */
-  text: string;
+  text: string | ReactElement;
 };
 
 function modelsFailedText(
@@ -463,7 +478,11 @@ function modelsFailedCopy(
       callout.modelNames.length === 1
         ? "A model wasn't searched"
         : "Some models weren't searched",
-    text: `${text} Press Enter in Find to search again.`,
+    text: (
+      <>
+        {text} Press {ENTER} in Find to search again.
+      </>
+    ),
   };
 }
 
@@ -549,7 +568,7 @@ function noResultsTitle(view: NoResultsView, pattern: string): string {
  * The line under the title, only when something on screen can change the
  * outcome; a plain search with no results has a title alone.
  */
-function noResultsLine(view: NoResultsView): string | null {
+function noResultsLine(view: NoResultsView): string | ReactElement | null {
   if (hiddenByFilter(view)) {
     return 'Other models have matches.';
   }
@@ -558,7 +577,13 @@ function noResultsLine(view: NoResultsView): string | null {
     return null;
   }
   if (view.continued) {
-    return "Records you already went through weren't read again. Press Enter to search them all.";
+    // One element: the description of a blank slate lays out each child apart
+    return (
+      <span>
+        Records you already went through weren't read again. Press {ENTER} to
+        search them all.
+      </span>
+    );
   }
   const options = narrowingOptions(view);
   return options.length > 0

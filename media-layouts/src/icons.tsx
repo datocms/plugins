@@ -137,16 +137,6 @@ export function MoveRightIcon(props: IconProps): JSX.Element {
   );
 }
 
-/** A file that is not an image: a document */
-export function FileIcon(props: IconProps): JSX.Element {
-  return (
-    <StrokeIcon {...props}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-      <path d="M14 2v6h6" />
-    </StrokeIcon>
-  );
-}
-
 /** A problem: a circle with an exclamation mark */
 export function WarningIcon(props: IconProps): JSX.Element {
   return (

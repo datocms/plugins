@@ -137,7 +137,7 @@ describe('MentionNodeView', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     renderNodeView(RecordMentionNodeView, { id: 'record-1' });
 
-    expect(screen.getByText('[invalid mention]')).toBeVisible();
+    expect(screen.getByText('Invalid reference')).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

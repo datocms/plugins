@@ -1,6 +1,8 @@
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import InputGroup from 'datocms-react-ui/InputGroup';
-import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import RadioGroupInput, {
+  type RadioGroupOption,
+} from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -41,10 +43,12 @@ const LAYOUT_STYLE_OPTIONS = [
   },
 ] as const;
 
-const COLUMN_SELECT_OPTIONS: SelectOption[] = COLUMN_OPTIONS.map((option) => ({
-  value: String(option.value),
-  label: option.label,
-}));
+const COLUMN_RADIO_OPTIONS: RadioGroupOption[] = COLUMN_OPTIONS.map(
+  (option) => ({
+    value: String(option.value),
+    label: option.label,
+  }),
+);
 
 const ROW_SELECT_OPTIONS: SelectOption[] = ROW_OPTIONS.map((option) => ({
   value: String(option.value),
@@ -195,13 +199,13 @@ export default function LayoutSettings({
 
   const columnsField = (
     <FieldWrapper label="Columns">
-      <SelectInput
+      <RadioGroupInput
+        small
         value={String(config.columns)}
         onChange={(next) => {
           if (next !== null) onColumnsChange(Number(next));
         }}
-        options={COLUMN_SELECT_OPTIONS}
-        clearable={false}
+        options={COLUMN_RADIO_OPTIONS}
       />
     </FieldWrapper>
   );

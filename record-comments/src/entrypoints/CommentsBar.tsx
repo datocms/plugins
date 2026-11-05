@@ -558,7 +558,8 @@ function SidebarBody({
         placement={slatePlacement}
         small
         icon={<CommentsIcon />}
-        title="Save the record to comment"
+        title="No comments yet"
+        description="Save the record to comment."
       />
     );
   } else if (view.phase === 'failed' && error) {

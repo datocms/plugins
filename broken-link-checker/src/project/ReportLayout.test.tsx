@@ -786,9 +786,7 @@ describe('ReportLayout', () => {
     await user.click(
       screen.getByRole('button', { name: "Show what couldn't be read" }),
     );
-    expect(
-      within(screen.getByRole('alert')).getAllByRole('listitem'),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
 
     // The running scan's callout gives way to the summary, which keeps the list open.
     rerender({
@@ -798,7 +796,7 @@ describe('ReportLayout', () => {
     });
     const summary = within(screen.getByRole('alert'));
     expect(summary.getByText('Scan incomplete')).toBeInTheDocument();
-    expect(summary.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(
       screen.getByRole('button', { name: "Hide what couldn't be read" }),
     ).toBeInTheDocument();
@@ -917,14 +915,14 @@ describe('ReportLayout', () => {
         "Some content couldn't be read, so its links aren't in this report.",
       ),
     ).toBeInTheDocument();
-    // The issues show on demand.
+    // The issues show on demand, under the callout.
     expect(
-      partial.queryByText('News: Record access denied'),
+      screen.queryByText('News: Record access denied'),
     ).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole('button', { name: "Show what couldn't be read" }),
     );
-    expect(partial.getByText('News: Record access denied')).toBeInTheDocument();
+    expect(screen.getByText('News: Record access denied')).toBeInTheDocument();
     // "Needs attention" keeps the links with a problem, not those that weren't checked.
     expect(table().getByText('Broken')).toBeInTheDocument();
     expect(table().queryByText('Not checked')).not.toBeInTheDocument();

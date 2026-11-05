@@ -47,7 +47,7 @@ function createMentionNodeView(
             {...(needsProjectUsers && { projectUsers })}
           />
         ) : (
-          <span className={styles.invalid}>[invalid mention]</span>
+          <span className={styles.invalid}>Invalid reference</span>
         )}
         {mention?.type === 'file' && editable && (
           // The cross clears the file from the draft, only while the editor

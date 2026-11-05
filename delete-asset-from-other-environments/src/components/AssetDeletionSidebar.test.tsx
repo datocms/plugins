@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -116,6 +117,17 @@ function deleteButton() {
   return screen.getByRole('button', { name: /^Delete \d+ other cop/ });
 }
 
+/** Whether a row of the panel shows the failed environment with its error */
+function hasFailure(envId: string, message: string | RegExp) {
+  return screen
+    .queryAllByRole('listitem')
+    .some(
+      (row) =>
+        within(row).queryByText(envId) !== null &&
+        within(row).queryByText(message) !== null,
+    );
+}
+
 /** The loading blank slate, while the panel checks or deletes */
 function loadingState() {
   return screen.queryByText(
@@ -195,9 +207,11 @@ describe('environment discovery feedback', () => {
     createOperations.mockReturnValue(service);
     render(<AssetDeletionSidebar ctx={context().ctx} />);
 
-    expect(
-      await screen.findByText(/inaccessible: INSUFFICIENT_PERMISSIONS/),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        hasFailure('inaccessible', 'INSUFFICIENT_PERMISSIONS (HTTP 403)'),
+      ).toBe(true),
+    );
     expect(screen.getByText(/Some environments weren't checked/)).toBeTruthy();
     expect(screen.queryByText(/This is the last copy/)).toBeNull();
     expect(loadingState()).toBeNull();
@@ -214,13 +228,13 @@ describe('environment discovery feedback', () => {
     });
     createOperations.mockReturnValue(service);
     render(<AssetDeletionSidebar ctx={context().ctx} />);
-    await screen.findByText('failed-0: HTTP 403');
+    await waitFor(() => expect(hasFailure('failed-0', 'HTTP 403')).toBe(true));
 
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    expect(screen.queryByText('failed-11: HTTP 403')).toBeNull();
+    expect(hasFailure('failed-11', 'HTTP 403')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Show 7 more errors' }));
 
-    expect(await screen.findByText('failed-11: HTTP 403')).toBeTruthy();
+    await waitFor(() => expect(hasFailure('failed-11', 'HTTP 403')).toBe(true));
     expect(screen.getAllByRole('listitem')).toHaveLength(12);
     expect(screen.queryByText(/This is the last copy/)).toBeNull();
   });
@@ -238,7 +252,7 @@ describe('environment discovery feedback', () => {
     render(<AssetDeletionSidebar ctx={context().ctx} />);
 
     expect(
-      await screen.findByText('3 of 1200 environments checked'),
+      await screen.findByText('3 of 1,200 environments checked'),
     ).toBeTruthy();
     await act(async () => pending.resolve({ matches: [], failures: [] }));
     expect(screen.getByText(/This is the last copy/)).toBeTruthy();
@@ -256,7 +270,9 @@ describe('environment discovery feedback', () => {
       .mockReturnValueOnce(oldService)
       .mockReturnValueOnce(newService);
     render(<AssetDeletionSidebar ctx={context().ctx} />);
-    await screen.findByText('inaccessible: HTTP 403');
+    await waitFor(() =>
+      expect(hasFailure('inaccessible', 'HTTP 403')).toBe(true),
+    );
     const oldSignal = createOperations.mock.calls[0][0].signal;
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
 
@@ -264,7 +280,7 @@ describe('environment discovery feedback', () => {
       await screen.findByRole('link', { name: /^now-accessible/ }),
     ).toBeTruthy();
     expect(oldSignal.aborted).toBe(true);
-    expect(screen.queryByText('inaccessible: HTTP 403')).toBeNull();
+    expect(hasFailure('inaccessible', 'HTTP 403')).toBe(false);
     expect(loadingState()).toBeNull();
     expect(oldService.checkEnvironments).toHaveBeenCalledTimes(1);
     expect(newService.checkEnvironments).toHaveBeenCalledTimes(1);
@@ -363,9 +379,7 @@ describe('single-asset deletion results and confirmation', () => {
       screen.queryByRole('link', { name: /^already-absent-copy/ }),
     ).toBeNull();
     expect(screen.getByRole('link', { name: /^failed-copy/ })).toBeTruthy();
-    expect(
-      screen.getByText(/failed-copy: Asset is used by records/),
-    ).toBeTruthy();
+    expect(hasFailure('failed-copy', /^Asset is used by records/)).toBe(true);
     expect(screen.queryByText(/This is the last copy/)).toBeNull();
     expect(deleteButton().textContent).toContain('Delete 1 other copy');
     expect(notice).toHaveBeenCalledWith(
@@ -439,7 +453,7 @@ describe('single-asset deletion results and confirmation', () => {
 
     await waitFor(() => expect(notice).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('link', { name: /^known-copy/ })).toBeNull();
-    expect(screen.getByText('unknown-copy: HTTP 403')).toBeTruthy();
+    expect(hasFailure('unknown-copy', 'HTTP 403')).toBe(true);
     expect(screen.queryByText(/This is the last copy/)).toBeNull();
     expect(notice).toHaveBeenCalledWith(
       'Deleted 1 other copy. Some environments failed: see the panel for details.',
@@ -481,7 +495,9 @@ describe('single-asset deletion results and confirmation', () => {
     await screen.findByRole('link', { name: /^failed-copy/ });
     fireEvent.click(deleteButton());
 
-    await screen.findByText('failed-copy: HTTP 403');
+    await waitFor(() =>
+      expect(hasFailure('failed-copy', 'HTTP 403')).toBe(true),
+    );
     expect((deleteButton() as HTMLButtonElement).disabled).toBe(false);
     expect(loadingState()).toBeNull();
     expect(notice).toHaveBeenCalledTimes(1);

@@ -272,7 +272,7 @@ describe('resolveLinkedTitles', () => {
 
     expect(rows.map(({ title }) => title)).toEqual([
       'Original article',
-      'Record #t2',
+      'Record t2',
     ]);
     expect(rawList).toHaveBeenCalledTimes(1);
   });

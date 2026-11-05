@@ -21,7 +21,7 @@
   margin: 0;
 }
 
-/* The controls of the list in the callout: "Show all", then the pages. */
+/* The list of the callout, under it: "Show all", the list, then the pages. */
 .controls {
   display: flex;
   flex-direction: column;

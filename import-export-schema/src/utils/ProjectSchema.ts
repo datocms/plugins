@@ -35,7 +35,7 @@ export class ProjectSchema {
       // Allow overriding throttle via localStorage for large schemas
       const raw =
         typeof window !== 'undefined'
-          ? window.localStorage?.getItem?.('schemaThrottleMax')
+          ? window.localStorage?.getItem?.('import-export-schema.throttleMax')
           : undefined;
       const parsed = raw ? parseInt(raw, 10) : NaN;
       if (!Number.isNaN(parsed) && parsed > 0 && parsed < 16) {

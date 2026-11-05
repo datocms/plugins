@@ -73,8 +73,8 @@
 }
 
 /* The latest records scroll inside the modal, about five rows tall, so the
-   status and the actions stay in view. The box itself goes out into the
-   dialog padding (InsetRowList), so its overflow never clips a row. */
+   status and the actions stay in view. The compact list's own box goes out
+   into the dialog padding, so its overflow never clips a row. */
 .updates {
   max-height: calc(3 * var(--spacing-xxxl));
   overflow-y: auto;

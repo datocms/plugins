@@ -36,7 +36,7 @@
   color: var(--color--ink);
 }
 
-/* What a closed toggle means, under it. */
+/* What a closed toggle means, or why it stays open, under it. */
 .disclosureNote {
   margin: var(--spacing-s) 0 0;
   color: var(--color--ink-subtle);

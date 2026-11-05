@@ -9,6 +9,7 @@ import {
   type StatusCounts,
   type StatusView,
 } from '../report/view';
+import { TEXTS } from '../texts';
 import { STATUS_META } from '../ui/LogStatus';
 import styles from './Report.module.css';
 
@@ -21,11 +22,11 @@ export type PageToolbarMode = 'idle' | 'scanning' | 'rechecking';
 export type ExportState = 'ready' | 'none' | 'waiting' | 'preparing';
 
 /**
- * The page's texts for the kit: the first option of the title's menu, every
- * link whatever its status, reads "All links". A constant, so the Canvas that
- * takes it doesn't render again.
+ * The page's texts for the kit: the plugin's own, and the first option of the
+ * title's menu, every link whatever its status, which reads "All links". A
+ * constant, so the Canvas that takes it doesn't render again.
  */
-export const REPORT_TEXTS = { 'admin.listPresets.all': 'All links' };
+export const REPORT_TEXTS = { ...TEXTS, 'admin.listPresets.all': 'All links' };
 
 const RECHECK_BLOCKS_SCAN = {
   reason: "You can't start a scan while a link is being rechecked.",

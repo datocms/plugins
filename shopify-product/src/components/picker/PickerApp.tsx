@@ -450,7 +450,7 @@ export default function PickerApp({ ctx, params, store }: Props) {
           />
         ) : (
           <Toolbar>
-            <Toolbar.Note>{labels.singleHint}</Toolbar.Note>
+            <Toolbar.Subtitle>{labels.singleHint}</Toolbar.Subtitle>
           </Toolbar>
         )
       }

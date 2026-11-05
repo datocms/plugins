@@ -1,12 +1,13 @@
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
+import FileTypeIcon from 'datocms-react-ui/FileTypeIcon';
 import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
 import type {
   MediaCardAction,
   MediaCardOption,
 } from 'datocms-react-ui/MediaCard';
 import type { CSSProperties, ReactElement } from 'react';
-import { FileIcon, WarningIcon } from '../../icons';
+import { WarningIcon } from '../../icons';
 import type { MediaLayoutItem } from '../../types';
 import { getFormatLabel, isImageFormat } from '../../utils/upload';
 import s from './styles.module.css';
@@ -29,7 +30,7 @@ const FRAME_RATIO = 4 / 3;
 
 /**
  * The media of a MediaCard: the image at the crop of the asset (or of its
- * slot), or a box with the file icon and the format. Without a ratio, the
+ * slot), or a box with the icon of the type of the file. Without a ratio, the
  * media keeps a minimum height. In a frame, the image keeps its crop at the
  * center of the frame (as wide as the frame, or as tall), and the box of a
  * file fills the frame.
@@ -48,7 +49,6 @@ export function AssetMedia({
   const sizeClass = hasRatio ? undefined : s.noRatio;
 
   if (!url || !isImageFormat(format)) {
-    const formatLabel = getFormatLabel(format);
     return (
       <div
         className={[s.filePlaceholder, framed ? s.frame : sizeClass]
@@ -56,10 +56,10 @@ export function AssetMedia({
           .join(' ')}
         style={framed ? undefined : ratioStyle}
       >
-        <FileIcon />
-        {formatLabel && (
-          <span className={s.formatLabel}>{formatLabel.toUpperCase()}</span>
-        )}
+        <FileTypeIcon
+          className={s.fileIcon}
+          extension={getFormatLabel(format) ?? undefined}
+        />
       </div>
     );
   }

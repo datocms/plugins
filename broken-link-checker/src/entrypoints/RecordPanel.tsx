@@ -15,6 +15,7 @@ import {
 import { formatWarning, hasWarningRewrite } from '../report/format';
 import type { ScanSession } from '../state/session';
 import { useScan } from '../state/useScan';
+import { TEXTS } from '../texts';
 import type { LinkOccurrence, ScanReport } from '../types';
 import { useFrameSizedToContent } from '../ui/useFrameSizedToContent';
 import { contextKey } from '../utils/contextKey';
@@ -155,7 +156,7 @@ export default function RecordPanel({
   // The frame's left padding: the focus ring of an action goes out into it (see the CSS module).
   const frameInsets = { '--frame-inset-left': `${left}px` } as CSSProperties;
   return (
-    <Canvas ctx={ctx}>
+    <Canvas ctx={ctx} texts={TEXTS}>
       <div className={styles.panel} style={frameInsets}>
         <PanelControls
           running={scan.running}

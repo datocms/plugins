@@ -19,7 +19,7 @@ export const DEFAULT_COLUMN_SETTINGS: readonly ColumnSetting[] = [
   { id: '_updated_at', width: 0.25 },
 ];
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
+type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 function isColumnId(value: unknown): value is ColumnId {
   return (
@@ -168,7 +168,22 @@ export function columnSettingsStorageKey({
   environment: string;
   userId: string;
 }): string {
-  return `datocms-stage-viewer:${siteId}:${environment}:${userId}:columns`;
+  return `project-wide-stage-viewer:${siteId}:${environment}:${userId}:columns`;
+}
+
+// The settings saved before the key started with the name of the plugin
+// move to the new key
+function moveLegacySettings(storage: StorageLike, key: string): string | null {
+  const legacyKey = key.replace(
+    /^project-wide-stage-viewer:/,
+    'datocms-stage-viewer:',
+  );
+  const stored = storage.getItem(legacyKey);
+  if (stored !== null) {
+    storage.setItem(key, stored);
+    storage.removeItem(legacyKey);
+  }
+  return stored;
 }
 
 export function loadColumnSettings(
@@ -176,7 +191,7 @@ export function loadColumnSettings(
   key: string,
 ): ColumnSetting[] {
   try {
-    const stored = storage.getItem(key);
+    const stored = storage.getItem(key) ?? moveLegacySettings(storage, key);
     return stored
       ? normalizeColumnSettings(JSON.parse(stored))
       : normalizeColumnSettings(null);

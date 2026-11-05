@@ -22,10 +22,3 @@
   align-self: start;
   min-width: 0;
 }
-
-/* The header of a slot: as tall as a header with the "Required" pill, thus
-   the assets of the slots of a row start on one line. The pill line
-   (1.5 × xs + 2px), the gap of the row (2px) and the size line (1.2 × xs). */
-.header {
-  min-height: calc(var(--font-size-xs) * 2.7 + 4px);
-}

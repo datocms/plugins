@@ -208,18 +208,18 @@ function deferred<T>() {
 const UI_WAIT_OPTIONS = { timeout: 10_000 };
 
 // The row checkbox is named by the first cell of the row: the title, or
-// "Record #<id>" for a record without one. Label queries are faster than
+// "Record <id>" for a record without one. Label queries are faster than
 // role queries on pages of 200 rows.
 function recordCheckbox(id: string): HTMLElement {
-  return screen.getByLabelText(`Record #${id}`, { selector: 'input' });
+  return screen.getByLabelText(`Record ${id}`, { selector: 'input' });
 }
 
 function queryRecordCheckbox(id: string): HTMLElement | null {
-  return screen.queryByLabelText(`Record #${id}`, { selector: 'input' });
+  return screen.queryByLabelText(`Record ${id}`, { selector: 'input' });
 }
 
 function rowCheckboxes(): HTMLElement[] {
-  return screen.getAllByLabelText(/^Record #/, { selector: 'input' });
+  return screen.getAllByLabelText(/^Record /, { selector: 'input' });
 }
 
 // The table is ready when its rows can be selected: no load, presentation

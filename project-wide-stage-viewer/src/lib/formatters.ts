@@ -1,4 +1,6 @@
 import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { DateSettings } from 'datocms-react-ui/DateSettings';
+import { formatDate, formatDateTime } from 'datocms-react-ui/utils/formatDate';
 
 type RawField = RawApiTypes.Field;
 
@@ -174,55 +176,10 @@ export function formatCoordinates(value: LatLonValue): string {
   return `Lat: ${value.latitude.toFixed(4)} Lon: ${value.longitude.toFixed(4)}`;
 }
 
-function dateFromValue(value: string, dateOnly: boolean): Date | null {
-  const parsed = new Date(dateOnly ? `${value}T00:00:00.000Z` : value);
-  return Number.isNaN(parsed.valueOf()) ? null : parsed;
-}
-
-export function formatDate(
-  value: string,
-  options: {
-    dateOnly: boolean;
-    locales?: readonly string[];
-    timeZone?: string;
-  },
-): string | null {
-  const date = dateFromValue(value, options.dateOnly);
-  if (!date) {
-    return null;
-  }
-
-  const locale = options.locales?.[0];
-  const style: Intl.DateTimeFormatOptions = {
-    dateStyle: 'medium',
-    ...(options.dateOnly
-      ? { timeZone: 'UTC' }
-      : options.timeZone
-        ? { timeZone: options.timeZone, timeStyle: 'short' }
-        : { timeStyle: 'short' }),
-  };
-
-  try {
-    return new Intl.DateTimeFormat(locale, style).format(date);
-  } catch {
-    // The browser doesn't know the locale or the project's timezone: fall
-    // back to its own, rather than failing the whole page.
-    try {
-      const { timeZone: _timeZone, ...withoutTimeZone } = style;
-      return new Intl.DateTimeFormat(undefined, {
-        ...withoutTimeZone,
-        ...(options.dateOnly ? { timeZone: 'UTC' } : {}),
-      }).format(date);
-    } catch {
-      return null;
-    }
-  }
-}
-
 type FieldTitleOptions = {
   maxLength?: number;
-  locales?: readonly string[];
-  timeZone?: string;
+  /** The date settings of the user: without them, a date has no title */
+  dateSettings?: DateSettings;
 };
 
 type FieldTitleContext = {
@@ -260,14 +217,13 @@ const formatVideoTitle: FieldTitleFormatter = ({ value, maxLength }) =>
     ? truncate(value.title, maxLength)
     : null;
 
-const formatDateTitle: FieldTitleFormatter = ({ value, field, options }) =>
-  typeof value === 'string'
-    ? formatDate(value, {
-        dateOnly: field.attributes.field_type === 'date',
-        locales: options.locales,
-        timeZone: options.timeZone,
-      })
-    : null;
+// A date as SmartDate writes it, with the date settings of the user
+const formatDateTitle: FieldTitleFormatter = ({ value, field, options }) => {
+  if (typeof value !== 'string' || !options.dateSettings) return null;
+  return field.attributes.field_type === 'date'
+    ? formatDate(value, options.dateSettings)
+    : formatDateTime(value, options.dateSettings, false);
+};
 
 const formatColorTitle: FieldTitleFormatter = ({ value }) =>
   isRgbaColor(value) ? formatColor(value) : null;

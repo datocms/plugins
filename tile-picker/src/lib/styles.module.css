@@ -124,12 +124,6 @@
   object-fit: contain;
 }
 
-/* The options table has four columns in the narrow frame of the settings:
-   its cells take the medium inset, so each column keeps room for its text */
-.options :global(.TableList) {
-  --TableList-horizontal-cell-padding: var(--spacing-m);
-}
-
 /* The preview of an option, in the cell of its color or image URL: a small
    box at the inset of the cell, before the text input */
 .preview {

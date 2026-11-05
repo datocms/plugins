@@ -63,12 +63,6 @@ type Props = {
   menuItem: StageMenuItem | null;
 };
 
-const STATUS_LABELS: Record<PublicationStatus, string> = {
-  draft: 'Draft',
-  updated: 'Unpublished changes',
-  published: 'Published',
-};
-
 const STATUS_FILTER_OPTIONS = [
   { label: 'All statuses', value: '' },
   { label: 'Draft', value: 'draft' },
@@ -275,11 +269,11 @@ function ErrorPane({
     <Pane
       ariaLabel="Records"
       header={
-        <Toolbar>
-          <Toolbar.Title level={1} help={stageHelp(names)}>
+        <Pane.Header>
+          <Pane.Header.Title level={1} help={stageHelp(names)}>
             {title}
-          </Toolbar.Title>
-        </Toolbar>
+          </Pane.Header.Title>
+        </Pane.Header>
       }
     >
       <ListArea>
@@ -333,67 +327,68 @@ function RecordsTitleBar({
   const filtersDisabled = busy ? ACTION_RUNNING : undefined;
   return (
     <>
-      <Toolbar>
-        <Toolbar.Title level={1} help={stageHelp(names)}>
+      <Pane.Header>
+        <Pane.Header.Title level={1} help={stageHelp(names)}>
           {title}
-        </Toolbar.Title>
-        <Toolbar.Subtitle>{count}</Toolbar.Subtitle>
-        <Toolbar.Spinner show={spinning && !progressText} />
-        <Toolbar.Space />
-        <Toolbar.Group>
-          {models.length > 1 && (
+        </Pane.Header.Title>
+        <Pane.Header.Subtitle>{count}</Pane.Header.Subtitle>
+        {spinning && !progressText && <Pane.Header.Spinner />}
+        <Pane.Header.Button>
+          <Toolbar.Group>
+            {models.length > 1 && (
+              <FilterDropdown
+                tooltip="Filter by model"
+                value={table.modelId ?? ''}
+                options={[
+                  { label: 'All models', value: '' },
+                  ...models.map((model) => ({
+                    label: model.name,
+                    value: model.id,
+                  })),
+                ]}
+                disabled={filtersDisabled}
+                onChange={(value) => table.setModelId(value || null)}
+              />
+            )}
             <FilterDropdown
-              tooltip="Filter by model"
-              value={table.modelId ?? ''}
-              options={[
-                { label: 'All models', value: '' },
-                ...models.map((model) => ({
-                  label: model.name,
-                  value: model.id,
-                })),
-              ]}
+              tooltip="Filter by status"
+              value={table.status ?? ''}
+              options={STATUS_FILTER_OPTIONS}
               disabled={filtersDisabled}
-              onChange={(value) => table.setModelId(value || null)}
+              onChange={(value) =>
+                table.setStatus((value as PublicationStatus) || null)
+              }
             />
+            <Toolbar.FilterToggle
+              pressed={filter.open}
+              // Closing the filter clears the search: not while an action runs
+              onClick={filter.open && busy ? ignore : filter.onToggle}
+              onOpen={filter.onOpen}
+            />
+          </Toolbar.Group>
+          {progressText && (
+            <>
+              <Toolbar.Note>
+                <span role="status">{progressText}</span>
+              </Toolbar.Note>
+              <Toolbar.Button label="Stop" onClick={onCancel} />
+            </>
           )}
-          <FilterDropdown
-            tooltip="Filter by status"
-            value={table.status ?? ''}
-            options={STATUS_FILTER_OPTIONS}
-            disabled={filtersDisabled}
-            onChange={(value) =>
-              table.setStatus((value as PublicationStatus) || null)
+          <Toolbar.Button
+            iconOnly
+            icon={RefreshIcon}
+            label="Reload records"
+            onClick={onReload}
+            disabled={
+              busy
+                ? ACTION_RUNNING
+                : refreshing
+                  ? { reason: 'The records are loading.' }
+                  : undefined
             }
           />
-          <Toolbar.FilterToggle
-            pressed={filter.open}
-            // Closing the filter clears the search: not while an action runs
-            onClick={filter.open && busy ? ignore : filter.onToggle}
-            onOpen={filter.onOpen}
-          />
-        </Toolbar.Group>
-        {progressText && (
-          <>
-            <Toolbar.Note>
-              <span role="status">{progressText}</span>
-            </Toolbar.Note>
-            <Toolbar.Button label="Stop" onClick={onCancel} />
-          </>
-        )}
-        <Toolbar.Button
-          iconOnly
-          icon={RefreshIcon}
-          label="Reload records"
-          onClick={onReload}
-          disabled={
-            busy
-              ? ACTION_RUNNING
-              : refreshing
-                ? { reason: 'The records are loading.' }
-                : undefined
-          }
-        />
-      </Toolbar>
+        </Pane.Header.Button>
+      </Pane.Header>
       {filter.open && (
         <Toolbar fields onClose={filter.onClose}>
           <Toolbar.FilterInput
@@ -495,7 +490,6 @@ function toTableRecord(
     imageUrl: row.imageUploadId ? thumbnails.get(row.imageUploadId) : null,
     model: row.modelName,
     status: row.status,
-    statusLabel: STATUS_LABELS[row.status],
     updatedAt: row.updatedAt || null,
     createdAt: row.createdAt || null,
     publishedValid: row.publishedValid,

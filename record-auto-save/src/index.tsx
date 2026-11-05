@@ -8,6 +8,7 @@ import {
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import './frame.css';
 import AutoSave from './entrypoints/AutoSave';
 import ConfigScreen, {
@@ -43,7 +44,12 @@ connect({
         (item) => item.value === ctx.itemType.attributes.api_key,
       );
       if (isActivatedOnThisModel) {
-        render(<AutoSave ctx={ctx} />);
+        // The outlet draws nothing, so its frame keeps its initial height of 0
+        render(
+          <Canvas ctx={ctx} noAutoResizer>
+            <AutoSave ctx={ctx} />
+          </Canvas>,
+        );
       }
     }
   },

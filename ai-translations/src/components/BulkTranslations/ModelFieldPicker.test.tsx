@@ -55,7 +55,7 @@ describe('ModelFieldPicker', () => {
 
   it('treats not-yet-loaded fields as pending, not as the dead end', () => {
     const { container } = renderPicker({ fields: undefined });
-    expect(screen.getByText('Loading fields…')).toBeTruthy();
+    expect(screen.getByText('Pick fields')).toBeTruthy();
     expect(container.querySelector('.SelectInput__loading')).not.toBeNull();
     expect(disabledFieldSelect()).toBeDisabled();
     expect(screen.queryByText(/translatable field/)).toBeNull();
@@ -64,7 +64,7 @@ describe('ModelFieldPicker', () => {
 
   it('shows the pending select while loading', () => {
     renderPicker({ isLoading: true });
-    expect(screen.getByText('Loading fields…')).toBeTruthy();
+    expect(screen.getByText('Pick fields')).toBeTruthy();
     expect(disabledFieldSelect()).toBeDisabled();
   });
 

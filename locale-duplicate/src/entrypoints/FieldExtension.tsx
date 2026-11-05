@@ -91,12 +91,20 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
         mainLocale,
       );
       if (!sourcePath) {
-        ctx.notice('Field value is not localized');
+        ctx.customToast({
+          type: 'warning',
+          message: 'Field value is not localized',
+          dismissAfterTimeout: true,
+        });
         return;
       }
       const sourceValue = getValueAtPath(ctx.formValues, sourcePath);
       if (sourceValue === undefined) {
-        ctx.notice(`No value is available in ${mainLocale}`);
+        ctx.customToast({
+          type: 'warning',
+          message: `No value is available in ${mainLocale}`,
+          dismissAfterTimeout: true,
+        });
         return;
       }
 

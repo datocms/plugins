@@ -1,4 +1,5 @@
 import IdText from 'datocms-react-ui/IdText';
+import ItemStatus from 'datocms-react-ui/ItemStatus';
 import {
   Table,
   type TableColumn,
@@ -7,19 +8,11 @@ import {
   type TableSortState,
 } from 'datocms-react-ui/Table';
 import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
-import StatusCell, {
-  type StatusCellProps,
-} from 'datocms-react-ui/Table/cells/StatusCell';
 import TimeCell from 'datocms-react-ui/Table/cells/TimeCell';
 import { ItemValidityTriangles } from 'datocms-react-ui/ValidityTriangles';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { DEFAULT_ORDER_BY } from '../lib/records';
-import type {
-  ColumnId,
-  ColumnSetting,
-  OrderBy,
-  PublicationStatus,
-} from '../types';
+import type { ColumnId, ColumnSetting, OrderBy } from '../types';
 import {
   ALL_COLUMN_IDS,
   fromTableLayout,
@@ -46,13 +39,6 @@ export type RecordsTableProps = {
   selectionEnabled: boolean;
   onToggleRow: (id: string) => void;
   onTogglePage: (selected: boolean) => void;
-};
-
-// The CMS colors of the record dots: green, amber and red
-const STATUS_TONE: Record<PublicationStatus, StatusCellProps['tone']> = {
-  published: 'success',
-  updated: 'warning',
-  draft: 'danger',
 };
 
 function orderDirection(orderBy: OrderBy, columnId: ColumnId) {
@@ -136,11 +122,7 @@ function buildColumns(key: string): TableColumn<TableRecord>[] {
       label: 'Status',
       sortable: sortable('_status'),
       priority: 4,
-      renderCell: (row) => (
-        <StatusCell tone={STATUS_TONE[row.status]}>
-          {row.statusLabel}
-        </StatusCell>
-      ),
+      renderCell: (row) => <ItemStatus status={row.status} display="label" />,
     },
     {
       name: '_updated_at',

@@ -43,7 +43,6 @@ function getUsersState(
           onRetry && (
             <Button
               tone="ghost"
-              size="micro"
               label="Try again"
               // The editor keeps the focus, and the panel stays open
               onMouseDown={(event) => event.preventDefault()}

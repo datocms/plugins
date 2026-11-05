@@ -85,6 +85,16 @@ connect({
     if (result.type === 'error') {
       errors.config = result.message;
     }
+    // A grid needs a whole number of columns, 1 or more
+    const presentation = normalized.config.presentation;
+    const columns = presentation?.columns;
+    if (
+      presentation?.type !== 'carousel' &&
+      columns !== undefined &&
+      !(Number.isInteger(columns) && columns >= 1)
+    ) {
+      errors.columns = 'Enter a whole number, 1 or more.';
+    }
     return errors;
   },
 

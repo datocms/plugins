@@ -1,6 +1,7 @@
 import { type RenderOptions, render } from '@testing-library/react';
 import Canvas, { type BaseCtx } from 'datocms-react-ui/Canvas';
 import type { ReactElement, ReactNode } from 'react';
+import { TEXTS } from '../texts';
 import { pageContext } from './fixtures';
 
 type CanvasRenderOptions<Ctx extends BaseCtx> = Omit<
@@ -12,8 +13,8 @@ type CanvasRenderOptions<Ctx extends BaseCtx> = Omit<
 };
 
 /**
- * Renders a component inside the real kit `Canvas`, as each entrypoint does
- * for its hook. `rerender` keeps the Canvas around the new content. The
+ * Renders a component inside the real kit `Canvas`, with the plugin's texts,
+ * as each entrypoint does for its hook. `rerender` keeps the Canvas around the new content. The
  * auto-resizer stays off: jsdom has no layout to measure.
  */
 export function renderInCanvas<Ctx extends BaseCtx = BaseCtx>(
@@ -23,7 +24,7 @@ export function renderInCanvas<Ctx extends BaseCtx = BaseCtx>(
   const canvasCtx: BaseCtx = ctx ?? pageContext();
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <Canvas ctx={canvasCtx} noAutoResizer>
+      <Canvas ctx={canvasCtx} noAutoResizer texts={TEXTS}>
         {children}
       </Canvas>
     );

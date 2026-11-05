@@ -1,4 +1,5 @@
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { useRegisterActions } from 'datocms-react-ui/Actions';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
@@ -65,6 +66,8 @@ const MISSING_PROVIDER_KEY_MESSAGE =
 const MISSING_PROVIDER_MODEL_MESSAGE =
   'Select a model in plugin settings before generating images.';
 const MISSING_PROMPT_MESSAGE = 'Describe the image first.';
+/** The action of Generate, with its keys (Cmd/Ctrl+Enter). */
+const GENERATE_ACTION_ID = 'aiAssetSource.generate';
 const REQUEST_TIMEOUT_MINUTES = 10;
 const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MINUTES * 60_000;
 const REQUEST_TIMEOUT_TITLE = `No images after ${REQUEST_TIMEOUT_MINUTES} minutes`;
@@ -602,6 +605,20 @@ const AssetBrowser = () => {
     ],
   );
 
+  // Cmd/Ctrl+Enter generates, also from the prompt, where Enter adds a line
+  // break. The Generate button shows the keys in its tooltip.
+  useRegisterActions([
+    {
+      id: GENERATE_ACTION_ID,
+      name: 'Generate',
+      shortcut: { key: 'enter', mod: true, runWithInputFocus: true },
+      applicable: () => hasProviderApiKey && hasProviderModel,
+      run: () => {
+        void handleSubmit();
+      },
+    },
+  ]);
+
   if (!hasProviderApiKey || !hasProviderModel) {
     return (
       <SetupBlankSlate
@@ -637,13 +654,6 @@ const AssetBrowser = () => {
             onChange={handlePromptChange}
             placeholder="High-quality photo of a monkey astronaut"
             maxRows={6}
-            // Enter adds a line break: Cmd/Ctrl+Enter generates
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
           />
         </FieldWrapper>
 
@@ -674,6 +684,7 @@ const AssetBrowser = () => {
           label="Generate"
           expand={false}
           disabled={getGenerateDisabled(isSubmitting, submitValidationError)}
+          tooltip={{ action: GENERATE_ACTION_ID }}
         />
       </form>
 
@@ -743,6 +754,7 @@ const AssetBrowser = () => {
                   image={image}
                   caption={request.request.prompt}
                   selected={selectedImageIdSet.has(image.id)}
+                  anySelected={totalSelectedCount > 0}
                   sent={browserState.sentIds.has(image.id)}
                   onPreviewFailed={() =>
                     dispatch({ type: 'unavailable', id: image.id })

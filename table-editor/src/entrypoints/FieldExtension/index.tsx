@@ -82,12 +82,13 @@ export default function FieldExtension({ ctx }: Props) {
   };
 
   return value === null ? (
-    <Empty onChange={handleUpdate} />
+    <Empty onChange={handleUpdate} disabled={ctx.disabled} />
   ) : (
     <TableEditor
       value={value}
       onChange={handleUpdate}
       onOpenInFullScreen={handleOpenInFullScreen}
+      disabled={ctx.disabled}
     />
   );
 }

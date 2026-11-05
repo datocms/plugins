@@ -150,11 +150,6 @@
   min-width: 0;
 }
 
-.fieldListEmpty {
-  margin: 0;
-  color: var(--color--ink-subtle);
-}
-
 /* Inset rows in a column that already has an inset (RowList, "The inset
    row"): the box goes out of the column by the inset of the list plus the
    padding of the content of a row, thus the text of the rows stays on the

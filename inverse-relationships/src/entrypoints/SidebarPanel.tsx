@@ -9,9 +9,8 @@ import Canvas from 'datocms-react-ui/Canvas';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
-import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CircleExclamationIcon } from '../icons';
-import s from './styles.module.css';
 
 type PluginParameters = {
   datoCmsApiToken?: string;
@@ -247,12 +246,6 @@ export default function InverseRelationshipsPanel({ ctx }: Props) {
     .filter((itemType): itemType is SchemaTypes.ItemType => Boolean(itemType))
     .find((itemType) => itemType.attributes.api_key === params.itemTypeApiKey);
 
-  const [, right, , left] = ctx.bodyPadding;
-  const insets = {
-    '--frame-inset-left': `${left}px`,
-    '--frame-inset-right': `${right}px`,
-  } as CSSProperties;
-
   return (
     <Canvas ctx={ctx}>
       {error ? (
@@ -276,18 +269,16 @@ export default function InverseRelationshipsPanel({ ctx }: Props) {
         <SidebarPanel.Blank message="No records link to this record" />
       ) : (
         model && (
-          <div className={s.rows} style={insets}>
-            <RowList>
-              {rows.map((row) => (
-                <RowList.Item
-                  key={row.id}
-                  to={`${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`}
-                >
-                  <EntityRow layout="row" title={row.label} />
-                </RowList.Item>
-              ))}
-            </RowList>
-          </div>
+          <RowList density="compact">
+            {rows.map((row) => (
+              <RowList.Item
+                key={row.id}
+                to={`${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`}
+              >
+                <EntityRow layout="row" title={row.label} />
+              </RowList.Item>
+            ))}
+          </RowList>
         )
       )}
     </Canvas>

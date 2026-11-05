@@ -17,9 +17,11 @@ function context(modalResult: unknown = null) {
     currentUserAccessToken: 'test-token',
     environment: 'sandbox',
     cmaBaseUrl: 'https://example.invalid',
+    ui: { locale: 'en' },
     openModal: vi.fn().mockResolvedValue(modalResult),
     notice: vi.fn(),
     alert: vi.fn(),
+    customToast: vi.fn(),
   };
   return { mocked, ctx: mocked as unknown as ExecuteItemsDropdownActionCtx };
 }
@@ -72,21 +74,18 @@ describe('creator dropdown workflow', () => {
     { userId: 1, userType: 'user' },
     { userId: 'user-1' },
     'unexpected',
-  ])(
-    'rejects an invalid modal selection without mutation: %j',
-    async (selection) => {
-      const { ctx, mocked } = context(selection);
-      await executeItemsDropdownAction(
-        'bulkChangeCreator',
-        [{ id: 'record' }],
-        ctx,
-      );
-      expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-      expect(mocked.alert).toHaveBeenCalledWith(
-        'The selected creator is invalid. No records were updated.',
-      );
-    },
-  );
+  ])('rejects an invalid modal selection without mutation: %j', async (selection) => {
+    const { ctx, mocked } = context(selection);
+    await executeItemsDropdownAction(
+      'bulkChangeCreator',
+      [{ id: 'record' }],
+      ctx,
+    );
+    expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
+    expect(mocked.alert).toHaveBeenCalledWith(
+      'The selected creator is invalid. No records were updated.',
+    );
+  });
 
   it('blocks duplicate dropdown invocations until the first execution finishes', async () => {
     const { ctx, mocked } = context();
@@ -110,9 +109,11 @@ describe('creator dropdown workflow', () => {
     );
     expect(mocked.openModal).toHaveBeenCalledTimes(1);
     expect(mocks.bulkChangeCreator).not.toHaveBeenCalled();
-    expect(mocked.notice).toHaveBeenCalledWith(
-      'A creator change is already in progress.',
-    );
+    expect(mocked.customToast).toHaveBeenCalledWith({
+      type: 'warning',
+      message: 'A creator change is already in progress.',
+      dismissAfterTimeout: true,
+    });
 
     choose({ userId: 'owner', userType: 'account' });
     await first;

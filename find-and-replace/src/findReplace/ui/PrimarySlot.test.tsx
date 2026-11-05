@@ -55,7 +55,7 @@ describe('PrimarySlot', () => {
   const reasons: Array<[DisabledReason, string]> = [
     ['no_matches', 'Find some matches to replace first.'],
     ['search_running', 'Wait for the search to finish.'],
-    ['press_enter', 'Press Enter to search first.'],
+    ['press_enter', 'Search first.'],
     ['invalid_pattern', 'Fix the text in Find first.'],
     [
       'no_replacement',

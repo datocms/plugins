@@ -4,6 +4,7 @@ import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
 import Canvas from 'datocms-react-ui/Canvas';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Environment } from '../utils/assetEnvironmentOperations';
+import { texts } from './AssetDeletionSidebar';
 import { EnvironmentList } from './EnvironmentList';
 
 function environment(index: number): Environment {
@@ -43,7 +44,7 @@ const ctx = {
 
 function list(count: number) {
   return (
-    <Canvas ctx={ctx} noAutoResizer>
+    <Canvas ctx={ctx} noAutoResizer texts={texts}>
       <EnvironmentList
         environments={fixtures(count)}
         uploadId="upload-00009999"

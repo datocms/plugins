@@ -311,7 +311,7 @@ describe('every state renders', () => {
     expect(records()).toHaveLength(4);
     await expectReason(
       screen.getByRole('button', { name: 'Replace' }),
-      'Press Enter to search first.',
+      'Search first.',
     );
   });
 
@@ -414,11 +414,10 @@ describe('every state renders', () => {
   it('S10b search stopped: a note with the way to search them all', () => {
     renderState('S10b');
     expect(screen.getByText('Some matches may be missing')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'The search stopped after 1,200 of 3,400 records. Press Enter in Find to search them all.',
-      ),
-    ).toBeInTheDocument();
+    // The Enter key shows as a key cap (↵), with its name for screen readers
+    expect(screen.getByText(/^The search stopped after/)).toHaveTextContent(
+      'The search stopped after 1,200 of 3,400 records. Press ↵Enter in Find to search them all.',
+    );
     expect(toolbarMeta()).toBe('24 matches in 9 records');
   });
 

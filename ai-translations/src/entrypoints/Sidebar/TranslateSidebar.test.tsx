@@ -509,12 +509,12 @@ describe('TranslateSidebar', () => {
     const ctx = sidebarCtx({ parameters: { apiKey: '' } });
     renderSidebar(ctx);
 
-    expect(screen.getByText('No AI vendor is set up yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/No AI vendor is set up yet\./),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Open plugin settings' }),
-    );
+    fireEvent.click(screen.getByRole('link', { name: 'plugin settings' }));
 
     expect(ctx.navigateTo).toHaveBeenCalledWith(
       '/configuration/plugins/plugin-1/edit',

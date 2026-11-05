@@ -1,6 +1,7 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import { connect, type RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import Canvas from 'datocms-react-ui/Canvas';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import SlugExtension from './entrypoints/SlugExtension';
 import { render } from './utils/render';
@@ -42,7 +43,7 @@ connect({
     return [
       {
         id: 'slugRedirects',
-        name: 'Slug Redirects',
+        name: 'Slug redirects',
         type: 'addon',
         fieldTypes: ['slug'],
       },
@@ -51,7 +52,13 @@ connect({
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     switch (fieldExtensionId) {
       case 'slugRedirects':
-        return render(<SlugExtension ctx={ctx} />);
+        // The add-on draws nothing: without the auto-resizer, its frame
+        // keeps the height that the CMS gives it
+        return render(
+          <Canvas ctx={ctx} noAutoResizer>
+            <SlugExtension ctx={ctx} />
+          </Canvas>,
+        );
     }
   },
   async onBeforeItemUpsert(createOrUpdateItemPayload, ctx) {

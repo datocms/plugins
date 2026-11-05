@@ -45,7 +45,7 @@ function randomId(length = 8) {
 const id = randomId();
 
 function log(step: string, object?: Record<string, unknown>) {
-  if (localStorage.getItem('DEBUG')) {
+  if (localStorage.getItem('rich-text-tinymce.debug')) {
     console.log({ id, step, ...(object || {}) });
   }
 }
@@ -245,6 +245,18 @@ export default function FieldExtension({ ctx }: Props) {
   const ink = ctx.disabled
     ? tokens['--color--disabled-field--ink']
     : tokens['--color--ink'];
+  // ...and the font and the spacing of the kit's text editors from the
+  // variables on the frame's root. The body's size is --font-size-m in
+  // pixels: a rem in TinyMCE's iframe isn't the frame's rem
+  const root = getComputedStyle(document.documentElement);
+  const contentStyle = `body {
+    margin: ${root.getPropertyValue('--editor-content-space')};
+    font-family: ${root.getPropertyValue('--base-font-family')};
+    font-size: ${getComputedStyle(document.body).fontSize};
+    line-height: ${root.getPropertyValue('--editor-content-line-height')};
+    background-color: ${surface};
+    color: ${ink};
+  }`;
 
   // content_style is read only at init: a field that gets disabled or enabled
   // again (the CMS disables the form during a slow save) keeps its editor and
@@ -281,9 +293,10 @@ export default function FieldExtension({ ctx }: Props) {
               statusbar: false,
               skin: isDarkMode ? 'oxide-dark' : 'oxide',
               content_css: isDarkMode ? 'dark' : 'default',
-              content_style: `body { font-family:Helvetica,Arial,sans-serif; font-size:16px; background-color:${surface}; color:${ink} }`,
+              content_style: contentStyle,
               setup: initialize,
-              autoresize_bottom_margin: 10,
+              // The margin of the body is the space under the content
+              autoresize_bottom_margin: 0,
               paste_data_images: true,
               promotion: false,
               branding: false,

@@ -9,6 +9,7 @@ type Props = Actions & {
   columns: TableColumn<Row>[];
   column: TableColumn<Row>;
   onCellUpdate: (index: number, column: string, value: string) => void;
+  disabled?: boolean;
 };
 
 function toTable(transfer: DataTransfer) {
@@ -48,12 +49,17 @@ export default function EditableCell({
   column: { id },
   onCellUpdate,
   onMultipleCellUpdate,
+  disabled,
 }: Props) {
   return (
     <Textarea
       value={value}
       aria-label={`${id}, row ${index + 1}`}
+      readOnly={disabled}
       onPaste={(e) => {
+        if (disabled) {
+          return;
+        }
         e.preventDefault();
         const table = toTable(e.clipboardData);
         const isMultiCell = table.length > 1 || (table[0]?.length || 0) > 1;

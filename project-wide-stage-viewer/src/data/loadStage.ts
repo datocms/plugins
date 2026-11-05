@@ -3,6 +3,7 @@ import {
   type Client,
   type RawApiTypes,
 } from '@datocms/cma-client-browser';
+import type { DateSettings } from 'datocms-react-ui/DateSettings';
 import {
   buildModelPresentation,
   buildRow,
@@ -25,8 +26,8 @@ export type StageSource = {
   client: Client;
   itemTypes: Partial<Record<string, ItemType>>;
   locales: readonly string[];
-  /** The project's timezone, for date and date-time titles. */
-  timeZone?: string;
+  /** The date settings of the user, for date and date-time titles. */
+  dateSettings?: DateSettings;
   loadItemTypeFields: (itemTypeId: string) => Promise<Field[]>;
 };
 
@@ -154,7 +155,7 @@ async function loadModelRows(
         item.id,
         buildRow(item, presentation, {
           locales: source.locales,
-          timeZone: source.timeZone,
+          dateSettings: source.dateSettings,
         }),
       );
     }
@@ -228,7 +229,7 @@ async function resolveTitleLevel(
 /**
  * Gives rows whose title field links to another record (or a single block)
  * that record's title, reading the linked records in batches, up to three
- * links deep. A title that can't be resolved keeps its "Record #id".
+ * links deep. A title that can't be resolved keeps its "Record <id>".
  */
 export async function resolveLinkedTitles(
   source: StageSource,

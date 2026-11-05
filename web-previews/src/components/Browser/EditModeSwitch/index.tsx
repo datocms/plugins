@@ -1,6 +1,5 @@
 import Label from 'datocms-react-ui/Label';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import SwitchList from 'datocms-react-ui/SwitchList';
 import Toolbar from 'datocms-react-ui/Toolbar';
 import Tooltip from 'datocms-react-ui/Tooltip';
 import { useId } from 'react';
@@ -30,25 +29,11 @@ const MAC =
   /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
 /**
- * The Alt key as a keycap of the kit. `Shortcut` draws a key with its
- * modifiers, not a modifier alone, thus this is its markup for one key: ⌥ on
- * a Mac, Alt on the other systems
- */
-function AltKey() {
-  return (
-    <kbd className="Shortcut">
-      <span className="Shortcut__keys" aria-hidden="true">
-        <kbd className="Shortcut__key">{MAC ? '⌥' : 'Alt'}</kbd>
-      </span>
-      <span className="visually-hidden">{MAC ? 'Option' : 'Alt'}</span>
-    </kbd>
-  );
-}
-
-/**
  * The switch of the click-to-edit overlays, at the right end of the toolbar
- * of a preview: the hint of the Alt key, the label, then the switch. A
- * switch, not a toggle button: on and off read at a glance.
+ * of a preview: the hint of the Alt key, the switch, then its label. A
+ * switch, not a toggle button: on and off read at a glance. The hint writes
+ * the key as text (⌥ on a Mac, Alt on the other systems): `Shortcut` draws a
+ * key with its modifiers, not a modifier alone.
  */
 export function EditModeSwitch({
   pressed,
@@ -83,32 +68,29 @@ export function EditModeSwitch({
         {showHint && (
           <span className={disabledReason ? styles.idle : undefined}>
             <Toolbar.Note>
-              Hold <AltKey /> to {verb}
+              Hold {MAC ? '⌥' : 'Alt'} to {verb}
             </Toolbar.Note>
           </span>
         )}
-        {/* In a list, the label of a switch comes first */}
-        <SwitchList>
-          <SwitchInput
-            id={id}
-            name="editMode"
-            label={
-              <Label
-                htmlFor={id}
-                label={
-                  <span className={styles.stable}>
-                    <span>{label}</span>
-                    <span className={styles.widest}>{WIDEST_LABEL}</span>
-                  </span>
-                }
-              />
-            }
-            value={pressed}
-            onChange={onToggle}
-            disabled={Boolean(disabledReason)}
-            aria-describedby={descriptionId}
-          />
-        </SwitchList>
+        <SwitchInput
+          id={id}
+          name="editMode"
+          label={
+            <Label
+              htmlFor={id}
+              label={
+                <span className={styles.stable}>
+                  <span>{label}</span>
+                  <span className={styles.widest}>{WIDEST_LABEL}</span>
+                </span>
+              }
+            />
+          }
+          value={pressed}
+          onChange={onToggle}
+          disabled={Boolean(disabledReason)}
+          aria-describedby={descriptionId}
+        />
         <span id={descriptionId} hidden>
           {disabledReason ?? `Hold ${MAC ? 'Option' : 'Alt'} to ${verb}`}
         </span>

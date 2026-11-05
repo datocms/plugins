@@ -246,18 +246,14 @@ function PanelResult({
           <SidebarPanel.Action
             label={
               large
-                ? countLabel(
-                    allOfThem.length,
-                    'Browse 1 place',
-                    'Browse {n} places',
-                    uiLocale,
-                  )
-                : countLabel(
-                    morePlaces,
-                    'Show 1 more place',
-                    'Show {n} more places',
-                    uiLocale,
-                  )
+                ? {
+                    id: 'brokenLinkChecker.browsePlaces',
+                    values: { count: allOfThem.length },
+                  }
+                : {
+                    id: 'brokenLinkChecker.showMorePlaces',
+                    values: { count: morePlaces },
+                  }
             }
             onClick={() => setAllPlaces(true)}
           />
@@ -340,12 +336,10 @@ export function PanelResults({
         <div className={styles.controls}>
           {hidden > 0 && (
             <SidebarPanel.Action
-              label={countLabel(
-                Math.min(hidden, URLS_PER_STEP),
-                'Show 1 more link',
-                'Show {n} more links',
-                uiLocale,
-              )}
+              label={{
+                id: 'brokenLinkChecker.showMoreLinks',
+                values: { count: Math.min(hidden, URLS_PER_STEP) },
+              }}
               onClick={() => setLimit((value) => value + URLS_PER_STEP)}
             />
           )}

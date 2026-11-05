@@ -13,7 +13,7 @@
  *   links, focus). The UI never computes counts, inclusion, previews or
  *   disabled states itself: everything it shows is in the snapshot.
  *
- * Copy lives in the UI (`src/findReplace/ui/copy.ts`). The controller returns
+ * Copy lives in the UI (`src/findReplace/ui/copy.tsx`). The controller returns
  * codes and numbers, never user-facing sentences.
  *
  * Conventions

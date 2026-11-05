@@ -1,13 +1,14 @@
 /* The mention panels open under (or above) the composer: the container
    follows the nearest positioned parent, which is the frame of the composer.
-   The kit panel reads --maxHeight and scrolls past it. */
+   The container caps the height, and the kit panel in it scrolls. */
 .place {
-  --maxHeight: 280px;
-
   position: absolute;
   top: calc(100% + var(--spacing-s));
   right: 0;
   left: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
 }
 
 .above {

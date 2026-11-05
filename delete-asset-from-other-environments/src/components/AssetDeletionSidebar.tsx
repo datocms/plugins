@@ -3,6 +3,9 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import Canvas from 'datocms-react-ui/Canvas';
+import EntityRow from 'datocms-react-ui/EntityRow';
+import type { Message } from 'datocms-react-ui/Message';
+import RowList from 'datocms-react-ui/RowList';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleExclamationIcon } from '../icons';
 import {
@@ -10,7 +13,6 @@ import {
   describeError,
   type Environment,
   type EnvironmentFailure,
-  type Progress,
 } from '../utils/assetEnvironmentOperations';
 import { sortByEnvUpdateTime } from '../utils/sortByEnvUpdateTime';
 import { EnvironmentList } from './EnvironmentList';
@@ -25,7 +27,7 @@ type Scope = {
   checkVersion: number;
 };
 
-type Loading = { title: string; caption?: string };
+type Loading = { title: string; caption?: Message };
 
 type View = {
   scope: Scope | null;
@@ -59,18 +61,32 @@ type Session = {
   busy: boolean;
 };
 
-/** "1 other copy", "3 other copies" */
+/** The texts of the panel that have a count, for `{ id, values }` messages */
+export const texts = {
+  'deleteAsset.checked':
+    '{completed, number} of {total, plural, one {# environment} other {# environments}} checked',
+  'deleteAsset.deleted':
+    '{completed, number} of {total, plural, one {# environment} other {# environments}} done',
+  'deleteAsset.moreErrors':
+    'Show {count, plural, one {# more error} other {# more errors}}',
+  'deleteAsset.deleteCopies':
+    'Delete {count, plural, one {# other copy} other {# other copies}}',
+  'deleteAsset.moreEnvironments':
+    'Show {count, plural, one {# more environment} other {# more environments}}',
+};
+
+/**
+ * "1 other copy", "3 other copies": for the texts that are plain strings (the
+ * toast and the confirm dialog of the host, a sentence of the panel)
+ */
 function plural(count: number, one: string, other: string) {
   return `${count} ${count === 1 ? one : other}`;
 }
 
-function progressCaption(done: string, { completed, total }: Progress) {
-  return `${completed} of ${plural(total, 'environment', 'environments')} ${done}`;
-}
-
 /**
- * The environments that failed, in a callout: the first five, and the rest
- * on demand. The buttons go right after the callout, never in it.
+ * The environments that failed: a callout that tells it, then their rows, the
+ * first five and the rest on demand. The buttons go right after the list,
+ * never in the callout.
  */
 function Failures({
   tone,
@@ -91,15 +107,17 @@ function Failures({
   return (
     <>
       <Callout tone={tone} title={title} className={styles.callout}>
-        <p>{text}</p>
-        <ul className={expanded ? styles.more : undefined}>
-          {(expanded ? failures : failures.slice(0, 5)).map((failure) => (
-            <li key={failure.envId}>
-              {failure.envId}: {failure.message}
-            </li>
-          ))}
-        </ul>
+        {text}
       </Callout>
+      <RowList density="compact">
+        {(expanded ? failures : failures.slice(0, 5)).map((failure) => (
+          <RowList.Item key={failure.envId}>
+            <EntityRow layout="row" title={failure.envId}>
+              {failure.message}
+            </EntityRow>
+          </RowList.Item>
+        ))}
+      </RowList>
       {(hidden > 0 || action) && (
         <div className={styles.actions}>
           {hidden > 0 && (
@@ -108,7 +126,7 @@ function Failures({
               label={
                 expanded
                   ? 'Show fewer errors'
-                  : `Show ${plural(hidden, 'more error', 'more errors')}`
+                  : { id: 'deleteAsset.moreErrors', values: { count: hidden } }
               }
               onClick={() => setExpanded((value) => !value)}
             />
@@ -200,7 +218,7 @@ function Results({
           <div className={styles.actions}>
             <Button
               tone="alert"
-              label={`Delete ${plural(count, 'other copy', 'other copies')}`}
+              label={{ id: 'deleteAsset.deleteCopies', values: { count } }}
               busy={view.busy}
               onClick={onDelete}
             />
@@ -280,7 +298,7 @@ export const AssetDeletionSidebar = ({
             patch({
               loading: {
                 title: CHECKING,
-                caption: progressCaption('checked', progress),
+                caption: { id: 'deleteAsset.checked', values: progress },
               },
             }),
         );
@@ -335,7 +353,7 @@ export const AssetDeletionSidebar = ({
           patch({
             loading: {
               title: DELETING,
-              caption: progressCaption('done', progress),
+              caption: { id: 'deleteAsset.deleted', values: progress },
             },
           });
         },
@@ -413,5 +431,9 @@ export const AssetDeletionSidebar = ({
     );
   }
 
-  return <Canvas ctx={ctx}>{content}</Canvas>;
+  return (
+    <Canvas ctx={ctx} texts={texts}>
+      {content}
+    </Canvas>
+  );
 };

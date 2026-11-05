@@ -187,9 +187,7 @@ export function ExportSelectionPanel({
         error || isEmpty ? undefined : (
           <Button
             label="Continue"
-            size="small"
             tone="primary"
-            expand={false}
             onClick={onContinue}
             disabled={
               selectedIds.length === 0

@@ -36,26 +36,27 @@ describe('PanelNotes', () => {
     expect(
       within(callout).getByText("Some content couldn't be read"),
     ).toBeInTheDocument();
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
-    // The controls sit under the callout, never in it.
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    // The list and its controls sit under the callout, never in it.
+    expect(callout).not.toContainElement(screen.getByRole('list'));
     const browse = screen.getByRole('button', {
       name: 'Browse 498 more fields',
     });
     expect(callout).not.toContainElement(browse);
     await user.click(browse);
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(50);
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
     const pages = screen.getByRole('navigation', {
       name: 'Content issues pagination',
     });
     for (let page = 1; page < 11; page += 1)
       fireEvent.click(within(pages).getByRole('button', { name: 'Next page' }));
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(1);
-    expect(within(callout).getByText('Issue 500')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('Issue 500')).toBeInTheDocument();
     expect(
       within(pages).getByRole('button', { name: 'Next page' }),
     ).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Show fewer fields' }));
-    expect(within(callout).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
@@ -108,6 +109,6 @@ describe('PanelNotes', () => {
     );
     const callout = screen.getByRole('alert');
     expect(within(callout).getByText('Check canceled')).toBeInTheDocument();
-    expect(within(callout).getByText('Body')).toBeInTheDocument();
+    expect(screen.getByRole('listitem')).toHaveTextContent('Body');
   });
 });

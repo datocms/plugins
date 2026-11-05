@@ -25,8 +25,11 @@ const ACTION_ID = 'bulkChangeCreator';
 const MODAL_ID = 'select-creator';
 let executionRunning = false;
 
-function recordLabel(count: number) {
-  return `${count} record${count === 1 ? '' : 's'}`;
+// A toast takes a plain string, thus the plural is written by hand; the
+// number gets the separators of the user's locale
+function recordLabel(count: number, locale: string) {
+  const formatted = new Intl.NumberFormat(locale).format(count);
+  return `${formatted} record${count === 1 ? '' : 's'}`;
 }
 
 function summarizeFailures(failures: BulkResult['failureSamples']) {
@@ -39,17 +42,18 @@ function summarizeFailures(failures: BulkResult['failureSamples']) {
 }
 
 function reportResult(result: BulkResult, ctx: ExecuteItemsDropdownActionCtx) {
+  const { locale } = ctx.ui;
   if (result.succeeded > 0) {
-    ctx.notice(`Creator changed on ${recordLabel(result.succeeded)}.`);
+    ctx.notice(`Creator changed on ${recordLabel(result.succeeded, locale)}.`);
   }
 
   const messages: string[] = [];
   if (result.failed > 0) {
-    messages.push(`Failed to update ${recordLabel(result.failed)}.`);
+    messages.push(`Failed to update ${recordLabel(result.failed, locale)}.`);
   }
   if (result.unprocessed > 0) {
     messages.push(
-      `${result.unprocessed} record${result.unprocessed === 1 ? ' was' : 's were'} not processed.`,
+      `${recordLabel(result.unprocessed, locale)} ${result.unprocessed === 1 ? 'was' : 'were'} not processed.`,
     );
   }
   if (result.stopped && result.stopReason) {
@@ -99,7 +103,11 @@ export function executeItemsDropdownAction(
   }
 
   if (executionRunning) {
-    ctx.notice('A creator change is already in progress.');
+    ctx.customToast({
+      type: 'warning',
+      message: 'A creator change is already in progress.',
+      dismissAfterTimeout: true,
+    });
     return Promise.resolve();
   }
 

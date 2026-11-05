@@ -100,6 +100,11 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
         label="Show these fields"
         required
         hint="They're hidden when the condition isn't met."
+        error={
+          typeof ctx.errors.targetFieldsApiKey === 'string'
+            ? ctx.errors.targetFieldsApiKey
+            : undefined
+        }
       >
         <SelectInput
           multiple

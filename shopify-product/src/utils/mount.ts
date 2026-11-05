@@ -9,8 +9,10 @@ let latestCall = 0;
 let rendered = false;
 
 /**
- * Plain DOM, because the failure may be React or the UI kit itself. The SDK
- * sets `color-scheme` on <html>, so the system colors follow dark mode.
+ * Plain DOM, because the failure may be React or the UI kit itself. The kit's
+ * `styles.css` is imported statically in `main.tsx`, so its `:root` font
+ * variables exist; with no Canvas there are no color tokens, but the SDK sets
+ * `color-scheme` on <html>, so the system colors follow dark mode.
  */
 function showLoadError(): void {
   const container = document.getElementById('root');
@@ -19,7 +21,7 @@ function showLoadError(): void {
   message.setAttribute('role', 'alert');
   message.textContent = LOAD_ERROR_MESSAGE;
   message.style.cssText =
-    'margin: 0; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.4; color: CanvasText;';
+    'margin: 0; font-family: var(--base-font-family); font-size: var(--font-size-m); line-height: 1.4; color: CanvasText;';
   container.replaceChildren(message);
 }
 

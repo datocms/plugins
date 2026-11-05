@@ -14,6 +14,10 @@ export const DEFAULT_MAX_SCOPE_CHARACTERS = 256_000;
 export const DEFAULT_MAX_AGGREGATE_CHARACTERS = 1_500_000;
 export const DEFAULT_MAX_TRACKED_SCOPES = 24;
 export const CONVERSATION_SCOPE_INDEX_VERSION = 1;
+/** Every plugin shares the storage of the plugin CDN: keys start with our name */
+export const STORAGE_KEY_PREFIX = 'dato-agent';
+/** The prefix that chats were saved under before */
+const LEGACY_STORAGE_KEY_PREFIX = 'datocms-agent';
 export const MAX_RECORD_RESULT_GROUPS_PER_MESSAGE = 4;
 export const MAX_RECORD_RESULTS_PER_GROUP = 20;
 export const MAX_FIELD_RESULT_GROUPS_PER_MESSAGE = 4;
@@ -238,7 +242,7 @@ function conversationStorageIdentityKey(
     normalizeRequiredKeyPart(context.currentUserId, 'Current user ID'),
   ];
 
-  return `datocms-agent:v${CONVERSATION_STORAGE_VERSION}:${parts
+  return `${STORAGE_KEY_PREFIX}:v${CONVERSATION_STORAGE_VERSION}:${parts
     .map(encodeKeyPart)
     .join(':')}`;
 }
@@ -254,7 +258,7 @@ export function conversationStorageKey(
 export function conversationScopeIndexStorageKey(
   _context?: ConversationStorageContext,
 ): string {
-  return `datocms-agent:v${CONVERSATION_STORAGE_VERSION}:scope-index`;
+  return `${STORAGE_KEY_PREFIX}:v${CONVERSATION_STORAGE_VERSION}:scope-index`;
 }
 
 /**
@@ -1162,6 +1166,52 @@ function storageKeys(target: StorageLike): string[] {
   }
 }
 
+/**
+ * Moves what was saved under the old `datocms-agent` keys (the chats, their
+ * index, the change journals and the pending scope migrations) to the same
+ * keys with the plugin's name, so that nobody loses a chat.
+ */
+export function moveLegacyConversationKeys(target: StorageLike): void {
+  for (const legacyKey of storageKeys(target)) {
+    if (
+      !legacyKey.startsWith(`${LEGACY_STORAGE_KEY_PREFIX}:`) &&
+      !legacyKey.startsWith(
+        `${LEGACY_STORAGE_KEY_PREFIX}-pending-scope-migration:`,
+      )
+    ) {
+      continue;
+    }
+
+    // A pending scope migration key ends with an encoded chat key
+    const key = `${STORAGE_KEY_PREFIX}${legacyKey.slice(
+      LEGACY_STORAGE_KEY_PREFIX.length,
+    )}`.replace(
+      `:${LEGACY_STORAGE_KEY_PREFIX}%3A`,
+      `:${STORAGE_KEY_PREFIX}%3A`,
+    );
+
+    try {
+      const value = target.getItem(legacyKey);
+      if (value !== null && target.getItem(key) === null) {
+        // The scope index lists the keys of the chats
+        target.setItem(
+          key,
+          key.endsWith(':scope-index')
+            ? value.replaceAll(
+                `"${LEGACY_STORAGE_KEY_PREFIX}:`,
+                `"${STORAGE_KEY_PREFIX}:`,
+              )
+            : value,
+        );
+      }
+      target.removeItem(legacyKey);
+    } catch {
+      // Storage is blocked or full: the rest moves on the next load
+      return;
+    }
+  }
+}
+
 function latestConversationDate(envelope: StoredConversationEnvelope): string {
   return envelope.conversations.reduce<string>((latest, conversation) => {
     const candidate =
@@ -1297,9 +1347,10 @@ export function createConversationStore(
   storeOptions: ConversationStoreOptions = {},
 ): ConversationStore {
   const target = resolveStorage(storage);
+  moveLegacyConversationKeys(target);
   const key = conversationStorageKey(context);
   const indexKey = conversationScopeIndexStorageKey(context);
-  const identityPrefix = `datocms-agent:v${CONVERSATION_STORAGE_VERSION}:`;
+  const identityPrefix = `${STORAGE_KEY_PREFIX}:v${CONVERSATION_STORAGE_VERSION}:`;
   const options: Required<ConversationStoreOptions> = {
     maxConversations: Math.min(
       positiveIntegerOrDefault(

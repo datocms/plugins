@@ -22,6 +22,7 @@ type Props = Actions & {
   row: { index: number };
   column: Column<Row>;
   columns: Column<Row>[];
+  disabled?: boolean;
 };
 
 type MenuProps = Pick<
@@ -155,6 +156,7 @@ export default function EditableHeader({
   onAddColumn,
   onMoveColumn,
   onRemoveColumn,
+  disabled,
 }: Props) {
   const anchor = useRef<HTMLDivElement>(null);
   const menuRef = useMenuRoom(anchor);
@@ -162,28 +164,30 @@ export default function EditableHeader({
   return (
     <>
       <span className={s.name}>{id}</span>
-      <div ref={anchor}>
-        <Dropdown
-          triggerComponent={IconTrigger}
-          icon={ActionToggleIcon}
-          label={`Actions for column “${id}”`}
-        >
-          <Dropdown.Menu
-            ref={menuRef}
-            placement="bottom-end"
-            contextualSearch={false}
+      {!disabled && (
+        <div ref={anchor}>
+          <Dropdown
+            triggerComponent={IconTrigger}
+            icon={ActionToggleIcon}
+            label={`Actions for column “${id}”`}
           >
-            <ColumnMenu
-              id={id}
-              columns={columns}
-              onColumnRename={onColumnRename}
-              onAddColumn={onAddColumn}
-              onMoveColumn={onMoveColumn}
-              onRemoveColumn={onRemoveColumn}
-            />
-          </Dropdown.Menu>
-        </Dropdown>
-      </div>
+            <Dropdown.Menu
+              ref={menuRef}
+              placement="bottom-end"
+              contextualSearch={false}
+            >
+              <ColumnMenu
+                id={id}
+                columns={columns}
+                onColumnRename={onColumnRename}
+                onAddColumn={onAddColumn}
+                onMoveColumn={onMoveColumn}
+                onRemoveColumn={onRemoveColumn}
+              />
+            </Dropdown.Menu>
+          </Dropdown>
+        </div>
+      )}
     </>
   );
 }

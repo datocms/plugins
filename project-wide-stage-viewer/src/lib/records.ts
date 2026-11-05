@@ -91,7 +91,7 @@ export function buildRow(
     id: item.id,
     modelId: itemType.id,
     modelName: itemType.attributes.name,
-    title: title ?? `Record #${item.id}`,
+    title: title ?? `Record ${item.id}`,
     status: item.meta.status ?? 'published',
     updatedAt: item.meta.updated_at,
     createdAt: item.meta.created_at,

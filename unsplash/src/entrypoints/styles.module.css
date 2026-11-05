@@ -11,10 +11,9 @@
   gap: var(--spacing-m);
 }
 
-/* The search field takes the free space, and wraps before it gets too narrow */
+/* The search field takes the free space */
 .query {
   flex: 1;
-  min-width: 240px;
 }
 
 .masonry {

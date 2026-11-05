@@ -193,7 +193,6 @@ function FieldPicker({
             letters typed after "@" filter the fields on every model */}
         <Dropdown.Menu
           placement="top-start"
-          optionPaddingY={6}
           contextualSearch={{ placeholder: 'Search fields…' }}
         >
           {unscopedFields.map((field) => (

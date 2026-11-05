@@ -108,7 +108,7 @@ function SourceCell({
         className={`${inputProps.className} ${s.sourceInput}`}
         value={editing || !isImage ? source : fileName(source)}
         title={isImage && source ? source : undefined}
-        placeholder={isImage ? 'Image URL' : 'CSS color'}
+        placeholder={isImage ? 'https://example.com/tile.png' : '#3b82f6'}
         onFocus={() => setEditing(true)}
         onChange={(event) => onChange(event.target.value)}
         onBlur={() => {
@@ -170,18 +170,16 @@ export default function OptionsList({ value, onChange }: Props) {
       label="Options"
       hint="The value is what the field stores. A color is any CSS color, like green."
     >
-      <div className={s.options}>
-        <TableList<OptionRow>
-          value={value}
-          onChange={onChange}
-          errors={optionErrors(value)}
-          // A missing value shows at once, as it always did
-          touched={true}
-          columns={COLUMNS}
-          emptyMessage="No options yet"
-          add={{ label: 'Add option', newItem: newOption }}
-        />
-      </div>
+      <TableList<OptionRow>
+        value={value}
+        onChange={onChange}
+        errors={optionErrors(value)}
+        // A missing value shows at once, as it always did
+        touched={true}
+        columns={COLUMNS}
+        emptyMessage="No options yet"
+        add={{ label: 'Add option', newItem: newOption }}
+      />
     </FieldWrapper>
   );
 }

@@ -207,12 +207,10 @@ export function UsedInPanel({
         remaining > 0 && (
           <div>
             <SidebarPanel.Action
-              label={countLabel(
-                Math.min(RECORD_CHUNK, remaining),
-                'Show 1 more record',
-                'Show {n} more records',
-                uiLocale,
-              )}
+              label={{
+                id: 'brokenLinkChecker.showMoreRecords',
+                values: { count: Math.min(RECORD_CHUNK, remaining) },
+              }}
               onClick={() => setLimit((value) => value + RECORD_CHUNK)}
             />
           </div>

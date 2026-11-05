@@ -8131,7 +8131,7 @@ describe('AgentFrame', () => {
         mocks.surfaceProps?.entries.some(
           (entry) =>
             entry.kind === 'message' &&
-            entry.content === READ_ONLY_REJECTION_MESSAGE,
+            entry.content === 'Read-only mode is on, so nothing was changed.',
         ),
       ).toBe(true),
     );

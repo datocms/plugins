@@ -2,8 +2,15 @@
 .table {
   border: 1px solid var(--color--border);
   border-radius: var(--radius-s);
+  color: var(--color--ink);
   background: var(--color--surface-raised);
   overflow-x: auto;
+}
+
+/* A disabled field takes the disabled-field context and never fades */
+.disabled {
+  color: var(--color--disabled-field--ink);
+  background: var(--color--disabled-field--surface);
 }
 
 /* The cells draw the dividers and the header surface: a row is only as wide
@@ -55,10 +62,17 @@
   border: 0;
   padding: var(--input-padding);
   font: inherit;
-  color: var(--color--ink);
+  color: inherit;
   background: transparent;
   resize: none;
   outline: none;
+}
+
+/* The textarea has no ring of its own: the cell shows the focus */
+.td:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--color--focus--border),
+    inset 0 0 0 3px var(--color--focus--outline);
 }
 
 .rowActions {

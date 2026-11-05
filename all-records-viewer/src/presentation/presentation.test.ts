@@ -283,7 +283,7 @@ describe('presentation resolver', () => {
       itemTypes: [itemType('empty-model')],
       locales: ['en'],
     }).resolve(item('record-42', 'empty-model', {}));
-    expect(fallback.title).toBe('Record #record-42');
+    expect(fallback.title).toBe('Record record-42');
   });
 
   it('stops cyclic links and uses the record fallback', async () => {
@@ -297,7 +297,7 @@ describe('presentation resolver', () => {
       locales: ['en'],
     }).resolve(record);
 
-    expect(presentation.title).toBe('Record #record-1');
+    expect(presentation.title).toBe('Record record-1');
   });
 
   it('keeps resolved titles when image hydration fails', async () => {

@@ -30,6 +30,8 @@ type Props = {
   value: Value;
   onChange: (value: Value | null) => void;
   onOpenInFullScreen?: () => void;
+  /** The field is disabled: the table shows its value, with no way to change it */
+  disabled?: boolean;
 };
 
 function orderedKeys<T extends { [k: string]: unknown }>(
@@ -62,6 +64,7 @@ export default function TableEditor({
   value,
   onChange,
   onOpenInFullScreen,
+  disabled,
 }: Props) {
   const ctx = useCtx();
 
@@ -277,6 +280,7 @@ export default function TableEditor({
         onRemoveColumn,
         onRemoveRow,
         onMultipleCellUpdate,
+        disabled,
       } as TableOptions<Row>,
       useResizeColumns,
       useFlexLayout,
@@ -284,7 +288,10 @@ export default function TableEditor({
 
   return (
     <div>
-      <div {...getTableProps()} className={s.table}>
+      <div
+        {...getTableProps()}
+        className={disabled ? `${s.table} ${s.disabled}` : s.table}
+      >
         {headerGroups.map((headerGroup) => {
           const { key, ...headerGroupProps } =
             headerGroup.getHeaderGroupProps();
@@ -295,11 +302,16 @@ export default function TableEditor({
                 return (
                   <div key={key} {...headerProps} className={s.th}>
                     {column.render('Header')}
-                    <div {...column.getResizerProps()} className={s.resizer} />
+                    {!disabled && (
+                      <div
+                        {...column.getResizerProps()}
+                        className={s.resizer}
+                      />
+                    )}
                   </div>
                 );
               })}
-              <div className={s.rowActions} />
+              {!disabled && <div className={s.rowActions} />}
             </div>
           );
         })}
@@ -318,41 +330,45 @@ export default function TableEditor({
                     </div>
                   );
                 })}
-                <RowMenu
-                  index={i}
-                  count={rows.length}
-                  onMoveRow={onMoveRow}
-                  onAddRow={onAddRow}
-                  onRemoveRow={onRemoveRow}
-                />
+                {!disabled && (
+                  <RowMenu
+                    index={i}
+                    count={rows.length}
+                    onMoveRow={onMoveRow}
+                    onAddRow={onAddRow}
+                    onRemoveRow={onRemoveRow}
+                  />
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className={s.actions}>
-        <Button
-          icon={AddIcon}
-          label="Add row"
-          onClick={() => onAddRow(value.data.length, true)}
-        />
-        <div className={s.spacer} />
-        {onOpenInFullScreen && (
+      {!disabled && (
+        <div className={s.actions}>
           <Button
-            tone="ghost"
-            icon={ExpandIcon}
-            label="Edit in full screen"
-            onClick={onOpenInFullScreen}
+            icon={AddIcon}
+            label="Add row"
+            onClick={() => onAddRow(value.data.length, true)}
           />
-        )}
-        <Button
-          tone="ghost-alert"
-          icon={DeleteIcon}
-          label="Delete table"
-          onClick={handleClear}
-        />
-      </div>
+          <div className={s.spacer} />
+          {onOpenInFullScreen && (
+            <Button
+              tone="ghost"
+              icon={ExpandIcon}
+              label="Edit in full screen"
+              onClick={onOpenInFullScreen}
+            />
+          )}
+          <Button
+            tone="ghost-alert"
+            icon={DeleteIcon}
+            label="Delete table"
+            onClick={handleClear}
+          />
+        </div>
+      )}
     </div>
   );
 }

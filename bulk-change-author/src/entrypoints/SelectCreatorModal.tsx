@@ -2,7 +2,7 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
-import Canvas from 'datocms-react-ui/Canvas';
+import Canvas, { useCtx } from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SelectInput from 'datocms-react-ui/SelectInput';
@@ -200,6 +200,9 @@ async function fetchUserOptions(
 }
 
 function ExecutionProgress({ progress }: { progress: BulkProgress }) {
+  const { ui } = useCtx<RenderModalCtx>();
+  const { format } = new Intl.NumberFormat(ui.locale);
+
   return (
     <div
       className={styles.progress}
@@ -209,15 +212,17 @@ function ExecutionProgress({ progress }: { progress: BulkProgress }) {
     >
       <p>
         {progress.stopping ? 'Stopping…' : 'Changing creators…'}{' '}
-        {progress.processed} of {progress.total} records processed.
+        {format(progress.processed)} of {format(progress.total)} records
+        processed.
       </p>
       <ProgressBar
         value={progress.total > 0 ? progress.processed / progress.total : 0}
         ariaLabel="Changing creators"
       />
       <p className={styles.subtle}>
-        {progress.succeeded} changed, {progress.active} in progress.
-        {progress.failed > 0 && ` ${progress.failed} failed.`}
+        {format(progress.succeeded)} changed, {format(progress.active)} in
+        progress.
+        {progress.failed > 0 && ` ${format(progress.failed)} failed.`}
       </p>
       {progress.stopping && (
         <p className={styles.subtle}>
