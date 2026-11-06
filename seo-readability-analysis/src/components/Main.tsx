@@ -99,7 +99,16 @@ const fillMarkTexts = (marks: Mark[], content: string): Mark[] =>
 
       return { _properties: { ...mark._properties, original: text ?? '' } };
     })
-    .filter((mark) => mark._properties.marked || mark._properties.original);
+    .filter((mark) => mark._properties.marked || mark._properties.original)
+    // Yoast can mark the same sentence twice
+    .filter(
+      (mark, index, all) =>
+        all.findIndex(
+          (other) =>
+            other._properties.marked === mark._properties.marked &&
+            other._properties.original === mark._properties.original,
+        ) === index,
+    );
 
 const prepareResults = (
   data: AnalysisAssessment,

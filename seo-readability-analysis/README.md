@@ -1,60 +1,73 @@
-# SEO/readability Analysis DatoCMS plugin
+# SEO/Readability Analysis
 
-This plugin uses the [YoastSEO.js](https://github.com/Yoast/javascript/tree/master/packages/yoastseo) package to generate in real-time interesting SEO and readability metrics about a specific record you're editing in DatoCMS.
+See how well a record's page is written for search engines and for readers while you edit it. The plugin runs [YoastSEO.js](https://github.com/Yoast/wordpress-seo/tree/trunk/packages/yoastseo) on the page your website renders for the record, and lists what to fix.
 
-It shows potential SEO problems, improvements, considerations, and content that is already optimized or "Good".
+![A blog post record whose SEO Analysis field has "accessible frontend" as focus keyword, with four problems and three improvements listed under it](docs/seo-analysis.png)
 
-🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website in order to function. Read more in the following sections!
+- **SEO checks** for a focus keyword, its synonyms and any related keywords: keyword density, title, slug, meta description, links and more.
+- **Readability checks**: sentence and paragraph length, passive voice, transition words, subheadings.
+- **Grouped results**: Problems, Improvements and Good results, each with a link to fix it.
+- **The text behind a result**: the sentences it's about, with the keyword highlighted.
+- **Your real page, drafts included**, through an endpoint on your website.
 
-## Installation and configuration
+> **This plugin needs an endpoint on your website.** It returns the page of a record, and the plugin analyzes it. See [The frontend metadata endpoint](#the-frontend-metadata-endpoint).
 
-Once the plugin is installed, please configure your Frontend metadata endpoint URL in the plugin settings:
+## Installation
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/seo-readability-analysis/docs/settings.png)
+1. Install the plugin.
+2. In its settings, enter your **Frontend metadata endpoint**.
+3. If the endpoint needs a secret, add it under **Custom headers**, for example as an `Authorization` header.
+4. Use the plugin on a **JSON** field. Either pick **SEO/Readability Analysis** as the field editor in the field's **Presentation** tab, or enter the field's API key under **Auto-apply to JSON fields with API key**.
 
-This plugin is meant to be used on JSON fields, so please assign it to some JSON fields in in your project.
+![The plugin settings: the frontend metadata endpoint URL, an Authorization custom header whose value is hidden, and seo_analysis as the API key of the fields that use the plugin](docs/plugin-settings.png)
 
-You can either hook this plugin manually to your JSON fields, or have it auto-applied to every JSON field whose API identifier matches the value entered in the **Auto-apply to all JSON fields with the following API identifier** setting on the configuration screen.
+## Check a record's SEO
 
-The plugin will store information inside the JSON field using this structure:
+Open a record and go to the field. On the **SEO** tab:
 
-```json
-{
-  "keyword": "food shows",
-  "synonyms": "cooking shows, culinary demonstrations",
-  "relatedKeywords": [
-    {
-      "keyword": "food",
-      "synonyms": ""
-    }
-  ]
-}
-```
+1. Type a **Focus keyword**: the phrase people search for to find this page.
+2. Add **Synonyms** if the page uses other words for it, separated by commas.
+3. Read the results below. They update as you type.
 
-## The Frontend metadata endpoint
+To check more phrases, add them under **Related keywords**. Each one gets its own results under the table. The field saves the keywords with the record.
 
-In order to work, this plugin needs a CORS-ready endpoint API that is able to return, given the ID of a DatoCMS record, a number of information related to its canonical page (that is, the page on the frontend that presents the content stored inside the record).
+## Check readability
 
-The plugin performs a GET request to the URL specified in the settings, passing down the following query string parameters:
+The **Readability** tab needs no keyword. It checks how easy the page is to read.
+
+![The Readability tab with one problem, Transition words, and five good results](docs/readability.png)
+
+## Understanding the results
+
+| Group | What it means |
+|---|---|
+| **Problems** | Fix these first: they hurt the page the most. |
+| **Improvements** | The page passes, but could do better. |
+| **Good results** | Checks the page passes. The group starts closed. |
+
+Each result starts with the name of the check: click it to read Yoast's explanation. The link at the end tells you how to fix it.
+
+When a result has an eye button, click it to see the sentences the result is about, with the words that count highlighted.
+
+![The Keyphrase density problem opened with its eye button: two sentences of the post, with "accessible" and "frontend" highlighted](docs/marked-text.png)
+
+The analysis reads the page of the last saved version. It runs again when you save the record or switch locale, and **Reload content** fetches the page again at any time.
+
+## The frontend metadata endpoint
+
+The plugin sends a GET request to the endpoint, with these query string parameters:
 
 ```
 <ENDPOINT_URL>?itemId=89274&itemTypeId=544589&itemTypeApiKey=blog_post&sandboxEnvironmentId=main&locale=en
 ```
 
-- `itemId` the ID of the DatoCMS record
-- `itemTypeId` the ID of the record's model
-- `itemTypeApiKey` the API key of the record's model
-- `sandboxEnvironmentId` the environment ID (only passed if the record belongs to a sandbox environment)
-- `locale` the preferred locale
+- `itemId`: the ID of the record
+- `itemTypeId`: the ID of the record's model
+- `itemTypeApiKey`: the API key of the record's model
+- `sandboxEnvironmentId`: the environment of the record
+- `locale`: the locale the editor is looking at
 
-If the endpoint is protected by a secret, add it under **Custom headers** in the
-plugin settings instead of putting it in the endpoint URL: an URL ends up in
-proxy logs, and is shown in clear text to everyone who can open the plugin
-settings. Note that a custom header makes the request non-simple, so the
-endpoint must also answer the CORS preflight `OPTIONS` request and list the
-header in `Access-Control-Allow-Headers`.
-
-The endpoint is expected to return a 200 response, with the following JSON structure:
+The endpoint answers `200` with the page of the record, in its latest version (unpublished changes included):
 
 ```json
 {
@@ -67,15 +80,33 @@ The endpoint is expected to return a 200 response, with the following JSON struc
 }
 ```
 
-To better serve the content writer, the information returned should be related to the latest version of the record's content — which could be unpublished.
+The plugin runs in the browser, so the endpoint must allow CORS requests. A custom header makes the browser ask first with an `OPTIONS` request: answer it, and list the header in `Access-Control-Allow-Headers`. Keep secrets in a custom header rather than in the endpoint URL, which ends up in server logs.
 
-### Implementation examples
+For a Next.js implementation, see the [official Next.js Starter Kit](https://github.com/datocms/nextjs-starter-kit): the [endpoint](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/seo-analysis/route.tsx) and the routes that turn [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode) [on](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [off](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx). If you build one for another framework, open a pull request to share it.
 
-If you have built alternative endpoint implementations for other frameworks, please open up a PR to this plugin and share it with the community!
+## How the value is stored
 
-#### Next.js
+The JSON field stores the keywords:
 
-We suggest you look at the code of our [official Next.js Starter Kit](https://github.com/datocms/nextjs-starter-kit):
+```json
+{
+  "keyword": "food shows",
+  "synonyms": "cooking shows, culinary demonstrations",
+  "relatedKeywords": [{ "keyword": "food", "synonyms": "" }]
+}
+```
 
-* Route handler called implementing the endpoint: [`src/app/api/seo-analysis/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/seo-analysis/route.tsx)
-* Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
+## Good to know
+
+- **Return only the content of the page.** The analysis reads everything in `content`: a site header or footer counts too, for example in the check of the introduction.
+- **Words match as written.** "accessible" doesn't match "accessibility", so use the exact phrase you want to rank for.
+- **New records** are analyzed once they're saved, because the endpoint needs the record's ID.
+- **Visual editing works.** A draft page with Content Link carries invisible edit data in its texts: the plugin removes it before the analysis.
+
+## Development
+
+```bash
+npm install
+npm run dev     # serves the plugin at http://localhost:5173
+npm run build
+```
