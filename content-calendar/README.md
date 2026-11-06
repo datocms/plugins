@@ -7,7 +7,7 @@ Adds a tab to your DatoCMS project to explore your records inside a calendar.
 * Show records in a calendar screen
 * Filter records by selecting one or more models
 * Models and associated records are color-coded
-* Show records by: last update/scheduled publishing/creation date/publishing date
+* Show records by: last update/scheduled publishing/scheduled unpublishing/creation date/publishing date
 
 ### Current limitations
 

@@ -1,5 +1,6 @@
 export type Criteria =
   | 'publication_scheduled_at'
+  | 'unpublishing_scheduled_at'
   | 'first_published_at'
   | 'published_at'
   | 'created_at'
@@ -7,6 +8,7 @@ export type Criteria =
 
 export const allCriteria: Criteria[] = [
   'publication_scheduled_at',
+  'unpublishing_scheduled_at',
   'first_published_at',
   'published_at',
   'created_at',
@@ -20,6 +22,7 @@ export function isCriteria(value: unknown): value is Criteria {
 /** The name of each date, as an option of the menu */
 export const criteriaLabel: Record<Criteria, string> = {
   publication_scheduled_at: 'Scheduled publication date',
+  unpublishing_scheduled_at: 'Scheduled unpublishing date',
   first_published_at: 'First publication date',
   published_at: 'Last publication date',
   created_at: 'Creation date',
@@ -29,6 +32,7 @@ export const criteriaLabel: Record<Criteria, string> = {
 /** The current date, as the text of the menu trigger */
 export const criteriaTriggerLabel: Record<Criteria, string> = {
   publication_scheduled_at: 'By scheduled publication',
+  unpublishing_scheduled_at: 'By scheduled unpublishing',
   first_published_at: 'By first publication',
   published_at: 'By last publication',
   created_at: 'By creation date',
