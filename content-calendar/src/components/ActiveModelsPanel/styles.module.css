@@ -1,7 +1,31 @@
-/* The inset of the list: the switch list puts its row boxes out into it by
-   --row-inset, thus each box keeps --row-inset from the sides of the pane */
+/* Inset rows, like a SwitchList: each box keeps --row-inset from the sides
+   of the pane, and shows on hover */
 .list {
-  padding: var(--row-inset) calc(2 * var(--row-inset));
+  display: flex;
+  flex-direction: column;
+  gap: var(--row-gap);
+  padding: var(--row-inset);
+  margin: 0;
+  list-style: none;
+}
+
+/* A click anywhere in the row flips the checkbox */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--row-inset);
+  border-radius: var(--row-radius);
+  cursor: pointer;
+}
+
+.row:hover {
+  background-color: var(--color--surface-hover);
+}
+
+/* The row's gap is the space after the box */
+.checkbox {
+  margin: 0;
 }
 
 /* The name of the model, after the swatch of its color: the legend of the

@@ -5,10 +5,7 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import { Dropdown } from 'datocms-react-ui/Dropdown';
 import { useDebouncedValue } from 'datocms-react-ui/hooks/useDebouncedValue';
-import Label from 'datocms-react-ui/Label';
 import Pane, { useFilteredList } from 'datocms-react-ui/Pane';
-import SwitchInput from 'datocms-react-ui/SwitchInput';
-import SwitchList from 'datocms-react-ui/SwitchList';
 import { type CSSProperties, useEffect, useMemo } from 'react';
 import { useHoverModelId } from '../../context/HoverItemContext';
 import { EyeIcon, EyeSlashIcon, ModelIcon } from '../../icons';
@@ -25,10 +22,6 @@ type ActiveModelsPanelProps = {
   activeModels: ActiveModels;
   onChange: (newValue: ActiveModels) => void;
 };
-
-function switchId(modelId: string) {
-  return `modelId-${modelId}`;
-}
 
 function nameId(modelId: string) {
   return `modelId-${modelId}-name`;
@@ -161,42 +154,37 @@ export function ActiveModelsPanel({
       ) : hasNoResults ? (
         <Pane.FilterBlankSlate />
       ) : (
-        <div className={s.list}>
-          <SwitchList>
-            {filteredItems.map((model) => (
-              <SwitchInput
-                key={model.id}
-                id={switchId(model.id)}
-                value={isActive(model)}
-                onChange={() => toggle(model)}
-                label={
-                  <Label
-                    htmlFor={switchId(model.id)}
-                    label={
-                      <span
-                        id={nameId(model.id)}
-                        className={classNames(s.modelLabel, {
-                          [s.highlighted]: hoverModelId === model.id,
-                        })}
-                      >
-                        <span
-                          className={s.swatch}
-                          aria-hidden="true"
-                          style={
-                            {
-                              '--model-color': colorForModel(model.id),
-                            } as CSSProperties
-                          }
-                        />
-                        <span className={s.name}>{model.attributes.name}</span>
-                      </span>
+        <ul className={s.list}>
+          {filteredItems.map((model) => (
+            <li key={model.id}>
+              <label className={s.row}>
+                <input
+                  type="checkbox"
+                  className={s.checkbox}
+                  checked={isActive(model)}
+                  onChange={() => toggle(model)}
+                />
+                <span
+                  id={nameId(model.id)}
+                  className={classNames(s.modelLabel, {
+                    [s.highlighted]: hoverModelId === model.id,
+                  })}
+                >
+                  <span
+                    className={s.swatch}
+                    aria-hidden="true"
+                    style={
+                      {
+                        '--model-color': colorForModel(model.id),
+                      } as CSSProperties
                     }
                   />
-                }
-              />
-            ))}
-          </SwitchList>
-        </div>
+                  <span className={s.name}>{model.attributes.name}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
       )}
     </Pane>
   );
