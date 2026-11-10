@@ -4,9 +4,9 @@ How the plugin scans and deletes assets. For using the plugin, see the [README](
 
 ## Scan
 
-The plugin lists uploads with the API's `in_use` filter (`filter[fields][in_use][eq]=false`), in pages of 500 ordered by ID. It keeps only each asset's ID, filename, URL and size. Nothing is deleted until the scan finishes and the user confirms the selection.
+After the user clicks **Scan for unused assets** in the plugin settings, the plugin lists uploads with the API's `in_use` filter (`filter[fields][in_use][eq]=false`), in pages of 500 ordered by ID. It keeps only each asset's ID, filename, URL and size. Nothing is deleted until the scan finishes and the user confirms the selection.
 
-The confirmation lists the unused assets 100 per page, all selected. Users can untick assets, use Select all, or search by filename. While a search is active, Select all only affects the matching assets, and selected assets hidden by the search are still deleted.
+The settings screen then lists the unused assets 100 per page, all selected. Users can untick assets, use Select all, or search by filename. While a search is active, Select all only affects the matching assets, and selected assets hidden by the search are still deleted.
 
 ## Deletion
 
@@ -14,7 +14,7 @@ Selected assets are deleted in sequential batches of 100 (the API allows 200 per
 
 Storage freed adds up the sizes of the deleted assets. When a job only partly succeeds, the API doesn't say which assets failed, so the figure is estimated and labeled as such.
 
-Stop, or closing the dialog, prevents further batches; the batch already submitted finishes on the server. An API error ends the run and the summary shows what was deleted, skipped, failed and not processed. Rate limits and transient errors are retried by the CMA client.
+Stop, or leaving the settings screen, prevents further batches; the batch already submitted finishes on the server. An API error ends the run and the summary shows what was deleted, skipped, failed and not processed. Rate limits and transient errors are retried by the CMA client.
 
 ## Verification
 

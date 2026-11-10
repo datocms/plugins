@@ -29,12 +29,10 @@ const COLUMNS: TableColumn<UnusedAsset>[] = [
   {
     name: 'filename',
     label: 'Filename',
-    // The full name wraps: names that differ only near the end must stay
-    // readable before they're deleted.
-    truncate: false,
+    // A long name ends with an ellipsis: the title shows it in full.
     renderCell: (asset) => (
       <a
-        className={s.filename}
+        title={asset.filename}
         href={asset.url}
         target="_blank"
         rel="noopener noreferrer"
@@ -51,10 +49,13 @@ const COLUMNS: TableColumn<UnusedAsset>[] = [
   },
 ];
 
+// The shares of the table of assets in the Table docs: the size column fits
+// a size in full ("1023.99KB") in the narrow settings column, and the
+// filename takes the rest.
 const DEFAULT_LAYOUT = {
   columns: [
-    { name: 'filename', width: 4 },
-    { name: 'size', width: 1 },
+    { name: 'filename', width: 0.7 },
+    { name: 'size', width: 0.3 },
   ],
 };
 
@@ -193,119 +194,126 @@ export default function AssetReview({ assets, onDelete }: Props) {
 
   return (
     <div ref={reviewRef} className={s.review}>
-      <Pane
-        ariaLabel="Unused assets"
-        header={
-          <>
-            <Toolbar>
-              <Toolbar.Title level={2}>Unused assets</Toolbar.Title>
-              <Toolbar.Subtitle>
-                {search
-                  ? `${format.count(visible.length)} of ${format.assets(assets.length)}`
-                  : format.assets(assets.length)}
-              </Toolbar.Subtitle>
-              <Toolbar.Space />
-              <Toolbar.Group>
-                <Toolbar.FilterToggle
-                  pressed={filter.open}
-                  onClick={filter.onToggle}
-                  onOpen={filter.onOpen}
-                />
-              </Toolbar.Group>
-            </Toolbar>
-            {filter.open && (
-              <Toolbar fields onClose={filter.onClose}>
-                <Toolbar.FilterInput
-                  value={query}
-                  onChange={changeQuery}
-                  autoFocus={filter.autoFocus}
-                  onClose={filter.onClose}
+      <div className={s.reviewPane}>
+        <Pane
+          ariaLabel="Unused assets"
+          header={
+            <>
+              <Toolbar>
+                <Toolbar.Title>Unused assets</Toolbar.Title>
+                <Toolbar.Subtitle>
+                  {search
+                    ? `${format.count(visible.length)} of ${format.assets(assets.length)}`
+                    : format.assets(assets.length)}
+                </Toolbar.Subtitle>
+                <Toolbar.Space />
+                <Toolbar.Group>
+                  <Toolbar.FilterToggle
+                    pressed={filter.open}
+                    onClick={filter.onToggle}
+                    onOpen={filter.onOpen}
+                  />
+                </Toolbar.Group>
+              </Toolbar>
+              {filter.open && (
+                <Toolbar fields onClose={filter.onClose}>
+                  <Toolbar.FilterInput
+                    value={query}
+                    onChange={changeQuery}
+                    autoFocus={filter.autoFocus}
+                    onClose={filter.onClose}
+                  />
+                </Toolbar>
+              )}
+            </>
+          }
+          footer={
+            pageCount > 1 && (
+              <Toolbar>
+                <Toolbar.Pagination
+                  currentPage={currentPage}
+                  perPage={ASSETS_PER_PAGE}
+                  totalEntries={visible.length}
+                  onChange={goToPage}
                 />
               </Toolbar>
-            )}
-          </>
-        }
-        footer={
-          pageCount > 1 && (
-            <Toolbar>
-              <Toolbar.Pagination
-                currentPage={currentPage}
-                perPage={ASSETS_PER_PAGE}
-                totalEntries={visible.length}
-                onChange={goToPage}
-              />
-            </Toolbar>
-          )
-        }
-        slideUpToolbar={
-          <MultipleSelectionActionBar
-            open={selected.length > 0}
-            status={{
-              id: 'deleteUnusedAssets.selection',
-              values: {
-                selected: selected.length,
-                total: assets.length,
-                size: formatBytes(selectedBytes),
-              },
-            }}
-            onDeselectAll={() =>
-              setExcluded(new Set(assets.map((asset) => asset.id)))
-            }
-            actions={[
-              {
-                id: 'delete',
-                label: 'Delete',
-                tone: 'primary',
-                onClick: () => {
-                  const current = selectedRef.current;
-                  return current.length > 0
-                    ? onDelete(current)
-                    : Promise.resolve();
+            )
+          }
+          slideUpToolbar={
+            <MultipleSelectionActionBar
+              open={selected.length > 0}
+              status={{
+                id: 'deleteUnusedAssets.selection',
+                values: {
+                  selected: selected.length,
+                  total: assets.length,
+                  size: formatBytes(selectedBytes),
                 },
-              },
-            ]}
-          />
-        }
-      >
-        {/* The area holds the notice and the table, or the blank slate alone:
+              }}
+              onDeselectAll={() =>
+                setExcluded(new Set(assets.map((asset) => asset.id)))
+              }
+              actions={[
+                {
+                  id: 'delete',
+                  label: 'Delete',
+                  tone: 'primary',
+                  onClick: () => {
+                    const current = selectedRef.current;
+                    return current.length > 0
+                      ? onDelete(current)
+                      : Promise.resolve();
+                  },
+                },
+              ]}
+            />
+          }
+        >
+          {/* The area holds the notice and the table, or the blank slate alone:
             the blank slate centers itself in the whole pane content. */}
-        <ListArea>
-          {visible.length === 0 ? (
-            <Pane.FilterBlankSlate />
-          ) : (
-            <>
-              <Callout tone="warning" title="Deletion is permanent">
-                These assets aren't used by any record in this environment, but
-                your website may still link to some of them directly. Untick
-                anything you want to keep.
-              </Callout>
-              <Table
-                columns={COLUMNS}
-                layout={layout}
-                onLayoutChange={setLayout}
-                checkboxes={{ alwaysVisible: true }}
-              >
-                <Table.Header
-                  selectAll={{
-                    selected: visibleSelectedCount === visible.length,
-                    onChange: toggleAll,
-                  }}
-                />
-                <Table.Body ref={bodyRef}>
-                  {rows.map((asset) => (
-                    <AssetRow
-                      key={asset.id}
-                      asset={asset}
-                      selected={!excluded.has(asset.id)}
-                      onToggle={toggle}
-                    />
-                  ))}
-                </Table.Body>
-              </Table>
-            </>
-          )}
-        </ListArea>
-      </Pane>
+          <ListArea>
+            {visible.length === 0 ? (
+              <Pane.FilterBlankSlate />
+            ) : (
+              <>
+                <Callout tone="warning" title="Deletion is permanent">
+                  These assets aren't used by any record in this environment,
+                  but your website may still link to some of them directly.
+                  Untick anything you want to keep.
+                </Callout>
+                <Table
+                  columns={COLUMNS}
+                  layout={layout}
+                  onLayoutChange={setLayout}
+                  checkboxes={{ alwaysVisible: true }}
+                >
+                  <Table.Header
+                    selectAll={{
+                      selected: visibleSelectedCount === visible.length,
+                      onChange: toggleAll,
+                    }}
+                  />
+                  <Table.Body ref={bodyRef}>
+                    {rows.map((asset) => (
+                      <AssetRow
+                        key={asset.id}
+                        asset={asset}
+                        selected={!excluded.has(asset.id)}
+                        onToggle={toggle}
+                      />
+                    ))}
+                  </Table.Body>
+                </Table>
+                {/* The selection bar floats over the bottom of the list: this
+                  room lets the last rows scroll above it. */}
+                {selected.length > 0 && (
+                  <div className={s.selectionBarRoom} aria-hidden="true" />
+                )}
+              </>
+            )}
+          </ListArea>
+        </Pane>
+      </div>
     </div>
   );
 }

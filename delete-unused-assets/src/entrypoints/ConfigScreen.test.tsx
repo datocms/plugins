@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   DeletionProgress,
@@ -17,12 +17,11 @@ import type {
   discoverUnusedAssets,
   UnusedAsset,
 } from '../utils/unusedAssets';
-import CustomModal from './CustomModal';
+import ConfigScreen from './ConfigScreen';
 
 const mocks = vi.hoisted(() => ({
   discover: vi.fn<typeof discoverUnusedAssets>(),
   delete: vi.fn<typeof deleteUnusedAssets>(),
-  resolve: vi.fn<(value: unknown) => Promise<void>>(),
   openConfirm: vi.fn<(options: unknown) => Promise<unknown>>(),
   notice: vi.fn<(message: string) => Promise<void>>(),
 }));
@@ -77,9 +76,11 @@ function result(
   };
 }
 
-function context(overrides: Record<string, unknown> = {}): RenderModalCtx {
+function context(
+  overrides: Record<string, unknown> = {},
+): RenderConfigScreenCtx {
   return {
-    mode: 'renderModal',
+    mode: 'renderConfigScreen',
     currentUserAccessToken: 'synthetic-token',
     environment: 'main',
     cmaBaseUrl: undefined,
@@ -96,14 +97,20 @@ function context(overrides: Record<string, unknown> = {}): RenderModalCtx {
     updateHeight: vi.fn(),
     startAutoResizer: vi.fn(),
     stopAutoResizer: vi.fn(),
-    resolve: mocks.resolve,
     ...overrides,
-  } as unknown as RenderModalCtx;
+  } as unknown as RenderConfigScreenCtx;
+}
+
+// Opens the screen and clicks the scan button.
+function renderScanned(ctx = context()) {
+  const rendered = render(<ConfigScreen ctx={ctx} />);
+  fireEvent.click(button('Scan for unused assets'));
+  return rendered;
 }
 
 async function renderReady(assets: UnusedAsset[]) {
   mocks.discover.mockResolvedValue(assets);
-  const rendered = render(<CustomModal ctx={context()} />);
+  const rendered = renderScanned();
   await screen.findByText('Deletion is permanent');
   return rendered;
 }
@@ -169,42 +176,47 @@ function countFor(label: string) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.discover.mockResolvedValue([]);
-  mocks.resolve.mockResolvedValue(undefined);
   mocks.openConfirm.mockResolvedValue('delete');
   mocks.notice.mockResolvedValue(undefined);
 });
 
 afterEach(cleanup);
 
-describe('CustomModal', () => {
+describe('ConfigScreen', () => {
+  it('waits for a click before scanning', () => {
+    render(<ConfigScreen ctx={context()} />);
+    expect(button('Scan for unused assets')).toBeTruthy();
+    expect(mocks.discover).not.toHaveBeenCalled();
+  });
+
   it('shows the empty state without offering deletion', async () => {
-    render(<CustomModal ctx={context()} />);
+    renderScanned();
     expect(screen.getByRole('status').textContent).toContain(
       'Looking for unused assets',
     );
     expect(await screen.findByText('No unused assets')).toBeTruthy();
     expect(queryButton('Delete')).toBeNull();
+    fireEvent.click(button('Scan again'));
+    expect(mocks.discover).toHaveBeenCalledTimes(2);
   });
 
-  it('asks for the API token permission without scanning', async () => {
-    render(<CustomModal ctx={context({ currentUserAccessToken: null })} />);
-    expect(
-      await screen.findByText(/needs access to your API token/),
-    ).toBeTruthy();
-    expect(mocks.discover).not.toHaveBeenCalled();
+  it('asks for the API token permission without scanning', () => {
+    render(<ConfigScreen ctx={context({ currentUserAccessToken: null })} />);
     expect(screen.getByRole('alert').textContent).toContain(
-      'No access to your API token',
+      'grant this plugin permission to make API calls',
     );
-    fireEvent.click(button('Close'));
-    expect(mocks.resolve).toHaveBeenCalledWith('');
+    expect(queryButton('Scan for unused assets')).toBeNull();
+    expect(mocks.discover).not.toHaveBeenCalled();
   });
 
   it('does not offer deletion after failed discovery', async () => {
-    mocks.discover.mockRejectedValue(new Error('network'));
-    render(<CustomModal ctx={context()} />);
+    mocks.discover.mockRejectedValueOnce(new Error('network'));
+    renderScanned();
     expect(await screen.findByText("Couldn't find unused assets")).toBeTruthy();
     expect(screen.getByText('network')).toBeTruthy();
     expect(queryButton('Delete')).toBeNull();
+    fireEvent.click(button('Try again'));
+    expect(await screen.findByText('No unused assets')).toBeTruthy();
   });
 
   it('pages the list 100 at a time', async () => {
@@ -338,7 +350,12 @@ describe('CustomModal', () => {
     );
     expect(countFor('Assets deleted')).toBe('400');
     expect(countFor('Storage freed')).toBe('800KB');
-    expect(mocks.resolve).not.toHaveBeenCalled();
+
+    // A new scan starts over from the remaining unused assets.
+    mocks.discover.mockResolvedValue([]);
+    fireEvent.click(button('Scan again'));
+    expect(await screen.findByText('No unused assets')).toBeTruthy();
+    expect(mocks.discover).toHaveBeenCalledTimes(2);
   });
 
   it('stops after the current batch without claiming success', async () => {
@@ -399,7 +416,6 @@ describe('CustomModal', () => {
     rendered.unmount();
     expect(deletion.signal()?.aborted).toBe(true);
     await deletion.finish(result(1));
-    expect(mocks.resolve).not.toHaveBeenCalled();
     expect(mocks.notice).not.toHaveBeenCalled();
   });
 });

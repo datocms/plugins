@@ -1,21 +1,29 @@
 /* The review list is a Pane, which fills a positioned box with a height. The
-   box is the edge of the pane, not a floating surface, so it takes the radius
-   of the cards. The Pane draws its own line on the right edge, so the box
-   frames the other three sides. */
+   box is a card (the box of the cards in the Color tokens docs) around the
+   whole list. */
 .review {
   position: relative;
   height: 560px;
-  border: 1px solid var(--color--border);
-  border-right-width: 0;
-  border-radius: var(--radius-s);
   overflow: hidden;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow--resting);
 }
 
-/* A long filename breaks anywhere, so it wraps inside its column instead of
-   overflowing it. */
-.filename {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* The Pane draws its own line on its right edge: the box of the pane goes
+   1px past the card's right edge, so the card's border is the only frame. */
+.reviewPane {
+  position: absolute;
+  inset: 0 -1px 0 0;
+}
+
+/* The room under the table for the selection bar: its height (a 32px
+   control and 8px of padding on each side). The gap of the list area above
+   it and its padding below it keep the last row clear of the bar. */
+.selectionBarRoom {
+  flex-shrink: 0;
+  height: 48px;
 }
 
 .stack {
@@ -49,7 +57,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.actions {
-  display: flex;
-  justify-content: flex-end;
+/* The screen ends with this section: the host spaces its own sections below
+   the frame, so the section keeps no margin of its own. */
+.endSection {
+  margin-bottom: 0;
 }

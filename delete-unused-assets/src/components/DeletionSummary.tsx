@@ -42,10 +42,10 @@ function summaryCallout(result: DeletionResult) {
 
 type Props = {
   result: DeletionResult;
-  onClose: () => void;
+  onScanAgain: () => void;
 };
 
-export default function DeletionSummary({ result, onClose }: Props) {
+export default function DeletionSummary({ result, onScanAgain }: Props) {
   const format = useFormatters();
   const complete = isComplete(result);
   const callout = complete ? null : summaryCallout(result);
@@ -84,12 +84,8 @@ export default function DeletionSummary({ result, onClose }: Props) {
             ),
         )}
       </InfoList>
-      <div className={s.actions}>
-        <Button
-          label="Close"
-          tone={complete ? 'primary' : 'soft'}
-          onClick={onClose}
-        />
+      <div>
+        <Button label="Scan again" onClick={onScanAgain} />
       </div>
     </div>
   );

@@ -56,11 +56,11 @@ export default function DeletionProgress({
           {format.count(progress.failed)}
         </InfoList.Row>
       </InfoList>
-      <Callout title="Keep this window open">
-        Closing it stops the deletion after the current batch.
+      <Callout title="Stay on this page">
+        Leaving it stops the deletion after the current batch.
       </Callout>
       {progress.total > DELETE_BATCH_SIZE && (
-        <div className={s.actions}>
+        <div>
           <Button label="Stop" onClick={onStop} />
         </div>
       )}

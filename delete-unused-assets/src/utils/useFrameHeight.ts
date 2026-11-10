@@ -1,4 +1,4 @@
-import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { useEffect, useRef } from 'react';
 
 // The SDK auto-resizer takes the lowest bottom edge of every element on the
@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 // fit content nobody can see. Report the height of the Canvas box instead.
 // Render <Canvas noAutoResizer> and put the returned ref on an element inside
 // it.
-export function useFrameHeight(ctx: RenderModalCtx) {
+export function useFrameHeight(ctx: RenderConfigScreenCtx) {
   const ref = useRef<HTMLDivElement>(null);
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx;
