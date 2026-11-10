@@ -5,9 +5,6 @@ import Canvas from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
-import RadioGroupInput, {
-  type RadioGroupOption,
-} from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -47,48 +44,42 @@ type DirectProviderId = Exclude<ProviderId, 'alttext-ai'>;
 const PROVIDER_DETAILS: Record<
   ProviderId,
   {
-    hint: string;
-    apiKeyLabel: string;
+    /** What tells the provider apart from the others, under the field */
+    hint?: string;
     apiKeyPlaceholder: string | null;
-    apiKeyUrl: string;
-    modelLabel?: string;
+    apiKeyDocs: { label: string; to: string };
   }
 > = {
   'alttext-ai': {
-    hint: 'Uses the generation settings of your AltText.ai account. Needs an AltText.ai API key.',
-    apiKeyLabel: 'AltText.ai API key',
+    hint: 'Uses the generation settings of your AltText.ai account.',
     apiKeyPlaceholder: null,
-    apiKeyUrl: 'https://alttext.ai/account/api_keys',
+    apiKeyDocs: {
+      label: 'Get an AltText.ai API key',
+      to: 'https://alttext.ai/account/api_keys',
+    },
   },
   openai: {
-    hint: 'Sends each image with your prompt. Needs an OpenAI API key.',
-    apiKeyLabel: 'OpenAI API key',
-    apiKeyPlaceholder: 'sk-...',
-    apiKeyUrl: 'https://platform.openai.com/api-keys',
-    modelLabel: 'OpenAI model',
+    apiKeyPlaceholder: 'sk-…',
+    apiKeyDocs: {
+      label: 'Get an OpenAI API key',
+      to: 'https://platform.openai.com/api-keys',
+    },
   },
   anthropic: {
-    hint: 'Sends each image with your prompt. Needs an Anthropic API key.',
-    apiKeyLabel: 'Anthropic API key',
-    apiKeyPlaceholder: 'sk-ant-...',
-    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-    modelLabel: 'Claude model',
+    apiKeyPlaceholder: 'sk-ant-…',
+    apiKeyDocs: {
+      label: 'Get an Anthropic API key',
+      to: 'https://console.anthropic.com/settings/keys',
+    },
   },
   gemini: {
-    hint: 'Sends each image with your prompt. Needs a Gemini API key.',
-    apiKeyLabel: 'Gemini API key',
-    apiKeyPlaceholder: 'AIza...',
-    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
-    modelLabel: 'Gemini model',
+    apiKeyPlaceholder: 'AIza…',
+    apiKeyDocs: {
+      label: 'Get a Google Gemini API key',
+      to: 'https://aistudio.google.com/apikey',
+    },
   },
 };
-
-const PROVIDER_RADIO_OPTIONS: RadioGroupOption<ProviderId>[] =
-  PROVIDER_OPTIONS.map(({ value, label }) => ({
-    value,
-    label,
-    hint: PROVIDER_DETAILS[value].hint,
-  }));
 
 function isDirectProvider(provider: ProviderId): provider is DirectProviderId {
   return provider !== 'alttext-ai';
@@ -214,20 +205,13 @@ function configurationFieldErrors(
   apiKey: string,
   model: string,
   prompt: string,
-  details: (typeof PROVIDER_DETAILS)[ProviderId],
 ): { apiKey?: string; model?: string; prompt?: string } {
   const directProvider = isDirectProvider(provider);
 
   return {
-    apiKey: apiKey.trim() ? undefined : `${details.apiKeyLabel} is required.`,
-    model:
-      directProvider && !model.trim()
-        ? `${details.modelLabel || 'Model'} is required.`
-        : undefined,
-    prompt:
-      directProvider && !prompt.trim()
-        ? 'Prompt is required for direct AI providers.'
-        : undefined,
+    apiKey: apiKey.trim() ? undefined : 'Enter an API key.',
+    model: directProvider && !model.trim() ? 'Select a model.' : undefined,
+    prompt: directProvider && !prompt.trim() ? 'Enter a prompt.' : undefined,
   };
 }
 
@@ -236,7 +220,7 @@ function modelDiscoveryHint(
   discovery: ModelDiscoveryState,
 ): string {
   if (!apiKey.trim()) {
-    return 'Enter the API key to load the models.';
+    return 'Add an API key to load the models.';
   }
   if (discovery.isLoading) {
     return 'Loading the models…';
@@ -255,12 +239,14 @@ function modelDiscoveryHint(
 function saveDisabledReason(
   canEdit: boolean,
   hasExternalChanges: boolean,
-  validationError: string | null,
+  missing: ReturnType<typeof configurationFieldErrors>,
   isDirty: boolean,
 ): string | null {
   if (!canEdit) return READ_ONLY_REASON;
   if (hasExternalChanges) return 'Load the latest settings before you save.';
-  if (validationError) return validationError;
+  if (missing.apiKey) return 'Enter an API key before saving.';
+  if (missing.model) return 'Select a model before saving.';
+  if (missing.prompt) return 'Enter a prompt before saving.';
   if (!isDirty) return 'There are no changes to save.';
   return null;
 }
@@ -275,6 +261,7 @@ export default function ConfigScreen({ ctx }: Props) {
     useState(initialConfiguration);
   const [isSaving, setIsSaving] = useState(false);
   const [hasExternalChanges, setHasExternalChanges] = useState(false);
+  const [attemptedSave, setAttemptedSave] = useState(false);
 
   const externalConfigurationFingerprint = JSON.stringify(
     serializePluginConfiguration(initialConfiguration),
@@ -315,20 +302,20 @@ export default function ConfigScreen({ ctx }: Props) {
   const apiKey = getProviderApiKey(configuration);
   const model = getProviderModel(configuration);
   const discovery = useProviderModels(provider, apiKey);
-  const validationError = activeProviderValidationError(configuration);
   const details = PROVIDER_DETAILS[provider];
   const controlsDisabled = !canEdit || isSaving;
-  const fieldErrors = configurationFieldErrors(
+  const missingValues = configurationFieldErrors(
     provider,
     apiKey,
     model,
     configuration.prompt,
-    details,
   );
+  // The fields show their errors once a save was attempted
+  const fieldErrors = attemptedSave ? missingValues : {};
   const saveReason = saveDisabledReason(
     canEdit,
     hasExternalChanges,
-    validationError,
+    missingValues,
     isDirty,
   );
 
@@ -338,9 +325,8 @@ export default function ConfigScreen({ ctx }: Props) {
   );
 
   const save = async () => {
-    const currentValidationError = activeProviderValidationError(configuration);
-    if (currentValidationError) {
-      await ctx.alert(currentValidationError);
+    // The fields show what is missing
+    if (activeProviderValidationError(configuration)) {
       return;
     }
     if (hasExternalChanges) {
@@ -401,6 +387,7 @@ export default function ConfigScreen({ ctx }: Props) {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          setAttemptedSave(true);
           // The Save button stays focusable while disabled, so Enter in a
           // field can still submit the form
           if (!canEdit || !isDirty || isSaving) return;
@@ -409,20 +396,24 @@ export default function ConfigScreen({ ctx }: Props) {
       >
         <FieldWrapper
           label="Provider"
+          hint={details.hint}
           docs={{
             label: 'Where to find the alt text actions',
             to: ACTIONS_DOCUMENTATION_URL,
           }}
         >
-          <RadioGroupInput
+          <SelectInput
             value={provider}
             disabled={controlsDisabled}
-            options={PROVIDER_RADIO_OPTIONS}
-            onChange={(next) => {
-              if (next) {
+            options={PROVIDER_OPTIONS}
+            clearable={false}
+            isSearchable={false}
+            onChange={(_next, option) => {
+              if (option) {
+                setAttemptedSave(false);
                 setConfiguration((current) => ({
                   ...current,
-                  provider: next,
+                  provider: option.value,
                 }));
               }
             }}
@@ -430,19 +421,11 @@ export default function ConfigScreen({ ctx }: Props) {
         </FieldWrapper>
 
         <FieldWrapper
-          label={details.apiKeyLabel}
+          label="API key"
           required
           error={fieldErrors.apiKey}
-          hint={
-            <>
-              Create one in the{' '}
-              <a href={details.apiKeyUrl} target="_blank" rel="noreferrer">
-                {PROVIDER_LABELS[provider]} dashboard
-              </a>
-              . It's stored in the plugin settings, and the browser sends it
-              straight to {PROVIDER_LABELS[provider]}.
-            </>
-          }
+          hint={`Saved in the plugin settings. This browser sends it straight to ${PROVIDER_LABELS[provider]}.`}
+          docs={details.apiKeyDocs}
         >
           <PasswordInput
             value={apiKey}
@@ -460,7 +443,7 @@ export default function ConfigScreen({ ctx }: Props) {
 
         {isDirectProvider(provider) && (
           <FieldWrapper
-            label={details.modelLabel || 'Model'}
+            label="Model"
             required
             error={fieldErrors.model}
             hint={modelDiscoveryHint(apiKey, discovery)}

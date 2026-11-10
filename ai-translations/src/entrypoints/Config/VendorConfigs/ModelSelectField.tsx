@@ -97,7 +97,7 @@ export default function ModelSelectField({
     modelList.status === 'empty' || modelList.status === 'error';
 
   let hint: string | undefined;
-  if (idle) hint = 'Enter the API key to load the models.';
+  if (idle) hint = 'Add an API key to load the models.';
   else if (keyFailed && saved) {
     hint = 'Saved model. Pick another once the key works.';
   }

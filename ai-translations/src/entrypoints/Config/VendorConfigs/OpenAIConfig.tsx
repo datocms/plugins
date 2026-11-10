@@ -1,7 +1,7 @@
 /**
  * OpenAIConfig.tsx
- * Configuration component for OpenAI vendor settings: the settings section with
- * the API key and the model.
+ * Configuration component for OpenAI vendor settings: the API key and the
+ * model, right under the vendor choice.
  *
  * DESIGN DECISION: OpenAI, Gemini, and Anthropic configs are kept as separate
  * components despite their structural similarity. This approach was chosen because:
@@ -17,9 +17,8 @@
  */
 
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
-import StringInput from 'datocms-react-ui/StringInput';
-import { vendorSettingsTitle } from '../configConstants';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import { apiKeyDocs, apiKeyHint } from '../configConstants';
 import ModelSelectField, {
   type ModelList,
   modelListKeyError,
@@ -41,15 +40,15 @@ export default function OpenAIConfig({
   modelList,
 }: OpenAIConfigProps) {
   return (
-    <Page.Section>
-      <Page.SectionTitle>{vendorSettingsTitle('openai')}</Page.SectionTitle>
+    <>
       <FieldWrapper
         label="API key"
         required
+        hint={apiKeyHint('openai')}
+        docs={apiKeyDocs('openai')}
         error={modelListKeyError(modelList.status, 'OpenAI')}
       >
-        <StringInput
-          code
+        <PasswordInput
           name="openAIAPIKey"
           value={apiKey}
           onChange={(value) => setApiKey(value ?? '')}
@@ -63,6 +62,6 @@ export default function OpenAIConfig({
         onChange={setGptModel}
         modelList={modelList}
       />
-    </Page.Section>
+    </>
   );
 }

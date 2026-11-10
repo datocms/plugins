@@ -240,24 +240,16 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(
-      screen.getByRole('radiogroup', { name: 'Provider' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }),
-    ).toBeChecked();
-    expect(
-      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
-    ).not.toBeChecked();
-    expect(screen.getByLabelText('OpenAI API key*')).toBeRequired();
-    expect(screen.getByLabelText('OpenAI API key*')).toBeEnabled();
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveAttribute(
+    expect(shownValue(combobox('Provider'))).toBe('OpenAI');
+    expect(screen.getByLabelText('API key*')).toBeRequired();
+    expect(screen.getByLabelText('API key*')).toBeEnabled();
+    expect(screen.getByLabelText('API key*')).toHaveAttribute(
       'type',
       'password',
     );
-    expect(combobox('OpenAI model*')).toBeRequired();
+    expect(combobox('Model*')).toBeRequired();
     // Loaded models need no word under the select
-    expect(combobox('OpenAI model*')).not.toHaveAccessibleDescription();
+    expect(combobox('Model*')).not.toHaveAccessibleDescription();
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
     expect(
       screen.getByText('Faster answers at a higher cost from the provider.'),
@@ -278,17 +270,15 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    fireEvent.click(
-      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
-    );
-    expect(screen.getByLabelText('Anthropic API key*')).toHaveValue('');
-    expect(combobox('Claude model*')).toBeDisabled();
+    await pickOption(combobox('Provider'), 'Anthropic');
+    expect(screen.getByLabelText('API key*')).toHaveValue('');
+    expect(combobox('Model*')).toBeDisabled();
 
     modelMocks.listProviderModels.mockResolvedValueOnce([
       CLAUDE_OPUS,
       CLAUDE_SONNET,
     ]);
-    fireEvent.change(screen.getByLabelText('Anthropic API key*'), {
+    fireEvent.change(screen.getByLabelText('API key*'), {
       target: { value: 'sk-ant-project' },
     });
     expect(saveButton('Model provider')).toHaveAttribute(
@@ -302,12 +292,12 @@ describe('ConfigScreen', () => {
       'sk-ant-project',
       expect.any(AbortSignal),
     );
-    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
     expect(saveButton('Model provider')).not.toHaveAttribute('aria-disabled');
 
-    fireEvent.click(screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }));
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-project');
-    expect(shownValue(combobox('OpenAI model*'))).toBe(OPENAI_MODEL.label);
+    await pickOption(combobox('Provider'), 'OpenAI');
+    expect(screen.getByLabelText('API key*')).toHaveValue('sk-project');
+    expect(shownValue(combobox('Model*'))).toBe(OPENAI_MODEL.label);
   });
 
   it('offers only effort levels reported by the selected Claude model', async () => {
@@ -326,7 +316,7 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
     // Three levels: radios, each with what it trades under its name
     expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
     expect(effortRadios()).toEqual([
@@ -366,18 +356,14 @@ describe('ConfigScreen', () => {
     );
   });
 
-  it('names each provider option, with what it uses and needs', async () => {
+  it('names each provider option', async () => {
     const { ctx } = createCtx();
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(
-      within(screen.getByRole('radiogroup', { name: 'Provider' }))
-        .getAllByRole('radio')
-        .map((radio) => radio.closest('label')?.textContent),
-    ).toEqual([
-      'OpenAI (ChatGPT)Uses OpenAI models. Needs an OpenAI API key.',
-      'Anthropic (Claude)Uses Anthropic models. Needs an Anthropic API key.',
+    expect(await menuOptions(combobox('Provider'))).toEqual([
+      'OpenAI',
+      'Anthropic',
     ]);
   });
 
@@ -466,7 +452,7 @@ describe('ConfigScreen', () => {
       screen.getByText('Not available for the selected Claude model.'),
     ).toBeVisible();
 
-    await pickOption(combobox('Claude model*'), CLAUDE_OPUS.label);
+    await pickOption(combobox('Model*'), CLAUDE_OPUS.label);
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }));
     await clickSave('Model provider');
@@ -502,7 +488,7 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    const model = combobox('OpenAI model*');
+    const model = combobox('Model*');
     const models = await menuOptions(model);
     expect(models).toContain('gpt-6.1-sol');
     expect(models).not.toContain('gpt-image-2');
@@ -549,9 +535,9 @@ describe('ConfigScreen', () => {
     // A secondary action of the select: in the footer of its menu, not in
     // a row of buttons under the field
     expect(screen.queryByRole('button', { name: 'Refresh models' })).toBeNull();
-    await refreshModels(combobox('OpenAI model*'));
+    await refreshModels(combobox('Model*'));
     expect(screen.getByText('Waiting to load models…')).toBeVisible();
-    expect(combobox('OpenAI model*')).toBeDisabled();
+    expect(combobox('Model*')).toBeDisabled();
     await finishModelDiscovery();
 
     expect(modelMocks.listProviderModels).toHaveBeenCalledTimes(2);
@@ -560,7 +546,7 @@ describe('ConfigScreen', () => {
       'sk-project',
       expect.any(AbortSignal),
     );
-    const model = combobox('OpenAI model*');
+    const model = combobox('Model*');
     expect(shownValue(model)).toBe(OPENAI_MODEL.label);
     expect(await menuOptions(model)).toContain('gpt-6.1-sol');
     expect(saveButton('Model provider')).toHaveAttribute(
@@ -580,9 +566,9 @@ describe('ConfigScreen', () => {
     expect(
       screen.getByText('No compatible models for this API key.'),
     ).toBeVisible();
-    await refreshModels(combobox('OpenAI model*'));
+    await refreshModels(combobox('Model*'));
     await finishModelDiscovery();
-    expect(shownValue(combobox('OpenAI model*'))).toBe(OPENAI_MODEL.label);
+    expect(shownValue(combobox('Model*'))).toBe(OPENAI_MODEL.label);
     expect(
       screen.queryByText('No compatible models for this API key.'),
     ).not.toBeInTheDocument();
@@ -638,7 +624,7 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    await pickOption(combobox('Claude model*'), CLAUDE_SONNET.label);
+    await pickOption(combobox('Model*'), CLAUDE_SONNET.label);
     // From five levels to three: still radios
     expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
     expect(effortRadios()).toHaveLength(3);
@@ -667,7 +653,7 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(shownValue(combobox('Claude model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
     expect(saveButton('Model provider')).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -688,19 +674,16 @@ describe('ConfigScreen', () => {
         'Couldn’t load models with this API key: Temporary OpenAI error',
       ),
     ).toBeVisible();
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveAttribute(
+    expect(screen.getByLabelText('API key*')).toHaveAttribute(
       'aria-invalid',
       'true',
     );
-    expect(combobox('OpenAI model*')).not.toHaveAttribute(
-      'aria-invalid',
-      'true',
-    );
+    expect(combobox('Model*')).not.toHaveAttribute('aria-invalid', 'true');
     // Retry is an action in the footer of the menu, not a button under the
     // field: the select still opens
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    expect(combobox('OpenAI model*')).toBeEnabled();
-    await openMenu(combobox('OpenAI model*'));
+    expect(combobox('Model*')).toBeEnabled();
+    await openMenu(combobox('Model*'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {});
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
@@ -713,12 +696,12 @@ describe('ConfigScreen', () => {
       expect.any(AbortSignal),
     );
     expect(screen.queryByText(/Couldn’t load models/)).not.toBeInTheDocument();
-    await openMenu(combobox('OpenAI model*'));
+    await openMenu(combobox('Model*'));
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Refresh models' }),
     ).toBeVisible();
-    await closeMenu(combobox('OpenAI model*'));
+    await closeMenu(combobox('Model*'));
   });
 
   it('saves unrelated settings when provider discovery is unavailable', async () => {
@@ -779,9 +762,9 @@ describe('ConfigScreen', () => {
         }
       />,
     );
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-external');
+    expect(screen.getByLabelText('API key*')).toHaveValue('sk-external');
 
-    fireEvent.change(screen.getByLabelText('OpenAI API key*'), {
+    fireEvent.change(screen.getByLabelText('API key*'), {
       target: { value: 'sk-local-edit' },
     });
     rerender(
@@ -794,34 +777,30 @@ describe('ConfigScreen', () => {
       />,
     );
 
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue(
-      'sk-local-edit',
-    );
+    expect(screen.getByLabelText('API key*')).toHaveValue('sk-local-edit');
   });
 
-  it('validates only the selected provider inline', () => {
+  it('validates only the selected provider inline', async () => {
     const { alert, ctx, updatePluginParameters } = createCtx({
       parameters: {},
     });
     render(<ConfigScreen ctx={ctx} />);
 
-    fireEvent.click(
-      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
-    );
+    await pickOption(combobox('Provider'), 'Anthropic');
     fireEvent.click(saveButton('Model provider'));
 
-    expect(screen.getByText('Anthropic API key is required.')).toBeVisible();
-    expect(screen.getByLabelText('Anthropic API key*')).toHaveAttribute(
+    expect(screen.getByText('Enter an API key.')).toBeVisible();
+    expect(screen.getByLabelText('API key*')).toHaveAttribute(
       'aria-invalid',
       'true',
     );
     // Without a key no model can be picked: only the key has an error, and
     // the hint of the model says why it is empty
-    expect(screen.queryByText('Claude model is required.')).toBeNull();
+    expect(screen.queryByText('Select a model.')).toBeNull();
     expect(
-      screen.getByText('Enter an API key to load compatible models.'),
+      screen.getByText('Add an API key to load the models.'),
     ).toBeVisible();
-    expect(screen.queryByText('OpenAI API key is required.')).toBeNull();
+    expect(screen.getAllByText('Enter an API key.')).toHaveLength(1);
     expect(updatePluginParameters).not.toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();
   });
@@ -1067,14 +1046,9 @@ describe('ConfigScreen', () => {
     expect(notice.closest('.Callout')).toHaveTextContent(
       'Ask a project admin if something needs to change.',
     );
-    expect(
-      screen.getByRole('radio', { name: /^OpenAI \(ChatGPT\)/ }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole('radio', { name: /^Anthropic \(Claude\)/ }),
-    ).toBeDisabled();
-    expect(screen.getByLabelText('OpenAI API key*')).toBeDisabled();
-    expect(combobox('OpenAI model*')).toBeDisabled();
+    expect(combobox('Provider')).toBeDisabled();
+    expect(screen.getByLabelText('API key*')).toBeDisabled();
+    expect(combobox('Model*')).toBeDisabled();
     expect(combobox('Reasoning effort')).toBeDisabled();
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeDisabled();
     // The instructions stay readable and copyable: read-only, not disabled
@@ -1196,7 +1170,7 @@ describe('ConfigScreen', () => {
       />,
     );
 
-    expect(screen.getByLabelText('OpenAI API key*')).toHaveValue('sk-external');
+    expect(screen.getByLabelText('API key*')).toHaveValue('sk-external');
     expect(
       screen.getByRole('textbox', { name: 'Additional instructions' }),
     ).toHaveValue('A local edit.');

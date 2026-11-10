@@ -60,7 +60,7 @@ describe('getStartBlockedReason', () => {
           }),
         }),
       ),
-    ).toBe('Set up an AI vendor in the plugin settings first.');
+    ).toBe('Set up an AI provider in the plugin settings first.');
   });
 
   it('explains a missing source locale before missing targets', () => {

@@ -274,10 +274,10 @@ describe('AITranslationsPickerModal', () => {
     });
 
     const callout = screen
-      .getByText('No AI vendor set up')
+      .getByText('No AI provider set up')
       .closest('[role="alert"]');
     expect(callout?.textContent).toContain(
-      "These records can't be translated yet. Add the credentials of an AI vendor in the plugin settings.",
+      "These records can't be translated yet. Add the credentials of an AI provider in the plugin settings.",
     );
     // The next step is a link that opens in a new tab, so the dialog stays.
     const settingsLink = screen.getByRole('link', { name: 'plugin settings' });
@@ -339,7 +339,7 @@ describe('AITranslationsPickerModal', () => {
       .getByText('Translation not set up')
       .closest('[role="alert"]');
     expect(callout?.textContent).toContain('Ask an admin to set it up.');
-    expect(screen.queryByText(/AI vendor/)).toBeNull();
+    expect(screen.queryByText(/AI provider/)).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
 
     cleanup();

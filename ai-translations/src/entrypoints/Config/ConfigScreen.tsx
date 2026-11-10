@@ -19,9 +19,6 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
-import RadioGroupInput, {
-  type RadioGroupOption,
-} from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import SwitchList from 'datocms-react-ui/SwitchList';
@@ -46,7 +43,6 @@ import {
 } from '../../utils/translation/DeepLSettings';
 import { listRelevantGeminiModels } from '../../utils/translation/GeminiModels';
 import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
-import { getVendorIcon } from '../Sidebar/Components/vendorIcon';
 import styles from './Config.module.css';
 import {
   getVendorLabel,
@@ -649,31 +645,19 @@ function checkDeepLConfigDirty(
   );
 }
 
-/** What each vendor is and needs, under its name in the vendor choice. */
-const VENDOR_HINTS: Record<VendorType, string> = {
-  openai: 'GPT models with an editable prompt. Needs an OpenAI API key.',
-  google: 'Gemini models with an editable prompt. Needs a Google API key.',
-  anthropic:
-    'Claude models with an editable prompt. Needs an Anthropic API key.',
-  deepl:
-    'Machine translation with formality and glossaries. Needs a DeepL API key.',
-  yandex: 'Machine translation. Needs a Yandex Cloud API key.',
+/**
+ * What tells a vendor apart from the others, under the Provider field while
+ * it is picked. The three model vendors work alike: they have no hint.
+ */
+const VENDOR_HINTS: Partial<Record<VendorType, string>> = {
+  deepl: 'Machine translation with formality and glossaries.',
+  yandex: 'Machine translation.',
 };
 
-/** The logo of a vendor, at the end of its option. */
-function VendorLogo({ vendor }: { vendor: VendorType }) {
-  const Logo = getVendorIcon(vendor);
-  return <Logo />;
-}
-
-const VENDOR_OPTIONS: RadioGroupOption<VendorType>[] = VENDORS.map(
-  (vendor) => ({
-    value: vendor,
-    label: getVendorLabel(vendor),
-    hint: VENDOR_HINTS[vendor],
-    icon: <VendorLogo vendor={vendor} />,
-  }),
-);
+const VENDOR_OPTIONS = VENDORS.map((vendor) => ({
+  value: vendor,
+  label: getVendorLabel(vendor),
+}));
 
 const FIELD_TYPE_OPTIONS = Object.entries(translateFieldTypes).map(
   ([value, label]) => ({ value, label }),
@@ -1262,14 +1246,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   // one. Enter in a select never saves it.
   return (
     <form onSubmit={handleSubmit} onKeyDown={keepEnterInSelects} noValidate>
-      <FieldWrapper label="AI vendor">
-        <RadioGroupInput
+      <FieldWrapper label="Provider" hint={VENDOR_HINTS[vendor]}>
+        <SelectInput
           name="vendor"
           value={vendor}
           onChange={(next) => {
-            if (next) setVendor(next);
+            const picked = VENDORS.find((entry) => entry === next);
+            if (picked) setVendor(picked);
           }}
           options={VENDOR_OPTIONS}
+          clearable={false}
+          isSearchable={false}
         />
       </FieldWrapper>
 

@@ -6,6 +6,13 @@ import { dropFocus } from '../../test/dropFocus';
 import { makeCtx, renderWithCanvas } from '../../test/renderWithCanvas';
 import ConfigScreen from './ConfigScreen';
 
+/** Picks a provider in the Provider select (a native select in these tests) */
+function pickProvider(value: string) {
+  fireEvent.change(screen.getByRole('combobox', { name: /^Provider/ }), {
+    target: { value },
+  });
+}
+
 type StubOption = { label: ReactNode; value: string };
 type StubGroup = { label: string; options: StubOption[] };
 
@@ -243,7 +250,7 @@ describe('config field exclusions', () => {
       expect(options().querySelectorAll('option')).toHaveLength(2),
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /^Yandex Translate/ }));
+    pickProvider('yandex');
     view.rerenderWith(updatedContext(ctx, { colorScheme: 'dark' }));
 
     expect(options().querySelectorAll('option')).toHaveLength(2);
@@ -396,7 +403,7 @@ describe('config screen form', () => {
     openAdvanced();
     expect(screen.queryByLabelText(/^Translation prompt/)).toBeNull();
 
-    fireEvent.click(screen.getByRole('radio', { name: /^OpenAI/ }));
+    pickProvider('openai');
 
     expect(screen.getByLabelText(/^Translation prompt/)).toBeInTheDocument();
     // Let the roles and the field loads of the screen settle inside act
@@ -523,10 +530,9 @@ describe('config screen form', () => {
       'Defaults restored. Save to apply them.',
     );
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
-    expect(
-      (screen.getByRole('radio', { name: /^OpenAI/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    expect(screen.getByRole('combobox', { name: /^Provider/ })).toHaveValue(
+      'openai',
+    );
     expect(
       await disabledReason(
         screen.getByRole('button', { name: 'Restore defaults' }),

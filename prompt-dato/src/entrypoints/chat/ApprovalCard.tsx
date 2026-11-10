@@ -156,7 +156,7 @@ type Props = {
   ordinal: number;
   /** The provider of the settings can submit decisions */
   canDecide: boolean;
-  /** The name of the provider of the settings: "Google" */
+  /** The name of the provider of the settings: "Google Gemini" */
   providerLabel: string;
   /** Another turn runs, so no decision can start */
   busyElsewhere: boolean;

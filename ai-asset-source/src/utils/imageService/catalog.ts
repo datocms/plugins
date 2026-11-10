@@ -14,7 +14,7 @@ import type {
 
 export const providerOptions: Array<SelectOption<ProviderId>> = [
   { value: 'openai', label: 'OpenAI' },
-  { value: 'google', label: 'Google' },
+  { value: 'google', label: 'Google Gemini' },
 ];
 
 /** Where an admin checks the billing of the account of a key */

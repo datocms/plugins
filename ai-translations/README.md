@@ -8,13 +8,13 @@ Translates DatoCMS content between your project's locales with DeepL, OpenAI, Go
 
 Your project needs at least two locales. Install **AI Translations** from **Configuration → Plugins** and let it use the current user's API token, which bulk translations need to read and save records.
 
-In the plugin settings, pick an **AI Vendor**, enter its credentials and click **Save**:
+In the plugin settings, pick a **Provider**, enter its API key and click **Save**:
 
-- DeepL: an API key. For a Free-plan key, turn on **Use DeepL Free endpoint**. This happens automatically for keys ending in `:fx`.
+- DeepL: an API key. For a Free-plan key, turn on **Key from the DeepL Free plan**. This happens automatically for keys ending in `:fx`.
 - OpenAI: an API key, then a model.
 - Google Gemini: an API key from a Google project with the Generative Language API enabled, then a model.
-- Anthropic Claude: an API key, then a model.
-- Yandex Translate: a service-account API key with the `yc.ai.translate.execute` scope, from an account with the `ai.translate.user` role.
+- Anthropic: an API key, then a model.
+- Yandex: a service-account API key with the `yc.ai.translate.execute` scope, from an account with the `ai.translate.user` role.
 
 DeepL is the fastest and cheapest, and what we recommend for most projects. The other three also get the record's title and short text fields as context, which helps with tone and terminology, and follow a prompt you can edit. See [docs/Providers.md](docs/Providers.md) for DeepL glossaries, the prompt and other provider options.
 

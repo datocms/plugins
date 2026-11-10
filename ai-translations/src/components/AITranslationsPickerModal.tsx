@@ -132,7 +132,7 @@ interface Props {
   parameters: AITranslationsPickerModalParams;
 }
 
-const PROVIDER_MISSING_TITLE = 'No AI vendor set up';
+const PROVIDER_MISSING_TITLE = 'No AI provider set up';
 /**
  * The title for a role that can't open the plugin settings: the vendor is a
  * setting it never sees.
@@ -183,7 +183,7 @@ function skippedRecordCount(
 
 /**
  * Why nothing can start, with the page that fixes it for a role that can
- * open it, else who to ask: no AI vendor set up, a single locale, or no
+ * open it, else who to ask: no AI provider set up, a single locale, or no
  * field to translate in the selected models.
  */
 function NotTranslatableCallout({
@@ -210,7 +210,7 @@ function NotTranslatableCallout({
     return (
       <Callout tone="warning" title={PROVIDER_MISSING_TITLE}>
         These records can't be translated yet. Add the credentials of an AI
-        vendor in the {/* A new tab, so the dialog stays open. */}
+        provider in the {/* A new tab, so the dialog stays open. */}
         <Link to={buildPluginSettingsPath(ctx)} target="_blank">
           plugin settings
         </Link>
@@ -588,7 +588,7 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const handleStart = () => {
     if (blockedReason !== null || isSubmitting || !sourceLocale) return;
     if (!isProviderConfigured(pluginParams)) {
-      ctx.alert('No AI vendor is set up yet.');
+      ctx.alert('No AI provider is set up yet.');
       return;
     }
 

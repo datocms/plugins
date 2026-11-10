@@ -9,7 +9,7 @@
  * the title (the page's h1, with its help) and the submit button "Translate
  * records". The content is either a blank slate (loading, load error, a
  * single-locale project, a project without models) or the form: an
- * 800px `Page` with the "AI vendor" problem group (when no vendor is set
+ * 800px `Page` with the "AI provider" problem group (when no vendor is set
  * up), the "Finding records" group (while the run discovers records), then
  * the "Locales" and "Models" groups.
  *
@@ -763,7 +763,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
     if (!sourceLocale) return;
     if (!isProviderConfigured(pluginParams)) {
-      ctx.alert('No AI vendor is set up yet.');
+      ctx.alert('No AI provider is set up yet.');
       return;
     }
 
@@ -888,14 +888,14 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         <Page.Content>
           {!providerConfigured && !isCollecting && (
             <Page.Group
-              title="AI vendor"
+              title="AI provider"
               tone="warning"
               status={<Pill tone="warning">Not set up</Pill>}
             >
               {/* The callout says the problem in one sentence; the row
                   below has the action that fixes it. */}
               <Callout tone="warning">
-                No AI vendor is set up yet, so records can't be translated.
+                No AI provider is set up yet, so records can't be translated.
               </Callout>
               <SettingsList>
                 <SettingsList.Row

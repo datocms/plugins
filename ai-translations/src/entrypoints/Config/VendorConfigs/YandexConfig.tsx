@@ -1,7 +1,7 @@
 /**
  * YandexConfig.tsx
- * Configuration component for Yandex Translate vendor settings: the settings
- * section with the API key, the optional folder ID and a credentials test. A
+ * Configuration component for Yandex Translate vendor settings: the API key
+ * (right under the vendor choice), the optional folder ID and a credentials test. A
  * passed test is a toast (a finished action); a failed one is the error of
  * the key field until the key or the folder changes, as for DeepL.
  */
@@ -9,7 +9,7 @@
 import Button from 'datocms-react-ui/Button';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import IdText from 'datocms-react-ui/IdText';
-import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
 import StringInput from 'datocms-react-ui/StringInput';
 import { useId, useState } from 'react';
 import { useBusyFocus } from '../../../utils/retryFocus';
@@ -18,10 +18,7 @@ import {
   normalizeProviderError,
 } from '../../../utils/translation/ProviderErrors';
 import YandexProvider from '../../../utils/translation/providers/YandexProvider';
-import { vendorSettingsTitle } from '../configConstants';
-
-const SETUP_GUIDE_URL =
-  'https://aistudio.yandex.ru/docs/en/translate/quickstart.html';
+import { apiKeyDocs, apiKeyHint } from '../configConstants';
 
 /** The longest folder ID that Yandex Cloud accepts. */
 const FOLDER_ID_MAX_LENGTH = 50;
@@ -29,14 +26,10 @@ const FOLDER_ID_MAX_LENGTH = 50;
 const API_KEY_HINT = (
   <>
     Use a service-account API key with the <IdText id="ai.translate.user" />{' '}
-    role and the <IdText id="yc.ai.translate.execute" /> scope.
+    role and the <IdText id="yc.ai.translate.execute" /> scope.{' '}
+    {apiKeyHint('yandex')}
   </>
 );
-
-const SETUP_GUIDE_DOCS = {
-  label: 'Yandex Translate setup guide',
-  to: SETUP_GUIDE_URL,
-};
 
 export interface YandexConfigProps {
   yandexApiKey: string;
@@ -110,17 +103,15 @@ export default function YandexConfig({
   };
 
   return (
-    <Page.Section>
-      <Page.SectionTitle>{vendorSettingsTitle('yandex')}</Page.SectionTitle>
+    <>
       <FieldWrapper
         label="API key"
         required
         hint={API_KEY_HINT}
-        docs={SETUP_GUIDE_DOCS}
+        docs={apiKeyDocs('yandex')}
         error={testFailure ?? undefined}
       >
-        <StringInput
-          code
+        <PasswordInput
           name="yandexApiKey"
           value={yandexApiKey}
           onChange={handleApiKeyChange}
@@ -153,6 +144,6 @@ export default function YandexConfig({
           void handleTestCredentials();
         }}
       />
-    </Page.Section>
+    </>
   );
 }

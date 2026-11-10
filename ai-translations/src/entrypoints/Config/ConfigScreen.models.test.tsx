@@ -64,7 +64,7 @@ describe('config model lists', () => {
     renderScreen(context({ vendor: 'openai', apiKey: '', gptModel: 'None' }));
 
     expect(modelField()?.textContent).toContain(
-      'Enter the API key to load the models.',
+      'Add an API key to load the models.',
     );
     expect(openAIModels).not.toHaveBeenCalled();
     expect(await saveReason()).toBe('Enter the OpenAI API key.');

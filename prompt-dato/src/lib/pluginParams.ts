@@ -37,7 +37,7 @@ export const DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_RAW.trim();
 
 export const PROVIDER_CHOICES: ProviderChoice[] = [
   { id: 'current', label: 'OpenAI' },
-  { id: 'google', label: 'Google' },
+  { id: 'google', label: 'Google Gemini' },
   { id: 'anthropic', label: 'Anthropic' },
 ];
 

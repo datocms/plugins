@@ -1,8 +1,9 @@
 export const PROVIDER_IDS = [
   'alttext-ai',
+  // The order of the other AI plugins: OpenAI, Google Gemini, Anthropic
   'openai',
-  'anthropic',
   'gemini',
+  'anthropic',
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];

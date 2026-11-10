@@ -510,7 +510,7 @@ describe('TranslateSidebar', () => {
     renderSidebar(ctx);
 
     expect(
-      screen.getByText(/No AI vendor is set up yet\./),
+      screen.getByText(/No AI provider is set up yet\./),
     ).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).toBeNull();
 

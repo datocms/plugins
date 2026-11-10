@@ -4,9 +4,6 @@ import Callout from 'datocms-react-ui/Callout';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
 import PasswordInput from 'datocms-react-ui/PasswordInput';
-import RadioGroupInput, {
-  type RadioGroupOption,
-} from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
@@ -89,18 +86,38 @@ const REASONING_EFFORT_SELECT_OPTIONS = REASONING_EFFORT_OPTIONS.map(
   (option) => ({ value: option.id, label: option.label }),
 );
 
-const PROVIDER_HINTS: Record<ModelProvider, string> = {
-  current: 'Reads and changes the project. Each change asks for your approval.',
-  google: "Reads the project. It can't make changes.",
-  anthropic: "Reads the project. It can't make changes.",
+/** Where to get the API key of each provider */
+const API_KEY_DOCS: Record<ModelProvider, { label: string; to: string }> = {
+  current: {
+    label: 'Get an OpenAI API key',
+    to: 'https://platform.openai.com/api-keys',
+  },
+  google: {
+    label: 'Get a Google Gemini API key',
+    to: 'https://aistudio.google.com/apikey',
+  },
+  anthropic: {
+    label: 'Get an Anthropic API key',
+    to: 'https://console.anthropic.com/settings/keys',
+  },
 };
 
-const PROVIDER_OPTIONS: RadioGroupOption<ModelProvider>[] =
-  PROVIDER_CHOICES.map((choice) => ({
-    value: choice.id,
-    label: choice.label,
-    hint: PROVIDER_HINTS[choice.id],
-  }));
+/** The start of the keys of each provider, as the placeholder of the key */
+const API_KEY_PLACEHOLDERS: Record<ModelProvider, string> = {
+  current: 'sk-…',
+  google: 'AIza…',
+  anthropic: 'sk-ant-…',
+};
+
+// What sets the providers apart is said once, under the label of the field,
+// rather than repeated under two of the options
+const PROVIDER_FIELD_HINT =
+  'With OpenAI the chat can also change the project, and each change asks for your approval. The other providers can only read it.';
+
+const PROVIDER_OPTIONS = PROVIDER_CHOICES.map((choice) => ({
+  value: choice.id,
+  label: choice.label,
+}));
 
 type ModelSelectOption = { value: string; label: string };
 
@@ -326,11 +343,9 @@ function ConnectionSection({ ctx, params }: SectionProps) {
 
 // After an error, the error of the key or of the list tells why the field
 // is off
-function modelHint(provider: ModelProvider, modelsState: ModelsState) {
+function modelHint(modelsState: ModelsState) {
   if (modelsState === 'loading') return 'Loading the models…';
-  if (modelsState === 'idle') {
-    return `Enter the ${getProviderLabel(provider)} API key to load the models.`;
-  }
+  if (modelsState === 'idle') return 'Add an API key to load the models.';
   return undefined;
 }
 
@@ -343,12 +358,9 @@ function providerSaveReason(
   dirty: boolean,
   switchesProvider: boolean,
   key: string,
-  providerLabel: string,
 ): string | undefined {
   if (!dirty) return NO_CHANGES_REASON;
-  if (switchesProvider && !key) {
-    return `Enter the ${providerLabel} API key first.`;
-  }
+  if (switchesProvider && !key) return 'Enter an API key before saving.';
   return undefined;
 }
 
@@ -365,7 +377,7 @@ function apiKeyError(
   modelsCount: number,
 ) {
   if (modelsState === 'error' && isKeyRejection(modelsError)) {
-    return `${getProviderLabel(provider)} didn't accept this key. Check it and paste it again.`;
+    return `${getProviderLabel(provider)} didn't accept this key. Check that you copied the whole key.`;
   }
   if (modelsState === 'ready' && modelsCount === 0) {
     return `This key can't use any chat model. Check its permissions at ${getProviderLabel(provider)}, or use another key.`;
@@ -380,7 +392,6 @@ function modelError(modelsState: ModelsState, modelsError: string | null) {
 }
 
 type ModelFieldProps = {
-  provider: ModelProvider;
   value: string;
   models: ChatModelOption[];
   modelsState: ModelsState;
@@ -389,7 +400,6 @@ type ModelFieldProps = {
 };
 
 function ModelField({
-  provider,
   value,
   models,
   modelsState,
@@ -405,7 +415,7 @@ function ModelField({
     <FieldWrapper
       label="Model"
       required
-      hint={modelHint(provider, modelsState)}
+      hint={modelHint(modelsState)}
       error={modelError(modelsState, modelsError)}
     >
       <SelectInput
@@ -467,7 +477,6 @@ function ProviderForm({ ctx, params }: SectionProps) {
     providerDirty,
     provider !== savedProvider,
     trimmedKey,
-    providerLabel,
   );
 
   // The list follows the provider and the key only: picking a model doesn't
@@ -565,19 +574,22 @@ function ProviderForm({ ctx, params }: SectionProps) {
     <Page.Section>
       <Page.SectionTitle>Chat provider</Page.SectionTitle>
       <form onSubmit={handleSubmit}>
-        <FieldWrapper label="Provider">
-          <RadioGroupInput
+        <FieldWrapper label="Provider" hint={PROVIDER_FIELD_HINT}>
+          <SelectInput
             value={provider}
-            onChange={(next) => {
-              if (next) setProvider(next);
+            onChange={(_next, option) => {
+              if (option) setProvider(option.value);
             }}
             options={PROVIDER_OPTIONS}
+            clearable={false}
+            isSearchable={false}
           />
         </FieldWrapper>
         <FieldWrapper
-          label={`${providerLabel} API key`}
+          label="API key"
           required
           hint={`Saved in the plugin settings. This browser sends it straight to ${providerLabel}.`}
+          docs={API_KEY_DOCS[provider]}
           error={apiKeyError(provider, modelsState, modelsError, models.length)}
         >
           <PasswordInput
@@ -587,12 +599,12 @@ function ProviderForm({ ctx, params }: SectionProps) {
                 setMapValue(current, provider, next ?? ''),
               );
             }}
+            placeholder={API_KEY_PLACEHOLDERS[provider]}
             autoComplete="off"
             spellCheck={false}
           />
         </FieldWrapper>
         <ModelField
-          provider={provider}
           value={selectedMainModel}
           models={models}
           modelsState={modelsState}

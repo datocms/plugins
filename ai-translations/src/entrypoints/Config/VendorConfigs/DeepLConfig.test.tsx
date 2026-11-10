@@ -102,7 +102,7 @@ async function requestsSettled(fetchMock: ReturnType<typeof stubDeepL>) {
 }
 
 function apiKeyInput() {
-  return screen.getByRole('textbox', { name: /^API key/ });
+  return screen.getByLabelText(/^API key/);
 }
 
 function testButton() {

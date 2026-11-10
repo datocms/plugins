@@ -1,13 +1,12 @@
 /**
  * AnthropicConfig.tsx
- * Configuration component for Anthropic Claude vendor settings: the settings
- * section with the API key and the model.
+ * Configuration component for Anthropic Claude vendor settings: the API
+ * key and the model, right under the vendor choice.
  */
 
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
-import StringInput from 'datocms-react-ui/StringInput';
-import { vendorSettingsTitle } from '../configConstants';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import { apiKeyDocs, apiKeyHint } from '../configConstants';
 import ModelSelectField, {
   type ModelList,
   modelListKeyError,
@@ -29,15 +28,15 @@ export default function AnthropicConfig({
   modelList,
 }: AnthropicConfigProps) {
   return (
-    <Page.Section>
-      <Page.SectionTitle>{vendorSettingsTitle('anthropic')}</Page.SectionTitle>
+    <>
       <FieldWrapper
         label="API key"
         required
+        hint={apiKeyHint('anthropic')}
+        docs={apiKeyDocs('anthropic')}
         error={modelListKeyError(modelList.status, 'Anthropic')}
       >
-        <StringInput
-          code
+        <PasswordInput
           name="anthropicApiKey"
           value={anthropicApiKey}
           onChange={(value) => setAnthropicApiKey(value ?? '')}
@@ -51,6 +50,6 @@ export default function AnthropicConfig({
         onChange={setAnthropicModel}
         modelList={modelList}
       />
-    </Page.Section>
+    </>
   );
 }

@@ -479,7 +479,7 @@ describe('AIBulkTranslationsPage', () => {
     await expectDisabledWithReason(primary, 'Pick at least one model first.');
   });
 
-  it('keeps the form editable and points to the plugin settings when no AI vendor is set up', async () => {
+  it('keeps the form editable and points to the plugin settings when no AI provider is set up', async () => {
     const { ctx } = renderPage({
       pluginParams: { ...pluginParams, apiKey: '' },
     });
@@ -491,18 +491,18 @@ describe('AIBulkTranslationsPage', () => {
     expect(await screen.findByText('Articles fields: title')).toBeTruthy();
 
     expect(
-      screen.getByRole('heading', { level: 2, name: 'AI vendor' }),
+      screen.getByRole('heading', { level: 2, name: 'AI provider' }),
     ).toBeTruthy();
     expect(screen.getByText('Not set up')).toBeTruthy();
     expect(
       screen.getByText(
-        /No AI vendor is set up yet, so records can't be translated\./,
+        /No AI provider is set up yet, so records can't be translated\./,
       ),
     ).toBeTruthy();
     expect(screen.getByText('Vendor credentials')).toBeTruthy();
     await expectDisabledWithReason(
       primaryButton(),
-      'Set up an AI vendor in the plugin settings first.',
+      'Set up an AI provider in the plugin settings first.',
     );
 
     // The row of the problem group opens the plugin settings

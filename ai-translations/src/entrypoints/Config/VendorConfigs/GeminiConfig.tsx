@@ -1,13 +1,12 @@
 /**
  * GeminiConfig.tsx
- * Configuration component for Google Gemini vendor settings: the settings
- * section with the API key and the model.
+ * Configuration component for Google Gemini vendor settings: the API
+ * key and the model, right under the vendor choice.
  */
 
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
-import { Page } from 'datocms-react-ui/Page';
-import StringInput from 'datocms-react-ui/StringInput';
-import { vendorSettingsTitle } from '../configConstants';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
+import { apiKeyDocs, apiKeyHint } from '../configConstants';
 import ModelSelectField, {
   type ModelList,
   modelListKeyError,
@@ -29,15 +28,15 @@ export default function GeminiConfig({
   modelList,
 }: GeminiConfigProps) {
   return (
-    <Page.Section>
-      <Page.SectionTitle>{vendorSettingsTitle('google')}</Page.SectionTitle>
+    <>
       <FieldWrapper
         label="API key"
         required
+        hint={apiKeyHint('google')}
+        docs={apiKeyDocs('google')}
         error={modelListKeyError(modelList.status, 'Google')}
       >
-        <StringInput
-          code
+        <PasswordInput
           name="googleApiKey"
           value={googleApiKey}
           onChange={(value) => setGoogleApiKey(value ?? '')}
@@ -51,6 +50,6 @@ export default function GeminiConfig({
         onChange={setGeminiModel}
         modelList={modelList}
       />
-    </Page.Section>
+    </>
   );
 }

@@ -39,11 +39,11 @@ export const VENDORS: readonly VendorId[] = [
 ];
 
 const VENDOR_LABELS: Record<VendorId, string> = {
-  openai: 'OpenAI (ChatGPT)',
-  google: 'Google (Gemini)',
-  anthropic: 'Anthropic (Claude)',
+  openai: 'OpenAI',
+  google: 'Google Gemini',
+  anthropic: 'Anthropic',
   deepl: 'DeepL',
-  yandex: 'Yandex Translate',
+  yandex: 'Yandex',
 };
 
 /**
@@ -56,14 +56,51 @@ export function getVendorLabel(vendor: VendorId): string {
   return VENDOR_LABELS[vendor] ?? VENDOR_LABELS.yandex;
 }
 
+/** Where to get the API key of each vendor: the `docs` of its key field. */
+const API_KEY_DOCS: Record<VendorId, { label: string; to: string }> = {
+  openai: {
+    label: 'Get an OpenAI API key',
+    to: 'https://platform.openai.com/api-keys',
+  },
+  google: {
+    label: 'Get a Google Gemini API key',
+    to: 'https://aistudio.google.com/apikey',
+  },
+  anthropic: {
+    label: 'Get an Anthropic API key',
+    to: 'https://console.anthropic.com/settings/keys',
+  },
+  deepl: {
+    label: 'Get a DeepL API key',
+    to: 'https://www.deepl.com/your-account/keys',
+  },
+  yandex: {
+    label: 'Get a Yandex API key',
+    to: 'https://aistudio.yandex.ru/docs/en/translate/quickstart.html',
+  },
+};
+
 /**
- * The title of the settings group of a vendor ("DeepL settings").
+ * The `docs` link of the API key field of a vendor.
  *
  * @param vendor - The vendor identifier string.
- * @returns The group title.
  */
-export function vendorSettingsTitle(vendor: VendorId): string {
-  return `${getVendorLabel(vendor)} settings`;
+export function apiKeyDocs(vendor: VendorId): { label: string; to: string } {
+  return API_KEY_DOCS[vendor];
+}
+
+/**
+ * The hint of the API key field of a vendor: where the key is kept and where
+ * it goes. DeepL and Yandex don't accept requests from a browser, so their
+ * requests go through the DatoCMS CORS proxy.
+ *
+ * @param vendor - The vendor identifier string.
+ */
+export function apiKeyHint(vendor: VendorId): string {
+  const label = getVendorLabel(vendor);
+  return vendor === 'deepl' || vendor === 'yandex'
+    ? `Saved in the plugin settings. This browser sends it to ${label} through the DatoCMS CORS proxy.`
+    : `Saved in the plugin settings. This browser sends it straight to ${label}.`;
 }
 
 /**

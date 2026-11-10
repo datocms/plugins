@@ -8,14 +8,12 @@ import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
 import SelectInput from 'datocms-react-ui/SelectInput';
 import {
   type FormEvent,
-  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { GoogleIcon, OpenAiIcon } from '../icons';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
 import {
   normalizeConfigParameters,
@@ -43,17 +41,6 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-const providerDetails: Record<ProviderId, { hint: string; icon: ReactNode }> = {
-  openai: { hint: 'Needs an OpenAI API key.', icon: <OpenAiIcon /> },
-  google: { hint: 'Needs a Google AI Studio API key.', icon: <GoogleIcon /> },
-};
-
-const providerRadioOptions = providerOptions.map(({ value, label }) => ({
-  value,
-  label,
-  ...providerDetails[value],
-}));
-
 /** Where an admin gets an API key for each provider */
 const apiKeyDocs: Record<ProviderId, { label: string; to: string }> = {
   openai: {
@@ -61,9 +48,15 @@ const apiKeyDocs: Record<ProviderId, { label: string; to: string }> = {
     to: 'https://platform.openai.com/api-keys',
   },
   google: {
-    label: 'Get a Google AI Studio API key',
+    label: 'Get a Google Gemini API key',
     to: 'https://aistudio.google.com/apikey',
   },
+};
+
+/** The start of the keys of each provider, as the placeholder of the key */
+const apiKeyPlaceholders: Record<ProviderId, string> = {
+  openai: 'sk-…',
+  google: 'AIza…',
 };
 
 type ModelOptionsState = {
@@ -318,23 +311,28 @@ export default function ConfigScreen({ ctx }: Props) {
   return (
     <form onSubmit={handleSubmit}>
       <FieldWrapper label="Provider">
-        <RadioGroupInput
+        <SelectInput
           value={activeProvider}
-          onChange={(next) => next && handleProviderChange(next)}
-          options={providerRadioOptions}
+          options={providerOptions}
+          clearable={false}
+          isSearchable={false}
+          onChange={(_next, option) =>
+            option && handleProviderChange(option.value)
+          }
         />
       </FieldWrapper>
 
       <FieldWrapper
         label="API key"
         required
+        hint={`Saved in the plugin settings. This browser sends it straight to ${providerLabel}.`}
         docs={apiKeyDocs[activeProvider]}
         error={apiKeyFieldError ?? undefined}
       >
         <PasswordInput
           value={activeProviderValues.apiKey}
           onChange={(next) => handleApiKeyChange(next ?? '')}
-          placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
+          placeholder={apiKeyPlaceholders[activeProvider]}
           autoComplete="off"
           spellCheck={false}
         />

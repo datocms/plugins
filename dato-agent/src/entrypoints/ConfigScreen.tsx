@@ -33,7 +33,6 @@ import {
   activeModelMaxOutputTokens,
   activeReasoningEffort,
   normalizeConfig,
-  providerLabel,
   type ReasoningEffort,
   serializeConfig,
   withActiveApiKey,
@@ -56,8 +55,6 @@ type Props = {
 
 type ProviderOption = {
   label: string;
-  /** What the provider does for the agent, and what it needs */
-  hint: string;
   value: AgentProvider;
 };
 
@@ -104,42 +101,38 @@ type RoleDiscoveryState = {
 
 const MODEL_DISCOVERY_DELAY_MS = 500;
 
-// The plugin ships no logos of the providers: no option has an icon
-const PROVIDER_OPTIONS: ProviderOption[] = [
-  {
-    label: providerLabel('openai'),
-    hint: 'Uses OpenAI models. Needs an OpenAI API key.',
-    value: 'openai',
-  },
-  {
-    label: providerLabel('anthropic'),
-    hint: 'Uses Anthropic models. Needs an Anthropic API key.',
-    value: 'anthropic',
-  },
-];
-
 const PROVIDER_DETAILS: Record<
   AgentProvider,
   {
     name: string;
-    apiKeyLabel: string;
     apiKeyPlaceholder: string;
-    modelLabel: string;
+    apiKeyDocs: { label: string; to: string };
   }
 > = {
   openai: {
     name: 'OpenAI',
-    apiKeyLabel: 'OpenAI API key',
     apiKeyPlaceholder: 'sk-…',
-    modelLabel: 'OpenAI model',
+    apiKeyDocs: {
+      label: 'Get an OpenAI API key',
+      to: 'https://platform.openai.com/api-keys',
+    },
   },
   anthropic: {
     name: 'Anthropic',
-    apiKeyLabel: 'Anthropic API key',
     apiKeyPlaceholder: 'sk-ant-…',
-    modelLabel: 'Claude model',
+    apiKeyDocs: {
+      label: 'Get an Anthropic API key',
+      to: 'https://console.anthropic.com/settings/keys',
+    },
   },
 };
+
+const PROVIDER_OPTIONS: ProviderOption[] = (
+  ['openai', 'anthropic'] as const
+).map((value) => ({
+  label: PROVIDER_DETAILS[value].name,
+  value,
+}));
 
 const REASONING_OPTIONS: ReasoningOption[] = [
   { label: 'None', hint: 'Fastest answers', value: 'none' },
@@ -594,17 +587,14 @@ function useProviderModels(
 // there yet or empty. A failed load is the error of the API key, which must
 // change.
 function modelDiscoveryHint(
-  provider: AgentProvider,
   apiKey: string,
   discovery: ModelDiscoveryState,
 ): Message | undefined {
-  const { name } = PROVIDER_DETAILS[provider];
-
   if (!apiKey.trim()) {
-    return 'Enter an API key to load compatible models.';
+    return 'Add an API key to load the models.';
   }
   if (discovery.loading) {
-    return `Loading models from ${name}…`;
+    return 'Loading the models…';
   }
   if (discovery.error) {
     return undefined;
@@ -626,10 +616,10 @@ function configurationValidationError(
   const model = activeModel(config);
 
   if (!apiKey.trim()) {
-    return `${details.apiKeyLabel} is required.`;
+    return 'Enter an API key.';
   }
   if (!model.trim()) {
-    return `${details.modelLabel} is required.`;
+    return 'Select a model.';
   }
   if (discovery.error) {
     return discovery.error;
@@ -664,7 +654,7 @@ function modelFieldError(
   const details = PROVIDER_DETAILS[config.provider];
   const model = activeModel(config);
   if (!model.trim()) {
-    return `${details.modelLabel} is required.`;
+    return 'Select a model.';
   }
   if (
     discovery.loaded &&
@@ -801,9 +791,9 @@ function ModelField({
 
   return (
     <FieldWrapper
-      label={PROVIDER_DETAILS[config.provider].modelLabel}
+      label="Model"
       required
-      hint={modelDiscoveryHint(config.provider, apiKey, discovery)}
+      hint={modelDiscoveryHint(apiKey, discovery)}
       error={modelFieldError(attemptedSave, config, discovery)}
     >
       <SelectInput
@@ -960,12 +950,15 @@ function ProviderConfigurationFields({
   return (
     <>
       <FieldWrapper label="Provider">
-        <RadioGroupInput
+        <SelectInput
           value={config.provider}
           options={PROVIDER_OPTIONS}
           disabled={fieldsDisabled}
-          onChange={(provider) => {
-            if (provider) {
+          clearable={false}
+          isSearchable={false}
+          onChange={(_next, option) => {
+            if (option) {
+              const provider = option.value;
               setAttemptedSave(false);
               setConfig((current) => ({ ...current, provider }));
             }
@@ -973,12 +966,13 @@ function ProviderConfigurationFields({
         />
       </FieldWrapper>
       <FieldWrapper
-        label={details.apiKeyLabel}
+        label="API key"
         required
-        hint="Used by everyone in this project. Each editor still connects their own DatoCMS account."
+        hint={`Saved in the plugin settings. This browser sends it straight to ${details.name}.`}
+        docs={details.apiKeyDocs}
         error={
           attemptedSave && !apiKey.trim()
-            ? `${details.apiKeyLabel} is required.`
+            ? 'Enter an API key.'
             : discovery.error
         }
       >

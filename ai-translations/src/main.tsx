@@ -234,7 +234,7 @@ const EDITOR_NOT_SET_UP_MESSAGE =
 
 /**
  * Checks, before the records picker opens, the problems the picker can't fix:
- * no AI vendor set up, or a project with a single locale. Each shows a
+ * no AI provider set up, or a project with a single locale. Each shows a
  * non-blocking warning toast (with a way forward when the user has the
  * permission for it, else who to ask) and returns false.
  *
@@ -253,7 +253,7 @@ function preflightItemsTranslation(
       .customToast({
         type: 'warning',
         message: permissions.can_edit_schema
-          ? 'No AI vendor is set up yet.'
+          ? 'No AI provider is set up yet.'
           : EDITOR_NOT_SET_UP_MESSAGE,
         dismissOnPageChange: true,
         ...(permissions.can_edit_schema
@@ -712,7 +712,7 @@ connect({
         {
           id: 'not-configured',
           label: ctx.currentRole.meta.final_permissions.can_edit_schema
-            ? 'Set up an AI vendor'
+            ? 'Set up an AI provider'
             : "Translation isn't set up",
           icon: 'language',
         } as DropdownAction,

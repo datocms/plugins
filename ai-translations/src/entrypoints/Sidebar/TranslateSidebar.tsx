@@ -172,7 +172,7 @@ function VendorNotSetUp({ ctx }: PropTypes) {
     <SidebarPanel.Blank
       message={
         <>
-          No AI vendor is set up yet. Set one up in the{' '}
+          No AI provider is set up yet. Set one up in the{' '}
           <Link to={buildPluginSettingsPath(ctx)}>plugin settings</Link>.
         </>
       }

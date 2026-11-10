@@ -14,8 +14,8 @@ describe('plugin configuration', () => {
     expect(PROVIDER_OPTIONS).toEqual([
       { value: 'alttext-ai', label: 'AltText.ai' },
       { value: 'openai', label: 'OpenAI' },
-      { value: 'anthropic', label: 'Anthropic' },
       { value: 'gemini', label: 'Google Gemini' },
+      { value: 'anthropic', label: 'Anthropic' },
     ]);
     expect(PROVIDER_LABELS).toEqual(
       Object.fromEntries(

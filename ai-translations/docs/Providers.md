@@ -1,10 +1,10 @@
 # Providers and settings
 
-This page covers the plugin settings in more detail than the [README](../README.md). Pick the provider under **AI Vendor**, fill in **Vendor-specific settings**, adjust **General translation settings** if needed, and click **Save**.
+This page covers the plugin settings in more detail than the [README](../README.md). Pick a **Provider**, fill in its **API key** and the settings under it, adjust **Advanced** if needed, and click **Save**.
 
 ## DeepL
 
-- **Key:** use a key from your DeepL account, Pro or Free. Free keys end in `:fx` and need **Use DeepL Free endpoint (api-free.deepl.com)**. The switch turns on by itself when you paste such a key.
+- **Key:** use a key from your DeepL account, Pro or Free. Free keys end in `:fx` and need **Key from the DeepL Free plan**. The switch turns on by itself when you paste such a key.
 - **Test API Key** translates "Hello world" into German and shows the result. If a Free key is tested without the Free endpoint, the message tells you to turn the switch on.
 - **Formality** makes translations more or less formal. Target languages that DeepL can't adjust keep its default tone.
 - **Tag Settings → Preserve formatting** (on by default) asks DeepL to keep the original punctuation and casing instead of correcting them.
@@ -20,15 +20,15 @@ Open **Glossary Settings** to enforce your own terminology. The plugin lists the
 
 For each translation, the plugin picks the first match among: the exact language pair, any language into the target, the source into any language, and finally the default glossary. A glossary whose languages don't match the translation is skipped, and if DeepL still rejects it, the text is translated again without it. Glossaries are read through DeepL's v2 glossary API and only apply to DeepL.
 
-## OpenAI, Google Gemini and Anthropic Claude
+## OpenAI, Google Gemini and Anthropic
 
-| AI Vendor | Key | Model list |
+| Provider | API key | Model |
 | --- | --- | --- |
-| **OpenAI (ChatGPT)** | A secret key from your OpenAI account. | **GPT Model** lists the chat models your key can use. Embedding, audio, moderation, image and realtime models are left out. |
-| **Google (Gemini)** | A key from a Google Cloud project with the Generative Language API enabled. Restrict it to that API and by HTTP referrer if you can. | **Gemini Model** lists the text-generation models of that API. |
-| **Anthropic (Claude)** | A key from the Anthropic Console. | **Claude Model** lists the models your key can use. |
+| **OpenAI** | A secret key from your OpenAI account. | The list has the chat models your key can use. Embedding, audio, moderation, image and realtime models are left out. |
+| **Google Gemini** | A key from a Google Cloud project with the Generative Language API enabled. Restrict it to that API and by HTTP referrer if you can. | The list has the text-generation models of that API. |
+| **Anthropic** | A key from the Anthropic Console. | The list has the models your key can use. |
 
-The lists load once you enter a valid key. If a list shows "Invalid API Key", check that the key matches the selected vendor.
+The lists load once you enter a valid key. If a list shows "Invalid API Key", check that the key matches the selected provider.
 
 ### The translation prompt
 

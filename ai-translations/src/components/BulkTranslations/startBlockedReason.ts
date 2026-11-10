@@ -28,7 +28,7 @@ export function getStartBlockedReason(a: {
   const { readiness, models } = a;
 
   if (!a.providerConfigured) {
-    return 'Set up an AI vendor in the plugin settings first.';
+    return 'Set up an AI provider in the plugin settings first.';
   }
   if (readiness.missingSourceLocale) {
     return 'Pick the locale to translate from first.';

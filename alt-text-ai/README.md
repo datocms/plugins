@@ -8,8 +8,8 @@ Generate alt text for image assets from DatoCMS `file` and `gallery` fields or d
 | --- | --- |
 | AltText.ai | [AltText.ai API key](https://alttext.ai/account/api_keys) |
 | OpenAI | [OpenAI API key](https://platform.openai.com/api-keys) and an image-input model |
-| Anthropic Claude | [Anthropic API key](https://console.anthropic.com/settings/keys) and an image-input model |
-| Google Gemini | [Gemini API key](https://aistudio.google.com/apikey) and an image-input model |
+| Anthropic | [Anthropic API key](https://console.anthropic.com/settings/keys) and an image-input model |
+| Google Gemini | [Google Gemini API key](https://aistudio.google.com/apikey) and an image-input model |
 
 For direct model providers, the plugin loads every model ID returned by the provider's model-list API after an API key is entered. It does not recommend or preselect a model. Choose one that accepts image input and returns text, or enter a model ID manually.
 
@@ -18,7 +18,7 @@ For direct model providers, the plugin loads every model ID returned by the prov
 1. Grant the plugin the `currentUserAccessToken` permission when installing it. The plugin needs this permission to retrieve selected assets and update their default metadata in the current DatoCMS environment.
 2. Open the plugin settings and choose an alt text provider.
 3. Enter that provider's API key.
-4. For OpenAI, Anthropic, or Gemini, select or enter a vision-capable model and review the prompt template.
+4. For OpenAI, Anthropic, or Google Gemini, select or enter a vision-capable model and review the prompt template.
 5. Save the settings.
 
 The prompt template for direct model providers supports these placeholders:

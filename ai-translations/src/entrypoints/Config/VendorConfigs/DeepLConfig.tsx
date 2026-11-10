@@ -1,7 +1,7 @@
 /**
  * DeepLConfig.tsx
- * Configuration component for DeepL vendor settings: the settings section
- * with the API key, its test, the endpoint and the formality, then the
+ * Configuration component for DeepL vendor settings: the API key (right
+ * under the vendor choice), its test, the endpoint and the formality, then the
  * sections that open and close for the tag handling and the glossaries. A
  * passed key test is a toast (a finished action); a failed one is the error
  * of the key field until the key or the endpoint changes.
@@ -12,6 +12,7 @@ import Button from 'datocms-react-ui/Button';
 import { useCtx } from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import { Page } from 'datocms-react-ui/Page';
+import PasswordInput from 'datocms-react-ui/PasswordInput';
 import RadioGroupInput, {
   type RadioGroupOption,
 } from 'datocms-react-ui/RadioGroupInput';
@@ -26,7 +27,7 @@ import {
   type DeepLFormalitySetting,
 } from '../../../utils/translation/DeepLSettings';
 import styles from '../Config.module.css';
-import { vendorSettingsTitle } from '../configConstants';
+import { apiKeyDocs, apiKeyHint } from '../configConstants';
 import GlossaryPairEditor, {
   glossaryNoOptionsMessage,
   glossaryOptionsFrom,
@@ -362,58 +363,60 @@ export default function DeepLConfig({
 
   return (
     <>
-      <Page.Section>
-        <Page.SectionTitle>{vendorSettingsTitle('deepl')}</Page.SectionTitle>
-        <FieldWrapper label="API key" required error={testError ?? undefined}>
-          <StringInput
-            code
-            name="deeplApiKey"
-            value={deeplApiKey}
-            onChange={handleApiKeyChange}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </FieldWrapper>
-        <div className={styles.block}>
-          <Button
-            id={testId}
-            label="Test API key"
-            busy={isTesting}
-            disabled={testDisabled}
-            onClick={() => {
-              void handleTestApiKey();
-            }}
-          />
-        </div>
-        <FieldWrapper
-          hint={
-            autoToggledFree && deeplUseFree
-              ? 'Turned on because the key ends in :fx, like the keys of the Free plan.'
-              : 'Turns on by itself for keys that end in :fx.'
-          }
-        >
-          <SwitchInput
-            name="deeplUseFree"
-            label="Key from the DeepL Free plan"
-            value={deeplUseFree}
-            onChange={handleUseFreeChange}
-          />
-        </FieldWrapper>
-        <FieldWrapper
-          label="Formality"
-          hint="Some languages have no formal and informal forms. They keep DeepL's usual tone."
-        >
-          <RadioGroupInput
-            name="deeplFormality"
-            value={deeplFormality}
-            onChange={(next) => {
-              if (next) setDeeplFormality(next);
-            }}
-            options={FORMALITY_OPTIONS}
-          />
-        </FieldWrapper>
-      </Page.Section>
+      <FieldWrapper
+        label="API key"
+        required
+        hint={apiKeyHint('deepl')}
+        docs={apiKeyDocs('deepl')}
+        error={testError ?? undefined}
+      >
+        <PasswordInput
+          name="deeplApiKey"
+          value={deeplApiKey}
+          onChange={handleApiKeyChange}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </FieldWrapper>
+      <div className={styles.block}>
+        <Button
+          id={testId}
+          label="Test API key"
+          busy={isTesting}
+          disabled={testDisabled}
+          onClick={() => {
+            void handleTestApiKey();
+          }}
+        />
+      </div>
+      <FieldWrapper
+        hint={
+          autoToggledFree && deeplUseFree
+            ? 'Turned on because the key ends in :fx, like the keys of the Free plan.'
+            : 'Turns on by itself for keys that end in :fx.'
+        }
+      >
+        <SwitchInput
+          name="deeplUseFree"
+          label="Key from the DeepL Free plan"
+          value={deeplUseFree}
+          onChange={handleUseFreeChange}
+        />
+      </FieldWrapper>
+      <FieldWrapper
+        label="Formality"
+        hint="Some languages have no formal and informal forms. They keep DeepL's usual tone."
+      >
+        <RadioGroupInput
+          name="deeplFormality"
+          value={deeplFormality}
+          onChange={(next) => {
+            if (next) setDeeplFormality(next);
+          }}
+          options={FORMALITY_OPTIONS}
+        />
+      </FieldWrapper>
 
       <Page.Section>
         <Page.SectionTitle

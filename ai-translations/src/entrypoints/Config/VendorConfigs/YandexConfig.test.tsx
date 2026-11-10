@@ -31,18 +31,20 @@ afterEach(() => {
 });
 
 describe('YandexConfig', () => {
-  it('shows the API key as code, like the other vendors, and limits the optional Folder ID', () => {
+  it('hides the API key, like the other vendors, links to its setup and limits the optional Folder ID', () => {
     renderConfig();
 
     const guide = screen.getByRole('link', {
-      name: 'Yandex Translate setup guide',
+      name: 'Get a Yandex API key',
     });
     expect(guide.getAttribute('href')).toBe(
       'https://aistudio.yandex.ru/docs/en/translate/quickstart.html',
     );
     expect(guide.getAttribute('target')).toBe('_blank');
 
-    expect(screen.getByLabelText(/^API key/).getAttribute('type')).toBe('text');
+    expect(screen.getByLabelText(/^API key/).getAttribute('type')).toBe(
+      'password',
+    );
     const folderInput = screen.getByRole('textbox', {
       name: /^Folder ID/,
     }) as HTMLInputElement;
