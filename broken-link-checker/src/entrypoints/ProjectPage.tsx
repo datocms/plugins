@@ -15,6 +15,7 @@ import { REPORT_TEXTS } from '../project/PageToolbar';
 import { ReportLayout, ROW_BASE_URL } from '../project/ReportLayout';
 import { DEFAULT_TABLE_LAYOUT } from '../project/ReportTable';
 import { createProjectProducer } from '../project/scanProject';
+import { useFillingWidths } from '../project/useFillingWidths';
 import { useSettledScan } from '../project/useSettledScan';
 import { localeName } from '../report/format';
 import {
@@ -56,17 +57,7 @@ function usePageNavigation() {
     () => ({ location, navigate: (to) => setLocation(locationOf(to)) }),
     [location],
   );
-  const [listWidth, setListWidth] = useState<number>();
-  const [detailWidth, setDetailWidth] = useState<number>();
-  const widths = useMemo(
-    () => ({
-      listWidth,
-      onListWidthChange: setListWidth,
-      detailWidth,
-      onDetailWidthChange: setDetailWidth,
-    }),
-    [listWidth, detailWidth],
-  );
+  const widths = useFillingWidths();
   return {
     navigation,
     widths,
