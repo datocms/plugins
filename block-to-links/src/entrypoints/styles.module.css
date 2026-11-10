@@ -1,5 +1,5 @@
-/* The progress of the analysis and of the conversion: the bar, then its
-   step and its percentage */
+/* The progress of the analysis and of the conversion: the bar, then a
+   spinner with its step, and its percentage */
 .readout {
   display: flex;
   flex-direction: column;
@@ -10,6 +10,13 @@
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-m);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 0;
 }
 
 .meta {

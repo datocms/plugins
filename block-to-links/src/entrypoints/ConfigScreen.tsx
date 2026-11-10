@@ -22,6 +22,7 @@ import { Page } from 'datocms-react-ui/Page';
 import Pill from 'datocms-react-ui/Pill';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SelectInput from 'datocms-react-ui/SelectInput';
+import Spinner from 'datocms-react-ui/Spinner';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BlockIcon, CircleExclamationIcon, OpenInNewTabIcon } from '../icons';
@@ -67,6 +68,8 @@ type BlockPickerProps = {
   blockOptions: Option[];
   selectedBlockId: string;
   handleBlockSelect: (blockId: string) => void;
+  /** A conversion runs: the block can't change until it ends */
+  converting: boolean;
 };
 
 function BlockPicker({
@@ -75,6 +78,7 @@ function BlockPicker({
   blockOptions,
   selectedBlockId,
   handleBlockSelect,
+  converting,
 }: BlockPickerProps) {
   if (loadingBlocks) {
     return (
@@ -117,13 +121,18 @@ function BlockPicker({
   return (
     <FieldWrapper
       label="Block to convert"
-      hint="The conversion makes a model from the block, moves every block into a record of that model, and links the records where the blocks were."
+      hint={
+        converting
+          ? 'You can pick another block when the conversion ends.'
+          : 'The conversion makes a model from the block, moves every block into a record of that model, and links the records where the blocks were.'
+      }
     >
       <SelectInput
         value={selectedBlockId || null}
         onChange={(id) => handleBlockSelect(id ?? '')}
         options={blockOptions}
         placeholder="Pick a block"
+        disabled={converting}
       />
     </FieldWrapper>
   );
@@ -250,6 +259,39 @@ function AnalyzedSections({
   );
 }
 
+type ReadoutProps = {
+  /** The share of the task that is done, from 0 to 100 */
+  percentage: number;
+  /** The task, for the accessible name of the bar */
+  task: string;
+  /** What runs now */
+  status: string;
+  /** The step and the percentage, after the status */
+  meta: string;
+  details?: string;
+};
+
+/**
+ * The progress of a task with known steps: the bar gives the share, and the
+ * spinner before the status shows that the task runs while one step takes
+ * long and the bar stands still
+ */
+function Readout({ percentage, task, status, meta, details }: ReadoutProps) {
+  return (
+    <div className={s.readout}>
+      <ProgressBar value={percentage / 100} ariaLabel={task} />
+      <p className={s.line}>
+        <span className={s.status}>
+          <Spinner inline label={false} />
+          {status}
+        </span>
+        <span className={s.meta}>{meta}</span>
+      </p>
+      {details && <p className={s.meta}>{details}</p>}
+    </div>
+  );
+}
+
 type ConvertingSectionProps = {
   progress: ConversionProgress;
 };
@@ -258,20 +300,13 @@ function ConvertingSection({ progress }: ConvertingSectionProps) {
   return (
     <Page.Section>
       <Page.SectionTitle>Conversion</Page.SectionTitle>
-      <div className={s.readout}>
-        <ProgressBar
-          value={progress.percentage / 100}
-          ariaLabel={progress.stepDescription}
-        />
-        <p className={s.line}>
-          <span>{progress.stepDescription}</span>
-          <span className={s.meta}>
-            {`Step ${progress.currentStep} of ${progress.totalSteps}`} ·{' '}
-            {Math.round(progress.percentage)}%
-          </span>
-        </p>
-        {progress.details && <p className={s.meta}>{progress.details}</p>}
-      </div>
+      <Readout
+        percentage={progress.percentage}
+        task="Conversion of the block"
+        status={progress.stepDescription}
+        meta={`Step ${progress.currentStep} of ${progress.totalSteps} · ${Math.round(progress.percentage)}%`}
+        details={progress.details}
+      />
     </Page.Section>
   );
 }
@@ -553,28 +588,20 @@ export default function ConfigScreen({ ctx }: Props) {
         blockOptions={blockOptions}
         selectedBlockId={selectedBlockId}
         handleBlockSelect={handleBlockSelect}
+        converting={conversionState.status === 'converting'}
       />
 
       {conversionState.status === 'analyzing' && (
         <Page.Section>
           <Page.SectionTitle>Analysis</Page.SectionTitle>
-          <div className={s.readout}>
-            <ProgressBar
-              value={(conversionState.progressPercentage ?? 0) / 100}
-              ariaLabel="Analysis of the block"
-            />
-            <p className={s.line}>
-              <span>
-                {conversionState.progressMessage ||
-                  'Analyzing block structure...'}
-              </span>
-              {conversionState.progressPercentage !== undefined && (
-                <span className={s.meta}>
-                  {conversionState.progressPercentage}%
-                </span>
-              )}
-            </p>
-          </div>
+          <Readout
+            percentage={conversionState.progressPercentage ?? 0}
+            task="Analysis of the block"
+            status={
+              conversionState.progressMessage || 'Analyzing block structure...'
+            }
+            meta={`${Math.round(conversionState.progressPercentage ?? 0)}%`}
+          />
         </Page.Section>
       )}
 

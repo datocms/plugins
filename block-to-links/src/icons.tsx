@@ -1,11 +1,13 @@
 import type { SVGProps } from 'react';
 
-// Font Awesome glyphs. The components that show them set their size.
+// Font Awesome glyphs, 1em in the color of the text: the place sizes them.
 
 /** A block model: the icon of the blocks */
 export function BlockIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
+      width="1em"
+      height="1em"
       viewBox="0 0 512 512"
       fill="currentColor"
       aria-hidden="true"
@@ -20,6 +22,8 @@ export function BlockIcon(props: SVGProps<SVGSVGElement>) {
 export function CircleExclamationIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
+      width="1em"
+      height="1em"
       viewBox="0 0 512 512"
       fill="currentColor"
       aria-hidden="true"
@@ -34,6 +38,8 @@ export function CircleExclamationIcon(props: SVGProps<SVGSVGElement>) {
 export function OpenInNewTabIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
+      width="1em"
+      height="1em"
       viewBox="0 0 512 512"
       fill="currentColor"
       aria-hidden="true"
