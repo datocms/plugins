@@ -50,7 +50,7 @@ describe('collectSelection', () => {
         perPage: 25,
         query: '  matching words  ',
         model: 'filtered-model',
-        status: 'draft',
+        filters: [{ field: '_status', operator: 'eq', value: 'draft' }],
         orderBy: '_created_at_DESC',
       },
       { onProgress: progress },
@@ -105,7 +105,7 @@ describe('collectSelection', () => {
       {
         ...DEFAULT_QUERY_STATE,
         query: ' matching words ',
-        status: 'updated',
+        filters: [{ field: '_status', operator: 'eq', value: 'updated' }],
       },
       { modelIds: ['alpha', 'beta', 'alpha', 'gamma'], onProgress },
     );

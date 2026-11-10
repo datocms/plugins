@@ -33,7 +33,8 @@ const DEFAULT_STATE: QueryState = {
   perPage: 50,
   query: '',
   model: null,
-  status: null,
+  filters: [],
+  locale: null,
   orderBy: null,
 };
 

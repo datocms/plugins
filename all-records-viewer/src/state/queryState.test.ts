@@ -19,7 +19,9 @@ describe('query state', () => {
       perPage: 100,
       query: '',
       model: 'article',
-      status: 'updated',
+      // A link from before the tiles: its status becomes a tile
+      filters: [{ field: '_status', operator: 'eq', value: 'updated' }],
+      locale: null,
       orderBy: 'id_ASC',
     });
 
@@ -69,7 +71,7 @@ describe('query state', () => {
     expect(
       updateQueryState(
         { ...DEFAULT_QUERY_STATE, orderBy: '_status_ASC' },
-        { status: 'published' },
+        { filters: [{ field: '_status', operator: 'eq', value: 'published' }] },
       ).orderBy,
     ).toBeNull();
   });
@@ -78,9 +80,9 @@ describe('query state', () => {
     expect(
       updateQueryState(
         { ...DEFAULT_QUERY_STATE, page: 4, orderBy: 'id_ASC' },
-        { status: 'draft' },
+        { locale: 'it' },
       ),
-    ).toMatchObject({ page: 0, status: 'draft', orderBy: 'id_ASC' });
+    ).toMatchObject({ page: 0, locale: 'it', orderBy: 'id_ASC' });
 
     expect(
       updateQueryState(

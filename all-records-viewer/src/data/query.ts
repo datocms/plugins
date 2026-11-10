@@ -1,6 +1,13 @@
 import type { Client, RawApiTypes } from '@datocms/cma-client-browser';
 import { DEFAULT_PER_PAGE, PER_PAGE_OPTIONS } from '../constants';
-import type { OrderBy, PublicationStatus, QueryState, RawItem } from '../types';
+import {
+  cmaFieldFilters,
+  hasStatusFilter,
+  parseFilterConditions,
+  serializeFilterConditions,
+} from '../filters/filters';
+import type { FilterCondition, FilterValue } from '../filters/types';
+import type { OrderBy, QueryState, RawItem } from '../types';
 
 export const DEFAULT_ORDER_BY: OrderBy = '_updated_at_DESC';
 
@@ -17,12 +24,6 @@ const ORDER_BY_VALUES = new Set<OrderBy>([
   '_created_at_DESC',
   'id_ASC',
   'id_DESC',
-]);
-
-const PUBLICATION_STATUSES = new Set<PublicationStatus>([
-  'draft',
-  'updated',
-  'published',
 ]);
 
 export type ItemsPage = {
@@ -55,13 +56,22 @@ export function parseOrderBy(value: unknown): OrderBy | null {
     : null;
 }
 
-export function parsePublicationStatus(
-  value: unknown,
-): PublicationStatus | null {
-  return typeof value === 'string' &&
-    PUBLICATION_STATUSES.has(value as PublicationStatus)
-    ? (value as PublicationStatus)
-    : null;
+// The tiles of a state that may come from anywhere: well-formed ones only
+function normalizeFilters(value: unknown): FilterCondition[] {
+  return Array.isArray(value)
+    ? parseFilterConditions(serializeFilterConditions(value))
+    : [];
+}
+
+/**
+ * The `fields` of the filter of the CMA: every record (`_created_at` exists),
+ * then the tiles that have a value
+ */
+export function baseFieldFilters(
+  filters: readonly FilterCondition[],
+): Record<string, Record<string, FilterValue>> {
+  const fields = cmaFieldFilters(filters);
+  return { ...fields, _created_at: { exists: true, ...fields._created_at } };
 }
 
 export function normalizeQueryState(state: Partial<QueryState>): QueryState {
@@ -77,12 +87,16 @@ export function normalizeQueryState(state: Partial<QueryState>): QueryState {
       ? state.model.trim()
       : null;
   const orderBy = parseOrderBy(state.orderBy);
-  const status = parsePublicationStatus(state.status);
+  const filters = normalizeFilters(state.filters);
+  const locale =
+    typeof state.locale === 'string' && state.locale.trim()
+      ? state.locale.trim()
+      : null;
   const orderIsUnavailable =
     orderBy !== null &&
     ((!model && orderBy.startsWith('_preview_')) ||
       (model !== null && orderBy.startsWith('_model_')) ||
-      (status !== null && orderBy.startsWith('_status_')));
+      (hasStatusFilter(filters) && orderBy.startsWith('_status_')));
 
   return {
     page: Math.min(
@@ -92,7 +106,8 @@ export function normalizeQueryState(state: Partial<QueryState>): QueryState {
     perPage,
     query: typeof state.query === 'string' ? state.query.trim() : '',
     model,
-    status,
+    filters,
+    locale,
     orderBy: orderIsUnavailable ? null : orderBy,
   };
 }
@@ -102,15 +117,9 @@ export function buildItemsListQuery(
   serverOrderBy?: string,
 ): ItemsListQuery {
   const state = normalizeQueryState(rawState);
-  const fields: Record<string, Record<string, unknown>> = {
-    _created_at: { exists: true },
+  const filter: Record<string, unknown> = {
+    fields: baseFieldFilters(state.filters),
   };
-
-  if (state.status) {
-    fields._status = { eq: state.status };
-  }
-
-  const filter: Record<string, unknown> = { fields };
 
   if (state.model) {
     filter.type = state.model;
@@ -144,6 +153,7 @@ export function buildItemsListQuery(
       limit: state.perPage,
     },
     filter,
+    ...(state.locale ? { locale: state.locale } : {}),
     // Text search deliberately keeps the API relevance order.
     ...(state.query ? {} : { order_by: stableOrderBy }),
   } as ItemsListQuery;

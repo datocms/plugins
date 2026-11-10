@@ -774,7 +774,9 @@ describe('AllRecordsPage states', () => {
     );
 
     await readyRecordCheckbox('record-1');
-    expect(screen.getByText('Status')).toBeInTheDocument();
+    // The column header, and the field of the "Status is Published" tile
+    expect(screen.getAllByText('Status')).toHaveLength(2);
+    expect(screen.getByRole('search')).toHaveTextContent('StatusisPublished');
     expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument();
   });

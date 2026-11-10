@@ -26,7 +26,7 @@ describe('record query', () => {
         page: 2,
         perPage: 100,
         model: 'article-model',
-        status: 'updated',
+        filters: [{ field: '_status', operator: 'eq', value: 'updated' }],
         orderBy: 'id_ASC',
       }),
     ).toEqual({
@@ -41,6 +41,27 @@ describe('record query', () => {
         },
       },
       order_by: 'id_ASC',
+    });
+  });
+
+  it('sends the tiles that have a value, and the locale', () => {
+    expect(
+      buildItemsListQuery({
+        filters: [
+          { field: '_created_at', operator: 'gt', value: '2026-01-01' },
+          { field: '_status', operator: 'in', value: ['draft', 'updated'] },
+          { field: 'id', operator: 'eq', value: null },
+        ],
+        locale: 'it',
+      }),
+    ).toMatchObject({
+      locale: 'it',
+      filter: {
+        fields: {
+          _created_at: { exists: true, gt: '2026-01-01' },
+          _status: { in: ['draft', 'updated'] },
+        },
+      },
     });
   });
 
@@ -85,7 +106,11 @@ describe('record query', () => {
         perPage: 77,
         query: '  hello ',
         model: ' ',
-        status: 'archived' as never,
+        filters: [
+          { field: '_status', operator: 'eq', value: null },
+          'nope',
+        ] as never,
+        locale: ' it ',
         orderBy: 'title_ASC' as never,
       }),
     ).toEqual({
@@ -93,7 +118,8 @@ describe('record query', () => {
       perPage: 50,
       query: 'hello',
       model: null,
-      status: null,
+      filters: [{ field: '_status', operator: 'eq', value: null }],
+      locale: 'it',
       orderBy: null,
     });
   });

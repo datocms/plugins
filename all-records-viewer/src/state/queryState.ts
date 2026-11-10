@@ -1,16 +1,14 @@
 import { DEFAULT_PER_PAGE, PAGE_ID, PER_PAGE_OPTIONS } from '../constants';
-import type {
-  OrderBy,
-  PublicationStatus,
-  QueryState,
-  SortableColumnId,
-} from '../types';
+import {
+  hasStatusFilter,
+  isMetaFilter,
+  parseFilterConditions,
+  serializeFilterConditions,
+} from '../filters/filters';
+import type { FilterCondition } from '../filters/types';
+import type { OrderBy, QueryState, SortableColumnId } from '../types';
 
-const PUBLICATION_STATUSES: PublicationStatus[] = [
-  'draft',
-  'updated',
-  'published',
-];
+const PUBLICATION_STATUSES = ['draft', 'updated', 'published'];
 
 const SORTABLE_COLUMNS: SortableColumnId[] = [
   '_preview',
@@ -26,7 +24,8 @@ export const DEFAULT_QUERY_STATE: QueryState = {
   perPage: DEFAULT_PER_PAGE,
   query: '',
   model: null,
-  status: null,
+  filters: [],
+  locale: null,
   orderBy: null,
 };
 
@@ -42,10 +41,19 @@ function parseNonNegativeInteger(
   return Number.isSafeInteger(parsed) ? parsed : fallback;
 }
 
-function parseStatus(value: string | null): PublicationStatus | null {
-  return PUBLICATION_STATUSES.includes(value as PublicationStatus)
-    ? (value as PublicationStatus)
-    : null;
+// The tiles of the URL. A link from before the tiles has `status`, which
+// becomes a "Status is …" tile.
+function parseFilters(params: URLSearchParams): FilterCondition[] {
+  const filters = parseFilterConditions(params.get('filters'));
+  const status = params.get('status');
+  if (
+    status &&
+    PUBLICATION_STATUSES.includes(status) &&
+    !params.has('filters')
+  ) {
+    filters.push({ field: '_status', operator: 'eq', value: status });
+  }
+  return filters;
 }
 
 export function isOrderBy(value: string | null): value is OrderBy {
@@ -67,7 +75,8 @@ export function parseQueryState(search: string): QueryState {
   );
   const query = params.get('query')?.trim() ?? '';
   const model = params.get('model') || null;
-  const status = parseStatus(params.get('status'));
+  const filters = parseFilters(params);
+  const locale = params.get('locale') || null;
   const rawOrderBy = params.get('orderBy');
   const orderBy = isOrderBy(rawOrderBy) ? rawOrderBy : null;
 
@@ -80,8 +89,9 @@ export function parseQueryState(search: string): QueryState {
       : DEFAULT_PER_PAGE,
     query,
     model,
-    status,
-    orderBy: normalizedUpdatedOrder({ query, model, status, orderBy }),
+    filters,
+    locale,
+    orderBy: normalizedUpdatedOrder({ query, model, filters, orderBy }),
   };
 }
 
@@ -100,8 +110,12 @@ export function serializeQueryState(state: QueryState): string {
   if (state.model) {
     params.set('model', state.model);
   }
-  if (state.status) {
-    params.set('status', state.status);
+  const filters = serializeFilterConditions(state.filters);
+  if (filters) {
+    params.set('filters', filters);
+  }
+  if (state.locale) {
+    params.set('locale', state.locale);
   }
   const orderBy = normalizedUpdatedOrder(state);
   if (orderBy) {
@@ -128,13 +142,15 @@ export function buildPluginPageUrl(args: {
 function normalizedUpdatedOrder(args: {
   query: string;
   model: string | null;
-  status: PublicationStatus | null;
+  filters: readonly FilterCondition[];
   orderBy: OrderBy | null;
 }): OrderBy | null {
   if (args.query) return null;
   if (!args.model && args.orderBy?.startsWith('_preview_')) return null;
   if (args.model && args.orderBy?.startsWith('_model_')) return null;
-  if (args.status && args.orderBy?.startsWith('_status_')) return null;
+  if (hasStatusFilter(args.filters) && args.orderBy?.startsWith('_status_')) {
+    return null;
+  }
   return args.orderBy;
 }
 
@@ -147,14 +163,17 @@ export function updateQueryState(
   );
   const nextQuery = patch.query ?? current.query;
   const nextModel = 'model' in patch ? (patch.model ?? null) : current.model;
-  const nextStatus =
-    'status' in patch ? (patch.status ?? null) : current.status;
+  // The fields of a model filter only that model
+  const nextFilters = (patch.filters ?? current.filters).filter(
+    (condition) => nextModel === current.model || isMetaFilter(condition.field),
+  );
   const nextOrderBy =
     'orderBy' in patch ? (patch.orderBy ?? null) : current.orderBy;
 
   return {
     ...current,
     ...patch,
+    filters: nextFilters,
     page:
       patch.page !== undefined
         ? Math.max(0, patch.page)
@@ -165,7 +184,7 @@ export function updateQueryState(
     orderBy: normalizedUpdatedOrder({
       query: nextQuery,
       model: nextModel,
-      status: nextStatus,
+      filters: nextFilters,
       orderBy: nextOrderBy,
     }),
   };

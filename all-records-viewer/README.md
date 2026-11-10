@@ -4,7 +4,7 @@ Browse records from every model in one paginated table.
 
 ## Usage
 
-Open **Content → All Records** to search, filter by model or status, sort columns, and choose which columns to display.
+Open **Content → All Records** to search, pick a model and a locale, sort columns, and choose which columns to display. The filter row works like the record list of each model: add a filter with **+**, then pick the field, the operator and the value. Status, dates, creator, locales and the other record filters work across every model; once you pick a model, its fields can be filtered too.
 
 ![The All Records table showing records from several models](docs/all-records.png)
 

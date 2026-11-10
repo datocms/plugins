@@ -24,6 +24,7 @@ import {
 } from 'react';
 import { AllRecordsTable } from '../components/AllRecordsTable';
 import { columnSettingsStorageKey } from '../components/columnSettings';
+import { FilterBar } from '../components/FilterBar';
 import { FilterDropdown } from '../components/FilterDropdown';
 import { MoveToStageMenu } from '../components/MoveToStageMenu';
 import type { TableRecord } from '../components/types';
@@ -40,6 +41,14 @@ import {
   sortableColumnIds,
 } from '../data/ordering';
 import { DEFAULT_ORDER_BY, throwIfItemsRequestAborted } from '../data/query';
+import {
+  filterFieldsFor,
+  hasActiveFilters,
+  hasStatusFilter,
+  localeName,
+} from '../filters/filters';
+import type { FilterField } from '../filters/types';
+import { useCreatorOptions } from '../filters/useCreatorOptions';
 import { CircleExclamationIcon, RefreshIcon, TableListIcon } from '../icons';
 import {
   availableMoveDestinationIds,
@@ -96,13 +105,6 @@ type Props = {
 
 /** The bulk action that runs now, if any */
 type BusyAction = BulkSelectionAction | 'move';
-
-const STATUS_FILTER_OPTIONS = [
-  { label: 'All statuses', value: '' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Unpublished changes', value: 'updated' },
-  { label: 'Published', value: 'published' },
-] as const;
 
 const PER_PAGE_SELECT_OPTIONS = [...PER_PAGE_OPTIONS];
 
@@ -233,7 +235,7 @@ function displayedOrderBy(queryState: QueryState) {
 function useOrderingState(args: {
   itemTypes: readonly RawItemType[];
   modelId: string | null;
-  status: QueryState['status'];
+  filters: QueryState['filters'];
   orderBy: QueryState['orderBy'];
   loadItemTypeFields: RenderPageCtx['loadItemTypeFields'];
   onUnsupportedPreviewOrder: () => void;
@@ -264,6 +266,7 @@ function useOrderingState(args: {
     (modelFieldsState.modelId === selectedItemType.id &&
       modelFieldsState.loaded);
   const requestedOrderBy = args.orderBy ?? DEFAULT_ORDER_BY;
+  const statusFiltered = hasStatusFilter(args.filters);
   const resolvedServerOrderBy = useMemo(
     () =>
       serverOrderBy({
@@ -281,11 +284,11 @@ function useOrderingState(args: {
         fieldsLoaded,
       }),
     );
-    if (args.status) {
+    if (statusFiltered) {
       result.delete('_status');
     }
     return result;
-  }, [args.status, fields, fieldsLoaded, selectedItemType]);
+  }, [statusFiltered, fields, fieldsLoaded, selectedItemType]);
 
   useEffect(() => {
     if (
@@ -306,6 +309,8 @@ function useOrderingState(args: {
 
   return {
     columnIds,
+    selectedItemType,
+    fields,
     pending:
       args.orderBy?.startsWith('_preview_') === true &&
       selectedItemType !== null &&
@@ -714,9 +719,17 @@ function pageStateOf(args: {
   }
   return getPaginatedListState(
     args.loaded === undefined ? undefined : args.loaded.totalCount === 0,
-    Boolean(
-      args.queryState.query || args.queryState.model || args.queryState.status,
-    ),
+    isFiltered(args.queryState),
+  );
+}
+
+// The list shows only some records: a search, a model, a filter or a locale
+function isFiltered(queryState: QueryState): boolean {
+  return Boolean(
+    queryState.query ||
+      queryState.model ||
+      queryState.locale ||
+      hasActiveFilters(queryState.filters),
   );
 }
 
@@ -823,29 +836,38 @@ function RecordsArea({
 
 type FilterOption = { label: string; value: string };
 
-// The title bar, and the search row under it while the filter is open
+// The title bar, and the filter row under it while the filter is open
 function RecordsTitleBar({
   subtitle,
   busy,
   modelOptions,
+  localeOptions,
   queryState,
   filtersDisabled,
   searchLocked,
   search,
   onSearchChange,
   filter,
+  filterFields,
+  locales,
+  creators,
   onFilter,
 }: {
   /** What the list shows ("138 records"), once the first load ends */
   subtitle: string | null;
   busy: boolean;
   modelOptions: readonly FilterOption[];
+  /** "Any locale" and the locales of the project, when it has more than one */
+  localeOptions: readonly FilterOption[] | null;
   queryState: QueryState;
   filtersDisabled: { reason: string } | undefined;
   searchLocked: boolean;
   search: string;
   onSearchChange: (value: string) => void;
   filter: ReturnType<typeof useFilterToolbar>;
+  filterFields: readonly FilterField[];
+  locales: readonly string[];
+  creators: Parameters<typeof FilterBar>[0]['creators'];
   onFilter: (patch: Partial<QueryState>) => void;
 }) {
   return (
@@ -873,15 +895,15 @@ function RecordsTitleBar({
               disabled={filtersDisabled}
               onChange={(value) => onFilter({ model: value || null })}
             />
-            <FilterDropdown
-              tooltip="Filter by status"
-              value={queryState.status ?? ''}
-              options={STATUS_FILTER_OPTIONS}
-              disabled={filtersDisabled}
-              onChange={(value) =>
-                onFilter({ status: (value as QueryState['status']) || null })
-              }
-            />
+            {localeOptions && (
+              <FilterDropdown
+                tooltip="Only show records containing the selected localization"
+                value={queryState.locale ?? ''}
+                options={localeOptions}
+                disabled={filtersDisabled}
+                onChange={(value) => onFilter({ locale: value || null })}
+              />
+            )}
             <Toolbar.FilterToggle
               pressed={filter.open}
               // Closing the filter clears the search: not while it is locked
@@ -894,12 +916,18 @@ function RecordsTitleBar({
       {filter.open && (
         // Escape in the field closes the filter, as the toggle does
         <Toolbar fields onClose={searchLocked ? undefined : filter.onClose}>
-          <Toolbar.FilterInput
-            value={search}
-            onChange={onSearchChange}
+          <FilterBar
+            search={search}
+            searchDisabled={searchLocked}
             autoFocus={filter.autoFocus}
+            onSearchChange={onSearchChange}
             onClose={filter.onClose}
-            disabled={searchLocked}
+            filters={queryState.filters}
+            fields={filterFields}
+            locales={locales}
+            creators={creators}
+            filtersDisabled={Boolean(filtersDisabled)}
+            onFiltersChange={(filters) => onFilter({ filters })}
           />
         </Toolbar>
       )}
@@ -1106,7 +1134,8 @@ function RecordsPage({ ctx }: Props) {
   const selectionFilterScope = useRef<string | null>(null);
   const matchingFilterScope = JSON.stringify([
     queryState.model,
-    queryState.status,
+    queryState.filters.filter((condition) => condition.value !== null),
+    queryState.locale,
     queryState.query,
   ]);
   const [showingSelected, setShowingSelected] = useState(false);
@@ -1196,11 +1225,45 @@ function RecordsPage({ ctx }: Props) {
   const ordering = useOrderingState({
     itemTypes,
     modelId: queryState.model,
-    status: queryState.status,
+    filters: queryState.filters,
     orderBy: queryState.orderBy,
     loadItemTypeFields: ctx.loadItemTypeFields,
     onUnsupportedPreviewOrder: clearUnsupportedPreviewOrder,
   });
+
+  const siteLocales = ctx.site.attributes.locales;
+  const localeFilterOptions = useMemo(
+    () =>
+      siteLocales.length > 1
+        ? [
+            { label: 'Any locale', value: '' },
+            ...siteLocales.map((code) => ({
+              label: localeName(code),
+              value: code,
+            })),
+          ]
+        : null,
+    [siteLocales],
+  );
+  const filterFields = useMemo(
+    () =>
+      filterFieldsFor({
+        itemType: ordering.selectedItemType,
+        fields: ordering.fields,
+        filterLocale: queryState.locale ?? siteLocales[0] ?? 'en',
+      }),
+    [
+      ordering.fields,
+      ordering.selectedItemType,
+      queryState.locale,
+      siteLocales,
+    ],
+  );
+  const creatorOptions = useCreatorOptions(
+    client,
+    ctx.owner,
+    queryState.filters.some((condition) => condition.field === '_creator'),
+  );
 
   const selectionScope = `${ctx.site.id}:${ctx.environment}:${ctx.currentUser.type}:${ctx.currentUser.id}`;
   useLayoutEffect(() => {
@@ -1809,11 +1872,23 @@ function RecordsPage({ ctx }: Props) {
   }
 
   const filter = useFilterToolbar({
-    isFiltering: searchInput !== '' || queryState.query !== '',
+    isFiltering:
+      searchInput !== '' ||
+      queryState.query !== '' ||
+      queryState.filters.length > 0,
+    // The close clears the search and the tiles; the next open puts them back
     onClear: () => {
+      const previous = {
+        query: queryState.query,
+        filters: queryState.filters,
+      };
       searchWasEdited.current = false;
       setSearchInput('');
-      updateLocation({ query: '' });
+      updateLocation({ query: '', filters: [] });
+      return () => {
+        setSearchInput(previous.query);
+        updateLocation(previous);
+      };
     },
   });
 
@@ -1853,9 +1928,7 @@ function RecordsPage({ ctx }: Props) {
     loading: flags.barLoading,
     showingSelected,
     selectionUnavailable: flags.selectionUnavailable,
-    filtered: Boolean(
-      queryState.query || queryState.model || queryState.status,
-    ),
+    filtered: isFiltered(queryState),
     selectAllMatchingCount: selectAllMatchingCountOf({
       showingSelected,
       totalCount: itemsPage.totalCount,
@@ -1956,6 +2029,7 @@ function RecordsPage({ ctx }: Props) {
           }
           busy={flags.titleBusy}
           modelOptions={modelFilterOptions}
+          localeOptions={localeFilterOptions}
           queryState={queryState}
           filtersDisabled={flags.filtersDisabled}
           searchLocked={flags.tableDisabled}
@@ -1969,6 +2043,9 @@ function RecordsPage({ ctx }: Props) {
             filter.onOpen();
           }}
           filter={filter}
+          filterFields={filterFields}
+          locales={siteLocales}
+          creators={creatorOptions}
           onFilter={updateLocation}
         />
       }

@@ -1,0 +1,78 @@
+/* The filter row: the text filter, a divider, then the tiles and the buttons.
+   Each part has the height of a field, thus the text filter and the buttons
+   stay on the first line when the tiles wrap. */
+.row {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--spacing-m);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiles {
+  display: flex;
+  flex: 3;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+/* One filter: a field of the form, thus the only part with a border */
+.tile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--control-height);
+  padding-inline-end: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-s);
+  background: var(--color--surface-raised);
+}
+
+/* Each part keeps its width: the tiles wrap instead */
+.tile > * {
+  flex: none;
+}
+
+.tile:focus-within {
+  border-color: var(--color--focus--border);
+}
+
+/* The text of a value, bare in the tile like the selects next to it */
+.autosize {
+  font-size: var(--font-size-xs);
+  --autosize-input-border-inline: 0px;
+}
+
+.input {
+  border: 0;
+  background: transparent;
+  color: var(--color--ink);
+  font: inherit;
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color--ink-placeholder);
+}
+
+.dateInput {
+  box-sizing: content-box;
+  width: 13em;
+  font-size: var(--font-size-xs);
+  padding-inline: var(--input-padding);
+}
+
+.dateInput[type="date"] {
+  width: 8em;
+}

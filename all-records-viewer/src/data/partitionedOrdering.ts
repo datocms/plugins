@@ -1,4 +1,5 @@
 import type { Client, RawApiTypes } from '@datocms/cma-client-browser';
+import { hasStatusFilter } from '../filters/filters';
 import type {
   ModelSummary,
   PublicationStatus,
@@ -6,6 +7,7 @@ import type {
   RawItem,
 } from '../types';
 import {
+  baseFieldFilters,
   type ItemsPage,
   itemsPageTotal,
   throwIfItemsRequestAborted,
@@ -68,7 +70,7 @@ function partitionOrder(value: QueryState['orderBy']): PartitionOrder | null {
 export function shouldUsePartitionedOrdering(state: QueryState): boolean {
   const order = partitionOrder(state.orderBy);
   if (!order || state.query.trim() || state.model) return false;
-  return order.startsWith('_model_') || state.status === null;
+  return order.startsWith('_model_') || !hasStatusFilter(state.filters);
 }
 
 function compareModels(left: ModelSummary, right: ModelSummary): number {
@@ -104,14 +106,10 @@ function queryFor(args: {
   offset: number;
   limit: number;
 }): RawApiTypes.ItemInstancesHrefSchema & { nested: false } {
-  const partitionStatus = args.partition?.status;
-  const status = partitionStatus ?? args.state.status;
-  const fields: Record<string, Record<string, unknown>> = {
-    _created_at: { exists: true },
-  };
-
-  if (status) {
-    fields._status = { eq: status };
+  const fields: Record<string, unknown> = baseFieldFilters(args.state.filters);
+  // Status partitions only run with no status filter
+  if (args.partition?.status) {
+    fields._status = { eq: args.partition.status };
   }
 
   const filter: Record<string, unknown> = { fields };
@@ -123,6 +121,7 @@ function queryFor(args: {
     nested: false,
     version: 'current',
     filter,
+    ...(args.state.locale ? { locale: args.state.locale } : {}),
     ...(args.limit > 0 ? { order_by: BUCKET_ORDER_BY } : {}),
     page: {
       offset: args.offset,
@@ -315,7 +314,7 @@ export async function fetchPartitionedItemsPage({
       'Partitioned ordering is unnecessary with a selected model.',
     );
   }
-  if (order.startsWith('_status_') && state.status) {
+  if (order.startsWith('_status_') && hasStatusFilter(state.filters)) {
     throw new RangeError(
       'Partitioned status ordering is unnecessary with a status filter.',
     );

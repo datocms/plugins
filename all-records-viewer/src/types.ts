@@ -1,4 +1,5 @@
 import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { FilterCondition } from './filters/types';
 
 export type RawItem = RawApiTypes.Item;
 export type RawItemType = RawApiTypes.ItemType;
@@ -19,7 +20,10 @@ export type QueryState = {
   perPage: number;
   query: string;
   model: string | null;
-  status: PublicationStatus | null;
+  /** The tiles of the filter, in the order the user added them */
+  filters: readonly FilterCondition[];
+  /** Only the records with a value in this locale ("Any locale" when null) */
+  locale: string | null;
   orderBy: OrderBy | null;
 };
 

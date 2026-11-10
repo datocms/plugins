@@ -76,7 +76,8 @@ const BASE_STATE: QueryState = {
   perPage: 2,
   query: '',
   model: null,
-  status: null,
+  filters: [],
+  locale: null,
   orderBy: null,
 };
 
@@ -136,7 +137,9 @@ describe('fetchPartitionedItemsPage', () => {
     expect(shouldUsePartitionedOrdering(state('_status_DESC'))).toBe(true);
     expect(
       shouldUsePartitionedOrdering(
-        state('_status_ASC', { status: 'published' }),
+        state('_status_ASC', {
+          filters: [{ field: '_status', operator: 'eq', value: 'published' }],
+        }),
       ),
     ).toBe(false);
     expect(
@@ -211,7 +214,7 @@ describe('fetchPartitionedItemsPage', () => {
       client,
       models: MODELS,
       state: state('_model_ASC', {
-        status: 'published',
+        filters: [{ field: '_status', operator: 'eq', value: 'published' }],
         perPage: 10,
       }),
     });
@@ -283,7 +286,9 @@ describe('fetchPartitionedItemsPage', () => {
       fetchPartitionedItemsPage({
         client,
         models: MODELS,
-        state: state('_status_ASC', { status: 'draft' }),
+        state: state('_status_ASC', {
+          filters: [{ field: '_status', operator: 'eq', value: 'draft' }],
+        }),
       }),
     ).rejects.toThrow(/status filter/);
     await expect(
