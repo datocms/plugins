@@ -12,7 +12,7 @@ describe('createInspectorNavigator', () => {
       setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
       setInspectorMode: vi.fn().mockResolvedValue(undefined),
     };
-    const navigator = createInspectorNavigator(ctx as never);
+    const navigator = createInspectorNavigator(() => ctx as never);
     expect(navigator.supportsRecordList).toBe(true);
 
     await navigator.showRecords({
@@ -43,7 +43,7 @@ describe('createInspectorNavigator', () => {
       setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
       setInspectorMode: vi.fn().mockResolvedValue(undefined),
     };
-    const navigator = createInspectorNavigator(ctx as never);
+    const navigator = createInspectorNavigator(() => ctx as never);
 
     await navigator.openRecord({ itemId: 'a' });
     expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
@@ -62,6 +62,31 @@ describe('createInspectorNavigator', () => {
     ).toBeLessThan(ctx.setInspectorMode.mock.invocationCallOrder.at(-1) ?? 0);
   });
 
+  it('sends the record list on every open, to the latest ctx', async () => {
+    const makeCtx = () => ({
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
+      setInspectorMode: vi.fn().mockResolvedValue(undefined),
+    });
+    let ctx = makeCtx();
+    const navigator = createInspectorNavigator(() => ctx as never);
+
+    await navigator.openRecord({ itemId: 'a' });
+    ctx = makeCtx();
+    await navigator.openRecord({ itemId: 'a' });
+    expect(ctx.setInspectorItemListData).toHaveBeenCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['a'],
+    });
+    expect(ctx.setInspectorMode).toHaveBeenCalledOnce();
+
+    await navigator.openRecord({ itemId: 'b' });
+    expect(ctx.setInspectorItemListData).toHaveBeenCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['b', 'a'],
+    });
+  });
+
   it('reports when the native asset editor deletes an upload', async () => {
     const ctx = {
       editUpload: vi.fn().mockResolvedValue({ deleted: true }),
@@ -70,7 +95,7 @@ describe('createInspectorNavigator', () => {
     };
 
     await expect(
-      createInspectorNavigator(ctx as never).openAsset({
+      createInspectorNavigator(() => ctx as never).openAsset({
         uploadId: 'upload-a',
       }),
     ).resolves.toEqual({ deleted: true });

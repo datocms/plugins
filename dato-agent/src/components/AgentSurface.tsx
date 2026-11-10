@@ -81,6 +81,8 @@ export type AgentConnectionViewModel = {
   datoCmsStatus: DatoCmsConnectionStatus;
   datoCmsAccountLabel?: string;
   datoCmsError?: string;
+  /** The error comes from a sign-in, so a new registration can fix it. */
+  shouldOfferSignInRestart?: boolean;
   oauthAccessLevel?: McpAccessLevel;
   pluginReadOnly?: boolean;
   accessChecking?: boolean;
@@ -295,6 +297,10 @@ export type AgentSurfaceProps = {
   /** Signs in again so the editor can pick another access level. */
   onReconnectDatoCms?: () => void;
   onCheckDatoCmsAccess?: () => void;
+  /** Clears the DatoCMS connection error the toolbar shows. */
+  onDismissDatoCmsError?: () => void;
+  /** Signs in again with a new OAuth client, when the remembered one fails. */
+  onRestartDatoCmsConnection?: () => void;
   recentConversations?: readonly AgentConversationSummaryViewModel[];
   onSelectConversation?: (
     conversation: AgentConversationSummaryViewModel,
@@ -354,9 +360,7 @@ type CredentialPanelProps = Pick<
   AgentSurfaceProps,
   | 'connection'
   | 'onConnectDatoCms'
-  | 'onDisconnectDatoCms'
-  | 'onReconnectDatoCms'
-  | 'onCheckDatoCmsAccess'
+  | 'onRestartDatoCmsConnection'
   | 'recentConversations'
   | 'onSelectConversation'
   | 'onStartNewChat'
@@ -431,7 +435,11 @@ function UnverifiedAccessNotice({
 function DatoCmsConnectionField({
   connection,
   onConnectDatoCms,
-}: Pick<CredentialPanelProps, 'connection' | 'onConnectDatoCms'>) {
+  onRestartDatoCmsConnection,
+}: Pick<
+  CredentialPanelProps,
+  'connection' | 'onConnectDatoCms' | 'onRestartDatoCmsConnection'
+>) {
   const datoCmsConnected = connection.datoCmsStatus === 'connected';
   const datoCmsConnecting = connection.datoCmsStatus === 'connecting';
   const accountLabel = connection.datoCmsAccountLabel?.trim();
@@ -497,6 +505,19 @@ function DatoCmsConnectionField({
           {connection.datoCmsError}
         </p>
       )}
+      {connection.shouldOfferSignInRestart &&
+        !datoCmsConnected &&
+        !datoCmsConnecting &&
+        onRestartDatoCmsConnection && (
+          <Button
+            buttonSize="xxs"
+            buttonType="muted"
+            type="button"
+            onClick={onRestartDatoCmsConnection}
+          >
+            Still failing? Start over with a new registration
+          </Button>
+        )}
     </div>
   );
 }
@@ -601,8 +622,7 @@ function RecentChats({
 function CredentialPanel({
   connection,
   onConnectDatoCms,
-  onReconnectDatoCms,
-  onCheckDatoCmsAccess,
+  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
@@ -692,6 +712,7 @@ function CredentialPanel({
             <DatoCmsConnectionField
               connection={connection}
               onConnectDatoCms={onConnectDatoCms}
+              onRestartDatoCmsConnection={onRestartDatoCmsConnection}
             />
           </SetupStep>
         </ol>
@@ -2213,23 +2234,34 @@ function accessSummary(connection: AgentConnectionViewModel): string {
 }
 
 /**
- * The "⋮" menu of the chat toolbar: plugin settings, and the DatoCMS access.
+ * The "⋮" menu of the chat toolbar: plugin settings, the DatoCMS access, and
+ * Reconnect and Disconnect. Both ask first and close when the agent gets busy.
  * Reconnecting asks inside the menu, not in a host dialog: the sign-in popup
  * opens only from a click in this frame, so the confirming click must be here.
  */
 function AgentOptionsMenu({
   connection,
-  disabled,
+  connectionBusyReason,
   onOpenPluginSettings,
   onReconnectDatoCms,
+  onDisconnectDatoCms,
 }: {
   connection: AgentConnectionViewModel;
-  disabled: boolean;
+  /** Why the options are locked right now, e.g. a reply is running. */
+  connectionBusyReason?: string;
   onOpenPluginSettings?: () => void;
   onReconnectDatoCms?: () => void;
+  onDisconnectDatoCms?: () => void;
 }) {
-  const [isConfirmingReconnect, setIsConfirmingReconnect] = useState(false);
+  const [confirming, setConfirming] = useState<
+    'reconnect' | 'disconnect' | undefined
+  >();
   const accessLevel = connection.oauthAccessLevel ?? 'unknown';
+  const isConnectionLocked = Boolean(connectionBusyReason);
+  const cancelConfirm = () => setConfirming(undefined);
+  // A dialog opened before the agent got busy closes for good, so it can't
+  // come back later and take an Enter meant for the composer.
+  if (isConnectionLocked && confirming) setConfirming(undefined);
 
   return (
     <>
@@ -2240,7 +2272,6 @@ function AgentOptionsMenu({
             aria-haspopup="menu"
             aria-label="Agent options"
             className={`${styles.iconButton} ${styles.optionsButton}`}
-            disabled={disabled}
             onClick={onClick}
             title="Agent options"
             type="button"
@@ -2251,7 +2282,7 @@ function AgentOptionsMenu({
       >
         <DropdownMenu alignment="right">
           <DropdownOption
-            disabled={!onOpenPluginSettings}
+            disabled={!onOpenPluginSettings || isConnectionLocked}
             onClick={onOpenPluginSettings}
           >
             AI settings
@@ -2270,51 +2301,104 @@ function AgentOptionsMenu({
             </span>
           </DropdownText>
           {onReconnectDatoCms && (
-            <DropdownOption onClick={() => setIsConfirmingReconnect(true)}>
+            <DropdownOption
+              disabled={isConnectionLocked}
+              onClick={() => setConfirming('reconnect')}
+            >
               Reconnect to change access…
             </DropdownOption>
           )}
+          {onDisconnectDatoCms && (
+            <DropdownOption
+              disabled={isConnectionLocked}
+              onClick={() => setConfirming('disconnect')}
+            >
+              Disconnect from DatoCMS…
+            </DropdownOption>
+          )}
+          {connectionBusyReason && (
+            <DropdownText>{connectionBusyReason}</DropdownText>
+          )}
         </DropdownMenu>
       </Dropdown>
-      {isConfirmingReconnect && onReconnectDatoCms && (
-        <ReconnectDialog
-          onCancel={() => setIsConfirmingReconnect(false)}
+      {confirming === 'reconnect' && onReconnectDatoCms && (
+        <ConfirmDialog
+          title="Reconnect to change access?"
+          confirmLabel="Reconnect"
+          onCancel={cancelConfirm}
           onConfirm={() => {
-            setIsConfirmingReconnect(false);
+            cancelConfirm();
             onReconnectDatoCms();
           }}
-        />
+        >
+          You'll sign in to DatoCMS again and pick a new access level on its
+          consent screen. Your current connection ends when you finish.
+        </ConfirmDialog>
+      )}
+      {confirming === 'disconnect' && onDisconnectDatoCms && (
+        <ConfirmDialog
+          title="Disconnect from DatoCMS?"
+          confirmLabel="Disconnect"
+          isDestructive
+          onCancel={cancelConfirm}
+          onConfirm={() => {
+            cancelConfirm();
+            onDisconnectDatoCms();
+          }}
+        >
+          DatoCMS revokes the agent's token, so every open tab loses the
+          connection. Connect again from the setup to keep chatting.
+        </ConfirmDialog>
       )}
     </>
   );
 }
 
 /**
- * Asks before reconnecting. It lives in this frame, not in a host dialog: the
- * sign-in popup opens only from a click in this frame.
+ * Asks before changing the connection. It lives in this frame, not in a host
+ * dialog: the sign-in popup opens only from a click in this frame.
  */
-function ReconnectDialog({
+function ConfirmDialog({
+  title,
+  confirmLabel,
+  isDestructive = false,
+  children,
   onCancel,
   onConfirm,
 }: {
+  title: string;
+  confirmLabel: string;
+  /** Focuses Cancel, so a stray Enter doesn't confirm. */
+  isDestructive?: boolean;
+  children: ReactNode;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+  const isDestructiveRef = useRef(isDestructive);
+  // Mount only: a re-render must not pull the focus back.
   useEffect(() => {
-    // The kit's Button takes no ref, so focus Reconnect through the dialog.
+    // The kit's Button takes no ref, so focus through the dialog.
     dialogRef.current
       ?.querySelector<HTMLButtonElement>(
-        '[data-reconnect-confirm] button, button[data-reconnect-confirm]',
+        isDestructiveRef.current
+          ? '[data-dialog-cancel] button'
+          : '[data-dialog-confirm] button',
       )
       ?.focus();
+    // Capture phase, so Escape closes only the dialog, not the chats panel too.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel();
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onCancelRef.current();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onCancel]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 
   return (
     <div className={styles.dialogBackdrop}>
@@ -2325,28 +2409,27 @@ function ReconnectDialog({
         ref={dialogRef}
         role="dialog"
       >
-        <h2 id={titleId}>Reconnect to change access?</h2>
-        <p>
-          You'll sign in to DatoCMS again and pick a new access level on its
-          consent screen. Your current connection ends when you finish.
-        </p>
+        <h2 id={titleId}>{title}</h2>
+        <p>{children}</p>
         <div className={styles.dialogActions}>
-          <Button
-            buttonSize="s"
-            buttonType="muted"
-            type="button"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-          <span data-reconnect-confirm="">
+          <span data-dialog-cancel="">
             <Button
               buttonSize="s"
-              buttonType="primary"
+              buttonType="muted"
+              type="button"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          </span>
+          <span data-dialog-confirm="">
+            <Button
+              buttonSize="s"
+              buttonType={isDestructive ? 'negative' : 'primary'}
               type="button"
               onClick={onConfirm}
             >
-              Reconnect
+              {confirmLabel}
             </Button>
           </span>
         </div>
@@ -2387,6 +2470,9 @@ function UtilityControls({
   connection,
   onOpenPluginSettings,
   onReconnectDatoCms,
+  onDisconnectDatoCms,
+  onDismissDatoCmsError,
+  connectionBusyReason,
   connected,
   chatsOpen,
   autoApproveEnabled,
@@ -2401,6 +2487,9 @@ function UtilityControls({
   connection: AgentConnectionViewModel;
   onOpenPluginSettings?: () => void;
   onReconnectDatoCms?: () => void;
+  onDisconnectDatoCms?: () => void;
+  onDismissDatoCmsError?: () => void;
+  connectionBusyReason?: string;
   connected: boolean;
   chatsOpen: boolean;
   autoApproveEnabled: boolean;
@@ -2473,11 +2562,28 @@ function UtilityControls({
         )}
         <AgentOptionsMenu
           connection={connection}
-          disabled={disabled}
+          connectionBusyReason={connectionBusyReason}
+          onDisconnectDatoCms={onDisconnectDatoCms}
           onOpenPluginSettings={onOpenPluginSettings}
           onReconnectDatoCms={onReconnectDatoCms}
         />
       </div>
+      {/* Setup isn't shown once connected, so a failed Reconnect reports here. */}
+      {/* Both float in the same spot, so show one at a time. */}
+      {connection.datoCmsError && !chatsOpen && !autoApproveError && (
+        <span className={styles.autoApproveToolbarError} role="alert">
+          {connection.datoCmsError}{' '}
+          {onDismissDatoCmsError && (
+            <button
+              className={styles.toolbarErrorDismiss}
+              onClick={onDismissDatoCmsError}
+              type="button"
+            >
+              Dismiss
+            </button>
+          )}
+        </span>
+      )}
       {autoApproveError && !chatsOpen && (
         <span className={styles.autoApproveToolbarError} role="alert">
           {autoApproveError}
@@ -2497,8 +2603,11 @@ export function AgentSurface({
   onSubmit,
   mentionHost,
   onConnectDatoCms,
+  onDisconnectDatoCms,
   onReconnectDatoCms,
   onCheckDatoCmsAccess,
+  onDismissDatoCmsError,
+  onRestartDatoCmsConnection,
   recentConversations = [],
   onSelectConversation,
   onStartNewChat,
@@ -2566,12 +2675,14 @@ export function AgentSurface({
       entry.kind === 'approval' &&
       ['pending', 'approving', 'rejecting'].includes(entry.approval.status),
   );
-  const conversationActionsDisabled =
-    conversationActionPending ||
-    autoApproveChanging ||
-    hostActionPending ||
+  const isAgentBusy =
     isRunning ||
     hasUnsettledApproval ||
+    autoApproveChanging ||
+    hostActionPending;
+  const conversationActionsDisabled =
+    conversationActionPending ||
+    isAgentBusy ||
     connection.status === 'connecting' ||
     connection.datoCmsStatus === 'connecting';
 
@@ -2667,20 +2778,20 @@ export function AgentSurface({
         connection={connection}
         onOpenPluginSettings={onOpenPluginSettings}
         onReconnectDatoCms={onReconnectDatoCms}
+        onDisconnectDatoCms={onDisconnectDatoCms}
+        onDismissDatoCmsError={onDismissDatoCmsError}
+        connectionBusyReason={
+          isAgentBusy
+            ? 'Wait until the agent is idle to change these options.'
+            : undefined
+        }
         autoApproveChanging={autoApproveChanging}
         autoApproveEnabled={autoApproveEnabled}
         autoApproveError={autoApproveError}
         autoApproveDisabledReason={autoApproveDisabledReason}
         chatsOpen={settingsOpen}
         connected={connected}
-        disabled={
-          settingsOpen
-            ? false
-            : isRunning ||
-              hasUnsettledApproval ||
-              autoApproveChanging ||
-              hostActionPending
-        }
+        disabled={settingsOpen ? false : isAgentBusy}
         onAutoApproveChange={onAutoApproveChange}
         onCloseChats={closeSettings}
         onOpenChats={() => setSettingsOpen(true)}
@@ -2694,8 +2805,7 @@ export function AgentSurface({
             headingRef={settingsOpen ? settingsHeadingRef : undefined}
             isSettings={connected}
             onConnectDatoCms={onConnectDatoCms}
-            onReconnectDatoCms={onReconnectDatoCms}
-            onCheckDatoCmsAccess={onCheckDatoCmsAccess}
+            onRestartDatoCmsConnection={onRestartDatoCmsConnection}
             onSelectConversation={
               onSelectConversation
                 ? (conversation) => {

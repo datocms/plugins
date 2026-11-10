@@ -1890,6 +1890,178 @@ describe('AgentSurface', () => {
     expect(onReconnectDatoCms).toHaveBeenCalledOnce();
   });
 
+  it('disconnects from the "⋮" menu after asking, and keeps focus where the editor put it', async () => {
+    const user = userEvent.setup();
+    const onDisconnectDatoCms = vi.fn();
+    const view = (content: string) => (
+      <AgentSurface
+        connection={connected}
+        entries={[{ id: 'm', kind: 'message', role: 'user', content }]}
+        onDisconnectDatoCms={onDisconnectDatoCms}
+        onSubmit={vi.fn()}
+      />
+    );
+    const { rerender } = render(view('Hello'));
+
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Disconnect from DatoCMS…'));
+    const dialog = screen.getByRole('dialog', {
+      name: 'Disconnect from DatoCMS?',
+    });
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    // Disconnect is destructive, so Cancel takes the focus.
+    expect(cancel).toHaveFocus();
+    within(dialog).getByRole('button', { name: 'Disconnect' }).focus();
+    cancel.focus();
+    // A parent re-render, e.g. a streamed reply, must not move the focus.
+    rerender(view('Hello again'));
+    expect(cancel).toHaveFocus();
+    expect(onDisconnectDatoCms).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Disconnect from DatoCMS…'));
+
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Disconnect',
+      }),
+    );
+    expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
+  });
+
+  it('offers a new registration after a failed sign-in', async () => {
+    const user = userEvent.setup();
+    const onRestartDatoCmsConnection = vi.fn();
+    render(
+      <AgentSurface
+        connection={{
+          ...connected,
+          status: 'error',
+          datoCmsStatus: 'error',
+          datoCmsError:
+            'Could not connect to DatoCMS. Click Connect to try again.',
+          shouldOfferSignInRestart: true,
+        }}
+        entries={[]}
+        onConnectDatoCms={vi.fn()}
+        onRestartDatoCmsConnection={onRestartDatoCmsConnection}
+        onSubmit={vi.fn()}
+      />,
+    );
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Still failing? Start over with a new registration',
+      }),
+    );
+    expect(onRestartDatoCmsConnection).toHaveBeenCalledOnce();
+  });
+
+  it('closes an open connection dialog when the agent gets busy', async () => {
+    const user = userEvent.setup();
+    const view = (isRunning: boolean) => (
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        isRunning={isRunning}
+        onDisconnectDatoCms={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+    const { rerender } = render(view(false));
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Disconnect from DatoCMS…'));
+    expect(screen.getByRole('dialog')).toBeVisible();
+    rerender(view(true));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // It stays closed once the agent is idle again.
+    rerender(view(false));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps the "⋮" menu open-able during a reply, with its options locked', async () => {
+    const user = userEvent.setup();
+    const onOpenPluginSettings = vi.fn();
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        isRunning
+        onDisconnectDatoCms={vi.fn()}
+        onOpenPluginSettings={onOpenPluginSettings}
+        onSubmit={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    expect(
+      screen.getByText('Wait until the agent is idle to change these options.'),
+    ).toBeVisible();
+    await user.click(screen.getByText('Disconnect from DatoCMS…'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Leaving for AI settings would end the reply, so it waits too.
+    await user.click(screen.getByText('AI settings'));
+    expect(onOpenPluginSettings).not.toHaveBeenCalled();
+  });
+
+  it('closes only the dialog on Escape, not the chats panel behind it', async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        onDisconnectDatoCms={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    await user.click(screen.getByText('Disconnect from DatoCMS…'));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
+  });
+
+  it('locks the connection options while the agent works, and shows connection errors', async () => {
+    const user = userEvent.setup();
+    const onReconnectDatoCms = vi.fn();
+    const view = (isRunning: boolean) => (
+      <AgentSurface
+        connection={{
+          ...connected,
+          datoCmsError:
+            'The DatoCMS sign-in was cancelled or denied. Your current connection is unchanged.',
+        }}
+        entries={[]}
+        isRunning={isRunning}
+        onDisconnectDatoCms={vi.fn()}
+        onReconnectDatoCms={onReconnectDatoCms}
+        onSubmit={vi.fn()}
+      />
+    );
+    const { rerender } = render(view(false));
+
+    expect(
+      screen.getByText(
+        'The DatoCMS sign-in was cancelled or denied. Your current connection is unchanged.',
+      ),
+    ).toBeVisible();
+    // The chats panel keeps the menu usable while a reply runs.
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    expect(
+      screen.queryByText(/Your current connection is unchanged/),
+    ).not.toBeInTheDocument();
+    rerender(view(true));
+    await user.click(screen.getByRole('button', { name: 'Agent options' }));
+    expect(
+      screen.getByText('Wait until the agent is idle to change these options.'),
+    ).toBeVisible();
+    await user.click(screen.getByText('Reconnect to change access…'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onReconnectDatoCms).not.toHaveBeenCalled();
+  });
+
   it('shows only six provided recent chats on the connection page', async () => {
     const user = userEvent.setup();
     const onSelectConversation = vi.fn();

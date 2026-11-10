@@ -277,6 +277,7 @@ export function openOAuthPopup(options: OAuthPopupOptions = {}): Window {
   if (!popup) {
     throw new RemoteMcpOAuthError(
       'The sign-in popup was blocked. Allow popups and try again.',
+      { code: 'popup_blocked' },
     );
   }
 
@@ -384,6 +385,7 @@ export function waitForOAuthCallback(
             reject(
               new RemoteMcpOAuthError(
                 'The sign-in popup was closed before authorization completed',
+                { code: 'popup_closed' },
               ),
             ),
           false,

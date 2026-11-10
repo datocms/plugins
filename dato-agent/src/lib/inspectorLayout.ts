@@ -3,10 +3,17 @@ import { useEffect } from 'react';
 const FALLBACK_BROWSER_WIDTH = 1440;
 const MINIMUM_RECORD_PANE_WIDTH = 550;
 /**
- * The Agent tab's starting chat width, and the narrowest it stays usable: below
- * it, the tab covers the chat with a "too narrow" notice.
+ * The Agent tab's starting chat width, and the narrowest one it remembers: a
+ * narrower drag isn't saved, so browser chrome can't shrink the saved width a
+ * little more on every open.
  */
 export const AGENT_PANE_WIDTH = 300;
+/**
+ * The narrowest chat that stays usable: below it, the tab covers the chat with
+ * a "too narrow" notice. It sits under the default, because window borders,
+ * side panels and docked devtools make the real chat narrower than requested.
+ */
+export const MIN_AGENT_PANE_WIDTH = 240;
 
 /** Record pane width for the Agent tab, leaving `agentWidth` for the chat. */
 export function inspectorRecordPaneWidth(

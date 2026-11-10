@@ -10,10 +10,11 @@ import {
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import {
-  AGENT_PANE_WIDTH,
+  MIN_AGENT_PANE_WIDTH,
   useRememberedAgentPaneWidth,
 } from '../lib/inspectorLayout';
 import { createAgentMentionHost } from '../lib/mentionHost';
+import type { AgentNavigator } from '../lib/navigation';
 import {
   createInspectorNavigator,
   pluginSettingsPath,
@@ -272,9 +273,19 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  // One navigator per frame: it keeps the "Records opened from the chat" list.
+  const navigatorRef = useRef<
+    { key: string; navigator: AgentNavigator } | undefined
+  >(undefined);
+  if (navigatorRef.current?.key !== frameKey) {
+    navigatorRef.current = {
+      key: frameKey,
+      navigator: createInspectorNavigator(() => latestCtxRef.current),
+    };
+  }
   useRememberedAgentPaneWidth();
   const isTooNarrow = useMediaQuery(
-    `(max-width: ${AGENT_PANE_WIDTH - 1}px)`,
+    `(max-width: ${MIN_AGENT_PANE_WIDTH - 1}px)`,
   ).matches;
 
   return (
@@ -303,7 +314,7 @@ function AuthorizedAgentInspector({ ctx }: Props) {
           currentUserId={ctx.currentUser.id}
           surface="project"
           scope={{ type: 'project' }}
-          navigator={createInspectorNavigator(ctx)}
+          navigator={navigatorRef.current.navigator}
           mentionHost={mentionHost}
           config={normalizeConfig(ctx.plugin.attributes.parameters)}
           loadHostContext={loadHostContext}

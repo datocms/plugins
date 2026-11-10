@@ -1838,11 +1838,10 @@ function recoverUnsafeDispatchJournal(
 
 /**
  * Sign-in failures in words an editor can act on. Connect registers a fresh
- * OAuth client by itself when DatoCMS rejects the stored one, so every failure
- * here is fixed by clicking Connect again.
+ * OAuth client by itself when DatoCMS rejects the stored one. `retry` tells the
+ * editor what to do next: click Connect, or nothing after a failed Reconnect.
  */
-function datoCmsSignInErrorMessage(error: unknown): string {
-  const retry = 'Click Connect to try again.';
+function datoCmsSignInErrorMessage(error: unknown, retry: string): string {
   if (error instanceof RemoteMcpOAuthError) {
     if (error.code === 'access_denied')
       return `The DatoCMS sign-in was cancelled or denied. ${retry}`;
@@ -2022,7 +2021,17 @@ export default function AgentFrame(props: AgentFrameProps) {
     accessLevel,
   );
   const [oauthConnecting, setOauthConnecting] = useState(false);
-  const [oauthError, setOauthError] = useState<string>();
+  const [oauthError, setOauthErrorMessage] = useState<string>();
+  // Whether a new OAuth client can fix oauthError, so setup offers a restart.
+  const [isOauthErrorRestartable, setIsOauthErrorRestartable] = useState(false);
+  /** Sets the DatoCMS connection error and whether a restart can fix it. */
+  const setOauthError = (
+    message: string | undefined,
+    isRestartable = false,
+  ) => {
+    setOauthErrorMessage(message);
+    setIsOauthErrorRestartable(isRestartable);
+  };
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(() => {
     try {
       if (props.config.readOnly) {
@@ -5471,8 +5480,13 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   }
 
+  /**
+   * Signs in to DatoCMS MCP. `forceNew` registers a new OAuth client.
+   * `isReconnect` keeps the working token in place until
+   * the new one arrives, so a cancelled or denied consent doesn't disconnect.
+   */
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: The popup, DCR, PKCE, persistence, and cleanup steps are kept together to guarantee one authorization lifecycle.
-  const connectDatoCms = async (forceNew = false) => {
+  const connectDatoCms = async (forceNew = false, isReconnect = false) => {
     if (oauthConnecting || running) return;
     const flowGeneration = ++oauthFlowGenerationRef.current;
     setOauthConnecting(true);
@@ -5488,8 +5502,8 @@ export default function AgentFrame(props: AgentFrameProps) {
           ? undefined
           : oauthCredentialsRef.current?.client;
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        let client = existingClient;
         try {
-          let client = existingClient;
           if (
             !client ||
             !isOAuthClientRegistrationReusable(client, redirectUri)
@@ -5502,10 +5516,12 @@ export default function AgentFrame(props: AgentFrameProps) {
             oauthFlowGenerationRef.current !== flowGeneration
           )
             return;
-          const registered = createOAuthCredentials(client);
-          oauthStore.save(registered, { remember: true });
-          oauthCredentialsRef.current = registered;
-          setOauthCredentials(registered);
+          if (!isReconnect) {
+            const registered = createOAuthCredentials(client);
+            oauthStore.save(registered, { remember: true });
+            oauthCredentialsRef.current = registered;
+            setOauthCredentials(registered);
+          }
           existingClient = client;
           const authorization = await createAuthorizationRequest({
             scope: credentialScope,
@@ -5545,7 +5561,8 @@ export default function AgentFrame(props: AgentFrameProps) {
           retireUnsafeRepairCandidate();
           void runtimeRef.current?.dispose?.();
           runtimeRef.current = undefined;
-          await refreshMcpAccess();
+          // Signed in already: a failed check shows "not verified" and its retry.
+          await refreshMcpAccess().catch(() => undefined);
           if (!popup.closed) popup.close();
           return;
         } catch (error) {
@@ -5557,11 +5574,14 @@ export default function AgentFrame(props: AgentFrameProps) {
             error.code === 'invalid_client' &&
             oauthFlowGenerationRef.current === flowGeneration
           ) {
-            oauthStore.clear();
-            oauthCredentialsRef.current = null;
-            setOauthCredentials(null);
+            // Reconnect never stored the new client, and the old one still works.
+            if (!isReconnect) {
+              oauthStore.clear();
+              oauthCredentialsRef.current = null;
+              setOauthCredentials(null);
+            }
             existingClient = undefined;
-            forceFreshRegistrationRef.current = true;
+            if (!isReconnect) forceFreshRegistrationRef.current = true;
             if (attempt === 0 && !popup.closed) continue;
           }
           throw error;
@@ -5575,7 +5595,19 @@ export default function AgentFrame(props: AgentFrameProps) {
         mountedRef.current &&
         oauthFlowGenerationRef.current === flowGeneration
       ) {
-        setOauthError(datoCmsSignInErrorMessage(error));
+        const message = datoCmsSignInErrorMessage(
+          error,
+          isReconnect
+            ? 'Your current connection is unchanged.'
+            : 'Click Connect to try again.',
+        );
+        // Only a rejected client is fixed by a new one. DatoCMS can show that on
+        // its own error page, which the editor then closes.
+        setOauthError(
+          message,
+          error instanceof RemoteMcpOAuthError &&
+            ['popup_closed', 'invalid_client'].includes(error.code ?? ''),
+        );
       }
     } finally {
       if (oauthFlowGenerationRef.current === flowGeneration) {
@@ -5604,7 +5636,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       return;
     }
     const previous = oauthCredentialsRef.current;
-    await connectDatoCms(true);
+    await connectDatoCms(true, true);
     const previousToken = previous?.token?.accessToken;
     if (
       previous &&
@@ -5620,6 +5652,7 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   const disconnectDatoCms = async () => {
     if (
+      oauthConnecting ||
       running ||
       activeTurnRef.current ||
       pendingApprovalsRef.current.size > 0 ||
@@ -6146,6 +6179,8 @@ export default function AgentFrame(props: AgentFrameProps) {
           accessCheckedToken !== oauthCredentials?.token?.accessToken,
         datoCmsAccountLabel: hasDatoCmsConnection ? 'DatoCMS' : undefined,
         datoCmsError: oauthError,
+        shouldOfferSignInRestart:
+          Boolean(oauthError) && isOauthErrorRestartable,
       }}
       entries={entries}
       mentionHost={mentionHost}
@@ -6182,6 +6217,8 @@ export default function AgentFrame(props: AgentFrameProps) {
       onConnectDatoCms={() => void connectDatoCms()}
       onDisconnectDatoCms={() => void disconnectDatoCms()}
       onReconnectDatoCms={() => void reconnectDatoCms()}
+      onDismissDatoCmsError={() => setOauthError(undefined)}
+      onRestartDatoCmsConnection={() => void connectDatoCms(true)}
       onCheckDatoCmsAccess={() => {
         setAccessChecking(true);
         void refreshMcpAccess()

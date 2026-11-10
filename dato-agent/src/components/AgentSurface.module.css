@@ -182,6 +182,17 @@
   line-height: 1.35;
 }
 
+.toolbarErrorDismiss {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .chatListButton svg {
   width: 14px;
   height: 14px;

@@ -8447,6 +8447,43 @@ describe('AgentFrame', () => {
     expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
   });
 
+  it('keeps the working token when a Reconnect is cancelled', async () => {
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    mocks.callback.mockRejectedValueOnce(
+      new RemoteMcpOAuthError(
+        'OAuth authorization failed (access_denied): The resource owner or authorization server denied the request.',
+        { code: 'access_denied' },
+      ),
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    await act(async () => {
+      await mocks.surfaceProps?.onReconnectDatoCms?.();
+    });
+
+    await waitFor(() => expect(mocks.registerClient).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+        'The DatoCMS sign-in was cancelled or denied. Your current connection is unchanged.',
+      ),
+    );
+    expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+    expect(
+      fetchSpy.mock.calls.some(([url]) =>
+        String(url).endsWith('/oauth/revoke'),
+      ),
+    ).toBe(false);
+    const stored = Object.keys(localStorage)
+      .map((key) => localStorage.getItem(key) ?? '')
+      .join('\n');
+    expect(stored).toContain('opaque.bridge/token+value==');
+  });
+
   it('says a denied sign-in can be retried with Connect', async () => {
     mocks.callback.mockRejectedValueOnce(
       new RemoteMcpOAuthError(
