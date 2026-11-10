@@ -4,6 +4,11 @@ import type { Graph, SchemaProgressUpdate } from '@/utils/graph/types';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ProjectSchemaSource } from '@/utils/schema/ProjectSchemaSource';
 
+// The nodes of the export graph have their state pill on the bottom border,
+// and their kind pill on the top one: a taller slot keeps the pills of two
+// nodes in one column apart
+const exportRowPitch = 130;
+
 type Options = {
   initialItemTypes: SchemaTypes.ItemType[];
   selectedItemTypeIds: string[];
@@ -32,6 +37,7 @@ export async function buildGraphFromSchema({
     source,
     initialItemTypes,
     selectedItemTypeIds,
+    rowPitch: exportRowPitch,
     onProgress,
     shouldCancel,
   });

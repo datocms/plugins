@@ -185,6 +185,13 @@ type Props = {
   onNodeClick?: NodeMouseHandler<AppNode> | NodeMouseHandler;
   /** Runs on a click on the empty canvas, for example to clear the focus */
   onPaneClick?: (event: React.MouseEvent) => void;
+  /**
+   * What Enter (or Space) does on a focused node, as a click does: the
+   * keyboard way to act on a node. `hint` is the description that a screen
+   * reader reads on the node, in place of the one of React Flow (which
+   * selects and moves nodes, and this graph does neither).
+   */
+  nodeKeyboard?: { hint: string; onActivate: (node: AppNode) => void };
   style?: React.CSSProperties;
 };
 
@@ -197,6 +204,7 @@ export function GraphCanvas({
   edgeTypes,
   onNodeClick,
   onPaneClick,
+  nodeKeyboard,
   style,
 }: Props) {
   // The library's own defaults follow the color scheme of the CMS
@@ -246,9 +254,39 @@ export function GraphCanvas({
     return () => window.clearTimeout(timeout);
   }, [fitGraph, nodeIds]);
 
+  // A node of React Flow is a focusable element with its id in data-id:
+  // Enter and Space on it act as a click
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!nodeKeyboard || (event.key !== 'Enter' && event.key !== ' ')) {
+      return;
+    }
+    const target = event.target;
+    if (
+      !(target instanceof HTMLElement) ||
+      !target.classList.contains('react-flow__node')
+    ) {
+      return;
+    }
+    const node = graph.nodes.find((node) => node.id === target.dataset.id);
+    if (!node) return;
+    event.preventDefault();
+    nodeKeyboard.onActivate(node);
+  };
+
   return (
     <ReactFlow
       className={s.canvas}
+      onKeyDown={nodeKeyboard ? handleKeyDown : undefined}
+      // React Flow reads one key or the other, by whether its own keys are
+      // on: both get the hint
+      ariaLabelConfig={
+        nodeKeyboard
+          ? {
+              'node.a11yDescription.default': nodeKeyboard.hint,
+              'node.a11yDescription.keyboardDisabled': nodeKeyboard.hint,
+            }
+          : undefined
+      }
       colorMode={colorScheme}
       style={style}
       fitView

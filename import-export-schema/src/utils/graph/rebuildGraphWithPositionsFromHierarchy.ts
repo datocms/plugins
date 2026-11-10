@@ -4,7 +4,7 @@ import type { AppNode, Graph } from './types';
 // The slot of a node across the tree (its height and the gap to the next
 // one) and along it (the 230px node and the room for the edges and their
 // dots)
-const rowPitch = 110;
+export const defaultRowPitch = 110;
 const columnPitch = 350;
 
 /**
@@ -18,6 +18,8 @@ const columnPitch = 350;
 export function rebuildGraphWithPositionsFromHierarchy(
   hierarchy: HierarchyNode<AppNode>,
   edges: Graph['edges'],
+  /** A taller slot, for nodes with a pill on their bottom border too */
+  rowPitch = defaultRowPitch,
 ): Graph {
   const layout = tree<AppNode>()
     .nodeSize([rowPitch, columnPitch])

@@ -26,9 +26,13 @@ export type ItemTypeNode = Node<
 // Show extra metadata once the canvas is sufficiently zoomed in.
 const zoomSelector = (state: ReactFlowState) => state.transform[2] >= 0.8;
 
+/** Where a node shows its state pill */
+export type StatusPlacement = 'top' | 'bottom';
+
 /**
  * Node renderer used by React Flow to display a DatoCMS model/block, with the
- * kind and API key once zoomed in. The state pill shows at every zoom. Its
+ * kind and API key once zoomed in. The state pill shows at every zoom, on
+ * the top border or on the bottom one. Its
  * fields show in its item of the overview, which a click on the node opens:
  * no card opens over the nodes next to it.
  */
@@ -36,6 +40,7 @@ export function ItemTypeNodeRenderer({
   data: { itemType },
   className,
   status,
+  statusPlacement = 'top',
   name,
   apiKey,
 }: NodeProps<ItemTypeNode> & {
@@ -45,25 +50,38 @@ export function ItemTypeNodeRenderer({
    * shows it): the paint alone does not tell it.
    */
   status?: ReactNode;
+  /**
+   * Where the state pill goes: next to the kind pill on the top border, or
+   * alone on the bottom border, where a longer word fits
+   */
+  statusPlacement?: StatusPlacement;
   name: string;
   apiKey: string;
 }) {
   const showDetails = useStore(zoomSelector);
 
   const isBlock = itemType.attributes.modular_block;
+  const statusBelow = statusPlacement === 'bottom' && Boolean(status);
+  const statusAbove = statusBelow ? null : status;
 
   return (
     <>
       <Handle type="target" position={Position.Left} className={s.handle} />
-      <div className={classNames(s.node, className)}>
-        {showDetails || status ? (
+      <div
+        className={classNames(
+          s.node,
+          statusBelow && s.withStatusBelow,
+          className,
+        )}
+      >
+        {showDetails || statusAbove ? (
           <span className={s.pills}>
             {showDetails ? (
               <Pill icon={isBlock ? <BlockIcon /> : <ModelIcon />}>
                 {isBlock ? 'Block' : 'Model'}
               </Pill>
             ) : null}
-            {status}
+            {statusAbove}
           </span>
         ) : null}
         <div className={s.name}>{name}</div>
@@ -72,6 +90,9 @@ export function ItemTypeNodeRenderer({
             <ApiKey>{apiKey}</ApiKey>
           </div>
         )}
+        {statusBelow ? (
+          <span className={classNames(s.pills, s.pillsBelow)}>{status}</span>
+        ) : null}
       </div>
       <Handle type="source" position={Position.Right} className={s.handle} />
     </>

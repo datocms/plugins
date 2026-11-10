@@ -22,6 +22,8 @@ type BuildGraphOptions = {
   initialItemTypes: SchemaTypes.ItemType[];
   selectedItemTypeIds?: string[]; // export use-case to include edges
   itemTypeIdsToSkip?: string[]; // import use-case to avoid edges
+  /** The height of the slot of a node in the layout (see the layout) */
+  rowPitch?: number;
   onProgress?: (update: SchemaProgressUpdate) => void;
   shouldCancel?: () => boolean;
 };
@@ -253,6 +255,7 @@ export async function buildGraph({
   initialItemTypes,
   selectedItemTypeIds = [],
   itemTypeIdsToSkip = [],
+  rowPitch,
   onProgress,
   shouldCancel,
 }: BuildGraphOptions): Promise<Graph> {
@@ -357,5 +360,9 @@ export async function buildGraph({
   }
 
   const hierarchy = buildHierarchyNodes(sortedGraph, selectedItemTypeIds);
-  return rebuildGraphWithPositionsFromHierarchy(hierarchy, sortedGraph.edges);
+  return rebuildGraphWithPositionsFromHierarchy(
+    hierarchy,
+    sortedGraph.edges,
+    rowPitch,
+  );
 }

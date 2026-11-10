@@ -9,3 +9,64 @@
   position: absolute;
   inset: 0;
 }
+
+/* The key of the graph, in the footer of its pane: the samples and their
+   words at the left, how to change the file at the right. It wraps in a
+   narrow frame. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s) var(--spacing-l);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-m) var(--spacing-l);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+}
+
+.legendItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s) var(--spacing-l);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.legendItem {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+}
+
+/* A box of the graph, small: the soft brand card of a node in the file,
+   the dashed outline of a node out of it (as graph.module.css draws them) */
+.swatch {
+  box-sizing: border-box;
+  width: var(--spacing-l);
+  height: var(--spacing-m);
+  border: 1px solid;
+  border-radius: var(--radius-xs);
+}
+
+.swatchIncluded {
+  background-color: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
+}
+
+.swatchExcluded {
+  border-style: dashed;
+  border-color: var(--color--border-hover);
+}
+
+/* A link of the graph, small: solid in the brand ink when it goes in the
+   file, dashed in the graphic ink when it does not */
+.line {
+  width: var(--spacing-l);
+  border-top: 2px solid var(--color--ink-primary);
+}
+
+.lineExcluded {
+  border-top-style: dashed;
+  border-top-color: var(--color--ink-muted);
+}

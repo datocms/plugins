@@ -7,6 +7,7 @@ import {
   useInternalNode,
   useNodesData,
 } from '@xyflow/react';
+import classNames from 'classnames';
 import HoverCard from 'datocms-react-ui/HoverCard';
 import RawButton from 'datocms-react-ui/RawButton';
 import { getBezierPath, getSelfPath } from './bezier';
@@ -15,7 +16,17 @@ import s from './graph.module.css';
 import type { ItemTypeNode } from './ItemTypeNodeRenderer';
 import type { PluginNode } from './PluginNodeRenderer';
 
-export type FieldEdge = Edge<{ fields: SchemaTypes.Field[] }, 'field'>;
+/**
+ * What the export does with a link: `included` when both ends are in the
+ * file, `linkDropped` when only its source is (its fields lose the link),
+ * `excluded` when its source is not in the file. The import sets none.
+ */
+export type FieldEdgeExportState = 'included' | 'linkDropped' | 'excluded';
+
+export type FieldEdge = Edge<
+  { fields: SchemaTypes.Field[]; exportState?: FieldEdgeExportState },
+  'field'
+>;
 
 type GraphNodeData =
   | Pick<ItemTypeNode, 'id' | 'type' | 'data'>
@@ -46,9 +57,32 @@ function edgeDotLabel(
 }
 
 /**
+ * The words of an export state, in the name of the dot and under its list
+ * of fields: the dashed line alone does not tell it.
+ */
+function exportNote(
+  exportState: FieldEdgeExportState | undefined,
+  sourceNode: GraphNodeData | undefined,
+  targetNode: GraphNodeData | undefined,
+) {
+  if (exportState === 'linkDropped') {
+    const targetName = nodeName(targetNode);
+    return targetName
+      ? `“${targetName}” is not exported: these fields lose the link.`
+      : 'Not exported: these fields lose the link.';
+  }
+  if (exportState === 'excluded') {
+    const sourceName = nodeName(sourceNode);
+    return sourceName ? `“${sourceName}” is not exported.` : 'Not exported.';
+  }
+  return undefined;
+}
+
+/**
  * An edge between two nodes, with a dot that lists the fields behind the
  * link. The dot is a button, thus the list opens on hover and on keyboard
- * focus.
+ * focus. In the export, the line and the dot show whether the link goes in
+ * the file.
  */
 export function FieldEdgeRenderer({
   id,
@@ -65,10 +99,12 @@ export function FieldEdgeRenderer({
   data,
 }: EdgeProps<FieldEdge>) {
   const fields = data?.fields ?? [];
+  const exportState = data?.exportState;
   const [sourceNode, targetNode] = useNodesData<ItemTypeNode | PluginNode>([
     source,
     target,
   ]);
+  const note = exportNote(exportState, sourceNode, targetNode);
   // The box of the source, for the loop of a node to itself
   const sourceBox = useInternalNode(source);
 
@@ -90,7 +126,16 @@ export function FieldEdgeRenderer({
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={style}
+        className={classNames(
+          exportState === 'included' && s.edgeIncluded,
+          exportState && exportState !== 'included' && s.edgeExcluded,
+        )}
+      />
 
       <EdgeLabelRenderer>
         <HoverCard
@@ -98,13 +143,21 @@ export function FieldEdgeRenderer({
             fields.length > 0 ? (
               <HoverCard.Body>
                 <FieldRows fields={fields} />
+                {note ? <HoverCard.Note>{note}</HoverCard.Note> : null}
               </HoverCard.Body>
             ) : null
           }
         >
           <RawButton
-            className={s.edgeDot}
-            ariaLabel={edgeDotLabel(sourceNode, targetNode)}
+            className={classNames(
+              s.edgeDot,
+              exportState === 'included' && s.edgeDotIncluded,
+            )}
+            ariaLabel={
+              note
+                ? `${edgeDotLabel(sourceNode, targetNode)}. ${note}`
+                : edgeDotLabel(sourceNode, targetNode)
+            }
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             }}

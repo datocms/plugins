@@ -8,9 +8,8 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import ListArea from 'datocms-react-ui/ListArea';
 import Pane, { type ListPreset, useFilteredList } from 'datocms-react-ui/Pane';
-import Pill from 'datocms-react-ui/Pill';
 import SwitchInput from 'datocms-react-ui/SwitchInput';
-import { memo, useMemo, useState } from 'react';
+import { memo, useContext, useMemo, useState } from 'react';
 import { FieldList } from '@/components/FieldList';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
@@ -23,6 +22,15 @@ import {
 import { useFormatters } from '@/texts';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import type { Graph } from '@/utils/graph/types';
+import { EntitiesToExportContext } from './EntitiesToExportContext';
+import { ExportStatePill } from './ExportStatePill';
+import {
+  type ExportSelection,
+  type ExportState,
+  exportStateLabels,
+  itemTypeExportState,
+  pluginExportState,
+} from './exportState';
 
 const localeAwareCollator = new Intl.Collator(undefined, {
   sensitivity: 'base',
@@ -62,8 +70,8 @@ const presetOptions: ListPreset<OverviewEntry>[] = [
   },
   {
     id: notIncludedPresetId,
-    label: 'Not included',
-    shortLabel: 'Not included',
+    label: exportStateLabels.excluded,
+    shortLabel: exportStateLabels.excluded,
     matches: (entry) => !entry.listedAsSelected,
   },
 ];
@@ -289,12 +297,27 @@ export function ExportSchemaOverview({
   );
 }
 
+/** The state of an entry, as its node in the graph shows it */
+function entryExportState(
+  entry: OverviewEntry,
+  isInitial: boolean,
+  selection: ExportSelection | undefined,
+): ExportState {
+  if (selection) {
+    return entry.kind === 'plugin'
+      ? pluginExportState(selection, entry.entity.id)
+      : itemTypeExportState(selection, entry.entity.id);
+  }
+  if (isInitial) return 'start';
+  return entry.selected ? 'picked' : 'excluded';
+}
+
 type ItemProps = {
   entry: OverviewEntry;
   isInitial: boolean;
   /**
-   * The list shows only what is not included, as its title says: the row
-   * then needs no "Not included" pill
+   * The list shows only what is not exported, as its title says: the row
+   * then needs no "Not exported" pill
    */
   inNotIncludedView: boolean;
   onToggleItemType: (itemTypeId: string) => void;
@@ -320,11 +343,14 @@ const ExportOverviewItem = memo(function ExportOverviewItem({
     }
   };
 
-  const status = isInitial ? (
-    <Pill>Starting point</Pill>
-  ) : entry.selected || inNotIncludedView ? null : (
-    <Pill>Not included</Pill>
-  );
+  // The words of the nodes of the graph. A plain "Included" needs none: the
+  // switch tells it.
+  const selection = useContext(EntitiesToExportContext);
+  const state = entryExportState(entry, isInitial, selection);
+  const status =
+    state === 'picked' || (state === 'excluded' && inNotIncludedView) ? null : (
+      <ExportStatePill state={state} />
+    );
 
   return (
     <OverviewItem entity={entry.entity} status={status}>

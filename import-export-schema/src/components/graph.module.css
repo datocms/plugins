@@ -45,16 +45,29 @@
 }
 
 /* The kind pill (zoomed in) and the state pill, centered on the top
-   border */
+   border. Above the ring of the focused node. */
 .pills {
   position: absolute;
   top: 0;
   left: 50%;
+  z-index: 1;
   display: flex;
   gap: var(--spacing-s);
   max-width: calc(100% - 2 * var(--spacing-m));
   white-space: nowrap;
   transform: translate(-50%, -50%);
+}
+
+/* The state pill alone on the bottom border (the export), with the room
+   for it under the content */
+.pillsBelow {
+  top: auto;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+
+.withStatusBelow {
+  padding-bottom: var(--spacing-l);
 }
 
 .name {
@@ -109,6 +122,32 @@
   border-color: var(--color--selected--border);
 }
 
+/* A node in the export: a soft brand card, thus the file reads at a glance
+   against the dashed nodes left out of it. Its pill has a check and the
+   word of its state. */
+.included {
+  color: var(--color--primary-soft--ink);
+  background-color: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
+
+  &:hover {
+    background-color: var(--color--primary-soft--surface-hover);
+    border-color: var(--color--primary-soft--border);
+  }
+}
+
+/* The focused node of the export: a ring out of its box, which leaves the
+   box in the colors of its state (in the file or not). The ring is its own
+   box, thus it crosses no context with the card. */
+.current::after {
+  position: absolute;
+  inset: calc(-1 * var(--spacing-s) - 1px);
+  pointer-events: none;
+  content: "";
+  border: 2px solid var(--color--selected--border);
+  border-radius: calc(var(--radius-s) + var(--spacing-s));
+}
+
 /* The dot in the middle of an edge: a button whose HoverCard lists the
    fields behind the link, on hover and on keyboard focus. The focus ring
    is the kit's own (*:focus-visible). The button has the corners of a
@@ -139,6 +178,25 @@
   &:focus-visible::before {
     background-color: var(--color--ink-subtle);
   }
+}
+
+/* The links of the export graph. A link between two nodes in the file is
+   in the brand ink, solid, with its arrowhead in the same ink (the export
+   page gives it as the color of the marker). A link with an end out of the
+   file is dashed in the graphic ink. The path takes the stroke variable of
+   React Flow, which wins over the order of the stylesheets. */
+.edgeIncluded {
+  --xy-edge-stroke: var(--color--ink-primary);
+}
+
+.edgeExcluded {
+  stroke-dasharray: 6 4;
+}
+
+.edgeDotIncluded::before,
+.edgeDotIncluded:hover::before,
+.edgeDotIncluded:focus-visible::before {
+  background-color: var(--color--ink-primary);
 }
 
 /* The fields and fieldsets of a model or block, in the body of an overview

@@ -24,7 +24,7 @@ import {
   GRAPH_NODE_THRESHOLD,
 } from '@/shared/constants/graph';
 import { useOverviewSplit } from '@/shared/hooks/useOverviewSplit';
-import { useFormatters } from '@/texts';
+import { type Formatters, useFormatters } from '@/texts';
 import {
   describeSchemaReadError,
   errorCode,
@@ -33,6 +33,7 @@ import {
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
 import {
+  type AppEdge,
   type AppNode,
   edgeTypes,
   type Graph,
@@ -41,11 +42,18 @@ import {
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
+import { ExportLegend } from './ExportLegend';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
 import {
   ExportSchemaOverview,
   useExportOverviewList,
 } from './ExportSchemaOverview';
+import {
+  type ExportSelection,
+  edgesWithExportState,
+  exportSummaryText,
+  summarizeExport,
+} from './exportState';
 import s from './styles.module.css';
 import { useExportGraph } from './useExportGraph';
 
@@ -61,6 +69,10 @@ const nodeTypes: NodeTypes = {
 const pluginIdsWarnedKey = 'import-export-schema.exportPluginIdsWarned';
 const legacyPluginIdsWarnedKey = 'exportPluginIdsWarned';
 const goBackLabel = 'Back to the export options';
+// What a screen reader reads on a node of the graph, in place of the hint of
+// React Flow
+const nodeKeyboardHint =
+  'Press Enter to include it in the export or to leave it out.';
 
 type Props = {
   initialItemTypes: SchemaTypes.ItemType[];
@@ -97,6 +109,33 @@ function exportDisabledReason({
     return { reason: 'The export is available once the diagram loads.' };
   }
   return undefined;
+}
+
+/**
+ * The parts of the graph pane that need a ready graph: the summary of the
+ * file next to the button that writes it, with the words of the pills and
+ * of the presets of the overview, and the legend under the drawn graph.
+ */
+function graphPaneExtras({
+  graph,
+  showGraph,
+  selection,
+  count,
+}: {
+  graph: Graph | undefined;
+  /** The graph is drawn (not too large, or drawn anyway) */
+  showGraph: boolean;
+  selection: ExportSelection;
+  count: Formatters['count'];
+}) {
+  return {
+    summaryNote: graph ? (
+      <Toolbar.Note>
+        {exportSummaryText(summarizeExport(graph.nodes, selection), count)}
+      </Toolbar.Note>
+    ) : null,
+    legend: graph && showGraph ? <ExportLegend /> : undefined,
+  };
 }
 
 /**
@@ -284,6 +323,32 @@ export default function Inner({
     return graph.nodes;
   }, [graph, showGraph]);
 
+  // The selection as the nodes, the edges, the overview and the summary read
+  // it: what goes in the file, and why
+  const exportSelection = useMemo<ExportSelection>(
+    () => ({
+      initialItemTypeIds: new Set(initialItemTypeIds),
+      itemTypeIds: new Set(selectedItemTypeIds),
+      pluginIds: new Set(selectedPluginIds),
+      dependencyItemTypeIds: autoSelectedDependencies.itemTypeIds,
+      dependencyPluginIds: autoSelectedDependencies.pluginIds,
+    }),
+    [
+      initialItemTypeIds,
+      selectedItemTypeIds,
+      selectedPluginIds,
+      autoSelectedDependencies,
+    ],
+  );
+
+  // Each link drawn as kept in the file, or not
+  const graphEdges = useMemo<AppEdge[]>(() => {
+    if (!showGraph || !graph) {
+      return [];
+    }
+    return edgesWithExportState(graph.nodes, graph.edges, exportSelection);
+  }, [exportSelection, graph, showGraph]);
+
   const handleSelectEntity = useCallback(
     (newEntity: FocusedEntity | undefined, zoomIn = false) => {
       setFocusedEntity(newEntity);
@@ -297,8 +362,10 @@ export default function Inner({
     [],
   );
 
-  const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
-    (_, node) => {
+  // A click on a node, or Enter on it: it opens in the overview, and it goes
+  // in or out of the file (the item types the export starts from stay in)
+  const activateNode = useCallback(
+    (node: AppNode) => {
       if (node.type === 'itemType') {
         setFocusedEntity(node.data.itemType);
         if (initialItemTypeIds.some((id) => `itemType--${id}` === node.id)) {
@@ -322,6 +389,15 @@ export default function Inner({
       }
     },
     [initialItemTypeIds],
+  );
+
+  const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
+    (_, node) => activateNode(node),
+    [activateNode],
+  );
+  const nodeKeyboard = useMemo(
+    () => ({ hint: nodeKeyboardHint, onActivate: activateNode }),
+    [activateNode],
   );
 
   // The switches of the overview: the same toggles as a click on the node,
@@ -485,10 +561,12 @@ export default function Inner({
     () => ({ entity: focusedEntity, set: handleSelectEntity }),
     [focusedEntity, handleSelectEntity],
   );
-  const entitiesToExportValue = useMemo(
-    () => ({ itemTypeIds: selectedItemTypeIds, pluginIds: selectedPluginIds }),
-    [selectedItemTypeIds, selectedPluginIds],
-  );
+  const { summaryNote, legend } = graphPaneExtras({
+    graph: readyGraph,
+    showGraph,
+    selection: exportSelection,
+    count: format.count,
+  });
 
   const single = initialItemTypes.length === 1;
   const title = single
@@ -527,7 +605,7 @@ export default function Inner({
   return (
     <div className={s.layout}>
       <SelectedEntityContext.Provider value={selectedEntityValue}>
-        <EntitiesToExportContext.Provider value={entitiesToExportValue}>
+        <EntitiesToExportContext.Provider value={exportSelection}>
           <SplitPane primaryPane="left" {...split}>
             <Main>
               <Pane
@@ -539,19 +617,12 @@ export default function Inner({
                       level={1}
                       help={
                         <Toolbar.Help>
-                          {`Choose what goes in the file: ${howToChoose} to add or remove it. Fields that link to something left out lose that link.`}
+                          {`Choose what goes in the file: ${howToChoose} to include or exclude it. Fields that link to something not exported lose that link.`}
                         </Toolbar.Help>
                       }
                     >
                       {title}
                     </Toolbar.Title>
-                    {/* The count, with the word of the pills and of the
-                        presets of the overview */}
-                    <Toolbar.Subtitle hidden={!readyGraph}>
-                      {`${format.number(
-                        selectedItemTypeIds.length + selectedPluginIds.length,
-                      )} included`}
-                    </Toolbar.Subtitle>
                     <Toolbar.Spinner show={building && Boolean(graph)} />
                     <Toolbar.Space />
                     <Toolbar.Button
@@ -563,6 +634,7 @@ export default function Inner({
                       }
                       disabled={dependencies.disabled}
                     />
+                    {summaryNote}
                     <Toolbar.Button
                       tone="primary"
                       icon={ExportIcon}
@@ -574,12 +646,15 @@ export default function Inner({
                     />
                   </Toolbar>
                 }
+                footer={legend}
               >
                 <GraphArea
                   graph={graph}
                   error={error}
                   showGraph={showGraph}
                   graphNodes={graphNodes}
+                  graphEdges={graphEdges}
+                  nodeKeyboard={nodeKeyboard}
                   loadingTitle={loadingTitle}
                   prepareProgress={prepareProgress}
                   onRetry={refresh}
@@ -610,6 +685,10 @@ type GraphAreaProps = {
   /** The graph is small enough, or the user asked to draw it anyway */
   showGraph: boolean;
   graphNodes: AppNode[];
+  /** The edges, with what the export does with each link */
+  graphEdges: AppEdge[];
+  /** Enter on a node, as a click */
+  nodeKeyboard: { hint: string; onActivate: (node: AppNode) => void };
   /** What the first build finds, for its blank slate */
   loadingTitle: string;
   /** The progress of the first build */
@@ -629,6 +708,8 @@ function GraphArea({
   error,
   showGraph,
   graphNodes,
+  graphEdges,
+  nodeKeyboard,
   loadingTitle,
   prepareProgress,
   onRetry,
@@ -684,10 +765,11 @@ function GraphArea({
   return (
     <div className={s.canvas}>
       <GraphCanvas
-        graph={{ nodes: graphNodes, edges: graph.edges }}
+        graph={{ nodes: graphNodes, edges: graphEdges }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
+        nodeKeyboard={nodeKeyboard}
       />
     </div>
   );

@@ -8,11 +8,11 @@ Install the plugin and allow it to use the current user's API token. It moves sc
 
 Go to **Configuration → Schema → Export** and pick the models and blocks to start from, or click **Export entire schema**. To start from a single model, open it in the schema editor, click the three dots next to its name and choose **Export as JSON...**.
 
-The export page shows the selection as a graph. **Select all dependencies** adds every model, block and plugin they link to. Validators that point to models outside the selection are removed, and fields whose editor plugin isn't part of the export fall back to a built-in editor, so the file works on its own. When the export finishes, `export.json` downloads.
+The export page shows a graph of everything the selection links to. Boxes in the export are tinted and carry a checked pill (**Starting point**, **Included** or **Included as dependency**); boxes left out are dashed and say **Not exported**. Links between two exported boxes are solid, and links to or from a box left out are dashed. The legend under the graph explains these, and the toolbar sums up what the file will hold, such as "3 models, 1 block, 1 plugin will be exported · 2 not exported". Click a box, or press Enter on it, to include or exclude it; the switches in the schema overview do the same. **Add what it uses** includes every model, block and plugin the selection links to. Validators that point to models outside the selection are removed, and fields whose editor plugin isn't part of the export fall back to a built-in editor, so the file works on its own. When the export finishes, `export.json` downloads.
 
-With more than about 60 models and blocks, the page shows a warning instead of drawing the graph. You can still select dependencies and export, or click **Render it anyway**.
+With more than about 60 models and blocks, the page shows a warning instead of drawing the graph. You can still add what the selection uses and export, or click **Show the diagram anyway**.
 
-If the list of installed plugins can't be loaded, you'll see a warning and the export may miss plugin dependencies. Reload the page and run **Select all dependencies** again.
+If the list of installed plugins can't be loaded, you'll see a warning and the export may miss plugin dependencies. Reload the page and run **Add what it uses** again.
 
 ## Importing
 
