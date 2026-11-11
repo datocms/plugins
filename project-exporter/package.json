@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-project-exporter",
   "homepage": "https://github.com/datocms/plugins/tree/master/project-exporter#readme",
-  "version": "3.0.0",
+  "version": "4.0.0-next.0",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Export an environment as a project dump for the DatoCMS CLI, or its records and assets in other formats, straight from your browser",
   "keywords": [
