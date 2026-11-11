@@ -31,7 +31,7 @@ function altGenerationActions(disabled = false): DropdownAction[] {
     {
       id: GENERATE_MISSING_ALTS_ACTION_ID,
       label: 'Generate missing alt texts',
-      icon: 'magic',
+      icon: 'wand-sparkles',
       disabled,
     },
     {

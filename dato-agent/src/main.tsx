@@ -52,7 +52,7 @@ if (!handledOAuthCallback) {
       return [
         {
           label: 'Agent (Beta)',
-          icon: 'message-bot',
+          icon: 'bot-message-square',
           placement: ['before', 'content'],
           pointsTo: {
             inspectorId: 'dato-agent',

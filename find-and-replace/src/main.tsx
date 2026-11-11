@@ -31,7 +31,7 @@ connect({
     return [
       {
         label: 'Find and replace',
-        icon: 'file-magnifying-glass',
+        icon: 'file-search',
         placement: ['after', 'content'],
         pointsTo: { pageId: PAGE_ID },
       },

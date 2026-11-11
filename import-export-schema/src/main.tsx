@@ -48,7 +48,7 @@ connect({
       {
         id: 'import-export',
         label: 'Export as JSON…',
-        icon: 'file-export',
+        icon: 'file-output',
       },
     ];
   },
@@ -68,12 +68,12 @@ connect({
         items: [
           {
             label: 'Import',
-            icon: 'file-import',
+            icon: 'file-input',
             pointsTo: { pageId: 'import' },
           },
           {
             label: 'Export',
-            icon: 'file-export',
+            icon: 'file-output',
             pointsTo: { pageId: 'export' },
           },
         ],

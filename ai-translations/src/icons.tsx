@@ -24,7 +24,7 @@ export function CircleExclamationIcon(props: IconProps) {
   );
 }
 
-/** Translations: the plugin's section icon, like its 'language' menu icon. */
+/** Translations: the plugin's section icon, like its 'languages' menu icon. */
 export function LanguageIcon(props: IconProps) {
   return <FaLanguage aria-hidden="true" fill="currentColor" {...props} />;
 }

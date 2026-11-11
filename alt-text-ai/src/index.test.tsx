@@ -54,7 +54,7 @@ describe('media-area dropdown actions', () => {
       {
         id: 'generate-missing-alts',
         label: 'Generate missing alt texts',
-        icon: 'magic',
+        icon: 'wand-sparkles',
         disabled: false,
       },
       {

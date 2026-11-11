@@ -444,7 +444,7 @@ connect({
         items: [
           {
             label: 'Bulk translations',
-            icon: 'language',
+            icon: 'languages',
             pointsTo: {
               pageId: 'ai-bulk-translations',
             },
@@ -500,7 +500,7 @@ connect({
       {
         id: 'aiTranslationsPicker',
         label: 'Translate with AI',
-        icon: 'language',
+        icon: 'languages',
       },
     ];
   },
@@ -714,7 +714,7 @@ connect({
           label: ctx.currentRole.meta.final_permissions.can_edit_schema
             ? 'Set up an AI provider'
             : "Translation isn't set up",
-          icon: 'language',
+          icon: 'languages',
         } as DropdownAction,
       ];
     }
@@ -747,7 +747,7 @@ connect({
     if (isLocalized && hasOtherLocales && hasFieldValueInThisLocale) {
       actionsArray.push({
         label: 'Translate into',
-        icon: 'language',
+        icon: 'languages',
         actions: [
           {
             id: 'translateTo.allLocales',
@@ -778,7 +778,7 @@ connect({
     if (sourceLocales.length > 0) {
       actionsArray.push({
         label: 'Translate from',
-        icon: 'language',
+        icon: 'languages',
         actions: sourceLocales.map((locale) => ({
           id: `translateFrom.${locale}`,
           label: formatLocaleWithCode(locale),

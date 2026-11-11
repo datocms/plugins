@@ -127,7 +127,7 @@ connect({
           {
             id: 'pasteIntoSingleLinkField',
             label: 'Paste link',
-            icon: 'paste',
+            icon: 'clipboard-paste',
           },
         ];
 
@@ -145,7 +145,7 @@ connect({
           {
             id: 'pasteIntoMultiLinkField',
             label: 'Paste links',
-            icon: 'paste',
+            icon: 'clipboard-paste',
           },
         ];
 

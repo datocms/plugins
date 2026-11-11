@@ -10,7 +10,7 @@ connect({
     return [
       {
         label: 'All records',
-        icon: 'table-list',
+        icon: 'table-2',
         placement: ['before', 'menuItems'],
         pointsTo: { pageId: PAGE_ID },
       },

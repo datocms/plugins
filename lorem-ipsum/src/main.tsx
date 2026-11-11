@@ -16,7 +16,7 @@ const loremIpsumDropdownAction: DropdownAction[] = [
   {
     id: 'loremIpsum',
     label: 'Generate dummy text',
-    icon: 'font',
+    icon: 'type',
   },
 ];
 

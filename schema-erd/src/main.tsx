@@ -11,7 +11,7 @@ connect({
         items: [
           {
             label: 'Schema ERD',
-            icon: 'project-diagram',
+            icon: 'network',
             pointsTo: { pageId: 'svg' },
           },
         ],

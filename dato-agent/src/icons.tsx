@@ -122,7 +122,7 @@ export function WarningIcon(props: IconProps) {
 
 /**
  * The agent, its entity icon: the speech bubble of a chat with two eyes,
- * like the message-bot glyph of its navigation tab (message, with the eyes
+ * like the bot-message-square glyph of its navigation tab (message, with the eyes
  * cut out of it)
  */
 export function ChatIcon(props: IconProps) {
