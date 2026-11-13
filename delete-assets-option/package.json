@@ -14,7 +14,7 @@
   ],
   "datoCmsPlugin": {
     "title": "Delete Assets Option",
-    "previewImage": "docs/demo.mp4",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "permissions": [
