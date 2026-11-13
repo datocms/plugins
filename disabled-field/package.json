@@ -24,7 +24,7 @@
   ],
   "datoCmsPlugin": {
     "title": "Disabled Field",
-    "previewImage": "docs/preview.png",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "permissions": []
