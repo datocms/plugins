@@ -1,42 +1,85 @@
 # Find and Replace
 
-Searches every text field of every record for a word or pattern and replaces it across the project. You see each change before it's made, can leave out anything you want to keep, and publish when you're ready.
+Find a word or pattern in every record of your project and replace it in one go. You see each change before it's made, leave out anything you want to keep, and publish when you're ready.
 
-![The Find and Replace page previewing a rename, with one record left out](docs/find-and-replace.png)
+![The Find and Replace page renaming Startup to Northbeam: each match shows the old text struck through next to the new one, grouped by record with its field and language, and the Terms of Service record is unchecked so it stays as it is](docs/find-and-replace.png)
+
+- **Searches everything with text**: titles, text, slugs, Structured Text, SEO fields and text inside blocks at any depth, in every locale.
+- **Preview first**: every match shows the old and new text side by side before anything is saved.
+- **You choose what changes**: leave out whole records or single matches.
+- **Safe by default**: slugs are left out unless you pick them, and records edited after your search are skipped instead of overwritten.
+- **Drafts stay drafts**: changes to models with draft/published are saved as drafts, and you publish them when you're ready.
 
 ## Installation
 
-Install **Find and Replace** from **Configuration → Plugins** and, when asked, let it use the current user's API token, which it needs to read and update records. A **Find and Replace** tab then appears in the top navigation.
+Install **Find and Replace** from **Configuration → Plugins** and, when asked, let it act on behalf of the logged-in user: it reads and updates records with your own permissions. A **Find and replace** tab then appears in the top navigation.
 
-By default anyone whose role can read and update a model can use it on that model's records. In the plugin settings you can restrict it to some roles or limit which models it can change.
+By default every role that can edit records can use it, on every model that role can edit. You can narrow this down in the [plugin settings](#settings).
 
-## Finding text
+## Find text
 
-Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, SEO fields and text inside blocks at any depth, in every locale. In projects with more than 10,000 records, press Enter to start the search.
+Type in **Find**. Matches show up as you type, grouped by record, with the field, the language and a line of context. Each record shows its first three matches; **Show N more matches** reveals the rest.
 
-You can match case, match whole words, or use a regular expression (JavaScript syntax, with `$1`, `$<name>` and `$&` available in the replacement). Without whole-word matching, "Startup" also matches inside "Startups".
+Open **Options** to narrow the search:
 
-## Replacing
+- **Match case**: "Startup" no longer matches "startup".
+- **Match whole word**: "Startup" no longer matches inside "Startups".
+- **Use regular expression**: JavaScript syntax. In **Replace with**, `$1` inserts the first group, `$<name>` a named group and `$&` the whole match.
 
-Type the new text in **Replace with** and every match turns into a before-and-after preview. Uncheck the records or single matches you want to keep, click **Replace N matches** and confirm. To delete the matched text, turn on **Replace with nothing**; an empty replacement field on its own never deletes anything.
+The **All models** menu shows how many matches each model has, and limits the results to one model. Only the model you pick is replaced.
 
-Slug matches start unchecked, because changing a slug changes the record's URL. In Structured Text, link text can be replaced but the link and any linked record are left alone.
+## Replace
 
-Records are updated one at a time. If someone edited a record after your search, it's skipped rather than overwritten, and **Search again** picks up the current text. A record that fails is usually breaking a field validation, and the reason is shown under it. Keep the page open until the run finishes. A single search stops at 10,000 matches; replace those and search again for the rest.
+1. Type the new text in **Replace with**. Every match turns into a before-and-after preview.
+2. Uncheck the records or single matches you want to keep. The count next to the title says how many matches will change.
+3. Click **Replace N matches** and confirm.
 
-## Publishing
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/find-and-replace/docs/confirm.png" width="640" alt="The confirmation: Replace 122 matches? This replaces Startup with Northbeam in 28 records. Some of these records aren't saved as drafts, so they change on your website right away.">
 
-In models with draft/published, replacing saves a draft and nothing goes live until you click **Publish N records** (shown if your role can publish). Only records whose sole unpublished change is your replacement are offered, so publishing never puts other pending edits live. Records that already had unpublished changes, or were never published, stay drafts and say why.
+Records are updated one at a time, and each one shows its status as it goes. Keep the page open until it finishes, or click **Stop** to finish after the record in progress.
 
-![After replacing, the toolbar offers to publish the changed records](docs/after-replacing.png)
+To delete the matched text, turn on **Replace with nothing** in **Options**. An empty **Replace with** never deletes anything on its own.
 
-In models without draft/published, records change on your website as soon as they're replaced. The confirmation dialog warns you before you start.
+Slug matches start unchecked and are marked **Changes the URL**, because changing a slug changes the record's address. In Structured Text, the text of a link is replaced, but the link itself and any linked record are left alone.
+
+### When a record isn't replaced
+
+- **Skipped**: someone edited the record after your search. Click **Search again** to see its current text.
+- **Failed**: the new value breaks one of the field's validations (for example a length limit or a slug format), or your role can't edit the record. The reason is shown under the record, and you can try those records again.
+
+## Publish
+
+In models with draft/published, replacing saves a draft and nothing goes live yet. When the run ends, click **Publish N records** (shown if your role can publish) and confirm.
+
+![After replacing: 104 matches replaced, 4 records published. The Legal Page records show Replaced and the Page records show Published](docs/after-replacing.png)
+
+Only records whose sole unpublished change is your replacement are offered, so publishing never puts someone else's pending edits live. Records that already had unpublished changes, or were never published, stay drafts and say why.
+
+In models without draft/published, records change on your website as soon as they're replaced. The confirmation tells you before you start.
+
+## Settings
+
+Open **Configuration → Plugins → Find and Replace** to limit who can use the plugin and what it changes:
+
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/find-and-replace/docs/plugin-settings.png" width="560" alt="The plugin settings: Every role that can edit records, and Only some models with Page, Blog Post and Documentation Page selected">
+
+- **Who can use Find and replace**: every role that can edit records, or only the roles you pick. Other roles don't see the tab.
+- **Models it searches**: every model the role can edit, or only the models you pick.
+
+The plugin never goes beyond a role's own permissions: a model the role can't edit is never searched.
+
+## Good to know
+
+- **Large projects**: when the models hold more than 10,000 records, typing doesn't start a search. Press Enter to start it.
+- **10,000 matches per search**: a search stops there. Replace those matches, then search again for the rest.
+- **Recent searches are reused**: for a few minutes, new searches reuse the records already read, so they show up instantly. **Search again** reads everything fresh. Replacing always reads each record fresh first.
+- **Sandboxes**: the plugin works in the environment you're in, so you can try a big rename in a sandbox before doing it in your primary environment.
 
 ## Development
 
 ```sh
 npm ci
-npm run dev
+npm run dev       # local dev server, to use with a private plugin pointed at it
 npm test
 npm run build
 ```
