@@ -12,7 +12,7 @@
   "datoCmsPlugin": {
     "title": "Delete Asset From Other Environments",
     "coverImage": "docs/cover-1200x800.png",
-    "previewImage": "docs/screenshot.png",
+    "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
     "permissions": [
       "currentUserAccessToken"
