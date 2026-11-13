@@ -7,7 +7,7 @@
   "description": "Show/hide fields when you toggle a checkbox boolean field",
   "datoCmsPlugin": {
     "title": "Conditional fields",
-    "previewImage": "docs/demo.gif",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html"
   },
