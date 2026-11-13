@@ -13,7 +13,7 @@
   ],
   "datoCmsPlugin": {
     "title": "Automatic environment backups",
-    "previewImage": "docs/demo.jpeg",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html",
     "permissions": [

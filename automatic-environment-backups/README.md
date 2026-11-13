@@ -1,50 +1,81 @@
 # Automatic Environment Backups
 
-This plugin creates automatic, rotating backups of your DatoCMS primary environment by cloning them into sandbox environments within the same project.
+Back up your primary environment on a schedule. A small service that you deploy to Vercel, Netlify or Cloudflare forks your primary environment into a sandbox every day, week, two weeks or month, and the plugin sets it up and shows how the backups are doing.
 
-Because DatoCMS does not have a built-in job scheduler, the plugin has to create an external scheduled lambda (serverless function) to invoke the backup functionality on a recurring basis. It currently supports deployments to Vercel, Cloudflare, and Netlify.
+![The plugin settings: step 1, Create a secret, is done, and step 2, Deploy the backup service, is open with its Deploy to Vercel, Deploy to Netlify and Deploy to Cloudflare buttons and the Deployment URL field](docs/setup.png)
 
-The lambda function is only used as a job scheduler, similar to a cronjob. The lambda calls the DatoCMS Content Management API (CMA) to actually manage the environments and perform the backups.
-
-## How it works
-
-- The plugin's configuration screen is a guided, four-step wizard with a progress bar showing the state of each step.
-- Backup cadence is configured in the plugin (`daily`, `weekly`, `bi-weekly`, `monthly`).
-- The deployed scheduler runs once a day (02:05 UTC) and calls the backup endpoints. A missed cadence catches up on the next successful daily run.
-- The plugin validates connectivity to the serverless function with a health check against `/api/datocms/plugin-health`, authenticated with a shared secret.
-- **Backup status** lists each enabled schedule with its last run, next scheduled run, and linked sandbox environment, plus a per-schedule **Backup now** button for on-demand execution.
-- The created backups are just forked sandboxes inside your DatoCMS project (named with a `backup-plugin-<cadence>` prefix), NOT separate files on an external provider. The external providers are only used to run the scheduled function that calls the CMA to create a backup.
-- Source code for the deployed lambda function is at https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function (this lambda was written by Marcelo Finamor, a DatoCMS employee).
+- **Guided setup**: four short steps, from the shared secret to the schedule. Only the step you're on is open.
+- **Backups inside your project**: each backup is a sandbox environment, ready to inspect, promote or fork. Nothing is copied to an outside provider.
+- **Four schedules**: daily, weekly, bi-weekly and monthly. Turn on any combination.
+- **One backup per schedule**: each new backup replaces the previous one of the same schedule, so sandboxes don't pile up.
+- **Status at a glance**: the last and next backup of each schedule, its environment, and a **Back up now** button.
 
 ## Before you begin
 
-- You will need an account with Vercel, Netlify, or Cloudflare that is capable of creating projects and adding serverless functions (lambdas). Usually the free plan will suffice.
-- In your DatoCMS project, you will have to create a new API token with access to the CMA and an admin role. In older DatoCMS projects, this may have been automatically created as a "Full Access API Token", but newer projects will require manual creation of a similar token.
+- An account on **Vercel**, **Netlify** or **Cloudflare** that can deploy a project with serverless functions. The free plan is usually enough.
+- A **full-access API token** of your DatoCMS project, which the service uses to fork the environment. Older projects already have one called "Full-access API token"; in newer projects, create a token with an admin role and access to the Content Management API.
 
-## Setup
+The service is open source: [datocms-backups-scheduled-function](https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function).
 
-After reading the "Before you begin" section, install the plugin and open your DatoCMS project Configuration → Plugins → Automatic Environment Backups.
+## Installation
 
-The configuration screen then walks you through four focused steps. Only the step you need to work on opens automatically. Completed steps collapse to a short summary and future steps stay collapsed; click any completed step to review it. The progress bar reads **Setup complete** once everything is configured.
+Install the plugin and allow it to **perform actions and API calls on behalf of the logged-in user**: it uses your access to save its settings and to read the project's environments. Then open **Configuration › Plugins › Automatic environment backups**.
 
-1. **Step 1 — Create a secret.** A strong shared secret is generated for you. Click **Save & copy secret** to store it and copy it to your clipboard. Use **Generate new** before saving if you want a different value.
-2. **Step 2 — Deploy the backup service.** Open or create a full-access DatoCMS API token, then choose Vercel, Netlify, or Cloudflare. Set `DATOCMS_FULLACCESS_API_TOKEN` to the API token. For the shared secret copied in Step 1, use `CRON_SECRET` on Vercel or `DATOCMS_BACKUPS_SHARED_SECRET` on Netlify and Cloudflare. Deploy the service, copy its public URL (for example, `https://my-backups.netlify.app`), paste it into the plugin, and click **Save URL & continue**.
-3. **Step 3 — Test the connection.** Run the connection test against the saved deployment URL. The status box confirms that the service responds and authenticates, or shows the exact error. For example, an authentication error means the plugin secret and the provider's `DATOCMS_BACKUPS_SHARED_SECRET` value do not match.
-4. **Step 4 — Backup schedule.** Choose the cadences you want and save the schedule. The plugin creates any missing backup environments for the enabled cadences.
+Only users whose role can edit the schema can change the setup. Other users see it read-only.
 
-Once all four steps are complete, **Backup status** shows the last and next backup, the linked environment for each schedule, and a **Backup now** button. You can leave the screen — backups run on their own.
+## Set it up
 
-## Managing the connection
+1. **Create a secret.** The plugin generates a shared secret. Click **Save secret & continue** to save it and copy it to the clipboard, or **Generate new** for another value.
+2. **Deploy the backup service.** Click **Deploy to Vercel**, **Deploy to Netlify** or **Deploy to Cloudflare**, and set two variables on the deployment:
+   - `DATOCMS_FULLACCESS_API_TOKEN`: your full-access API token (**Open API tokens** takes you to them).
+   - The secret from step 1: `CRON_SECRET` on Vercel, `DATOCMS_BACKUPS_SHARED_SECRET` on Netlify or Cloudflare (**Copy secret** copies it again).
 
-- Click any completed step to change the secret, deployment URL, or schedule. Automatic progression still opens only the current step.
-- Changing the shared secret clears the verified connection so Step 3 must be tested again. Update `CRON_SECRET` on Vercel or `DATOCMS_BACKUPS_SHARED_SECRET` on Netlify and Cloudflare, then redeploy before testing.
-- Use **Remove saved deployment** in Step 2 to clear the URL and return the flow to that step. The external provider keeps running until you remove the deployment there, but the plugin will no longer surface its status.
-- Re-opening the configuration screen automatically re-runs a health check against the saved URL, so a broken or expired deployment is caught immediately in Step 3 and in **Backup status**.
+   Paste the public URL of the deployment, for example `https://my-backups.vercel.app`, and click **Save URL & continue**.
+3. **Test the connection.** Click **Verify connection & continue**. The plugin checks that the service answers and accepts the secret.
+4. **Choose a backup schedule.** Turn on **Daily**, **Weekly**, **Bi-weekly** or **Monthly**, and click **Save schedule & finish**. The plugin creates the first backup of each schedule you turned on.
 
-## Advanced settings
+Once every step is done, the steps close and **Backup status** appears below them. You can leave the page: the backups run on their own.
 
-- **Enable debug logs** — When enabled, plugin events and outbound requests are logged to the browser console for troubleshooting.
+### When the test fails
 
-## Changelog
+![Step 3 marked Failed: the deployment URL, a Failed connection, the message Could not reach the health endpoint, and the technical details of the request](docs/connection-failed.png)
 
-See [CHANGELOG.md](CHANGELOG.md).
+The step shows what went wrong, and **Show technical details** lists the endpoint it called and the error it got. The usual causes:
+
+- **Could not reach the health endpoint**: the URL is wrong, or the deployment isn't finished.
+- **An authentication error**: the secret on the deployment doesn't match the plugin's. Update the variable, redeploy, and test again.
+
+## Backup status
+
+Each schedule you turned on gets a row with:
+
+- **Last** and **Next**: when the last backup ran and when the next one is due. An overdue backup shows **Due now**.
+- **Its environment**, named `backup-plugin-<schedule>-<date>`, with a link to your environments.
+- **Back up now**, to run that schedule's backup right away.
+
+The pill next to the title reads **Active** when everything works, and **Needs attention** when a step needs fixing.
+
+## Change the setup
+
+- Click any finished step to review or change it.
+- A new secret means a new connection test: update the variable on the deployment and redeploy first.
+- **Remove saved deployment** in step 2 clears the URL. The deployment keeps running until you delete it on your provider.
+- Every time the screen opens, the plugin checks the connection again, so a broken deployment shows up right away.
+- **Advanced settings › Debug logs** writes the plugin's events and requests to the browser console.
+
+## Good to know
+
+- **Once a day:** the service runs at 02:05 UTC and makes the backups that are due. A missed backup is made on the next run.
+- **Sandboxes count toward your plan:** each schedule you turn on keeps one sandbox environment.
+- **A backup is a full copy:** the content and schema of the primary environment, as they were when the fork ran.
+
+## Development
+
+```bash
+npm install
+npm run dev     # serves the plugin at http://localhost:5173
+npm run test    # typecheck and unit tests
+npm run build
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the release history.
