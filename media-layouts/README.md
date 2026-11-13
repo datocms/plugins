@@ -1,395 +1,118 @@
 # Media Layouts
 
-A DatoCMS plugin that extends JSON fields to allow editors to select assets with precise layout configuration including aspect ratios and output widths. Ideal for content that requires specific rendering dimensions across responsive breakpoints.
+Pick images together with the crop and the size your website shows them at. Editors choose an aspect ratio and an output width for each image, right in the record, and your frontend gets everything it needs to render it in one JSON value.
 
-![DatoCMS Plugin](https://img.shields.io/badge/DatoCMS-Plugin-ff7751)
+![A blog post with a Story photos field laid out as a wide 21:9 banner over three 4:3 photos, each slot showing its name, its aspect ratio and its final size](docs/story-photos.png)
 
-## Features
-
-- **Self-contained data**: Stores URL, filename, and all metadata directly in JSON—no additional API calls needed
-- **Three operational modes**: Single asset, multiple assets (gallery), or predefined layout slots
-- **Aspect ratio control**: 9 presets plus custom ratios for precise cropping
-- **Width presets**: Original (max) plus 320px mobile to 4K resolution, with named custom presets and custom widths
-- **Focal point support**: Preserves focal point data from DatoCMS media library
-- **Metadata editing**: Edit alt text, title, and focal point directly from the field
-- **Per-asset options**: Optional CSS class and lazy loading toggle per image
-- **Layout builder**: Grid or masonry layouts with drag-and-drop placement, slot spans, and auto-sizing from aspect ratio
-- **Layout metadata**: Optional layout aspect ratio + width for overall composition sizing
-- **Automatic height calculation**: Heights computed from width and aspect ratio for easy imgix integration
+- **Three modes**: a single image, a gallery, or a layout of named slots you design.
+- **Crop and size per image**: 9 aspect ratios plus custom ones, standard widths plus your own named presets, with the final size in pixels.
+- **See the crop**: each image shows at its aspect ratio, centred on its focal point.
+- **Layout builder**: set up grid or masonry layouts in the field's settings, with slots that span several cells.
+- **Ready to render**: the field stores the URL, size, focal point, alt and title of each image, so no extra API call is needed.
 
 ## Installation
 
-1. Go to **Settings > Plugins** in your DatoCMS project
-2. Click **Add new plugin**
-3. Search for "Media Layouts" or install from URL:
-   ```
-   https://github.com/datocms/plugins/media-layouts
-   ```
+Install the plugin from the marketplace. It asks to act on behalf of the user: it uses that access to load the details of an asset that a stored value misses, such as its original size.
 
-## Configuration
+Then add the editor to a JSON field (below). The plugin settings are optional.
 
-### Global Settings
+## Set up a field
 
-Configure default values that apply to all fields using this plugin:
+1. Go to **Schema**, open the model and add a **JSON** field, or click an existing one.
+2. Open the **Presentation** tab and pick **Media layouts** as the **Field editor**.
+3. Choose a **Mode**:
+   - **Single asset**: one image.
+   - **Gallery**: any number of images.
+   - **Layout**: named places, one image each, that you set up.
+4. Click **Save field**.
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| Default Aspect Ratio | Applied to new assets when no field override exists | 16:9 |
-| Default Width | Applied to new assets when no field override exists | 1920px |
-| Width Presets | Named width options shown in all width selectors | (none) |
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/media-layouts/docs/field-mode.png" width="640" alt="The Presentation tab of a JSON field with Media layouts as the field editor, Layout picked as the mode and Grid as the layout style">
 
-### Field Configuration
+For a single asset or a gallery, **Default aspect ratio** and **Default width** set what new images start with. Leave them on **Plugin default** to use the plugin settings. Two switches add per-image options for editors: a **CSS class**, and **Load when scrolled into view** (lazy loading).
 
-When adding the plugin to a JSON field, you must select a mode:
+### Design a layout
 
-#### Single Asset Mode
+In **Layout** mode, the field settings show a layout builder:
 
-Select one image with layout controls. Stores a single `MediaLayoutItem` object.
+- **Layout style**: **Grid** places slots in rows and columns, and a slot can span several cells. **Masonry** fills the columns in order, each slot keeping its own aspect ratio.
+- **Columns** and **Rows** size the grid. Click a free cell in the **Preview** to add a slot there, and drag a slot to move it.
+- Click a slot to set its **Label**, **Aspect ratio**, **Width**, **Column span** and **Row span**. **Size from aspect ratio** picks the spans that best match the slot's ratio. **Required** marks the slot for editors.
+- **Layout aspect ratio** and **Layout width** describe the whole composition, if your frontend needs them.
 
-#### Multiple Assets Mode (Gallery)
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/media-layouts/docs/layout-builder.png" width="640" alt="The layout builder: a preview of a banner over three photos, with the Right photo slot selected, and the list of slots with the settings of Right photo open">
 
-Select multiple images, each with independent layout settings. Stores an array of `MediaLayoutItem` objects.
+## Add images to a record
 
-#### Layout Mode (Predefined Slots)
+Click **No asset yet** (or **Add assets** in a gallery) and pick from the media library. Each image shows at its crop, with:
 
-Define a layout with named slots that editors fill with assets. Choose a style:
+- **Aspect ratio**: the crop. **Original (no crop)** keeps the image's own shape, and **Custom ratio** takes any ratio, like `2.35:1`.
+- **Width**: the output width. **Original** keeps the image's own width, and **Custom width** takes any width from 1 to 10000 px.
+- **Final size**: the width and height your frontend should request.
 
-- **Grid**: Explicit rows/columns (1–4 columns, 1–6 rows), slots placed in cells
-- **Masonry**: Column-based layout with variable heights and ordered slots
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/media-layouts/docs/cover-image.png" width="520" alt="A Cover image field with a photo cropped to 21:9 and its Width menu open, listing the Article column and Social card presets before the standard widths">
 
-Each slot has:
-- **Label**: Descriptive name (e.g., "Hero Image", "Sidebar Thumbnail")
-- **Aspect Ratio**: Fixed ratio for this slot (including Custom)
-- **Width**: Fixed output width for this slot (including Custom)
-- **Required**: Whether the slot must be filled
+Point at an image to get **Edit metadata**, and **Replace** outside a gallery. Its **⋮** has **Remove**. **Edit metadata** changes the alt text, title and focal point stored in this field, not in the media library. New images take their alt text and title from the media library, in the language you're editing.
 
-Layout builder enhancements:
-- **Drag-and-drop placement**: Move or swap slots directly in the preview
-- **Slot spans** (grid): Slots can span multiple rows/columns
-- **Auto size from aspect ratio** (grid): Let spans be calculated based on the slot ratio
-- **Column span** (masonry): Control the width of a masonry tile
+In a layout, each slot has a fixed aspect ratio and width, set in the field's settings. In a gallery, each image has its own:
 
-Optional layout metadata:
-- **Layout aspect ratio**: Auto, preset, or custom ratio for the overall composition
-- **Layout width**: Auto, preset, or custom width for the overall composition (used to compute layout dimensions)
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/media-layouts/docs/gallery.png" width="680" alt="A Photo gallery field with three photos: two at 3:2 and one at 1:1, each with its aspect ratio, width, final size and a Load when scrolled into view switch">
 
-### Field Overrides
+## Plugin settings
 
-For single/multiple modes, you can optionally override global defaults:
-- Toggle "Override default aspect ratio" to set a field-specific ratio
-- Toggle "Override default width" to set a field-specific width
+Open **Configuration → Plugins → Media Layouts**:
 
-### Per-Asset Options
+- **Aspect ratio** and **Width**: what new images start with, unless the field sets its own. The defaults are 16:9 and 1920 px.
+- **Width presets**: named widths, like *Article column, 720*, that every width menu shows before the standard ones. To add one, point just under the last preset and click the **+** that appears on its left, or click the **No width presets yet** box when the list is empty. Then click **Save**.
 
-You can optionally enable extra per-image fields:
-- **CSS class**: Text input to pass a custom class name
-- **Lazy loading**: Boolean toggle for lazy loading preference
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/media-layouts/docs/plugin-settings.png" width="560" alt="The plugin settings: Aspect ratio 16:9 (Widescreen), Width 1920px (Full HD), and two width presets, Article column at 720 and Social card at 1200">
 
-## Aspect Ratio Options
+## Use the data on your website
 
-| Value | Label | Use Case |
-|-------|-------|----------|
-| `original` | Original (no crop) | Preserve native dimensions |
-| `16:9` | Widescreen | Video players, hero banners |
-| `4:3` | Standard | Traditional TV format |
-| `1:1` | Square | Social media, avatars |
-| `3:2` | Photo | Standard photography |
-| `2:3` | Portrait Photo | Vertical photography |
-| `21:9` | Ultrawide | Cinematic banners |
-| `9:16` | Portrait/Mobile | Stories, vertical video |
-| `3:4` | Portrait Standard | Vertical content |
-| `custom` | Custom... | Enter any ratio (e.g., `2.35:1`) |
-
-## Width Presets
-
-| Width | Label | Typical Use |
-|-------|-------|-------------|
-| `original` | Original (max) | Use native resolution |
-| 320px | Mobile small | Feature phones |
-| 640px | Mobile | Standard mobile |
-| 768px | Tablet | Portrait tablets |
-| 1024px | Tablet landscape | Landscape tablets |
-| 1280px | Desktop small | Small laptops |
-| 1920px | Full HD | Standard desktop |
-| 2560px | 2K | High-resolution displays |
-| 3840px | 4K | Ultra HD displays |
-
-Custom widths are supported: select "Custom..." and enter any pixel value
-between 1 and 10000. Heights are still calculated automatically.
-
-You can also add named custom presets in the plugin configuration (label + width),
-which appear alongside the built-in options to guide editors with context-specific
-sizes.
-
-Custom presets are available in all width selectors (global defaults, field overrides,
-asset/slot width pickers, and layout width). Layout width excludes the "Original"
-option and supports Auto + Custom values.
-
-## Data Model
-
-The plugin stores all asset data directly in the JSON field, including the URL. No additional API calls are needed to render images.
-
-### Single Mode
+The field returns JSON. A single asset is one object, a gallery is an array of them, and a layout is `{ layout, assignments }`, where each assignment has the `slotId` of its slot.
 
 ```json
 {
   "uploadId": "abc123",
-  "url": "https://www.datocms-assets.com/12345/image.jpg",
-  "filename": "image.jpg",
-  "format": "jpg",
-  "size": 245000,
-  "alt": "A beautiful sunset",
-  "title": "Sunset at the beach",
-  "cssClass": "hero-image",
-  "lazyLoading": true,
+  "url": "https://www.datocms-assets.com/12345/team.jpg",
+  "alt": "Three colleagues around a laptop",
+  "title": null,
   "focalPoint": { "x": 0.5, "y": 0.3 },
-  "aspectRatio": "16:9",
+  "aspectRatio": "21:9",
   "width": 1920,
-  "height": 1080,
-  "originalWidth": 4000,
-  "originalHeight": 3000
+  "height": 823,
+  "originalWidth": 2500,
+  "originalHeight": 1875
 }
 ```
 
-### Multiple Mode
+Add imgix parameters to the URL to get the crop:
 
-```json
-[
-  {
-    "uploadId": "abc123",
-    "url": "https://www.datocms-assets.com/12345/photo1.jpg",
-    "filename": "photo1.jpg",
-    "format": "jpg",
-    "size": 180000,
-    "alt": "First image",
-    "title": null,
-    "cssClass": "",
-    "lazyLoading": false,
-    "focalPoint": null,
-    "aspectRatio": "1:1",
-    "width": 640,
-    "height": 640,
-    "originalWidth": 2000,
-    "originalHeight": 2000
-  },
-  {
-    "uploadId": "def456",
-    "url": "https://www.datocms-assets.com/12345/photo2.png",
-    "filename": "photo2.png",
-    "format": "png",
-    "size": 320000,
-    "alt": "Second image",
-    "title": null,
-    "cssClass": "gallery-item",
-    "lazyLoading": true,
-    "focalPoint": { "x": 0.3, "y": 0.5 },
-    "aspectRatio": "4:3",
-    "width": 1024,
-    "height": 768,
-    "originalWidth": 3000,
-    "originalHeight": 2000
-  }
-]
-```
-
-### Layout Mode
-
-```json
-{
-  "layout": {
-    "columns": 2,
-    "rows": 2,
-    "layoutStyle": "grid",
-    "layoutAspectRatio": "16:9",
-    "layoutWidth": 1920,
-    "slots": [
-      {
-        "id": "hero",
-        "label": "Hero",
-        "aspectRatio": "21:9",
-        "width": 1920,
-        "row": 0,
-        "col": 0,
-        "rowSpan": 1,
-        "colSpan": 2,
-        "autoSpan": false,
-        "required": true
-      },
-      {
-        "id": "sidebar",
-        "label": "Sidebar",
-        "aspectRatio": "1:1",
-        "width": 320,
-        "row": 1,
-        "col": 1,
-        "rowSpan": 1,
-        "colSpan": 1,
-        "autoSpan": false,
-        "required": false
-      }
-    ]
-  },
-  "assignments": [
-    {
-      "slotId": "hero",
-      "uploadId": "abc123",
-      "url": "https://www.datocms-assets.com/12345/hero.jpg",
-      "filename": "hero.jpg",
-      "format": "jpg",
-      "size": 450000,
-      "alt": "Hero banner",
-      "title": null,
-      "cssClass": "hero-image",
-      "lazyLoading": true,
-      "focalPoint": { "x": 0.5, "y": 0.5 },
-      "aspectRatio": "21:9",
-      "width": 1920,
-      "height": 823,
-      "originalWidth": 4000,
-      "originalHeight": 2000
-    },
-    {
-      "slotId": "sidebar",
-      "uploadId": "def456",
-      "url": "https://www.datocms-assets.com/12345/sidebar.jpg",
-      "filename": "sidebar.jpg",
-      "format": "jpg",
-      "size": 85000,
-      "alt": "Sidebar image",
-      "title": null,
-      "cssClass": "",
-      "lazyLoading": false,
-      "focalPoint": null,
-      "aspectRatio": "1:1",
-      "width": 320,
-      "height": 320,
-      "originalWidth": 800,
-      "originalHeight": 800
-    }
-  ]
-}
-```
-
-### TypeScript Types
-
-```typescript
-type MediaLayoutItem = {
-  uploadId: string;
-  url: string;
-  filename: string;
-  format: string | null;
-  size: number;
-  alt: string | null;
-  title: string | null;
-  cssClass?: string;
-  lazyLoading?: boolean;
-  focalPoint: { x: number; y: number } | null;
-  aspectRatio: string;
-  customAspectRatio?: string; // When aspectRatio is "custom"
-  width: number | 'original';
-  height: number;
-  originalWidth: number | null;
-  originalHeight: number | null;
-};
-
-type LayoutSlot = {
-  id: string;
-  label: string;
-  aspectRatio: string;
-  customAspectRatio?: string; // When aspectRatio is "custom"
-  width: number | 'original';
-  row: number;
-  col: number;
-  rowSpan?: number;
-  colSpan?: number;
-  autoSpan?: boolean;
-  required: boolean;
-};
-
-type LayoutConfig = {
-  slots: LayoutSlot[];
-  columns: number;
-  rows: number;
-  layoutStyle?: 'grid' | 'masonry';
-  layoutAspectRatio?: string;
-  layoutCustomAspectRatio?: string;
-  layoutWidth?: number;
-};
-
-// Single mode value
-type SingleFieldValue = MediaLayoutItem | null;
-
-// Multiple mode value
-type MultipleFieldValue = MediaLayoutItem[];
-
-// Layout mode value
-type SlotAssignment = MediaLayoutItem & { slotId: string };
-type LayoutFieldValue = {
-  layout: LayoutConfig;
-  assignments: SlotAssignment[];
-};
-```
-
-## Usage with imgix
-
-The stored URL, width, height, and focal point data integrates directly with DatoCMS imgix:
-
-```javascript
-const { url, width, height, focalPoint, aspectRatio, originalWidth } = mediaLayoutItem;
-
-// Build imgix parameters
-const resolvedWidth = width === 'original' ? originalWidth : width;
-const params = new URLSearchParams({
-  fit: aspectRatio === 'original' ? 'max' : 'crop',
-});
-
-if (resolvedWidth) {
-  params.set('w', resolvedWidth.toString());
-}
-if (height && resolvedWidth) {
-  params.set('h', height.toString());
-}
-
-// Add focal point if available
-if (focalPoint && aspectRatio !== 'original') {
+```js
+const params = new URLSearchParams({ w: width, h: height, fit: 'crop' });
+if (focalPoint) {
   params.set('crop', 'focalpoint');
-  params.set('fp-x', focalPoint.x.toString());
-  params.set('fp-y', focalPoint.y.toString());
+  params.set('fp-x', focalPoint.x);
+  params.set('fp-y', focalPoint.y);
 }
-
-const finalUrl = `${url}?${params.toString()}`;
+const src = `${url}?${params}`;
 ```
 
-## Fetching Data
+Each image also has its `filename`, `format` and `size` in bytes. `width` is `"original"` when the editor kept the image's own width: use `originalWidth` then.
 
-JSON fields return the complete JSON blob in GraphQL queries. Since the URL is stored directly, no additional API calls are needed:
+## Good to know
 
-```graphql
-query {
-  blogPost {
-    heroImage # Returns the full MediaLayoutItem or array with URL included
-  }
-}
-```
-
-The response contains everything needed to render images, including the base URL which you can combine with imgix parameters.
+- **A record keeps the layout it was filled with.** Once a layout field has a value, changing the field's slots doesn't change that record.
+- **Required slots aren't enforced.** They are marked for editors, but the record saves without them.
+- **Gallery images stay in the order you add them.** To reorder, remove an image and add it again.
+- **The media library doesn't count these images as used**, because they live inside a JSON value.
+- **An asset that can't load** (for example, deleted) shows a warning with a **Remove** button.
 
 ## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
+npm run dev     # local dev server, to use with a private plugin pointed at it
 npm run build
-
-# Type check
-npx tsc -b
 ```
 
-## License
-
-MIT
+See the [DatoCMS plugin SDK docs](https://www.datocms.com/docs/plugin-sdk) to learn how plugins are built.
