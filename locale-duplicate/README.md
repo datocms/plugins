@@ -1,42 +1,65 @@
-__NEED_NEW_IMAGE__
 # Locale Duplicate
 
-Copies localized content from one locale to another. You can copy a whole locale across the models you choose, or add copy buttons to specific localized fields in the record editor.
+Copy the content of one locale into another, across every record of the models you pick, or one field at a time from the record editor. It's the quickest way to start a new locale from a similar one, like English (Australia) from English, or to rename a locale.
 
-It's handy for renaming a locale (add the new one, copy the old one into it, then remove the old one) or for starting a new locale from a similar one, like `en-UK` from `en-US`.
+![The Mass locale duplication page set to copy English into English (Australia) across all eleven models of the project, with a warning that the target locale gets overwritten](docs/mass-duplication.png)
 
-Install the plugin and allow it to use the current user's API token.
+- **Copy a whole locale**: every localized field of every record in the models you choose, blocks included.
+- **Drafts or published content**: copy the latest drafts, or only what's published.
+- **Publish as you go**: optionally publish each record once its copy is saved.
+- **Copy buttons on fields**: a button under the fields you choose copies their value to the other locales.
+- **Clear results**: follow each record as it's copied, then see a summary per model and every error.
 
-## Copying a whole locale
+## Installation
 
-![The Mass Locale Duplication page](https://github.com/user-attachments/assets/3770f94d-4206-450b-bf0b-beebcce6cf44)
+Install **Locale Duplicate** from **Configuration → Plugins** and, when asked, let it act on behalf of the logged-in user: it reads and updates records with your own permissions. A **Locale Duplicate** group then appears in the **Configuration** sidebar.
 
-Open **Configuration → Mass Locale Duplication**, pick the source and target locales, and choose which models to include. Blocks are copied along with the records that contain them.
+Your project needs at least two locales. To start a new one, add it in **Configuration → Locales & Timezone** first: it starts empty in every record.
 
-By default the latest draft content is copied. Turn off **Use records in draft state** to copy only published records and their published content. Turn on **Publish updated records automatically after duplication** to publish the records once they're updated.
+## Copy a whole locale
 
-Click **Duplicate locale content** and confirm twice. You'll see each record as it's processed and a summary of successes and failures per model at the end.
+1. Open **Configuration → Mass locale duplication**.
+2. Pick the **Source locale** to copy from and the **Target locale** to fill.
+3. Choose the **Models** to include. All of them are selected at first.
+4. Click **Duplicate** and confirm twice. The second confirmation reminds you that the target locale is overwritten.
 
-## Before you run it
+Every localized field of each record gets the source locale's value in the target locale, and blocks are copied with them. Other locales are left alone.
 
-Everything in the target locale of the selected models is overwritten with the source content. Other locales are left alone.
+**Include draft records** is on by default, so the latest content of every record is copied. Turn it off to copy only published records, from their published content. Turn on **Publish records after duplication** to publish each record once its copy is saved; when it's off, the changes stay in draft.
 
-Keep the page open until the run finishes, and avoid editing content in the selected models while it's going. **Abort Process** stops it, but records already updated stay updated.
+### Follow the progress
 
-Copying a locale adds content to each record, so large records can go over the [CMA limits](https://www.datocms.com/docs/content-management-api/technical-limits) on record size and nested blocks. Those records fail and are counted as errors in the summary.
+The page shows each record as it's copied. Keep it open until the run finishes: leaving it stops the duplication after the operations in progress. **Stop** does the same, and the records already updated keep the new content.
+
+![The summary after copying English into English (Australia): Duplication complete, 81 records processed across 11 models, with the breakdown per model](docs/duplication-summary.png)
+
+When it ends, the summary shows how many records were processed, succeeded and failed, the result for each model, the errors and the full log. **No changes needed** counts records whose target locale already matched, or that have no localized fields. **New duplication** takes you back to the form.
+
+A record fails when the copied content doesn't pass the model's validations (for example a required field that is empty in the source locale), or when it goes over the [record size and block limits](https://www.datocms.com/docs/content-management-api/technical-limits). Fix it and run the duplication again: records that already match are skipped.
 
 ## Copy buttons on fields
 
-![Copy buttons on a localized field in the record editor](https://github.com/user-attachments/assets/f12b5e08-8c4b-499f-9ea2-6e2e3269d6d6)
+To copy a single field without touching the rest of the record, add a copy button to it. Open **Configuration → Plugins → Locale Duplicate**, pick a **Model** and one of its localized **Field**s, click **Add field**, then **Save**.
 
-In **Configuration → Plugins → Locale Duplicate**, pick a model and one of its localized fields, click **Add Configuration** for each field you want, then **Save Configuration**. String, text, Structured Text, JSON, SEO and slug fields are supported.
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/locale-duplicate/docs/plugin-settings.png" width="560" alt="The plugin settings with copy buttons on the Title field of Blog Post and the Name field of Author">
 
-The record's first locale is treated as the main one. In that locale the button reads **Copy to all locales** and copies the value into every other locale. In any other locale it reads **Copy from** followed by the main locale, and pulls that value in. Save the record as usual afterwards. Records with a single locale don't show the button.
+The button shows under the field in the record editor. In the record's first locale it reads **Copy to all locales** and copies the value into every other locale. In any other locale it reads **Copy from** followed by the first locale's code, and pulls that value in. Save the record as usual afterwards.
+
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/locale-duplicate/docs/copy-buttons.png" width="640" alt="An author record in English, with a Copy to all locales button under the Name field">
+
+String, text, Structured Text, JSON, SEO and slug fields can have a button. Records with a single locale don't show it.
+
+## Good to know
+
+- **It can't be undone**: back up important content first, or try the duplication in a sandbox environment and promote it.
+- **One environment at a time**: the plugin works in the environment you're in.
+- **Edits during a run**: avoid editing the selected models while a duplication runs. A record saved while it's being copied is copied again from its latest version, and one that keeps changing is reported as failed instead of overwritten.
+- **Publishing**: only records whose draft hasn't changed since the copy are published.
 
 ## Development
 
 ```sh
 npm ci
-npm run dev
-npm run check
+npm run dev       # local dev server, to use with a private plugin pointed at it
+npm run check     # typecheck, tests and build
 ```
