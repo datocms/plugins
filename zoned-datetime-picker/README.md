@@ -1,106 +1,88 @@
 # Zoned DateTime Picker
 
-This is a [DatoCMS](https://www.datocms.com/) field editor plugin for storing zoned datetime information in a JSON field. It provides a GUI for picking a date, time, and IANA timezone, then stores a JSON object that includes an [ISO 8601](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString) datetime string, a [RFC 9557/IXDTF](https://datatracker.ietf.org/doc/rfc9557/) _zoned_ datetime string, a UNIX timestamp, and other helpful fields.
+Store a date and time together with the time zone it belongs to. Editors pick a date, a time and an IANA time zone, and a JSON field saves the moment with its zone, its UTC offset and ready-made date and time strings.
 
-## Screenshots
+![An Event record whose Starts at field shows 18/03/2027 10:00 next to the America/Los_Angeles (UTC-8, Pacific Time) time zone](docs/record-editor.png)
 
-Date & time picker
-![](docs/datetime-picker.png)
+- **Keeps the original time zone**: the zone and offset you pick stay as entered, for every editor and every API.
+- **Every IANA time zone**: grouped by region, with flags, current offsets and local names, and a search box.
+- **Daylight saving time handled**: the stored offset is the one in force on the chosen date.
+- **Ready-to-use JSON**: an [RFC 9557](https://datatracker.ietf.org/doc/rfc9557/) (IXDTF) string, an ISO 8601 string, the zone, the offset, the date, the time and a Unix timestamp.
+- **No configuration**: add it to any JSON field.
 
-Time zone picker (uses [IANA TZ strings](https://data.iana.org/time-zones/tzdb/zone1970.tab))
-![](docs/time-zone-picker.png)
+## Why not the built-in DateTime field?
 
-## JSON Shape
+DatoCMS stores a DateTime field as a single instant and forgets the time zone it was typed in. The dashboard then shows it in each editor's own time zone, and the APIs return it in the environment's time zone. An event entered as 10:00 in Los Angeles reads 17:00 for an editor in London and comes back as 18:00+01:00 from an API set to Rome.
 
-Once you select a date, time, and time zone, the plugin stores an object like this:
+That's fine when everything happens in one time zone. When an event belongs to a place, your website needs to know that place's time zone to show "10:00 Pacific Time" to every visitor. An offset like `-07:00` isn't enough: it doesn't tell `America/Los_Angeles` (which moves between -08:00 and -07:00) from `America/Phoenix` (always -07:00). This plugin saves the IANA zone next to the offset, so nothing is lost.
+
+## Getting started
+
+Add a **JSON** field to any model or block. In its **Presentation** tab, under **Field editor**, click **Change** and pick **Zoned datetime picker**.
+
+![The Presentation tab of the Starts at JSON field, with Zoned datetime picker chosen as the field editor](docs/field-presentation.png)
+
+The plugin has no settings.
+
+## Picking a date, time and time zone
+
+1. Set **Date & time** with your browser's date and time picker, or type it in.
+2. Open **Time zone** and pick the zone the date and time belong to.
+
+The list starts with three suggestions: **UTC**, **This project** (the time zone set in the environment's **Locales & timezone** settings) and **Your browser**. Then come all the IANA time zones, grouped by region and sorted by UTC offset. Type to search: the search matches the zone ID, the offset and the zone's name, so "pacific", "rome" or "utc+9" all work.
+
+![The open Time zone list, with UTC, This project: Europe/London and Your browser: Europe/Rome under Suggested, followed by the African time zones](docs/time-zone-menu.png)
+
+The offsets and names in the list are today's. The saved offset is the one in force on the date you picked: a 10:00 event in Los Angeles in March is saved with `-07:00`, even if the list shows UTC-8 today.
+
+## What gets saved
+
+The field stores a JSON object like this one:
 
 ```json5
 {
-  zonedDateTime: "1996-12-19T16:39:57-08:00[America/Los_Angeles]", // RFC 9557 / IXDTF string (Temporal-friendly)
-  dateTime: "1996-12-19T16:39:57-08:00", // ISO 8601 string with numeric offset
-  zone: "America/Los_Angeles", // IANA TZ identifier
-  offset: "-08:00", // Offset from UTC, same as in the ISO 8601 string
-  date: "1996-12-19", // ISO date
-  time_24hr: "16:39:57", // 24-hour time
-  time_12hr: "04:39:57", // 12-hour time (no AM/PM suffix)
-  ampm: "pm", // AM/PM marker for 12-hour time
-  timestamp: "851042397", // Unix epoch timestamp (seconds), as a string
+  zonedDateTime: "2027-03-18T10:00:00-07:00[America/Los_Angeles]", // RFC 9557 / IXDTF, works with Temporal
+  dateTime: "2027-03-18T10:00:00-07:00", // ISO 8601 with the offset
+  zone: "America/Los_Angeles", // IANA time zone
+  offset: "-07:00", // UTC offset on that date
+  date: "2027-03-18",
+  time_24hr: "10:00:00",
+  time_12hr: "10:00:00", // without AM/PM
+  ampm: "am",
+  timestamp: "1805389200", // Unix time in seconds, as a string
 }
 ```
-## How to use
-This is a field editor that can override any JSON field in your project.
 
-- Install the plugin to your project
-- In your schema, navigate to the JSON field you wish to edit
-- Go to its "Presentation" tab
-- Under the "Field editor" section, choose Zoned DateTime Picker
-- Save the field
-- Return to content editing. The plugin should replace the raw JSON field.
+To check a field's value from the record, open the field's **⋮** menu and choose **Show JSON value**.
 
-## Why would I use this? Why not use the built-in date & time field?
+![The JSON value of Starts at dialog, showing the stored object for 18 March 2027 at 10:00 in America/Los_Angeles, with offset -07:00](docs/json-value.png)
 
-When you enter a datetime into DatoCMS's default datetime picker, we **do not actually save the time zone or offset you originally selected**. Instead, two implicit conversions happen:
+On your website, use `zone` to show the time where the event happens, for example with [`Intl.DateTimeFormat`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat):
 
-1) In the UI, you'll see the selected time displayed in the time zone configured in your personal Editor Preferences. Editors in different time zones will thus see different values.
-2) In the APIs (either the CMA or CDA), we will instead return the time zone configured in your Environment Configuration. This is not affected by any editor's personal UI preferences.
+```js
+const { dateTime, zone } = event.startsAt;
+new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeStyle: 'short', timeZone: zone })
+  .format(new Date(dateTime)); // "Thursday, March 18, 2027 at 10:00 AM"
+```
 
-As an example:
-* In the date picker field, you initially enter `2025-01-01T00:00:00-08:00` in US Pacific time and click save:
-  ![](docs/picker-pst.png)
+## Languages
 
-* When you next refresh the record, it will instead show in your editor's configured UI time zone, like  `2025-01-01T08:00:00Z` in London time/UTC:
-  ![](docs/picker-utc.png)
+The labels and the time zone names follow the editor's DatoCMS interface language: English, Italian, German, French, Czech, Dutch, Portuguese and Spanish, with English for any other language. The date and time input is your browser's own, so its format follows your browser's language settings.
 
-* Then if you request it via an API, it will show a different time altogether, your **environment's** configured **API time zone**, like `2025-01-01T09:00:00+01:00` in Rome:
+## Good to know
 
-  ![](docs/api-timezone.png)
-* The original time zone and offset (Pacific Time or -08:00) are **lost forever**. In every case, the underlying timestamp is still the same, but the time zone and offsets are impliclity converted to either the UI or API setting. Without this plugin, there is no way to recover the original time zone.
+- **Pick the time zone yourself:** the field is saved only once it has both a date and time and a chosen time zone. Until you pick one, the list shows the project's time zone, but nothing is stored.
+- **Clearing the date** empties the field.
+- **Older values still work:** values saved by earlier versions of the plugin are read and kept as they are until you change the field.
+- **Values from elsewhere:** if the field holds JSON the plugin can't read, it shows the raw value with a warning and doesn't overwrite it.
+- **Read-only fields:** when the field is disabled, editors see the date and time zone but can't change them.
 
-This generally isn't a problem if you only operate in one time zone. But it matters for some use cases:
+## Development
 
-1. It makes cross-time-zone marketing difficult. It unrecoverably loses the original offset (`-08:00`). If your event was in `America/Los_Angeles`, your website was in `Europe/Rome`, and your visitor was in `Europe/London` , your frontend would have no way to know which time zone to use.
+```bash
+npm install
+npm run dev     # serves the plugin at http://localhost:5173
+npm run build
+```
 
-2. It doesn't respect daylight savings time. With an ISO 8601 offset like `-06:00`, there is no way to know if that is being used for a region that observes daylight savings time (like CDT, Central Daylight Time, in the USA) or one that doesn't (like Mexico City, which uses CST, Central Standard Time, instead). Going from a IANA time zone string like `America/Chicago` to an offset like `-06:00` is a **one-way, lossy operation**. You **cannot go back** from `-06:00` to a time zone string, because you don't know if it was originally `America/Chicago` (which is usually `-06:00` but is `-05:00` in the summer and autumn due to DST) or `America/Mexico_City` (which is always `-06:00`). 
-
-The plugin does two things to address this situation:
-
-1. It remembers the original offset you chose. If you entered the time in `-08:00`, it stays that way and does not get coerced to any other offset.
-2. It adds an explicit IANA time zone string like `America/Los_Angeles`. Your frontend can then use that time zone to ensure proper display via [`Intl.DateTimeFormat()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat) or a helper library like [Luxon](https://moment.github.io/luxon/#/).
-
-This information is available in several formats in the JSON output (see [JSON Shape](#json-shape) above).
-
-## Supported localizations
-
-![](docs/localizations.png)
-
-The plugin supports localized datetime entry and time zone names in the following languages:
-
-- English (en)
-- Italian (it)
-- German (de)
-- French (fr)
-- Czech (cs)
-- Dutch (nl)
-- Portuguese (pt)
-- Spanish (es)
-
-If your editor's preferred locale is not in this list, the plugin falls back to English for its UI.
-
-## Changelog
-
-- 2.3.0 - Full dark mode support: the picker now follows the DatoCMS light/dark theme by mapping the new semantic color tokens into the MUI palette, and the editor no longer flashes white while the iframe loads. Also upgrades `datocms-plugin-sdk` and `datocms-react-ui` to 2.2.x.
-- 0.1.8 - Added missing Spanish localization. Upgraded to MUI 9 and other library updates. Also fixes timezone initialization on the first date pick, an on-mount write that could mark the form dirty or overwrite unparseable values, and some minor cleanup & refactoring throughout. Special thanks to [fitzage](https://github.com/fitzage)!
-- 0.1.7 - Fix for Dark Mode crash. (True dark mode support coming later)
-- 0.1.6 - Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
-- 0.1.5 - Minor package updates and readme clarifications
-- 0.1.4 - Minor bug fixes
-- 0.1.2 - Initial release
-
-## Attributions
-
-This plugin was made with:
-
-- [MUI-X](https://mui.com/x/react-date-pickers/date-time-picker/) React UI components
-- [Luxon](https://moment.github.io/luxon/#/) DateTime library
-- [IANA Time Zone Database](https://www.iana.org/time-zones)
-- [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/product/claude-code)
+See the [DatoCMS plugin SDK documentation](https://www.datocms.com/docs/plugin-sdk) for how plugins work.
