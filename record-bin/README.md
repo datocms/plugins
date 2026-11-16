@@ -1,36 +1,76 @@
-# 🗑 Record Bin
+# Record Bin
 
-Keeps a copy of every record you delete in a "Record Bin" model, so you can restore it to its original model if it was deleted by mistake. It works like the trash can on your computer.
+Deleted a record by mistake? Record Bin keeps a copy of every record deleted from the dashboard in a "🗑 Record Bin" model, so you can put it back with one click.
 
-![A deleted record in the Record Bin model with its Restore button](public/example.png)
+![A copy in the Record Bin model: a Restore record button above its label, model, date of deletion and the saved record as JSON](docs/bin-record.png)
 
-## Usage
+- **A copy before every deletion**: the record is saved to the bin first, and only then deleted.
+- **One-click restore**: **Restore record** puts it back in its model with its original ID.
+- **Safe by default**: if the copy can't be saved, the deletion is cancelled and the record stays where it was.
+- **Nothing to set up**: the bin model is created the first time you delete a record.
+- **Optional API capture**: also keep records deleted through the API, with a small serverless function you deploy.
 
-Install the plugin. There's nothing to configure for records deleted from the dashboard.
+## Installation
 
-To try it, create and save a record, then delete it. Within a few seconds a "🗑 Record Bin" model appears in the sidebar with a copy of that record. The copy is stored as JSON, so it won't look like the original. Open it and click **Restore record ♻️** to re-create it in its original model. If the restore fails, you'll see the API error and the copy stays in the bin.
+Install the plugin from the marketplace and accept its permission to act on behalf of the signed-in user: it saves and restores records with that user's own access. There's nothing to configure for records deleted from the dashboard.
 
-Before a record is deleted, the plugin saves its copy. If that fails, the deletion is cancelled and the record is kept.
+The first deletion creates the "🗑 Record Bin" model, so make it as someone who can edit the schema. After that, editors only need permission to create records in that model.
 
-## Catching deletions made through the API
+## The bin
 
-By default, only deletions made in the dashboard are caught. Records deleted through the Content Management API (by scripts, integrations or developers) are not. To catch those too, you can deploy a small serverless function that receives a "record deleted" webhook from DatoCMS. You don't need this unless you delete records through the API.
+Delete records as usual, one at a time or in bulk. Each one gets a copy in **🗑 Record Bin**, in the content navigation.
 
-1. Create a CMA API token with admin permissions. Older projects have one already, called "Full Access Token".
-2. Open the plugin's configuration screen, expand **Advanced settings** and turn on **Also save records deleted from the API**.
-3. In the Lambda setup section that appears, click **Deploy lambda** and pick Vercel, Netlify or Cloudflare. This clones the [Record Bin lambda function](https://github.com/marcelofinamorvieira/record-bin-lambda-function) into your account.
-4. Follow the provider's setup, giving it your CMA token when asked.
-5. Copy the deployed URL, paste it into **Lambda URL** and click **Connect**. The status should read "Connected (ping successful)".
+![The Record Bin collection with three copies: a pricing tier, a page and a changelog entry, each named with its model ID and the date it was deleted](docs/bin-list.png)
 
-Connecting creates a project webhook called "🗑️ Record Bin" that points to your function, so your role needs permission to manage webhooks. In this mode the copy is made by the webhook after the record is deleted, so the plugin can't guarantee every deletion is captured.
+A copy is named after the record's first text value, its model ID and the date of deletion. It holds the whole record, its blocks included, as JSON in **Record body**. Large records are stored compressed.
 
-## Limitations
+## Restore a record
 
-The plugin blocks deletions of more than 200 records at once. Delete in smaller selections.
+1. Open the copy in **🗑 Record Bin**.
+2. Click **Restore record**.
 
-Each copy is a record in your project, so it counts toward your record quota. A record too large to fit in a single bin record can't be copied, and its deletion is cancelled.
+The record comes back in its model with the same ID, so links to it from your website keep working. DatoCMS opens it and the copy leaves the bin. In a model with drafts, it comes back as a draft: publish it again if it was live.
 
-Assets aren't copied, only referenced. Restoring a record needs its assets, linked records and model to still exist. Links pointing to the deleted record from other records are not put back on restore.
+### When a restore fails
+
+A restore fails when the record links to something that no longer exists, like a deleted tag or author. The copy stays in the bin and shows what went wrong.
+
+![A "Couldn't restore the record" message above the Restore record and See the full error buttons](docs/restore-error.png)
+
+**See the full error** shows the API's answer, with the field and the IDs it couldn't find.
+
+![The Restoration error dialog: the Tags field fails because a linked record is missing](docs/error-modal.png)
+
+To fix it, restore the missing record first, then try again. You can also remove the missing ID from **Record body**, save the copy and click **Restore record**.
+
+## Settings
+
+![The plugin settings with Also save records deleted from the API on, and the Deploy menu of the Lambda function group open on Vercel, Netlify and Cloudflare](docs/settings.png)
+
+- **Enable debug logs**: writes the plugin's events and requests to the browser console, to help with troubleshooting.
+- **Also save records deleted from the API**: see [Runtime modes](#runtime-modes).
+
+## Runtime modes
+
+By default, Record Bin only sees deletions made in the dashboard: it saves each copy before the record is deleted. Records deleted through the Content Management API, by scripts, integrations or developers, aren't caught. You don't need anything else unless you delete records through the API.
+
+To catch those too, turn on **Also save records deleted from the API** and connect a Lambda function that receives a "record deleted" webhook from DatoCMS:
+
+1. In the **Lambda function** group, open **Deploy** and pick Vercel, Netlify or Cloudflare. This copies the [Record Bin Lambda function](https://github.com/marcelofinamorvieira/record-bin-lambda-function) to your account.
+2. Follow the provider's setup. The function needs a DatoCMS API token with full access.
+3. Paste the deployed URL into **Lambda URL** and click **Connect**. The status changes from **Not connected** to **Connected**.
+4. Click **Save**.
+
+Connecting creates a project webhook called "🗑️ Record Bin" that points to your function, so your role needs permission to manage webhooks. In this mode every copy, including those of dashboard deletions, is made by the webhook after the record is deleted, so a failed copy can't stop the deletion. Turning the setting off and saving removes the webhook.
+
+## Good to know
+
+- **Up to 200 records at a time:** larger bulk deletions are cancelled with a message. Delete in smaller selections.
+- **Copies use your record quota:** each copy is a record. Delete copies you no longer need; deleting a copy removes it for good.
+- **Records edited during the deletion** are kept, and the deletion is cancelled, so the copy always matches what was deleted.
+- **Very large records** (over 1 MB of data) can't be copied, so their deletion is cancelled.
+- **What a restore doesn't bring back:** assets are referenced, not copied, so they must still exist. Links from other records to the deleted one aren't added back.
+- **Per environment:** each environment has its own bin, and the plugin must be installed there.
 
 ## Development
 
