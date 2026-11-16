@@ -25,7 +25,7 @@
   ],
   "datoCmsPlugin": {
     "title": "Sidebar Todo lists",
-    "previewImage": "docs/demo.gif",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "fieldTypes": [
