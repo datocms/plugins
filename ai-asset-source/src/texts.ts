@@ -1,6 +1,8 @@
 // The texts of the plugin for the Message props of the components, in ICU:
 // `#` in a plural gets the separators of the editor's locale.
 export const TEXTS = {
+  'aiAssetSource.imageCount':
+    '{count, plural, one {# image} other {# images}}',
   'aiAssetSource.creating':
     '{count, plural, one {Creating # image} other {Creating # images}}',
   'aiAssetSource.notCreated':

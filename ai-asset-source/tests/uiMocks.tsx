@@ -73,9 +73,21 @@ export function FieldWrapper({
     </>
   );
 }
-export function RadioGroupInput() {
+export function SegmentedControl() {
   return null;
 }
+export function ButtonTrigger() {
+  return null;
+}
+export function Dropdown() {
+  return null;
+}
+Dropdown.Menu = function Menu() {
+  return null;
+};
+Dropdown.Option = function Option() {
+  return null;
+};
 export function Callout({
   tone,
   title,

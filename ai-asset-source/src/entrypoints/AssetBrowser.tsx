@@ -4,10 +4,12 @@ import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Callout from 'datocms-react-ui/Callout';
 import { useCtx } from 'datocms-react-ui/Canvas';
+import { Dropdown } from 'datocms-react-ui/Dropdown';
+import ButtonTrigger from 'datocms-react-ui/Dropdown/triggers/ButtonTrigger';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import Link from 'datocms-react-ui/Link';
 import type { Message } from 'datocms-react-ui/Message';
-import RadioGroupInput from 'datocms-react-ui/RadioGroupInput';
+import SegmentedControl from 'datocms-react-ui/SegmentedControl';
 import TextareaInput from 'datocms-react-ui/TextareaInput';
 import {
   type FormEvent,
@@ -21,7 +23,12 @@ import {
   useState,
 } from 'react';
 import Cell from '../components/Cell';
-import { ImageIcon } from '../icons';
+import {
+  ImageIcon,
+  LandscapeRatioIcon,
+  PortraitRatioIcon,
+  SquareRatioIcon,
+} from '../icons';
 import type { ConfigParameters } from '../types';
 import {
   getDefaultModelForProvider,
@@ -71,12 +78,16 @@ const GENERATE_ACTION_ID = 'aiAssetSource.generate';
 const REQUEST_TIMEOUT_MINUTES = 10;
 const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MINUTES * 60_000;
 const REQUEST_TIMEOUT_TITLE = `No images after ${REQUEST_TIMEOUT_MINUTES} minutes`;
-const aspectRatioRadioOptions = aspectRatioOptions.map(
-  ({ value, label, description }) => ({ value, label, hint: description }),
-);
-const variationRadioOptions = variationOptions.map(({ value, label }) => ({
-  value: String(value),
+const aspectRatioIcons: Record<AspectRatio, ReactNode> = {
+  '1:1': <SquareRatioIcon />,
+  '2:3': <PortraitRatioIcon />,
+  '3:2': <LandscapeRatioIcon />,
+};
+// Each ratio shows its shape and its name
+const aspectRatioSegments = aspectRatioOptions.map(({ value, label }) => ({
+  value,
   label,
+  icon: aspectRatioIcons[value],
 }));
 
 type UserFeedback = {
@@ -632,16 +643,6 @@ const AssetBrowser = () => {
     );
   }
 
-  const ratioField = (
-    <FieldWrapper label="Image ratio">
-      <RadioGroupInput
-        options={aspectRatioRadioOptions}
-        value={aspectRatio}
-        onChange={(next) => next && setAspectRatio(next)}
-      />
-    </FieldWrapper>
-  );
-
   return (
     <div className={s.page}>
       <form onSubmit={handleSubmit}>
@@ -657,41 +658,51 @@ const AssetBrowser = () => {
           />
         </FieldWrapper>
 
-        {capabilities.supportsVariationCount ? (
-          <div className="form__field form__row">
-            <div className="form__row__cell">{ratioField}</div>
-            <div className="form__row__cell">
-              <FieldWrapper label="Number of images">
-                <RadioGroupInput
-                  small
-                  options={variationRadioOptions}
-                  value={String(variationCount)}
-                  onChange={(next) =>
-                    next && setVariationCount(Number(next) as VariationCount)
-                  }
-                />
-              </FieldWrapper>
-            </div>
-          </div>
-        ) : (
-          // A model that makes one image per request has no number to pick
-          ratioField
-        )}
-
-        <Button
-          submit
-          tone={totalSelectedCount > 0 ? 'soft' : 'primary'}
-          label="Generate"
-          expand={false}
-          disabled={getGenerateDisabled(isSubmitting, submitValidationError)}
-          tooltip={{ action: GENERATE_ACTION_ID }}
-        />
+        {/* The options of the image, in one row with Generate */}
+        <div className={s.options}>
+          <SegmentedControl
+            ariaLabel="Image ratio"
+            options={aspectRatioSegments}
+            value={aspectRatio}
+            onChange={setAspectRatio}
+          />
+          {/* A model that makes one image per request has no number to pick */}
+          {capabilities.supportsVariationCount && (
+            <Dropdown
+              triggerComponent={ButtonTrigger}
+              tone="ghost"
+              label={{
+                id: 'aiAssetSource.imageCount',
+                values: { count: variationCount },
+              }}
+            >
+              <Dropdown.Menu>
+                {variationOptions.map(({ value }) => (
+                  <Dropdown.Option
+                    key={value}
+                    active={value === variationCount}
+                    onPick={() => setVariationCount(value)}
+                  >
+                    {value === 1 ? '1 image' : `${value} images`}
+                  </Dropdown.Option>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+          )}
+          <Button
+            className={s.generate}
+            submit
+            tone={totalSelectedCount > 0 ? 'soft' : 'primary'}
+            label="Generate"
+            disabled={getGenerateDisabled(isSubmitting, submitValidationError)}
+            tooltip={{ action: GENERATE_ACTION_ID }}
+          />
+        </div>
       </form>
 
       {activeRequest && (
         <BlankSlate
           placement="section"
-          small
           loading
           title={{
             id: 'aiAssetSource.creating',
@@ -716,13 +727,15 @@ const AssetBrowser = () => {
       )}
 
       {!hasRequests && !isSubmitting && !feedbackMessage && (
-        <BlankSlate
-          placement="section"
-          small
-          icon={<ImageIcon />}
-          title="No images yet"
-          description="The images you generate show here."
-        />
+        // As tall as a row of images, so the dialog keeps its size
+        <div className={s.empty}>
+          <BlankSlate
+            placement="section"
+            icon={<ImageIcon />}
+            title="No images yet"
+            description="The images you generate show here."
+          />
+        </div>
       )}
 
       {hasSelectableImages && (

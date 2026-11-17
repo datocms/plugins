@@ -4,6 +4,24 @@
   gap: var(--spacing-l);
 }
 
+/* The ratio, the number of images and Generate, in one row under the prompt */
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.generate {
+  margin-left: auto;
+}
+
+/* The empty area takes the room of the images to come */
+.empty {
+  display: grid;
+  min-height: 360px;
+}
+
 /* The page gap spaces the callouts, in place of their own margin */
 .callout {
   margin: 0;
