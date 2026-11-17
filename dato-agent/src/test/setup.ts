@@ -16,6 +16,19 @@ if (jsdomWindow) {
   }
 }
 
+// The kit's Dropdown menu watches its own visibility; jsdom has no IntersectionObserver.
+globalThis.IntersectionObserver = class {
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds = [];
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+} as unknown as typeof IntersectionObserver;
+
 globalThis.ResizeObserver = class {
   observe() {}
   unobserve() {}

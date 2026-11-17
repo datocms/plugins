@@ -1,12 +1,17 @@
 /* The two views of the agent are kit panes that fill the frame. These rules
    only lay out what goes inside them: the stack above the composer, and the
-   parts of the connection panel. The transcript has its own module. */
+   parts of the setup. The transcript has its own module. */
 
-/* The footer of the chat: the notices, then the composer */
+/* The footer of the chat: the notices, then the composer. Like the
+   transcript, it stops growing at 760px and stays centred, so a wide chat
+   doesn't make very long lines. */
 .footer {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-m);
+  box-sizing: border-box;
+  width: min(100%, 760px);
+  margin: 0 auto;
   padding: var(--spacing-m);
 }
 
@@ -27,16 +32,13 @@
   }
 }
 
-/* The connection panel: its messages, then its facts with their actions */
-.connection {
+/* The setup, the whole view before the agent is ready: its message, its
+   steps with their actions, then its notes, with the inset of a form in a
+   pane */
+.setup {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-m);
-}
-
-/* The connection as the whole view, before the agent is ready: the inset
-   of a form in a pane */
-.setup {
   padding: var(--spacing-l);
 }
 
@@ -47,19 +49,16 @@
   align-items: center;
 }
 
-/* A value and its pill, at the right as the other values: when the row is
-   narrow, the pill goes on a line of its own */
-.value {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-s);
-  align-items: center;
-  justify-content: flex-end;
+/* The access line of the "⋮" menu, as wide as its options: the chat is
+   at least 300px wide */
+.menuText {
+  display: block;
+  max-width: 240px;
 }
 
 /* A short note about a value, in a small line under it */
 .note {
-  margin-top: var(--spacing-s);
+  margin: var(--spacing-s) 0 0;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-xs);
 }

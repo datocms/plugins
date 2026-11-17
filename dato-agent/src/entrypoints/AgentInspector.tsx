@@ -1,6 +1,9 @@
 import type { Field, ItemType, RenderInspectorCtx } from 'datocms-plugin-sdk';
+import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Canvas from 'datocms-react-ui/Canvas';
+import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
 import { useCallback, useEffect, useRef } from 'react';
+import FullFrame from '../components/FullFrame';
 import { openApprovalDetailsModal } from '../lib/approvalDetailsModal';
 import { confirmEnableAutoApproval } from '../lib/autoApproval';
 import { normalizeConfig } from '../lib/config';
@@ -9,8 +12,16 @@ import {
   createModelSchemaResolver,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import {
+  MIN_AGENT_PANE_WIDTH,
+  useRememberedAgentPaneWidth,
+} from '../lib/inspectorLayout';
 import { createAgentMentionHost } from '../lib/mentionHost';
-import { createInspectorNavigator } from '../lib/navigation';
+import type { AgentNavigator } from '../lib/navigation';
+import {
+  createInspectorNavigator,
+  pluginSettingsPath,
+} from '../lib/navigation';
 import { canRoleUseDatoAgent } from '../lib/permissions';
 import { TEXTS } from '../texts';
 import AgentFrame from './AgentFrame';
@@ -265,38 +276,71 @@ function AuthorizedAgentInspector({ ctx }: Props) {
     'project',
   ].join(':');
   const mentionHost = createAgentMentionHost(ctx);
+  // One navigator per frame: it keeps the "Records opened from the chat" list.
+  const navigatorRef = useRef<
+    { key: string; navigator: AgentNavigator } | undefined
+  >(undefined);
+  if (navigatorRef.current?.key !== frameKey) {
+    navigatorRef.current = {
+      key: frameKey,
+      navigator: createInspectorNavigator(() => latestCtxRef.current),
+    };
+  }
+  useRememberedAgentPaneWidth();
+  const isTooNarrow = useMediaQuery(
+    `(max-width: ${MIN_AGENT_PANE_WIDTH - 1}px)`,
+  ).matches;
 
   return (
     <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
-      <AgentFrame
-        key={frameKey}
-        pluginId={ctx.plugin.id}
-        siteId={ctx.site.id}
-        siteName={ctx.site.attributes.name}
-        environment={ctx.environment}
-        isEnvironmentPrimary={ctx.isEnvironmentPrimary}
-        currentUserId={ctx.currentUser.id}
-        surface="project"
-        scope={{ type: 'project' }}
-        navigator={createInspectorNavigator(ctx)}
-        mentionHost={mentionHost}
-        config={normalizeConfig(ctx.plugin.attributes.parameters)}
-        loadHostContext={loadHostContext}
-        getModelSchema={async ({ identifier, cursor }) => ({
-          schema: (await schemaResolver(identifier, cursor)).text,
-        })}
-        onReviewApprovalDetails={(approval) =>
-          openApprovalDetailsModal(ctx, approval)
-        }
-        onConfirmEnableAutoApprove={() =>
-          confirmEnableAutoApproval(ctx, {
-            siteName: ctx.site.attributes.name,
-          })
-        }
-        onAlert={(message) => {
-          void ctx.alert(message);
-        }}
-      />
+      {isTooNarrow && (
+        <FullFrame>
+          <BlankSlate
+            description="Drag its edge wider to see the Dato Agent."
+            placement="area"
+            small
+            title="Sidebar too narrow"
+          />
+        </FullFrame>
+      )}
+      {/* The chat stays mounted, hidden, so a reply in progress survives */}
+      <div hidden={isTooNarrow} inert={isTooNarrow}>
+        <AgentFrame
+          key={frameKey}
+          pluginId={ctx.plugin.id}
+          onOpenPluginSettings={
+            ctx.currentRole.meta.final_permissions.can_edit_schema
+              ? () =>
+                  void ctx.navigateTo(pluginSettingsPath(ctx, ctx.plugin.id))
+              : undefined
+          }
+          siteId={ctx.site.id}
+          siteName={ctx.site.attributes.name}
+          environment={ctx.environment}
+          isEnvironmentPrimary={ctx.isEnvironmentPrimary}
+          currentUserId={ctx.currentUser.id}
+          surface="project"
+          scope={{ type: 'project' }}
+          navigator={navigatorRef.current.navigator}
+          mentionHost={mentionHost}
+          config={normalizeConfig(ctx.plugin.attributes.parameters)}
+          loadHostContext={loadHostContext}
+          getModelSchema={async ({ identifier, cursor }) => ({
+            schema: (await schemaResolver(identifier, cursor)).text,
+          })}
+          onReviewApprovalDetails={(approval) =>
+            openApprovalDetailsModal(ctx, approval)
+          }
+          onConfirmEnableAutoApprove={() =>
+            confirmEnableAutoApproval(ctx, {
+              siteName: ctx.site.attributes.name,
+            })
+          }
+          onAlert={(message) => {
+            void ctx.alert(message);
+          }}
+        />
+      </div>
     </Canvas>
   );
 }

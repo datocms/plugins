@@ -2,3 +2,8 @@ dist
 node_modules
 .DS_Store
 coverage
+
+# Dato Agent live tests: secrets, spend ledger and eval output
+e2e/.env.local
+e2e/.spend.jsonl
+e2e/results/

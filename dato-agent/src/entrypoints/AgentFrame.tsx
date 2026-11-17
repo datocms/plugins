@@ -9,6 +9,7 @@ import {
   type AgentRecordResultViewModel,
   AgentSurface,
   type AgentTranscriptEntry,
+  type CopyDiagnosticsResult,
   type UnsafeApprovalViewModel,
 } from '../components/AgentSurface';
 import {
@@ -54,6 +55,7 @@ import {
   activeModel,
   activeModelMaxOutputTokens,
   activeReasoningEffort,
+  diagnosticConfiguration,
   providerLabel,
 } from '../lib/config';
 import {
@@ -72,6 +74,7 @@ import {
   type CredentialScope,
   createCredentialStore,
   createOAuthCredentials,
+  diagnosticOAuthCredentials,
   invalidateOAuthToken,
   isOAuthClientRegistrationReusable,
   type OAuthCredentials,
@@ -125,6 +128,7 @@ import {
   revokeToken,
   waitForOAuthCallback,
 } from '../lib/oauth';
+import { findSecretCandidates, redactValues } from '../lib/secretCandidates';
 import { type AgentSurfaceKind, buildSystemPrompt } from '../lib/systemPrompt';
 import {
   createUnsafeDispatchJournalStore,
@@ -148,6 +152,8 @@ export type AgentFrameProps = {
   environment: string;
   isEnvironmentPrimary: boolean;
   currentUserId: string;
+  /** Opens the plugin settings. Pass it only when the current user can edit them. */
+  onOpenPluginSettings?: () => void;
   /**
    * The DatoCMS host surface. A record sidebar can exist before its record has
    * a saved ID, so this must not be inferred only from `currentRecord`.
@@ -223,6 +229,8 @@ type ActiveTurn = {
   conversationBefore: Conversation;
   userEntryId: string;
   assistantEntryId: string;
+  /** The model response that wrote the last text of the answer */
+  lastTextResponseId?: string;
   activityEntryId: string;
   autoApprovalBundleCount: number;
   userStopped: boolean;
@@ -858,7 +866,10 @@ function connectionErrorMessage(
   if (error instanceof RemoteMcpOAuthError && error.code === 'invalid_grant') {
     return 'This sign-in expired.';
   }
-  if (popupClosed) {
+  if (
+    popupClosed ||
+    (error instanceof RemoteMcpOAuthError && error.code === 'popup_closed')
+  ) {
     return 'The sign-in window was closed before DatoCMS finished connecting.';
   }
   return 'Couldn’t connect to DatoCMS.';
@@ -2087,6 +2098,8 @@ export default function AgentFrame(props: AgentFrameProps) {
   const forceFreshRegistrationRef = useRef(false);
   const oauthFlowGenerationRef = useRef(0);
   const [accessChecking, setAccessChecking] = useState(false);
+  /** The token whose first access check has finished, so "unknown" means unverified, not "not checked yet". */
+  const [accessCheckedToken, setAccessCheckedToken] = useState('');
   const accessLevel =
     accessState.token === oauthCredentials?.token?.accessToken
       ? accessState.snapshot.level
@@ -2096,7 +2109,17 @@ export default function AgentFrame(props: AgentFrameProps) {
     accessLevel,
   );
   const [oauthConnecting, setOauthConnecting] = useState(false);
-  const [oauthError, setOauthError] = useState<string>();
+  const [oauthError, setOauthErrorMessage] = useState<string>();
+  // Whether a new OAuth client can fix oauthError, so setup offers a restart.
+  const [isOauthErrorRestartable, setIsOauthErrorRestartable] = useState(false);
+  /** Sets the DatoCMS connection error and whether a restart can fix it. */
+  const setOauthError = (
+    message: string | undefined,
+    isRestartable = false,
+  ) => {
+    setOauthErrorMessage(message);
+    setIsOauthErrorRestartable(isRestartable);
+  };
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(() => {
     try {
       if (props.config.readOnly) {
@@ -3018,7 +3041,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       .current(controller.signal)
       .catch(() => undefined)
       .finally(() => {
-        if (!controller.signal.aborted) setAccessChecking(false);
+        if (controller.signal.aborted) return;
+        setAccessChecking(false);
+        setAccessCheckedToken(token);
       });
     return () => controller.abort();
   }, [accessSession, oauthCredentials?.token?.accessToken]);
@@ -3296,90 +3321,106 @@ export default function AgentFrame(props: AgentFrameProps) {
     const systemContext = runtimeSystemContext();
     failureDiagnosticsRef.current.set(
       failureId,
-      serializeDiagnostics({
-        schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
-        capturedAt,
-        plugin: {
-          name: 'Dato Agent (Beta)',
-          package: 'datocms-plugin-dato-agent',
-          version: '0.1.0',
-          url: window.location.href,
+      serializeDiagnostics(
+        {
+          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+          capturedAt,
+          plugin: {
+            name: 'Dato Agent (Beta)',
+            package: 'datocms-plugin-dato-agent',
+            version: '0.1.0',
+            url: window.location.href,
+          },
+          browser: {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            online: navigator.onLine,
+          },
+          project: {
+            pluginId: props.pluginId,
+            siteId: props.siteId,
+            siteName: props.siteName,
+            environment: props.environment,
+            isEnvironmentPrimary: props.isEnvironmentPrimary,
+            currentUserId: props.currentUserId,
+            scope: stableScope,
+            currentRecord: props.currentRecord,
+            editorHasUnsavedChanges: editorDirtyRef.current,
+          },
+          configuration: {
+            ...diagnosticConfiguration(props.config),
+            activeModel: activeModel(props.config),
+            activeModelMaxOutputTokens: activeModelMaxOutputTokens(
+              props.config,
+            ),
+            activeReasoningEffort: activeReasoningEffort(props.config),
+            autoApproveEnabled: autoApproveEnabledRef.current,
+          },
+          oauthCredentials: diagnosticOAuthCredentials(oauthCredentials),
+          conversation: {
+            beforeTurn: turn.conversationBefore,
+            current: conversationRef.current,
+            providerHistory: turn.history,
+          },
+          turn: {
+            id: turn.id,
+            source,
+            message: turn.message,
+            userEntryId: turn.userEntryId,
+            assistantEntryId: turn.assistantEntryId,
+            activityEntryId: turn.activityEntryId,
+            provider: turn.provider,
+            model: turn.model,
+            startedAt: turn.startedAt,
+            finishedAt: capturedAt,
+            durationMs: Math.max(
+              0,
+              Date.parse(capturedAt) - Date.parse(turn.startedAt),
+            ),
+            previousResponseId: turn.previousResponseId,
+            injectHostContext: turn.injectHostContext,
+            textDeltaCount: turn.textDeltaCount,
+            textDeltaCharacters: turn.textDeltaCharacters,
+            diagnosticEventOutputCharacters:
+              turn.diagnosticEventOutputCharacters,
+            diagnosticEventsDropped: turn.diagnosticEventsDropped,
+            hostContexts: turn.hostContexts,
+            userStopped: turn.userStopped,
+            unsafeOperationDispatched: turn.unsafeOperationDispatched,
+            dispatchedApprovalIds: turn.dispatchedApprovalIds,
+            cancelledBeforeDispatchApprovalIds:
+              turn.cancelledBeforeDispatchApprovalIds,
+            cancelledBeforeDispatchReason: turn.cancelledBeforeDispatchReason,
+            autoApprovalBundleCount: turn.autoApprovalBundleCount,
+            approvalSubmissions: turn.approvalSubmissions,
+            approvalOutcomes: turn.approvalOutcomes,
+            confirmedApprovalIds: turn.confirmedApprovalIds,
+            completionResult: result,
+            events: turn.events,
+            thrownError,
+            systemPrompt: buildSystemPrompt(systemContext, {
+              additionalInstructions: props.config.additionalInstructions,
+              readOnly: props.config.readOnly,
+              mcpAccessLevel: accessRef.current.snapshot.level,
+            }),
+          },
+          transcript: entriesRef.current,
+          pendingApprovals: [...pendingApprovalsRef.current.values()],
+          pendingNavigation: pendingNavigationRef.current,
         },
-        browser: {
-          userAgent: navigator.userAgent,
-          language: navigator.language,
-          online: navigator.onLine,
+        {
+          // Every live secret this frame holds; masked wherever it appears in the payload. This
+          // closure can predate a token rotation, so read the live ref and the tokens the turn used.
+          secrets: [
+            props.config.openAiApiKey,
+            props.config.anthropicApiKey,
+            oauthCredentials?.token?.accessToken,
+            oauthCredentialsRef.current?.token?.accessToken,
+            turn.mcpAccessToken,
+            turn.repairOauthAccessToken,
+          ],
         },
-        project: {
-          pluginId: props.pluginId,
-          siteId: props.siteId,
-          siteName: props.siteName,
-          environment: props.environment,
-          isEnvironmentPrimary: props.isEnvironmentPrimary,
-          currentUserId: props.currentUserId,
-          scope: stableScope,
-          currentRecord: props.currentRecord,
-          editorHasUnsavedChanges: editorDirtyRef.current,
-        },
-        configuration: {
-          ...props.config,
-          activeApiKey: activeApiKey(props.config),
-          activeModel: activeModel(props.config),
-          activeModelMaxOutputTokens: activeModelMaxOutputTokens(props.config),
-          activeReasoningEffort: activeReasoningEffort(props.config),
-          autoApproveEnabled: autoApproveEnabledRef.current,
-        },
-        oauthCredentials,
-        conversation: {
-          beforeTurn: turn.conversationBefore,
-          current: conversationRef.current,
-          providerHistory: turn.history,
-        },
-        turn: {
-          id: turn.id,
-          source,
-          message: turn.message,
-          userEntryId: turn.userEntryId,
-          assistantEntryId: turn.assistantEntryId,
-          activityEntryId: turn.activityEntryId,
-          provider: turn.provider,
-          model: turn.model,
-          startedAt: turn.startedAt,
-          finishedAt: capturedAt,
-          durationMs: Math.max(
-            0,
-            Date.parse(capturedAt) - Date.parse(turn.startedAt),
-          ),
-          previousResponseId: turn.previousResponseId,
-          injectHostContext: turn.injectHostContext,
-          textDeltaCount: turn.textDeltaCount,
-          textDeltaCharacters: turn.textDeltaCharacters,
-          diagnosticEventOutputCharacters: turn.diagnosticEventOutputCharacters,
-          diagnosticEventsDropped: turn.diagnosticEventsDropped,
-          hostContexts: turn.hostContexts,
-          userStopped: turn.userStopped,
-          unsafeOperationDispatched: turn.unsafeOperationDispatched,
-          dispatchedApprovalIds: turn.dispatchedApprovalIds,
-          cancelledBeforeDispatchApprovalIds:
-            turn.cancelledBeforeDispatchApprovalIds,
-          cancelledBeforeDispatchReason: turn.cancelledBeforeDispatchReason,
-          autoApprovalBundleCount: turn.autoApprovalBundleCount,
-          approvalSubmissions: turn.approvalSubmissions,
-          approvalOutcomes: turn.approvalOutcomes,
-          confirmedApprovalIds: turn.confirmedApprovalIds,
-          completionResult: result,
-          events: turn.events,
-          thrownError,
-          systemPrompt: buildSystemPrompt(systemContext, {
-            additionalInstructions: props.config.additionalInstructions,
-            readOnly: props.config.readOnly,
-            mcpAccessLevel: accessRef.current.snapshot.level,
-          }),
-        },
-        transcript: entriesRef.current,
-        pendingApprovals: [...pendingApprovalsRef.current.values()],
-        pendingNavigation: pendingNavigationRef.current,
-      }),
+      ),
     );
 
     retryCandidateRef.current = retryable
@@ -3889,15 +3930,31 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
 
     switch (event.type) {
-      case 'text_delta':
+      case 'text_delta': {
+        // Each step of the turn (before and after a tool call or an approval)
+        // is its own response: its text starts a new paragraph of the answer
+        const newResponse =
+          turn.lastTextResponseId !== undefined &&
+          turn.lastTextResponseId !== event.responseId;
+        turn.lastTextResponseId = event.responseId;
         updateEntries((current) =>
           current.map((entry) =>
             entry.id === turn.assistantEntryId && entry.kind === 'message'
-              ? { ...entry, content: `${entry.content}${event.delta}` }
+              ? {
+                  ...entry,
+                  content: `${entry.content}${
+                    newResponse &&
+                    /\S$/.test(entry.content) &&
+                    /^\S/.test(event.delta)
+                      ? '\n\n'
+                      : ''
+                  }${event.delta}`,
+                }
               : entry,
           ),
         );
         break;
+      }
       case 'activity':
         if (
           turn.unsafeOperationDispatched &&
@@ -4532,13 +4589,23 @@ export default function AgentFrame(props: AgentFrameProps) {
     await submit(candidate.submission, candidate);
   };
 
-  const copyFailureDiagnostics = async (failureId: string): Promise<void> => {
+  const copyFailureDiagnostics = async (
+    failureId: string,
+    redact?: readonly string[],
+  ): Promise<CopyDiagnosticsResult> => {
     const diagnostics = failureDiagnosticsRef.current.get(failureId);
     if (!diagnostics) {
       throw new Error('Diagnostics are no longer available.');
     }
 
-    await copyTextToClipboard(diagnostics);
+    // Known secrets are already masked; ask about anything else that looks like one.
+    if (redact === undefined) {
+      const candidates = findSecretCandidates(diagnostics);
+      if (candidates.length > 0) return { status: 'review', candidates };
+    }
+
+    await copyTextToClipboard(redactValues(diagnostics, redact ?? []));
+    return { status: 'copied' };
   };
 
   const stopActiveTurn = (): void => {
@@ -5520,8 +5587,13 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   }
 
+  /**
+   * Signs in to DatoCMS MCP. `forceNew` registers a new OAuth client.
+   * `isReconnect` keeps the working token in place until
+   * the new one arrives, so a cancelled or denied consent doesn't disconnect.
+   */
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: The popup, DCR, PKCE, persistence, and cleanup steps are kept together to guarantee one authorization lifecycle.
-  const connectDatoCms = async (forceNew = false) => {
+  const connectDatoCms = async (forceNew = false, isReconnect = false) => {
     if (oauthConnecting || running) return;
     const flowGeneration = ++oauthFlowGenerationRef.current;
     setOauthConnecting(true);
@@ -5537,8 +5609,8 @@ export default function AgentFrame(props: AgentFrameProps) {
           ? undefined
           : oauthCredentialsRef.current?.client;
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        let client = existingClient;
         try {
-          let client = existingClient;
           if (
             !client ||
             !isOAuthClientRegistrationReusable(client, redirectUri)
@@ -5551,10 +5623,12 @@ export default function AgentFrame(props: AgentFrameProps) {
             oauthFlowGenerationRef.current !== flowGeneration
           )
             return;
-          const registered = createOAuthCredentials(client);
-          oauthStore.save(registered, { remember: true });
-          oauthCredentialsRef.current = registered;
-          setOauthCredentials(registered);
+          if (!isReconnect) {
+            const registered = createOAuthCredentials(client);
+            oauthStore.save(registered, { remember: true });
+            oauthCredentialsRef.current = registered;
+            setOauthCredentials(registered);
+          }
           existingClient = client;
           const authorization = await createAuthorizationRequest({
             scope: credentialScope,
@@ -5594,7 +5668,8 @@ export default function AgentFrame(props: AgentFrameProps) {
           retireUnsafeRepairCandidate();
           void runtimeRef.current?.dispose?.();
           runtimeRef.current = undefined;
-          await refreshMcpAccess();
+          // Signed in already: a failed check shows "not verified" and its retry.
+          await refreshMcpAccess().catch(() => undefined);
           if (!popup.closed) popup.close();
           return;
         } catch (error) {
@@ -5606,11 +5681,14 @@ export default function AgentFrame(props: AgentFrameProps) {
             error.code === 'invalid_client' &&
             oauthFlowGenerationRef.current === flowGeneration
           ) {
-            oauthStore.clear();
-            oauthCredentialsRef.current = null;
-            setOauthCredentials(null);
+            // Reconnect never stored the new client, and the old one still works.
+            if (!isReconnect) {
+              oauthStore.clear();
+              oauthCredentialsRef.current = null;
+              setOauthCredentials(null);
+            }
             existingClient = undefined;
-            forceFreshRegistrationRef.current = true;
+            if (!isReconnect) forceFreshRegistrationRef.current = true;
             if (attempt === 0 && !popup.closed) continue;
           }
           throw error;
@@ -5626,7 +5704,16 @@ export default function AgentFrame(props: AgentFrameProps) {
         mountedRef.current &&
         oauthFlowGenerationRef.current === flowGeneration
       ) {
-        setOauthError(connectionErrorMessage(error, popup, popupClosed));
+        const message = connectionErrorMessage(error, popup, popupClosed);
+        // Only a rejected client is fixed by a new one. DatoCMS can show that on
+        // its own error page, which the editor then closes.
+        setOauthError(
+          isReconnect
+            ? `${message} Your current connection is unchanged.`
+            : message,
+          error instanceof RemoteMcpOAuthError &&
+            ['popup_closed', 'invalid_client'].includes(error.code ?? ''),
+        );
       }
     } finally {
       if (oauthFlowGenerationRef.current === flowGeneration) {
@@ -5636,8 +5723,42 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   };
 
+  /**
+   * Signs in again with a fresh OAuth client, so DatoCMS shows the consent
+   * screen and its access choices, then revokes the previous token. The access
+   * level belongs to each client, so this is how an editor changes it. Connect
+   * opens the popup before any await, so browsers don't block it.
+   */
+  const reconnectDatoCms = async () => {
+    if (
+      running ||
+      activeTurnRef.current ||
+      pendingApprovalsRef.current.size > 0 ||
+      approvalDispatchRef.current.size > 0
+    ) {
+      setOauthError(
+        disconnectBlockedReason(pendingApprovalsRef.current.size > 0),
+      );
+      return;
+    }
+    const previous = oauthCredentialsRef.current;
+    await connectDatoCms(true, true);
+    const previousToken = previous?.token?.accessToken;
+    if (
+      previous &&
+      previousToken &&
+      oauthCredentialsRef.current?.token?.accessToken !== previousToken
+    ) {
+      await revokeToken({
+        accessToken: previousToken,
+        clientId: previous.client.clientId,
+      }).catch(() => undefined);
+    }
+  };
+
   const disconnectDatoCms = async () => {
     if (
+      oauthConnecting ||
       running ||
       activeTurnRef.current ||
       pendingApprovalsRef.current.size > 0 ||
@@ -6156,9 +6277,14 @@ export default function AgentFrame(props: AgentFrameProps) {
         oauthAccessLevel: accessLevel,
         pluginReadOnly: props.config.readOnly,
         accessChecking,
+        accessCheckPending:
+          hasDatoCmsConnection &&
+          accessCheckedToken !== oauthCredentials?.token?.accessToken,
         datoCmsAccountLabel: hasDatoCmsConnection ? 'DatoCMS' : undefined,
         datoCmsError: oauthError,
         projectName: props.siteName,
+        shouldOfferSignInRestart:
+          Boolean(oauthError) && isOauthErrorRestartable,
       }}
       entries={entries}
       mentionHost={mentionHost}
@@ -6193,13 +6319,15 @@ export default function AgentFrame(props: AgentFrameProps) {
       onCopyFailureDiagnostics={copyFailureDiagnostics}
       onConnectDatoCms={() => void connectDatoCms()}
       onDisconnectDatoCms={() => void disconnectDatoCms()}
+      onReconnectDatoCms={() => void reconnectDatoCms()}
+      onDismissDatoCmsError={() => setOauthError(undefined)}
+      onRestartDatoCmsConnection={() => void connectDatoCms(true)}
       onCheckDatoCmsAccess={() => {
         setAccessChecking(true);
         void refreshMcpAccess()
           .catch(() => undefined)
           .finally(() => setAccessChecking(false));
       }}
-      onRestartDatoCmsConnection={() => void connectDatoCms(true)}
       recentConversations={storedConversations.map((stored) => ({
         id: stored.id,
         title: stored.title,
@@ -6207,6 +6335,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       }))}
       onSelectConversation={selectConversation}
       onStartNewChat={startNewConversation}
+      onOpenPluginSettings={props.onOpenPluginSettings}
       onStop={stopActiveTurn}
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}

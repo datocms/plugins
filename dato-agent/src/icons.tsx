@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import { type SVGProps, useId } from 'react';
 
 // Font Awesome 7 Free glyphs (solid, CC BY 4.0 License). Like every icon
 // that a component of datocms-react-ui takes, each one is an svg that takes
@@ -62,6 +62,41 @@ export function BoltIcon(props: IconProps) {
       d="M338.8-9.9c11.9 8.6 16.3 24.2 10.9 37.8L271.3 224 416 224c13.5 0 25.5 8.4 30.1 21.1s.7 26.9-9.6 35.5l-288 240c-11.3 9.4-27.4 9.9-39.3 1.3s-16.3-24.2-10.9-37.8L176.7 288 32 288c-13.5 0-25.5-8.4-30.1-21.1s-.7-26.9 9.6-35.5l288-240c11.3-9.4 27.4-9.9 39.3-1.3z"
       {...props}
     />
+  );
+}
+
+/**
+ * Auto-approve is off: the bolt with a slash through it. A gap around the
+ * slash keeps it apart from the bolt.
+ */
+export function BoltOffIcon({ style, ...props }: IconProps) {
+  const maskId = useId();
+
+  return (
+    <svg
+      viewBox="0 0 448 512"
+      width="1em"
+      height="1em"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+      style={{ overflow: 'visible', ...style }}
+    >
+      <mask id={maskId}>
+        <rect x="-64" y="-64" width="576" height="640" fill="white" />
+        <path d="M-16 -16 464 528" stroke="black" strokeWidth="112" />
+      </mask>
+      <path
+        d="M338.8-9.9c11.9 8.6 16.3 24.2 10.9 37.8L271.3 224 416 224c13.5 0 25.5 8.4 30.1 21.1s.7 26.9-9.6 35.5l-288 240c-11.3 9.4-27.4 9.9-39.3 1.3s-16.3-24.2-10.9-37.8L176.7 288 32 288c-13.5 0-25.5-8.4-30.1-21.1s-.7-26.9 9.6-35.5l288-240c11.3-9.4 27.4-9.9 39.3-1.3z"
+        mask={`url(#${maskId})`}
+      />
+      <path
+        d="M-16 -16 464 528"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="48"
+      />
+    </svg>
   );
 }
 

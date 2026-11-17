@@ -8,7 +8,11 @@ import {
 } from '@testing-library/react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { listOpenAiProviderModels } from '../lib/providerModels';
+import {
+  listOpenAiProviderModels,
+  type ProviderModel,
+  providerModelOptionLabel,
+} from '../lib/providerModels';
 import { fakeCtx } from '../test/canvas';
 import ConfigScreen from './ConfigScreen';
 
@@ -45,14 +49,14 @@ const CLAUDE_OPUS = {
   label: 'Claude Opus 4.8',
   maxOutputTokens: 128_000,
   reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-};
+} satisfies ProviderModel;
 
 const CLAUDE_SONNET = {
   id: 'claude-sonnet-5',
   label: 'Claude Sonnet 5',
   maxOutputTokens: 64_000,
   reasoningEfforts: ['low', 'high', 'max'],
-};
+} satisfies ProviderModel;
 
 const PARAMETERS = {
   provider: 'openai',
@@ -292,7 +296,9 @@ describe('ConfigScreen', () => {
       'sk-ant-project',
       expect.any(AbortSignal),
     );
-    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(
+      providerModelOptionLabel(CLAUDE_SONNET),
+    );
     expect(saveButton('Model provider')).not.toHaveAttribute('aria-disabled');
 
     await pickOption(combobox('Provider'), 'OpenAI');
@@ -316,7 +322,9 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(
+      providerModelOptionLabel(CLAUDE_SONNET),
+    );
     // Three levels: radios, each with what it trades under its name
     expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
     expect(effortRadios()).toEqual([
@@ -452,7 +460,7 @@ describe('ConfigScreen', () => {
       screen.getByText('Not available for the selected Claude model.'),
     ).toBeVisible();
 
-    await pickOption(combobox('Model*'), CLAUDE_OPUS.label);
+    await pickOption(combobox('Model*'), providerModelOptionLabel(CLAUDE_OPUS));
     expect(screen.getByRole('checkbox', { name: 'Fast mode' })).toBeEnabled();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }));
     await clickSave('Model provider');
@@ -624,7 +632,10 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    await pickOption(combobox('Model*'), CLAUDE_SONNET.label);
+    await pickOption(
+      combobox('Model*'),
+      providerModelOptionLabel(CLAUDE_SONNET),
+    );
     // From five levels to three: still radios
     expect(checkedEffort()).toHaveAccessibleName(/^High \(Recommended\)/);
     expect(effortRadios()).toHaveLength(3);
@@ -653,7 +664,9 @@ describe('ConfigScreen', () => {
     render(<ConfigScreen ctx={ctx} />);
     await finishModelDiscovery();
 
-    expect(shownValue(combobox('Model*'))).toBe(CLAUDE_SONNET.label);
+    expect(shownValue(combobox('Model*'))).toBe(
+      providerModelOptionLabel(CLAUDE_SONNET),
+    );
     expect(saveButton('Model provider')).toHaveAttribute(
       'aria-disabled',
       'true',

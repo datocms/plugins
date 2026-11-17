@@ -24,6 +24,7 @@ import { openFileDetailsModal } from './fileDetailsModal';
 import { hasSessionLocalFileBytes } from './localFiles';
 import type { AssetMention, LocalFileMention, RecordMention } from './mentions';
 import { fallbackAssetMention, fallbackRecordMention } from './mentions';
+import { environmentPrefix } from './navigation';
 
 type MentionCtx = RenderInspectorCtx | RenderItemFormSidebarCtx;
 
@@ -374,10 +375,6 @@ function modelFields(fields: readonly Field[], locales: readonly string[]) {
         isBlockContainer: false,
       }),
     );
-}
-
-function environmentPrefix(ctx: MentionCtx) {
-  return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
 }
 
 function projectUrl(ctx: MentionCtx, path: string) {

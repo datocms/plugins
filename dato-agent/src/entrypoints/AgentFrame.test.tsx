@@ -698,11 +698,11 @@ describe('AgentFrame', () => {
         clientId: `registered-${mocks.registerClient.mock.calls.length}`,
         clientIdIssuedAt: 1,
         redirectUri,
-        registrationVersion: 2,
+        registrationVersion: 3,
       }));
     mocks.authorization.mockReset().mockImplementation(async () => ({
       state: `state-${mocks.authorization.mock.calls.length}`,
-      authorizationUrl: 'https://mcp.datocms.com/authorize',
+      authorizationUrl: 'https://oauth.datocms.com/oauth/authorize',
       expiresAt: Date.now() + 300_000,
     }));
     mocks.callback
@@ -1047,6 +1047,50 @@ describe('AgentFrame', () => {
       expect(mocks.runtimeConfig?.context.surface).toBe(expectedSurface);
     },
   );
+
+  it('starts the text of each new response of a turn in a new paragraph', async () => {
+    const result = completedResult({ text: 'Saved.' });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'text_delta',
+            responseId: 'resp_before',
+            delta: 'Other locales stay ',
+          });
+          await onEvent?.({
+            type: 'text_delta',
+            responseId: 'resp_before',
+            delta: 'unchanged.',
+          });
+          await onEvent?.({
+            type: 'text_delta',
+            responseId: 'resp_after',
+            delta: 'Saved to the post.',
+          });
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props()} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Save it');
+    });
+
+    await waitFor(() => {
+      const answer = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'message' && entry.role === 'assistant',
+      );
+      expect(answer?.kind === 'message' && answer.content).toBe(
+        'Other locales stay unchanged.\n\nSaved to the post.',
+      );
+    });
+  });
 
   it('keeps a recoverable DatoCMS attempt active until the turn completes', async () => {
     let continueTurn: (() => void) | undefined;
@@ -6821,10 +6865,17 @@ describe('AgentFrame', () => {
 
     expect(writeText).toHaveBeenCalledOnce();
     const diagnostics = JSON.parse(String(writeText.mock.calls[0]?.[0]));
-    expect(diagnostics.configuration.openAiApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.configuration.activeApiKey).toBe('sk-diagnostic-secret');
-    expect(diagnostics.oauthCredentials.token.accessToken).toBe(
+    // Allowlisted payload: keys and tokens are absent, not just masked.
+    expect(diagnostics.configuration.openAiApiKey).toBeUndefined();
+    expect(diagnostics.configuration.activeApiKey).toBeUndefined();
+    expect(diagnostics.configuration.hasOpenAiApiKey).toBe(true);
+    expect(diagnostics.oauthCredentials.token.accessToken).toBeUndefined();
+    expect(diagnostics.oauthCredentials.token.tokenType).toBe('Bearer');
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
       'diagnostic-oauth-secret',
+    );
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain(
+      'sk-diagnostic-secret',
     );
     expect(diagnostics.turn.message).toBe(
       'Find the private record with all of its content',
@@ -6862,6 +6913,100 @@ describe('AgentFrame', () => {
     expect(diagnostics.project.currentRecord.id).toBe('record-secret');
     expect(diagnostics.turn.completionResult.error.message).toBe(
       'Provider diagnostic failure.',
+    );
+  });
+
+  it('masks the OAuth token a turn actually used, not only the one its render closed over', async () => {
+    const frameProps = props({
+      currentUserId: `diagnostics-rotated-user-${testUser}`,
+    });
+    const credentialStore = createCredentialStore({
+      siteId: frameProps.siteId,
+      currentUserId: frameProps.currentUserId,
+    });
+    const saveToken = (accessToken: string) =>
+      credentialStore.save(
+        createOAuthCredentials(
+          {
+            clientId: 'diagnostic-client',
+            clientIdIssuedAt: 1_700_000_000,
+            redirectUri: 'https://example.test/oauth/callback',
+          },
+          { accessToken, tokenType: 'Bearer', obtainedAt: 1_700_000_000 },
+        ),
+        { remember: true },
+      );
+    saveToken('stale-oauth-secret-value');
+    const failure = {
+      code: 'api_error' as const,
+      message:
+        'MCP rejected Bearer rotated-oauth-secret-value after stale-oauth-secret-value expired.',
+      retryable: true,
+    };
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          const failed = completedResult({
+            status: 'failed',
+            responseId: 'resp_rotated',
+            error: failure,
+          });
+          await onEvent?.({
+            type: 'error',
+            responseId: 'resp_rotated',
+            error: failure,
+          });
+          await onEvent?.({ type: 'turn_completed', result: failed });
+          return failed;
+        },
+      ),
+    } as unknown as AgentRuntime;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<AgentFrame {...frameProps} />);
+    // A submit handler from before the token rotation: its render still holds the stale token.
+    const staleSubmit = mocks.surfaceProps?.onSubmit;
+    saveToken('rotated-oauth-secret-value');
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: credentialStore.key,
+          newValue: localStorage.getItem(credentialStore.key),
+          storageArea: localStorage,
+        }),
+      );
+    });
+    act(() => {
+      staleSubmit?.('Describe the project');
+    });
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+
+    const failedEntry = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'message' && entry.role === 'assistant' && entry.failure,
+    );
+    if (failedEntry?.kind !== 'message' || !failedEntry.failure) {
+      throw new Error('Expected terminal failure diagnostics.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onCopyFailureDiagnostics?.(
+        failedEntry.failure?.id ?? '',
+      );
+    });
+
+    expect(writeText).toHaveBeenCalledOnce();
+    const serialized = String(writeText.mock.calls[0]?.[0]);
+    expect(serialized).not.toContain('rotated-oauth-secret-value');
+    expect(serialized).not.toContain('stale-oauth-secret-value');
+    expect(serialized).toContain(
+      'MCP rejected Bearer [redacted] after [redacted] expired.',
     );
   });
 
@@ -8330,7 +8475,7 @@ describe('AgentFrame', () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
     expect(mocks.registerClient).toHaveBeenCalledOnce();
-    expect(store.load()?.credentials.client.registrationVersion).toBe(2);
+    expect(store.load()?.credentials.client.registrationVersion).toBe(3);
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
@@ -8454,21 +8599,114 @@ describe('AgentFrame', () => {
     ]);
   });
 
-  it('offers an explicit fresh-registration retry after no callback can be returned', async () => {
+  it('recovers with a plain Connect after the sign-in popup was closed', async () => {
     mocks.callback.mockRejectedValueOnce(
-      new Error('The sign-in popup was closed before authorization completed'),
+      new RemoteMcpOAuthError(
+        'The sign-in popup was closed before authorization completed',
+        { code: 'popup_closed' },
+      ),
     );
     render(<AgentFrame {...props()} />);
     await act(async () => {
       await mocks.surfaceProps?.onConnectDatoCms?.();
     });
-    expect(mocks.registerClient).toHaveBeenCalledOnce();
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'The sign-in window was closed before DatoCMS finished connecting.',
+    );
     await act(async () => {
-      await mocks.surfaceProps?.onRestartDatoCmsConnection?.();
+      await mocks.surfaceProps?.onConnectDatoCms?.();
     });
+    // The registered client is still valid, so Connect reuses it.
     expect(mocks.openPopup).toHaveBeenCalledTimes(2);
-    expect(mocks.registerClient).toHaveBeenCalledTimes(2);
+    expect(mocks.registerClient).toHaveBeenCalledOnce();
     expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+  });
+
+  it('reconnects with a fresh client and revokes the previous token', async () => {
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.registerClient).toHaveBeenCalledOnce();
+    mocks.exchange.mockResolvedValueOnce({
+      accessToken: 'second-token',
+      tokenType: 'Bearer',
+      obtainedAt: 3,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    act(() => {
+      mocks.surfaceProps?.onReconnectDatoCms?.();
+    });
+
+    // A fresh client means DatoCMS shows the consent screen and its access choices.
+    await waitFor(() => expect(mocks.registerClient).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        fetchSpy.mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/oauth/revoke') &&
+            new URLSearchParams(String(init?.body)).get('token') ===
+              'opaque.bridge/token+value==',
+        ),
+      ).toBe(true),
+    );
+    expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+  });
+
+  it('keeps the working token when a Reconnect is cancelled', async () => {
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    mocks.callback.mockRejectedValueOnce(
+      new RemoteMcpOAuthError(
+        'OAuth authorization failed (access_denied): The resource owner or authorization server denied the request.',
+        { code: 'access_denied' },
+      ),
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    await act(async () => {
+      await mocks.surfaceProps?.onReconnectDatoCms?.();
+    });
+
+    await waitFor(() => expect(mocks.registerClient).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+        'Access wasn’t allowed in DatoCMS. Your current connection is unchanged.',
+      ),
+    );
+    expect(mocks.surfaceProps?.connection.datoCmsStatus).toBe('connected');
+    expect(
+      fetchSpy.mock.calls.some(([url]) =>
+        String(url).endsWith('/oauth/revoke'),
+      ),
+    ).toBe(false);
+    const stored = Object.keys(localStorage)
+      .map((key) => localStorage.getItem(key) ?? '')
+      .join('\n');
+    expect(stored).toContain('opaque.bridge/token+value==');
+  });
+
+  it('says a denied sign-in can be retried with Connect', async () => {
+    mocks.callback.mockRejectedValueOnce(
+      new RemoteMcpOAuthError(
+        'OAuth authorization failed (access_denied): The resource owner or authorization server denied the request.',
+        { code: 'access_denied' },
+      ),
+    );
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      await mocks.surfaceProps?.onConnectDatoCms?.();
+    });
+    expect(mocks.surfaceProps?.connection.datoCmsError).toBe(
+      'Access wasn’t allowed in DatoCMS.',
+    );
   });
 
   it.each(['unknown', 'content_view_only', 'content_only'] as const)(

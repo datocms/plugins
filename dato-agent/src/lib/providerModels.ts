@@ -19,6 +19,8 @@ type FetchModels = (
 export type ProviderModel = {
   id: string;
   label: string;
+  /** Input context window, when the provider's model list reports it. */
+  contextWindowTokens?: number;
   maxOutputTokens?: number;
   reasoningEfforts: ReasoningEffort[];
 };
@@ -278,13 +280,24 @@ function extractAnthropicModel(entry: unknown): ProviderModel | undefined {
 
   const displayName =
     typeof entry.display_name === 'string' ? entry.display_name.trim() : '';
-  const maxOutputTokens = positiveSafeInteger(entry.max_tokens);
 
   return {
     id,
     label: displayName || id,
-    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...anthropicModelLimits(entry),
     reasoningEfforts: [...reasoningEfforts],
+  };
+}
+
+/** Context and output limits, when the Models API reports them. */
+function anthropicModelLimits(
+  entry: Record<string, unknown>,
+): Pick<ProviderModel, 'contextWindowTokens' | 'maxOutputTokens'> {
+  const maxOutputTokens = positiveSafeInteger(entry.max_tokens);
+  const contextWindowTokens = positiveSafeInteger(entry.max_input_tokens);
+  return {
+    ...(contextWindowTokens ? { contextWindowTokens } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
   };
 }
 
@@ -428,4 +441,27 @@ export function preferredProviderModel(
   }
 
   return models.find((model) => model.id === DEFAULT_MODEL) ?? models[0];
+}
+
+/** Compact token count for labels: 1000000 → "1M", 128000 → "128K". */
+export function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000 && tokens % 100_000 === 0)
+    return `${tokens / 1_000_000}M`;
+  if (tokens >= 1_000 && tokens % 1_000 === 0) return `${tokens / 1_000}K`;
+  return tokens.toLocaleString('en');
+}
+
+/** Model selector label with the limits developers rarely know offhand. */
+export function providerModelOptionLabel(model: ProviderModel): string {
+  const limits = [
+    model.contextWindowTokens
+      ? `${formatTokenCount(model.contextWindowTokens)} context`
+      : undefined,
+    model.maxOutputTokens
+      ? `${formatTokenCount(model.maxOutputTokens)} output`
+      : undefined,
+  ].filter(Boolean);
+  return limits.length > 0
+    ? `${model.label} · ${limits.join(' · ')}`
+    : model.label;
 }

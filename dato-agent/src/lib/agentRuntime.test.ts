@@ -424,6 +424,41 @@ function attachment({
 }
 
 describe('AgentRuntime', () => {
+  it.each([
+    {
+      reason: 'max_output_tokens',
+      guidance: 'Ask for fewer records or shorter content at a time.',
+    },
+    { reason: 'content_filter', guidance: 'Rephrase the request' },
+  ])(
+    'turns an incomplete $reason response into guidance the editor can act on',
+    async ({ reason, guidance }) => {
+      const incomplete = {
+        ...response('resp-incomplete', [], 'incomplete'),
+        incomplete_details: { reason },
+      } as unknown as Response;
+      const runtime = runtimeWith(
+        new QueueResponsesClient([
+          [
+            {
+              type: 'response.incomplete',
+              response: incomplete,
+              sequence_number: 0,
+            } as ResponseStreamEvent,
+          ],
+        ]),
+      );
+
+      const { result } = await drain(
+        runtime.streamTurn({ message: 'Create the records.' }),
+      );
+
+      expect(result.status).toBe('incomplete');
+      expect(result.error?.message).toContain(guidance);
+      expect(result.error?.message).not.toContain(reason);
+    },
+  );
+
   it('rejects an oversized message before contacting OpenAI', async () => {
     const client = new QueueResponsesClient([]);
     const runtime = runtimeWith(client);

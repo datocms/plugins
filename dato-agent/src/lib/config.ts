@@ -296,3 +296,27 @@ export function serializeConfig(
     ...normalizeConfig(next),
   };
 }
+
+/**
+ * The configuration as it may appear in copied diagnostics: an explicit allowlist of non-secret
+ * settings. API keys are reported only as present or missing, so a new secret field never leaks
+ * by default.
+ */
+export function diagnosticConfiguration(config: AgentConfig) {
+  return {
+    provider: config.provider,
+    model: config.model,
+    reasoningEffort: config.reasoningEffort,
+    openAiFastMode: config.openAiFastMode,
+    anthropicModel: config.anthropicModel,
+    anthropicModelMaxOutputTokens: config.anthropicModelMaxOutputTokens,
+    anthropicReasoningEffort: config.anthropicReasoningEffort,
+    anthropicFastMode: config.anthropicFastMode,
+    additionalInstructions: config.additionalInstructions,
+    readOnly: config.readOnly,
+    enableRecordSidebar: config.enableRecordSidebar,
+    allowedRoleIds: config.allowedRoleIds,
+    hasOpenAiApiKey: config.openAiApiKey.trim() !== '',
+    hasAnthropicApiKey: config.anthropicApiKey.trim() !== '',
+  };
+}

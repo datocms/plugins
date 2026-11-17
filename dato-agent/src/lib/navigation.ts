@@ -33,13 +33,37 @@ export type AgentNavigator = {
   openAsset(target: AssetTarget): Promise<OpenAssetResult>;
 };
 
+/** How many records the inspector's fallback list keeps. */
+const MAX_LISTED_RECORDS = 50;
+
+/**
+ * Navigates the Agent tab's right pane. Keep one per tab: it owns the record
+ * list. `getCtx` returns the latest ctx, since the host replaces it on update.
+ */
 export function createInspectorNavigator(
-  ctx: RenderInspectorCtx,
+  getCtx: () => RenderInspectorCtx,
 ): AgentNavigator {
+  // The record editor's back arrow switches the right pane to the record list,
+  // and the CMS shows an empty list as an endless spinner. So the list always
+  // holds the records the chat showed or opened, and Back lands somewhere real.
+  let list = { title: 'Records opened from the chat', itemIds: [] as string[] };
+
   return {
     supportsRecordList: true,
     async openRecord(target) {
-      await ctx.setInspectorMode({
+      if (!list.itemIds.includes(target.itemId)) {
+        // A record added to a shown list no longer fits that list's title.
+        list = {
+          title: 'Records opened from the chat',
+          itemIds: [target.itemId, ...list.itemIds].slice(
+            0,
+            MAX_LISTED_RECORDS,
+          ),
+        };
+      }
+      // Sent on every open: the host can replace the list behind our back.
+      await getCtx().setInspectorItemListData(list);
+      await getCtx().setInspectorMode({
         type: 'itemEditor',
         itemId: target.itemId,
         ...(target.fieldPath ? { fieldPath: target.fieldPath } : {}),
@@ -49,15 +73,12 @@ export function createInspectorNavigator(
       const itemIds = [
         ...new Set(target.records.map((record) => record.itemId)),
       ];
-
-      await ctx.setInspectorItemListData({
-        title: target.title || 'Records',
-        itemIds,
-      });
-      await ctx.setInspectorMode({ type: 'itemList' });
+      list = { title: target.title || 'Records', itemIds };
+      await getCtx().setInspectorItemListData(list);
+      await getCtx().setInspectorMode({ type: 'itemList' });
     },
     async openAsset(target) {
-      const result = await ctx.editUpload(target.uploadId);
+      const result = await getCtx().editUpload(target.uploadId);
       if (result && !('deleted' in result)) {
         return {
           deleted: false,
@@ -132,4 +153,19 @@ export function createSidebarNavigator(
       };
     },
   };
+}
+
+type EnvironmentCtx = { environment: string; isEnvironmentPrimary: boolean };
+
+/** The CMS path prefix of the current environment: empty for the primary one. */
+export function environmentPrefix(ctx: EnvironmentCtx): string {
+  return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
+}
+
+/** This plugin's settings page. Sandbox paths need the environment prefix; the primary has none. */
+export function pluginSettingsPath(
+  ctx: EnvironmentCtx,
+  pluginId: string,
+): string {
+  return `${environmentPrefix(ctx)}/configuration/plugins/${pluginId}/edit`;
 }

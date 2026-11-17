@@ -1,5 +1,5 @@
 export const OAUTH_CREDENTIALS_VERSION = 1 as const;
-export const OAUTH_CLIENT_REGISTRATION_VERSION = 2 as const;
+export const OAUTH_CLIENT_REGISTRATION_VERSION = 3 as const;
 
 const CREDENTIALS_KEY_PREFIX = 'dato-agent.oauth.credentials.v1';
 
@@ -362,4 +362,24 @@ function isCleanAbsoluteUrl(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+/**
+ * OAuth state as it may appear in copied diagnostics: version, client registration and token
+ * metadata only. The access token itself is never included.
+ */
+export function diagnosticOAuthCredentials(
+  credentials: OAuthCredentials | null | undefined,
+) {
+  if (!credentials) return undefined;
+  return {
+    version: credentials.version,
+    client: credentials.client,
+    token: credentials.token
+      ? {
+          tokenType: credentials.token.tokenType,
+          obtainedAt: credentials.token.obtainedAt,
+        }
+      : undefined,
+  };
 }

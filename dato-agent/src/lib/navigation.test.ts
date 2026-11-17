@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createInspectorNavigator, createSidebarNavigator } from './navigation';
+import {
+  createInspectorNavigator,
+  createSidebarNavigator,
+  pluginSettingsPath,
+} from './navigation';
 
 describe('createInspectorNavigator', () => {
   it('uses the native record list and editor', async () => {
@@ -8,7 +12,7 @@ describe('createInspectorNavigator', () => {
       setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
       setInspectorMode: vi.fn().mockResolvedValue(undefined),
     };
-    const navigator = createInspectorNavigator(ctx as never);
+    const navigator = createInspectorNavigator(() => ctx as never);
     expect(navigator.supportsRecordList).toBe(true);
 
     await navigator.showRecords({
@@ -33,6 +37,56 @@ describe('createInspectorNavigator', () => {
     expect(ctx.editUpload).toHaveBeenCalledWith('upload-a');
   });
 
+  it('fills the record list when it opens a record, so Back never lands on an empty list', async () => {
+    const ctx = {
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
+      setInspectorMode: vi.fn().mockResolvedValue(undefined),
+    };
+    const navigator = createInspectorNavigator(() => ctx as never);
+
+    await navigator.openRecord({ itemId: 'a' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['a'],
+    });
+
+    await navigator.openRecord({ itemId: 'b' });
+    expect(ctx.setInspectorItemListData).toHaveBeenLastCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['b', 'a'],
+    });
+    // The list is filled before the editor opens.
+    expect(
+      ctx.setInspectorItemListData.mock.invocationCallOrder.at(-1),
+    ).toBeLessThan(ctx.setInspectorMode.mock.invocationCallOrder.at(-1) ?? 0);
+  });
+
+  it('sends the record list on every open, to the latest ctx', async () => {
+    const makeCtx = () => ({
+      editUpload: vi.fn(),
+      setInspectorItemListData: vi.fn().mockResolvedValue(undefined),
+      setInspectorMode: vi.fn().mockResolvedValue(undefined),
+    });
+    let ctx = makeCtx();
+    const navigator = createInspectorNavigator(() => ctx as never);
+
+    await navigator.openRecord({ itemId: 'a' });
+    ctx = makeCtx();
+    await navigator.openRecord({ itemId: 'a' });
+    expect(ctx.setInspectorItemListData).toHaveBeenCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['a'],
+    });
+    expect(ctx.setInspectorMode).toHaveBeenCalledOnce();
+
+    await navigator.openRecord({ itemId: 'b' });
+    expect(ctx.setInspectorItemListData).toHaveBeenCalledWith({
+      title: 'Records opened from the chat',
+      itemIds: ['b', 'a'],
+    });
+  });
+
   it('reports when the native asset editor deletes an upload', async () => {
     const ctx = {
       editUpload: vi.fn().mockResolvedValue({ deleted: true }),
@@ -41,7 +95,7 @@ describe('createInspectorNavigator', () => {
     };
 
     await expect(
-      createInspectorNavigator(ctx as never).openAsset({
+      createInspectorNavigator(() => ctx as never).openAsset({
         uploadId: 'upload-a',
       }),
     ).resolves.toEqual({ deleted: true });
@@ -441,5 +495,25 @@ describe('createSidebarNavigator', () => {
     expect(ctx.navigateTo).not.toHaveBeenCalled();
     expect(ctx.editItem).toHaveBeenNthCalledWith(1, 'target');
     expect(ctx.editItem).toHaveBeenNthCalledWith(2, 'another');
+  });
+});
+
+describe('pluginSettingsPath', () => {
+  it('needs no prefix on the primary environment', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'main', isEnvironmentPrimary: true },
+        'plugin-1',
+      ),
+    ).toBe('/configuration/plugins/plugin-1/edit');
+  });
+
+  it('prefixes sandbox environments', () => {
+    expect(
+      pluginSettingsPath(
+        { environment: 'sandbox', isEnvironmentPrimary: false },
+        'plugin-1',
+      ),
+    ).toBe('/environments/sandbox/configuration/plugins/plugin-1/edit');
   });
 });
