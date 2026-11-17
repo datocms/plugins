@@ -20,7 +20,7 @@
   "type": "module",
   "datoCmsPlugin": {
     "title": "Alt Text AI",
-    "previewImage": "docs/demo.mp4",
+    "previewImage": "docs/preview.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "permissions": [
