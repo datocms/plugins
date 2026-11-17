@@ -1,44 +1,75 @@
 # AI Translations
 
-Translates DatoCMS content between your project's locales with DeepL, OpenAI, Google Gemini, Anthropic Claude or Yandex Translate. You can translate a single field, a whole record, a selection of records or every record of a model.
+Translate your content between your project's locales with OpenAI, Google Gemini, Anthropic, DeepL or Yandex Translate, right inside DatoCMS: one field, a whole record, a selection of records or every record of a model.
 
-![A blog post translated into Italian, next to the AI Translations sidebar panel](docs/record-translated.png)
+![A blog post open in its German locale, translated from English, with the AI Translations panel in the sidebar set to translate from English into German](docs/record-panel.png)
 
-## Setup
+- **One field or the whole record**: translate a single field from its menu, or every field of a record from the sidebar.
+- **Many records at once**: translate the records you select in a table, or every record of the models you pick.
+- **Keeps the structure**: Structured Text, Modular Content blocks, SEO fields and media alt text are translated with their formatting in place.
+- **Your provider**: five providers to choose from, with your own API key and, for the language models, the model and prompt you prefer.
+- **You stay in control**: single records are translated into the form for you to review before saving.
 
-Your project needs at least two locales. Install **AI Translations** from **Configuration → Plugins** and let it use the current user's API token, which bulk translations need to read and save records.
+## Installation
 
-In the plugin settings, pick a **Provider**, enter its API key and click **Save**:
+1. Install **AI Translations** from the marketplace. It asks for the current user's API token, which bulk translations use to read and save records.
+2. In the plugin settings, pick a **Provider** and paste its **API key**.
+3. For OpenAI, Google Gemini and Anthropic, pick a **Model**. The list loads from your account once the key is valid.
+4. Click **Save**.
 
-- DeepL: an API key. For a Free-plan key, turn on **Key from the DeepL Free plan**. This happens automatically for keys ending in `:fx`.
-- OpenAI: an API key, then a model.
-- Google Gemini: an API key from a Google project with the Generative Language API enabled, then a model.
-- Anthropic: an API key, then a model.
-- Yandex: a service-account API key with the `yc.ai.translate.execute` scope, from an account with the `ai.translate.user` role.
+![The plugin settings with OpenAI as provider, a masked API key, the model picked, and the Features switches for the sidebar panel and the table action](docs/plugin-settings.png)
 
-DeepL is the fastest and cheapest, and what we recommend for most projects. The other three also get the record's title and short text fields as context, which helps with tone and terminology, and follow a prompt you can edit. See [docs/Providers.md](docs/Providers.md) for DeepL glossaries, the prompt and other provider options.
+Your project needs at least two locales. DeepL is the fastest and cheapest choice for most projects. The language models also get the record's title and short text fields as context, which helps with tone and terminology.
 
-API keys are saved in the plugin settings and used from each editor's browser, so treat them as visible to your team. Use a dedicated key and restrict it where the provider allows, for example a Google key limited to the Generative Language API.
+API keys are saved in the plugin settings and used from each editor's browser, so treat them as visible to your team. Use a dedicated key, and restrict it where the provider allows.
 
-The settings also let you limit which field types get translated (all are on by default, including Structured Text, Modular Content, SEO and media alt text), turn off the sidebar panel or table action, and exclude models, roles or fields.
+The settings also let you turn off the sidebar panel or the table action, exclude models, roles or fields under **Exclusions**, and edit the prompt or limit the translated field types under **Advanced**. See [docs/Providers.md](docs/Providers.md) for each provider's options, DeepL glossaries and the prompt.
 
-## Usage
+## Translate a field
 
-To translate one field, open its menu and choose **Translate to** with a locale or **All locales**. **Translate from** does the reverse, filling the locale you're on from another one. To translate a whole record, use the **AI Translations** panel in the record sidebar. In both cases the translation goes into the form, so review it and click **Save**.
+Open a localized field's menu (**⋮** next to its label) and choose **Translate into**, then a locale or **All other locales**. **Translate from** does the reverse: it fills the locale you're on from another locale that has a value.
 
-<img src="https://raw.githubusercontent.com/datocms/plugins/master/ai-translations/docs/field-menu.png" width="700" alt="The Title field menu open on Translate to, listing the project's locales">
+![The Title field menu open on Translate into, listing All other locales, Italian, German, French and Spanish](docs/field-menu.png)
 
-To translate many records, select them in a table and choose **AI Translate these records** from the **⋮** menu in the bottom bar, or open **Configuration → Bulk translations** (schema editors only) to translate every record of the models you pick. Bulk translations save each record as soon as it's translated, and when the run ends you can publish all the updated records in one click.
+The translation goes into the form. Review it, then save the record.
 
-![The Bulk translations page with the source and target locales and a field picker for each selected model](docs/bulk-page.png)
+## Translate a whole record
 
-## Caveats
+The **AI Translations** panel in the record sidebar translates every translatable field at once:
 
-Translating into a locale overwrites whatever that locale already has in the selected fields. Fields that aren't localized are never changed.
+1. Pick the locale to **Translate from** and the locales to **Translate into**.
+2. Click **Translate all fields**.
+3. Each field shows its progress and turns green when it's done. Click a field to jump to it in the form.
+4. Review the translations and save the record.
 
-Link fields and the records they point to are never translated. When a bulk run fills a locale for the first time, it copies the links from the source locale and flags the record with a warning, so you can check whether that locale should link elsewhere.
+The menus only offer the locales the record has. To translate into a new locale, add it to the record first with the locale switcher above the form.
 
-Translated SEO titles longer than 60 characters and descriptions longer than 160 are cut short. Yandex Translate fails on any field longer than 10,000 characters.
+## Translate many records
+
+Select records in a table, open **⋮** in the bar at the bottom and choose **Translate with AI**. The same action is in a record's own **⋮** menu.
+
+![The Translate records dialog for 3 Blog Post records: English as source, French as target, All fields, and the Translate 3 records button](docs/records-dialog.png)
+
+Pick the source locale, the target locales and the fields of each model, then click **Translate N records**. Each record is saved as soon as it's translated, and a progress window lists every record as it goes. You can cancel at any time; records already translated stay saved.
+
+![The Translation progress window: Translation finished, 3 blog posts translated, with Publish 3 records and Close buttons](docs/progress.png)
+
+When the run ends, **Publish N records** publishes the updated records of models that use drafts, in one click.
+
+### Every record of a model
+
+To translate whole models, go to **Configuration → Bulk translations** (users who can edit the schema). Pick the locales and the models, narrow the fields of each model if you like, and click **Translate records**. A summary asks you to confirm before the run starts.
+
+![The Bulk translations page: English into All other locales, Blog Post limited to its Title and Content fields, and Testimonial with all fields](docs/bulk-page.png)
+
+## Good to know
+
+- **Overwrites:** translating into a locale replaces what that locale already has in the selected fields.
+- **Localized fields only:** fields that aren't localized are never changed.
+- **Links stay as they are:** link fields and the records they point to aren't translated. When a bulk run fills a locale for the first time, it copies the links from the source locale and flags the record, so you can check whether that locale should link elsewhere.
+- **SEO lengths:** translated SEO titles longer than 60 characters and descriptions longer than 160 are cut short.
+- **Yandex limit:** Yandex Translate fails on a single text longer than 10,000 characters.
+- **Costs:** every translation is billed by your provider to your API account. Large runs warn you before they start.
 
 ## Development
 
