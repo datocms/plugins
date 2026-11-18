@@ -41,7 +41,7 @@ Avoid **Legacy product JSON** for new fields. It holds one product, its data is 
 
 Changing a field's settings never rewrites stored values. Each record keeps its value until an editor acts on it:
 
-- A value in another format the plugin knows (for example, 1.x product JSON in a field now set to **Reference document**, or a handle in a string field now set to **Shopify ID**) still shows normally, with a notice such as "Saved as a Shopify handle. This field now saves a Shopify ID." and a **Convert to new format** action that re-saves that one value in the new format.
+- A value in another format the plugin knows (for example, 1.x product JSON in a field now set to **Reference document**, or a handle in a string field now set to **Shopify ID**) still shows normally, with a notice such as "This product was saved in an older format: convert it to the one this field uses now." and a **Convert** action that re-saves that one value in the new format.
 - A value that can't fit the new settings (for example, several items in a field now set to one, or products in a field now set to variants) shows as an [invalid value](#invalid-field-values).
 
 When you change a saved field, its settings warn you next to the option you changed:
@@ -224,7 +224,7 @@ type ShopifyReferenceDocument =
 
 ### Display snapshot
 
-With **Include a display snapshot?** on, each reference also gets the title, image and price captured when the editor picked it:
+With **Include a display snapshot** on, each reference also gets the title, image and price captured when the editor picked it:
 
 ```json
 {
@@ -345,7 +345,7 @@ A JSON field set to **Legacy product JSON**, which includes every 1.x JSON field
 - `onlineStoreUrl` is `null` when the product has no Online Store page, which is common for headless stores.
 - `imageUrl` is the full-size image and `previewImageUrl` a 200×200 version. Values saved before 1.0.10 have no `previewImageUrl` and no `previewSrc`, and their `imageUrl` and `src` are 200×200 images. Values saved before 1.0.1 have `_crop_center` image URLs.
 - Titles and prices are in the shop's primary language and currency, as 1.x wrote them: the plugin reads and writes this format without a market, whatever the store's default market or the record's language.
-- The data is a copy from when the product was picked or last refreshed. The plugin never updates it on its own; editors see "Shopify data changed since this was saved" and can click **Refresh saved data**.
+- The data is a copy from when the product was picked or last refreshed. The plugin never updates it on its own; editors see a notice such as "The saved title and price no longer match Shopify." and can click **Refresh saved data**.
 
 ### How each API returns the value
 
@@ -965,7 +965,7 @@ The plugin shows a specific message for each failure. Messages never include you
 
 | Code | What the plugin says | Cause | Fix |
 |---|---|---|---|
-| `unauthorized` | Shopify rejected the Storefront access token. Update it in the plugin settings. | HTTP 401: the token is wrong or revoked, or belongs to a deleted storefront. | Copy the **Public access token** again from Headless → your storefront, paste it, and click **Save settings**. |
+| `unauthorized` | Shopify rejected the Storefront access token. Update it in the plugin settings. | HTTP 401: the token is wrong or revoked, or belongs to a deleted storefront. | Copy the **Public access token** again from Headless → your storefront, paste it, and click **Save**. |
 | `forbidden` | This token isn't allowed to read products. In Shopify → Headless → Storefront API permissions, enable "Read products, variants, and collections". | HTTP 403, or Shopify denied a field the plugin needs. | Enable the permission and save it in Shopify, then click **Re-check** in the plugin settings. |
 | `shop-not-found` | No Shopify store found at {shop}. | HTTP 404: there's no store at that domain (a typo, or the store was closed). | Use the `.myshopify.com` domain from Shopify admin → **Settings → Domains**. |
 | `store-locked` | This store is password-protected, so the plugin needs a Storefront access token. | HTTP 400 "Online Store channel is locked." on a connection without a token. | Switch off **Connect without a token?** and add a token. |
@@ -978,8 +978,8 @@ The plugin shows a specific message for each failure. Messages never include you
 
 Where you see them:
 
-- **Plugin settings:** the store's box says **Couldn't connect to Shopify**, followed by the message, with **Try again**. A rejected token reads "Shopify rejected this token. Check that it's the "Public access token" of a Headless storefront in this store." instead. When a save fails this way, the form says "Couldn't connect to Shopify. Fix the connection above, or save anyway." and the store offers **Save anyway**.
-- **Field editor:** a callout such as "Couldn't load the products", followed by the message. For `unauthorized`, `forbidden`, `shop-not-found` and `store-locked`, which only the plugin settings can fix, roles that can edit the schema get **Open plugin settings**, and other roles read "Ask an administrator to check the Shopify connection." after the cause. Every other error offers **Try again**.
+- **Plugin settings:** the store's **Connection** reads **Not connected**, followed by the message, with **Re-check**. A rejected token reads "Shopify rejected this token: use the Public access token of a Headless storefront in this store." instead. When a save fails this way, the form says "The settings weren't saved: fix the connection above, or save anyway." and offers **Save anyway**.
+- **Field editor:** a callout such as "Couldn't load the products", followed by the message. For `unauthorized`, `forbidden`, `shop-not-found` and `store-locked`, which only the plugin settings can fix, roles that can edit the schema get an **Open the plugin settings** link, and other roles read "Ask an administrator to check the plugin settings." after the cause. Every other error offers **Try again**.
 - **Picker:** a callout such as "Couldn't load the products", followed by the message and **Try again**.
 
 ## Invalid field values
@@ -1001,18 +1001,18 @@ When a stored value can't be read with the field's settings, the field shows an 
 ### What happens when you update
 
 - **Your content doesn't change.** 1.x fields have no field settings, so 2.0 gives them the 1.x defaults: string fields keep storing the product handle, and JSON fields keep storing the 1.x product JSON.
-- **Settings move to the 2.0 format** the first time someone who can edit the schema opens the project: your shop is saved as `your-shop.myshopify.com`, the plugin checks which optional permissions your token has (tags and inventory), and fields saved by very old plugin versions are pointed at the current field editor. Editors without schema permissions can work normally before that happens. If the permission check can't reach Shopify, the plugin settings run it again when you open them, and **Save settings** keeps the result.
-- **Your token keeps working.** Storefront tokens from custom apps created before January 1, 2026 are still accepted. For a new token, use the [Headless channel](../README.md#connect-your-shopify-store).
+- **Settings move to the 2.0 format** the first time someone who can edit the schema opens the project: your shop is saved as `your-shop.myshopify.com`, the plugin checks which optional permissions your token has (tags and inventory), and fields saved by very old plugin versions are pointed at the current field editor. Editors without schema permissions can work normally before that happens. If the permission check can't reach Shopify, the plugin settings run it again when you open them, and **Save** keeps the result.
+- **Your token keeps working.** Storefront tokens from custom apps created before January 1, 2026 are still accepted. For a new token, use the [Headless channel](../README.md#connect-your-store).
 - **Requests use Storefront API `2026-10`** instead of the unversioned endpoint. Product data and the legacy JSON shape are the same.
 - **The old browser cache is deleted.** 1.x kept one cache for every project and store, keyed by handle, which could show a product from another store.
 - **Auto-applied fields stay as they are.** Fields matched by **Auto-apply to fields whose API key matches** keep the 1.x defaults. A matching field you set up with the plugin in its **Presentation** tab keeps its own settings instead.
-- **Editors get the new picker and field rows.** Legacy JSON fields now resolve by product ID first and fall back to the handle, so a renamed handle no longer breaks them. When the saved copy is out of date, editors see "Shopify data changed since this was saved" and can click **Refresh saved data**. The legacy JSON is still read and written without a market, so its titles and prices stay in the shop's primary language and currency.
+- **Editors get the new picker and field rows.** Legacy JSON fields now resolve by product ID first and fall back to the handle, so a renamed handle no longer breaks them. When the saved copy is out of date, editors see a notice such as "The saved title and price no longer match Shopify." and can click **Refresh saved data**. The legacy JSON is still read and written without a market, so its titles and prices stay in the shop's primary language and currency.
 
 ### Moving a field to a new format
 
 1. Update your frontend to read both the old and the new format (see [Reading old and new formats during a transition](#reading-old-and-new-formats-during-a-transition)), and deploy it.
 2. Change the field's settings, for example from **Legacy product JSON** to **Reference document**, or from **Handle** to **Shopify ID**.
-3. Records keep their old value and keep working. To convert one, open it, click **Convert to new format** on the field, and save the record.
+3. Records keep their old value and keep working. To convert one, open it, click **Convert** on the field, and save the record.
 4. When every record is converted, remove the code that reads the old format.
 
 There's no bulk conversion in 2.0. With many records, you can write a Content Management API script that resolves each old value and writes the new one following the [stored value contract](#stored-value-contract).
