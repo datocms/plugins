@@ -22,6 +22,7 @@ describe('isScope', () => {
     expect(isScope(ALL_SCOPE)).toBe(true);
     expect(isScope({ modelIds: ['page'], localeIds: 'all' })).toBe(true);
     expect(isScope({ modelIds: [], localeIds: ['en'] })).toBe(true);
+    expect(isScope({ ...ALL_SCOPE, excludeUnpublished: true })).toBe(true);
   });
 
   it('rejects anything else', () => {
@@ -31,6 +32,7 @@ describe('isScope', () => {
     expect(isScope({ modelIds: 'all' })).toBe(false);
     expect(isScope({ modelIds: 'some', localeIds: 'all' })).toBe(false);
     expect(isScope({ modelIds: [1], localeIds: 'all' })).toBe(false);
+    expect(isScope({ ...ALL_SCOPE, excludeUnpublished: 'yes' })).toBe(false);
   });
 });
 
@@ -73,6 +75,15 @@ describe('scopeLabel', () => {
     expect(
       label({ modelIds: ['news', 'page', 'article'], localeIds: ['en'] }),
     ).toBe('All models • English');
+  });
+
+  it('says when unpublished records are skipped', () => {
+    expect(label({ ...ALL_SCOPE, excludeUnpublished: true })).toBe(
+      'All models • All locales • Unpublished skipped',
+    );
+    expect(label({ ...ALL_SCOPE, excludeUnpublished: true }, ['en'])).toBe(
+      'All models • Unpublished skipped',
+    );
   });
 
   it('counts three or more of the site locales', () => {

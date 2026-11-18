@@ -26,5 +26,6 @@ export function readPluginParameters(raw: unknown): PluginParameters {
     allowedRoleIds,
     restrictToModels: readRestriction(record.restrictToModels, allowedModelIds),
     allowedModelIds,
+    excludeUnpublished: record.excludeUnpublished === true,
   };
 }

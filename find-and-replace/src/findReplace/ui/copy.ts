@@ -815,7 +815,11 @@ export function whereName(
 
 // ── Assembly ────────────────────────────────────────────────────────────────
 
-export function createCopy(locale: string) {
+/**
+ * The page's copy in `locale`. With `excludeUnpublished`, it says that
+ * unpublished records aren't searched.
+ */
+export function createCopy(locale: string, excludeUnpublished = false) {
   const c = createCounts(locale);
 
   return {
@@ -887,8 +891,19 @@ export function createCopy(locale: string) {
     note: (note: NoteView) => noteText(c, note),
     callout: (callout: CalloutView) => calloutCopy(c, callout),
 
+    idleTitle: excludeUnpublished
+      ? 'Find and replace across published records'
+      : STRINGS.idleTitle,
+    idleLine: excludeUnpublished
+      ? "Search every text field of every record, except unpublished ones. You'll review each match, and can leave any out, before anything changes."
+      : STRINGS.idleLine,
     noResultsTitle,
-    noResultsLine,
+    noResultsLine: (view: NoResultsView) => {
+      const line = noResultsLine(view);
+      return excludeUnpublished && !view.followsRun && !hiddenByFilter(view)
+        ? `${line} Unpublished records aren't searched.`
+        : line;
+    },
     paneState: paneStateCopy,
 
     confirm: (plan: PlanFacts) => confirmCopy(c, plan),

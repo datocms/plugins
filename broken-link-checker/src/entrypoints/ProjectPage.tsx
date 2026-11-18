@@ -117,9 +117,16 @@ function ProjectScanner({ ctx }: PageProps) {
     const run = scanRun.current;
     void scan.start(
       scopeLabel(next, loader.models, siteLocales, uiLocale),
-      createProjectProducer(ctx, loader, models, locales, (total) => {
-        if (run === scanRun.current) setRecordTotal(total);
-      }),
+      createProjectProducer(
+        ctx,
+        loader,
+        models,
+        locales,
+        (total) => {
+          if (run === scanRun.current) setRecordTotal(total);
+        },
+        next.excludeUnpublished,
+      ),
     );
   };
 
@@ -140,7 +147,7 @@ function ProjectScanner({ ctx }: PageProps) {
         title: 'Choose what to scan',
         width: 's',
         // The intro, the switches (the locale one on multi-locale sites) and the button
-        initialHeight: siteLocales.length > 1 ? 328 : 242,
+        initialHeight: siteLocales.length > 1 ? 414 : 328,
         parameters,
       });
     } catch (error) {

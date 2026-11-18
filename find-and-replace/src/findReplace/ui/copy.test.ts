@@ -530,6 +530,20 @@ describe('no results and pane states', () => {
     );
   });
 
+  it('says unpublished records are skipped when they are', () => {
+    const skipping = createCopy('en', true);
+    expect(skipping.idleTitle).toBe(
+      'Find and replace across published records',
+    );
+    expect(skipping.noResultsLine(view({}))).toBe(
+      "Check the spelling, or try different keywords. Unpublished records aren't searched.",
+    );
+    expect(skipping.noResultsLine(view({ followsRun: true }))).toBe(
+      copy.noResultsLine(view({ followsRun: true })),
+    );
+    expect(copy.idleTitle).toBe('Find and replace across all records');
+  });
+
   it('writes the pane states', () => {
     expect(copy.paneState({ kind: 'unavailable', cause: 'no_models' })).toEqual(
       {

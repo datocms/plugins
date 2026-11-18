@@ -126,6 +126,46 @@ describe('project production', () => {
     log.mockRestore();
   });
 
+  it('asks the API to leave drafts out of pages and counts when told to skip them', async () => {
+    buildCmaClient.mockReturnValue(client);
+    const models = [model('article'), model('news')];
+    rawList.mockResolvedValue({ data: [], meta: { total_count: 0 } });
+    const onTotal = vi.fn();
+    await createProjectProducer(
+      { environment: 'test' },
+      loader(models),
+      models,
+      ['en'],
+      onTotal,
+      true,
+    )(session(), new AbortController().signal);
+    await vi.waitFor(() => expect(onTotal).toHaveBeenCalledWith(0));
+    const filters = rawList.mock.calls.map(([query]) => query.filter);
+    expect(filters).toEqual(
+      expect.arrayContaining([
+        { type: 'article,news', fields: { _status: { neq: 'draft' } } },
+        { type: 'article', fields: { _status: { neq: 'draft' } } },
+        { type: 'news', fields: { _status: { neq: 'draft' } } },
+      ]),
+    );
+    expect(filters).toHaveLength(3);
+  });
+
+  it('reads drafts by default', async () => {
+    buildCmaClient.mockReturnValue(client);
+    const models = [model('article')];
+    rawList.mockResolvedValue({ data: [], meta: { total_count: 0 } });
+    await createProjectProducer(
+      { environment: 'test' },
+      loader(models),
+      models,
+      ['en'],
+    )(session(), new AbortController().signal);
+    expect(rawList.mock.calls.map(([query]) => query.filter)).toEqual([
+      { type: 'article' },
+    ]);
+  });
+
   it('reports an isolated malformed record and continues the same page', async () => {
     buildCmaClient.mockReturnValue(client);
     const models = [model('article')];

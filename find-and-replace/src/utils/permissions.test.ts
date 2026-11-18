@@ -44,6 +44,7 @@ function parameters(
     allowedRoleIds: [],
     restrictToModels: false,
     allowedModelIds: [],
+    excludeUnpublished: false,
     ...overrides,
   };
 }

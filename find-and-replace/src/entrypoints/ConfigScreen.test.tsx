@@ -124,7 +124,27 @@ describe('ConfigScreen restrictions', () => {
       allowedRoleIds: ['editor'],
       restrictToModels: true,
       allowedModelIds: ['article'],
+      excludeUnpublished: false,
     });
     expect(notice).toHaveBeenCalledWith('Settings successfully saved!');
+  });
+
+  it('saves the switch that skips unpublished records', async () => {
+    const user = userEvent.setup();
+    const { ctx, updatePluginParameters } = createContext();
+    render(<ConfigScreen ctx={ctx} />);
+
+    await user.click(
+      screen.getByRole('switch', { name: 'Skip unpublished records' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(updatePluginParameters).toHaveBeenCalledWith({
+      restrictToRoles: false,
+      allowedRoleIds: [],
+      restrictToModels: false,
+      allowedModelIds: [],
+      excludeUnpublished: true,
+    });
   });
 });

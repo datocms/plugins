@@ -10,11 +10,11 @@ Install **Broken Link Checker** from **Configuration → Plugins** and, when ask
 
 ## Scanning the project
 
-Open **Content → Link checker** and click **Scan links**. To limit the scan to some models or locales, use **Choose what to scan…** first.
+Open **Content → Link checker** and click **Scan links**. To limit the scan to some models or locales, or to skip unpublished records, use **Choose what to scan…** first.
 
 Each link gets one row, listing every record, field and locale that uses it. Select a link to see the server's response and open the records from there to fix it, then click **Recheck URL**. **Export CSV** downloads the whole report. Results disappear when you leave the page, so export them if you want to keep a copy, and keep the page open until the scan finishes.
 
-The scan reads the latest saved version of every record in the current environment, drafts and invalid records included, but only records your role can read. Anything it couldn't read is listed in the report.
+The scan reads the latest saved version of every record in the current environment, drafts and invalid records included, but only records your role can read. With **Skip unpublished records?** on, records that were never published, or were unpublished, are left out; published records with unpublished changes are still scanned at their latest version. Anything it couldn't read is listed in the report.
 
 ## Checking a single record
 

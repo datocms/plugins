@@ -229,6 +229,18 @@ describe('FindReplacePage', () => {
     expect(loadModels).toHaveBeenCalledTimes(2);
   });
 
+  it('passes the excludeUnpublished setting to the controller', async () => {
+    render(
+      <FindReplacePage
+        ctx={makeCtx({ parameters: { excludeUnpublished: true } })}
+      />,
+    );
+    await bootStatus('ready');
+    expect(createFindReplaceController).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeUnpublished: true }),
+    );
+  });
+
   it('never shows the error text', async () => {
     vi.mocked(loadSchemaIndex).mockRejectedValueOnce(new Error('secret'));
     render(<FindReplacePage ctx={makeCtx()} />);
@@ -264,6 +276,7 @@ describe('FindReplacePage', () => {
       links: { internalDomain: null, isEnvironmentPrimary: false },
       canPublishModel: expect.any(Function),
       recordCount: 12_345,
+      excludeUnpublished: false,
     });
     expect(fetchRecordTotal).toHaveBeenCalledWith({ fake: 'client' }, ['page']);
     expect(onController).toHaveBeenCalledWith(controllers[0]);

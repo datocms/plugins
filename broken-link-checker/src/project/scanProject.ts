@@ -3,6 +3,7 @@ import { cancellable, throwIfAborted } from '../data/cancellation';
 import {
   buildCmaClient,
   type CmaClientContext,
+  PUBLISHED_FIELDS,
   readRecords,
   toRecordInput,
 } from '../data/records';
@@ -40,6 +41,7 @@ async function scanModel(
   locales: string[],
   session: ScanSession,
   signal: AbortSignal,
+  excludeUnpublished: boolean,
 ) {
   try {
     const schema = await loader.load(summary.id, signal, (warning) =>
@@ -49,7 +51,12 @@ async function scanModel(
     const model = schema.get(summary.id);
     if (!model) throw new Error("The model's fields couldn't be loaded.");
     let yieldedAt = performance.now();
-    for await (const raw of readRecords(client, summary.id, signal)) {
+    for await (const raw of readRecords(
+      client,
+      summary.id,
+      signal,
+      excludeUnpublished,
+    )) {
       try {
         session.addRecord(
           extractLinks(toRecordInput(raw, model, locales[0]), schema, locales),
@@ -82,6 +89,7 @@ export async function countRecords(
   client: ReturnType<typeof buildCmaClient>,
   models: ContentModel[],
   signal?: AbortSignal,
+  excludeUnpublished = false,
 ): Promise<number> {
   let total = 0;
   let batch: string[] = [];
@@ -91,7 +99,10 @@ export async function countRecords(
     batch = [];
     const response = await cancellable(
       client.items.rawList({
-        filter: { type },
+        // Meta fields like `_status` work with several types; model fields don't.
+        filter: excludeUnpublished
+          ? { type, fields: PUBLISHED_FIELDS }
+          : { type },
         page: { limit: 0 },
         version: 'current',
       }),
@@ -125,7 +136,8 @@ export async function countRecords(
  * Reads the latest saved records of each model in turn and feeds their links
  * to the session. The record count, for the progress bar, is fetched alongside
  * and reported through `onRecordTotal`; without it the bar can't show a
- * percentage while records are read.
+ * percentage while records are read. With `excludeUnpublished`, records in
+ * draft status are neither read nor counted.
  */
 export function createProjectProducer(
   ctx: CmaClientContext,
@@ -133,11 +145,12 @@ export function createProjectProducer(
   models: ContentModel[],
   locales: string[],
   onRecordTotal?: (total: number) => void,
+  excludeUnpublished = false,
 ): ScanProducer {
   return async (session, signal) => {
     const client = buildCmaClient(ctx);
     if (onRecordTotal && models.length > 0)
-      void countRecords(client, models, signal).then(
+      void countRecords(client, models, signal, excludeUnpublished).then(
         (total) => {
           if (!signal.aborted) onRecordTotal(total);
         },
@@ -146,7 +159,15 @@ export function createProjectProducer(
     for (const summary of models) {
       if (signal.aborted) break;
       // biome-ignore lint/performance/noAwaitInLoops: Stream one model at a time without retaining record payloads.
-      await scanModel(client, loader, summary, locales, session, signal);
+      await scanModel(
+        client,
+        loader,
+        summary,
+        locales,
+        session,
+        signal,
+        excludeUnpublished,
+      );
     }
   };
 }

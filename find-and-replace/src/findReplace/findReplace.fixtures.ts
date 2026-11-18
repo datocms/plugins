@@ -302,7 +302,11 @@ export function manyRecords(count: number, perRecord = 1): FixtureRecord[] {
 // ─── Fake CMA ───────────────────────────────────────────────────────────────
 
 export type ListQuery = {
-  filter: { type?: string; ids?: string };
+  filter: {
+    type?: string;
+    ids?: string;
+    fields?: { _status?: { in?: string[] } };
+  };
   page: { offset: number; limit: number };
   nested?: boolean;
 };
@@ -413,17 +417,20 @@ export function createFakeCma(records: ReadonlyArray<FixtureRecord>): FakeCma {
 
   const rawList = vi.fn(async (raw: UnknownRecord) => {
     const query = raw as unknown as ListQuery;
+    const statuses = query.filter.fields?._status?.in;
+    const hasStatus = (record: RawNestedItem) =>
+      !statuses || statuses.includes(record.meta.status ?? '');
     if (query.filter.ids) {
       const data = query.filter.ids.split(',').flatMap((id) => {
         const record = store.get(id);
-        return record ? [structuredClone(record)] : [];
+        return record && hasStatus(record) ? [structuredClone(record)] : [];
       });
       return { data, meta: { total_count: data.length } };
     }
 
     const types = (query.filter.type ?? '').split(',').filter(Boolean);
     const all = [...store.values()]
-      .filter((record) => types.includes(modelOf(record)))
+      .filter((record) => types.includes(modelOf(record)) && hasStatus(record))
       .sort((left, right) => left.id.localeCompare(right.id));
     if (isCount(query)) {
       return { data: [], meta: { total_count: all.length } };
@@ -636,6 +643,7 @@ export type HarnessOptions = {
   canPublishModel?: (modelId: string) => boolean;
   /** Records counted at boot (above `limits.enterToSearchAbove`: Enter searches). */
   recordCount?: number | null;
+  excludeUnpublished?: boolean;
 };
 
 export function setupController(options: HarnessOptions = {}): Harness {
@@ -664,6 +672,7 @@ export function setupController(options: HarnessOptions = {}): Harness {
       : { matchField: options.matchField ?? inlineMatchField }),
     canPublishModel: options.canPublishModel,
     recordCount: options.recordCount,
+    excludeUnpublished: options.excludeUnpublished,
     unloadTarget: unload,
   });
   const events: FindReplaceEvent[] = [];
