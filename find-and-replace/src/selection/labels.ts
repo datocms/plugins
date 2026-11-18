@@ -14,9 +14,6 @@ import type {
 
 type UnknownRecord = Record<string, unknown>;
 
-/** Attributes tried, in order, after the model's own title field. */
-const TITLE_FALLBACK_API_KEYS = ['title', 'name', 'heading', 'label', 'slug'];
-
 const SEO_SUBFIELD_LABELS: Readonly<Record<string, string>> = {
   title: 'Title',
   description: 'Description',
@@ -159,84 +156,4 @@ export function fieldPathSegments({
     fieldValue.fieldType === 'seo' ? seoSubfieldLabel(fragments) : null;
   if (seoLabel) segments.push(seoLabel);
   return segments;
-}
-
-/**
- * API key of the field that titles a model's records: the model's
- * `presentation_title_field`, else its `title_field`.
- */
-export function titleFieldApiKey(
-  schema: SchemaIndex,
-  modelId: string,
-): string | undefined {
-  const raw = schema.modelsById.get(modelId)?.raw;
-  for (const fieldId of [
-    raw?.presentation_title_field?.id,
-    raw?.title_field?.id,
-  ]) {
-    const apiKey = fieldId ? schema.fieldsById.get(fieldId)?.apiKey : undefined;
-    if (apiKey) return apiKey;
-  }
-  return undefined;
-}
-
-function textLabel(value: unknown): string | null {
-  if (typeof value === 'string') return value.trim() || null;
-  return typeof value === 'number' && Number.isFinite(value)
-    ? String(value)
-    : null;
-}
-
-/**
- * A plain value, or a localized one: the first of `locales` with a value.
- * Without site locales, any key of the localized object is tried.
- */
-function attributeLabel(
-  value: unknown,
-  locales: ReadonlyArray<string>,
-): string | null {
-  const direct = textLabel(value);
-  if (direct) return direct;
-
-  const localized = asRecord(value);
-  if (!localized) return null;
-  for (const locale of locales.length > 0 ? locales : Object.keys(localized)) {
-    const label = textLabel(localized[locale]);
-    if (label) return label;
-  }
-  return null;
-}
-
-/**
- * Title of a record: `preferredApiKey` (see `titleFieldApiKey`), then the
- * usual title-like attributes, in the first site locale with a value. Accepts
- * raw API records (fields under `attributes`) and simple ones (fields at the
- * top level, as `items.update` returns them). Null when nothing fits; the UI
- * then shows "Record #{id}".
- */
-export function recordTitle(
-  record: object,
-  locales: ReadonlyArray<string> = [],
-  preferredApiKey?: string,
-): string | null {
-  const { attributes } = ownerAttributes(record as UnknownRecord, []);
-  const keys = preferredApiKey
-    ? [preferredApiKey, ...TITLE_FALLBACK_API_KEYS]
-    : TITLE_FALLBACK_API_KEYS;
-
-  for (const key of keys) {
-    const label = attributeLabel(attributes[key], locales);
-    if (label) return label;
-  }
-  return null;
-}
-
-/** `recordTitle` using the record's model title field from the schema. */
-export function modelRecordTitle(
-  schema: SchemaIndex,
-  modelId: string,
-  record: object,
-  locales: ReadonlyArray<string>,
-): string | null {
-  return recordTitle(record, locales, titleFieldApiKey(schema, modelId));
 }

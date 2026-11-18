@@ -32,7 +32,11 @@ import type {
 } from '../contract';
 import { useFindReplaceEvent, useFindReplaceSnapshot } from '../useFindReplace';
 import { Body, metaLine, shownFieldProblems } from './Body';
-import { buildConfirmOptions, buildPublishConfirmOptions } from './confirm';
+import {
+  buildConfirmOptions,
+  buildPublishConfirmOptions,
+  singleRecordTitle,
+} from './confirm';
 import { type Copy, createCopy, STRINGS } from './copy';
 import { type FieldProblemIds, FindBar, type FindBarHandlers } from './FindBar';
 import styles from './FindReplaceApp.module.css';
@@ -221,12 +225,16 @@ function useReplaceFlow(
         requestFocus('slot');
       }
     };
-    Promise.resolve(
-      ctxRef.current.openConfirm(buildConfirmOptions(plan, copy)),
-    ).then(
-      (answer) => settle(answer === true),
-      () => settle(false),
-    );
+    singleRecordTitle(plan, ctxRef.current)
+      .then((recordTitle) =>
+        ctxRef.current.openConfirm(
+          buildConfirmOptions(plan, copy, recordTitle),
+        ),
+      )
+      .then(
+        (answer) => settle(answer === true),
+        () => settle(false),
+      );
   }, [controller, ctxRef, copy, requestFocus]);
 }
 

@@ -209,12 +209,6 @@
     calc(-1 * (var(--row-inset) + var(--spacing-m)));
 }
 
-/* The picture of a row fills the square slot of the entity row */
-.rowThumbnail {
-  object-fit: cover;
-  background-color: var(--color--surface-muted);
-}
-
 /* An emoji goes in the slot as it is, centered: the row draws no tile
    behind it */
 .rowEmoji {
@@ -222,11 +216,6 @@
   place-items: center;
   font-size: var(--font-size-l);
   line-height: 1;
-}
-
-.rowAvatar {
-  display: grid;
-  place-items: center;
 }
 
 /* A change to approve: a card with the change, its error and its actions.

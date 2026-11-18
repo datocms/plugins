@@ -1,4 +1,5 @@
 import type { Client, RawApiTypes } from '@datocms/cma-client-browser';
+import type { UploadPreviewUpload } from 'datocms-react-ui/UploadPreview';
 
 // Upload pages allow 500 entries; bulk deletes allow 200 uploads.
 export const ASSET_PAGE_SIZE = 500;
@@ -9,6 +10,8 @@ export type UnusedAsset = {
   filename: string;
   url: string;
   size: number;
+  /** The asset as the preview of its row draws it */
+  preview: UploadPreviewUpload;
 };
 export type DiscoveryProgress = { found: number; total: number };
 export type DeletionProgress = {
@@ -30,11 +33,27 @@ export type DeletionResult = DeletionProgress & {
 const unusedFilter = { fields: { in_use: { eq: false } } };
 
 function toAsset(upload: RawApiTypes.Upload): UnusedAsset {
+  const { attributes } = upload;
   return {
     id: upload.id,
-    filename: upload.attributes.filename,
-    url: upload.attributes.url,
-    size: upload.attributes.size,
+    filename: attributes.filename,
+    url: attributes.url,
+    size: attributes.size,
+    preview: {
+      id: upload.id,
+      attributes: {
+        url: attributes.url,
+        filename: attributes.filename,
+        format: attributes.format,
+        size: attributes.size,
+        width: attributes.width,
+        height: attributes.height,
+        mime_type: attributes.mime_type,
+        md5: attributes.md5,
+        thumbhash: attributes.thumbhash,
+        mux_playback_id: attributes.mux_playback_id,
+      },
+    },
   };
 }
 

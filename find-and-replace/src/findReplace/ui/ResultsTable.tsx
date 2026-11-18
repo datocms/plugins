@@ -4,6 +4,7 @@ import { useCtx } from 'datocms-react-ui/Canvas';
 import { LoadMoreChevron } from 'datocms-react-ui/Chevron';
 import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
 import Pill from 'datocms-react-ui/Pill';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import Spinner from 'datocms-react-ui/Spinner';
 import {
   type RowProps,
@@ -427,9 +428,34 @@ function RecordStatus({
 }
 
 /**
+ * The record as DatoCMS shows it: the host gives its title, image and
+ * status. The row loads the record once, so it loads it again after a
+ * write: the write may change the title.
+ */
+function RecordCell({
+  record,
+  children,
+}: {
+  record: RecordView;
+  /** The lines under the title, in the one column of a narrow frame. */
+  children?: ReactNode;
+}) {
+  const written = record.status.kind === 'replaced';
+  const key = written ? 'written' : 'found';
+  return children === undefined ? (
+    <RecordRow key={key} layout="inline" item={record.recordId} />
+  ) : (
+    <RecordRow key={key} layout="row" item={record.recordId}>
+      {children}
+    </RecordRow>
+  );
+}
+
+/**
  * The one cell of a record or a match line on a narrow frame. A record:
- * its title, then "Article · 3 matches" ("2 of 3 matches" when only some are
- * included), then its status. A match line: its place, then the snippet.
+ * its model and title, then "3 matches" ("2 of 3 matches" when only some
+ * are included), then its status. A match line: its place, then the
+ * snippet.
  */
 function CompactCell({ row, copy }: { row: ResultRow; copy: Copy }) {
   if (row.kind === 'match') {
@@ -443,12 +469,9 @@ function CompactCell({ row, copy }: { row: ResultRow; copy: Copy }) {
   const { record } = row;
   return (
     <div className={styles.stack}>
-      <span className={styles.title}>
-        {copy.recordTitle(record.title, record.recordId)}
-      </span>
-      <span className={styles.subtle}>
-        {`${record.modelName} · ${copy.recordMatches(record.matchCount, row.included)}`}
-      </span>
+      <RecordCell record={record}>
+        {copy.recordMatches(record.matchCount, row.included)}
+      </RecordCell>
       <RecordStatus
         status={record.status}
         publish={record.publish}
@@ -495,9 +518,7 @@ function wideColumns(
       minWidth: RECORD_MIN_WIDTH,
       renderCell: (row) =>
         row.kind === 'record' ? (
-          <span className={styles.title}>
-            {copy.recordTitle(row.record.title, row.record.recordId)}
-          </span>
+          <RecordCell record={row.record} />
         ) : (
           <WhereCell row={row} copy={copy} />
         ),

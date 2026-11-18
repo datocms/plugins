@@ -4,7 +4,6 @@ import {
   selectionTargetFieldValue,
   stableSerialize,
 } from '../selection/identity';
-import { modelRecordTitle } from '../selection/labels';
 import {
   ownerAttributes,
   readCurrentVersion,
@@ -61,7 +60,6 @@ export type RecordWriteOutcome =
   | {
       status: 'replaced';
       replacedMatches: number;
-      freshTitle: string | null;
       publication: WritePublication;
     }
   | { status: 'skipped'; reason: WriteSkipReason }
@@ -79,7 +77,7 @@ export type ReplaceInRecordArgs = {
   schema: SchemaIndex;
   siteId: string;
   environment: string;
-  /** Site locales, in site order (fresh title). */
+  /** Site locales, in site order. */
   locales: ReadonlyArray<string>;
   /**
    * The changing exact-match targets of ONE root record (included, not
@@ -197,10 +195,8 @@ function recordHoldsAttributes(
   );
 }
 
-/** `replaced`, with the title and version of the record as it is now. */
+/** `replaced`, with the version of the record as it is now. */
 function landed(
-  args: ReplaceInRecordArgs,
-  rootModelId: string,
   current: object,
   replacedMatches: number,
   statusBefore: PublicationStatus | null,
@@ -208,12 +204,6 @@ function landed(
   return {
     status: 'replaced',
     replacedMatches,
-    freshTitle: modelRecordTitle(
-      args.schema,
-      rootModelId,
-      current,
-      args.locales,
-    ),
     publication: {
       statusBefore,
       versionAfter: readCurrentVersion(current as UnknownRecord),
@@ -240,13 +230,7 @@ async function settleStaleUpdate(
       : failed(error, args.schema);
   }
   if (!recordHoldsAttributes(current, attributes)) return skipped('stale');
-  return landed(
-    args,
-    prepared.rootModelId,
-    current,
-    prepared.replacementCount,
-    statusBefore,
-  );
+  return landed(current, prepared.replacementCount, statusBefore);
 }
 
 /**
@@ -288,13 +272,7 @@ export async function replaceInRecord(
 
   const { unconfirmed } = args;
   if (unconfirmed && recordHoldsAttributes(fresh, unconfirmed.attributes)) {
-    return landed(
-      args,
-      selectionTargetFieldValue(firstEntry.target).rootModelId,
-      fresh,
-      unconfirmed.replacedMatches,
-      unconfirmed.statusBefore,
-    );
+    return landed(fresh, unconfirmed.replacedMatches, unconfirmed.statusBefore);
   }
 
   const write = await planWrite(args, fresh);
@@ -374,13 +352,7 @@ async function sendUpdate(
       recordId,
       body as ApiTypes.ItemUpdateSchema,
     );
-    return landed(
-      args,
-      prepared.rootModelId,
-      updated,
-      prepared.replacementCount,
-      statusBefore,
-    );
+    return landed(updated, prepared.replacementCount, statusBefore);
   } catch (error) {
     if (isStaleItemVersionError(error)) {
       return settleStaleUpdate(args, recordId, write);

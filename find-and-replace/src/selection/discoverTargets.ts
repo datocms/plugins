@@ -7,11 +7,7 @@ import {
   recordUpdatedAt,
 } from './discovery';
 import { selectionTargetIdentity } from './identity';
-import {
-  fieldPathSegments,
-  modelRecordTitle,
-  seoSubfieldLabel,
-} from './labels';
+import { fieldPathSegments, seoSubfieldLabel } from './labels';
 import {
   MatcherWorkerSession,
   matchesForTraversedFields,
@@ -39,8 +35,6 @@ export type TargetPresentation = {
   };
   record: {
     id: string;
-    /** presentation_title_field → title_field → title-like attributes; null when none has a value. */
-    title: string | null;
     status: 'draft' | 'updated' | 'published';
     currentVersion: string | null;
     updatedAt: string | null;
@@ -269,7 +263,7 @@ async function matchPreparedRecords(
 
 /**
  * Builds presentations, sharing one object per record and per field value.
- * The record part (title included) is computed once, on the first target.
+ * The record part is computed once, on the first target.
  */
 class RecordPresenter {
   private cachedBase: Pick<TargetPresentation, 'model' | 'record'> | null =
@@ -278,7 +272,6 @@ class RecordPresenter {
   constructor(
     private readonly prepared: PreparedRecord,
     private readonly schema: SchemaIndex,
-    private readonly locales: ReadonlyArray<string>,
   ) {}
 
   private get base(): Pick<TargetPresentation, 'model' | 'record'> {
@@ -293,7 +286,6 @@ class RecordPresenter {
       },
       record: {
         id: record.id,
-        title: modelRecordTitle(this.schema, rootModelId, record, this.locales),
         status: recordStatus(record),
         currentVersion: recordCurrentVersion(record),
         updatedAt: recordUpdatedAt(record),
@@ -423,7 +415,7 @@ export async function discoverTargetsInRecords(
 
   return prepared.map((entry) => {
     if (entry.fieldValues.length === 0) return [];
-    const presenter = new RecordPresenter(entry, options.schema, spec.locales);
+    const presenter = new RecordPresenter(entry, options.schema);
     return entry.fieldValues.flatMap((fieldValue) =>
       targetsForField(
         fieldValue,

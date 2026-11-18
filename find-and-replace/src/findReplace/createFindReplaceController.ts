@@ -966,7 +966,6 @@ class FindReplaceStore {
     const view = recordView(
       entry,
       {
-        title: entry.title,
         selectable: selectionVisible,
         status: UNTOUCHED,
         publish: NOT_PUBLISHABLE,
@@ -983,7 +982,7 @@ class FindReplaceStore {
       if (isLiveModel(this.options.schema, entry.modelId)) {
         tally.liveRecords += 1;
       }
-      tally.firstChangingRecord ??= { id: entry.recordId, title: view.title };
+      tally.firstChangingRecord ??= { id: entry.recordId };
     }
     return view;
   }
@@ -1008,7 +1007,6 @@ class FindReplaceStore {
     return recordView(
       entry,
       {
-        title: session.title ? session.title.value : entry.title,
         selectable: false,
         status: session.status,
         publish: this.recordPublishStatus(session),

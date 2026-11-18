@@ -1,4 +1,5 @@
-import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { ResolvedItemPresentationInfo } from 'datocms-plugin-sdk';
+import type { RecordRowPresentation } from 'datocms-react-ui/RecordRow';
 import { compactSelectedItem } from '../data/selection';
 import type {
   ColumnId,
@@ -8,45 +9,23 @@ import type {
   RawItem,
   RawItemType,
 } from '../types';
-import {
-  formatTitle,
-  getImageField,
-  getTitleField,
-  isLinkField,
-  linkedItemIdFromValue,
-  readFieldValue,
-  type TitleOptions,
-  uploadIdFromValue,
-} from './presentation';
-
-type Field = RawApiTypes.Field;
 
 export type RecordRow = {
   id: string;
   modelId: string;
   modelName: string;
+  /**
+   * The title of the record as DatoCMS presents it (see `withPresentation`),
+   * or "Record #ID" until the host gives it. The table sorts and searches by it.
+   */
   title: string;
   status: PublicationStatus;
   updatedAt: string;
   createdAt: string;
-  publishedValid: boolean | null;
-  currentValid: boolean | null;
-  draftModeActive: boolean;
-  /** The upload behind the record's preview image, if it has one. */
-  imageUploadId: string | null;
-  /**
-   * Set while the title comes from a linked record that isn't loaded yet
-   * (see resolveLinkedTitles); the title is a placeholder until then.
-   */
-  titleLinkId: string | null;
+  /** What the record's row shows: the host's presentation, or the record's own meta. */
+  presentation: RecordRowPresentation;
   /** Identity and meta only: what selection and permission checks need. */
   item: RawItem;
-};
-
-export type ModelPresentation = {
-  itemType: RawItemType;
-  titleField: Field | undefined;
-  imageField: Field | undefined;
 };
 
 export const DEFAULT_ORDER_BY: OrderBy = '_updated_at_DESC';
@@ -61,50 +40,35 @@ export function modelSummary(itemType: RawItemType): ModelSummary {
   };
 }
 
-export function buildModelPresentation(
-  itemType: RawItemType,
-  fields: readonly Field[],
-): ModelPresentation {
-  return {
-    itemType,
-    titleField: getTitleField(itemType, fields),
-    imageField: getImageField(itemType, fields),
-  };
+/** The title DatoCMS gives a record that has none, as `loadItemPresentationInfo` does. */
+export function fallbackTitle(id: string): string {
+  return `Record #${id}`;
 }
 
-export function buildRow(
-  item: RawItem,
-  model: ModelPresentation,
-  options: TitleOptions,
-): RecordRow {
-  const { itemType, titleField, imageField } = model;
-  const { locales } = options;
-  const attributes = item.attributes as Record<string, unknown>;
-  const titleValue = titleField
-    ? readFieldValue(attributes, titleField, locales)
-    : null;
-  const title = titleField
-    ? formatTitle(titleValue, titleField, options)
-    : null;
-
+/**
+ * A record of the stage, from the API. Its title is "Record #ID" until
+ * `withPresentation` gives it the one DatoCMS shows.
+ */
+export function buildRow(item: RawItem, itemType: RawItemType): RecordRow {
+  const title = fallbackTitle(item.id);
+  const status = item.meta.status ?? 'published';
   return {
     id: item.id,
     modelId: itemType.id,
     modelName: itemType.attributes.name,
-    title: title ?? `Record ${item.id}`,
-    status: item.meta.status ?? 'published',
+    title,
+    status,
     updatedAt: item.meta.updated_at,
     createdAt: item.meta.created_at,
-    publishedValid: item.meta.is_published_version_valid,
-    currentValid: item.meta.is_current_version_valid,
-    draftModeActive: itemType.attributes.draft_mode_active,
-    imageUploadId: imageField
-      ? uploadIdFromValue(readFieldValue(attributes, imageField, locales))
-      : null,
-    titleLinkId:
-      titleField && isLinkField(titleField)
-        ? linkedItemIdFromValue(titleValue)
-        : null,
+    presentation: {
+      id: item.id,
+      title,
+      image: null,
+      itemTypeId: itemType.id,
+      status,
+      currentVersionValid: item.meta.is_current_version_valid ?? undefined,
+      publishedVersionValid: item.meta.is_published_version_valid ?? undefined,
+    },
     // The model comes from the query that listed the record.
     item: compactSelectedItem({
       ...item,
@@ -114,6 +78,14 @@ export function buildRow(
       },
     }),
   };
+}
+
+/** The row with the title, the image and the status that DatoCMS shows for it. */
+export function withPresentation(
+  row: RecordRow,
+  presentation: ResolvedItemPresentationInfo,
+): RecordRow {
+  return { ...row, title: presentation.title, presentation };
 }
 
 const collator = new Intl.Collator(undefined, {

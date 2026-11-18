@@ -41,7 +41,7 @@ type Props = {
 
 /**
  * The icon of a viewport, in its cell of the list: a select of the names of
- * the solid icons, each with its glyph. A pick applies at once.
+ * the Lucide icons, each with its glyph. A pick applies at once.
  */
 export function IconCell({ cell }: Props) {
   const { index, value, onChange, onBlur } = cell;
@@ -51,7 +51,7 @@ export function IconCell({ cell }: Props) {
   const name = typeof value === 'string' ? value : '';
   const [query, setQuery] = useState('');
 
-  // The solid set has about 2,000 names. Before a search, the menu lists the
+  // Lucide has about 2,000 icons. Before a search, the menu lists the
   // current icon and the devices, under the title that tells to type. A
   // search lists its first matches: the title then tells to type more.
   const options = useMemo(() => {

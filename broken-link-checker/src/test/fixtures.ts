@@ -99,6 +99,16 @@ function hostContext() {
     loadItemTypeFields: vi
       .fn()
       .mockResolvedValue([sdkField('title'), sdkField('url', true)]),
+    // The host presents each record as a page titled after its ID.
+    loadItemPresentationInfo: vi.fn(async (itemsOrIds: unknown[]) =>
+      itemsOrIds.map((itemOrId) => {
+        const id =
+          typeof itemOrId === 'string'
+            ? itemOrId
+            : (itemOrId as { id: string }).id;
+        return { id, title: `Title of ${id}`, image: null, itemTypeId: 'page' };
+      }),
+    ),
     editItem: vi.fn().mockResolvedValue(null),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     openModal: vi.fn().mockResolvedValue(undefined),

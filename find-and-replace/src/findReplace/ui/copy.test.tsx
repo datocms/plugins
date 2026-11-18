@@ -232,10 +232,6 @@ describe('progress', () => {
 
 describe('results', () => {
   it('labels rows and links', () => {
-    // An untitled record keeps its ID, so two of them never read the same.
-    expect(copy.recordTitle(null, '42')).toBe('Record 42');
-    expect(copy.recordTitle('  ', '42')).toBe('Record 42');
-    expect(copy.recordTitle('About us', '42')).toBe('About us');
     expect(copy.recordMatches(1, null)).toBe('1 match');
     expect(copy.recordMatches(1200, null)).toBe('1,200 matches');
     // Only some included: the checkbox has no mixed state, the words say it.

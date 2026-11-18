@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildConfirmOptions } from './confirm';
+import { describe, expect, it, vi } from 'vitest';
+import { buildConfirmOptions, singleRecordTitle } from './confirm';
 import { createCopy } from './copy';
 import { makePlan } from './testing/fixtures';
 
@@ -23,10 +23,11 @@ describe('buildConfirmOptions', () => {
       makePlan({
         matchCount: 1,
         recordCount: 1,
-        singleRecord: { id: '7', title: 'About us' },
+        singleRecord: { id: '7' },
         liveRecordCount: 1,
       }),
       copy,
+      'About us',
     );
     expect(options.title).toBe('Replace this match?');
     expect(options.choices[0].label).toBe('Yes, replace this match');
@@ -35,17 +36,17 @@ describe('buildConfirmOptions', () => {
     );
   });
 
-  it('falls back to the record ID for an untitled record', () => {
+  it('counts the record when the host gives no title', () => {
     const options = buildConfirmOptions(
       makePlan({
         recordCount: 1,
-        singleRecord: { id: '7', title: null },
+        singleRecord: { id: '7' },
         liveRecordCount: 0,
       }),
       copy,
     );
     expect(options.content).toBe(
-      'This replaces “Acme” with “Globex” in “Record 7”. Changes are saved as a draft and nothing gets published.',
+      'This replaces “Acme” with “Globex” in 1 record. Changes are saved as a draft and nothing gets published.',
     );
   });
 
@@ -89,10 +90,11 @@ describe('buildConfirmOptions', () => {
         replacementText: '',
         matchCount: 1,
         recordCount: 1,
-        singleRecord: { id: '9', title: 'Q3 report' },
+        singleRecord: { id: '9' },
         liveRecordCount: 0,
       }),
       copy,
+      'Q3 report',
     );
     expect(regex.title).toBe('Remove this match?');
     expect(regex.content).toBe(
@@ -109,5 +111,43 @@ describe('buildConfirmOptions', () => {
     expect(
       buildConfirmOptions(makePlan({ slugMatchCount: 4 }), copy).content,
     ).toContain("4 slugs change, which changes those records' URLs.");
+  });
+});
+
+describe('singleRecordTitle', () => {
+  it('asks the host for the title of the one record a write changes', async () => {
+    const loadItemPresentationInfo = vi.fn(async () => [
+      {
+        id: '7',
+        title: 'About us',
+        image: null,
+        itemTypeId: 'page',
+        status: 'draft' as const,
+        currentVersionValid: true,
+        publishedVersionValid: true,
+        editPath: '/editor/item_types/page/items/7/edit',
+      },
+    ]);
+    const plan = makePlan({ recordCount: 1, singleRecord: { id: '7' } });
+    expect(await singleRecordTitle(plan, { loadItemPresentationInfo })).toBe(
+      'About us',
+    );
+    expect(loadItemPresentationInfo).toHaveBeenCalledWith(['7']);
+  });
+
+  it('gives no title for many records, or when the host fails', async () => {
+    const loadItemPresentationInfo = vi.fn(async () => {
+      throw new Error('Host unavailable');
+    });
+    expect(
+      await singleRecordTitle(makePlan(), { loadItemPresentationInfo }),
+    ).toBeNull();
+    expect(loadItemPresentationInfo).not.toHaveBeenCalled();
+    expect(
+      await singleRecordTitle(
+        makePlan({ recordCount: 1, singleRecord: { id: '7' } }),
+        { loadItemPresentationInfo },
+      ),
+    ).toBeNull();
   });
 });

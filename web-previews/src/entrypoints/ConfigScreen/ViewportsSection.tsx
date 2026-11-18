@@ -5,7 +5,7 @@ import type { RawViewport } from '../../types';
 import { IconCell } from './IconPickerInput/IconCell';
 import type { SettingsForm } from './useSettingsForm';
 
-// The icon names are long ("mobile-screen-button"), the sizes have four
+// The icon names are long ("monitor-smartphone"), the sizes have four
 // digits at most
 const COLUMNS: TableListColumn<RawViewport>[] = [
   { id: 'name', field: 'name', label: 'Name', grow: 3 },

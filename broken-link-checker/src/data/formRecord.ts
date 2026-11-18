@@ -326,8 +326,7 @@ export async function readFormRecord(
     );
   }
   const attributes = { ...converted.attributes };
-  const result = () =>
-    toRecordInput({ id: ctx.item?.id, attributes }, model, ctx.locale);
+  const result = () => toRecordInput({ id: ctx.item?.id, attributes }, model);
 
   const presentLocales = Array.isArray(ctx.formValues.internalLocales)
     ? ctx.formValues.internalLocales.filter(

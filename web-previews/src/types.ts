@@ -1,5 +1,3 @@
-import type { IconName } from '@fortawesome/fontawesome-svg-core';
-
 export type FirstInstallationParameters = Record<string, never>;
 
 type CustomHeader = {
@@ -46,7 +44,8 @@ export type Viewport = {
   name: string;
   width: number;
   height: number;
-  icon: IconName;
+  /** The kebab-case name of a Lucide icon, or of a legacy Font Awesome icon */
+  icon: string;
 };
 
 export type Frontend = {
@@ -78,9 +77,9 @@ export type NormalizedParameters = {
 };
 
 const DEFAULT_VIEWPORTS: readonly Viewport[] = [
-  { name: 'Mobile', width: 375, height: 667, icon: 'mobile-alt' },
-  { name: 'Tablet', width: 768, height: 1024, icon: 'tablet-alt' },
-  { name: 'Desktop', width: 1280, height: 800, icon: 'desktop-alt' },
+  { name: 'Mobile', width: 375, height: 667, icon: 'smartphone' },
+  { name: 'Tablet', width: 768, height: 1024, icon: 'tablet' },
+  { name: 'Desktop', width: 1280, height: 800, icon: 'monitor' },
 ] as const;
 
 export const DEFAULT_SIDEBAR_WIDTH = 900;
@@ -148,7 +147,7 @@ export function normalizeParameters({
         typeof viewport.height === 'number'
           ? viewport.height
           : Number.parseInt(viewport.height, 10),
-      icon: viewport.icon as IconName,
+      icon: viewport.icon,
     })) || [...DEFAULT_VIEWPORTS],
   };
 }

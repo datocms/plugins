@@ -1,6 +1,7 @@
 import { connect } from 'datocms-plugin-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { captureDeletedItemsWithoutLambda } from './utils/lambdaLessCapture';
+import { restoreRecordFromBin } from './utils/restoreRecordFromBin';
 
 vi.mock('datocms-plugin-sdk', () => ({ connect: vi.fn() }));
 vi.mock('./utils/lambdaLessCapture', () => ({
@@ -8,8 +9,11 @@ vi.mock('./utils/lambdaLessCapture', () => ({
 }));
 vi.mock('./utils/render', () => ({ render: vi.fn() }));
 vi.mock('./entrypoints/ConfigScreen', () => ({ default: () => null }));
-vi.mock('./entrypoints/BinOutlet', () => ({ default: () => null }));
 vi.mock('./entrypoints/ErrorModal', () => ({ default: () => null }));
+vi.mock('./utils/restoreRecordFromBin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./utils/restoreRecordFromBin')>()),
+  restoreRecordFromBin: vi.fn(),
+}));
 
 import './index';
 
@@ -70,5 +74,38 @@ describe('delete hook decisions', () => {
   it('preserves the separately deployed Lambda runtime contract', async () => {
     expect(await hook()([{ id: 'one' }], context('lambda'))).toBe(true);
     expect(captureDeletedItemsWithoutLambda).not.toHaveBeenCalled();
+  });
+});
+
+describe('the restore action of the record form', () => {
+  const definition = () => {
+    const hooks = vi.mocked(connect).mock.calls[0]?.[0];
+    if (!hooks?.itemFormDropdownActions || !hooks.executeItemFormDropdownAction)
+      throw new Error('Hooks were not registered.');
+    return hooks;
+  };
+  const model = (apiKey: string) =>
+    ({ attributes: { api_key: apiKey } }) as never;
+
+  it('is offered only on the records of the bin', () => {
+    const { itemFormDropdownActions } = definition();
+    const ctx = context() as never;
+    expect(itemFormDropdownActions?.(model('record_bin'), ctx)).toEqual([
+      {
+        id: 'restoreRecord',
+        label: 'Restore record',
+        icon: 'archive-arrow-up',
+      },
+    ]);
+    expect(itemFormDropdownActions?.(model('article'), ctx)).toEqual([]);
+  });
+
+  it('restores the record', async () => {
+    const { executeItemFormDropdownAction } = definition();
+    const ctx = context() as never;
+    await executeItemFormDropdownAction?.('restoreRecord', ctx);
+    expect(restoreRecordFromBin).toHaveBeenCalledWith(ctx);
+    await executeItemFormDropdownAction?.('other', ctx);
+    expect(restoreRecordFromBin).toHaveBeenCalledTimes(1);
   });
 });

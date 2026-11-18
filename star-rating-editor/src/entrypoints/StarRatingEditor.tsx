@@ -3,6 +3,7 @@ import Canvas from 'datocms-react-ui/Canvas';
 import { useRovingKeyDown } from 'datocms-react-ui/hooks/useRovingKeyDown';
 import RawButton from 'datocms-react-ui/RawButton';
 import get from 'lodash-es/get';
+import { Star } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';
 import { useFieldSettings } from '../utils/fieldParams';
 import s from './StarRatingEditor.module.css';
@@ -10,10 +11,6 @@ import s from './StarRatingEditor.module.css';
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
-
-// A five-point star: the round joins of its stroke round its points
-const STAR =
-  'M12 3.41L14.57 9.37L21.04 9.97L16.16 14.26L17.58 20.59L12 17.28L6.42 20.59L7.84 14.26L2.96 9.97L9.43 9.37Z';
 
 const StarRatingEditor = ({ ctx }: PropTypes) => {
   const value = Number(get(ctx.formValues, ctx.fieldPath)) || 0;
@@ -50,9 +47,8 @@ const StarRatingEditor = ({ ctx }: PropTypes) => {
               onMouseEnter={() => setHovered(rating)}
               onClick={() => ctx.setFieldValue(ctx.fieldPath, rating)}
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d={STAR} />
-              </svg>
+              {/* Filled: an empty star is the same shape in a muted color */}
+              <Star fill="currentColor" />
             </RawButton>
           );
         })}

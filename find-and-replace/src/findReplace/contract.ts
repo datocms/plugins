@@ -334,12 +334,6 @@ export type RecordView = {
   recordId: string;
   modelId: string;
   modelName: string;
-  /**
-   * presentation_title_field → title_field → heuristics, in the first site
-   * locale with a value; refreshed from the server after a successful write.
-   * null → the UI shows "Record #{recordId}".
-   */
-  title: string | null;
   /** Every match found in this record (independent of inclusion). */
   matchCount: number;
   /** Tri-state for the record checkbox, over all its matches (including ones behind "Show more"). */
@@ -676,8 +670,8 @@ export type PlanFacts = {
   verb: ReplaceVerb;
   matchCount: number;
   recordCount: number;
-  /** When `recordCount === 1`: that record's title (null → "Record #{id}") and id. */
-  singleRecord: { id: string; title: string | null } | null;
+  /** When `recordCount === 1`: the ID of that record. */
+  singleRecord: { id: string } | null;
   /** Records in models with `draft_mode_active: false` (the write goes live). */
   liveRecordCount: number;
   /** Changing matches in slug fields. */

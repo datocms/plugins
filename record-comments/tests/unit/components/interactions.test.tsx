@@ -422,6 +422,13 @@ function findButtonByText(root: ParentNode, text: string) {
   );
 }
 
+/** A button whose text has this text, next to an avatar or a preview */
+function findButtonContainingText(root: ParentNode, text: string) {
+  return Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find(
+    (button) => button.textContent?.includes(text),
+  );
+}
+
 function changeInputValue(input: HTMLInputElement, value: string) {
   const setValue = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
@@ -999,7 +1006,8 @@ describe('comment accessibility and semantics', () => {
 
     const view = renderInCanvas(renderCommentTree(ctx, comment), ctx);
 
-    const userPill = findButtonByText(view.container, '@User One');
+    // The pill shows the person as a row: the avatar and the name
+    const userPill = findButtonContainingText(view.container, 'User One');
     if (!userPill) throw new Error('User mention missing');
     act(() => userPill.click());
     expect(open).toHaveBeenCalledExactlyOnceWith(
@@ -1008,16 +1016,48 @@ describe('comment accessibility and semantics', () => {
     );
 
     // The owner has no users page: the pill is a static reference
-    expect(findButtonByText(view.container, '@Project Owner')).toBeUndefined();
-    expect(view.container.textContent).toContain('@Project Owner');
+    expect(
+      findButtonContainingText(view.container, 'Project Owner'),
+    ).toBeUndefined();
+    expect(view.container.textContent).toContain('Project Owner');
     view.unmount();
     open.mockRestore();
   });
 
-  it('turns a preview or a thumbnail that fails to load into a plain mention', () => {
-    const ctx = createCanvasCtx<RenderItemFormSidebarCtx>(
-      createSidebarFields(),
-    );
+  it('shows an asset with its preview, and a record as the host presents it', async () => {
+    const loadItemPresentationInfo = vi.fn().mockResolvedValue([
+      {
+        id: 'record-2',
+        title: 'Spring launch',
+        image: null,
+        itemTypeId: 'model-1',
+        status: 'published',
+        currentVersionValid: true,
+        publishedVersionValid: true,
+        editPath: null,
+      },
+    ]);
+    const loadUploads = vi.fn().mockResolvedValue([
+      {
+        id: 'asset-1',
+        type: 'upload',
+        attributes: {
+          url: 'https://www.datocms-assets.com/hero.png',
+          filename: 'hero.png',
+          format: 'png',
+          size: 1000,
+          width: 800,
+          height: 600,
+          mime_type: 'image/png',
+        },
+      },
+    ]);
+    const ctx = createCanvasCtx<RenderItemFormSidebarCtx>({
+      ...createSidebarFields(),
+      itemTypes: {},
+      loadItemPresentationInfo,
+      loadUploads,
+    });
     const comment = createResolvedCommentWithReplies(0, {
       id: 'comment-1',
       author: createResolvedAuthor({ id: 'user-1' }),
@@ -1038,42 +1078,36 @@ describe('comment accessibility and semantics', () => {
           mention: {
             type: 'record',
             id: 'record-2',
-            title: 'Spring launch',
+            title: 'Record #record-2',
             modelId: 'model-1',
             modelApiKey: 'article',
             modelName: 'Article',
             modelEmoji: null,
-            thumbnailUrl: 'https://www.datocms-assets.com/cover.png?w=300',
+            thumbnailUrl: null,
           },
         },
       ],
     });
     const view = renderInCanvas(renderCommentTree(ctx, comment), ctx);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    // An image shows as a preview tile, named by its file name
-    const tile = findButtonByText(view.container, 'hero.png');
-    if (!tile) throw new Error('Asset preview missing');
-    expect(tile.querySelector('img')).not.toBeNull();
-    act(() => tile.click());
+    // The asset is a pill named by its file name, with the preview that the
+    // host loads from its ID
+    const assetPill = findButtonContainingText(view.container, 'hero.png');
+    if (!assetPill) throw new Error('Asset mention missing');
+    expect(assetPill.className).toContain('Pill');
+    expect(assetPill.querySelector('.UploadPreview')).not.toBeNull();
+    act(() => assetPill.click());
     expect(ctx.editUpload).toHaveBeenCalledWith('asset-1');
 
-    const record = findButtonByText(view.container, 'Spring launch');
+    // The record shows the title that the host gives, not one of the plugin
+    expect(loadItemPresentationInfo).toHaveBeenCalled();
+    expect(loadItemPresentationInfo.mock.calls[0][0]).toContain('record-2');
+    const record = findButtonContainingText(view.container, 'Spring launch');
     if (!record) throw new Error('Record mention missing');
-    const thumbnail = record.querySelector('img');
-    if (!thumbnail) throw new Error('Record thumbnail missing');
-
-    for (const image of Array.from(view.container.querySelectorAll('img'))) {
-      act(() => {
-        image.dispatchEvent(new Event('error'));
-      });
-    }
-
-    // The asset becomes a pill, and the record keeps its pill with an icon
-    const assetPill = findButtonByText(view.container, 'hero.png');
-    expect(assetPill?.className).toContain('Pill');
-    expect(assetPill?.querySelector('img')).toBeNull();
-    expect(record.querySelector('img')).toBeNull();
-    expect(record.querySelector('svg')).not.toBeNull();
+    expect(record.className).toContain('Pill');
     view.unmount();
   });
 });

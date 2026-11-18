@@ -123,7 +123,6 @@ export default function GalleryEditor({
             onChange={handleLayoutChange}
             onRemove={handleRemove}
             onEditMetadata={handleEditMetadata}
-            framed
           />
         ))}
       </AssetGrid>

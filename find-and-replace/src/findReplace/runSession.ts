@@ -55,8 +55,6 @@ export type SessionRecord = {
   readonly status: RecordRunStatus;
   /** A write was started for it in this session (its row is frozen). */
   readonly attempted: boolean;
-  /** Set after a successful write: the title the server returned. */
-  readonly title: { value: string | null } | null;
   /** Set after a successful write: what publishing it afterwards needs. */
   readonly publication: WritePublication | null;
 };
@@ -228,7 +226,6 @@ export class RunSession {
         template: plan.template,
         status: UNTOUCHED,
         attempted: false,
-        title: null,
         publication: null,
         unconfirmed: null,
       });
@@ -368,7 +365,6 @@ export class RunSession {
 
     record.status = statusOf(outcome);
     if (outcome.status === 'replaced') {
-      record.title = { value: outcome.freshTitle };
       record.publication = outcome.publication;
     }
     // A later attempt may find this update landed after all.

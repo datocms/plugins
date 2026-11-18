@@ -1,24 +1,25 @@
-import type { RenderItemFormOutletCtx } from 'datocms-plugin-sdk';
-import Button from 'datocms-react-ui/Button';
-import Callout from 'datocms-react-ui/Callout';
-import Canvas from 'datocms-react-ui/Canvas';
-import { useCallback, useRef, useState } from 'react';
+import type { ExecuteItemFormDropdownActionCtx } from 'datocms-plugin-sdk';
 import type { errorObject } from '../types/types';
-import { createBoundedFetch } from '../utils/boundedFetch';
-import { createDebugLogger, isDebugEnabled } from '../utils/debugLogger';
-import { getDeploymentUrlFromParameters } from '../utils/getDeploymentUrlFromParameters';
-import { getRuntimeMode } from '../utils/getRuntimeMode';
+import { createBoundedFetch } from './boundedFetch';
+import { createDebugLogger, isDebugEnabled } from './debugLogger';
+import { getDeploymentUrlFromParameters } from './getDeploymentUrlFromParameters';
+import { getRuntimeMode } from './getRuntimeMode';
 import {
   isLambdaLessRestoreError,
   restoreRecordWithoutLambda,
-} from '../utils/lambdaLessRestore';
-import { isPackedRecordBinBody } from '../utils/recordBinStorage';
+} from './lambdaLessRestore';
+import { isPackedRecordBinBody } from './recordBinStorage';
 import {
   buildRestoreErrorPayload,
   isRestoreSuccessResponse,
   parseJsonStringSafely,
-} from '../utils/restoreError';
-import s from './styles.module.css';
+} from './restoreError';
+
+/** The action of the record form's dropdown that restores a record of the bin. */
+export const RESTORE_ACTION_ID = 'restoreRecord';
+
+/** The modal that shows the full error of a failed restoration. */
+export const ERROR_MODAL_ID = 'errorModal';
 
 type DebugLogger = ReturnType<typeof createDebugLogger>;
 
@@ -289,129 +290,136 @@ const runLambdaModeRestore = async ({
   });
 };
 
-const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
+/** One restoration at a time, as the record form's button allowed. */
+let restorationInProgress = false;
+
+/**
+ * The host message for a failed restoration. When the failure has a full
+ * error, the message offers it ("See the full error" opens it in a modal),
+ * as the record form's button did under its message.
+ */
+function failureAlert(ctx: ExecuteItemFormDropdownActionCtx) {
+  let failure: errorObject | undefined;
+  const setError = (error: errorObject) => {
+    failure = error;
+  };
+  const alertFn = async (message: string): Promise<unknown> => {
+    const details = failure;
+    failure = undefined;
+    if (!details) return ctx.alert(message);
+    // Not awaited: the toast stays until the user closes it.
+    void ctx
+      .customToast({
+        type: 'alert',
+        message,
+        cta: { label: 'See the full error', value: 'details' },
+      })
+      .then((choice) =>
+        choice === 'details'
+          ? ctx.openModal({
+              id: ERROR_MODAL_ID,
+              title: 'Restoration error',
+              width: 'l',
+              parameters: { errorPayload: details.fullErrorPayload },
+            })
+          : undefined,
+      );
+    return undefined;
+  };
+  return { setError, alertFn };
+}
+
+/**
+ * Restores the record that the open record of the bin archives, from its
+ * `record_body` as the form holds it: through the deployed Lambda for its
+ * legacy archives, else through the API. It then opens the restored record.
+ */
+export async function restoreRecordFromBin(
+  ctx: ExecuteItemFormDropdownActionCtx,
+): Promise<void> {
   const debugLogger = createDebugLogger(
     isDebugEnabled(ctx.plugin.attributes.parameters),
-    'BinOutlet',
+    'restoreRecordFromBin',
   );
-  const restorationInProgress = useRef(false);
-  const [error, setError] = useState<errorObject>();
+  if (restorationInProgress) return;
+  restorationInProgress = true;
+  debugLogger.log('Starting record restoration', {
+    itemId: ctx.item?.id,
+    itemTypeId: ctx.itemType.id,
+  });
 
-  const restorationHandler = useCallback(async () => {
-    if (restorationInProgress.current) return;
-    restorationInProgress.current = true;
-    debugLogger.log('Starting record restoration', {
-      itemId: ctx.item?.id,
-      itemTypeId: ctx.itemType.id,
-    });
-    setError(undefined);
+  const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
+  const rawRecordBody = ctx.formValues.record_body;
 
-    const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
-    const rawRecordBody = ctx.formValues.record_body;
+  const { setError, alertFn } = failureAlert(ctx);
+  const noticeFn = (message: string) => {
+    void ctx.notice(message);
+  };
+  const navigateTo = (path: string) => {
+    void ctx.navigateTo(path);
+  };
 
-    const alertFn = ctx.alert.bind(ctx);
-    const noticeFn = ctx.notice.bind(ctx);
-    const navigateTo = ctx.navigateTo.bind(ctx);
-
-    try {
-      const parseResult = await parseLambdaRecordBody(
-        rawRecordBody,
-        debugLogger,
-        alertFn,
-      );
-      if (!parseResult.success) return;
-      const parsedRecordBody = parseResult.parsedBody;
-      const isLocallyCapturedRecord =
-        typeof parsedRecordBody === 'object' &&
-        parsedRecordBody !== null &&
-        '__record_bin' in parsedRecordBody;
-      // Existing deployments retain the legacy webhook flow. Locally captured
-      // archives are restored by the plugin itself.
-      if (
-        runtimeMode === 'lambda' &&
-        !isPackedRecordBinBody(parsedRecordBody) &&
-        !isLocallyCapturedRecord
-      ) {
-        await runLambdaModeRestore({
-          parsedRecordBody,
-          pluginParameters: ctx.plugin.attributes.parameters as Record<
-            string,
-            unknown
-          >,
-          trashRecordId: ctx.item?.id,
-          debugLogger,
-          alertFn,
-          noticeFn,
-          navigateTo,
-          environment: ctx.environment,
-          isEnvironmentPrimary: ctx.isEnvironmentPrimary,
-          setError,
-        });
-        return;
-      }
-
-      if (!ctx.item?.id) {
-        debugLogger.warn('Missing trash record id in lambda-less restore');
-        await alertFn('Could not determine the trash record to remove.');
-        return;
-      }
-
-      await executeRestoreWithoutLambda({
-        trashRecordId: ctx.item.id,
+  try {
+    const parseResult = await parseLambdaRecordBody(
+      rawRecordBody,
+      debugLogger,
+      alertFn,
+    );
+    if (!parseResult.success) return;
+    const parsedRecordBody = parseResult.parsedBody;
+    const isLocallyCapturedRecord =
+      typeof parsedRecordBody === 'object' &&
+      parsedRecordBody !== null &&
+      '__record_bin' in parsedRecordBody;
+    // Existing deployments retain the legacy webhook flow. Locally captured
+    // archives are restored by the plugin itself.
+    if (
+      runtimeMode === 'lambda' &&
+      !isPackedRecordBinBody(parsedRecordBody) &&
+      !isLocallyCapturedRecord
+    ) {
+      await runLambdaModeRestore({
         parsedRecordBody,
-        currentUserAccessToken: ctx.currentUserAccessToken,
-        cmaBaseUrl: ctx.cmaBaseUrl,
-        environment: ctx.environment,
+        pluginParameters: ctx.plugin.attributes.parameters as Record<
+          string,
+          unknown
+        >,
+        trashRecordId: ctx.item?.id,
         debugLogger,
         alertFn,
         noticeFn,
         navigateTo,
+        environment: ctx.environment,
         isEnvironmentPrimary: ctx.isEnvironmentPrimary,
         setError,
       });
-    } catch (err) {
-      setError(buildRestoreErrorPayload(err));
-      debugLogger.error('Restoration flow failed', err);
-      await alertFn('The record could not be restored.');
-    } finally {
-      restorationInProgress.current = false;
-    }
-  }, [ctx, debugLogger]);
-
-  const errorModalHandler = () => {
-    if (!error) {
       return;
     }
 
-    debugLogger.log('Opening restoration error modal');
-    void ctx.openModal({
-      id: 'errorModal',
-      title: 'Restoration error',
-      width: 'l',
-      parameters: { errorPayload: error.fullErrorPayload },
+    if (!ctx.item?.id) {
+      debugLogger.warn('Missing trash record id in lambda-less restore');
+      await alertFn('Could not determine the trash record to remove.');
+      return;
+    }
+
+    await executeRestoreWithoutLambda({
+      trashRecordId: ctx.item.id,
+      parsedRecordBody,
+      currentUserAccessToken: ctx.currentUserAccessToken,
+      cmaBaseUrl: ctx.cmaBaseUrl,
+      environment: ctx.environment,
+      debugLogger,
+      alertFn,
+      noticeFn,
+      navigateTo,
+      isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+      setError,
     });
-  };
-
-  return (
-    <Canvas ctx={ctx}>
-      {error && (
-        <Callout tone="danger" title="Couldn't restore the record">
-          It can fail when the record links to records that no longer exist. Fix
-          the <code>record_body</code> JSON, save the record, and try again.
-        </Callout>
-      )}
-      <div className={s.actions}>
-        <Button
-          tone="primary"
-          label="Restore record"
-          onClick={restorationHandler}
-        />
-        {error && (
-          <Button label="See the full error" onClick={errorModalHandler} />
-        )}
-      </div>
-    </Canvas>
-  );
-};
-
-export default BinOutlet;
+  } catch (err) {
+    setError(buildRestoreErrorPayload(err));
+    debugLogger.error('Restoration flow failed', err);
+    await alertFn('The record could not be restored.');
+  } finally {
+    restorationInProgress = false;
+  }
+}

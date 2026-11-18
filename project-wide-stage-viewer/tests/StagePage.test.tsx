@@ -171,6 +171,31 @@ function seed() {
   ];
 }
 
+/** How the host presents the records of the store: its title and image. */
+async function presentFromStore(ids: string[]) {
+  return ids.map((id) => {
+    const item = store.find((candidate) => candidate.id === id);
+    if (!item) return null;
+    const attributes = item.attributes as Record<string, unknown>;
+    const cover = attributes.cover as { upload_id: string } | null | undefined;
+    return {
+      id,
+      title: String(attributes.title ?? attributes.name ?? `Record #${id}`),
+      image: cover
+        ? {
+            type: 'image' as const,
+            url: `https://img.test/${cover.upload_id}.jpg`,
+          }
+        : null,
+      itemTypeId: item.relationships.item_type.data.id,
+      status: item.meta.status ?? 'published',
+      currentVersionValid: true,
+      publishedVersionValid: true,
+      editPath: null,
+    };
+  });
+}
+
 function renderPage(
   options: {
     environment?: string;
@@ -178,7 +203,13 @@ function renderPage(
     permissions?: { positive?: PermissionRule[]; negative?: PermissionRule[] };
   } = {},
 ) {
-  const ctx = buildPageCtx({ parameters, itemTypes, fields, ...options });
+  const ctx = buildPageCtx({
+    parameters,
+    itemTypes,
+    fields,
+    loadItemPresentationInfo: presentFromStore,
+    ...options,
+  });
   render(<StagePage ctx={ctx} menuItem={menuItem} />);
   return ctx;
 }
@@ -198,8 +229,19 @@ function rowTitles(): string[] {
   );
 }
 
+// The checkbox of a row is named by the record: its title, then the name
+// of its status dot (the models of the fixtures have the draft mode)
+const STATUS_NAMES = ['Draft', 'Unpublished changes', 'Published'];
+
 function selectRow(title: string) {
-  return userEvent.click(screen.getByRole('checkbox', { name: title }));
+  return userEvent.click(
+    screen.getByRole('checkbox', {
+      name: (name) =>
+        [title, ...STATUS_NAMES.map((status) => `${title}${status}`)].includes(
+          name,
+        ),
+    }),
+  );
 }
 
 // The search row opens with the magnifier of the title bar
@@ -305,16 +347,21 @@ describe('StagePage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows an image only for records that have one', async () => {
-    renderPage();
+  it('shows the image that the host gives a record', async () => {
+    const ctx = renderPage();
     await screen.findByText('Newest article');
 
-    await waitFor(() =>
-      expect(document.querySelectorAll('img')).toHaveLength(1),
+    // The host crops the image to the size of the row's square.
+    expect(ctx.loadItemPresentationInfo).toHaveBeenCalledWith(
+      ['r1', 'r2', 'r3'],
+      { preferredImageSize: { width: 20, height: 20 } },
     );
-    expect(document.querySelector('img')).toHaveAttribute(
-      'src',
-      'https://img.test/u2.jpg?w=80&h=80&fit=crop&auto=format',
+    const images = [
+      ...document.querySelectorAll<HTMLElement>('.RecordRow__image'),
+    ].filter((image) => image.style.backgroundImage);
+    expect(images).toHaveLength(1);
+    expect(images[0].style.backgroundImage).toContain(
+      'https://img.test/u2.jpg',
     );
   });
 
@@ -784,13 +831,13 @@ describe('review regressions', () => {
     await screen.findByText('60 records');
 
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Items per page' }),
+      screen.getByRole('combobox', { name: 'Results per page' }),
       '100',
     );
 
     expect(rowTitles()).toHaveLength(60);
     expect(
-      screen.getByRole('combobox', { name: 'Items per page' }),
+      screen.getByRole('combobox', { name: 'Results per page' }),
     ).toBeInTheDocument();
   });
 
@@ -862,7 +909,12 @@ describe('review regressions', () => {
     const read = deferred<unknown>();
     const original = client.items.rawList.getMockImplementation();
     if (!original) throw new Error('Missing mock');
-    const ctx = buildPageCtx({ parameters, itemTypes, fields });
+    const ctx = buildPageCtx({
+      parameters,
+      itemTypes,
+      fields,
+      loadItemPresentationInfo: presentFromStore,
+    });
     const view = render(<StagePage ctx={ctx} menuItem={menuItem} />);
     await screen.findByText('Newest article');
     await selectRow('Jane Doe');
@@ -934,7 +986,12 @@ describe('second review round', () => {
     client.workflows.find.mockRejectedValueOnce(new Error('Network down'));
     const view = render(
       <StagePage
-        ctx={buildPageCtx({ parameters, itemTypes, fields })}
+        ctx={buildPageCtx({
+          parameters,
+          itemTypes,
+          fields,
+          loadItemPresentationInfo: presentFromStore,
+        })}
         menuItem={menuItem}
       />,
     );

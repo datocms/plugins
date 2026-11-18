@@ -1,0 +1,5 @@
+/* The note is the whole screen: the host spaces its own sections around the
+   frame, so the paragraph keeps no margin of its own. */
+.note {
+  margin: 0;
+}

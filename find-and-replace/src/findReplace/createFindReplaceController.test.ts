@@ -55,7 +55,6 @@ describe('grouping', () => {
       recordId: 'a1',
       modelId: 'article',
       modelName: 'Article',
-      title: 'Acme launches a widget',
       matchCount: 4,
       status: { kind: 'untouched' },
     });

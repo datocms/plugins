@@ -11,7 +11,6 @@ function occurrence(
   return {
     id,
     recordId,
-    recordTitle: `Record ${recordId}`,
     modelId: 'model-1',
     modelName: 'Article',
     fieldPath: 'body',

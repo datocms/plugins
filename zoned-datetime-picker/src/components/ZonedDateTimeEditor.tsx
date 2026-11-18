@@ -1,7 +1,6 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import SelectInput from 'datocms-react-ui/SelectInput';
-import StringInput from 'datocms-react-ui/StringInput';
 import { useMemo, useState } from 'react';
 import { parseZones } from '../i18n/parseZones';
 import { getUiLabels } from '../i18n/uiLabels';
@@ -14,13 +13,14 @@ import {
   matchesZoneQuery,
   type ZoneOption,
 } from '../utils/zoneOptions';
+import { WallClockInput } from './WallClockInput';
 
 /**
  * The interactive editor, mounted only once the stored value parses cleanly.
  *
  * - State keeps the local wall-clock date-time (no offset) and the IANA zone.
- * - The date and time is a native `datetime-local` input, whose value is
- *   already that wall-clock string; it goes into state unchanged.
+ * - The date and time is the kit's date and time input, with a calendar,
+ *   showing the wall clock of the shown zone (see `WallClockInput`).
  * - The time zone is a searchable select, grouped with the suggested zones
  *   first and then every zone by region.
  * - On save, Luxon derives the correct numeric offset for that date-time/zone
@@ -136,12 +136,11 @@ export const ZonedDateTimeEditor = ({
     <div className="form__field form__row">
       <div className="form__row__cell">
         <FieldWrapper label={labels.dateTime}>
-          <StringInput
-            type="datetime-local"
-            value={zonedDateTime.dateTime ?? null}
-            onChange={(next) =>
-              commit({ ...zonedDateTime, dateTime: next || null })
-            }
+          <WallClockInput
+            ctx={ctx}
+            timeZone={shownZone ?? 'UTC'}
+            dateTime={zonedDateTime.dateTime ?? null}
+            onChange={(next) => commit({ ...zonedDateTime, dateTime: next })}
             disabled={disabled}
           />
         </FieldWrapper>

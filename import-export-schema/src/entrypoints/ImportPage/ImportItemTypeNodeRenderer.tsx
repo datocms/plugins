@@ -49,7 +49,7 @@ export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
       )}
       status={
         unresolvedConflict ? (
-          <Pill tone="warning">Conflict</Pill>
+          <Pill tone="danger">Conflict</Pill>
         ) : resolutionStrategyIsReuseExisting ? (
           <Pill>Uses existing</Pill>
         ) : undefined

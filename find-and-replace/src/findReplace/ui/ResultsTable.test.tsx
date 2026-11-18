@@ -222,7 +222,7 @@ describe('chunks and "Show more"', () => {
     expect(matchRows('history:')).toHaveLength(3);
   });
 
-  it('keeps the order of the snapshot', () => {
+  it('keeps the order of the snapshot', async () => {
     renderTable(snapshotOf('S7'));
     expect(recordRows().map((row) => row.dataset.record)).toEqual([
       'article:launch',
@@ -230,27 +230,30 @@ describe('chunks and "Show more"', () => {
       'page:about',
       'page:legal',
     ]);
-    expect(recordRow('article:brand')).toHaveTextContent('Brand guidelines');
+    // The host gives the title of each record.
+    expect(
+      await within(recordRow('article:brand')).findByText('Brand guidelines'),
+    ).toBeInTheDocument();
   });
 });
 
 describe('on a frame under 720px wide', () => {
   /** Answers the narrow-table media query (and the kit's small viewport) while `run` renders. */
-  function narrowly(run: () => void) {
+  async function narrowly(run: () => void | Promise<void>) {
     const original = window.matchMedia;
     window.matchMedia = (media: string) => ({
       ...original(media),
       matches: media === COMPACT_TABLE_QUERY || media === '(max-width: 1024px)',
     });
     try {
-      run();
+      await run();
     } finally {
       window.matchMedia = original;
     }
   }
 
-  it('holds the model, the count, the status and every snippet in one column', () => {
-    narrowly(() => {
+  it('holds the model, the count, the status and every snippet in one column', async () => {
+    await narrowly(async () => {
       renderTable(snapshotOf('S14'));
       // One column: the others would be dropped by the table.
       expect(screen.getByText('Record')).toBeInTheDocument();
@@ -258,8 +261,13 @@ describe('on a frame under 720px wide', () => {
         expect(screen.queryByText(label, { exact: true })).toBeNull();
       }
       const replaced = recordRow('article:launch');
-      // Only some of its matches were included: the words say so.
-      expect(replaced).toHaveTextContent('Article · 2 of 3 matches');
+      // The record as DatoCMS lists it: its model above its title. Only
+      // some of its matches were included: the words under it say so.
+      expect(await within(replaced).findByText('Article')).toBeInTheDocument();
+      expect(
+        within(replaced).getByText('Acme launches a new widget'),
+      ).toBeInTheDocument();
+      expect(within(replaced).getByText('2 of 3 matches')).toBeInTheDocument();
       expect(within(replaced).getByText('Replaced')).toBeInTheDocument();
       expect(
         within(recordRow('article:brand')).getByText('Updating…'),
@@ -271,7 +279,7 @@ describe('on a frame under 720px wide', () => {
     });
   });
 
-  it('leaves the layout of the wide table as it is', () => {
+  it('leaves the layout of the wide table as it is', async () => {
     const stored = {
       columns: [
         { name: 'record', width: 2 },
@@ -282,7 +290,7 @@ describe('on a frame under 720px wide', () => {
       'find-and-replace.resultsTable',
       JSON.stringify(stored),
     );
-    narrowly(() => {
+    await narrowly(() => {
       renderTable(snapshotOf('S7'));
       expect(screen.getByText('Record')).toBeInTheDocument();
     });
@@ -331,7 +339,7 @@ describe('selection', () => {
     const { controller } = renderTable(excludingSnapshot());
     // Only some matches: the record takes part, so it is checked ("2 of 3
     // matches" says the rest), and a click leaves it out.
-    const launch = screen.getByRole('checkbox', {
+    const launch = await screen.findByRole('checkbox', {
       name: 'Acme launches a new widget',
     });
     expect(launch).toBeChecked();
@@ -390,7 +398,7 @@ describe('selection', () => {
 
     // A click (the first of a double click that selects a word) on the title
     // or on a snippet changes nothing.
-    fireEvent.click(within(row).getByText('Brand guidelines'));
+    fireEvent.click(await within(row).findByText('Brand guidelines'));
     const [titleLine, slugLine] = matchRows('brand:');
     fireEvent.click(titleLine.querySelector('mark') ?? titleLine);
     // Nor does a tap on "Changes the URL" to read why slugs are left out.
@@ -468,10 +476,10 @@ describe('tree', () => {
     const user = userEvent.setup();
     renderTable(snapshotOf('S7'));
     expect(matchRows('brand:').length).toBeGreaterThan(0);
-    const toggle = within(recordRow('article:brand')).getByRole('button', {
-      name: 'Brand guidelines',
-      expanded: true,
-    });
+    const toggle = await within(recordRow('article:brand')).findByRole(
+      'button',
+      { name: 'Brand guidelines', expanded: true },
+    );
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -718,12 +726,30 @@ describe('statuses, reasons and links', () => {
     expect(within(row).queryByText('Replaced')).toBeNull();
   });
 
-  it('falls back to "Record <id>" without a title', () => {
+  it('shows the title that the host gives a record without one', async () => {
     renderTable({
       ...resultsSnapshot(),
-      records: [withStatus({ kind: 'untouched' }, '   ')],
+      records: [withStatus({ kind: 'untouched' }, null)],
     });
-    expect(recordRow('article:rec')).toHaveTextContent('Record rec');
+    expect(
+      await within(recordRow('article:rec')).findByText('Record #rec'),
+    ).toBeInTheDocument();
+  });
+
+  it('loads the record again after a write, which may change its title', async () => {
+    const { mock, rerenderWith } = renderTable({
+      ...resultsSnapshot(),
+      records: [withStatus({ kind: 'untouched' }, 'Acme pricing')],
+    });
+    const row = recordRow('article:rec');
+    expect(await within(row).findByText('Acme pricing')).toBeInTheDocument();
+    const replaced = withStatus(
+      { kind: 'replaced', replacedMatches: 1 },
+      'Globex pricing',
+    );
+    rerenderWith({ ...resultsSnapshot(), records: [replaced] });
+    expect(await within(row).findByText('Globex pricing')).toBeInTheDocument();
+    expect(mock.ctx.loadItemPresentationInfo).toHaveBeenCalledTimes(2);
   });
 
   it('opens a record in a new tab, as a link to a page of the CMS', () => {

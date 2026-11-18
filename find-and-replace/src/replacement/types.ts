@@ -8,7 +8,6 @@ export type ReplacementIssueKind =
 export type ReplacementChange = {
   id: string;
   rootRecordId: string;
-  recordLabel: string | null;
   modelName: string;
   fieldLabel: string;
   locale: string | null;

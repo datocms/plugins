@@ -1,5 +1,5 @@
 /* Placement only: the kit components draw the slots, the cards and the
-   states, and AssetMedia draws the media inside a MediaCard. */
+   states, and an UploadCard draws each asset. */
 
 /* The slots of the layout. The script sets the columns and, in masonry, the
    rows of 8px that the slots span. */

@@ -20,7 +20,6 @@ function modelSummary(itemType: ItemType): ContentModel {
     id: itemType.id,
     name: itemType.attributes.name,
     isBlock: itemType.attributes.modular_block,
-    titleFieldId: itemType.relationships.presentation_title_field.data?.id,
     fields: [],
   };
 }

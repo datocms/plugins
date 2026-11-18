@@ -355,7 +355,6 @@ describe('record conversion', () => {
     id: 'article',
     name: 'Article',
     isBlock: false,
-    titleFieldId: 'title-field',
     fields: [
       {
         id: 'title-field',
@@ -368,43 +367,24 @@ describe('record conversion', () => {
     ],
   };
 
-  it('preserves all locale and nested content while choosing the current locale title', () => {
+  it('keeps every locale and the nested content of the record', () => {
     const attributes = {
       title: { en: 'Hello', it: 'Ciao' },
       content: [record('block')],
     };
-    expect(toRecordInput({ id: 'a', attributes }, model, 'it')).toEqual({
+    expect(toRecordInput({ id: 'a', attributes }, model)).toEqual({
       id: 'a',
       modelId: 'article',
-      title: 'Ciao',
       values: attributes,
     });
-    expect(toRecordInput({ attributes }, model, 'fr').title).toBe('Hello');
   });
 
   it('accepts unsaved SDK serialized values without id/meta', () => {
     expect(toRecordInput({ attributes: {} }, model)).toEqual({
       id: undefined,
       modelId: 'article',
-      title: 'New Article',
       values: {},
     });
-    expect(toRecordInput({ id: '123', attributes: {} }, model).title).toBe(
-      'Article 123',
-    );
-  });
-
-  it('does not confuse an unlocalized object value with locale data', () => {
-    const unlocalized = {
-      ...model,
-      fields: model.fields.map((field) => ({ ...field, localized: false })),
-    };
-    expect(
-      toRecordInput(
-        { attributes: { title: { en: 'Not a title' } } },
-        unlocalized,
-      ).title,
-    ).toBe('New Article');
   });
 });
 

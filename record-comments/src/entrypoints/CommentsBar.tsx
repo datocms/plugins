@@ -702,6 +702,7 @@ const CommentsBar = ({ ctx }: Props) => {
     cacheVersion,
   } = useEntityResolver({
     client,
+    loadUploads: ctx.loadUploads,
     projectUsers,
     projectModels,
     modelFields,
@@ -993,7 +994,6 @@ const CommentsBar = ({ ctx }: Props) => {
     handleRecordModelSelectFromComment,
   } = useReplyPicker({
     ctx,
-    client,
     canMentionAssets,
   });
 
@@ -1021,35 +1021,15 @@ const CommentsBar = ({ ctx }: Props) => {
           return;
         }
 
-        const itemType = ctx.itemTypes[model.id];
-
-        let fields: Awaited<ReturnType<typeof ctx.loadItemTypeFields>> = [];
-        if (itemType) {
-          try {
-            fields = await ctx.loadItemTypeFields(model.id);
-          } catch (fieldError) {
-            logError(
-              'Failed to load item type fields for record mention',
-              fieldError,
-              { modelId: model.id },
-            );
-          }
-        }
-
-        const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-
-        const recordMention = await createRecordMention(
-          { id: record.id, attributes: record.attributes },
+        const recordMention = createRecordMention(
+          record.id,
           {
             id: model.id,
             apiKey: model.apiKey,
             name: model.name,
             isBlockModel: model.isBlockModel,
           },
-          itemType,
-          fields,
-          mainLocale,
-          client,
+          ctx.itemTypes[model.id],
         );
 
         await insertMentionWithRetry(targetComposer, recordMention);
@@ -1060,7 +1040,7 @@ const CommentsBar = ({ ctx }: Props) => {
         setIsComposerPickerOpen(false);
       }
     },
-    [ctx, client],
+    [ctx],
   );
 
   const {

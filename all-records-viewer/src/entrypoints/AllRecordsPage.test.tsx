@@ -11,7 +11,6 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BulkJobResult } from '../operations/types';
 import type { RawField } from '../presentation/fields';
-import type { RawUpload } from '../presentation/previews';
 import type { RawItem, RawItemType } from '../types';
 import AllRecordsPage from './AllRecordsPage';
 
@@ -77,6 +76,10 @@ function buildCtx(overrides: Record<string, unknown> = {}): RenderPageCtx {
     plugin: { id: 'plugin-1' },
     navigateTo: vi.fn(),
     loadItemTypeFields: vi.fn().mockResolvedValue([]),
+    // No presentation: each row shows "Record <id>"
+    loadItemPresentationInfo: vi.fn(async (items: unknown[]) =>
+      items.map(() => null),
+    ),
     alert: vi.fn(),
     notice: vi.fn(),
     customToast: vi.fn(),
@@ -781,6 +784,54 @@ describe('AllRecordsPage states', () => {
     expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument();
   });
 
+  it('edits the filters of the URL in the filter builder', async () => {
+    mockRecords([item('record-1')]);
+    const navigateTo = vi.fn();
+    const filters = JSON.stringify([
+      ['_status', 'eq', 'draft'],
+      ['id', 'eq', null],
+    ]);
+    render(
+      <AllRecordsPage
+        ctx={buildCtx({
+          currentUserAccessToken: 'user-token',
+          itemTypes: { 'model-1': model() },
+          navigateTo,
+          location: {
+            pathname: '',
+            search: `?${new URLSearchParams({ filters })}`,
+            hash: '',
+          },
+        })}
+      />,
+    );
+    await readyRecordCheckbox('record-1');
+    const filtersOfLastNavigation = () => {
+      const [path] = navigateTo.mock.lastCall ?? [''];
+      return JSON.parse(
+        new URL(String(path), 'https://example.com').searchParams.get(
+          'filters',
+        ) ?? '[]',
+      );
+    };
+
+    // A text value reaches the URL when the user leaves its input
+    const id = screen.getByRole('textbox', { name: 'Value of ID' });
+    fireEvent.change(id, { target: { value: ' 42 ' } });
+    fireEvent.blur(id);
+    await waitFor(() =>
+      expect(filtersOfLastNavigation()).toEqual([
+        ['_status', 'eq', 'draft'],
+        ['id', 'eq', '42'],
+      ]),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove the Status filter' }),
+    );
+    expect(filtersOfLastNavigation()).toEqual([['id', 'eq', '42']]);
+  });
+
   it('shows a load failure and retries without reloading the plugin', async () => {
     cmaMocks.rawList
       .mockRejectedValueOnce(new Error('Network unavailable'))
@@ -1404,82 +1455,40 @@ describe('AllRecordsPage large selections', () => {
     expect(screen.getByText('1 record selected')).toBeInTheDocument();
   });
 
-  it('reloads linked titles and uploads when a completed action refreshes records', async () => {
-    const rootModel = model();
-    rootModel.relationships.presentation_title_field.data = {
-      id: 'title-field',
-      type: 'field',
-    };
-    const linkedModel = model();
-    linkedModel.id = 'linked-model';
-    const referenceField = titleField();
-    referenceField.attributes.field_type = 'link';
-    const linkedTitleField = titleField();
-    linkedTitleField.id = 'linked-title-field';
-    linkedTitleField.relationships.item_type.data.id = linkedModel.id;
-    const imageField = titleField();
-    imageField.id = 'image-field';
-    imageField.attributes.api_key = 'image';
-    imageField.attributes.field_type = 'file';
-    imageField.attributes.position = 1;
-    const root = item('record-1');
-    root.attributes = {
-      title: 'linked-record',
-      image: { upload_id: 'upload-1' },
-    };
-    let linked = item('linked-record');
-    linked.relationships.item_type.data.id = linkedModel.id;
-    linked.attributes = { title: 'Original linked title' };
-    let currentUpload = {
-      id: 'upload-1',
-      type: 'upload',
-      attributes: {
-        url: 'https://example.com/original.jpg',
-        path: 'original.jpg',
-        md5: 'original-hash',
-        mux_playback_id: null,
-        default_field_metadata: { focal_point: null, poster_time: null },
-      },
-    } as unknown as RawUpload;
-    cmaMocks.rawList.mockImplementation((query: MockListQuery) =>
-      Promise.resolve({
-        data: query.filter?.ids === linked.id ? [linked] : [root],
-        meta: { total_count: 1 },
-      }),
-    );
-    cmaMocks.uploadRawList.mockImplementation(() =>
-      Promise.resolve({ data: [currentUpload], meta: { total_count: 1 } }),
+  it('reloads the titles and images when a completed action refreshes records', async () => {
+    mockRecords([item('record-1')]);
+    let title = 'Original title';
+    let image = 'https://example.com/original.jpg';
+    const loadItemPresentationInfo = vi.fn(async (items: RawItem[]) =>
+      items.map((entry) => ({
+        id: entry.id,
+        title,
+        image: { type: 'image', url: image },
+        itemTypeId: 'model-1',
+        status: 'updated',
+      })),
     );
     cmaMocks.rawBulkPublish.mockImplementationOnce(() => {
-      linked = { ...linked, attributes: { title: 'Updated linked title' } };
-      currentUpload = {
-        ...currentUpload,
-        attributes: {
-          ...currentUpload.attributes,
-          url: 'https://example.com/updated.jpg',
-          md5: 'updated-hash',
-        },
-      };
+      title = 'Updated title';
+      image = 'https://example.com/updated.jpg';
       return Promise.resolve({ data: [], meta: { successful: 1, failed: 0 } });
     });
-    const ctx = buildOperationCtx({
-      location: { pathname: '', search: '?model=model-1', hash: '' },
-      itemTypes: { 'model-1': rootModel, 'linked-model': linkedModel },
-      loadItemTypeFields: vi.fn(async (modelId: string) =>
-        modelId === linkedModel.id
-          ? [linkedTitleField]
-          : [referenceField, imageField],
-      ),
-    });
+    const ctx = buildOperationCtx({ loadItemPresentationInfo });
     const { container } = render(<AllRecordsPage ctx={ctx} />);
-    await screen.findByText('Original linked title');
-    expect(container.querySelector('img')).toHaveAttribute(
-      'src',
+    await screen.findByText('Original title');
+    // The image of the title cell is the background of its square
+    expect(container.querySelector('.RecordRow__image')).toHaveAttribute(
+      'style',
       expect.stringContaining('/original.jpg'),
+    );
+    // One call for the page, with the records and the size of the cell
+    expect(loadItemPresentationInfo).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'record-1' })],
+      { preferredImageSize: { width: 20, height: 20 } },
     );
 
     await waitFor(() => {
-      const checkbox = screen.getByLabelText('Original linked title', {
+      const checkbox = screen.getByLabelText('Original title', {
         selector: 'input',
       });
       expect(checkbox).toBeEnabled();
@@ -1487,29 +1496,26 @@ describe('AllRecordsPage large selections', () => {
     }, UI_WAIT_OPTIONS);
     await clickReadyButton('Publish');
 
-    await screen.findByText('Updated linked title');
-    expect(container.querySelector('img')).toHaveAttribute(
-      'src',
+    await screen.findByText('Updated title');
+    // The image of the title cell is the background of its square
+    expect(container.querySelector('.RecordRow__image')).toHaveAttribute(
+      'style',
       expect.stringContaining('/updated.jpg'),
     );
-    expect(cmaMocks.uploadRawList).toHaveBeenCalledTimes(2);
-    expect(
-      cmaMocks.rawList.mock.calls.filter(
-        ([query]) => query.filter?.ids === linked.id,
-      ),
-    ).toHaveLength(2);
   });
 
   it('waits for deferred presentations before selecting a 200-record page', async () => {
     mockRecords(records(401));
-    const fields = deferred<RawField[]>();
+    const presentations = deferred<null[]>();
     const ctx = buildOperationCtx({
       location: { pathname: '', search: '?perPage=200', hash: '' },
-      loadItemTypeFields: vi.fn().mockImplementation(() => fields.promise),
+      loadItemPresentationInfo: vi
+        .fn()
+        .mockImplementation(() => presentations.promise),
     });
     render(<AllRecordsPage ctx={ctx} />);
     await waitFor(() => {
-      expect(ctx.loadItemTypeFields).toHaveBeenCalled();
+      expect(ctx.loadItemPresentationInfo).toHaveBeenCalled();
       expect(recordCheckbox('record-1')).toBeDisabled();
     }, UI_WAIT_OPTIONS);
 
@@ -1521,7 +1527,9 @@ describe('AllRecordsPage large selections', () => {
       ),
     ).toBe(false);
 
-    await act(async () => fields.resolve([]));
+    await act(async () =>
+      presentations.resolve(Array.from({ length: 200 }, () => null)),
+    );
     await selection;
 
     expect(screen.getByText('401 records selected')).toBeInTheDocument();

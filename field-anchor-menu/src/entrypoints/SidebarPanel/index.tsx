@@ -2,9 +2,11 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { Field, RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import Canvas from 'datocms-react-ui/Canvas';
 import EntityRow from 'datocms-react-ui/EntityRow';
+import IconAvatar from 'datocms-react-ui/IconAvatar';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import { useId } from 'react';
+import { fieldTypeIcon } from '../../utils/fieldTypes';
 import s from './styles.module.css';
 
 type Fieldset = SchemaTypes.Fieldset;
@@ -60,51 +62,72 @@ const FieldAnchorMenu = ({ ctx }: PropTypes) => {
     }
   }
 
-  const renderField = (field: Field) => (
-    <RowList.Item
-      key={field.id}
-      onClick={() => {
-        ctx.scrollToField(
-          `${field.attributes.api_key}${
-            field.attributes.localized ? ctx.locale : ''
-          }`,
-        );
-      }}
-    >
-      <EntityRow layout="row" multilineTitle title={field.attributes.label} />
-    </RowList.Item>
+  const fieldsOf = (fieldset: Fieldset) =>
+    allFieldsToShow.filter(
+      (field) => field.relationships.fieldset.data?.id === fieldset.id,
+    );
+
+  // A fieldset with no fields has nothing to scroll to
+  const visibleSegments = segments.filter(
+    (segment) => Array.isArray(segment) || fieldsOf(segment).length > 0,
   );
+
+  // Each field shows the icon of its type, on the color of its group, as in
+  // the schema of the model
+  const renderField = (field: Field) => {
+    const { icon, surface } = fieldTypeIcon(field);
+    return (
+      <RowList.Item
+        key={field.id}
+        onClick={() => {
+          ctx.scrollToField(
+            `${field.attributes.api_key}${
+              field.attributes.localized ? ctx.locale : ''
+            }`,
+          );
+        }}
+      >
+        <EntityRow
+          layout="inline"
+          image={<IconAvatar icon={icon} size={20} surface={surface} />}
+          title={field.attributes.label}
+        />
+      </RowList.Item>
+    );
+  };
 
   return (
     <Canvas ctx={ctx}>
-      {segments.length === 0 ? (
+      {visibleSegments.length === 0 ? (
         <SidebarPanel.Blank message="This model has no fields" />
       ) : (
-        segments.map((segment) =>
-          Array.isArray(segment) ? (
-            <RowList key={segment[0].id} density="compact">
-              {segment.map(renderField)}
-            </RowList>
-          ) : (
-            <div
-              key={segment.id}
-              role="group"
-              aria-labelledby={`${idPrefix}${segment.id}`}
-            >
-              <div id={`${idPrefix}${segment.id}`} className={s.groupTitle}>
-                {segment.attributes.title}
-              </div>
-              <RowList density="compact">
-                {allFieldsToShow
-                  .filter(
-                    (field) =>
-                      field.relationships.fieldset.data?.id === segment.id,
-                  )
-                  .map(renderField)}
+        <div className={s.segments}>
+          {visibleSegments.map((segment) =>
+            Array.isArray(segment) ? (
+              <RowList key={segment[0].id} density="compact">
+                {segment.map(renderField)}
               </RowList>
-            </div>
-          ),
-        )
+            ) : (
+              // A fieldset is a box with its title, around its fields
+              <div
+                key={segment.id}
+                role="group"
+                aria-labelledby={`${idPrefix}${segment.id}`}
+                className={s.fieldset}
+              >
+                <div
+                  id={`${idPrefix}${segment.id}`}
+                  className={s.fieldsetTitle}
+                >
+                  {segment.attributes.title}
+                </div>
+                <RowList density="compact">
+                  {fieldsOf(segment).map(renderField)}
+                </RowList>
+              </div>
+            ),
+          )}
+        </div>
       )}
     </Canvas>
   );

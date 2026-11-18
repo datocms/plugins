@@ -8,33 +8,11 @@
   color: var(--color--ink-subtle);
 }
 
-/* One record, its row and its places. The space after it parts it from the
-   next record more than the places are parted from their row, so they read
-   as part of the record above and not of the one below. */
-.record {
-  padding-bottom: var(--spacing-m);
-}
-
-/* The places of a record, right under its row. The compact rows keep their
-   text on the edge of the section's content, and so do the places. */
-.places {
-  font-size: var(--font-size-xs);
-  color: var(--color--ink-subtle);
-  overflow-wrap: anywhere;
-}
-
-.places li + li,
-.places > p {
-  margin-top: calc(var(--spacing-s) / 2);
-}
-
-/* The spelling a place links to, when it differs from the link. */
-.variant {
+/* A line under the title of a record: a place that holds the link, or how
+   many more there are. Each place is a line of its own, cut with an
+   ellipsis as the row's own lines are. */
+.line {
   display: block;
-}
-
-/* The pen at the end of a record's row: it opens the record. */
-.pen {
-  flex: none;
-  color: var(--color--ink-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

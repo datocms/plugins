@@ -63,7 +63,6 @@ function group(
       {
         id: `${slug}:occurrence`,
         recordId: `record-${modelId}`,
-        recordTitle: `${modelName} record`,
         modelId,
         modelName,
         fieldPath: `body.${locale}`,
@@ -546,7 +545,7 @@ describe('ReportLayout', () => {
     });
     try {
       await user.click(screen.getByRole('button', { name: 'All locales' }));
-      await user.type(await screen.findByPlaceholderText('Search...'), 'pt-br');
+      await user.type(await screen.findByPlaceholderText('Search…'), 'pt-br');
       expect(
         screen.getByRole('menuitem', { name: 'Brazilian Portuguese' }),
       ).toBeInTheDocument();
@@ -679,12 +678,9 @@ describe('ReportLayout', () => {
     ).toHaveAttribute('target', '_blank');
 
     // Each place: the field and its locale, then the fields and blocks around it.
-    expect(
-      detail().getByText('Body, English, in Sections > Hero'),
-    ).toBeInTheDocument();
     await user.click(
-      detail().getByRole('button', {
-        name: /^Page\s*Page record\s*,\s*open record$/,
+      await detail().findByRole('button', {
+        name: /^Page\s*Title of record-page\s*Body, English, in Sections > Hero\s*,\s*open record$/,
       }),
     );
     expect(onOpenRecord).toHaveBeenCalledWith('record-page');
@@ -745,7 +741,7 @@ describe('ReportLayout', () => {
       group('broken', { slug: `broken-${index + 1}` }),
     );
     renderLayout({ report: report(groups) });
-    const perPage = () => screen.queryByLabelText('Items per page');
+    const perPage = () => screen.queryByLabelText('Results per page');
     expect(perPage()).toBeInTheDocument();
     // A narrow list shows fewer page numbers and no "Show" select.
     resize(listBox(), 400);
@@ -864,11 +860,12 @@ describe('ReportLayout', () => {
     expect(
       detail().getByText(/Some records link to a #fragment of this page/),
     ).toBeInTheDocument();
-    // A place that links to a variant of the URL shows it.
-    const variant = detail().getByRole('link', {
-      name: `${urlOf(broken)}#pricing (opens in a new tab)`,
-    });
-    expect(variant).toHaveAttribute('href', `${urlOf(broken)}#pricing`);
+    // A place that links to a variant of the URL names it.
+    expect(
+      await detail().findByText(
+        `Body, English, in Sections > Hero · links to ${urlOf(broken)}#pricing`,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('keeps stale URLs in the view of their status and tags them', async () => {
@@ -1155,7 +1152,7 @@ describe('ReportLayout', () => {
     // A new page starts at the top of the list.
     expect(scrollTop).toBe(0);
 
-    await user.selectOptions(screen.getByLabelText('Items per page'), '100');
+    await user.selectOptions(screen.getByLabelText('Results per page'), '100');
     expect(
       screen.queryByRole('navigation', { name: 'Links pagination' }),
     ).not.toBeInTheDocument();

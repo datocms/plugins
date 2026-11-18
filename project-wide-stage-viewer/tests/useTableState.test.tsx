@@ -1,19 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useTableState } from '../src/data/useTableState';
-import {
-  buildModelPresentation,
-  buildRow,
-  type RecordRow,
-} from '../src/lib/records';
+import { buildRow, type RecordRow } from '../src/lib/records';
 import { buildItem, buildItemType } from './fixtures';
 
 function row(id: string, modelId: string): RecordRow {
-  return buildRow(
-    buildItem(id, {}),
-    buildModelPresentation(buildItemType(modelId, modelId), []),
-    { locales: ['en'] },
-  );
+  return buildRow(buildItem(id, {}), buildItemType(modelId, modelId));
 }
 
 const rows = [row('a', 'm1'), row('b', 'm2')];

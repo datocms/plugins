@@ -17,7 +17,6 @@ function occurrence(overrides: Partial<LinkOccurrence> = {}): LinkOccurrence {
   return {
     id: 'occurrence-1',
     recordId: 'record-1',
-    recordTitle: 'Pricing news',
     modelId: 'news',
     modelName: 'News',
     fieldPath: 'body.en',

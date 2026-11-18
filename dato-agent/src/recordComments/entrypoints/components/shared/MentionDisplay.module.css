@@ -2,8 +2,8 @@
    are the kit's: these classes only size the pictures they show and place
    them in the text. */
 
-/* A picture in a pill (record thumbnail, image): as tall as the line of the
-   pill, with the corners of an avatar */
+/* The picture of a file from the computer in a pill: as tall as the line of
+   the pill, with the corners of an avatar */
 .thumbnail {
   flex: none;
   width: 1.5em;
@@ -12,19 +12,14 @@
   border-radius: var(--radius-s);
 }
 
-/* The avatar of a user in a pill: it never shrinks */
-.avatar {
-  display: flex;
-  flex: none;
-}
-
 /* A record or model emoji in a pill: it never shrinks */
 .emoji {
   flex: none;
   line-height: 1;
 }
 
-/* A visual asset in a message: a small card on its own line */
+/* A visual asset or an image file in a message: a small card on its own
+   line */
 .preview {
   display: block;
   width: 160px;

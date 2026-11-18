@@ -1,11 +1,14 @@
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import type { ReactNodeViewProps } from '@tiptap/react';
 import type { ComponentType } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectDataProvider } from '@/entrypoints/contexts/ProjectDataContext';
-import { renderInCanvas } from '../../../../test/canvas';
+import { renderInCanvas, setFakeRecordTitles } from '../../../../test/canvas';
 import { MentionClickContext } from './MentionClickContext';
 import { FileMentionNodeView, RecordMentionNodeView } from './MentionNodeView';
+
+// The host presents the record of the references with this title
+beforeEach(() => setFakeRecordTitles({ 'record-1': 'Homepage' }));
 
 afterEach(cleanup);
 
@@ -113,20 +116,22 @@ describe('MentionNodeView', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('has no remove control for other references', () => {
+  it('has no remove control for other references', async () => {
     renderNodeView(RecordMentionNodeView, recordAttrs);
 
+    expect(
+      await screen.findByRole('button', { name: 'Homepage' }),
+    ).toBeVisible();
     expect(screen.getAllByRole('button')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Homepage' })).toBeVisible();
   });
 
-  it('keeps the current record inert', () => {
+  it('keeps the current record inert', async () => {
     const { onMentionClick } = renderNodeView(
       RecordMentionNodeView,
       recordAttrs,
       { currentRecordId: 'record-1' },
     );
-    const chip = screen.getByRole('button', { name: 'Homepage' });
+    const chip = await screen.findByRole('button', { name: 'Homepage' });
 
     expect(chip).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(chip);

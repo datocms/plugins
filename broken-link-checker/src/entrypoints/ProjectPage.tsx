@@ -29,7 +29,12 @@ import { updateGroup } from '../state/group';
 import { useScan } from '../state/useScan';
 import type { CheckResult, LinkGroup } from '../types';
 import { contextKey } from '../utils/contextKey';
-import { downloadReport } from '../utils/csv';
+import {
+  downloadReport,
+  loadRecordTitles,
+  type RecordTitles,
+  reportRecordIds,
+} from '../utils/csv';
 import { type ScopeModalParams, scopeModalHeight } from './ScopeModal';
 
 type PageProps = { ctx: RenderPageCtx };
@@ -184,6 +189,15 @@ function ProjectScanner({ ctx }: PageProps) {
     exportRunning.current = true;
     setExporting(true);
     try {
+      let titles: RecordTitles | undefined;
+      try {
+        titles = await loadRecordTitles(reportRecordIds(report), (ids) =>
+          ctx.loadItemPresentationInfo(ids),
+        );
+      } catch (error) {
+        // Without the titles, the export still names each record by its ID.
+        console.error(error);
+      }
       await downloadReport(
         rechecking && settled
           ? {
@@ -196,6 +210,7 @@ function ProjectScanner({ ctx }: PageProps) {
               ),
             }
           : report,
+        titles,
       );
     } catch (error) {
       console.error(error);

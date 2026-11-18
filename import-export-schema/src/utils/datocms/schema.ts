@@ -3,30 +3,24 @@ import get from 'lodash-es/get';
 /**
  * Shared lookups and helper utilities for interpreting DatoCMS field metadata.
  */
-import boolean from '@/icons/fieldgroup-boolean.svg?react';
-import color from '@/icons/fieldgroup-color.svg?react';
-import datetime from '@/icons/fieldgroup-datetime.svg?react';
-import json from '@/icons/fieldgroup-json.svg?react';
-import location from '@/icons/fieldgroup-location.svg?react';
-import media from '@/icons/fieldgroup-media.svg?react';
-import number from '@/icons/fieldgroup-number.svg?react';
-import reference from '@/icons/fieldgroup-reference.svg?react';
-import richText from '@/icons/fieldgroup-rich_text.svg?react';
-import seo from '@/icons/fieldgroup-seo.svg?react';
-import structuredText from '@/icons/fieldgroup-structured_text.svg?react';
+import {
+  Blocks,
+  Braces,
+  Calendar,
+  Globe,
+  Hash,
+  Image,
+  Link,
+  type LucideIcon,
+  MapPin,
+  Palette,
+  ToggleLeft,
+  Type,
+} from 'lucide-react';
 
 // Note: Avoid network requests when resolving plugin dependencies.
 // Call sites should pass the set of installed plugin IDs to determine
 // whether an editor/addon refers to a plugin.
-
-type SvgComponent = React.FunctionComponent<
-  React.ComponentProps<'svg'> & {
-    title?: string;
-    titleId?: string;
-    desc?: string;
-    descId?: string;
-  }
->;
 
 export const fieldTypeGroups: Array<{
   name: string;
@@ -98,21 +92,21 @@ export type FieldGroupToken =
 export const fieldGroupColors: Record<
   string,
   {
-    IconComponent: SvgComponent;
+    IconComponent: LucideIcon;
     tokenSlug: FieldGroupToken;
   }
 > = {
-  boolean: { IconComponent: boolean, tokenSlug: 'boolean' },
-  color: { IconComponent: color, tokenSlug: 'color' },
-  datetime: { IconComponent: datetime, tokenSlug: 'datetime' },
-  json: { IconComponent: json, tokenSlug: 'json' },
-  location: { IconComponent: location, tokenSlug: 'location' },
-  media: { IconComponent: media, tokenSlug: 'media' },
-  number: { IconComponent: number, tokenSlug: 'number' },
-  reference: { IconComponent: reference, tokenSlug: 'reference' },
-  rich_text: { IconComponent: richText, tokenSlug: 'rich-text' },
-  seo: { IconComponent: seo, tokenSlug: 'seo' },
-  text: { IconComponent: structuredText, tokenSlug: 'text' },
+  boolean: { IconComponent: ToggleLeft, tokenSlug: 'boolean' },
+  color: { IconComponent: Palette, tokenSlug: 'color' },
+  datetime: { IconComponent: Calendar, tokenSlug: 'datetime' },
+  json: { IconComponent: Braces, tokenSlug: 'json' },
+  location: { IconComponent: MapPin, tokenSlug: 'location' },
+  media: { IconComponent: Image, tokenSlug: 'media' },
+  number: { IconComponent: Hash, tokenSlug: 'number' },
+  reference: { IconComponent: Link, tokenSlug: 'reference' },
+  rich_text: { IconComponent: Blocks, tokenSlug: 'rich-text' },
+  seo: { IconComponent: Globe, tokenSlug: 'seo' },
+  text: { IconComponent: Type, tokenSlug: 'text' },
 };
 
 export const fieldTypeDescriptions: Record<

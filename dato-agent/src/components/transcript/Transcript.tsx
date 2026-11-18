@@ -223,7 +223,6 @@ function AgentTurnEntry({
                 entry={entry}
                 key={entry.id}
                 locked={hostActionPending || Boolean(entry.opening)}
-                mentionHost={mentionHost}
                 onOpenRecord={onOpenRecord}
               />
             );

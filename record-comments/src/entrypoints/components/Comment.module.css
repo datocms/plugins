@@ -1,23 +1,21 @@
-/* A comment: the avatar, then the header, the text and the footer. The
-   replies go under them. --comment-avatar-size is the side of the avatar
-   (the comment sets it from the kit's sizes). */
+/* A comment: the header (the author, the time, the "⋮"), the text and the
+   footer. The replies go under them. --comment-avatar-size is the side of
+   the avatar of the author, the one of a kit UserRow on one line. */
 .comment {
+  --comment-avatar-size: 20px;
+
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: var(--spacing-m);
-  align-items: start;
   min-width: 0;
 }
 
 .main {
   display: grid;
-  grid-column: 2;
   gap: var(--spacing-s);
   min-width: 0;
 }
 
-/* The name, the time and the "⋮", on one line. The name gives way first:
-   the time and the "⋮" keep their room. */
+/* The author, the time and the "⋮", on one line. The author gives way
+   first: the time and the "⋮" keep their room. */
 .header {
   display: flex;
   gap: var(--spacing-s);
@@ -25,13 +23,11 @@
   min-width: 0;
 }
 
+/* The box of the UserRow of the author: the row ends its name with an
+   ellipsis when the line is too narrow */
 .author {
+  display: flex;
   min-width: 0;
-  overflow: hidden;
-  font-weight: var(--font-weight-strong);
-  color: var(--color--ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .time {
@@ -125,17 +121,17 @@
   display: none;
 }
 
-/* The replies: a hairline from the middle of the avatar, and the avatars of
-   the replies in line with the text of the comment */
+/* The replies: a hairline from the middle of the avatar of the author, and
+   the replies in line with the name of the author (the UserRow puts the
+   small gap between its avatar and its name) */
 .replies {
   display: grid;
-  grid-column: 1 / -1;
   gap: var(--spacing-m);
   min-width: 0;
   padding-inline-start: calc(
     var(--comment-avatar-size) /
     2 +
-    var(--spacing-m) -
+    var(--spacing-s) -
     1px
   );
   margin-block-start: var(--spacing-m);

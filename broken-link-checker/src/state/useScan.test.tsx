@@ -13,7 +13,6 @@ function record(
       {
         id: `${recordId}:link`,
         recordId,
-        recordTitle: recordId,
         modelId: 'articles',
         modelName: 'Articles',
         fieldPath: 'body',

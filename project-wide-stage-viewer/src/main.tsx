@@ -4,6 +4,7 @@ import { WORKFLOW_STAGE_MODAL_ID } from './constants';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import StagePage from './entrypoints/StagePage';
 import WorkflowStageModal from './entrypoints/WorkflowStageModal';
+import { iconByName } from './lib/icons';
 import {
   DEFAULT_ICON,
   parseStagePageId,
@@ -23,8 +24,9 @@ connect({
     return items.map(
       (item, index): ContentAreaSidebarItem => ({
         label: labels[index],
-        // Any Font Awesome 6 name; the host renders unknown ones as a cross.
-        icon: (item.icon ?? DEFAULT_ICON) as ContentAreaSidebarItem['icon'],
+        // The settings keep Font Awesome names: the host draws the Lucide
+        // glyph that means the same thing, or the default for an unknown name.
+        icon: iconByName(item.icon ?? DEFAULT_ICON)?.id ?? 'list-checks',
         placement: ['after', 'menuItems'],
         pointsTo: { pageId: item.id },
       }),

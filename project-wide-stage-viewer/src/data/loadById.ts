@@ -1,7 +1,5 @@
-import type { Client, RawApiTypes } from '@datocms/cma-client-browser';
+import type { Client } from '@datocms/cma-client-browser';
 import type { RawItem } from '../types';
-
-type RawUpload = RawApiTypes.Upload;
 
 /** Validates one page of an ID-filtered list and returns its total count. */
 export function itemsPageTotal(
@@ -124,17 +122,4 @@ export function loadItemsById(
     },
     signal,
   );
-}
-
-export function loadUploadsById(
-  client: Client,
-  ids: readonly string[],
-): Promise<RawUpload[]> {
-  return loadById(ids, async (batch, offset) => {
-    const response = await client.uploads.rawList({
-      filter: { ids: batch.join(',') },
-      page: { limit: batch.length, offset },
-    });
-    return response;
-  });
 }

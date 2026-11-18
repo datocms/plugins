@@ -41,7 +41,7 @@ export function ImportPluginNodeRenderer(props: NodeProps<PluginNode>) {
       )}
       status={
         unresolvedConflict ? (
-          <Pill tone="warning">Conflict</Pill>
+          <Pill tone="danger">Conflict</Pill>
         ) : strategy === 'reuseExisting' ? (
           <Pill>Uses installed</Pill>
         ) : strategy === 'skip' ? (

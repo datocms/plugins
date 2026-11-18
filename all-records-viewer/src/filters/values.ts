@@ -1,6 +1,6 @@
 import type { FilterInput, FilterValue } from './types';
 
-/** The control that edits the value of an operator */
+/** The editor of the value of an operator, in the filter builder */
 export type ValueKind =
   | 'boolean'
   | 'enum'
@@ -34,126 +34,28 @@ export function valueKind(input: FilterInput): ValueKind {
   }
 }
 
-/**
- * The value of a new tile: "true" for a yes/no operator ("is not null", "is
- * blank"), as the dashboard does, and nothing for the others
- */
-export function defaultValue(input: FilterInput): FilterValue | null {
-  return input.type === 'scalar' &&
-    input.inputType === 'boolean' &&
-    !input.array
-    ? true
-    : null;
+/** The parts of the point of a "near" filter, in the order of the tile */
+export const NEAR_PARTS = ['latitude', 'longitude', 'radius'] as const;
+
+type NearPart = (typeof NEAR_PARTS)[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
+function listOf(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : value === null ? [] : [value];
 }
 
-// A date and time of the CMA, as the value of a datetime-local input, in the
-// time zone of the browser
-function localDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function stringsOf(value: unknown): string[] {
+  return listOf(value).map((entry) => String(entry));
 }
 
-function scalarText(value: FilterValue, input: FilterInput): string {
-  if (input.type === 'scalar' && input.inputType === 'date_time') {
-    return typeof value === 'string' ? localDateTime(value) : '';
-  }
-  return typeof value === 'string' || typeof value === 'number'
-    ? String(value)
-    : '';
-}
-
-/** The text of a value in its input: a list is comma-separated */
-export function textOf(value: FilterValue | null, input: FilterInput): string {
-  if (value === null) return '';
-  if (valueKind(input) === 'matches') {
-    return typeof value === 'object' &&
-      !Array.isArray(value) &&
-      'pattern' in value
-      ? String(value.pattern)
-      : '';
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => scalarText(entry, input)).join(', ');
-  }
-  return scalarText(value as FilterValue, input);
-}
-
-function scalarValue(text: string, input: FilterInput): FilterValue | null {
-  const trimmed = text.trim();
-  if (!trimmed || input.type !== 'scalar') return null;
-  switch (input.inputType) {
-    case 'integer': {
-      const number = Number(trimmed);
-      return Number.isInteger(number) ? number : null;
-    }
-    case 'float': {
-      const number = Number(trimmed);
-      return Number.isFinite(number) ? number : null;
-    }
-    case 'date_time': {
-      const date = new Date(trimmed);
-      return Number.isNaN(date.getTime()) ? null : date.toISOString();
-    }
-    default:
-      return trimmed;
-  }
-}
-
-/** The value of the text of an input, or `null` while it is not complete */
-export function valueOfText(
-  text: string,
-  input: FilterInput,
-): FilterValue | null {
-  if (valueKind(input) === 'matches') {
-    const pattern = text.trim();
-    return pattern ? { pattern } : null;
-  }
-  if (input.array) {
-    const values: FilterValue[] = [];
-    for (const part of text.split(',')) {
-      const value = scalarValue(part, input);
-      if (value === null) {
-        if (part.trim()) return null;
-        continue;
-      }
-      values.push(value);
-    }
-    return values.length > 0 ? values : null;
-  }
-  return scalarValue(text, input);
-}
-
-/** The point of a "near" tile: latitude, longitude and radius in meters */
-export function nearValue(
-  latitude: string,
-  longitude: string,
-  radius: string,
-): FilterValue | null {
-  const numbers = [latitude, longitude, radius].map((text) =>
-    text.trim() ? Number(text) : Number.NaN,
-  );
-  if (numbers.some((number) => !Number.isFinite(number))) return null;
-  const [lat, lon, rad] = numbers;
-  return { latitude: lat, longitude: lon, radius: rad };
-}
-
-/** The keys of the creators of a creator tile ("user:123") */
-export function creatorKeys(value: FilterValue | null): string[] {
-  const entries = Array.isArray(value) ? value : value === null ? [] : [value];
+/** The keys of the creators of a creator filter ("user:123") */
+export function creatorKeys(value: unknown): string[] {
   const keys: string[] = [];
-  for (const entry of entries) {
-    if (
-      typeof entry === 'object' &&
-      entry !== null &&
-      !Array.isArray(entry) &&
-      'type' in entry &&
-      'id' in entry
-    ) {
+  for (const entry of listOf(value)) {
+    if (isRecord(entry) && 'type' in entry && 'id' in entry) {
       keys.push(`${String(entry.type)}:${String(entry.id)}`);
     }
   }
@@ -164,4 +66,153 @@ export function creatorKeys(value: FilterValue | null): string[] {
 export function creatorOfKey(key: string): FilterValue {
   const separator = key.indexOf(':');
   return { type: key.slice(0, separator), id: key.slice(separator + 1) };
+}
+
+function textValue(value: unknown): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed || null;
+}
+
+function nearPart(point: Record<string, unknown>, part: NearPart) {
+  const value = point[part];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+// One value, or a list of them with `array`; none is null
+function oneOrMany(
+  values: readonly FilterValue[],
+  multiple: boolean,
+): FilterValue | null {
+  if (values.length === 0) return null;
+  return multiple ? values : (values[0] ?? null);
+}
+
+function keysOf(value: unknown): string[] {
+  return listOf(value).filter(
+    (entry): entry is string => typeof entry === 'string' && entry !== '',
+  );
+}
+
+/**
+ * How the value of each kind of operator goes between the URL (and the CMA)
+ * and the editor of its tile
+ */
+type Codec = {
+  toEditor: (value: FilterValue | null, input: FilterInput) => unknown;
+  toFilter: (value: unknown, input: FilterInput) => FilterValue | null;
+};
+
+const CHOICE: Codec = {
+  toEditor: (value, input) =>
+    input.array ? stringsOf(value) : typeof value === 'string' ? value : null,
+  toFilter: (value, input) => oneOrMany(keysOf(value), Boolean(input.array)),
+};
+
+const DAY: Codec = {
+  toEditor: (value) => (typeof value === 'string' ? value : null),
+  toFilter: textValue,
+};
+
+const CODECS: Readonly<Record<ValueKind, Codec>> = {
+  // The yes/no select has the options "true" and "false"
+  boolean: {
+    toEditor: (value) => (typeof value === 'boolean' ? String(value) : null),
+    toFilter: (value) =>
+      value === 'true' ? true : value === 'false' ? false : null,
+  },
+  enum: CHOICE,
+  locale: CHOICE,
+  // The select of the creators picks their keys ("user:123")
+  creator: {
+    toEditor: (value, input) =>
+      input.array ? creatorKeys(value) : (creatorKeys(value)[0] ?? null),
+    toFilter: (value, input) =>
+      oneOrMany(keysOf(value).map(creatorOfKey), Boolean(input.array)),
+  },
+  // The tile edits the pattern
+  matches: {
+    toEditor: (value) =>
+      isRecord(value) && 'pattern' in value ? String(value.pattern) : '',
+    toFilter: (value) => {
+      const pattern = textValue(value);
+      return pattern ? { pattern } : null;
+    },
+  },
+  // One number for each part, complete or not
+  near: {
+    toEditor: (value) => {
+      const point = isRecord(value) ? value : {};
+      return Object.fromEntries(
+        NEAR_PARTS.map((part) => [part, nearPart(point, part)]),
+      );
+    },
+    toFilter: (value) => {
+      const point = isRecord(value) ? value : {};
+      const [latitude, longitude, radius] = NEAR_PARTS.map((part) =>
+        nearPart(point, part),
+      );
+      return latitude == null || longitude == null || radius == null
+        ? null
+        : { latitude, longitude, radius };
+    },
+  },
+  date: DAY,
+  // The picker gives the offset of the project: the CMA gets the instant in
+  // UTC, as before the picker
+  date_time: {
+    toEditor: DAY.toEditor,
+    toFilter: (value) => {
+      const text = textValue(value);
+      const date = text ? new Date(text) : null;
+      return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
+    },
+  },
+  number: {
+    toEditor: (value) => (typeof value === 'number' ? value : null),
+    toFilter: (value, input) => {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+      const integer = input.type === 'scalar' && input.inputType === 'integer';
+      return integer && !Number.isInteger(value) ? null : value;
+    },
+  },
+  // A text, or a list of texts that the user separates with commas
+  text: {
+    toEditor: (value, input) => {
+      if (input.array) return stringsOf(value);
+      return typeof value === 'string' || typeof value === 'number'
+        ? String(value)
+        : '';
+    },
+    toFilter: (value, input) => {
+      if (!input.array) return textValue(value);
+      const values = listOf(value)
+        .map(textValue)
+        .filter((entry): entry is string => entry !== null);
+      return values.length > 0 ? values : null;
+    },
+  },
+};
+
+/**
+ * The value of a filter in the URL and in the CMA, as the editor of its tile
+ * takes it: "true" in the yes/no select, a text, the keys of the creators, a
+ * point with one number for each part.
+ */
+export function editorValueOf(
+  value: FilterValue | null,
+  input: FilterInput,
+): unknown {
+  return CODECS[valueKind(input)].toEditor(value, input);
+}
+
+/**
+ * The value of a filter for the URL and the CMA, from the value of its
+ * editor, or `null` while it is not complete: the tile shows, and the list
+ * does not use it yet
+ */
+export function filterValueOf(
+  value: unknown,
+  input: FilterInput,
+): FilterValue | null {
+  return CODECS[valueKind(input)].toFilter(value, input);
 }

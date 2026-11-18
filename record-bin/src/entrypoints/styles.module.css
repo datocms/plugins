@@ -4,7 +4,8 @@
   margin-bottom: var(--form-field-gap);
 }
 
-/* The error details open under their button */
+/* The error details: under their button, or under the message of the
+   error modal */
 .snippet {
   margin-top: var(--spacing-s);
 }

@@ -15,21 +15,12 @@ import SelectCreatorModal from './SelectCreatorModal';
 
 const mocks = vi.hoisted(() => ({
   bulkChangeCreator: vi.fn(),
-  usersList: vi.fn(),
-  ssoUsersList: vi.fn(),
-  siteFind: vi.fn(),
+  loadUsers: vi.fn(),
+  loadSsoUsers: vi.fn(),
 }));
 
 vi.mock('../actions/bulkChangeCreator', () => ({
   bulkChangeCreator: mocks.bulkChangeCreator,
-}));
-
-vi.mock('../services/cmaClient', () => ({
-  makeClient: () => ({
-    users: { list: mocks.usersList },
-    ssoUsers: { list: mocks.ssoUsersList },
-    site: { find: mocks.siteFind },
-  }),
 }));
 
 // jsdom has no layout: the react-ui components only need these to exist
@@ -51,7 +42,20 @@ vi.stubGlobal('matchMedia', (media: string) => ({
 }));
 Element.prototype.scrollIntoView = () => {};
 
-function context(parameters: Record<string, unknown> = {}) {
+const OWNER = {
+  id: 'owner',
+  type: 'account',
+  attributes: {
+    first_name: 'Olivia',
+    last_name: 'Owner',
+    email: 'olivia@example.invalid',
+  },
+};
+
+function context(
+  parameters: Record<string, unknown> = {},
+  owner: unknown = OWNER,
+) {
   return {
     mode: 'renderModal',
     parameters,
@@ -63,6 +67,9 @@ function context(parameters: Record<string, unknown> = {}) {
     bodyPadding: [0, 0, 0, 0],
     ui: { locale: 'en' },
     site: { attributes: { internal_domain: null } },
+    owner,
+    loadUsers: mocks.loadUsers,
+    loadSsoUsers: mocks.loadSsoUsers,
     navigateTo: vi.fn(),
     notice: vi.fn(),
     alert: vi.fn(),
@@ -82,14 +89,13 @@ async function chooseOwner() {
   const combobox = screen.getByRole('combobox');
   expect(combobox).toHaveProperty('disabled', false);
   fireEvent.keyDown(combobox, { key: 'ArrowDown' });
-  fireEvent.click(screen.getByText('Project owner (personal account)'));
+  fireEvent.click(screen.getByText('Olivia Owner'));
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.usersList.mockResolvedValue([]);
-  mocks.ssoUsersList.mockResolvedValue([]);
-  mocks.siteFind.mockResolvedValue({ owner: { id: 'owner', type: 'account' } });
+  mocks.loadUsers.mockResolvedValue([]);
+  mocks.loadSsoUsers.mockResolvedValue([]);
 });
 
 afterEach(cleanup);
@@ -178,8 +184,29 @@ describe('SelectCreatorModal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({ bulkResult: result });
   });
 
+  it('lists the collaborators from the host with their name and email', async () => {
+    mocks.loadUsers.mockResolvedValue([
+      {
+        id: 'u1',
+        type: 'user',
+        attributes: { full_name: 'Mark Rossi', email: 'mark@example.invalid' },
+      },
+    ]);
+    const ctx = context({ itemCount: 1 });
+    render(<SelectCreatorModal ctx={ctx} />);
+    await act(async () => {});
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
+    expect(screen.getByText('mark@example.invalid')).toBeTruthy();
+    fireEvent.click(screen.getByText('Mark Rossi'));
+    fireEvent.click(screen.getByRole('button', { name: 'Change creator' }));
+    expect(ctx.resolve).toHaveBeenCalledWith({
+      userId: 'u1',
+      userType: 'user',
+    });
+  });
+
   it('allows available creators but warns when one creator endpoint fails', async () => {
-    mocks.ssoUsersList.mockRejectedValue({ response: { status: 403 } });
+    mocks.loadSsoUsers.mockRejectedValue({ response: { status: 403 } });
     const ctx = context({ itemCount: 2 });
     render(<SelectCreatorModal ctx={ctx} />);
     await chooseOwner();
@@ -221,10 +248,9 @@ describe('SelectCreatorModal', () => {
 
   it('offers only Cancel when no creator could be loaded', async () => {
     const forbidden = { response: { status: 403 } };
-    mocks.usersList.mockRejectedValue(forbidden);
-    mocks.ssoUsersList.mockRejectedValue(forbidden);
-    mocks.siteFind.mockRejectedValue(forbidden);
-    const ctx = context({ itemIds: Array(500).fill('record') });
+    mocks.loadUsers.mockRejectedValue(forbidden);
+    mocks.loadSsoUsers.mockRejectedValue(forbidden);
+    const ctx = context({ itemIds: Array(500).fill('record') }, null);
     render(<SelectCreatorModal ctx={ctx} />);
     await act(async () => {});
     expect(screen.getByText("Couldn't load the creators")).toBeTruthy();

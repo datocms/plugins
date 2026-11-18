@@ -52,7 +52,7 @@ async function scanModel(
     for await (const raw of readRecords(client, summary.id, signal)) {
       try {
         const extraction = extractLinks(
-          toRecordInput(raw, model, locales[0]),
+          toRecordInput(raw, model),
           schema,
           locales,
         );

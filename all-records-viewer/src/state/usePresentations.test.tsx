@@ -1,11 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ResolvedItemPresentationInfo } from 'datocms-plugin-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createPresentationResolver,
-  type ItemPresentation,
-} from '../presentation/resolver';
 import type { RawItem } from '../types';
-import { usePresentations } from './usePresentations';
+import { type LoadPresentations, usePresentations } from './usePresentations';
 
 function item(id: string): RawItem {
   return {
@@ -23,6 +20,21 @@ function item(id: string): RawItem {
   } as unknown as RawItem;
 }
 
+function presentationsOf(
+  items: readonly RawItem[],
+): ResolvedItemPresentationInfo[] {
+  return items.map((entry) => ({
+    id: entry.id,
+    title: `Title of ${entry.id}`,
+    image: null,
+    itemTypeId: 'model-1',
+    status: 'published',
+    currentVersionValid: true,
+    publishedVersionValid: true,
+    editPath: null,
+  }));
+}
+
 function deferred<T>() {
   let resolvePromise: (value: T) => void = () => undefined;
   const promise = new Promise<T>((resolve) => {
@@ -31,52 +43,43 @@ function deferred<T>() {
   return { promise, resolve: resolvePromise };
 }
 
+const loadAll: LoadPresentations = async (items) => presentationsOf(items);
+
 describe('usePresentations', () => {
-  it('aborts old pages and ignores their presentation results', async () => {
-    const first = deferred<ItemPresentation[]>();
-    const second = deferred<ItemPresentation[]>();
-    const base = createPresentationResolver({ locales: ['en'] });
-    const resolveMany = vi
-      .fn(base.resolveMany)
+  it('loads the page in one call and ignores the results of old pages', async () => {
+    const first = deferred<ResolvedItemPresentationInfo[]>();
+    const second = deferred<ResolvedItemPresentationInfo[]>();
+    const load = vi
+      .fn<LoadPresentations>()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
-    const resolver = { ...base, resolveMany };
     const firstItems = [item('first')];
-    const secondItems = [item('second')];
-    const { result, rerender, unmount } = renderHook(
-      ({ items }) => usePresentations(resolver, items),
+    const secondItems = [item('second'), item('third')];
+    const { result, rerender } = renderHook(
+      ({ items }) => usePresentations(load, items),
       { initialProps: { items: firstItems } },
     );
-    const firstSignal = resolveMany.mock.calls[0][1]?.signal;
 
     rerender({ items: secondItems });
-    expect(firstSignal?.aborted).toBe(true);
-    await act(async () => {
-      second.resolve(await base.resolveMany(secondItems));
-    });
-    expect([...result.current.byItemId.keys()]).toEqual(['second']);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenLastCalledWith(secondItems);
+    await act(async () => second.resolve(presentationsOf(secondItems)));
+    expect([...result.current.byItemId.keys()]).toEqual(['second', 'third']);
 
-    await act(async () => {
-      first.resolve(await base.resolveMany(firstItems));
-    });
-    expect([...result.current.byItemId.keys()]).toEqual(['second']);
-    const secondSignal = resolveMany.mock.calls[1][1]?.signal;
-    unmount();
-    expect(secondSignal?.aborted).toBe(true);
+    await act(async () => first.resolve(presentationsOf(firstItems)));
+    expect([...result.current.byItemId.keys()]).toEqual(['second', 'third']);
   });
 
   it('retains only the current page while the next presentation request loads', async () => {
-    const base = createPresentationResolver({ locales: ['en'] });
-    const pending = deferred<ItemPresentation[]>();
-    const resolveMany = vi
-      .fn(base.resolveMany)
-      .mockImplementationOnce(base.resolveMany)
+    const pending = deferred<ResolvedItemPresentationInfo[]>();
+    const load = vi
+      .fn<LoadPresentations>(loadAll)
+      .mockImplementationOnce(loadAll)
       .mockImplementationOnce(() => pending.promise);
-    const resolver = { ...base, resolveMany };
     const firstItems = [item('first'), item('shared')];
     const secondItems = [item('shared'), item('next')];
     const { result, rerender } = renderHook(
-      ({ items }) => usePresentations(resolver, items),
+      ({ items }) => usePresentations(load, items),
       { initialProps: { items: firstItems } },
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -85,30 +88,34 @@ describe('usePresentations', () => {
     rerender({ items: secondItems });
     expect(result.current.loading).toBe(true);
     expect([...result.current.byItemId.keys()]).toEqual(['shared']);
-    await act(async () => {
-      pending.resolve(await base.resolveMany(secondItems));
-    });
+    await act(async () => pending.resolve(presentationsOf(secondItems)));
     expect([...result.current.byItemId.keys()]).toEqual(['shared', 'next']);
   });
 
-  it('clears the page and cancels pending work when no records remain', async () => {
-    const base = createPresentationResolver({ locales: ['en'] });
-    const pending = deferred<ItemPresentation[]>();
-    const resolveMany = vi
-      .fn(base.resolveMany)
-      .mockReturnValue(pending.promise);
-    const resolver = { ...base, resolveMany };
+  it('leaves out the records that DatoCMS could not present', async () => {
+    const load = vi.fn<LoadPresentations>(async (items) => [
+      ...presentationsOf(items.slice(0, 1)),
+      null,
+    ]);
+    const items = [item('first'), item('gone')];
+    const { result } = renderHook(() => usePresentations(load, items));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect([...result.current.byItemId.keys()]).toEqual(['first']);
+  });
+
+  it('clears the page and ignores pending work when no records remain', async () => {
+    const pending = deferred<ResolvedItemPresentationInfo[]>();
+    const load = vi.fn<LoadPresentations>().mockReturnValue(pending.promise);
+    const firstItems = [item('first')];
     const { result, rerender } = renderHook(
-      ({ items }) => usePresentations(resolver, items),
-      { initialProps: { items: [item('first')] } },
+      ({ items }) => usePresentations(load, items),
+      { initialProps: { items: firstItems } },
     );
-    const signal = resolveMany.mock.calls[0][1]?.signal;
 
     rerender({ items: [] });
-    expect(signal?.aborted).toBe(true);
     expect(result.current.byItemId.size).toBe(0);
     expect(result.current.loading).toBe(false);
-    await act(async () => pending.resolve([]));
+    await act(async () => pending.resolve(presentationsOf(firstItems)));
     expect(result.current.byItemId.size).toBe(0);
   });
 });

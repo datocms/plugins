@@ -124,7 +124,9 @@ export function extractLinks(
   const warn = (message: string, context?: Context) => {
     const location = context
       ? [context.rootField.label, ...context.blockPath].join(' › ')
-      : record.title;
+      : record.id
+        ? `Record #${record.id}`
+        : 'This record';
     warnings.add(`${location}: ${message}`);
   };
 
@@ -135,7 +137,6 @@ export function extractLinks(
     occurrences.push({
       id: `${record.id ?? 'unsaved'}:${record.modelId}:${occurrences.length}`,
       recordId: record.id,
-      recordTitle: record.title,
       modelId: record.modelId,
       modelName: rootModel?.name ?? record.modelId,
       fieldPath,

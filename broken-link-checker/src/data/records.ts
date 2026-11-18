@@ -214,38 +214,10 @@ type RawRecordInput = {
   attributes: Record<string, unknown>;
 };
 
-function textValue(value: unknown): string | undefined {
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return undefined;
-}
-
 /** Accepts raw CMA records and the SDK's awaited formValuesToItem result. */
 export function toRecordInput(
   raw: RawRecordInput,
   model: ContentModel,
-  locale?: string,
 ): RecordInput {
-  const titleField = model.fields.find(
-    (field) => field.id === model.titleFieldId,
-  );
-  const rawTitle = titleField ? raw.attributes[titleField.apiKey] : undefined;
-  let title = textValue(rawTitle);
-  if (
-    titleField?.localized &&
-    rawTitle &&
-    typeof rawTitle === 'object' &&
-    !Array.isArray(rawTitle)
-  ) {
-    const titles = rawTitle as Record<string, unknown>;
-    title =
-      (locale ? textValue(titles[locale]) : undefined) ??
-      Object.values(titles).map(textValue).find(Boolean);
-  }
-  return {
-    id: raw.id,
-    modelId: model.id,
-    title: title ?? (raw.id ? `${model.name} ${raw.id}` : `New ${model.name}`),
-    values: raw.attributes,
-  };
+  return { id: raw.id, modelId: model.id, values: raw.attributes };
 }

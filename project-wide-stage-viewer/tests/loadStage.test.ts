@@ -1,14 +1,15 @@
 import { ApiError, type Client } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  loadPresentations,
   loadStage,
   mapWithConcurrency,
-  resolveLinkedTitles,
+  PRESENTATIONS_PER_CALL,
   STAGE_PAGE_SIZE,
   workflowModels,
 } from '../src/data/loadStage';
-import { buildModelPresentation, buildRow } from '../src/lib/records';
-import { buildField, buildItem, buildItemType } from './fixtures';
+import { buildRow } from '../src/lib/records';
+import { buildItem, buildItemType, presentationsOf } from './fixtures';
 
 const workflow = {
   id: 'wf1',
@@ -81,8 +82,7 @@ describe('loadStage', () => {
   const source = (client: Client) => ({
     client,
     itemTypes,
-    locales: ['en'],
-    loadItemTypeFields: async () => [buildField('f1', 'title')],
+    loadItemPresentationInfo: presentationsOf({ r1: 'First', r2: 'Second' }),
   });
 
   it('asks the API for each model’s records in the stage', async () => {
@@ -175,8 +175,7 @@ describe('loading a stage page by page', () => {
   const source = (client: Client) => ({
     client,
     itemTypes: { m1: itemTypes.m1 },
-    locales: ['en'],
-    loadItemTypeFields: async () => [buildField('f1', 'title')],
+    loadItemPresentationInfo: presentationsOf({}),
   });
   const many = Array.from({ length: STAGE_PAGE_SIZE * 2 + 5 }, (_, index) =>
     buildItem(`r${index}`, { title: `Record ${index}` }),
@@ -234,47 +233,53 @@ describe('mapWithConcurrency after a failure', () => {
   });
 });
 
-describe('resolveLinkedTitles', () => {
-  it('follows links to the linked record’s title, batching the reads', async () => {
-    const translation = buildItemType('tr', 'Translation', {
-      titleFieldId: 'f-of',
-    });
-    const article = buildItemType('ar', 'Article', { titleFieldId: 'f-title' });
-    const linkField = buildField('f-of', 'of', { type: 'link' });
-    const titleField = buildField('f-title', 'title');
-    const linked = buildItem('a1', { title: 'Original article' });
-    linked.relationships.item_type.data.id = 'ar';
-    const rawList = vi.fn(async ({ filter }: { filter: { ids: string } }) => {
-      const data = filter.ids.split(',').includes('a1') ? [linked] : [];
-      return { data, meta: { total_count: data.length } };
-    });
-    const presentation = buildModelPresentation(translation, [linkField]);
-    const rows = [
-      buildRow(buildItem('t1', { of: 'a1' }), presentation, {
-        locales: ['en'],
-      }),
-      buildRow(buildItem('t2', { of: 'gone' }), presentation, {
-        locales: ['en'],
-      }),
-    ];
+describe('loadPresentations', () => {
+  const article = buildItemType('m1', 'Article');
+  const rows = Array.from({ length: PRESENTATIONS_PER_CALL + 1 }, (_, i) =>
+    buildRow(buildItem(`r${i}`, {}), article),
+  );
 
-    await resolveLinkedTitles(
-      {
-        client: { items: { rawList } } as unknown as Client,
-        itemTypes: { tr: translation, ar: article },
-        locales: ['en'],
-        loadItemTypeFields: async (id) =>
-          id === 'ar' ? [titleField] : [linkField],
-      },
+  it('asks the host for the presentation of every row, in batches', async () => {
+    const load = presentationsOf({ r0: 'First', r200: 'Last' });
+    const presented = await loadPresentations(
+      { client: {} as Client, itemTypes: {}, loadItemPresentationInfo: load },
       rows,
       new AbortController().signal,
     );
 
-    expect(rows.map(({ title }) => title)).toEqual([
-      'Original article',
-      'Record t2',
-    ]);
-    expect(rawList).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load.mock.calls[1][0]).toEqual(['r200']);
+    expect(presented[0].title).toBe('First');
+    expect(presented[0].presentation).toMatchObject({ title: 'First' });
+    expect(presented[200].title).toBe('Last');
+  });
+
+  it('keeps "Record #ID" for a record the host does not present', async () => {
+    const load = vi.fn(async (ids: string[]) => ids.map(() => null));
+    const presented = await loadPresentations(
+      { client: {} as Client, itemTypes: {}, loadItemPresentationInfo: load },
+      rows.slice(0, 1),
+      new AbortController().signal,
+    );
+    expect(presented[0].title).toBe('Record #r0');
+  });
+
+  it('keeps "Record #ID" when the host fails', async () => {
+    const { client } = fakeClient({
+      items: { m1: [buildItem('r1', {})] },
+    });
+    const data = await loadStage(
+      {
+        client,
+        itemTypes: { m1: itemTypes.m1 },
+        loadItemPresentationInfo: vi.fn(async () => {
+          throw new Error('Host unavailable');
+        }),
+      },
+      { workflowId: 'wf1', stageId: 'review' },
+      new AbortController().signal,
+    );
+    expect(data.rows.map(({ title }) => title)).toEqual(['Record #r1']);
   });
 });
 
@@ -286,8 +291,7 @@ describe('loading robustness', () => {
   const sourceFor = (client: Client) => ({
     client,
     itemTypes: twoModels,
-    locales: ['en'],
-    loadItemTypeFields: async () => [buildField('f1', 'title')],
+    loadItemPresentationInfo: presentationsOf({}),
   });
 
   it('stops the other models once one fails', async () => {

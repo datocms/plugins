@@ -1,19 +1,14 @@
-import Avatar from 'datocms-react-ui/Avatar';
 import Callout from 'datocms-react-ui/Callout';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import IconAvatar, { type IconAvatarProps } from 'datocms-react-ui/IconAvatar';
-import IdText from 'datocms-react-ui/IdText';
 import Pill from 'datocms-react-ui/Pill';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import RowList from 'datocms-react-ui/RowList';
 import Spinner from 'datocms-react-ui/Spinner';
+import UploadPreview from 'datocms-react-ui/UploadPreview';
+import UserRow from 'datocms-react-ui/UserRow';
 import { type ReactNode, useId, useState } from 'react';
-import {
-  AssetIcon,
-  FieldIcon,
-  FileIcon,
-  ModelIcon,
-  RecordIcon,
-} from '../../icons';
+import { FieldIcon, FileIcon, ModelIcon } from '../../icons';
 import type { AgentMentionHost } from '../../lib/mentionHost';
 import type { Mention } from '../../lib/mentions';
 import { extractLeadingEmoji } from '../../recordComments/entrypoints/utils/emojiUtils';
@@ -22,7 +17,6 @@ import type {
   AgentAssetsEntry,
   AgentFieldsEntry,
   AgentMentionsEntry,
-  AgentRecordResultViewModel,
   AgentRecordsEntry,
   AgentSurfaceProps,
 } from '../AgentSurface';
@@ -34,10 +28,6 @@ function ignoreHostActionFailure(result: void | Promise<void>) {
   void Promise.resolve(result).catch(() => undefined);
 }
 
-function isVisualMimeType(mimeType: string) {
-  return mimeType.startsWith('image/') || mimeType.startsWith('video/');
-}
-
 /** The spinner at the end of the row whose dialog is opening */
 const openingSpinner = <Spinner inline label={false} />;
 
@@ -46,33 +36,15 @@ type RowIcon = IconAvatarProps['icon'];
 /** The side of the picture slot of an entity row (layout="row") */
 const ROW_IMAGE_SIZE = 32;
 
+/** The preview of an asset in the picture slot of a row */
+const ROW_PREVIEW_BOX = { width: ROW_IMAGE_SIZE, height: ROW_IMAGE_SIZE };
+const ROW_PREVIEW_PADDING: [number, number] = [0, 0];
+
 /**
- * The picture of a row: a thumbnail, else an emoji, else the icon of the
- * kind of thing on an icon avatar. A thumbnail that does not load shows the
- * icon.
+ * The picture of a row of an entity that is not a record, a person or an
+ * asset: an emoji, else the icon of the kind of thing on an icon avatar
  */
-function RowPicture({
-  emoji,
-  icon,
-  src,
-}: {
-  emoji?: string | null;
-  icon: RowIcon;
-  src?: string | null;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if (src && !failed) {
-    return (
-      <img
-        alt=""
-        className={styles.rowThumbnail}
-        onError={() => setFailed(true)}
-        src={src}
-      />
-    );
-  }
-
+function RowPicture({ emoji, icon }: { emoji?: string | null; icon: RowIcon }) {
   if (emoji) {
     return (
       <span aria-hidden="true" className={styles.rowEmoji}>
@@ -84,13 +56,28 @@ function RowPicture({
   return <IconAvatar icon={icon} size={ROW_IMAGE_SIZE} surface="muted" />;
 }
 
+/**
+ * An asset of the Media Area in the picture slot of a row, as the Media Area
+ * draws it. The host loads the asset from its ID; a deleted asset has none.
+ */
+function assetPicture(uploadId: string | null) {
+  return (
+    <UploadPreview
+      box={ROW_PREVIEW_BOX}
+      padding={ROW_PREVIEW_PADDING}
+      transparent
+      upload={uploadId}
+    />
+  );
+}
+
 /** The language of a locale, as the editor knows it ("English") */
 function language(locale: string | undefined) {
   return locale ? formatLocale(locale) : undefined;
 }
 
-function picture(icon: RowIcon, src?: string | null, emoji?: string | null) {
-  return <RowPicture emoji={emoji} icon={icon} key={src ?? ''} src={src} />;
+function picture(icon: RowIcon, emoji?: string | null) {
+  return <RowPicture emoji={emoji} icon={icon} />;
 }
 
 /**
@@ -104,10 +91,13 @@ function Receipt({
   error,
   fallbackLabel,
   hasRows,
+  records,
   title,
 }: {
   busy?: boolean;
   children: ReactNode;
+  /** The rows are records: their titles line up, with or without an image */
+  records?: boolean;
   error?: string;
   /** The name of the group when the agent gave no title */
   fallbackLabel: string;
@@ -131,7 +121,13 @@ function Receipt({
       )}
       {hasRows && (
         <div className={styles.receiptRows}>
-          <RowList>{children}</RowList>
+          {records ? (
+            <RecordRow.List>
+              <RowList>{children}</RowList>
+            </RecordRow.List>
+          ) : (
+            <RowList>{children}</RowList>
+          )}
         </div>
       )}
       {error && (
@@ -143,42 +139,17 @@ function Receipt({
   );
 }
 
-type RecordRowContent = {
-  image: ReactNode;
-  kicker?: string;
-  title: string;
-  /** The ID of a record without a title, which tells it from the others */
-  details?: ReactNode;
-};
-
-function recordRowContent(
-  record: Pick<AgentRecordResultViewModel, 'itemId' | 'title' | 'mention'>,
-  modelName: string | undefined,
-): RecordRowContent {
-  const trimmedTitle = record.title.trim();
-  // The fallback title of the lib is the ID behind a "#": the row says the
-  // record has no title and shows the ID as an ID
-  const untitled = !trimmedTitle || trimmedTitle === `Record #${record.itemId}`;
-  const rawTitle = untitled ? 'Untitled record' : trimmedTitle;
-  const { emoji, textWithoutEmoji } = extractLeadingEmoji(rawTitle);
-  const mention = record.mention;
-  // The emoji of the model is a picture, as in the titles: the kicker is
-  // its bare name
-  const model = modelName ? extractLeadingEmoji(modelName) : undefined;
-
-  return {
-    image: picture(
-      RecordIcon,
-      mention?.thumbnailUrl,
-      emoji ||
-        mention?.modelEmoji ||
-        model?.emoji ||
-        (mention?.isSingleton ? '📄' : undefined),
-    ),
-    kicker: (model?.emoji && model.textWithoutEmoji.trim()) || modelName,
-    title: (emoji && textWithoutEmoji.trim()) || rawTitle,
-    details: untitled ? <IdText id={record.itemId} /> : undefined,
-  };
+/**
+ * A record as DatoCMS lists it: its image, its model, its title and its
+ * status, which the row loads from the host by the ID of the record. The
+ * record open next to the agent says so below its title.
+ */
+function recordRow(itemId: string, isCurrent: boolean) {
+  return (
+    <RecordRow item={itemId} layout="row">
+      {isCurrent ? 'Current record' : undefined}
+    </RecordRow>
+  );
 }
 
 /**
@@ -190,20 +161,15 @@ export function RecordsEntry({
   currentRecordId,
   entry,
   locked,
-  mentionHost,
   onOpenRecord,
 }: {
   currentRecordId?: string;
   entry: AgentRecordsEntry;
   /** A host action runs, or a record of this receipt opens */
   locked: boolean;
-  mentionHost: AgentMentionHost;
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
 }) {
   const [openedKey, setOpenedKey] = useState<string>();
-  const modelsById = new Map(
-    mentionHost.projectModels.map((model) => [model.id, model]),
-  );
 
   return (
     <Receipt
@@ -211,31 +177,17 @@ export function RecordsEntry({
       error={entry.error}
       fallbackLabel="Records"
       hasRows={entry.records.length > 0}
+      records
       title={entry.title}
     >
       {entry.records.map((record) => {
         const key = `${record.itemTypeId ?? 'record'}:${record.itemId}`;
-        const model = record.itemTypeId
-          ? modelsById.get(record.itemTypeId)
-          : undefined;
-        const content = recordRowContent(
-          record,
-          record.mention?.modelName ?? model?.name ?? record.modelLabel,
-        );
         const isCurrent = record.itemId === currentRecordId;
         const row = (
-          <EntityRow
-            aside={isCurrent ? 'Current record' : undefined}
-            image={content.image}
-            kicker={content.kicker}
-            layout="row"
-            title={content.title}
-            trailing={
-              entry.opening && openedKey === key ? openingSpinner : undefined
-            }
-          >
-            {content.details}
-          </EntityRow>
+          <>
+            {recordRow(record.itemId, isCurrent)}
+            {entry.opening && openedKey === key && openingSpinner}
+          </>
         );
 
         if (isCurrent) {
@@ -347,14 +299,10 @@ export function AssetsEntry({
     >
       {entry.assets.map((asset) => {
         const mention = asset.mention;
-        const thumbnailUrl =
-          mention?.thumbnailUrl && isVisualMimeType(mention.mimeType)
-            ? mention.thumbnailUrl
-            : null;
         const row = (
           <EntityRow
             afterTitle={asset.deleted ? <Pill>Deleted</Pill> : undefined}
-            image={picture(AssetIcon, asset.deleted ? null : thumbnailUrl)}
+            image={assetPicture(asset.deleted ? null : asset.uploadId)}
             layout="row"
             title={asset.title.trim() || mention?.filename || asset.uploadId}
             trailing={
@@ -402,21 +350,16 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
   switch (mention.type) {
     case 'user':
       return (
-        <EntityRow
-          image={
-            <span className={styles.rowAvatar}>
-              <Avatar
-                email={mention.email || null}
-                imageUrl={mention.avatarUrl}
-                name={mention.name}
-              />
-            </span>
-          }
+        <UserRow
           layout="row"
-          title={mention.name}
+          presentation={{
+            name: mention.name,
+            email: mention.email || null,
+            imageUrl: mention.avatarUrl,
+          }}
         >
           {isOwner ? 'Project owner' : mention.email || 'Organization'}
-        </EntityRow>
+        </UserRow>
       );
 
     case 'model': {
@@ -425,7 +368,7 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
       return (
         <EntityRow
           afterTitle={mention.isBlockModel && <Pill>Block</Pill>}
-          image={picture(ModelIcon, null, emoji)}
+          image={picture(ModelIcon, emoji)}
           layout="row"
           title={(emoji && textWithoutEmoji.trim()) || mention.name}
         />
@@ -443,24 +386,8 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
         </EntityRow>
       );
 
-    case 'record': {
-      const content = recordRowContent(
-        { itemId: mention.id, title: mention.title, mention },
-        mention.modelName,
-      );
-
-      return (
-        <EntityRow
-          aside={isCurrentRecord ? 'Current record' : undefined}
-          image={content.image}
-          kicker={content.kicker}
-          layout="row"
-          title={content.title}
-        >
-          {content.details}
-        </EntityRow>
-      );
-    }
+    case 'record':
+      return recordRow(mention.id, isCurrentRecord);
 
     case 'field':
       return (
@@ -475,10 +402,7 @@ function MentionRow({ mention, isOwner, isCurrentRecord }: MentionRowProps) {
     case 'asset':
       return (
         <EntityRow
-          image={picture(
-            AssetIcon,
-            isVisualMimeType(mention.mimeType) ? mention.thumbnailUrl : null,
-          )}
+          image={assetPicture(mention.id)}
           layout="row"
           title={mention.filename}
         />

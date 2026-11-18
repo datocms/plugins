@@ -7,13 +7,16 @@ import {
   formatLocale,
   getTruncatedFilename,
 } from '@utils/mentionFormatters';
-import Avatar from 'datocms-react-ui/Avatar';
 import MediaCard from 'datocms-react-ui/MediaCard';
 import Pill from 'datocms-react-ui/Pill';
 import RawButton from 'datocms-react-ui/RawButton';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import Tooltip from 'datocms-react-ui/Tooltip';
+import UploadCard from 'datocms-react-ui/UploadCard';
+import UploadPreview from 'datocms-react-ui/UploadPreview';
+import UserRow from 'datocms-react-ui/UserRow';
 import { memo, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { AssetIcon, FileIcon, ModelIcon, RecordIcon } from '../../../../icons';
+import { FileIcon, ModelIcon } from '../../../../icons';
 import { getSessionLocalFile } from '../../../../lib/localFiles';
 import styles from './MentionDisplay.module.css';
 
@@ -41,6 +44,11 @@ type ClickHandler = (e: React.MouseEvent) => void;
 type ReferenceView = {
   icon?: ReactNode;
   text: string;
+  /**
+   * The content of the pill in place of the text: a person or a record as
+   * the kit draws it in a text (a UserRow, a RecordRow)
+   */
+  content?: ReactNode;
   /** The hint of the tooltip */
   hint?: string;
   /** The reference never opens, whatever the caller allows */
@@ -60,7 +68,10 @@ function isVisualMimeType(mimeType: string) {
   return mimeType.startsWith('image/') || mimeType.startsWith('video/');
 }
 
-/** A thumbnail in a pill. When the image does not load, it shows the glyph. */
+/**
+ * A thumbnail of a file from the computer in a pill. When the image does not
+ * load, it shows the glyph.
+ */
 function PillThumbnail({
   fallback,
   src,
@@ -88,7 +99,8 @@ function ReferencePill({
   onClick,
   view,
 }: ReferenceProps & { view: ReferenceView }) {
-  const { hint, icon, text } = view;
+  const { hint, icon } = view;
+  const text = view.content ?? view.text;
   const opens = canOpen && !view.inert;
 
   // In the editor, a reference opens on click but is not a tab stop: a
@@ -126,7 +138,7 @@ function ReferencePill({
   );
 }
 
-/** A visual asset or image file in a message: a compact card */
+/** An image file from the computer in a message: a compact card */
 function PreviewCard({
   canOpen,
   filename,
@@ -212,24 +224,67 @@ function FileLikeReference({
   );
 }
 
+/** The preview of an asset in a pill, as the Media Area draws it */
+const ASSET_PILL_PREVIEW_BOX = { width: 16, height: 16 };
+const ASSET_PILL_PREVIEW_PADDING: [number, number] = [1, 1];
+
+/** The preview of the card of an asset in a message */
+const ASSET_CARD_PREVIEW_BOX = { width: 160, height: 120 };
+
+/**
+ * An asset of the Media Area: a compact card in a message for an image or a
+ * video, else a pill with the filename. The host loads the asset from its
+ * ID, and the card and the pill draw it as the Media Area does.
+ */
 function AssetReference({
   mention,
   ...props
 }: ReferenceProps & {
   mention: Extract<Mention, { type: 'asset' }>;
 }) {
-  const previewUrl =
-    mention.thumbnailUrl && isVisualMimeType(mention.mimeType)
-      ? mention.thumbnailUrl
-      : null;
+  if (props.previewCard && isVisualMimeType(mention.mimeType)) {
+    const caption = { text: mention.filename };
+
+    return (
+      <div className={styles.preview}>
+        {props.canOpen ? (
+          <UploadCard
+            box={ASSET_CARD_PREVIEW_BOX}
+            caption={caption}
+            compact
+            onClick={props.onClick}
+            upload={mention.id}
+          />
+        ) : (
+          <UploadCard
+            box={ASSET_CARD_PREVIEW_BOX}
+            caption={caption}
+            compact
+            upload={mention.id}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const text = getTruncatedFilename(mention.filename);
 
   return (
-    <FileLikeReference
+    <ReferencePill
       {...props}
-      filename={mention.filename}
-      icon={<AssetIcon />}
-      key={previewUrl ?? ''}
-      previewUrl={previewUrl}
+      view={{
+        icon: (
+          <UploadPreview
+            box={ASSET_PILL_PREVIEW_BOX}
+            padding={ASSET_PILL_PREVIEW_PADDING}
+            transparent
+            upload={mention.id}
+          />
+        ),
+        text,
+        // The full name, when the pill cuts it
+        hint: text === mention.filename ? undefined : mention.filename,
+      }}
     />
   );
 }
@@ -276,16 +331,16 @@ function userView(
   isProjectOwner: boolean,
 ): ReferenceView {
   return {
-    // The box keeps the avatar square when a long name fills the pill
-    icon: (
-      <span className={styles.avatar}>
-        <Avatar
-          email={mention.email || null}
-          imageUrl={mention.avatarUrl}
-          name={resolvedName}
-          size="small"
-        />
-      </span>
+    // The person as the kit draws it in a text: the avatar and the name
+    content: (
+      <UserRow
+        layout="inline"
+        presentation={{
+          name: resolvedName,
+          email: mention.email || null,
+          imageUrl: mention.avatarUrl,
+        }}
+      />
     ),
     text: `@${resolvedName}`,
     hint: isProjectOwner ? 'Project owner' : mention.email || 'Organization',
@@ -315,26 +370,6 @@ function emojiIcon(emoji: string) {
   );
 }
 
-/** The thumbnail, else the emoji of the title or of the model, else the glyph */
-function recordIcon(
-  mention: Extract<Mention, { type: 'record' }>,
-  titleEmoji: string | null,
-): ReactNode {
-  if (mention.thumbnailUrl) {
-    return (
-      <PillThumbnail
-        fallback={<RecordIcon />}
-        key={mention.thumbnailUrl}
-        src={mention.thumbnailUrl}
-      />
-    );
-  }
-
-  const emoji =
-    titleEmoji || mention.modelEmoji || (mention.isSingleton ? '📄' : null);
-  return emoji ? emojiIcon(emoji) : <RecordIcon />;
-}
-
 function recordHint(
   mention: Extract<Mention, { type: 'record' }>,
   isCurrentRecord: boolean,
@@ -344,17 +379,17 @@ function recordHint(
   return mention.modelName;
 }
 
+/**
+ * A record as DatoCMS shows it in a text: its image, its title and its
+ * status, which the row loads from the host by the ID of the record
+ */
 function recordView(
   mention: Extract<Mention, { type: 'record' }>,
   isCurrentRecord: boolean,
 ): ReferenceView {
-  const { emoji: titleEmoji, textWithoutEmoji } = extractLeadingEmoji(
-    mention.title,
-  );
-
   return {
-    icon: recordIcon(mention, titleEmoji),
-    text: titleEmoji ? textWithoutEmoji : mention.title,
+    content: <RecordRow item={mention.id} layout="inline" />,
+    text: mention.title,
     hint: recordHint(mention, isCurrentRecord),
     inert: isCurrentRecord,
   };

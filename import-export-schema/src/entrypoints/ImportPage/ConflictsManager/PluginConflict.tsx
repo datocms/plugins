@@ -47,7 +47,7 @@ function statusPill(
   inConflictsView: boolean,
 ) {
   if (unresolved) {
-    return inConflictsView ? null : <Pill tone="warning">Conflict</Pill>;
+    return inConflictsView ? null : <Pill tone="danger">Conflict</Pill>;
   }
   if (strategy === 'reuseExisting') {
     return <Pill>Uses installed</Pill>;

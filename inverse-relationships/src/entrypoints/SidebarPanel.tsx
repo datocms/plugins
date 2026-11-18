@@ -6,7 +6,7 @@ import {
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Canvas from 'datocms-react-ui/Canvas';
-import EntityRow from 'datocms-react-ui/EntityRow';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import RowList from 'datocms-react-ui/RowList';
 import SidebarPanel from 'datocms-react-ui/SidebarPanel';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,55 +24,7 @@ type Props = {
   ctx: RenderItemFormSidebarPanelCtx;
 };
 
-type Row = { id: string; label: string };
-
-function resolveLabelFromLocalizedValue(
-  value: Record<string, string | null | undefined>,
-  locales: string[],
-): string | undefined {
-  const matchingLocale = locales.find((locale) => value[locale]);
-  if (matchingLocale) {
-    const localeValue = value[matchingLocale];
-    if (typeof localeValue === 'string' && localeValue.trim().length > 0) {
-      return localeValue;
-    }
-  }
-  return undefined;
-}
-
-function resolveLabelFromTitleField(
-  item: { attributes: Record<string, unknown> },
-  titleField: SchemaTypes.Field,
-  locales: string[],
-): string | undefined {
-  const value = item.attributes[titleField.attributes.api_key];
-
-  if (titleField.attributes.localized && value && typeof value === 'object') {
-    const localized = value as Record<string, string | null | undefined>;
-    return resolveLabelFromLocalizedValue(localized, locales);
-  }
-
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value;
-  }
-
-  return undefined;
-}
-
-function mapItemToRow(
-  item: { id: string; attributes: Record<string, unknown> },
-  titleField: SchemaTypes.Field | undefined,
-  locales: string[],
-): Row {
-  const fallbackLabel = `Record#${item.id}`;
-
-  if (!titleField) {
-    return { id: item.id, label: fallbackLabel };
-  }
-
-  const resolvedLabel = resolveLabelFromTitleField(item, titleField, locales);
-  return { id: item.id, label: resolvedLabel ?? fallbackLabel };
-}
+type Row = Awaited<ReturnType<Client['items']['rawList']>>['data'][number];
 
 function findLinkField(
   fields: SchemaTypes.Field[],
@@ -103,8 +55,6 @@ type FetchRowsParams = {
   currentItemId: string;
   itemTypes: SchemaTypes.ItemType[];
   fields: SchemaTypes.Field[];
-  ctxFields: RenderItemFormSidebarPanelCtx['fields'];
-  locales: string[];
   itemTypeApiKey: string;
   fieldApiKey: string;
   orderBy: string | undefined;
@@ -116,8 +66,6 @@ async function fetchInverseRelationshipRows({
   currentItemId,
   itemTypes,
   fields,
-  ctxFields,
-  locales,
   itemTypeApiKey,
   fieldApiKey,
   orderBy,
@@ -153,10 +101,7 @@ async function fetchInverseRelationshipRows({
     },
   });
 
-  const titleFieldId = linkItemType.relationships.title_field.data?.id;
-  const titleField = titleFieldId ? ctxFields[titleFieldId] : undefined;
-
-  return response.data.map((item) => mapItemToRow(item, titleField, locales));
+  return response.data;
 }
 
 export default function InverseRelationshipsPanel({ ctx }: Props) {
@@ -209,8 +154,6 @@ export default function InverseRelationshipsPanel({ ctx }: Props) {
           currentItemId: ctx.item.id,
           itemTypes,
           fields,
-          ctxFields: ctx.fields,
-          locales: ctx.site.attributes.locales,
           itemTypeApiKey: params.itemTypeApiKey,
           fieldApiKey: params.fieldApiKey,
           orderBy: params.orderBy,
@@ -235,7 +178,6 @@ export default function InverseRelationshipsPanel({ ctx }: Props) {
     ctx.fields,
     ctx.item?.id,
     ctx.itemTypes,
-    ctx.site.attributes.locales,
     params.fieldApiKey,
     params.itemTypeApiKey,
     params.limit,
@@ -269,16 +211,18 @@ export default function InverseRelationshipsPanel({ ctx }: Props) {
         <SidebarPanel.Blank message="No records link to this record" />
       ) : (
         model && (
-          <RowList density="compact">
-            {rows.map((row) => (
-              <RowList.Item
-                key={row.id}
-                to={`${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`}
-              >
-                <EntityRow layout="row" title={row.label} />
-              </RowList.Item>
-            ))}
-          </RowList>
+          <RecordRow.List showModel={false}>
+            <RowList density="compact">
+              {rows.map((row) => (
+                <RowList.Item
+                  key={row.id}
+                  to={`${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`}
+                >
+                  <RecordRow layout="row" item={row} />
+                </RowList.Item>
+              ))}
+            </RowList>
+          </RecordRow.List>
         )
       )}
     </Canvas>

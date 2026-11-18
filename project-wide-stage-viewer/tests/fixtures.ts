@@ -183,11 +183,41 @@ function baseCtx(
   };
 }
 
+type PresentationInfo = Awaited<
+  ReturnType<RenderPageCtx['loadItemPresentationInfo']>
+>[number];
+
+/**
+ * `ctx.loadItemPresentationInfo` for the records whose titles are given, as
+ * models `m1`; the host knows no other record.
+ */
+export function presentationsOf(titles: Record<string, string>) {
+  return vi.fn(
+    async (ids: string[]): Promise<PresentationInfo[]> =>
+      ids.map((id) =>
+        id in titles
+          ? {
+              id,
+              title: titles[id],
+              image: null,
+              itemTypeId: 'm1',
+              status: 'published',
+              currentVersionValid: true,
+              publishedVersionValid: true,
+              editPath: null,
+            }
+          : null,
+      ),
+  );
+}
+
 export function buildPageCtx(
   options: {
     parameters?: Record<string, unknown>;
     itemTypes?: ItemType[];
     fields?: Record<string, Field[]>;
+    /** How the host presents the records; by default it knows none. */
+    loadItemPresentationInfo?: (ids: string[]) => Promise<PresentationInfo[]>;
     canEditSchema?: boolean;
     environment?: string;
     permissions?: { positive?: PermissionRule[]; negative?: PermissionRule[] };
@@ -210,6 +240,9 @@ export function buildPageCtx(
     itemTypes,
     loadItemTypeFields: vi.fn(
       async (itemTypeId: string) => options.fields?.[itemTypeId] ?? [],
+    ),
+    loadItemPresentationInfo: vi.fn(
+      options.loadItemPresentationInfo ?? presentationsOf({}),
     ),
     location: { pathname: '/', search: '', hash: '' },
   } as unknown as RenderPageCtx;

@@ -139,7 +139,6 @@ describe('a run pass', () => {
       'page:p1',
     ]);
     const a1 = recordByKey(done, 'article:a1');
-    expect(a1.title).toBe('Globex launches a widget');
     expect(a1.selectable).toBe(false);
     expect(a1.fields[0]?.matches[0]?.display).toEqual({
       kind: 'final',
@@ -446,7 +445,6 @@ describe('a run pass', () => {
     expect(updatedIds(harness)).toEqual([]);
     expect(recordByKey(retried, 'article:a2')).toMatchObject({
       status: { kind: 'replaced', replacedMatches: 1 },
-      title: 'Brand guidelines',
     });
     expect(retried.callouts).toEqual([]);
     expect(retried.meta).toMatchObject({
@@ -597,7 +595,6 @@ describe('RunSession', () => {
         outcomes[record.key]?.shift() ?? {
           status: 'replaced',
           replacedMatches: record.inserted.size,
-          freshTitle: null,
           publication: { statusBefore: 'published', versionAfter: 'v2' },
         },
       unloadTarget: null,

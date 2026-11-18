@@ -1,11 +1,6 @@
 /* The contents of the cells. The table draws the rows, the lines and the
    space; these classes only lay out the text inside a cell. */
 
-.title {
-  font-weight: var(--font-weight-strong);
-  overflow-wrap: anywhere;
-}
-
 .subtle {
   color: var(--color--ink-subtle);
 }
@@ -22,8 +17,9 @@
   overflow-wrap: anywhere;
 }
 
-/* The one cell of a narrow frame: the lines of a record (title, model and
-   count, status) or of a match (place, snippet), one under the other. */
+/* The one cell of a narrow frame: the lines of a record (the record with
+   its count, then its status) or of a match (place, snippet), one under the
+   other. */
 .stack {
   display: flex;
   flex-direction: column;

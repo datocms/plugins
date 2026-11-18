@@ -8,7 +8,6 @@ import { PlaceLabel } from './PlaceLabel';
 const occurrence: LinkOccurrence = {
   id: 'occurrence-1',
   recordId: 'record-1',
-  recordTitle: 'Pricing',
   modelId: 'page',
   modelName: 'Page',
   fieldPath: 'sections.it.0.url',

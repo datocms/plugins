@@ -27,6 +27,11 @@ export type MentionOptionView = {
   afterTitle?: ReactNode;
   /** A second line in the subtle ink: an email, a description */
   details?: ReactNode;
+  /**
+   * The whole content of the option in place of the entity row: a person
+   * as the kit draws it (a UserRow)
+   */
+  content?: ReactNode;
 };
 
 type MentionDropdownBaseProps<T> = {
@@ -177,12 +182,14 @@ export function MentionDropdownBase<T>({
                         role="menuitem"
                         selected={isSelected}
                       >
-                        <MentionDropdownOptionContent
-                          afterTitle={view.afterTitle}
-                          details={view.details}
-                          image={view.image}
-                          title={view.title}
-                        />
+                        {view.content ?? (
+                          <MentionDropdownOptionContent
+                            afterTitle={view.afterTitle}
+                            details={view.details}
+                            image={view.image}
+                            title={view.title}
+                          />
+                        )}
                       </MenuItem>
                     );
                   })}

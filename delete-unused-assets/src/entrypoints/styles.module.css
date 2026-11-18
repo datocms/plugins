@@ -1,21 +1,7 @@
-/* The review list is a Pane, which fills a positioned box with a height. The
-   box is a card (the box of the cards in the Color tokens docs) around the
-   whole list. */
-.review {
-  position: relative;
-  height: 560px;
-  overflow: hidden;
-  background-color: var(--color--surface-raised);
-  border: 1px solid var(--color--border);
-  border-radius: var(--radius-s);
-  box-shadow: var(--shadow--resting);
-}
-
-/* The Pane draws its own line on its right edge: the box of the pane goes
-   1px past the card's right edge, so the card's border is the only frame. */
-.reviewPane {
+/* The positioned box that the pane of the page fills: the whole frame */
+.page {
   position: absolute;
-  inset: 0 -1px 0 0;
+  inset: 0;
 }
 
 /* The room under the table for the selection bar: its height (a 32px
@@ -55,10 +41,4 @@
   margin: 0;
   color: var(--color--ink-subtle);
   font-variant-numeric: tabular-nums;
-}
-
-/* The screen ends with this section: the host spaces its own sections below
-   the frame, so the section keeps no margin of its own. */
-.endSection {
-  margin-bottom: 0;
 }

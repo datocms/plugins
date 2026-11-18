@@ -1,46 +1,26 @@
 /**
  * icons.tsx
  * ---------
- * The plugin's glyphs, as components for the kit's `icon` props (a component
- * that renders an `svg` and takes its props) and as elements (`<LanguageIcon />`
- * in a BlankSlate). They wrap Font Awesome glyphs of react-icons, the icon
- * source the plugin already uses for the vendor logos; the components that
- * show them set their size.
+ * The plugin's glyphs, from Lucide, as components for the kit's `icon` props
+ * (a component that renders an `svg` and takes its props) and as elements
+ * (`<LanguageIcon />` in a BlankSlate). They are drawn at 1em, the size of the
+ * text around them (see the LucideProvider in utils/render.tsx).
  */
-import type { SVGProps } from 'react';
 import {
-  FaArrowUpRightFromSquare,
-  FaCircleExclamation,
-  FaCube,
-  FaLanguage,
-} from 'react-icons/fa6';
-
-type IconProps = SVGProps<SVGSVGElement>;
+  Box,
+  CircleExclamationPoint,
+  ExternalLink,
+  Languages,
+} from 'lucide-react';
 
 /** The status of an error. */
-export function CircleExclamationIcon(props: IconProps) {
-  return (
-    <FaCircleExclamation aria-hidden="true" fill="currentColor" {...props} />
-  );
-}
+export const CircleExclamationIcon = CircleExclamationPoint;
 
 /** Translations: the plugin's section icon, like its 'languages' menu icon. */
-export function LanguageIcon(props: IconProps) {
-  return <FaLanguage aria-hidden="true" fill="currentColor" {...props} />;
-}
+export const LanguageIcon = Languages;
 
 /** A model: the entity that the Schema section lists. */
-export function ModelIcon(props: IconProps) {
-  return <FaCube aria-hidden="true" fill="currentColor" {...props} />;
-}
+export const ModelIcon = Box;
 
 /** Opens a page in a new tab (the record of a translation). */
-export function OpenInNewTabIcon(props: IconProps) {
-  return (
-    <FaArrowUpRightFromSquare
-      aria-hidden="true"
-      fill="currentColor"
-      {...props}
-    />
-  );
-}
+export const OpenInNewTabIcon = ExternalLink;

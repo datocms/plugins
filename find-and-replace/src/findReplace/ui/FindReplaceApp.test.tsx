@@ -467,11 +467,11 @@ describe('every state renders', () => {
     expect(toolbarMeta()).toBe('5 of 9 matches will change');
   });
 
-  it('S12 excluding: an unchecked record and match, the count follows', () => {
+  it('S12 excluding: an unchecked record and match, the count follows', async () => {
     renderState('S12');
     expect(slotLabels()).toEqual(['Replace 6 matches']);
     expect(
-      screen.getByRole('checkbox', { name: 'Legal notice' }),
+      await screen.findByRole('checkbox', { name: 'Legal notice' }),
     ).not.toBeChecked();
     expect(
       screen.getByRole('checkbox', { name: 'Body, English' }),

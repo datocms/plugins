@@ -102,16 +102,21 @@ export const StepConnect = ({ config, section }: Props) => {
       </Page.SectionTitle>
       {section.collapse.open && (
         <>
-          <InfoList className={styles.block}>
-            <InfoList.Row title="Deployment URL">{savedUrl}</InfoList.Row>
-            <InfoList.Row title="Connection">
-              {getConnectionValue(
-                isTesting,
-                isConnected,
-                Boolean(activeError.summary),
-              )}
-            </InfoList.Row>
-          </InfoList>
+          {/* The list pulls its edges into the padding of its rows (a
+              negative margin of its own), so the space below it goes on a
+              wrapper */}
+          <div className={styles.block}>
+            <InfoList>
+              <InfoList.Row title="Deployment URL">{savedUrl}</InfoList.Row>
+              <InfoList.Row title="Connection">
+                {getConnectionValue(
+                  isTesting,
+                  isConnected,
+                  Boolean(activeError.summary),
+                )}
+              </InfoList.Row>
+            </InfoList>
+          </div>
           {!isTesting && activeError.summary && (
             <Callout
               tone="danger"
@@ -120,7 +125,13 @@ export const StepConnect = ({ config, section }: Props) => {
               {activeError.message ?? activeError.summary}
             </Callout>
           )}
-          <div className={styles.buttons}>
+          <div
+            className={
+              hasDetails && showDetails
+                ? `${styles.buttons} ${styles.block}`
+                : styles.buttons
+            }
+          >
             {isConnected && !isTesting ? (
               <Button
                 label="Test again"

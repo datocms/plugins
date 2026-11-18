@@ -1,17 +1,24 @@
+import type { ResolvedItemPresentationInfo } from 'datocms-plugin-sdk';
 import { useEffect, useRef, useState } from 'react';
-import type {
-  ItemPresentation,
-  PresentationResolver,
-} from '../presentation/resolver';
 import type { RawItem } from '../types';
 
+/** The presentations of some records, in their order: `ctx.loadItemPresentationInfo` */
+export type LoadPresentations = (
+  items: RawItem[],
+) => Promise<Array<ResolvedItemPresentationInfo | null>>;
+
 type PresentationState = {
-  byItemId: ReadonlyMap<string, ItemPresentation>;
+  byItemId: ReadonlyMap<string, ResolvedItemPresentationInfo>;
   loading: boolean;
 };
 
+/**
+ * The title and the image of the records of the page, as DatoCMS shows them,
+ * in one call for the page. While the next page loads, the records that stay
+ * keep their presentation.
+ */
 export function usePresentations(
-  resolver: PresentationResolver | null,
+  load: LoadPresentations,
   items: readonly RawItem[],
 ): PresentationState {
   const [state, setState] = useState<PresentationState>({
@@ -24,14 +31,12 @@ export function usePresentations(
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
 
-    if (!resolver || items.length === 0) {
+    if (items.length === 0) {
       setState({ byItemId: new Map(), loading: false });
       return;
     }
 
-    const controller = new AbortController();
     const visibleIds = new Set(items.map((item) => item.id));
-    resolver.primeItems(items);
     setState((current) => ({
       byItemId: new Map(
         [...current.byItemId].filter(([id]) => visibleIds.has(id)),
@@ -39,19 +44,18 @@ export function usePresentations(
       loading: true,
     }));
 
-    void resolver
-      .resolveMany(items, { signal: controller.signal })
+    void load([...items])
       .then((presentations) => {
         if (requestSequence.current !== sequence) {
           return;
         }
 
-        setState({
-          byItemId: new Map(
-            items.map((item, index) => [item.id, presentations[index]]),
-          ),
-          loading: false,
-        });
+        const byItemId = new Map<string, ResolvedItemPresentationInfo>();
+        for (const [index, item] of items.entries()) {
+          const presentation = presentations[index];
+          if (presentation) byItemId.set(item.id, presentation);
+        }
+        setState({ byItemId, loading: false });
       })
       .catch(() => {
         if (requestSequence.current !== sequence) {
@@ -62,12 +66,11 @@ export function usePresentations(
       });
 
     return () => {
-      controller.abort();
       if (requestSequence.current === sequence) {
         requestSequence.current += 1;
       }
     };
-  }, [items, resolver]);
+  }, [items, load]);
 
   return state;
 }

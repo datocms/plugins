@@ -12,7 +12,6 @@ function report(count: number): ScanReport {
     (_, i) => ({
       id: `place-${i}`,
       recordId: 'record-1',
-      recordTitle: 'Complex record',
       modelId: 'article',
       modelName: 'Article',
       fieldPath: 'body.en',

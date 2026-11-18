@@ -32,7 +32,6 @@ function occurrence(
   return {
     id: `${overrides.url}:${overrides.recordId ?? 'record-page'}:${overrides.locale ?? 'en'}`,
     recordId: 'record-page',
-    recordTitle: 'page record',
     modelId: 'page',
     modelName: 'page',
     fieldPath: 'body.en',
@@ -69,7 +68,6 @@ function group(
       occurrence({
         url,
         recordId: `record-${modelId}`,
-        recordTitle: `${modelId} record`,
         modelId,
         modelName: modelId,
         fieldPath: `body.${locale}`,
@@ -373,19 +371,14 @@ describe('record usage', () => {
     const entry: LinkGroup = {
       ...group('broken'),
       occurrences: [
-        occurrence({ url, recordId: 'r2', recordTitle: 'Second' }),
-        occurrence({ url, recordId: 'r1', recordTitle: 'First' }),
-        occurrence({
-          url,
-          recordId: 'r2',
-          recordTitle: 'Second',
-          locale: 'it',
-        }),
+        occurrence({ url, recordId: 'r2' }),
+        occurrence({ url, recordId: 'r1' }),
+        occurrence({ url, recordId: 'r2', locale: 'it' }),
       ],
     };
     const records = recordsOf(entry);
     expect(records.map((record) => record.recordId)).toEqual(['r2', 'r1']);
-    expect(records[0].title).toBe('Second');
+    expect(records[0].modelId).toBe('page');
     expect(records[0].occurrences).toHaveLength(2);
     expect(records[1].occurrences).toHaveLength(1);
     expect(groupFacts(entry).recordCount).toBe(2);

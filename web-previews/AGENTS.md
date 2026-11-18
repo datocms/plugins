@@ -89,7 +89,7 @@ Use the custom DatoCMS admin origin instead when applicable. If `frame-ancestors
 
 ### Adding a New Toolbar Action
 1. Add new `ToolbarButton` in `SidebarFrame/index.tsx` or `Inspector/UI/index.tsx`
-2. Use FontAwesome icons from `@fortawesome/free-solid-svg-icons` (library loaded in `main.tsx`)
+2. Use Lucide icons from `lucide-react`, exported under a plugin name from `src/icons.tsx` (`utils/render.tsx` draws them at 1em through a `LucideProvider`)
 3. Follow pattern: `<ToolbarButton icon={...} tooltip="..." onClick={...} />`
 
 ### Fetching Preview Links
@@ -174,7 +174,7 @@ The plugin is loaded into DatoCMS via iframe from `dist/index.html` after build.
 
 ### Global Invariants
 - All DatoCMS SDK interactions go through the `ctx` object passed to entry points
-- FontAwesome icons are globally available via library setup in `main.tsx:14`
+- Icons come only from `lucide-react`, through `src/icons.tsx`. A viewport stores the kebab-case name of a Lucide icon (`smartphone`, `monitor`); `iconByName()` also maps the Font Awesome device names that older settings stored (`mobile-alt`, `desktop-alt`)
 - React 18 with TypeScript, using Vite for bundling
 - UI components from `datocms-react-ui` should be preferred for consistency
 - Plugin runs in sandboxed iframe, no direct localStorage access (use `ctx` methods)

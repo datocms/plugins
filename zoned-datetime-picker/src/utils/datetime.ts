@@ -101,6 +101,50 @@ export function ensureSeconds(dt: string): string {
 }
 
 /**
+ * The instant of a wall-clock date-time in `timeZone`, as an ISO 8601 string
+ * with the offset of that zone: the value of the kit's `DateTimeInput`.
+ *
+ * @param dateTime - Local datetime string without offset, or `null`
+ * @param timeZone - IANA time zone identifier
+ * @returns ISO string with offset, or `null` when empty or invalid
+ * @example
+ * ```ts
+ * instantOfWallClock('2025-01-01T10:00:00', 'Europe/Rome');
+ * // '2025-01-01T10:00:00+01:00'
+ * ```
+ */
+export function instantOfWallClock(
+  dateTime: string | null | undefined,
+  timeZone: string,
+): string | null {
+  if (!dateTime) return null;
+  const dt = DateTime.fromISO(dateTime, { zone: timeZone });
+  return dt.isValid ? dt.toISO({ suppressMilliseconds: true }) : null;
+}
+
+/**
+ * The wall-clock date-time (`yyyy-LL-ddTHH:mm:ss`, no offset) of an instant
+ * in `timeZone`: the inverse of {@link instantOfWallClock}.
+ *
+ * @param instant - ISO 8601 string with an offset, or `null`
+ * @param timeZone - IANA time zone identifier
+ * @returns Local datetime string, or `null` when empty or invalid
+ * @example
+ * ```ts
+ * wallClockOfInstant('2025-01-01T09:00:00Z', 'Europe/Rome');
+ * // '2025-01-01T10:00:00'
+ * ```
+ */
+export function wallClockOfInstant(
+  instant: string | null,
+  timeZone: string,
+): string | null {
+  if (!instant) return null;
+  const dt = DateTime.fromISO(instant, { zone: timeZone });
+  return dt.isValid ? dt.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null;
+}
+
+/**
  * Parse an IXDTF string like `2025-09-08T15:30:00+02:00[Europe/Rome]` into
  * `{ dateTime, timeZone }` where `dateTime` is the wall time without offset.
  *

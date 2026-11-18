@@ -1,12 +1,9 @@
 import type { Client } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
-import { loadItemsById, loadUploadsById } from './loadById';
+import { loadItemsById } from './loadById';
 
 describe('reference hydration', () => {
-  it.each([
-    'items',
-    'uploads',
-  ] as const)('bounds %s hydration and completes short pages', async (resource) => {
+  it('bounds the hydration of records and completes short pages', async () => {
     let active = 0;
     let peak = 0;
     const rawList = vi.fn().mockImplementation(async (query) => {
@@ -23,13 +20,9 @@ describe('reference hydration', () => {
         meta: { total_count: ids.length },
       };
     });
-    const client = {
-      items: { rawList },
-      uploads: { rawList },
-    } as unknown as Client;
+    const client = { items: { rawList } } as unknown as Client;
     const ids = Array.from({ length: 10_000 }, (_, index) => `id-${index}`);
-    const load = resource === 'items' ? loadItemsById : loadUploadsById;
-    const result = await load(client, [...ids, ids[0]]);
+    const result = await loadItemsById(client, [...ids, ids[0]]);
     expect(result.map((item) => item.id)).toEqual(ids);
     expect(peak).toBeLessThanOrEqual(2);
     expect(rawList).toHaveBeenCalledTimes(400);

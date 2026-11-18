@@ -34,7 +34,6 @@ export type ContentModel = {
   id: string;
   name: string;
   isBlock: boolean;
-  titleFieldId?: string;
   fields: ContentField[];
 };
 
@@ -43,14 +42,12 @@ export type ContentSchema = Map<string, ContentModel>;
 export type RecordInput = {
   id?: string;
   modelId: string;
-  title: string;
   values: Record<string, unknown>;
 };
 
 export type LinkOccurrence = {
   id: string;
   recordId?: string;
-  recordTitle: string;
   modelId: string;
   modelName: string;
   fieldPath: string;

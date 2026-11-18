@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearSessionLocalFiles, getSessionLocalFile } from '../lib/localFiles';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import {
@@ -16,7 +16,7 @@ import {
   fallbackRecordMention,
 } from '../lib/mentions';
 import type { NavigationCallbacks } from '../recordComments/entrypoints/contexts/NavigationCallbacksContext';
-import { fakeCtx, renderInCanvas } from '../test/canvas';
+import { fakeCtx, renderInCanvas, setFakeRecordTitles } from '../test/canvas';
 import { MentionComposer } from './MentionComposer';
 
 const currentUser: AgentMentionHost['currentUser'] = {
@@ -170,6 +170,9 @@ function pasteText(element: HTMLElement, text: string) {
     },
   });
 }
+
+// The host presents the record that the picker gives with this title
+beforeEach(() => setFakeRecordTitles({ homepage: 'Homepage' }));
 
 afterEach(() => {
   cleanup();
@@ -474,7 +477,7 @@ describe('MentionComposer', () => {
     // toolbar while its menu is open
     await user.click(within(toolbar).getByRole('button', { name: 'Record' }));
     const menu = await screen.findByRole('menu', { name: 'Record' });
-    expect(within(menu).getByPlaceholderText('Search...')).toHaveFocus();
+    expect(within(menu).getByPlaceholderText('Search…')).toHaveFocus();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
     });
@@ -541,13 +544,13 @@ describe('MentionComposer', () => {
     ).toEqual(['Page', 'Press release']);
 
     // The search of the menu finds a model by its API key too
-    await user.type(within(menu).getByPlaceholderText('Search...'), 'NEWS_');
+    await user.type(within(menu).getByPlaceholderText('Search…'), 'NEWS_');
     expect(
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual(['Press release']);
-    await user.type(within(menu).getByPlaceholderText('Search...'), 'x');
+    await user.type(within(menu).getByPlaceholderText('Search…'), 'x');
     expect(within(menu).getByRole('status')).toHaveTextContent(
       'No models match “NEWS_x”',
     );
@@ -589,7 +592,7 @@ describe('MentionComposer', () => {
       'No models you can read',
     );
     // Nothing to search
-    expect(within(menu).queryByPlaceholderText('Search...')).toBeNull();
+    expect(within(menu).queryByPlaceholderText('Search…')).toBeNull();
   });
 
   it('puts the mention entries and the attach button in one group, in the order of the "/" command', () => {
@@ -858,7 +861,7 @@ describe('MentionComposer', () => {
     // The record dropdown, with the search of its menu
     const menu = screen.getByRole('menu', { name: 'Record' });
     expect(menu).toBeVisible();
-    const search = within(menu).getByPlaceholderText('Search...');
+    const search = within(menu).getByPlaceholderText('Search…');
     await waitFor(() => expect(search).toHaveFocus());
     // The search field of the menu is not the input of the message field
     expect(search.id).not.toBe(editor.id);

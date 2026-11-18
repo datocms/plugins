@@ -1,18 +1,19 @@
-import {
-  connect,
-  type ItemFormOutletsCtx,
-  type ItemType,
-  type RenderItemFormOutletCtx,
-  type RenderModalCtx,
-} from 'datocms-plugin-sdk';
+import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import BinOutlet from './entrypoints/BinOutlet';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import ErrorModal from './entrypoints/ErrorModal';
 import { createDebugLogger, isDebugEnabled } from './utils/debugLogger';
 import { getRuntimeMode } from './utils/getRuntimeMode';
 import { captureDeletedItemsWithoutLambda } from './utils/lambdaLessCapture';
 import { render } from './utils/render';
+import {
+  ERROR_MODAL_ID,
+  RESTORE_ACTION_ID,
+  restoreRecordFromBin,
+} from './utils/restoreRecordFromBin';
+
+/** The model of the bin: its records archive the deleted records. */
+const RECORD_BIN_MODEL_API_KEY = 'record_bin';
 
 connect({
   async onBeforeItemsDestroy(items, ctx) {
@@ -62,40 +63,23 @@ connect({
     debugLogger.log('Rendering config screen');
     return render(<ConfigScreen ctx={ctx} />);
   },
-  itemFormOutlets(model: ItemType, _ctx: ItemFormOutletsCtx) {
-    const debugLogger = createDebugLogger(
-      isDebugEnabled(_ctx.plugin.attributes.parameters),
-      'index.itemFormOutlets',
-    );
-    if (model.attributes.api_key === 'record_bin') {
-      debugLogger.log('Registering item form outlet for record_bin model');
-      return [
-        {
-          id: 'recordBin',
-          initialHeight: 0,
-        },
-      ];
-    }
-
-    debugLogger.log('Skipping item form outlet for model', {
-      modelApiKey: model.attributes.api_key,
-    });
-    return [];
-  },
-  renderItemFormOutlet(outletId, ctx: RenderItemFormOutletCtx) {
+  itemFormDropdownActions(itemType, ctx) {
     const debugLogger = createDebugLogger(
       isDebugEnabled(ctx.plugin.attributes.parameters),
-      'index.renderItemFormOutlet',
+      'index.itemFormDropdownActions',
     );
-    if (outletId === 'recordBin') {
-      debugLogger.log('Rendering record bin outlet');
-      render(<BinOutlet ctx={ctx} />);
-      return;
-    }
-
-    debugLogger.log('Skipping outlet rendering', {
-      outletId,
-    });
+    if (itemType.attributes.api_key !== RECORD_BIN_MODEL_API_KEY) return [];
+    debugLogger.log('Offering the restore action on a record of the bin');
+    return [
+      {
+        id: RESTORE_ACTION_ID,
+        label: 'Restore record',
+        icon: 'archive-arrow-up',
+      },
+    ];
+  },
+  async executeItemFormDropdownAction(actionId, ctx) {
+    if (actionId === RESTORE_ACTION_ID) await restoreRecordFromBin(ctx);
   },
   renderModal(modalId: string, ctx: RenderModalCtx) {
     const debugLogger = createDebugLogger(
@@ -105,7 +89,7 @@ connect({
     debugLogger.log('Rendering modal', { modalId });
 
     switch (modalId) {
-      case 'errorModal':
+      case ERROR_MODAL_ID:
         return render(<ErrorModal ctx={ctx} />);
       default:
         debugLogger.warn('Received unknown modal id', { modalId });

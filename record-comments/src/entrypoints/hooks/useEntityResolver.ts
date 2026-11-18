@@ -16,9 +16,8 @@ import type {
 } from '@ctypes/mentions';
 import type { Client } from '@datocms/cma-client-browser';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
-import { getRecordTitles } from '@utils/recordTitleUtils';
 import type { UserInfo } from '@utils/userTransformers';
-import type { ItemType } from 'datocms-plugin-sdk';
+import type { ItemType, Upload } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { logError } from '@/utils/errorLogger';
 import { getGravatarUrl } from '@/utils/helpers';
@@ -53,7 +52,10 @@ type ResolutionCache = {
 };
 
 type UseEntityResolverParams = {
+  /** The client of the project: a new one (another token) starts again */
   client: Client | null;
+  /** Loads assets by ID through the host (ctx.loadUploads) */
+  loadUploads: (uploadIds: string[]) => Promise<Array<Upload | null>>;
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   modelFields: FieldInfo[];
@@ -62,12 +64,12 @@ type UseEntityResolverParams = {
 };
 
 type UseEntityResolverReturn = {
-  /** Starts async resolution for record/asset mentions found in comments. */
+  /** Starts async resolution for the asset mentions found in comments. */
   prefetchEntities: (comments: CommentType[]) => void;
   seedResolvedMentionsFromSegments: (segments: CommentSegment[]) => void;
   resolveComments: (comments: CommentType[]) => ResolvedCommentType[];
   isResolving: boolean;
-  /** Increments when async entities (records/assets) are resolved. Use as useMemo dependency. */
+  /** Increments when async entities (assets) are resolved. Use as useMemo dependency. */
   cacheVersion: number;
 };
 
@@ -202,20 +204,28 @@ function createRecordMentionFromResolved(
   };
 }
 
-function createFallbackRecordMention(
+/**
+ * A record mention from its model. The pill shows the record as the host
+ * presents it (a RecordRow loads its title and its image from the ID), thus
+ * the mention only needs the model; the title is a fallback text.
+ */
+function createRecordMentionFromModel(
   recordId: string,
   modelId: string,
+  model: ItemType | undefined,
 ): RecordMention {
+  const modelName = model?.attributes.name ?? 'Unknown';
+
   return {
     type: 'record',
     id: recordId,
     title: `Record #${recordId}`,
     modelId,
-    modelApiKey: 'unknown',
-    modelName: 'Unknown',
-    modelEmoji: null,
+    modelApiKey: model?.attributes.api_key ?? 'unknown',
+    modelName,
+    modelEmoji: model ? extractLeadingEmoji(modelName).emoji : null,
     thumbnailUrl: null,
-    isSingleton: false,
+    isSingleton: model?.attributes.singleton ?? false,
   };
 }
 
@@ -313,32 +323,20 @@ function isSameResolvedAsset(
   );
 }
 
-async function fetchReferencedAsset(
-  client: Client,
-  cache: ResolutionCache['assets'],
-  pending: Set<string>,
+function createResolvedAssetFromUpload(
   assetId: string,
-  shouldContinue: () => boolean,
-) {
-  const isPending = () => shouldContinue() && pending.has(assetId);
-  if (!isPending()) return;
-  try {
-    const upload = await client.uploads.find(assetId);
-    if (!isPending()) return;
-    cache.set(assetId, {
-      id: assetId,
-      filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
-      url: upload.url,
-      thumbnailUrl: getAssetThumbnailUrl(upload.mime_type ?? '', upload.url),
-      mimeType: upload.mime_type ?? 'application/octet-stream',
-    });
-  } catch (error) {
-    if (!isPending()) return;
-    logError('Failed to fetch asset', error, { assetId });
-    cache.set(assetId, 'error');
-  } finally {
-    if (shouldContinue()) pending.delete(assetId);
-  }
+  upload: Upload,
+): ResolvedAsset {
+  const { filename, basename, url, mime_type } = upload.attributes;
+  const mimeType = mime_type ?? 'application/octet-stream';
+
+  return {
+    id: assetId,
+    filename: filename || basename || `Asset #${assetId}`,
+    url,
+    thumbnailUrl: getAssetThumbnailUrl(mimeType, url),
+    mimeType,
+  };
 }
 
 function pruneUnusedEntities<T>(
@@ -386,12 +384,18 @@ export function useEntityResolver(
 ): UseEntityResolverReturn {
   const {
     client,
+    loadUploads,
     projectUsers,
     projectModels,
     modelFields,
     itemTypes,
     mainLocale,
   } = params;
+
+  // The loader of the host, read when a batch loads: a new ctx on each host
+  // update must not start the batches again
+  const loadUploadsRef = useRef(loadUploads);
+  loadUploadsRef.current = loadUploads;
 
   const [isResolving, setIsResolving] = useState(false);
   const cacheRef = useRef<ResolutionCache>({
@@ -496,8 +500,11 @@ export function useEntityResolver(
               cached,
             );
           }
-          // Return fallback while loading
-          return createFallbackRecordMention(stored.id, stored.modelId);
+          return createRecordMentionFromModel(
+            stored.id,
+            stored.modelId,
+            itemTypes[stored.modelId],
+          );
         }
 
         case 'asset': {
@@ -513,7 +520,7 @@ export function useEntityResolver(
           return null;
       }
     },
-    [usersById, modelsById, fieldsByPath],
+    [usersById, modelsById, fieldsByPath, itemTypes],
   );
 
   const resolveSegment = useCallback(
@@ -563,21 +570,9 @@ export function useEntityResolver(
   );
 
   const collectAsyncMentions = useCallback((comments: CommentType[]) => {
-    const recordsToFetch: Array<{ id: string; modelId: string }> = [];
     const assetsToFetch: string[] = [];
     const seenRecordIds = new Set<string>();
     const seenAssetIds = new Set<string>();
-
-    const collectRecordMention = (mentionId: string, modelId: string) => {
-      const cached = cacheRef.current.records.get(mentionId);
-      const isUncached = !cached || cached === 'error';
-      const isPending = pendingRecordsRef.current.has(mentionId);
-      const isSeen = seenRecordIds.has(mentionId);
-      seenRecordIds.add(mentionId);
-      if (isUncached && !isPending && !isSeen) {
-        recordsToFetch.push({ id: mentionId, modelId });
-      }
-    };
 
     const collectAssetMention = (mentionId: string) => {
       const cached = cacheRef.current.assets.get(mentionId);
@@ -594,7 +589,8 @@ export function useEntityResolver(
       for (const segment of segments) {
         if (segment.type !== 'mention') continue;
         if (segment.mention.type === 'record') {
-          collectRecordMention(segment.mention.id, segment.mention.modelId);
+          // Nothing to load: the row of the pill loads the record
+          seenRecordIds.add(segment.mention.id);
         } else if (segment.mention.type === 'asset') {
           collectAssetMention(segment.mention.id);
         }
@@ -608,95 +604,39 @@ export function useEntityResolver(
       processSegments(comment.content);
       for (const reply of comment.replies ?? []) pendingComments.push(reply);
     }
-    return { recordsToFetch, assetsToFetch, seenRecordIds, seenAssetIds };
+    return { assetsToFetch, seenRecordIds, seenAssetIds };
   }, []);
-
-  const resolveRecordBatch = useCallback(
-    async (
-      recordsToFetch: Array<{ id: string; modelId: string }>,
-      shouldContinue: () => boolean,
-    ) => {
-      if (!client || recordsToFetch.length === 0 || !shouldContinue()) return;
-
-      const recordResults = await getRecordTitles(
-        client,
-        recordsToFetch.map((record) => ({
-          recordId: record.id,
-          modelId: record.modelId,
-        })),
-        mainLocale,
-        shouldContinue,
-      );
-      if (!shouldContinue()) return;
-
-      for (const record of recordsToFetch) {
-        if (!pendingRecordsRef.current.has(record.id)) continue;
-        const result = recordResults.get(record.id);
-        const model = itemTypes[record.modelId];
-        if (result) {
-          const { emoji: modelEmoji } = extractLeadingEmoji(result.modelName);
-          cacheRef.current.records.set(record.id, {
-            id: record.id,
-            title: result.title,
-            modelId: record.modelId,
-            modelApiKey: model?.attributes.api_key ?? 'unknown',
-            modelName: result.modelName,
-            modelEmoji,
-            thumbnailUrl: null,
-            isSingleton: result.isSingleton,
-          });
-        } else {
-          cacheRef.current.records.set(record.id, 'error');
-        }
-        pendingRecordsRef.current.delete(record.id);
-      }
-    },
-    [client, itemTypes, mainLocale],
-  );
 
   const resolveAssetBatch = useCallback(
     async (assetsToFetch: string[], shouldContinue: () => boolean) => {
-      if (!client) return;
-      let nextIndex = 0;
-      const worker = async () => {
-        while (nextIndex < assetsToFetch.length && shouldContinue()) {
-          // biome-ignore lint/performance/noAwaitInLoops: Each of four workers processes one request at a time.
-          await fetchReferencedAsset(
-            client,
-            cacheRef.current.assets,
-            pendingAssetsRef.current,
-            assetsToFetch[nextIndex++],
-            shouldContinue,
-          );
-        }
-      };
-      await Promise.all(
-        Array.from({ length: Math.min(4, assetsToFetch.length) }, worker),
-      );
+      if (assetsToFetch.length === 0 || !shouldContinue()) return;
+
+      // One call for the whole batch: the host loads the assets
+      const uploads = await loadUploadsRef.current(assetsToFetch);
+      if (!shouldContinue()) return;
+
+      for (const [index, assetId] of assetsToFetch.entries()) {
+        if (!pendingAssetsRef.current.has(assetId)) continue;
+        const upload = uploads[index];
+        cacheRef.current.assets.set(
+          assetId,
+          upload ? createResolvedAssetFromUpload(assetId, upload) : 'error',
+        );
+        pendingAssetsRef.current.delete(assetId);
+      }
     },
-    [client],
+    [],
   );
 
   const fetchAsyncEntities = useCallback(
-    async (
-      recordsToFetch: Array<{ id: string; modelId: string }>,
-      assetsToFetch: string[],
-      generation: number,
-    ) => {
+    async (assetsToFetch: string[], generation: number) => {
       const shouldContinue = () => generationRef.current === generation;
       if (!shouldContinue()) return;
       try {
-        await resolveRecordBatch(recordsToFetch, shouldContinue);
-        if (shouldContinue()) setCacheVersion((version) => version + 1);
         await resolveAssetBatch(assetsToFetch, shouldContinue);
       } catch (error) {
         if (!shouldContinue()) return;
-        logError('Failed to fetch async entities', error);
-        markLoadingEntitiesAsError(
-          cacheRef.current.records,
-          pendingRecordsRef.current,
-          recordsToFetch.map((record) => record.id),
-        );
+        logError('Failed to fetch assets', error);
         markLoadingEntitiesAsError(
           cacheRef.current.assets,
           pendingAssetsRef.current,
@@ -710,13 +650,13 @@ export function useEntityResolver(
         }
       }
     },
-    [resolveRecordBatch, resolveAssetBatch],
+    [resolveAssetBatch],
   );
 
   const prefetchEntities = useCallback(
     (comments: CommentType[]) => {
       if (!client) return;
-      const { recordsToFetch, assetsToFetch, seenRecordIds, seenAssetIds } =
+      const { assetsToFetch, seenRecordIds, seenAssetIds } =
         collectAsyncMentions(comments);
       // Retain only display data needed by the current list, rather than every
       // entity encountered while navigating many records in a long session.
@@ -730,13 +670,9 @@ export function useEntityResolver(
         pendingAssetsRef.current,
         seenAssetIds,
       );
-      if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
+      if (assetsToFetch.length === 0) return;
 
       // Mark requests before queueing so repeated renders cannot duplicate them.
-      for (const record of recordsToFetch) {
-        pendingRecordsRef.current.add(record.id);
-        cacheRef.current.records.set(record.id, 'loading');
-      }
       for (const assetId of assetsToFetch) {
         pendingAssetsRef.current.add(assetId);
         cacheRef.current.assets.set(assetId, 'loading');
@@ -748,7 +684,7 @@ export function useEntityResolver(
       // One continuous queue also bounds overlapping prefetch calls. A context
       // change discards old results and stops its remaining requests.
       fetchQueueRef.current = fetchQueueRef.current.then(() =>
-        fetchAsyncEntities(recordsToFetch, assetsToFetch, generation),
+        fetchAsyncEntities(assetsToFetch, generation),
       );
     },
     [client, collectAsyncMentions, fetchAsyncEntities],

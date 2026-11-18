@@ -173,11 +173,6 @@ function quotePattern(pattern: string, regex: boolean): string {
   return regex ? `/${shortText(pattern)}/` : quote(pattern);
 }
 
-/** The title of a record, or “Record 42” when it has none (the ID keeps it unique). */
-export function recordTitle(title: string | null, recordId: string): string {
-  return title?.trim() ? title : `Record ${recordId}`;
-}
-
 // ── Toolbar meta ────────────────────────────────────────────────────────────
 
 function foundText(
@@ -659,11 +654,18 @@ export function paneStateCopy(pane: PaneStateCase): PaneStateCopy {
 
 // ── Confirm ─────────────────────────────────────────────────────────────────
 
-/** What the write does, stated once: the title already asks. */
-function confirmStatement(c: Counts, plan: PlanFacts): string {
+/**
+ * What the write does, stated once: the title already asks. One record is
+ * named by its title, as DatoCMS presents it, when the host gave it.
+ */
+function confirmStatement(
+  c: Counts,
+  plan: PlanFacts,
+  recordTitle: string | null,
+): string {
   const where =
-    plan.recordCount === 1 && plan.singleRecord
-      ? quoteName(recordTitle(plan.singleRecord.title, plan.singleRecord.id))
+    plan.recordCount === 1 && recordTitle?.trim()
+      ? quoteName(recordTitle)
       : c.records(plan.recordCount);
   const what = plan.regex
     ? `matches of ${quotePattern(plan.pattern, true)}`
@@ -709,16 +711,21 @@ export type ConfirmCopy = {
   choice: string;
 };
 
-function confirmCopy(c: Counts, plan: PlanFacts): ConfirmCopy {
+function confirmCopy(
+  c: Counts,
+  plan: PlanFacts,
+  recordTitle: string | null,
+): ConfirmCopy {
   const one = plan.matchCount === 1;
   const lowerVerb = plan.verb;
   return {
     title: one
       ? `${capitalVerb(plan.verb)} this match?`
       : `${capitalVerb(plan.verb)} ${c.fmt(plan.matchCount)} matches?`,
-    content: [confirmStatement(c, plan), ...confirmConsequences(c, plan)].join(
-      ' ',
-    ),
+    content: [
+      confirmStatement(c, plan, recordTitle),
+      ...confirmConsequences(c, plan),
+    ].join(' '),
     choice: one
       ? `Yes, ${lowerVerb} this match`
       : `Yes, ${lowerVerb} ${c.fmt(plan.matchCount)} matches`,
@@ -880,7 +887,6 @@ export function createCopy(locale: string) {
     matches: c.matches,
     records: c.records,
     quote,
-    recordTitle,
     /**
      * The match count of a record: "3 matches", or "2 of 3 matches" when
      * only some of them are included (`included` is null otherwise). The
@@ -954,7 +960,9 @@ export function createCopy(locale: string) {
     noResultsLine,
     paneState: paneStateCopy,
 
-    confirm: (plan: PlanFacts) => confirmCopy(c, plan),
+    /** `recordTitle`: the title of `plan.singleRecord`, from the host. */
+    confirm: (plan: PlanFacts, recordTitle: string | null = null) =>
+      confirmCopy(c, plan, recordTitle),
     publishConfirm: (offer: PublishOffer) => publishConfirmCopy(c, offer),
 
     /** In matches, as the meta after the title counts them. */

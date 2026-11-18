@@ -3,32 +3,23 @@ import {
   type Client,
   type RawApiTypes,
 } from '@datocms/cma-client-browser';
-import type { DateSettings } from 'datocms-react-ui/DateSettings';
-import {
-  buildModelPresentation,
-  buildRow,
-  type RecordRow,
-} from '../lib/records';
-import type { RawItem, Workflow } from '../types';
-import {
-  formatTitle,
-  getTitleField,
-  isLinkField,
-  linkedItemIdFromValue,
-  readFieldValue,
-} from '../lib/presentation';
-import { itemsPageTotal, loadItemsById } from './loadById';
+import type { ResolvedItemPresentationInfo } from 'datocms-plugin-sdk';
+import { buildRow, type RecordRow, withPresentation } from '../lib/records';
+import type { Workflow } from '../types';
+import { itemsPageTotal } from './loadById';
 
 type ItemType = RawApiTypes.ItemType;
-type Field = RawApiTypes.Field;
 
 export type StageSource = {
   client: Client;
   itemTypes: Partial<Record<string, ItemType>>;
-  locales: readonly string[];
-  /** The date settings of the user, for date and date-time titles. */
-  dateSettings?: DateSettings;
-  loadItemTypeFields: (itemTypeId: string) => Promise<Field[]>;
+  /**
+   * How DatoCMS presents the records (`ctx.loadItemPresentationInfo`): their
+   * title, image and status, as its own lists show them.
+   */
+  loadItemPresentationInfo: (
+    ids: string[],
+  ) => Promise<Array<ResolvedItemPresentationInfo | null>>;
 };
 
 export type StageData = {
@@ -132,8 +123,6 @@ async function loadModelRows(
   stageId: string,
   signal: AbortSignal,
 ): Promise<RecordRow[]> {
-  const fields = await source.loadItemTypeFields(itemType.id);
-  const presentation = buildModelPresentation(itemType, fields);
   // Keyed by ID: a record that moves into the stage mid-load can shift into
   // the next page and come back twice.
   const rows = new Map<string, RecordRow>();
@@ -151,101 +140,42 @@ async function loadModelRows(
     offset += page.data.length;
     for (const item of page.data) {
       if (rows.has(item.id)) continue;
-      rows.set(
-        item.id,
-        buildRow(item, presentation, {
-          locales: source.locales,
-          dateSettings: source.dateSettings,
-        }),
-      );
+      rows.set(item.id, buildRow(item, itemType));
     }
   }
   return [...rows.values()];
 }
 
-/** Linked titles are followed at most this many records deep, as in the dashboard. */
-const MAX_TITLE_DEPTH = 3;
-
-type PendingTitle = { row: RecordRow; linkId: string; seen: Set<string> };
-
-/** Applies a linked record's title, or returns the next link to follow. */
-function applyLinkedTitle(
-  entry: PendingTitle,
-  item: RawItem | undefined,
-  source: StageSource,
-  fieldsByModel: ReadonlyMap<string, Field[]>,
-): PendingTitle[] {
-  const modelId = item?.relationships.item_type.data.id;
-  const itemType = modelId ? source.itemTypes[modelId] : undefined;
-  const fields = modelId ? fieldsByModel.get(modelId) : undefined;
-  const titleField =
-    itemType && fields ? getTitleField(itemType, fields) : undefined;
-  if (!item || !titleField) return [];
-
-  const value = readFieldValue(
-    item.attributes as Record<string, unknown>,
-    titleField,
-    source.locales,
-  );
-  if (isLinkField(titleField)) {
-    const linkId = linkedItemIdFromValue(value);
-    return linkId && !entry.seen.has(linkId)
-      ? [{ ...entry, linkId, seen: new Set([...entry.seen, linkId]) }]
-      : [];
-  }
-  const title = formatTitle(value, titleField, source);
-  if (title) entry.row.title = title;
-  return [];
-}
-
-/** Reads one level of linked records and applies their titles. */
-async function resolveTitleLevel(
-  source: StageSource,
-  pending: readonly PendingTitle[],
-  signal: AbortSignal,
-): Promise<PendingTitle[]> {
-  const linked = await loadItemsById(
-    source.client,
-    [...new Set(pending.map(({ linkId }) => linkId))],
-    signal,
-  );
-  const byId = new Map(linked.map((item) => [item.id, item]));
-  const modelIds = [
-    ...new Set(linked.map((item) => item.relationships.item_type.data.id)),
-  ];
-  const fieldsByModel = new Map(
-    await Promise.all(
-      modelIds.map(
-        async (modelId) =>
-          [modelId, await source.loadItemTypeFields(modelId)] as const,
-      ),
-    ),
-  );
-  return pending.flatMap((entry) =>
-    applyLinkedTitle(entry, byId.get(entry.linkId), source, fieldsByModel),
-  );
-}
+/** Records whose presentation one call to the host asks for. */
+export const PRESENTATIONS_PER_CALL = 200;
 
 /**
- * Gives rows whose title field links to another record (or a single block)
- * that record's title, reading the linked records in batches, up to three
- * links deep. A title that can't be resolved keeps its "Record <id>".
+ * The rows with the title, the image and the status that DatoCMS shows for
+ * each record, asked of the host in batches. A record the host doesn't
+ * present keeps its "Record #ID".
  */
-export async function resolveLinkedTitles(
+export async function loadPresentations(
   source: StageSource,
   rows: readonly RecordRow[],
   signal: AbortSignal,
-): Promise<void> {
-  let pending: PendingTitle[] = rows.flatMap((row) =>
-    row.titleLinkId
-      ? [{ row, linkId: row.titleLinkId, seen: new Set([row.id]) }]
-      : [],
-  );
-  for (let depth = 0; depth < MAX_TITLE_DEPTH && pending.length > 0; depth++) {
-    if (signal.aborted) return;
-    // biome-ignore lint/performance/noAwaitInLoops: each level needs the previous one's records
-    pending = await resolveTitleLevel(source, pending, signal);
+): Promise<RecordRow[]> {
+  const byId = new Map<string, ResolvedItemPresentationInfo>();
+  for (
+    let start = 0;
+    start < rows.length && !signal.aborted;
+    start += PRESENTATIONS_PER_CALL
+  ) {
+    const ids = rows
+      .slice(start, start + PRESENTATIONS_PER_CALL)
+      .map(({ id }) => id);
+    // biome-ignore lint/performance/noAwaitInLoops: one batch at a time, so an abort stops the rest
+    const infos = await source.loadItemPresentationInfo(ids);
+    for (const info of infos) if (info) byId.set(info.id, info);
   }
+  return rows.map((row) => {
+    const info = byId.get(row.id);
+    return info ? withPresentation(row, info) : row;
+  });
 }
 
 /**
@@ -290,11 +220,11 @@ export async function loadStage(
       },
       loading.signal,
     );
-    const rows = groups.flat();
+    let rows = groups.flat();
     try {
-      await resolveLinkedTitles(source, rows, loading.signal);
+      rows = await loadPresentations(source, rows, loading.signal);
     } catch {
-      // Linked titles are a nicety: keep the placeholders if they can't be read.
+      // The titles are a nicety: keep "Record #ID" if the host can't give them.
     }
     return { workflow, stageMissing, models, rows };
   } finally {

@@ -159,7 +159,7 @@ describe('discoverTargetsInRecord', () => {
     expect(results[0]).toMatchObject({
       target: { kind: 'field_value', fieldApiKey: 'title' },
       presentation: {
-        record: { title: 'Hello brave world', status: 'published' },
+        record: { status: 'published' },
         field: { apiKey: 'title', pathSegments: ['Title'] },
         matchCount: 1,
         excerpt: { match: 'brave' },
@@ -287,7 +287,7 @@ class InlineWorker {
 }
 
 describe('exact-match discovery', () => {
-  it('finds every occurrence with human paths and the presentation title', async () => {
+  it('finds every occurrence with human paths and the record presentation', async () => {
     const results = await discoverRich();
     const byPath = (segments: string[]) =>
       results.filter(
@@ -309,7 +309,6 @@ describe('exact-match discovery', () => {
     expect(byPath(['Slug'])).toHaveLength(1);
     expect(results[0]?.presentation.record).toMatchObject({
       id: 'article-1',
-      title: 'The Acme headline',
       status: 'published',
       currentVersion: 'version-1',
     });
@@ -354,16 +353,6 @@ describe('exact-match discovery', () => {
       (entry) => exactTarget(entry).fieldValue.fieldApiKey === 'seo',
     );
     expect(seo[0]?.presentation.field).not.toBe(seo[1]?.presentation.field);
-  });
-
-  it('returns a null title when no title candidate has a value', async () => {
-    const record = findReplaceRoot();
-    const attributes = record.attributes as Record<string, unknown>;
-    attributes.headline = '';
-    attributes.title = { en: null, it: null };
-    attributes.slug = null;
-    const results = await discoverRich({ record });
-    expect(results[0]?.presentation.record.title).toBeNull();
   });
 
   it('matches every field value of a record in one batched call', async () => {

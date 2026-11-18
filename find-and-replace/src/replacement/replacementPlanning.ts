@@ -41,8 +41,6 @@ export type PreparedRootChanges = {
   rootRecordId: string;
   rootModelId: string;
   currentVersion: string;
-  /** Record title at search time; null when the record has none. */
-  recordLabel: string | null;
   modelName: string;
   changedValues: ChangedFieldValue[];
   changes: ReplacementChange[];
@@ -431,7 +429,6 @@ export async function prepareRootChanges(args: {
     changes.push({
       id: `${rootRecordId}:${fieldValueId}`,
       rootRecordId,
-      recordLabel: firstPresentation.record.title,
       modelName: firstPresentation.model.name,
       fieldLabel: operation.fieldValue.field.label,
       locale: displayLocale(operation.fieldValue),
@@ -444,7 +441,6 @@ export async function prepareRootChanges(args: {
     rootRecordId,
     rootModelId,
     currentVersion,
-    recordLabel: firstPresentation.record.title,
     modelName: firstPresentation.model.name,
     changedValues,
     changes,

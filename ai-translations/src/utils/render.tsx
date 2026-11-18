@@ -7,6 +7,7 @@
  * the kit.
  */
 import Canvas, { type BaseCtx } from 'datocms-react-ui/Canvas';
+import { LucideProvider } from 'lucide-react';
 import { type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -17,6 +18,11 @@ if (!container) {
   throw new Error('Root element not found');
 }
 const root = createRoot(container);
+
+// Lucide draws its icons at 24px; the kit's icons are 1em, the size of the
+// text around them. The provider's type takes only a number, but the size goes
+// straight to the width and height of the svg.
+const ICON_SIZE = '1em' as unknown as number;
 
 export type RenderFrameOptions = {
   /** The frame sets its height itself (a full-height page). */
@@ -48,9 +54,11 @@ export function renderFrame(
   root.render(
     <StrictMode>
       <Canvas ctx={ctx} noAutoResizer={noAutoResizer} texts={PLUGIN_TEXTS}>
-        <ErrorBoundary page={page} onClose={onClose}>
-          {content}
-        </ErrorBoundary>
+        <LucideProvider size={ICON_SIZE}>
+          <ErrorBoundary page={page} onClose={onClose}>
+            {content}
+          </ErrorBoundary>
+        </LucideProvider>
       </Canvas>
     </StrictMode>,
   );

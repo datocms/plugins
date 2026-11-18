@@ -1,9 +1,27 @@
-/* The title of a fieldset: subtle and small like the kit's group titles, on
-   one line, in line with the text of the rows */
-.groupTitle {
-  margin-top: var(--spacing-s);
+/* The lists of top-level fields and the boxes of the fieldsets, one under
+   the other */
+.segments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+/* A fieldset: a box around its title and its fields. The compact list puts
+   the box of a row out of the content by --row-inset, so the padding keeps
+   the boxes of the rows inside the box of the fieldset. */
+.fieldset {
+  padding: var(--spacing-m);
+  padding-top: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: var(--radius-m);
+}
+
+/* The title of a fieldset, in line with the text of its rows, on one line */
+.fieldsetTitle {
+  padding-block: var(--spacing-s);
   overflow: hidden;
   font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
   color: var(--color--ink-subtle);
   white-space: nowrap;
   text-overflow: ellipsis;

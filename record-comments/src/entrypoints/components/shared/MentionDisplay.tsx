@@ -1,15 +1,15 @@
 import type { Mention } from '@ctypes/mentions';
 import type { UserInfo } from '@hooks/useMentions';
+import { getUserRowPresentation } from '@utils/avatarImage';
 import { areMentionsEqual } from '@utils/comparisonHelpers';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
 import { formatFieldType } from '@utils/mentionFormatters';
 import Pill from 'datocms-react-ui/Pill';
-import { memo, type ReactNode, useMemo, useState } from 'react';
-import {
-  AssetMentionIcon,
-  ModelMentionIcon,
-  RecordDocumentIcon,
-} from '../Icons';
+import RecordRow from 'datocms-react-ui/RecordRow';
+import UploadPreview from 'datocms-react-ui/UploadPreview';
+import UserRow from 'datocms-react-ui/UserRow';
+import { memo, type ReactNode, useMemo } from 'react';
+import { ModelMentionIcon } from '../Icons';
 import styles from './MentionDisplay.module.css';
 
 type MentionDisplayProps = {
@@ -77,32 +77,14 @@ function MentionEmoji({ emoji }: { emoji: string }) {
 }
 
 /**
- * The picture of a mention in its pill: a thumbnail, else the fallback (an
- * icon or an emoji). A thumbnail that does not load becomes the fallback.
+ * The preview of an asset in its pill, as the Media Area draws it: the image,
+ * the frame of a video or the icon of the format. The host loads the asset
+ * from its ID.
  */
-function MentionThumbnail({
-  url,
-  fallback,
-}: {
-  url: string | null;
-  fallback: ReactNode;
-}) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+const ASSET_PREVIEW_BOX = { width: 16, height: 16 };
+const ASSET_PREVIEW_PADDING: [number, number] = [1, 1];
 
-  if (!url || failedUrl === url) return fallback;
-
-  return (
-    <img
-      className={styles.thumbnail}
-      src={url}
-      // The text of the pill names it
-      alt=""
-      onError={() => setFailedUrl(url)}
-    />
-  );
-}
-
-/** A file: an image or a video shows its thumbnail in place of the icon */
+/** A file: its preview, then its name */
 function AssetMentionDisplay({
   mention,
   onClick,
@@ -110,16 +92,14 @@ function AssetMentionDisplay({
   mention: Extract<Mention, { type: 'asset' }>;
   onClick: ClickHandler;
 }) {
-  const isVisualMedia =
-    mention.mimeType.startsWith('image/') ||
-    mention.mimeType.startsWith('video/');
-
   return (
     <MentionPill
       icon={
-        <MentionThumbnail
-          url={isVisualMedia ? mention.thumbnailUrl : null}
-          fallback={<AssetMentionIcon />}
+        <UploadPreview
+          upload={mention.id}
+          box={ASSET_PREVIEW_BOX}
+          padding={ASSET_PREVIEW_PADDING}
+          transparent
         />
       }
       // The pill cuts a name that doesn't fit the line: the hint keeps it whole
@@ -136,27 +116,17 @@ type RecordMentionDisplayProps = {
   onClick: ClickHandler;
 };
 
+/**
+ * A record as DatoCMS shows it in a text: its image, its title and its
+ * status. The row loads them from the host, from the ID of the record.
+ */
 function RecordMentionDisplay({ mention, onClick }: RecordMentionDisplayProps) {
-  const { emoji: titleEmoji, textWithoutEmoji: cleanTitle } =
-    extractLeadingEmoji(mention.title);
-  const displayTitle = titleEmoji ? cleanTitle : mention.title;
-  // The emoji of the title, else of the model, else the icon of a record
-  const emoji = titleEmoji || mention.modelEmoji;
-
   return (
     <MentionPill
-      icon={
-        <MentionThumbnail
-          url={mention.thumbnailUrl}
-          fallback={
-            emoji ? <MentionEmoji emoji={emoji} /> : <RecordDocumentIcon />
-          }
-        />
-      }
       tooltip={mention.isSingleton ? 'Singleton' : mention.modelName}
       onClick={onClick}
     >
-      {displayTitle}
+      <RecordRow layout="inline" item={mention.id} />
     </MentionPill>
   );
 }
@@ -251,7 +221,13 @@ const MentionDisplayComponent = ({
           tooltip={getUserTooltip(mention, isProjectOwner)}
           onClick={clickHandler}
         >
-          @{resolvedUserName}
+          <UserRow
+            layout="inline"
+            presentation={getUserRowPresentation({
+              ...mention,
+              name: resolvedUserName,
+            })}
+          />
         </MentionPill>
       );
 

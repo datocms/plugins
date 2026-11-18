@@ -6,6 +6,10 @@ import Canvas, { useCtx } from 'datocms-react-ui/Canvas';
 import FieldWrapper from 'datocms-react-ui/FieldWrapper';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import SelectInput from 'datocms-react-ui/SelectInput';
+import UserRow, {
+  type UserRowEntity,
+  userPresentation,
+} from 'datocms-react-ui/UserRow';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BulkProgress,
@@ -13,7 +17,6 @@ import {
   type CreatorType,
 } from '../actions/bulkChangeCreator';
 import { CircleExclamationIcon } from '../icons';
-import { makeClient } from '../services/cmaClient';
 import { describeApiError } from '../services/requestErrors';
 import {
   LARGE_SELECTION_THRESHOLD,
@@ -40,12 +43,14 @@ type ModalParameters = {
 };
 
 // A collaborator, an SSO user and the owner account can share an id: the
-// select's value joins the type and the id, and `id` keeps the bare id
+// select's value joins the type and the id, and `id` keeps the bare id. The
+// label is what the search of the select matches: the name and the email
 type Option = {
   label: string;
   value: string;
   id: string;
   userType: CreatorType;
+  user: UserRowEntity;
 };
 
 type OptionGroup<T> = {
@@ -53,66 +58,32 @@ type OptionGroup<T> = {
   options: T[];
 };
 
-type RawCollaborator = {
-  id: string;
-  attributes?: {
-    full_name?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    email?: string | null;
-  };
-  full_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
+type LoadResults = {
+  collaboratorsResult: PromiseSettledResult<UserRowEntityWithId[]>;
+  ssoUsersResult: PromiseSettledResult<UserRowEntityWithId[]>;
+  owner: UserRowEntityWithId | null;
 };
 
-type RawSsoUser = {
-  id: string;
-  attributes?: {
-    first_name?: string | null;
-    last_name?: string | null;
-    username?: string | null;
-  };
-  first_name?: string | null;
-  last_name?: string | null;
-  username?: string | null;
-};
+type UserRowEntityWithId = UserRowEntity & { id: string };
 
-type RawSiteOwner = {
-  id: string;
-  type: 'account' | 'organization';
-};
-
-type ApiResults = {
-  collaboratorsResult: PromiseSettledResult<unknown>;
-  ssoUsersResult: PromiseSettledResult<unknown>;
-  siteResult: PromiseSettledResult<unknown>;
-};
-
-function buildOptionsFromApiResults({
+function buildOptionsFromLoadResults({
   collaboratorsResult,
   ssoUsersResult,
-  siteResult,
-}: ApiResults): {
+  owner,
+}: LoadResults): {
   nextOptionGroups: OptionGroup<Option>[];
   allOptions: Option[];
   firstRejectionReason: unknown | null;
 } {
   const collaboratorOptions =
     collaboratorsResult.status === 'fulfilled'
-      ? extractCollaborators(collaboratorsResult.value).map(
-          toCollaboratorOption,
-        )
+      ? collaboratorsResult.value.map((user) => toOption(user, 'user'))
       : [];
   const ssoOptions =
     ssoUsersResult.status === 'fulfilled'
-      ? extractSsoUsers(ssoUsersResult.value).map(toSsoOption)
+      ? ssoUsersResult.value.map((user) => toOption(user, 'sso_user'))
       : [];
-  const ownerOption =
-    siteResult.status === 'fulfilled'
-      ? toOwnerOption(extractSiteOwner(siteResult.value))
-      : null;
+  const ownerOption = owner ? toOwnerOption(owner) : null;
 
   const nextOptionGroups = buildOptionGroups(
     collaboratorOptions,
@@ -121,11 +92,7 @@ function buildOptionsFromApiResults({
   );
   const allOptions = flattenOptionGroups(nextOptionGroups);
 
-  const rejectedResults = [
-    collaboratorsResult,
-    ssoUsersResult,
-    siteResult,
-  ].filter(
+  const rejectedResults = [collaboratorsResult, ssoUsersResult].filter(
     (result): result is PromiseRejectedResult => result.status === 'rejected',
   );
   const firstRejectionReason =
@@ -179,24 +146,50 @@ type FetchUserOptionsResult = {
   firstRejectionReason: unknown | null;
 };
 
+// The people come from the host: the collaborators and the SSO users through
+// its loaders, the owner of the project from ctx
 async function fetchUserOptions(
-  accessToken: string,
-  environment: string,
-  baseUrl?: string,
+  ctx: RenderModalCtx,
 ): Promise<FetchUserOptionsResult> {
-  const client = makeClient(accessToken, environment, baseUrl);
-  const [collaboratorsResult, ssoUsersResult, siteResult] =
-    await Promise.allSettled([
-      client.users.list(),
-      client.ssoUsers.list(),
-      client.site.find(),
-    ]);
+  const [collaboratorsResult, ssoUsersResult] = await Promise.allSettled([
+    ctx.loadUsers(),
+    ctx.loadSsoUsers(),
+  ]);
 
-  return buildOptionsFromApiResults({
+  return buildOptionsFromLoadResults({
     collaboratorsResult,
     ssoUsersResult,
-    siteResult,
+    owner: ctx.owner ?? null,
   });
+}
+
+/** A short summary of a failed load: the HTTP status, else the message */
+function describeLoadError(error: unknown): string {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'response' in error &&
+    error.response
+  ) {
+    return describeApiError(error);
+  }
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return describeApiError(error);
+}
+
+// The menu shows each person as a row (avatar, name, email); the control
+// shows the chosen one on one line
+function formatOptionLabel(
+  option: Option,
+  { context }: { context: 'menu' | 'value' },
+) {
+  return context === 'menu' ? (
+    <UserRow layout="row" user={option.user} />
+  ) : (
+    <UserRow layout="inline" user={option.user} />
+  );
 }
 
 function ExecutionProgress({ progress }: { progress: BulkProgress }) {
@@ -262,12 +255,17 @@ export default function SelectCreatorModal({ ctx }: Props) {
   const abortController = useRef<AbortController | null>(null);
   const hasOptions = optionGroups.some((group) => group.options.length > 0);
 
+  // The loaders of the host, read when the people load: a new ctx on each
+  // host update must not load them again
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+
   useEffect(() => {
     let cancelled = false;
 
-    async function applyFetchedUsers(accessToken: string) {
+    async function applyFetchedUsers() {
       const { nextOptionGroups, allOptions, firstRejectionReason } =
-        await fetchUserOptions(accessToken, ctx.environment, ctx.cmaBaseUrl);
+        await fetchUserOptions(ctxRef.current);
 
       if (cancelled) {
         return;
@@ -288,9 +286,9 @@ export default function SelectCreatorModal({ ctx }: Props) {
         return;
       }
       if (allOptions.length === 0) {
-        setFetchError(describeApiError(firstRejectionReason));
+        setFetchError(describeLoadError(firstRejectionReason));
       } else {
-        setPartialListWarning(describeApiError(firstRejectionReason));
+        setPartialListWarning(describeLoadError(firstRejectionReason));
       }
     }
 
@@ -309,13 +307,13 @@ export default function SelectCreatorModal({ ctx }: Props) {
       setPartialListWarning(null);
 
       try {
-        await applyFetchedUsers(ctx.currentUserAccessToken);
+        await applyFetchedUsers();
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        setFetchError(describeApiError(error));
+        setFetchError(describeLoadError(error));
         setOptionGroups([]);
         setSelectedUser(null);
       } finally {
@@ -332,8 +330,6 @@ export default function SelectCreatorModal({ ctx }: Props) {
     };
   }, [
     ctx.currentUserAccessToken,
-    ctx.environment,
-    ctx.cmaBaseUrl,
     params.preselectedUserId,
     params.preselectedUserType,
   ]);
@@ -472,6 +468,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
             value={selectedUser?.value ?? null}
             onChange={(_value, option) => handleSelectChange(option)}
             options={optionGroups}
+            formatOptionLabel={formatOptionLabel}
             clearable={false}
             loading={isLoading}
             disabled={isLoading || isRunning}
@@ -537,140 +534,26 @@ function flattenOptionGroups(groups: OptionGroup<Option>[]): Option[] {
   return groups.flatMap((group) => group.options);
 }
 
-function extractCollaborators(result: unknown): RawCollaborator[] {
-  return extractFromCollection(result, isRawCollaborator);
-}
-
-function extractSsoUsers(result: unknown): RawSsoUser[] {
-  return extractFromCollection(result, isRawSsoUser);
-}
-
-function extractSiteOwner(result: unknown): RawSiteOwner | null {
-  if (!result || typeof result !== 'object' || !('owner' in result)) {
-    return null;
-  }
-
-  const owner = (result as { owner?: unknown }).owner;
-  if (!owner || typeof owner !== 'object') {
-    return null;
-  }
-
-  const id = (owner as { id?: unknown }).id;
-  const type = (owner as { type?: unknown }).type;
-  if (typeof id !== 'string') {
-    return null;
-  }
-
-  if (type !== 'account' && type !== 'organization') {
-    return null;
-  }
-
-  return { id, type };
-}
-
-function extractFromCollection<T>(
-  result: unknown,
-  guard: (value: unknown) => value is T,
-): T[] {
-  if (Array.isArray(result)) {
-    return result.filter(guard);
-  }
-
-  if (result && typeof result === 'object' && 'data' in result) {
-    const data = (result as { data?: unknown }).data;
-    if (Array.isArray(data)) {
-      return data.filter(guard);
-    }
-  }
-
-  return [];
-}
-
-function isRawCollaborator(value: unknown): value is RawCollaborator {
-  if (value === null || typeof value !== 'object') {
-    return false;
-  }
-
-  return 'id' in value && typeof (value as { id: unknown }).id === 'string';
-}
-
-function isRawSsoUser(value: unknown): value is RawSsoUser {
-  if (value === null || typeof value !== 'object') {
-    return false;
-  }
-
-  return 'id' in value && typeof (value as { id: unknown }).id === 'string';
-}
-
-function toCollaboratorOption(user: RawCollaborator): Option {
-  const attributes = user.attributes ?? {};
-  const name = firstNonEmpty(
-    attributes.full_name,
-    user.full_name,
-    joinName(attributes.first_name, attributes.last_name),
-    joinName(user.first_name, user.last_name),
-  );
-  const email = firstNonEmpty(attributes.email, user.email);
-  const label = formatLabel(name, email, `User ${user.id}`);
-
-  return { label, value: `user:${user.id}`, id: user.id, userType: 'user' };
-}
-
-function toSsoOption(user: RawSsoUser): Option {
-  const attributes = user.attributes ?? {};
-  const name = firstNonEmpty(
-    joinName(attributes.first_name, attributes.last_name),
-    joinName(user.first_name, user.last_name),
-  );
-  const username = firstNonEmpty(attributes.username, user.username);
-  const label = formatLabel(name, username, `SSO user ${user.id}`);
+function toOption(user: UserRowEntityWithId, userType: CreatorType): Option {
+  const { name, email } = userPresentation(user);
+  const fallback =
+    userType === 'sso_user' ? `SSO user ${user.id}` : `User ${user.id}`;
 
   return {
-    label,
-    value: `sso_user:${user.id}`,
+    label: formatLabel(name ?? undefined, email ?? undefined, fallback),
+    value: `${userType}:${user.id}`,
     id: user.id,
-    userType: 'sso_user',
+    userType,
+    user,
   };
 }
 
-function toOwnerOption(owner: RawSiteOwner | null): Option | null {
-  if (!owner) {
+function toOwnerOption(owner: UserRowEntityWithId): Option | null {
+  if (owner.type !== 'account' && owner.type !== 'organization') {
     return null;
   }
 
-  const suffix =
-    owner.type === 'organization' ? 'organization' : 'personal account';
-  return {
-    label: `Project owner (${suffix})`,
-    value: `${owner.type}:${owner.id}`,
-    id: owner.id,
-    userType: owner.type,
-  };
-}
-
-function joinName(
-  firstName: string | null | undefined,
-  lastName: string | null | undefined,
-): string | undefined {
-  const first = firstNonEmpty(firstName);
-  const last = firstNonEmpty(lastName);
-  const name = [first, last].filter(Boolean).join(' ');
-  return name.length > 0 ? name : undefined;
-}
-
-function firstNonEmpty(
-  ...values: Array<string | null | undefined>
-): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed.length > 0) {
-        return trimmed;
-      }
-    }
-  }
-
-  return undefined;
+  return toOption(owner, owner.type);
 }
 
 function formatLabel(

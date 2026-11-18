@@ -1,5 +1,5 @@
 import type { UserInfo } from '@hooks/useMentions';
-import Avatar from 'datocms-react-ui/Avatar';
+import UserRow from 'datocms-react-ui/UserRow';
 import { UserIcon } from '../../../icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
 
@@ -53,11 +53,18 @@ const UserMentionDropdown = ({
     onSelectedIndexChange={onSelectedIndexChange}
     position={position}
     renderOption={(user) => ({
-      image: (
-        <Avatar email={user.email} imageUrl={user.avatarUrl} name={user.name} />
-      ),
       title: user.name,
-      details: user.email,
+      // The person as the kit draws it: the avatar, the name and the email
+      content: (
+        <UserRow
+          layout="row"
+          presentation={{
+            name: user.name,
+            email: user.email || null,
+            imageUrl: user.avatarUrl,
+          }}
+        />
+      ),
     })}
     selectedIndex={selectedIndex}
     status={statusText(isLoading, errorMessage)}

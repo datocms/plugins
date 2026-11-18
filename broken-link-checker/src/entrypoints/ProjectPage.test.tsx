@@ -355,8 +355,8 @@ describe('project page', () => {
 
     await user.click(table().getByText(ENGLISH_URL));
     await user.click(
-      detail().getByRole('button', {
-        name: /^Page\s*Example page\s*,\s*open record$/,
+      await detail().findByRole('button', {
+        name: /^Page\s*Title of record-1\s*Website, English\s*,\s*open record$/,
       }),
     );
     expect(ctx.editItem).toHaveBeenCalledWith('record-1');
@@ -391,8 +391,8 @@ describe('project page', () => {
 
     await user.click(table().getByText(ENGLISH_URL));
     await user.click(
-      detail().getByRole('button', {
-        name: /^Page\s*Example page\s*,\s*open record$/,
+      await detail().findByRole('button', {
+        name: /^Page\s*Title of record-1\s*Website, English\s*,\s*open record$/,
       }),
     );
     await waitFor(() =>

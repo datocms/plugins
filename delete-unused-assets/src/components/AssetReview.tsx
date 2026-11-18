@@ -7,7 +7,9 @@ import {
   type TableColumn,
   useInMemoryTableLayout,
 } from 'datocms-react-ui/Table';
-import Toolbar, { useFilterToolbar } from 'datocms-react-ui/Toolbar';
+import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
+import Toolbar from 'datocms-react-ui/Toolbar';
+import UploadPreview from 'datocms-react-ui/UploadPreview';
 import {
   type MouseEvent,
   memo,
@@ -19,27 +21,44 @@ import {
 import s from '../entrypoints/styles.module.css';
 import { formatBytes, useFormatters } from '../utils/format';
 import type { UnusedAsset } from '../utils/unusedAssets';
+import PagePane from './PagePane';
 
 export const ASSETS_PER_PAGE = 100;
 
 // The link opens the file: it doesn't toggle the row.
 const stopPropagation = (event: MouseEvent) => event.stopPropagation();
 
+// The thumbnail of an asset in its row, as the list of the Media Area draws
+// it: with no padding, it keeps the proportions of the image.
+const THUMBNAIL = { width: 60, height: 60 };
+
 const COLUMNS: TableColumn<UnusedAsset>[] = [
   {
     name: 'filename',
     label: 'Filename',
-    // A long name ends with an ellipsis: the title shows it in full.
     renderCell: (asset) => (
-      <a
-        title={asset.filename}
-        href={asset.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={stopPropagation}
-      >
-        {asset.filename}
-      </a>
+      <EntityCell
+        preview={
+          <UploadPreview
+            upload={asset.preview}
+            box={THUMBNAIL}
+            padding={[0, 0]}
+            transparent
+          />
+        }
+        // A long name ends with an ellipsis: the title shows it in full.
+        title={
+          <a
+            title={asset.filename}
+            href={asset.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={stopPropagation}
+          >
+            {asset.filename}
+          </a>
+        }
+      />
     ),
   },
   {
@@ -49,9 +68,8 @@ const COLUMNS: TableColumn<UnusedAsset>[] = [
   },
 ];
 
-// The shares of the table of assets in the Table docs: the size column fits
-// a size in full ("1023.99KB") in the narrow settings column, and the
-// filename takes the rest.
+// The shares of the table of assets in the Table docs: the filename takes
+// most of the width, the size column fits a size in full ("1023.99KB").
 const DEFAULT_LAYOUT = {
   columns: [
     { name: 'filename', width: 0.7 },
@@ -63,15 +81,8 @@ const totalSize = (assets: UnusedAsset[]) =>
   assets.reduce((sum, asset) => sum + asset.size, 0);
 
 // Resets the scroll of the pane content that holds the element.
-function scrollToTop(
-  element: HTMLElement | null,
-  boundary: HTMLElement | null,
-) {
-  for (
-    let node = element?.parentElement;
-    node && node !== boundary;
-    node = node.parentElement
-  ) {
+function scrollToTop(element: HTMLElement | null) {
+  for (let node = element?.parentElement; node; node = node.parentElement) {
     if (node.scrollTop > 0) {
       node.scrollTop = 0;
     }
@@ -109,7 +120,6 @@ export default function AssetReview({ assets, onDelete }: Props) {
     () => new Set(),
   );
   const [layout, setLayout] = useInMemoryTableLayout(DEFAULT_LAYOUT);
-  const reviewRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const search = query.trim().toLowerCase();
@@ -146,18 +156,22 @@ export default function AssetReview({ assets, onDelete }: Props) {
 
   const goToPage = (nextPage: number) => {
     setPage(nextPage);
-    scrollToTop(bodyRef.current, reviewRef.current);
+    scrollToTop(bodyRef.current);
   };
 
-  const changeQuery = (nextQuery: string) => {
-    setQuery(nextQuery);
-    goToPage(0);
-  };
-
-  const filter = useFilterToolbar({
-    isFiltering: query !== '',
-    onClear: () => changeQuery(''),
-  });
+  // The header of the pane keeps the filter open while it has a value, and
+  // clears it when the user closes it.
+  const filter = useMemo(
+    () => ({
+      value: query,
+      onChange: (nextQuery: string) => {
+        setQuery(nextQuery);
+        setPage(0);
+        scrollToTop(bodyRef.current);
+      },
+    }),
+    [query],
+  );
 
   const toggle = useCallback((id: string) => {
     setExcluded((current) => {
@@ -193,127 +207,98 @@ export default function AssetReview({ assets, onDelete }: Props) {
   };
 
   return (
-    <div ref={reviewRef} className={s.review}>
-      <div className={s.reviewPane}>
-        <Pane
-          ariaLabel="Unused assets"
-          header={
-            <>
-              <Toolbar>
-                <Toolbar.Title>Unused assets</Toolbar.Title>
-                <Toolbar.Subtitle>
-                  {search
-                    ? `${format.count(visible.length)} of ${format.assets(assets.length)}`
-                    : format.assets(assets.length)}
-                </Toolbar.Subtitle>
-                <Toolbar.Space />
-                <Toolbar.Group>
-                  <Toolbar.FilterToggle
-                    pressed={filter.open}
-                    onClick={filter.onToggle}
-                    onOpen={filter.onOpen}
-                  />
-                </Toolbar.Group>
-              </Toolbar>
-              {filter.open && (
-                <Toolbar fields onClose={filter.onClose}>
-                  <Toolbar.FilterInput
-                    value={query}
-                    onChange={changeQuery}
-                    autoFocus={filter.autoFocus}
-                    onClose={filter.onClose}
-                  />
-                </Toolbar>
-              )}
-            </>
-          }
-          footer={
-            pageCount > 1 && (
-              <Toolbar>
-                <Toolbar.Pagination
-                  currentPage={currentPage}
-                  perPage={ASSETS_PER_PAGE}
-                  totalEntries={visible.length}
-                  onChange={goToPage}
-                />
-              </Toolbar>
-            )
-          }
-          slideUpToolbar={
-            <MultipleSelectionActionBar
-              open={selected.length > 0}
-              status={{
-                id: 'deleteUnusedAssets.selection',
-                values: {
-                  selected: selected.length,
-                  total: assets.length,
-                  size: formatBytes(selectedBytes),
-                },
-              }}
-              onDeselectAll={() =>
-                setExcluded(new Set(assets.map((asset) => asset.id)))
-              }
-              actions={[
-                {
-                  id: 'delete',
-                  label: 'Delete',
-                  tone: 'primary',
-                  onClick: () => {
-                    const current = selectedRef.current;
-                    return current.length > 0
-                      ? onDelete(current)
-                      : Promise.resolve();
-                  },
-                },
-              ]}
+    <PagePane
+      subtitle={
+        search
+          ? `${format.count(visible.length)} of ${format.assets(assets.length)}`
+          : format.assets(assets.length)
+      }
+      filter={filter}
+      footer={
+        pageCount > 1 && (
+          <Toolbar>
+            <Toolbar.Pagination
+              currentPage={currentPage}
+              perPage={ASSETS_PER_PAGE}
+              totalEntries={visible.length}
+              onChange={goToPage}
             />
+          </Toolbar>
+        )
+      }
+      slideUpToolbar={
+        <MultipleSelectionActionBar
+          open={selected.length > 0}
+          status={{
+            id: 'deleteUnusedAssets.selection',
+            values: {
+              selected: selected.length,
+              total: assets.length,
+              size: formatBytes(selectedBytes),
+            },
+          }}
+          onDeselectAll={() =>
+            setExcluded(new Set(assets.map((asset) => asset.id)))
           }
-        >
-          {/* The area holds the notice and the table, or the blank slate alone:
+          actions={[
+            {
+              id: 'delete',
+              label: 'Delete',
+              tone: 'primary',
+              onClick: () => {
+                const current = selectedRef.current;
+                return current.length > 0
+                  ? onDelete(current)
+                  : Promise.resolve();
+              },
+            },
+          ]}
+        />
+      }
+    >
+      {/* The area holds the notice and the table, or the blank slate alone:
             the blank slate centers itself in the whole pane content. */}
-          <ListArea>
-            {visible.length === 0 ? (
-              <Pane.FilterBlankSlate />
-            ) : (
-              <>
-                <Callout tone="warning" title="Deletion is permanent">
-                  These assets aren't used by any record in this environment,
-                  but your website may still link to some of them directly.
-                  Untick anything you want to keep.
-                </Callout>
-                <Table
-                  columns={COLUMNS}
-                  layout={layout}
-                  onLayoutChange={setLayout}
-                  checkboxes={{ alwaysVisible: true }}
-                >
-                  <Table.Header
-                    selectAll={{
-                      selected: visibleSelectedCount === visible.length,
-                      onChange: toggleAll,
-                    }}
+      <ListArea>
+        {visible.length === 0 ? (
+          <Pane.FilterBlankSlate />
+        ) : (
+          <>
+            <Callout tone="warning" title="Deletion is permanent">
+              These assets aren't used by any record in this environment, but
+              your website may still link to some of them directly. Untick
+              anything you want to keep.
+            </Callout>
+            <Table
+              columns={COLUMNS}
+              layout={layout}
+              onLayoutChange={setLayout}
+              checkboxes={{ alwaysVisible: true }}
+            >
+              <Table.Header
+                selectAll={{
+                  selected: visibleSelectedCount === visible.length,
+                  onChange: toggleAll,
+                }}
+              />
+              <Table.Body ref={bodyRef}>
+                {rows.map((asset) => (
+                  <AssetRow
+                    key={asset.id}
+                    asset={asset}
+                    selected={!excluded.has(asset.id)}
+                    onToggle={toggle}
                   />
-                  <Table.Body ref={bodyRef}>
-                    {rows.map((asset) => (
-                      <AssetRow
-                        key={asset.id}
-                        asset={asset}
-                        selected={!excluded.has(asset.id)}
-                        onToggle={toggle}
-                      />
-                    ))}
-                  </Table.Body>
-                </Table>
-                {/* The selection bar floats over the bottom of the list: this
+                ))}
+              </Table.Body>
+            </Table>
+            {/* The selection bar floats over the bottom of the list: this
                   room lets the last rows scroll above it. */}
-                {selected.length > 0 && (
-                  <div className={s.selectionBarRoom} aria-hidden="true" />
-                )}
-              </>
+            {selected.length > 0 && (
+              <div className={s.selectionBarRoom} aria-hidden="true" />
             )}
-          </ListArea>
-        </Pane>
-      </div>
-    </div>
+          </>
+        )}
+      </ListArea>
+    </PagePane>
   );
 }

@@ -14,12 +14,26 @@ function upload(id: string) {
       filename: `${id}.jpg`,
       url: `https://x.test/${id}`,
       size: 10,
+      format: 'jpg',
+      width: 40,
+      height: 30,
+      mime_type: 'image/jpeg',
+      md5: `md5-${id}`,
+      thumbhash: null,
+      mux_playback_id: null,
     },
   };
 }
 
 function asset(id: string): UnusedAsset {
-  return { id, filename: `${id}.jpg`, url: `https://x.test/${id}`, size: 10 };
+  const { attributes } = upload(id);
+  return {
+    id,
+    filename: attributes.filename,
+    url: attributes.url,
+    size: attributes.size,
+    preview: { id, attributes },
+  };
 }
 
 type ListQuery = { filter?: { ids?: string }; page?: { offset?: number } };
@@ -65,6 +79,8 @@ describe('discoverUnusedAssets', () => {
     const onProgress = vi.fn();
     const assets = await discoverUnusedAssets(client, { onProgress });
     expect(assets).toHaveLength(501);
+    // Each asset keeps what the preview of its row draws.
+    expect(assets[0]).toEqual(asset('a0'));
     expect(rawList).toHaveBeenCalledTimes(2);
     expect(rawList.mock.calls[1]?.[0]).toMatchObject({
       filter: { fields: { in_use: { eq: false } } },

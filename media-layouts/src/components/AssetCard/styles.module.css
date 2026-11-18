@@ -1,4 +1,4 @@
-/* Placement only: the MediaCard draws the asset, AssetMedia its media, and
+/* Placement only: an UploadCard draws the asset (see AssetMedia), and
    the kit fields its crop, width and options. */
 
 /* The assets, in columns of the same width that fill the field. A narrow

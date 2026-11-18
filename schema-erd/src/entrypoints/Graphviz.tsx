@@ -14,13 +14,13 @@ import {
 } from 'react-zoom-pan-pinch';
 import { encode } from 'universal-base64';
 import {
-  ArrowRotateLeftIcon,
-  CircleExclamationIcon,
-  CrosshairsIcon,
+  CircleAlertIcon,
+  CrosshairIcon,
   DiagramIcon,
   DownloadIcon,
-  MagnifyingGlassMinusIcon,
-  MagnifyingGlassPlusIcon,
+  FitToScreenIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from '../icons';
 import {
   allEntities,
@@ -205,25 +205,25 @@ export default function Graphviz({ ctx }: Props) {
                 <Toolbar.Group>
                   <Toolbar.Button
                     iconOnly
-                    icon={MagnifyingGlassPlusIcon}
+                    icon={ZoomInIcon}
                     label="Zoom in"
                     onClick={() => zoomRef.current?.zoomIn()}
                   />
                   <Toolbar.Button
                     iconOnly
-                    icon={MagnifyingGlassMinusIcon}
+                    icon={ZoomOutIcon}
                     label="Zoom out"
                     onClick={() => zoomRef.current?.zoomOut()}
                   />
                   <Toolbar.Button
                     iconOnly
-                    icon={ArrowRotateLeftIcon}
-                    label="Reset zoom"
-                    onClick={() => zoomRef.current?.resetTransform()}
+                    icon={FitToScreenIcon}
+                    label="Fit the whole diagram"
+                    onClick={() => zoomRef.current?.centerView(minScale)}
                   />
                   <Toolbar.Button
                     iconOnly
-                    icon={CrosshairsIcon}
+                    icon={CrosshairIcon}
                     label="Center the diagram"
                     onClick={() => zoomRef.current?.centerView()}
                   />
@@ -252,7 +252,7 @@ export default function Graphviz({ ctx }: Props) {
               <BlankSlate
                 placement="area"
                 error
-                icon={<CircleExclamationIcon />}
+                icon={<CircleAlertIcon />}
                 title="The diagram failed to load"
                 code={errorMessage}
                 description="Reload the page to try again."

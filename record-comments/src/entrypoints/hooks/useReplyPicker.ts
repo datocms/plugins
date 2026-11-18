@@ -1,5 +1,4 @@
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
-import type { Client } from '@datocms/cma-client-browser';
 import { createAssetMention } from '@utils/composerHelpers';
 import { createRecordMention } from '@utils/recordPickerHelpers';
 import { insertMentionWithRetry } from '@utils/textareaUtils';
@@ -11,7 +10,6 @@ import type { ModelInfo } from './useMentions';
 
 export type UseReplyPickerParams = {
   ctx: RenderItemFormSidebarCtx;
-  client: Client | null;
   canMentionAssets: boolean;
 };
 
@@ -32,7 +30,6 @@ type UseReplyPickerReturn = {
  */
 export function useReplyPicker({
   ctx,
-  client,
   canMentionAssets,
 }: UseReplyPickerParams): UseReplyPickerReturn {
   const [isPickerInProgress, setIsPickerInProgress] = useState(false);
@@ -93,35 +90,15 @@ export function useReplyPicker({
           return;
         }
 
-        const itemType = ctx.itemTypes[model.id];
-
-        let fields: Awaited<ReturnType<typeof ctx.loadItemTypeFields>> = [];
-        if (itemType) {
-          try {
-            fields = await ctx.loadItemTypeFields(model.id);
-          } catch (fieldError) {
-            logError(
-              'Failed to load item type fields for record mention',
-              fieldError,
-              { modelId: model.id },
-            );
-          }
-        }
-
-        const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-
-        const recordMention = await createRecordMention(
-          { id: record.id, attributes: record.attributes },
+        const recordMention = createRecordMention(
+          record.id,
           {
             id: model.id,
             apiKey: model.apiKey,
             name: model.name,
             isBlockModel: model.isBlockModel,
           },
-          itemType,
-          fields,
-          mainLocale,
-          client,
+          ctx.itemTypes[model.id],
         );
 
         await insertMentionWithRetry(targetComposerRef, recordMention);
@@ -132,7 +109,7 @@ export function useReplyPicker({
         setIsPickerInProgress(false);
       }
     },
-    [ctx, client],
+    [ctx],
   );
 
   return {

@@ -26,14 +26,18 @@ const ctx = {
 
 const RECORD: TableRecord = {
   id: 'record-1',
-  title: 'Hello world',
+  presentation: {
+    id: 'record-1',
+    title: 'Hello world',
+    image: null,
+    currentVersionValid: true,
+    publishedVersionValid: true,
+  },
+  recordModel: { name: 'Article', draftModeActive: false },
   model: 'Article',
   status: 'published',
   updatedAt: '2026-10-15T09:30:00Z',
   createdAt: '2026-10-01T09:30:00Z',
-  publishedValid: true,
-  currentValid: true,
-  draftModeActive: false,
   url: '/editor/item_types/model-1/items/record-1',
 };
 

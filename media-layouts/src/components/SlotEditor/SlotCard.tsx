@@ -1,7 +1,6 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import EmptySlot from 'datocms-react-ui/EmptySlot';
 import EntityRow from 'datocms-react-ui/EntityRow';
-import MediaCard from 'datocms-react-ui/MediaCard';
 import Pill from 'datocms-react-ui/Pill';
 import { useUploadData } from '../../hooks/useUploadData';
 import { EditIcon, ReplaceIcon } from '../../icons';
@@ -16,7 +15,7 @@ import { assetTitle, describeSize, slotTitle } from '../../utils/options';
 import { assetLoadState, resolveFormat } from '../../utils/upload';
 import { AssetOptionFields } from '../AssetFields';
 import {
-  AssetMedia,
+  AssetUploadCard,
   FailedAsset,
   LoadingAsset,
   useMediaCardMenus,
@@ -189,30 +188,20 @@ function ReadyAsset({
     filename: data.filename,
     uploadId: assignment.uploadId,
   });
-  const media = (
-    <AssetMedia
-      url={data.url}
-      format={data.format}
-      ratio={ratio}
-      focalPoint={assignment.focalPoint}
-    />
-  );
 
   return (
     <>
-      {disabled ? (
-        <MediaCard caption={{ text: caption, muted: true }} disabled>
-          {media}
-        </MediaCard>
-      ) : (
-        <MediaCard
-          caption={{ text: caption }}
-          actions={menus.actions}
-          options={menus.options}
-        >
-          {media}
-        </MediaCard>
-      )}
+      <AssetUploadCard
+        uploadId={assignment.uploadId}
+        url={data.url}
+        format={data.format}
+        ratio={ratio}
+        focalPoint={assignment.focalPoint}
+        caption={caption}
+        disabled={Boolean(disabled)}
+        actions={menus.actions}
+        options={menus.options}
+      />
       {(enableCssClass || enableLazyLoading) && (
         // Its own box: the last field of the box drops its bottom margin
         <div>

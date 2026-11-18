@@ -16,6 +16,7 @@ import type {
   RunTotals,
 } from '../../contract';
 import { createFakeController, type FakeController } from './fakeController';
+import { hostRecords } from './mockCtx';
 
 /**
  * Snapshot builders for every state of the page (SPEC §3, S1–S23, plus the
@@ -74,6 +75,7 @@ type RecordInit = {
   modelId: string;
   modelName: string;
   recordId: string;
+  /** The title that the host gives the record (see `hostRecords`). */
   title: string | null;
   fields: ReadonlyArray<FieldView>;
   inclusion?: RecordView['inclusion'];
@@ -83,6 +85,11 @@ type RecordInit = {
 };
 
 export function makeRecord(init: RecordInit): RecordView {
+  hostRecords.set(init.recordId, {
+    title: init.title,
+    modelId: init.modelId,
+    modelName: init.modelName,
+  });
   let matchCount = 0;
   for (const field of init.fields) {
     matchCount += field.matches.length;
@@ -92,7 +99,6 @@ export function makeRecord(init: RecordInit): RecordView {
     recordId: init.recordId,
     modelId: init.modelId,
     modelName: init.modelName,
-    title: init.title,
     matchCount,
     inclusion: init.inclusion ?? 'all',
     selectable: init.selectable ?? false,
@@ -446,13 +452,11 @@ export function toPlan(
 function toReport(
   record: RecordView,
   status: RecordRunStatus,
-  title: string | null = record.title,
   publish: RecordPublishStatus = { kind: 'none' },
 ): RecordView {
   const written = status.kind === 'replaced';
   return {
     ...record,
-    title,
     status,
     publish,
     selectable: false,
@@ -955,11 +959,7 @@ function replacingSnapshot(phase: 'running' | 'stopping'): FindReplaceSnapshot {
     primary: disabledPrimary('replacing', { count: 6, busy: true }),
     selection: { ui: 'disabled', all: 'some' },
     records: [
-      toReport(
-        launch,
-        { kind: 'replaced', replacedMatches: 2 },
-        'Globex launches a new widget',
-      ),
+      toReport(launch, { kind: 'replaced', replacedMatches: 2 }),
       toReport(brand, { kind: 'writing' }),
       about,
       legal,
@@ -1010,18 +1010,12 @@ function finishedSnapshot(): FindReplaceSnapshot {
       toReport(
         launch,
         { kind: 'replaced', replacedMatches: 2 },
-        'Globex launches a new widget',
         { kind: 'ready' },
       ),
-      toReport(
-        brand,
-        { kind: 'replaced', replacedMatches: 2 },
-        'Globex brand guidelines',
-      ),
+      toReport(brand, { kind: 'replaced', replacedMatches: 2 }),
       toReport(
         about,
         { kind: 'replaced', replacedMatches: 2 },
-        about?.title ?? null,
         { kind: 'ready' },
       ),
     ],
@@ -1179,11 +1173,7 @@ function failedSnapshot(): FindReplaceSnapshot {
         ),
         { kind: 'failed', reason: 'network', retryable: true, detail: null },
       ),
-      toReport(
-        launch,
-        { kind: 'replaced', replacedMatches: 2 },
-        'Globex launches a new widget',
-      ),
+      toReport(launch, { kind: 'replaced', replacedMatches: 2 }),
     ],
     run: {
       phase: 'finished',
@@ -1250,11 +1240,7 @@ function skippedSnapshot(): FindReplaceSnapshot {
     callouts: [{ kind: 'recordsSkipped', count: 3, allStale: true }],
     records: [
       toReport(offsite, { kind: 'skipped', reason: 'stale' }),
-      toReport(
-        launch,
-        { kind: 'replaced', replacedMatches: 2 },
-        'Globex launches a new widget',
-      ),
+      toReport(launch, { kind: 'replaced', replacedMatches: 2 }),
     ],
     run: {
       phase: 'finished',
@@ -1311,11 +1297,7 @@ function runStoppedSnapshot(): FindReplaceSnapshot {
     selection: { ui: 'enabled', all: 'all' },
     records: [
       report,
-      toReport(
-        launch,
-        { kind: 'replaced', replacedMatches: 2 },
-        'Globex launches a new widget',
-      ),
+      toReport(launch, { kind: 'replaced', replacedMatches: 2 }),
     ],
     run: {
       phase: 'stopped',

@@ -36,7 +36,7 @@ function schema(...models: ContentModel[]): ContentSchema {
 }
 
 function record(values: Record<string, unknown>): RecordInput {
-  return { id: 'record-1', modelId: 'page', title: 'Example page', values };
+  return { id: 'record-1', modelId: 'page', values };
 }
 
 function block(
@@ -340,7 +340,6 @@ describe('schema-aware link extraction', () => {
     );
     const unsaved: RecordInput = {
       modelId: 'page',
-      title: 'New page',
       values: {
         data: block('page', {
           section: block('cta', { url: 'https://unsaved.example' }),

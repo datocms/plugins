@@ -1,5 +1,6 @@
 // Runs inside the preview frame (frame.html). Same CSS order as src/main.tsx.
 import 'datocms-react-ui/styles.css';
+import { LucideProvider } from 'lucide-react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import FindReplacePage from '../../entrypoints/FindReplacePage';
@@ -73,11 +74,14 @@ function render(): void {
   });
   root.render(
     <StrictMode>
-      {view === 'states' ? (
-        <Gallery ctx={ctx} state={params.get('state')} />
-      ) : (
-        <FindReplacePage ctx={ctx} />
-      )}
+      {/* As the plugin draws its Lucide icons: 1em (see utils/render.tsx). */}
+      <LucideProvider size={'1em' as unknown as number}>
+        {view === 'states' ? (
+          <Gallery ctx={ctx} state={params.get('state')} />
+        ) : (
+          <FindReplacePage ctx={ctx} />
+        )}
+      </LucideProvider>
     </StrictMode>,
   );
 }

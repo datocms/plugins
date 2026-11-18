@@ -19,12 +19,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  CircleExclamationIcon,
-  iconComponent,
-  ListCheckIcon,
-  RefreshIcon,
-} from '../icons';
+import { CircleExclamationIcon, ListCheckIcon, RefreshIcon } from '../icons';
 import {
   buildCmaClient,
   describeError,
@@ -258,8 +253,7 @@ function IconOptionLabel({
   option: IconOption;
   context: 'menu' | 'value';
 }) {
-  const definition = iconByName(option.value);
-  const Glyph = definition ? iconComponent(definition) : null;
+  const Glyph = iconByName(option.value)?.icon ?? null;
   if (Glyph && context === 'value') {
     return (
       <span className={s.optionLabel}>

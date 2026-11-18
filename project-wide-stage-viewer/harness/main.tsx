@@ -1,9 +1,12 @@
 import 'datocms-react-ui/styles.css';
 import type { RenderConfigScreenCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import { LucideProvider } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import ConfigScreen from '../src/entrypoints/ConfigScreen';
 import StagePage from '../src/entrypoints/StagePage';
 import { readMenuItems } from '../src/lib/parameters';
+import { loadItemPresentationInfo } from './cma';
 import { FIELDS, ITEM_TYPES } from './data';
 import tokensCss from './datocms-tokens.css?raw';
 import { resolveDesignTokens } from './tokens';
@@ -100,6 +103,7 @@ function baseCtx() {
     ui: { locale: 'en-GB' },
     itemTypes: Object.fromEntries(ITEM_TYPES.map((it) => [it.id, it])),
     loadItemTypeFields: async (id: string) => FIELDS[id] ?? [],
+    loadItemPresentationInfo,
     notice: async (message: string) => toast('notice', message),
     alert: async (message: string) => toast('alert', message),
     navigateTo: log,
@@ -110,6 +114,15 @@ function baseCtx() {
 }
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
+
+// As src/utils/render.tsx draws the Lucide icons: 1em, like the text
+function mount(content: ReactNode) {
+  root.render(
+    <LucideProvider size={'1em' as unknown as number}>
+      {content}
+    </LucideProvider>,
+  );
+}
 
 function render() {
   if (surface === 'config') {
@@ -136,7 +149,7 @@ function render() {
         render();
       },
     } as unknown as RenderConfigScreenCtx;
-    root.render(<ConfigScreen ctx={ctx} />);
+    mount(<ConfigScreen ctx={ctx} />);
     return;
   }
 
@@ -149,7 +162,7 @@ function render() {
   } as unknown as RenderPageCtx;
   const menuItem =
     params.get('data') === 'unknown' ? null : readMenuItems(parameters)[0];
-  root.render(<StagePage ctx={ctx} menuItem={menuItem} />);
+  mount(<StagePage ctx={ctx} menuItem={menuItem} />);
 }
 
 render();

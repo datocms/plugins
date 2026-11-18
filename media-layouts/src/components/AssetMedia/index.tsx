@@ -1,105 +1,128 @@
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
-import FileTypeIcon from 'datocms-react-ui/FileTypeIcon';
+import { useElementLayout } from 'datocms-react-ui/hooks/useElementLayout';
 import { useMediaQuery } from 'datocms-react-ui/hooks/useMediaQuery';
 import type {
   MediaCardAction,
   MediaCardOption,
 } from 'datocms-react-ui/MediaCard';
-import type { CSSProperties, ReactElement } from 'react';
+import UploadCard from 'datocms-react-ui/UploadCard';
+import UploadPreview from 'datocms-react-ui/UploadPreview';
+import { type ReactElement, useRef } from 'react';
 import { WarningIcon } from '../../icons';
 import type { MediaLayoutItem } from '../../types';
-import { getFormatLabel, isImageFormat } from '../../utils/upload';
+import { isImageFormat } from '../../utils/upload';
 import s from './styles.module.css';
 
-type AssetMediaProps = {
+/** The longest side of the crop that the image service draws for a card */
+const CROP_PREVIEW_SIZE = 600;
+
+/**
+ * The URL of the image at the crop of the asset (or of its slot), around its
+ * focal point, and its size. The image service crops it, so the preview
+ * shows the part of the image that the frontend gets.
+ */
+function cropPreview(
+  url: string,
+  ratio: number,
+  focalPoint: MediaLayoutItem['focalPoint'],
+) {
+  const width = Math.round(
+    ratio >= 1 ? CROP_PREVIEW_SIZE : CROP_PREVIEW_SIZE * ratio,
+  );
+  const height = Math.round(
+    ratio >= 1 ? CROP_PREVIEW_SIZE / ratio : CROP_PREVIEW_SIZE,
+  );
+  const params = new URLSearchParams({
+    auto: 'format',
+    fit: 'crop',
+    w: String(width),
+    h: String(height),
+  });
+  if (focalPoint) {
+    params.set('crop', 'focalpoint');
+    params.set('fp-x', String(focalPoint.x));
+    params.set('fp-y', String(focalPoint.y));
+  }
+  return { src: `${url}?${params.toString()}`, width, height };
+}
+
+type CroppedPreviewProps = {
+  url: string;
+  ratio: number;
+  focalPoint: MediaLayoutItem['focalPoint'];
+};
+
+/**
+ * The preview of an image at its crop: the box of the card (its CSS gives
+ * the size) holds the cropped image, fitted as the Media Area fits an asset.
+ */
+function CroppedPreview({ url, ratio, focalPoint }: CroppedPreviewProps) {
+  const ref = useRef<HTMLElement>(null);
+  const { width, height } = useElementLayout(ref);
+  const crop = cropPreview(url, ratio, focalPoint);
+
+  return (
+    <UploadPreview ref={ref} box={width && height ? { width, height } : null}>
+      <UploadPreview.Image
+        src={crop.src}
+        width={crop.width}
+        height={crop.height}
+      />
+    </UploadPreview>
+  );
+}
+
+type AssetUploadCardProps = {
+  uploadId: string;
   url: string;
   format: string | null;
   /** The crop of the asset, or null when it has none (Original, unknown size) */
   ratio: number | null;
   focalPoint: MediaLayoutItem['focalPoint'];
-  /**
-   * A gallery: the media sits in a frame of one shape (FRAME_RATIO), thus
-   * the cards of a row have one height
-   */
-  framed?: boolean;
+  caption: string;
+  /** The field is read-only: the card has no actions */
+  disabled: boolean;
+  actions?: MediaCardAction[];
+  options?: MediaCardOption[];
 };
 
-/** The shape of the frame of the media in a gallery: 4:3 */
-const FRAME_RATIO = 4 / 3;
-
 /**
- * The media of a MediaCard: the image at the crop of the asset (or of its
- * slot), or a box with the icon of the type of the file. Without a ratio, the
- * media keeps a minimum height. In a frame, the image keeps its crop at the
- * center of the frame (as wide as the frame, or as tall), and the box of a
- * file fills the frame.
+ * The card of an asset, as the Media Area shows it. An image with a crop
+ * shows at its crop; any other asset (an image at its original shape, an
+ * SVG, a video, a file) shows as DatoCMS shows it, from its ID.
  */
-export function AssetMedia({
+export function AssetUploadCard({
+  uploadId,
   url,
   format,
   ratio,
   focalPoint,
-  framed = false,
-}: AssetMediaProps) {
-  const hasRatio = ratio !== null && ratio > 0;
-  const ratioStyle: CSSProperties | undefined = hasRatio
-    ? { aspectRatio: String(ratio) }
-    : undefined;
-  const sizeClass = hasRatio ? undefined : s.noRatio;
+  caption,
+  disabled,
+  actions,
+  options,
+}: AssetUploadCardProps) {
+  const cardProps = disabled
+    ? { caption: { text: caption, muted: true }, disabled: true }
+    : { caption: { text: caption }, actions, options };
+  const showsCrop =
+    Boolean(url) &&
+    isImageFormat(format) &&
+    // The image service rasterizes an SVG: it shows whole, as it is
+    !format?.toLowerCase().includes('svg') &&
+    ratio !== null &&
+    ratio > 0;
 
-  if (!url || !isImageFormat(format)) {
+  if (showsCrop && ratio !== null) {
     return (
-      <div
-        className={[s.filePlaceholder, framed ? s.frame : sizeClass]
-          .filter(Boolean)
-          .join(' ')}
-        style={framed ? undefined : ratioStyle}
-      >
-        <FileTypeIcon
-          className={s.fileIcon}
-          extension={getFormatLabel(format) ?? undefined}
-        />
-      </div>
+      <UploadCard {...cardProps}>
+        <CroppedPreview url={url} ratio={ratio} focalPoint={focalPoint} />
+      </UploadCard>
     );
   }
 
-  const focalX = focalPoint ? focalPoint.x * 100 : 50;
-  const focalY = focalPoint ? focalPoint.y * 100 : 50;
-  const src = `${url}?auto=format&w=400&fit=crop`;
-  const objectPosition = `${focalX}% ${focalY}%`;
-
-  if (!framed) {
-    return (
-      <img
-        className={[s.media, sizeClass].filter(Boolean).join(' ')}
-        src={src}
-        alt=""
-        draggable={false}
-        style={{ ...ratioStyle, objectPosition }}
-      />
-    );
-  }
-
-  // A crop taller than the frame is as tall as the frame: its width is the
-  // part of the width of the frame that its ratio gives
-  const framedStyle: CSSProperties = hasRatio
-    ? {
-        ...ratioStyle,
-        width: `${Math.min(1, ratio / FRAME_RATIO) * 100}%`,
-      }
-    : {};
-  return (
-    <div className={s.frame}>
-      <img
-        className={hasRatio ? s.framedMedia : s.framedOriginal}
-        src={src}
-        alt=""
-        draggable={false}
-        style={{ ...framedStyle, objectPosition }}
-      />
-    </div>
-  );
+  return <UploadCard {...cardProps} upload={uploadId || null} />;
 }
 
 type MediaCardMenus = {

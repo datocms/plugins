@@ -35,8 +35,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "datocms-plugin-sdk": "^3.0.0-next.3",
-    "datocms-react-ui": "^3.1.0-next.6",
+    "datocms-plugin-sdk": "^3.0.0-next.4",
+    "datocms-react-ui": "^4.0.0-next.7",
+    "lucide-react": "^1.74.0",
     "luxon": "^3.7.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

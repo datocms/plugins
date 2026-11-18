@@ -39,7 +39,6 @@ function group(
         id: 'place-1',
         url: options.fragment ? `${LINK_URL}#plans` : LINK_URL,
         recordId: 'record-1',
-        recordTitle: 'Pricing',
         modelId: 'page',
         modelName: 'Page',
         fieldPath: 'body.en',
@@ -100,8 +99,8 @@ describe('LinkDetail', () => {
     expect(checked).toHaveAttribute('datetime', '2026-09-23T12:01:00.000Z');
 
     await user.click(
-      detail().getByRole('button', {
-        name: /^Page\s*Pricing\s*,\s*open record$/,
+      await detail().findByRole('button', {
+        name: /^Page\s*Title of record-1\s*Body, English\s*,\s*open record$/,
       }),
     );
     expect(onOpenRecord).toHaveBeenCalledWith('record-1');
@@ -172,8 +171,8 @@ describe('LinkDetail', () => {
     show({ linkPanel });
     expect(detail().queryByText('Broken')).not.toBeInTheDocument();
     expect(
-      detail().getByRole('button', {
-        name: /^Page\s*Pricing\s*,\s*open record$/,
+      await detail().findByRole('button', {
+        name: /^Page\s*Title of record-1\s*Body, English\s*,\s*open record$/,
       }),
     ).toBeInTheDocument();
     await user.click(detail().getByRole('button', { name: 'Result' }));

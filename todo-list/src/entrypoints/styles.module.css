@@ -1,45 +1,40 @@
-/* Placement only, plus the whole look of the disclosure (a RawButton has
-   none of its own). The kit components draw themselves. */
+/* Placement only, plus the text of a task. The kit components draw
+   themselves, and the kit styles the native checkbox. */
 
-/* The "+" that adds a task sits in the gutter at the left of the list. The
-   space at the bottom keeps the focus ring of the toggle and the shadow of
-   the last card inside the frame. */
+/* The grips of the tasks sit in the gutter at the left of the cards. The
+   space at the bottom keeps the shadow of the last card inside the frame. */
 .root {
   margin-left: var(--DragHandle-gutter);
   padding-bottom: var(--spacing-s);
 }
 
-/* The buttons of a cell, centered in it */
-.buttons {
-  display: flex;
-  justify-content: center;
-  gap: var(--spacing-s);
+/* A task: the drop line is absolute in it */
+.item {
+  position: relative;
 }
 
-/* The toggle that shows or hides the completed tasks. Its margin merges with
-   the space that the list keeps under itself, so the gap stays the same when
-   the list shows only its empty slot. */
-.disclosure {
+/* The checkbox and the text of a task: a click on the text also ticks it */
+.task {
   display: flex;
-  width: fit-content;
-  margin-top: var(--spacing-l);
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-s);
-  background: none;
-  font: inherit;
-  color: var(--color--ink);
+  align-items: baseline;
+  min-width: 0;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
-.disclosure:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+/* A completed task keeps its text, struck and subtle */
+.completedText {
+  color: var(--color--ink-subtle);
+  text-decoration: line-through;
 }
 
-/* The completed tasks, under the toggle */
+/* The input of a task while the user writes it fills the row */
+.editor {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The completed tasks, under the open ones */
 .completed {
-  margin-top: var(--spacing-m);
+  margin-top: var(--spacing-l);
 }

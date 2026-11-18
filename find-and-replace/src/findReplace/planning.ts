@@ -221,7 +221,7 @@ export type PlanTally = {
   /** Changing slug matches whose new text isn't a valid slug. */
   slugFormatMatches: number;
   /** The first changing record (the confirm names it when it is the only one). */
-  firstChangingRecord: { id: string; title: string | null } | null;
+  firstChangingRecord: { id: string } | null;
   selectableRecords: number;
   /** Selectable records whose matches are all included / all excluded. */
   selectableAll: number;

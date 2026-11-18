@@ -39,6 +39,52 @@ function bulk(apply: (item: Item, payload: BulkPayload) => void) {
   };
 }
 
+function localized(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const en = (value as Record<string, unknown>).en;
+    return typeof en === 'string' ? en : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Stands in for `ctx.loadItemPresentationInfo`: the title and the image that
+ * the host would give each record of the store.
+ */
+export async function loadItemPresentationInfo(ids: string[]) {
+  await wait(150);
+  const byId = new Map(allItems().map((item) => [item.id, item]));
+  return ids.map((id) => {
+    const item = byId.get(id);
+    if (!item) return null;
+    const attributes = item.attributes as Record<string, unknown>;
+    const upload = (attributes.cover ?? attributes.avatar) as
+      | { upload_id: string }
+      | null
+      | undefined;
+    return {
+      id,
+      title:
+        localized(attributes.title) ??
+        localized(attributes.name) ??
+        localized(attributes.headline) ??
+        `Record #${id}`,
+      image: upload
+        ? {
+            type: 'image' as const,
+            url: `https://picsum.photos/seed/${upload.upload_id}/40/40`,
+          }
+        : null,
+      itemTypeId: item.relationships.item_type.data.id,
+      status: item.meta.status ?? 'published',
+      currentVersionValid: item.meta.is_current_version_valid ?? true,
+      publishedVersionValid: item.meta.is_published_version_valid ?? true,
+      editPath: null,
+    };
+  });
+}
+
 export function buildCmaClient(): Client {
   return {
     workflows: {

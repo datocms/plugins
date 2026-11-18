@@ -61,7 +61,6 @@ describe('ResultSet', () => {
       recordId: 'article-1',
       modelId: 'article-model',
       modelName: 'Article',
-      title: 'The Acme headline',
       matchCount: targets.length,
     });
     const paths = record.fields.map((field) => [
@@ -146,15 +145,6 @@ describe('recordView', () => {
       else expect(field).toBe(first.fields[index]);
     }
     expect(second.fields[3]?.matches[0]?.included).toBe(false);
-
-    const titled = recordView(
-      record,
-      { ...baseState, title: 'U' },
-      stateOf,
-      second,
-    );
-    expect(titled).not.toBe(second);
-    expect(titled.fields).toBe(second.fields);
   });
 });
 

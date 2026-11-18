@@ -33,7 +33,6 @@ import {
 } from '../data/useBulkActions';
 import { type StageDataState, useStageData } from '../data/useStageData';
 import { type TableState, useTableState } from '../data/useTableState';
-import { type ThumbnailMap, useThumbnails } from '../data/useThumbnails';
 import {
   CircleExclamationIcon,
   EntryIcon,
@@ -479,22 +478,14 @@ function selectionBarActions(args: {
   ];
 }
 
-function toTableRecord(
-  ctx: RenderPageCtx,
-  row: RecordRow,
-  thumbnails: ThumbnailMap,
-): TableRecord {
+function toTableRecord(ctx: RenderPageCtx, row: RecordRow): TableRecord {
   return {
     id: row.id,
-    title: row.title,
-    imageUrl: row.imageUploadId ? thumbnails.get(row.imageUploadId) : null,
+    presentation: row.presentation,
     model: row.modelName,
     status: row.status,
     updatedAt: row.updatedAt || null,
     createdAt: row.createdAt || null,
-    publishedValid: row.publishedValid,
-    currentValid: row.currentValid,
-    draftModeActive: row.draftModeActive,
     url: recordEditorPath(ctx, row.modelId, row.id),
   };
 }
@@ -706,13 +697,6 @@ function StageView({
     getClient,
     reload,
   });
-  const thumbnails = useThumbnails(
-    () => buildCmaClient(ctxRef.current),
-    data,
-    table.pageRows.flatMap((row) =>
-      row.imageUploadId ? [row.imageUploadId] : [],
-    ),
-  );
   const [columns, setColumns] = useColumnSettings(
     columnSettingsStorageKey({
       siteId: ctx.site.id,
@@ -722,12 +706,11 @@ function StageView({
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: pageRows is a new slice of displayedRows on each render
   const tableRows = useMemo(
-    () => table.pageRows.map((row) => toTableRecord(ctx, row, thumbnails)),
+    () => table.pageRows.map((row) => toTableRecord(ctx, row)),
     [
       table.displayedRows,
       table.page,
       table.perPage,
-      thumbnails,
       ctx.environment,
       ctx.isEnvironmentPrimary,
     ],

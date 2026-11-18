@@ -275,11 +275,9 @@ export function groupFacts(group: LinkGroup): GroupFacts {
   return facts;
 }
 
+/** An unsaved record has no ID: only the record panel reads one, so its model tells it apart. */
 function recordKey(occurrence: LinkOccurrence): string {
-  return (
-    occurrence.recordId ??
-    `unsaved:${occurrence.modelId}:${occurrence.recordTitle}`
-  );
+  return occurrence.recordId ?? `unsaved:${occurrence.modelId}`;
 }
 
 export function hasFragment(group: LinkGroup): boolean {
@@ -472,7 +470,7 @@ export function scanFraction(
 
 export type RecordUsage = {
   recordId?: string;
-  title: string;
+  modelId: string;
   modelName: string;
   occurrences: LinkOccurrence[];
 };
@@ -527,7 +525,7 @@ export function recordUsagePage(
       if (index >= start && index < start + perPage)
         visible.set(key, {
           recordId: occurrence.recordId,
-          title: occurrence.recordTitle,
+          modelId: occurrence.modelId,
           modelName: occurrence.modelName,
           occurrences: [],
           occurrenceCount: 0,
@@ -557,7 +555,7 @@ export function recordsOf(group: LinkGroup): RecordUsage[] {
     else
       byRecord.set(key, {
         recordId: occurrence.recordId,
-        title: occurrence.recordTitle,
+        modelId: occurrence.modelId,
         modelName: occurrence.modelName,
         occurrences: [occurrence],
       });

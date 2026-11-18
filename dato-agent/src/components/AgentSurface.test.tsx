@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import { fallbackAssetMention, fallbackRecordMention } from '../lib/mentions';
-import { fakeCtx, renderInCanvas } from '../test/canvas';
+import { fakeCtx, renderInCanvas, setFakeRecordTitles } from '../test/canvas';
 import {
   type AgentConnectionViewModel,
   type AgentConversationSummaryViewModel,
@@ -22,6 +22,15 @@ import {
 let scrollIntoView: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  // The titles that the host gives to the records of the receipts and of
+  // the references
+  setFakeRecordTitles({
+    one: 'One',
+    two: 'Two',
+    home: 'Homepage',
+    homepage: 'Homepage',
+    'record-1': 'Homepage',
+  });
   scrollIntoView = vi.fn();
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
     configurable: true,
@@ -751,11 +760,14 @@ describe('AgentSurface', () => {
 
     const receipt = screen.getByRole('group', { name: 'Matching articles' });
     // The record already open is a static row that says so
+    await within(receipt).findByText('One');
     const current = within(receipt).getByText('Current record');
     expect(current.closest('[aria-current="true"]')).toHaveTextContent('One');
     expect(current.closest('[role="button"]')).toBeNull();
     expect(within(receipt).getAllByRole('button')).toHaveLength(1);
-    await user.click(within(receipt).getByRole('button', { name: /Two/ }));
+    await user.click(
+      await within(receipt).findByRole('button', { name: /Two/ }),
+    );
     expect(onOpenRecord).toHaveBeenCalledOnce();
     expect(onOpenRecord).toHaveBeenCalledWith(
       {
@@ -903,7 +915,7 @@ describe('AgentSurface', () => {
     ).toBeNull();
     expect(userMessage.querySelector('time')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Homepage' }));
+    await user.click(await screen.findByRole('button', { name: 'Homepage' }));
     expect(onOpenRecord).toHaveBeenCalledWith({
       itemId: 'record-1',
       itemTypeId: 'model-1',
@@ -935,7 +947,7 @@ describe('AgentSurface', () => {
     await user.click(screen.getByRole('button', { name: 'Page' }));
     expect(openModel).toHaveBeenCalledWith('model-1', false);
 
-    await user.click(screen.getByRole('button', { name: '@Ada' }));
+    await user.click(screen.getByRole('button', { name: 'Ada' }));
     expect(openUser).toHaveBeenCalledWith('user-1');
   });
 
@@ -982,7 +994,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const mention = screen.getByRole('button', { name: 'Homepage' });
+    const mention = await screen.findByRole('button', { name: 'Homepage' });
     expect(mention).toBeEnabled();
     await user.click(mention);
     expect(onOpenRecord).toHaveBeenCalledWith({
@@ -1012,7 +1024,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const openButton = screen.getByRole('button', { name: /One/ });
+    const openButton = await screen.findByRole('button', { name: /One/ });
     expect(openButton).not.toHaveAttribute('aria-disabled');
     await user.click(openButton);
     expect(onOpenRecord).toHaveBeenCalledWith(
@@ -1045,7 +1057,7 @@ describe('AgentSurface', () => {
       'aria-busy',
       'true',
     );
-    await user.click(screen.getByRole('button', { name: /One/ }));
+    await user.click(await screen.findByRole('button', { name: /One/ }));
     expect(onOpenRecord).not.toHaveBeenCalled();
   });
 
@@ -1292,10 +1304,8 @@ describe('AgentSurface', () => {
 
     const assets = screen.getByRole('group', { name: 'Referenced assets' });
     const heroAsset = within(assets).getByRole('button', { name: /Hero/ });
-    expect(heroAsset.querySelector('img')).toHaveAttribute(
-      'src',
-      'https://www.datocms-assets.com/hero.jpg?w=48&fit=max',
-    );
+    // The preview of the Media Area, which loads the asset from its ID
+    expect(heroAsset.querySelector('.UploadPreview')).not.toBeNull();
     await user.click(heroAsset);
     expect(onOpenAsset).toHaveBeenCalledWith(
       expect.objectContaining({ uploadId: 'upload-1', title: 'Hero.jpg' }),
@@ -1363,7 +1373,7 @@ describe('AgentSurface', () => {
 
     // The rows keep their focus, but a click does nothing
     const transcript = within(screen.getByRole('log'));
-    await user.click(transcript.getByRole('button', { name: /Record/ }));
+    await user.click(await transcript.findByRole('button', { name: /One/ }));
     await user.click(transcript.getByRole('button', { name: /Title/ }));
     await user.click(transcript.getByRole('button', { name: /Hero/ }));
     expect(onOpenRecord).not.toHaveBeenCalled();

@@ -3,7 +3,8 @@ import { Dropdown } from 'datocms-react-ui/Dropdown';
 import IconTrigger from 'datocms-react-ui/Dropdown/triggers/IconTrigger';
 import EntityRow from 'datocms-react-ui/EntityRow';
 import Pill from 'datocms-react-ui/Pill';
-import { type JSX, memo, type SVGProps, useMemo } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { memo, useMemo } from 'react';
 import {
   ActionToggleIcon,
   DeleteIcon,
@@ -27,7 +28,7 @@ import s from './styles.module.css';
 
 export type SlotMove = GridDirection | MasonryDirection;
 
-type MoveIcon = (props: SVGProps<SVGSVGElement>) => JSX.Element;
+type MoveIcon = LucideIcon;
 
 type GridMove = {
   direction: GridDirection;

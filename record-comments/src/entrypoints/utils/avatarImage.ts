@@ -1,3 +1,5 @@
+import type { UserRowPresentation } from 'datocms-react-ui/UserRow';
+
 /** The Gravatar URLs that the data layer builds (see getGravatarUrl) */
 const GRAVATAR_URL_PREFIX = 'https://www.gravatar.com/avatar/';
 
@@ -25,4 +27,28 @@ export function getAvatarImage(person: Person): AvatarImage {
   }
 
   return { imageUrl: avatarUrl };
+}
+
+/**
+ * The current user without an email gets an identifier in its place (see
+ * getCurrentUserInfo): it is not an email to show
+ */
+const USER_ID_PLACEHOLDER_PREFIX = '__user_id:';
+
+/** The name, the email and the image of a person, for the kit UserRow */
+export function getUserRowPresentation(
+  person: Person & { name: string; removed?: boolean },
+): UserRowPresentation {
+  const email =
+    person.email && !person.email.startsWith(USER_ID_PLACEHOLDER_PREFIX)
+      ? person.email
+      : null;
+  const image = getAvatarImage(person);
+
+  return {
+    name: person.name,
+    // A person who left the project keeps only the words that name them
+    email: person.removed ? null : email,
+    imageUrl: 'imageUrl' in image ? image.imageUrl : null,
+  };
 }

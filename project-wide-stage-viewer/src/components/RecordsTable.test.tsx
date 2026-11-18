@@ -24,17 +24,22 @@ const ctx = {
   openConfirm: vi.fn(),
 } as unknown as RenderPageCtx;
 
+const IMAGE_URL = 'https://www.datocms-assets.com/1/hello.png';
+
 const RECORD: TableRecord = {
   id: 'record-1',
-  title: 'Hello world',
-  imageUrl: 'https://www.datocms-assets.com/1/hello.png',
+  presentation: {
+    id: 'record-1',
+    title: 'Hello world',
+    image: { type: 'image', url: IMAGE_URL },
+    status: 'updated',
+    currentVersionValid: true,
+    publishedVersionValid: true,
+  },
   model: 'Article',
   status: 'updated',
   updatedAt: '2026-10-15T09:30:00Z',
   createdAt: '2026-10-01T09:30:00Z',
-  publishedValid: true,
-  currentValid: true,
-  draftModeActive: true,
   url: '/environments/sandbox/editor/item_types/model-1/items/record-1/edit',
 };
 
@@ -167,10 +172,10 @@ describe('RecordsTable rows', () => {
     );
     expect(screen.getByText('Article')).toBeInTheDocument();
     expect(screen.getByText('Unpublished changes')).toBeInTheDocument();
-    expect(container.querySelector('img')).toHaveAttribute(
-      'src',
-      RECORD.imageUrl,
-    );
+    expect(
+      container.querySelector<HTMLElement>('.RecordRow__image')?.style
+        .backgroundImage,
+    ).toContain(IMAGE_URL);
     expect(container.querySelector('time')).toHaveAttribute(
       'datetime',
       expect.stringContaining('2026-10-15'),
@@ -190,14 +195,22 @@ describe('RecordsTable rows', () => {
       <Canvas ctx={ctx} noAutoResizer texts={TEXTS}>
         <RecordsTable
           {...props(DEFAULT_ORDER_BY, undefined, {
-            rows: [{ ...RECORD, imageUrl: null }],
+            rows: [
+              {
+                ...RECORD,
+                presentation: { ...RECORD.presentation, image: null },
+              },
+            ],
           })}
         />
       </Canvas>,
     );
 
     expect(screen.getByText('Hello world')).toBeInTheDocument();
-    expect(container.querySelector('img')).toBeNull();
+    expect(
+      container.querySelector<HTMLElement>('.RecordRow__image')?.style
+        .backgroundImage ?? '',
+    ).toBe('');
   });
 
   it('locks the selection while the records load', () => {

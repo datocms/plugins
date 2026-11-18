@@ -1,5 +1,4 @@
 import type { Client } from '@datocms/cma-client-browser';
-import type { RawUpload } from '../presentation/previews';
 import type { RawItem } from '../types';
 import { itemsPageTotal } from './query';
 
@@ -76,19 +75,6 @@ export function loadItemsById(
     const response = await client.items.rawList({
       nested: false,
       version: 'current',
-      filter: { ids: batch.join(',') },
-      page: { limit: batch.length, offset },
-    });
-    return response;
-  });
-}
-
-export function loadUploadsById(
-  client: Client,
-  ids: readonly string[],
-): Promise<RawUpload[]> {
-  return loadById(ids, async (batch, offset) => {
-    const response = await client.uploads.rawList({
       filter: { ids: batch.join(',') },
       page: { limit: batch.length, offset },
     });

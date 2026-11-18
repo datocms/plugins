@@ -1,12 +1,15 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearSessionLocalFiles,
   registerLocalFile,
 } from '../../../../lib/localFiles';
-import { renderInCanvas } from '../../../../test/canvas';
+import { renderInCanvas, setFakeRecordTitles } from '../../../../test/canvas';
 import type { Mention } from '../../types/mentions';
 import { MentionDisplay } from './MentionDisplay';
+
+// The host presents the record of the references with this title
+beforeEach(() => setFakeRecordTitles({ 'record-1': 'Homepage' }));
 
 afterEach(() => {
   cleanup();
@@ -92,7 +95,7 @@ function expectHint(
 
 describe('MentionDisplay', () => {
   it.each([
-    ['user', mentions.user, '@Ada Lovelace', 'ada@example.com'],
+    ['user', mentions.user, 'Ada Lovelace', 'ada@example.com'],
     ['field', mentions.field, '#SEO title · Italian', 'Structured text'],
     ['asset', mentions.asset, 'brand-gu….pdf', 'brand-guidelines.pdf'],
     ['file', mentions.file, 'research….pdf', 'research-notes.pdf'],
@@ -100,12 +103,12 @@ describe('MentionDisplay', () => {
     ['model', mentions.model, 'Article', 'Model: article'],
   ] as const)(
     'renders the %s reference as a pill that opens it, with its hint',
-    (_, mention, name, hint) => {
+    async (_, mention, name, hint) => {
       const onClick = vi.fn();
       const { container } = renderInCanvas(
         <MentionDisplay mention={mention} onClick={onClick} />,
       );
-      const pill = screen.getByRole('button', { name });
+      const pill = await screen.findByRole('button', { name });
 
       expectHint(container, pill, hint);
       fireEvent.click(pill);
@@ -163,7 +166,7 @@ describe('MentionDisplay', () => {
         ]}
       />,
     );
-    const renamedUser = screen.getByRole('button', { name: '@Ada Byron' });
+    const renamedUser = screen.getByRole('button', { name: 'Ada Byron' });
 
     expectHint(container, renamedUser, 'ada@example.com');
 
@@ -179,9 +182,10 @@ describe('MentionDisplay', () => {
 
     // The owner can't be opened: a static pill that still gives its hint
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    const owner = screen.getByText('@Ada Lovelace');
-    expect(owner.parentElement).toHaveAttribute('tabindex', '0');
-    expectHint(container, owner.parentElement as HTMLElement, 'Project owner');
+    const owner = screen.getByText('Ada Lovelace');
+    const ownerPill = owner.closest('.Pill') as HTMLElement;
+    expect(ownerPill).toHaveAttribute('tabindex', '0');
+    expectHint(container, ownerPill, 'Project owner');
     fireEvent.click(owner);
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -196,7 +200,7 @@ describe('MentionDisplay', () => {
         onClick={vi.fn()}
       />,
     );
-    const pill = screen.getByRole('button', { name: '@Ada Lovelace' });
+    const pill = screen.getByRole('button', { name: 'Ada Lovelace' });
 
     expect(pill.querySelector('img')).toHaveAttribute(
       'src',
@@ -204,38 +208,25 @@ describe('MentionDisplay', () => {
     );
   });
 
-  it('renders a record title and thumbnail and preserves click behavior', () => {
+  it('shows a record as the host presents it, and preserves click behavior', async () => {
     const onClick = vi.fn();
-    const thumbnailUrl =
-      'https://www.datocms-assets.com/homepage.jpg?w=48&fit=max';
-    renderInCanvas(
+    const { ctx } = renderInCanvas(
       <MentionDisplay
-        mention={{
-          ...mentions.record,
-          title: '🏠 Homepage',
-          thumbnailUrl,
-        }}
+        mention={{ ...mentions.record, title: 'A stale title' }}
         onClick={onClick}
       />,
     );
-    // The leading emoji of the title is not part of the name
-    const pill = screen.getByRole('button', { name: 'Homepage' });
-    const thumbnail = pill.querySelector('img');
+    // The title is the one of the host, not the one of the mention
+    const pill = await screen.findByRole('button', { name: 'Homepage' });
 
-    expect(within(pill).queryByText('🏠')).not.toBeInTheDocument();
-    expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
-    expect(thumbnail).toHaveAttribute('alt', '');
+    expect(ctx.loadItemPresentationInfo).toHaveBeenCalled();
+    expect(screen.queryByText('A stale title')).not.toBeInTheDocument();
 
     fireEvent.click(pill);
     expect(onClick).toHaveBeenCalledOnce();
-
-    // A thumbnail that doesn't load gives way to the record glyph
-    fireEvent.error(thumbnail as HTMLImageElement);
-    expect(pill.querySelector('img')).toBeNull();
-    expect(pill.querySelector('svg')).toBeInTheDocument();
   });
 
-  it('keeps the currently open record inert, with a clear hint', () => {
+  it('keeps the currently open record inert, with a clear hint', async () => {
     const onClick = vi.fn();
     const { container } = renderInCanvas(
       <MentionDisplay
@@ -246,33 +237,29 @@ describe('MentionDisplay', () => {
     );
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    const title = screen.getByText('Homepage');
-    expectHint(container, title.parentElement as HTMLElement, 'Current record');
+    const title = await screen.findByText('Homepage');
+    expectHint(
+      container,
+      title.closest('.Pill') as HTMLElement,
+      'Current record',
+    );
     fireEvent.click(title);
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('shows a visual asset as a card and falls back to a pill with the filename hint when the image fails', () => {
+  it('shows a visual asset as a card of the Media Area that opens it', () => {
     const onClick = vi.fn();
     const { container } = renderInCanvas(
       <MentionDisplay mention={heroImage} onClick={onClick} />,
     );
-    // The card's button covers the image and is named by the caption
+    // The card's button covers the preview and is named by the caption
     const card = screen.getByRole('button', { name: 'homepage-hero.jpg' });
-    const image = container.querySelector('img');
 
-    expect(image).toHaveAttribute('src', heroImage.thumbnailUrl);
+    // The preview of the Media Area, which loads the asset from its ID
+    expect(container.querySelector('.UploadPreview')).toBeInTheDocument();
     expect(screen.getByText('homepage-hero.jpg')).toBeVisible();
     fireEvent.click(card);
     expect(onClick).toHaveBeenCalledOnce();
-
-    fireEvent.error(image as HTMLImageElement);
-
-    const fallback = screen.getByRole('button', { name: 'homepage….jpg' });
-    expect(container.querySelector('img')).toBeNull();
-    expectHint(container, fallback, 'homepage-hero.jpg');
-    fireEvent.click(fallback);
-    expect(onClick).toHaveBeenCalledTimes(2);
   });
 
   it('shows a visual asset as a static card when it cannot open', () => {
@@ -285,10 +272,7 @@ describe('MentionDisplay', () => {
     );
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(container.querySelector('img')).toHaveAttribute(
-      'src',
-      heroImage.thumbnailUrl,
-    );
+    expect(container.querySelector('.UploadPreview')).toBeInTheDocument();
     expect(screen.getByText('homepage-hero.jpg')).toBeVisible();
   });
 
@@ -320,7 +304,7 @@ describe('MentionDisplay', () => {
   });
 
   it.each([
-    ['user', mentions.user, '@Ada Lovelace'],
+    ['user', mentions.user, 'Ada Lovelace'],
     ['field', mentions.field, '#SEO title · Italian'],
     ['asset', mentions.asset, 'brand-gu….pdf'],
     ['file', mentions.file, 'research….pdf'],
@@ -328,7 +312,7 @@ describe('MentionDisplay', () => {
     ['model', mentions.model, 'Article'],
   ] as const)(
     'does not invoke a %s reference that cannot open',
-    (_, mention, text) => {
+    async (_, mention, text) => {
       const onClick = vi.fn();
       renderInCanvas(
         <MentionDisplay
@@ -339,7 +323,7 @@ describe('MentionDisplay', () => {
       );
 
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
-      fireEvent.click(screen.getByText(text));
+      fireEvent.click(await screen.findByText(text));
       expect(onClick).not.toHaveBeenCalled();
     },
   );
@@ -364,24 +348,18 @@ describe('MentionDisplay', () => {
       expect(onClick).toHaveBeenCalledOnce();
     });
 
-    it('shows a visual asset as a pill with its thumbnail, never as a card', () => {
+    it('shows a visual asset as a pill with its preview, never as a card', () => {
       renderInCanvas(
         <MentionDisplay inComposer mention={heroImage} onClick={vi.fn()} />,
       );
       const chip = screen.getByRole('button', { name: 'homepage….jpg' });
-      const thumbnail = chip.querySelector('img');
 
       expect(chip).toHaveAttribute('tabindex', '-1');
-      expect(thumbnail).toHaveAttribute('src', heroImage.thumbnailUrl);
-      expect(thumbnail).toHaveAttribute('alt', '');
-
-      // A thumbnail that does not load gives way to the asset glyph
-      fireEvent.error(thumbnail as HTMLImageElement);
-      expect(chip.querySelector('img')).toBeNull();
-      expect(chip.querySelector('svg')).toBeInTheDocument();
+      expect(chip.querySelector('.UploadPreview')).toBeInTheDocument();
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
     });
 
-    it('keeps the current record inert', () => {
+    it('keeps the current record inert', async () => {
       const onClick = vi.fn();
       renderInCanvas(
         <MentionDisplay
@@ -391,7 +369,7 @@ describe('MentionDisplay', () => {
           onClick={onClick}
         />,
       );
-      const chip = screen.getByRole('button', { name: 'Homepage' });
+      const chip = await screen.findByRole('button', { name: 'Homepage' });
 
       expect(chip).toHaveAttribute('aria-disabled', 'true');
       fireEvent.click(chip);

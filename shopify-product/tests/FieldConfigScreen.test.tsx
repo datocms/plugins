@@ -1413,7 +1413,7 @@ describe('FieldConfigScreen: stores and example', () => {
     expect(copyToClipboard).toHaveBeenCalledWith(exact);
     expect(JSON.parse(example())).toEqual(JSON.parse(exact));
     // The feedback stays in the button.
-    expect(screen.getByRole('button', { name: 'Copied!' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
     expect(
       screen.getByText(
         'Resolve the IDs with the Storefront API to render live data.',

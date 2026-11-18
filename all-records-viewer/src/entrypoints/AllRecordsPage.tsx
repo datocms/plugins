@@ -3,7 +3,6 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import BlankSlate from 'datocms-react-ui/BlankSlate';
 import Button from 'datocms-react-ui/Button';
 import Canvas from 'datocms-react-ui/Canvas';
-import { useDateSettings } from 'datocms-react-ui/DateSettings';
 import ListArea from 'datocms-react-ui/ListArea';
 import { getPaginatedListState } from 'datocms-react-ui/ListDetail';
 import Main from 'datocms-react-ui/Main';
@@ -33,7 +32,7 @@ import { MAX_BULK_ITEMS, PER_PAGE_OPTIONS } from '../constants';
 import { buildCmaClient } from '../data/cma';
 import { collectSelection } from '../data/collectSelection';
 import { errorAdvice, type LoadError } from '../data/errors';
-import { loadItemsById, loadUploadsById, mapBounded } from '../data/loadById';
+import { loadItemsById, mapBounded } from '../data/loadById';
 import { getRegularModels } from '../data/models';
 import {
   previewOrderingField,
@@ -69,8 +68,7 @@ import type {
   SelectionInput,
 } from '../operations/types';
 import type { RawField } from '../presentation/fields';
-import { createPresentationResolver } from '../presentation/resolver';
-import { getItemStatus, getItemValidity } from '../presentation/status';
+import { getItemStatus } from '../presentation/status';
 import { buildRecordEditorUrl } from '../state/navigation';
 import {
   buildPluginPageUrl,
@@ -87,7 +85,10 @@ import {
 import { useDebouncedValue } from '../state/useDebouncedValue';
 import { useItemsPage } from '../state/useItemsPage';
 import { useModelFields } from '../state/useModelFields';
-import { usePresentations } from '../state/usePresentations';
+import {
+  type LoadPresentations,
+  usePresentations,
+} from '../state/usePresentations';
 import { useSelectedItemsPage } from '../state/useSelectedItemsPage';
 import { formatNumber, formatRecordCount, TEXTS } from '../texts';
 import type {
@@ -1328,43 +1329,14 @@ function RecordsPage({ ctx }: Props) {
     updateLocation,
   ]);
 
-  const dateSettings = useDateSettings();
-  const presentationResolver = useMemo(() => {
-    // A record refresh must also reload cached references and upload previews.
-    void refreshVersion;
-    if (!client) {
-      return null;
-    }
-
-    return createPresentationResolver({
-      itemTypes,
-      locales: ctx.site.attributes.locales,
-      preferredLocale: undefined,
-      dateSettings,
-      colorScheme: ctx.colorScheme,
-      imgixHost: ctx.site.attributes.imgix_host ?? undefined,
-      googleMapsApiToken:
-        ctx.site.attributes.google_maps_api_token ?? undefined,
-      loadFields: async (itemTypeIds): Promise<RawField[]> => {
-        const fields = await mapBounded(itemTypeIds, (itemTypeId) =>
-          ctx.loadItemTypeFields(itemTypeId),
-        );
-        return fields.flat() as RawField[];
-      },
-      loadItems: (ids) => loadItemsById(client, ids),
-      loadUploads: (ids) => loadUploadsById(client, ids),
-    });
-  }, [
-    client,
-    ctx.colorScheme,
-    ctx.loadItemTypeFields,
-    ctx.site.attributes.google_maps_api_token,
-    ctx.site.attributes.imgix_host,
-    ctx.site.attributes.locales,
-    dateSettings,
-    itemTypes,
-    refreshVersion,
-  ]);
+  // The title cell draws the image of a record at 20px
+  const loadPresentations = useCallback<LoadPresentations>(
+    (items) =>
+      ctx.loadItemPresentationInfo(items, {
+        preferredImageSize: { width: 20, height: 20 },
+      }),
+    [ctx.loadItemPresentationInfo],
+  );
 
   const selectedItems = useMemo(
     () => [...selectedById.values()],
@@ -1437,7 +1409,7 @@ function RecordsPage({ ctx }: Props) {
       clampPage(page, selectedItems.length, queryState.perPage),
     );
   }, [selectedItems.length, queryState.perPage]);
-  const presentations = usePresentations(presentationResolver, displayItems);
+  const presentations = usePresentations(loadPresentations, displayItems);
 
   useEffect(() => {
     if (selectedItems.length === 0 && showingSelected) {
@@ -1450,22 +1422,26 @@ function RecordsPage({ ctx }: Props) {
       displayItems.map((item) => {
         const presentation = presentations.byItemId.get(item.id);
         const model = modelsById.get(item.relationships.item_type.data.id);
-        const status = presentation?.status ?? getItemStatus(item);
-        const validity =
-          presentation?.validity ??
-          getItemValidity(item, model?.draftModeActive ?? false);
 
         return {
           id: item.id,
-          title: presentation?.title ?? `Record ${item.id}`,
-          imageUrl: presentation?.image?.url,
+          presentation: {
+            id: item.id,
+            title: presentation?.title ?? `Record ${item.id}`,
+            image: presentation?.image ?? null,
+            currentVersionValid:
+              item.meta.is_current_version_valid ?? undefined,
+            publishedVersionValid:
+              item.meta.is_published_version_valid ?? undefined,
+          },
+          recordModel: {
+            name: model?.name ?? 'Unknown model',
+            draftModeActive: model?.draftModeActive ?? false,
+          },
           model: model?.name ?? 'Unknown model',
-          status,
+          status: getItemStatus(item),
           updatedAt: isoDate(item.meta.updated_at),
           createdAt: isoDate(item.meta.created_at),
-          publishedValid: validity.publishedValid,
-          currentValid: validity.currentValid,
-          draftModeActive: model?.draftModeActive ?? false,
           url: buildRecordEditorUrl({
             environment: ctx.environment,
             isEnvironmentPrimary: ctx.isEnvironmentPrimary,

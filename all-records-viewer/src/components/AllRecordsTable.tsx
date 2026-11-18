@@ -1,5 +1,6 @@
 import IdText from 'datocms-react-ui/IdText';
 import ItemStatus from 'datocms-react-ui/ItemStatus';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import {
   Table,
   type TableColumn,
@@ -7,9 +8,7 @@ import {
   type TableSort,
   type TableSortState,
 } from 'datocms-react-ui/Table';
-import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
 import TimeCell from 'datocms-react-ui/Table/cells/TimeCell';
-import { ItemValidityTriangles } from 'datocms-react-ui/ValidityTriangles';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { DEFAULT_ORDER_BY } from '../data/query';
 import type { ColumnId, ColumnSetting, OrderBy } from '../types';
@@ -96,16 +95,10 @@ function buildColumns(
       minWidth: 200,
       priority: 5,
       renderCell: (row) => (
-        <EntityCell
-          title={row.title}
-          image={row.imageUrl && <img src={row.imageUrl} alt="" />}
-          afterTitle={
-            <ItemValidityTriangles
-              publishedValid={row.publishedValid}
-              currentValid={row.currentValid}
-              draftModeActive={row.draftModeActive}
-            />
-          }
+        <RecordRow
+          layout="inline"
+          model={row.recordModel}
+          presentation={row.presentation}
         />
       ),
     },
@@ -152,7 +145,7 @@ function buildColumns(
   ];
 }
 
-type RecordRowProps = {
+type TableRecordRowProps = {
   row: TableRecord;
   selected: boolean;
   disabled: boolean;
@@ -161,12 +154,12 @@ type RecordRowProps = {
 
 // Memoized, so that a change of one row (or of the page around the table)
 // does not render every row again
-const RecordRow = memo(function RecordRow({
+const TableRecordRow = memo(function TableRecordRow({
   row,
   selected,
   disabled,
   onToggle,
-}: RecordRowProps) {
+}: TableRecordRowProps) {
   const selection = useMemo(
     () => ({ selected, disabled, onSelect: () => onToggle(row.id) }),
     [disabled, onToggle, row.id, selected],
@@ -226,36 +219,40 @@ export function AllRecordsTable({
     rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
 
   return (
-    <Table
-      columns={tableColumns}
-      layout={layout}
-      onLayoutChange={handleLayoutChange}
-      sort={sort}
-      checkboxes={{ alwaysVisible: selectedIds.size > 0 }}
-    >
-      {/* The checkbox stays while the records reload, thus the labels of
+    // The titles of the rows line up, also when only some records have an
+    // image
+    <RecordRow.List>
+      <Table
+        columns={tableColumns}
+        layout={layout}
+        onLayoutChange={handleLayoutChange}
+        sort={sort}
+        checkboxes={{ alwaysVisible: selectedIds.size > 0 }}
+      >
+        {/* The checkbox stays while the records reload, thus the labels of
           the header stay above their columns; it does nothing meanwhile */}
-      <Table.Header
-        selectAll={
-          rows.length > 0 && !selectAllHidden
-            ? {
-                selected: allPageSelected,
-                onChange: selectionEnabled ? onTogglePage : ignore,
-              }
-            : undefined
-        }
-      />
-      <Table.Body>
-        {rows.map((row) => (
-          <RecordRow
-            key={row.id}
-            row={row}
-            selected={selectedIds.has(row.id)}
-            disabled={!selectionEnabled}
-            onToggle={toggleRow}
-          />
-        ))}
-      </Table.Body>
-    </Table>
+        <Table.Header
+          selectAll={
+            rows.length > 0 && !selectAllHidden
+              ? {
+                  selected: allPageSelected,
+                  onChange: selectionEnabled ? onTogglePage : ignore,
+                }
+              : undefined
+          }
+        />
+        <Table.Body>
+          {rows.map((row) => (
+            <TableRecordRow
+              key={row.id}
+              row={row}
+              selected={selectedIds.has(row.id)}
+              disabled={!selectionEnabled}
+              onToggle={toggleRow}
+            />
+          ))}
+        </Table.Body>
+      </Table>
+    </RecordRow.List>
   );
 }

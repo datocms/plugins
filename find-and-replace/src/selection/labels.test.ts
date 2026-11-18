@@ -1,17 +1,10 @@
-import type { ApiTypes } from '@datocms/cma-client-browser';
 import { describe, expect, it } from 'vitest';
 import {
   cloneRoot,
   findReplaceRoot,
   findReplaceSchema,
 } from '../replacement/replacementPlanner.fixtures';
-import {
-  fieldPathSegments,
-  modelRecordTitle,
-  recordTitle,
-  seoSubfieldLabel,
-  titleFieldApiKey,
-} from './labels';
+import { fieldPathSegments, seoSubfieldLabel } from './labels';
 import { traverseRecord } from './traversal';
 import type { SchemaIndex, TraversedFieldValue } from './types';
 
@@ -189,97 +182,5 @@ describe('fieldPathSegments', () => {
         fieldsById,
       }),
     ).toEqual(['Hero', 'Quote', 'text']);
-  });
-});
-
-describe('record titles', () => {
-  it('prefers presentation_title_field over title_field', () => {
-    const schema = findReplaceSchema();
-    expect(titleFieldApiKey(schema, 'article-model')).toBe('headline');
-    expect(
-      modelRecordTitle(schema, 'article-model', findReplaceRoot(), ['en']),
-    ).toBe('The Acme headline');
-  });
-
-  it('uses title_field when there is no presentation title field', () => {
-    const schema = findReplaceSchema();
-    const article = schema.modelsById.get('article-model');
-    expect(article).toBeDefined();
-    if (!article) return;
-    const modelsById = new Map(schema.modelsById);
-    modelsById.set(article.id, {
-      ...article,
-      raw: { ...article.raw, presentation_title_field: null },
-    });
-    const withoutPresentation = { ...schema, modelsById };
-
-    expect(titleFieldApiKey(withoutPresentation, 'article-model')).toBe(
-      'title',
-    );
-    expect(
-      modelRecordTitle(
-        withoutPresentation,
-        'article-model',
-        findReplaceRoot(),
-        ['it', 'en'],
-      ),
-    ).toBe('Widget Acme');
-  });
-
-  it('uses the first site locale that has a value', () => {
-    const record = {
-      id: 'r-1',
-      attributes: { title: { en: '  ', it: 'Titolo', de: 'Titel' } },
-    };
-    expect(recordTitle(record, ['en', 'it', 'de'])).toBe('Titolo');
-    expect(recordTitle(record, ['de', 'it'])).toBe('Titel');
-  });
-
-  it('reads simple records whose fields are at the top level', () => {
-    expect(recordTitle({ id: 'r-1', name: 'Globex' }, ['en'], 'headline')).toBe(
-      'Globex',
-    );
-    expect(
-      recordTitle(
-        { id: 'r-1', headline: { en: 'Fresh title' } },
-        ['en'],
-        'headline',
-      ),
-    ).toBe('Fresh title');
-  });
-
-  it('returns null when no candidate has a value', () => {
-    expect(recordTitle({ id: 'r-1', attributes: { body: 'x' } }, ['en'])).toBe(
-      null,
-    );
-    expect(
-      recordTitle(
-        {
-          id: 'r-1',
-          attributes: {
-            title: { schema: 'dast', document: { type: 'root' } },
-          },
-        },
-        ['en'],
-      ),
-    ).toBeNull();
-  });
-
-  it('ignores a title field the schema does not know', () => {
-    const schema = findReplaceSchema();
-    const article = schema.modelsById.get('article-model');
-    if (!article) throw new Error('Missing fixture model');
-    const modelsById = new Map(schema.modelsById);
-    modelsById.set(article.id, {
-      ...article,
-      raw: {
-        ...article.raw,
-        presentation_title_field: { id: 'missing', type: 'field' },
-      } as ApiTypes.ItemType,
-    });
-
-    expect(titleFieldApiKey({ ...schema, modelsById }, article.id)).toBe(
-      'title',
-    );
   });
 });

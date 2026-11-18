@@ -526,6 +526,9 @@ export function ReportLayout({
           ),
           onClose: close,
           onReopen: reopen,
+          // Three short columns by default: the table still reads next to the
+          // panel, so the user can step through the links and compare them.
+          placement: 'beside',
         }}
       >
         <div ref={setListBox} className={styles.list}>

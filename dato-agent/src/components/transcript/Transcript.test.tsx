@@ -12,7 +12,7 @@ import {
   fallbackAssetMention,
   fallbackRecordMention,
 } from '../../lib/mentions';
-import { renderInCanvas } from '../../test/canvas';
+import { renderInCanvas, setFakeRecordTitles } from '../../test/canvas';
 import type {
   AgentTranscriptEntry,
   UnsafeApprovalViewModel,
@@ -92,6 +92,8 @@ const pendingApproval: UnsafeApprovalViewModel = {
 let scrollIntoView: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  // The titles that the host gives to the records of the receipts
+  setFakeRecordTitles({ one: 'One', two: 'Two', home: 'Homepage' });
   scrollIntoView = vi.fn();
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
     configurable: true,
@@ -262,33 +264,34 @@ describe('Transcript', () => {
     expect(current.closest('[aria-current="true"]')).not.toBeNull();
     expect(within(receipt).getAllByRole('button')).toHaveLength(1);
 
-    await user.click(within(receipt).getByRole('button', { name: /Two/ }));
+    await user.click(
+      await within(receipt).findByRole('button', { name: /Two/ }),
+    );
 
     expect(onOpenRecord).toHaveBeenCalledWith(
       { itemId: 'two', itemTypeId: 'page', title: 'Two' },
       'records',
     );
-    // The model is the kicker of each row
-    expect(within(receipt).getAllByText('Page')).toHaveLength(2);
   });
 
-  it('names an untitled record as such and tells it apart by its ID', () => {
+  it('shows each record as the host presents it, whatever title the agent gave', async () => {
+    setFakeRecordTitles({ 'rec-1': 'Spring launch' });
     renderTranscript([
       {
         id: 'records',
         kind: 'records',
         records: [
           { itemId: 'rec-1', itemTypeId: 'page', title: '' },
-          { itemId: 'rec-2', itemTypeId: 'page', title: 'Record #rec-2' },
+          { itemId: 'rec-2', itemTypeId: 'page', title: 'Old title' },
         ],
       },
     ]);
 
     const receipt = screen.getByRole('group', { name: 'Records' });
-    expect(within(receipt).getAllByText('Untitled record')).toHaveLength(2);
-    expect(within(receipt).getByText('rec-1')).toBeVisible();
-    expect(within(receipt).getByText('rec-2')).toBeVisible();
-    expect(receipt).not.toHaveTextContent('#');
+    expect(await within(receipt).findByText('Spring launch')).toBeVisible();
+    // A record that the host does not know shows its ID
+    expect(await within(receipt).findByText('Record #rec-2')).toBeVisible();
+    expect(receipt).not.toHaveTextContent('Old title');
   });
 
   it('locks a receipt while its record opens and shows which one', async () => {
@@ -303,7 +306,7 @@ describe('Transcript', () => {
       onOpenRecord,
     });
 
-    await user.click(screen.getByRole('button', { name: /One/ }));
+    await user.click(await screen.findByRole('button', { name: /One/ }));
     expect(onOpenRecord).toHaveBeenCalledOnce();
 
     rerenderTranscript([{ ...records, opening: true }]);
@@ -390,7 +393,7 @@ describe('Transcript', () => {
     ];
     const { rerenderTranscript } = renderTranscript(entries, { onOpenRecord });
 
-    await user.click(screen.getByRole('button', { name: 'Homepage' }));
+    await user.click(await screen.findByRole('button', { name: 'Homepage' }));
     expect(onOpenRecord).toHaveBeenCalledWith({
       itemId: 'home',
       itemTypeId: 'page',

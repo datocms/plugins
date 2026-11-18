@@ -203,7 +203,6 @@ describe('replaceInRecord', () => {
     expect(outcome).toEqual({
       status: 'replaced',
       replacedMatches: 2,
-      freshTitle: 'The Acme headline',
       // The fresh read's status, and the version the update answered with.
       publication: { statusBefore: 'published', versionAfter: 'version-1' },
     });
@@ -345,7 +344,6 @@ describe('replaceInRecord', () => {
     expect(outcome).toEqual({
       status: 'replaced',
       replacedMatches: 2,
-      freshTitle: 'The Acme headline',
       publication: { statusBefore: 'published', versionAfter: 'version-2' },
     });
     expect(spies.update).toHaveBeenCalledTimes(1);
@@ -492,7 +490,6 @@ describe('replaceInRecord', () => {
     ).resolves.toEqual({
       status: 'replaced',
       replacedMatches: 2,
-      freshTitle: 'The Acme headline',
       // The status is the one the first attempt read before writing.
       publication: { statusBefore: 'published', versionAfter: 'version-2' },
     });

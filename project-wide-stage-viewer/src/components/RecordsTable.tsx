@@ -1,5 +1,6 @@
 import IdText from 'datocms-react-ui/IdText';
 import ItemStatus from 'datocms-react-ui/ItemStatus';
+import RecordRow from 'datocms-react-ui/RecordRow';
 import {
   Table,
   type TableColumn,
@@ -7,9 +8,7 @@ import {
   type TableSort,
   type TableSortState,
 } from 'datocms-react-ui/Table';
-import EntityCell from 'datocms-react-ui/Table/cells/EntityCell';
 import TimeCell from 'datocms-react-ui/Table/cells/TimeCell';
-import { ItemValidityTriangles } from 'datocms-react-ui/ValidityTriangles';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { DEFAULT_ORDER_BY } from '../lib/records';
 import type { ColumnId, ColumnSetting, OrderBy } from '../types';
@@ -72,21 +71,9 @@ function tableSort(orderBy: OrderBy): TableSort | null {
   return null;
 }
 
-// The title of the record, with its image and its validity triangles
+// The record as DatoCMS lists it: its image, title, validity and status
 function TitleCell({ row }: { row: TableRecord }) {
-  return (
-    <EntityCell
-      title={row.title}
-      image={row.imageUrl && <img alt="" src={row.imageUrl} />}
-      afterTitle={
-        <ItemValidityTriangles
-          publishedValid={row.publishedValid}
-          currentValid={row.currentValid}
-          draftModeActive={row.draftModeActive}
-        />
-      }
-    />
-  );
+  return <RecordRow layout="inline" presentation={row.presentation} />;
 }
 
 // The page can give a new set on each render: the columns are keyed by the
@@ -150,7 +137,7 @@ function buildColumns(key: string): TableColumn<TableRecord>[] {
   ];
 }
 
-type RecordRowProps = {
+type TableRowProps = {
   row: TableRecord;
   selected: boolean;
   disabled: boolean;
@@ -159,12 +146,12 @@ type RecordRowProps = {
 
 // Memoized, so that a change of one row (or of the page around the table)
 // does not render every row again
-const RecordRow = memo(function RecordRow({
+const TableRow = memo(function TableRow({
   row,
   selected,
   disabled,
   onToggle,
-}: RecordRowProps) {
+}: TableRowProps) {
   const selection = useMemo(
     () => ({ selected, disabled, onSelect: () => onToggle(row.id) }),
     [disabled, onToggle, row.id, selected],
@@ -241,7 +228,7 @@ export function RecordsTable({
       <Table.Header selectAll={rows.length > 0 ? selectAll : undefined} />
       <Table.Body>
         {rows.map((row) => (
-          <RecordRow
+          <TableRow
             key={row.id}
             row={row}
             selected={selectedIds.has(row.id)}

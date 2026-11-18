@@ -5,7 +5,7 @@ import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 import { useCommentEditor } from '@hooks/useCommentEditor';
 // Hooks
 import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
-import { getAvatarImage } from '@utils/avatarImage';
+import { getAvatarImage, getUserRowPresentation } from '@utils/avatarImage';
 import {
   areRepliesEqual,
   areSegmentsEqual,
@@ -13,16 +13,13 @@ import {
 } from '@utils/comparisonHelpers';
 import { getRecordMentionModels } from '@utils/permissions';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import Avatar, {
-  AVATAR_SIZE_IN_PIXELS,
-  type AvatarSize,
-} from 'datocms-react-ui/Avatar';
+import Avatar from 'datocms-react-ui/Avatar';
 import Button from 'datocms-react-ui/Button';
 import { DisclosureChevron } from 'datocms-react-ui/Chevron';
 import RawButton from 'datocms-react-ui/RawButton';
 import Tooltip from 'datocms-react-ui/Tooltip';
+import UserRow from 'datocms-react-ui/UserRow';
 import {
-  type CSSProperties,
   memo,
   type ReactNode,
   type RefObject,
@@ -65,7 +62,6 @@ type CommentProps = {
   replyComment: (parentCommentId: string) => boolean;
   commentObject: ResolvedCommentType;
   currentUserId: string;
-  isReply?: boolean;
   modelFields?: FieldInfo[];
   projectUsers: UserInfo[];
   /** The collaborators did not load yet */
@@ -137,7 +133,6 @@ function compareRemainingProps(
 ): boolean {
   return (
     prev.currentUserId === next.currentUserId &&
-    prev.isReply === next.isReply &&
     prev.canMentionFields === next.canMentionFields &&
     prev.fieldMentionsLoading === next.fieldMentionsLoading &&
     prev.fieldMentionsError === next.fieldMentionsError &&
@@ -349,13 +344,6 @@ function CommentFooter({
   );
 }
 
-/** The side of the avatar, for the CSS that lines the replies up with it */
-function avatarSizeStyle(size: AvatarSize): CSSProperties {
-  return {
-    '--comment-avatar-size': `${AVATAR_SIZE_IN_PIXELS[size]}px`,
-  } as CSSProperties;
-}
-
 /**
  * The composer of the edit mode: a draft reply, or the change of a comment.
  * The reason tells why it cannot be saved yet (null when it can).
@@ -429,7 +417,6 @@ const Comment = memo(function Comment({
   replyComment,
   commentObject,
   currentUserId,
-  isReply = false,
   modelFields = [],
   projectUsers,
   usersLoading = false,
@@ -482,8 +469,6 @@ const Comment = memo(function Comment({
 
   // Author data is pre-resolved
   const { author } = commentObject;
-  const avatarSize: AvatarSize = isReply ? 'small' : 'regular';
-  const authorName = author.name;
   const repliesId = useId();
 
   const [repliesExpanded, setRepliesExpanded] = useState(false);
@@ -722,20 +707,17 @@ const Comment = memo(function Comment({
     <article
       ref={commentRef}
       className={styles.comment}
-      style={avatarSizeStyle(avatarSize)}
       data-comment-id={commentObject.id}
       data-comment-draft={isNewComment ? 'true' : undefined}
     >
-      <Avatar
-        size={avatarSize}
-        name={avatarName(author)}
-        email={author.email || null}
-        {...getAvatarImage(author)}
-      />
-
       <div className={styles.main}>
         <div className={styles.header}>
-          <span className={styles.author}>{authorName}</span>
+          <span className={styles.author}>
+            <UserRow
+              layout="inline"
+              presentation={getUserRowPresentation(author)}
+            />
+          </span>
           {/* A draft has no time: nothing is sent yet */}
           {!isNewComment && (
             <RelativeTime
@@ -836,7 +818,6 @@ const Comment = memo(function Comment({
                 replyComment={replyComment}
                 commentObject={reply}
                 currentUserId={currentUserId}
-                isReply
                 modelFields={modelFields}
                 projectUsers={projectUsers}
                 usersLoading={usersLoading}

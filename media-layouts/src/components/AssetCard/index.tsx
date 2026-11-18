@@ -1,5 +1,4 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import MediaCard from 'datocms-react-ui/MediaCard';
 import { memo, type ReactNode } from 'react';
 import { useUploadData } from '../../hooks/useUploadData';
 import { EditIcon, ReplaceIcon } from '../../icons';
@@ -9,7 +8,7 @@ import { assetTitle } from '../../utils/options';
 import { assetLoadState, resolveFormat } from '../../utils/upload';
 import { AssetOptionFields, CropFields } from '../AssetFields';
 import {
-  AssetMedia,
+  AssetUploadCard,
   FailedAsset,
   LoadingAsset,
   useMediaCardMenus,
@@ -40,8 +39,6 @@ export type AssetItemProps = {
   onEditMetadata: (index: number) => void;
   /** Single asset only: picks another asset in the place of this one */
   onReplace?: () => void;
-  /** A gallery: the media sits in a frame of one shape (see AssetMedia) */
-  framed?: boolean;
 };
 
 type ResolvedCardData = {
@@ -95,14 +92,13 @@ type AssetCardProps = {
   item: MediaLayoutItem;
   data: ResolvedCardData;
   disabled: boolean;
-  framed: boolean;
   onReplace?: () => void;
   onEditMetadata: () => void;
   onRemove: () => void;
 };
 
 /**
- * The card of the asset, at its crop (in a gallery, in its frame): Replace
+ * The card of the asset, at its crop: Replace
  * (single asset) and Edit metadata on the media, Remove in the "⋮" (a touch
  * screen has them all in the "⋮"). A read-only field shows the card alone.
  */
@@ -110,7 +106,6 @@ function AssetCard({
   item,
   data,
   disabled,
-  framed,
   onReplace,
   onEditMetadata,
   onRemove,
@@ -133,8 +128,9 @@ function AssetCard({
     filename: data.filename,
     uploadId: item.uploadId,
   });
-  const media = (
-    <AssetMedia
+  return (
+    <AssetUploadCard
+      uploadId={item.uploadId}
       url={data.url}
       format={data.format}
       ratio={getEffectiveRatio(
@@ -144,26 +140,11 @@ function AssetCard({
         data.originalHeight,
       )}
       focalPoint={item.focalPoint}
-      framed={framed}
-    />
-  );
-
-  if (disabled) {
-    return (
-      <MediaCard caption={{ text: caption, muted: true }} disabled>
-        {media}
-      </MediaCard>
-    );
-  }
-
-  return (
-    <MediaCard
-      caption={{ text: caption }}
+      caption={caption}
+      disabled={disabled}
       actions={menus.actions}
       options={menus.options}
-    >
-      {media}
-    </MediaCard>
+    />
   );
 }
 
@@ -184,7 +165,6 @@ function AssetItem({
   onRemove,
   onEditMetadata,
   onReplace,
-  framed = false,
 }: AssetItemProps) {
   const needsFetch = needsUploadFetch(item);
   const { upload, error } = useUploadData(ctx, item.uploadId, !needsFetch);
@@ -227,7 +207,6 @@ function AssetItem({
         item={item}
         data={data}
         disabled={disabled}
-        framed={framed}
         onReplace={onReplace}
         onEditMetadata={() => onEditMetadata(index)}
         onRemove={handleRemove}

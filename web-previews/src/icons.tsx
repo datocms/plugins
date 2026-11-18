@@ -1,122 +1,105 @@
 import {
-  findIconDefinition,
-  type IconName,
-  library,
-} from '@fortawesome/fontawesome-svg-core';
-import {
-  faArrowsRotate,
-  faArrowUpRightFromSquare,
-  faCircleExclamation,
-  faDisplay,
-  faEllipsisVertical,
-  faExpand,
-  faEye,
-  faGlobe,
-  faRuler,
-  fas,
-  faTableColumns,
-  faTriangleExclamation,
-} from '@fortawesome/free-solid-svg-icons';
-import snakeCase from 'lodash-es/snakeCase';
-import type { JSX, SVGProps } from 'react';
+  CircleAlert,
+  ExternalLink,
+  Eye,
+  Globe,
+  icons,
+  type LucideIcon,
+  Maximize,
+  Monitor,
+  PanelRight,
+  RefreshCw,
+  Ruler,
+  TriangleAlert,
+} from 'lucide-react';
 
-// The viewport presets store the name of a Font Awesome solid icon (aliases
-// such as 'mobile-alt' included), so the whole solid set is looked up by name
-library.add(fas);
+// The plugin's icons, from Lucide. They are drawn at 1em, the size of the
+// text around them (see the LucideProvider in utils/render.tsx).
+export const ErrorIcon = CircleAlert;
+export const OpenInNewTabIcon = ExternalLink;
+export const EyeIcon = Eye;
+export const GlobeIcon = Globe;
+export const FitIcon = Maximize;
+/** The icon of a viewport preset whose icon name is unknown */
+export const DisplayIcon = Monitor;
+/** The sidebar of the record form */
+export const SidebarIcon = PanelRight;
+export const ReloadIcon = RefreshCw;
+export const CustomSizeIcon = Ruler;
+export const WarningIcon = TriangleAlert;
 
-type IconComponent = (props: SVGProps<SVGSVGElement>) => JSX.Element;
+type IconComponent = LucideIcon;
 
-type IconSource = {
-  iconName: string;
-  icon: [number, number, unknown, unknown, string | string[]];
-};
+const iconsByPascalName: Record<string, IconComponent> = icons;
 
-/**
- * Turns a Font Awesome icon into a plain SVG component that the components
- * of datocms-react-ui accept as an `icon`. The icon is 1em, in the color of
- * the text: the place sizes it.
- */
-function svgIcon(definition: IconSource): IconComponent {
-  const [width, height, , , pathData] = definition.icon;
-  const paths = Array.isArray(pathData) ? pathData : [pathData];
-
-  function Icon(props: SVGProps<SVGSVGElement>) {
-    return (
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        width="1em"
-        height="1em"
-        fill="currentColor"
-        aria-hidden="true"
-        focusable="false"
-        {...props}
-      >
-        {paths.map((d) => (
-          <path key={d} d={d} />
-        ))}
-      </svg>
-    );
-  }
-
-  Icon.displayName = `Icon(${definition.iconName})`;
-
-  return Icon;
+/** 'tablet-smartphone' → 'TabletSmartphone', the key of the icon in Lucide */
+function toPascalName(name: string) {
+  return name
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
 }
 
-export const ReloadIcon = svgIcon(faArrowsRotate);
-export const EyeIcon = svgIcon(faEye);
-export const OpenInNewTabIcon = svgIcon(faArrowUpRightFromSquare);
-/** The "⋮" of a menu of actions */
-export const ActionToggleIcon = svgIcon(faEllipsisVertical);
-export const FitIcon = svgIcon(faExpand);
-export const CustomSizeIcon = svgIcon(faRuler);
-/** The icon of a viewport preset whose icon name is unknown */
-export const DisplayIcon = svgIcon(faDisplay);
-export const GlobeIcon = svgIcon(faGlobe);
-/** The sidebar of the record form */
-export const WarningIcon = svgIcon(faTriangleExclamation);
-export const ErrorIcon = svgIcon(faCircleExclamation);
+/** 'TabletSmartphone' → 'tablet-smartphone', the name that a viewport stores */
+function toKebabName(pascalName: string) {
+  return pascalName
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z])/g, '$1-$2')
+    .replace(/([a-zA-Z])(\d)/g, '$1-$2')
+    .toLowerCase();
+}
 
-function lookUpIcon(name: string) {
-  // The library is typed for its own icon names: an unknown name finds nothing
+/**
+ * The viewports saved before the icons came from Lucide store the name of a
+ * Font Awesome solid icon. The device icons (and their aliases), the ones
+ * the select suggested and the defaults, keep showing the same device. A
+ * Font Awesome name that Lucide has too (laptop, tablet, tv) needs no entry.
+ */
+const LEGACY_ICON_NAMES = new Map<string, string>(
+  Object.entries({
+    mobile: 'smartphone',
+    'mobile-alt': 'smartphone',
+    'mobile-android': 'smartphone',
+    'mobile-android-alt': 'smartphone',
+    'mobile-button': 'smartphone',
+    'mobile-phone': 'smartphone',
+    'mobile-retro': 'smartphone',
+    'mobile-screen': 'smartphone',
+    'mobile-screen-button': 'smartphone',
+    'tablet-alt': 'tablet',
+    'tablet-android': 'tablet',
+    'tablet-button': 'tablet',
+    'tablet-screen': 'tablet',
+    'tablet-screen-button': 'tablet',
+    'laptop-code': 'laptop',
+    desktop: 'monitor',
+    'desktop-alt': 'monitor',
+    display: 'monitor',
+    'tv-alt': 'tv',
+  }),
+);
+
+/**
+ * The Lucide icon with this name, or with the Lucide name of a legacy Font
+ * Awesome device name, or undefined when there is none. The same name
+ * always gives the same component, so it can be rendered on every render.
+ */
+export function iconByName(name: string): IconComponent | undefined {
+  if (!name) {
+    return undefined;
+  }
+
+  const legacyName = LEGACY_ICON_NAMES.get(name);
+
   return (
-    findIconDefinition({ prefix: 'fas', iconName: name as IconName }) ??
-    undefined
+    iconsByPascalName[toPascalName(name)] ??
+    (legacyName ? iconsByPascalName[toPascalName(legacyName)] : undefined)
   );
 }
 
-const componentsByIconName = new Map<string, IconComponent>();
-const componentsByName = new Map<string, IconComponent | undefined>();
-
-/**
- * The component of the Font Awesome solid icon with this name (or alias), or
- * undefined when there is none. The same name always gives the same
- * component, so it can be rendered on every render.
- */
-export function iconByName(name: string): IconComponent | undefined {
-  if (componentsByName.has(name)) {
-    return componentsByName.get(name);
-  }
-
-  const definition = name ? lookUpIcon(name) : undefined;
-  let component: IconComponent | undefined;
-
-  if (definition) {
-    component = componentsByIconName.get(definition.iconName);
-    if (!component) {
-      component = svgIcon(definition);
-      componentsByIconName.set(definition.iconName, component);
-    }
-  }
-
-  componentsByName.set(name, component);
-
-  return component;
-}
-
-/** Whether a Font Awesome solid icon has this name (or alias) */
-export function isValidIconName(name: string): name is IconName {
-  return Boolean(name && lookUpIcon(name));
+/** Whether an icon has this name (a legacy Font Awesome device name too) */
+export function isValidIconName(name: string): boolean {
+  return Boolean(iconByName(name));
 }
 
 /**
@@ -127,16 +110,10 @@ export const ICON_RESULTS_LIMIT = 36;
 
 let iconNames: string[] | undefined;
 
-/**
- * The names that a viewport stores: the keys of the solid set in kebab case
- * (aliases included), without the few that the library can't find, sorted
- */
+/** The names that a viewport stores: the Lucide icons in kebab case, sorted */
 export function allIconNames(): string[] {
   if (!iconNames) {
-    iconNames = Object.keys(fas)
-      .map((key) => snakeCase(key.replace(/^fa/, '')).replace(/_/g, '-'))
-      .filter((name) => isValidIconName(name))
-      .sort();
+    iconNames = Object.keys(iconsByPascalName).map(toKebabName).sort();
   }
 
   return iconNames;
@@ -144,19 +121,20 @@ export function allIconNames(): string[] {
 
 /** The icons of devices, which the icon select lists before a search */
 const DEVICE_ICON_NAMES = [
-  'mobile-screen-button',
-  'mobile',
-  'tablet-screen-button',
+  'smartphone',
   'tablet',
+  'tablet-smartphone',
   'laptop',
-  'desktop',
-  'display',
+  'monitor',
+  'monitor-smartphone',
+  'computer',
   'tv',
 ];
 
 /**
- * The icons that the select lists before a search: the current one (an
- * alias stays as it is), then the devices that don't have the same glyph
+ * The icons that the select lists before a search: the current one (a
+ * legacy name stays as it is), then the devices that don't have the same
+ * glyph
  */
 export function suggestedIconNames(current: string): string[] {
   const currentIcon = iconByName(current);
@@ -191,4 +169,3 @@ export function searchIconNames(query: string): string[] {
     .filter((name) => name.includes(lowerCaseQuery))
     .sort((a, b) => rank(a) - rank(b));
 }
-export const SidebarIcon = svgIcon(faTableColumns);

@@ -3,6 +3,9 @@ import EntityRow from 'datocms-react-ui/EntityRow';
 import { Page } from 'datocms-react-ui/Page';
 import ProgressBar from 'datocms-react-ui/ProgressBar';
 import Spinner from 'datocms-react-ui/Spinner';
+import UploadPreview, {
+  type UploadPreviewUpload,
+} from 'datocms-react-ui/UploadPreview';
 import s from '../../entrypoints/OptimizeAssetsPage.module.css';
 import { formatFileSize } from '../../utils/formatters';
 import type { Asset } from '../../utils/optimizationUtils';
@@ -18,12 +21,23 @@ interface ProgressIndicatorProps {
   isCancelling: boolean;
 }
 
-function thumbnailUrl(asset: Asset): string {
-  const url = new URL(asset.url);
-  const parameters = { w: '64', h: '64', fit: 'crop', auto: 'format' };
-  for (const [key, value] of Object.entries(parameters))
-    url.searchParams.set(key, value);
-  return url.toString();
+const IMAGE_BOX = { width: 32, height: 32 };
+
+/** The image as the preview of an asset reads it */
+function previewUpload(asset: Asset): UploadPreviewUpload {
+  return {
+    id: asset.id,
+    attributes: {
+      url: asset.url,
+      filename: asset.basename,
+      format: asset.format ?? null,
+      size: asset.size,
+      width: asset.width ?? null,
+      height: asset.height ?? null,
+      mime_type: null,
+      md5: asset.md5 ?? null,
+    },
+  };
 }
 
 /** The type, the size and the dimensions of an image, when they are known */
@@ -85,7 +99,14 @@ const ProgressIndicator = ({
           <EntityRow
             layout="row"
             kicker="Current image"
-            image={<img src={thumbnailUrl(currentAsset)} alt="" />}
+            image={
+              <UploadPreview
+                upload={previewUpload(currentAsset)}
+                box={IMAGE_BOX}
+                padding={[0, 0]}
+                transparent
+              />
+            }
             title={currentAsset.basename}
           >
             {assetDetails(currentAsset)}

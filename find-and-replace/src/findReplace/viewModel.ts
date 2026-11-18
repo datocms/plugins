@@ -42,8 +42,6 @@ export type RecordEntry = {
   recordId: string;
   modelId: string;
   modelName: string;
-  /** As found by the search (null → "Record #{id}"). */
-  title: string | null;
   fields: FieldEntry[];
   matchCount: number;
 };
@@ -163,7 +161,6 @@ export class ResultSet {
       recordId: record.id,
       modelId: model.id,
       modelName: model.name,
-      title: record.title,
       fields: [],
       matchCount: 0,
     };
@@ -222,7 +219,6 @@ export type MatchState = {
 
 /** How one record renders right now (besides its matches). */
 export type RecordState = {
-  title: string | null;
   selectable: boolean;
   status: RecordRunStatus;
   publish: RecordPublishStatus;
@@ -314,7 +310,6 @@ function sameRecordState(
   inclusion: RecordView['inclusion'],
 ): boolean {
   return (
-    previous.title === state.title &&
     previous.selectable === state.selectable &&
     previous.status === state.status &&
     previous.publish === state.publish &&
@@ -362,7 +357,6 @@ export function recordView(
     recordId: entry.recordId,
     modelId: entry.modelId,
     modelName: entry.modelName,
-    title: state.title,
     matchCount: entry.matchCount,
     inclusion,
     selectable: state.selectable,

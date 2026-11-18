@@ -1,8 +1,7 @@
 import type { UserInfo } from '@hooks/useMentions';
-import { getAvatarImage } from '@utils/avatarImage';
-import Avatar from 'datocms-react-ui/Avatar';
+import { getUserRowPresentation } from '@utils/avatarImage';
 import Button from 'datocms-react-ui/Button';
-import EntityRow from 'datocms-react-ui/EntityRow';
+import UserRow from 'datocms-react-ui/UserRow';
 import type { ReactNode } from 'react';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
 import {
@@ -94,17 +93,7 @@ const UserMentionDropdown = ({
       keyExtractor={(user) => user.id}
       renderItem={(user) => ({
         label: (
-          <EntityRow
-            layout="row"
-            image={
-              <Avatar
-                name={user.name}
-                email={user.email || null}
-                {...getAvatarImage(user)}
-              />
-            }
-            title={user.name}
-          />
+          <UserRow layout="row" presentation={getUserRowPresentation(user)} />
         ),
         onPick: () => onSelect(user),
       })}
