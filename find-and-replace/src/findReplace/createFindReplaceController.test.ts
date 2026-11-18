@@ -612,3 +612,39 @@ describe('snapshots', () => {
     expect(harness.snapshot().findRow.showEraser).toBe(true);
   });
 });
+
+describe('unpublished records', () => {
+  const records = (): FixtureRecord[] =>
+    acmeRecords().map((record) => ({
+      ...record,
+      status: record.id === 'a1' ? 'draft' : 'updated',
+    }));
+
+  it('searches drafts by default', async () => {
+    const harness = setupController({ records: records() });
+    const snapshot = await searchFor(harness, 'acme');
+
+    expect(snapshot.records.map((record) => record.key)).toContain(
+      'article:a1',
+    );
+  });
+
+  it('leaves drafts out with excludeUnpublished, and asks the API to', async () => {
+    const harness = setupController({
+      records: records(),
+      excludeUnpublished: true,
+    });
+    const snapshot = await searchFor(harness, 'acme');
+
+    expect(snapshot.records.map((record) => record.key)).toEqual([
+      'article:a2',
+      'page:p1',
+      'page:p2',
+    ]);
+    for (const query of harness.cma.pageCalls()) {
+      expect(query.filter.fields).toEqual({
+        _status: { in: ['updated', 'published'] },
+      });
+    }
+  });
+});

@@ -960,6 +960,8 @@ export type CreateFindReplaceControllerOptions = {
    * unknown. Above `limits.enterToSearchAbove`, searches start on Enter.
    */
   recordCount?: number | null;
+  /** Searches leave out records in draft status. Defaults to false. */
+  excludeUnpublished?: boolean;
   /**
    * Whether the role may publish records of this model. Defaults to never:
    * without it the page doesn't offer publishing.
@@ -991,4 +993,6 @@ export type BootView =
 export type FindReplaceAppProps = {
   ctx: RenderPageCtx;
   boot: BootView;
+  /** The copy says unpublished records aren't searched. Defaults to false. */
+  excludeUnpublished?: boolean;
 };

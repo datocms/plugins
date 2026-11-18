@@ -51,6 +51,7 @@ describe('scope modal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: 'all',
       localeIds: 'all',
+      excludeUnpublished: false,
     } satisfies Scope);
   });
 
@@ -72,6 +73,7 @@ describe('scope modal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
       localeIds: 'all',
+      excludeUnpublished: false,
     } satisfies Scope);
 
     await user.click(modelSwitch());
@@ -96,6 +98,7 @@ describe('scope modal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
       localeIds: ['it'],
+      excludeUnpublished: false,
     } satisfies Scope);
   });
 
@@ -120,6 +123,7 @@ describe('scope modal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: ['page'],
       localeIds: ['it'],
+      excludeUnpublished: false,
     } satisfies Scope);
   });
 
@@ -137,6 +141,7 @@ describe('scope modal', () => {
     expect(ctx.resolve).toHaveBeenCalledWith({
       modelIds: 'all',
       localeIds: 'all',
+      excludeUnpublished: false,
     } satisfies Scope);
   });
 
@@ -147,6 +152,37 @@ describe('scope modal', () => {
     expect(modelSwitch()).not.toBeChecked();
     expect(localeSwitch()).not.toBeInTheDocument();
     await user.click(submit());
-    expect(ctx.resolve).toHaveBeenCalledWith(ALL_SCOPE);
+    expect(ctx.resolve).toHaveBeenCalledWith({
+      ...ALL_SCOPE,
+      excludeUnpublished: false,
+    });
+  });
+
+  it('skips unpublished records when asked, and reopens with the switch on', async () => {
+    const user = userEvent.setup();
+    const ctx = renderModal(params());
+    const intro = () => screen.getByText(/^Scans the latest/).textContent;
+    expect(intro()).toBe(
+      'Scans the latest saved version of every record in the main environment, drafts and invalid records included.',
+    );
+    await user.click(
+      screen.getByRole('switch', { name: 'Skip unpublished records?' }),
+    );
+    expect(intro()).toBe(
+      'Scans the latest saved version of every published record in the main environment, invalid records included.',
+    );
+    await user.click(submit());
+    expect(ctx.resolve).toHaveBeenCalledWith({
+      modelIds: 'all',
+      localeIds: 'all',
+      excludeUnpublished: true,
+    } satisfies Scope);
+  });
+
+  it('opens with the unpublished switch on for a scope that skips them', () => {
+    renderModal(params({ scope: { ...ALL_SCOPE, excludeUnpublished: true } }));
+    expect(
+      screen.getByRole('switch', { name: 'Skip unpublished records?' }),
+    ).toBeChecked();
   });
 });

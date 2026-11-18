@@ -258,6 +258,31 @@ describe('project page', () => {
     expect(ctx.editItem).not.toHaveBeenCalled();
   });
 
+  it('skips unpublished records when the scope modal says so, also on Scan again', async () => {
+    const user = userEvent.setup();
+    const ctx = pageContext();
+    render(<ProjectPage ctx={ctx} />);
+
+    await chooseScope(user, ctx, {
+      modelIds: ['page'],
+      localeIds: ['en'],
+      excludeUnpublished: true,
+    });
+    await screen.findByRole('heading', { name: 'Scan complete' });
+    const skipping = expect.objectContaining({
+      filter: { type: 'page', fields: { _status: { neq: 'draft' } } },
+    });
+    expect(rawList).toHaveBeenCalledWith(skipping);
+    expect(
+      screen.getByText(/^Page • English • Unpublished skipped • /),
+    ).toBeInTheDocument();
+
+    rawList.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Scan links' }));
+    await screen.findByRole('heading', { name: 'Scan complete' });
+    expect(rawList).toHaveBeenCalledWith(skipping);
+  });
+
   it('scans only the models and locales chosen in the scope modal', async () => {
     const user = userEvent.setup();
     const ctx = pageContext();
@@ -269,7 +294,7 @@ describe('project page', () => {
         id: 'scan-scope',
         title: 'Choose what to scan',
         width: 's',
-        initialHeight: 328,
+        initialHeight: 414,
         parameters: {
           environment: 'main',
           models: [

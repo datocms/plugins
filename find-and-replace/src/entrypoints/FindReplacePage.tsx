@@ -68,10 +68,11 @@ async function bootController(
   ]);
   if (isCancelled()) return null;
 
+  const params = readPluginParameters(ctx.plugin.attributes.parameters);
   const permissionView = buildPermissionView({
     role: ctx.currentRole,
     environment: ctx.environment,
-    params: readPluginParameters(ctx.plugin.attributes.parameters),
+    params,
     tokenAvailable: true,
     models: allModels,
   });
@@ -110,6 +111,7 @@ async function bootController(
     },
     canPublishModel: (modelId) => publishableModelIds.has(modelId),
     recordCount,
+    excludeUnpublished: params.excludeUnpublished,
   });
   return { status: 'ready', controller };
 }
@@ -188,5 +190,14 @@ export default function FindReplacePage({ ctx }: Props) {
     [bootKey],
   );
 
-  return <FindReplaceApp ctx={ctx} boot={boot} />;
+  const { excludeUnpublished } = readPluginParameters(
+    ctx.plugin.attributes.parameters,
+  );
+  return (
+    <FindReplaceApp
+      ctx={ctx}
+      boot={boot}
+      excludeUnpublished={excludeUnpublished}
+    />
+  );
 }

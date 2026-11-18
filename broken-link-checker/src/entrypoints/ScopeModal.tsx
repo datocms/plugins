@@ -139,6 +139,9 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
   const [localeIds, setLocaleIds] = useState(() =>
     knownIds(params.scope.localeIds, localeOptions),
   );
+  const [excludeUnpublished, setExcludeUnpublished] = useState(
+    params.scope.excludeUnpublished === true,
+  );
   // Errors show after a submit attempt, then follow the selection.
   const [attempted, setAttempted] = useState(false);
   const modelsMissing = limitModels && modelIds.length === 0;
@@ -155,6 +158,7 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
     const scope: Scope = {
       modelIds: limitModels ? modelIds : 'all',
       localeIds: limitLocales ? localeIds : 'all',
+      excludeUnpublished,
     };
     void ctx.resolve(scope);
   };
@@ -163,9 +167,12 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
     <Canvas ctx={ctx}>
       <Form className="dl-kit-form-parity" onSubmit={submit}>
         <p className="blc-modal-intro">
-          Scans the latest saved version of every record in the{' '}
-          <code className="blc-code">{params.environment}</code> environment,
-          drafts and invalid records included.
+          Scans the latest saved version of every{' '}
+          {excludeUnpublished ? 'published record' : 'record'} in the{' '}
+          <code className="blc-code">{params.environment}</code> environment,{' '}
+          {excludeUnpublished
+            ? 'invalid records included.'
+            : 'drafts and invalid records included.'}
         </p>
         <SwitchField
           id="limit-models"
@@ -209,6 +216,14 @@ export default function ScopeModal({ ctx }: { ctx: RenderModalCtx }) {
             onChange={setLocaleIds}
           />
         )}
+        <SwitchField
+          id="exclude-unpublished"
+          name="excludeUnpublished"
+          label="Skip unpublished records?"
+          hint="If enabled, records that were never published, or were unpublished, aren't scanned. Published records with unpublished changes still are."
+          value={excludeUnpublished}
+          onChange={setExcludeUnpublished}
+        />
         <Button type="submit" buttonType="primary" buttonSize="xl" fullWidth>
           Scan links
         </Button>

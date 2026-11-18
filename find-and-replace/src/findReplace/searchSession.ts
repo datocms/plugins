@@ -93,6 +93,8 @@ export type SearchSessionOptions = {
    * "Search again") does. The toggles re-run the search shown on screen.
    */
   enterToSearch?: boolean;
+  /** Leave out records in draft status (never published, or unpublished). */
+  excludeUnpublished?: boolean;
   /** Clock for the time left. Defaults to `Date.now`. */
   now?: () => number;
   /** Request slots and pace shared with the other readers of the page. */
@@ -827,7 +829,9 @@ export class SearchSession {
       granularity: 'exact_match',
       rootModelIds: this.models.map((model) => model.id),
       locales: [...this.options.locales],
-      publicationStatuses: [],
+      publicationStatuses: this.options.excludeUnpublished
+        ? ['updated', 'published']
+        : [],
       fieldTypes: [...SEARCHABLE_FIELD_TYPES],
       matcher,
     };

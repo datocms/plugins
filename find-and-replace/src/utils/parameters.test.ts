@@ -8,6 +8,7 @@ describe('readPluginParameters', () => {
       allowedRoleIds: [],
       restrictToModels: false,
       allowedModelIds: [],
+      excludeUnpublished: false,
     });
   });
 
@@ -22,6 +23,7 @@ describe('readPluginParameters', () => {
       allowedRoleIds: ['editor'],
       restrictToModels: true,
       allowedModelIds: ['article'],
+      excludeUnpublished: false,
     });
   });
 
@@ -38,6 +40,16 @@ describe('readPluginParameters', () => {
       allowedRoleIds: ['editor'],
       restrictToModels: false,
       allowedModelIds: ['article'],
+      excludeUnpublished: false,
     });
+  });
+
+  it('reads excludeUnpublished only when it is true', () => {
+    expect(
+      readPluginParameters({ excludeUnpublished: true }).excludeUnpublished,
+    ).toBe(true);
+    expect(
+      readPluginParameters({ excludeUnpublished: 'yes' }).excludeUnpublished,
+    ).toBe(false);
   });
 });

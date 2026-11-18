@@ -272,6 +272,7 @@ class FindReplaceStore {
       enterToSearch:
         options.recordCount != null &&
         options.recordCount > this.limits.enterToSearchAbove,
+      excludeUnpublished: options.excludeUnpublished,
       now: options.now,
       pool: readPool,
       hooks: {

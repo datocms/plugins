@@ -487,8 +487,15 @@ function controllerKey(controller: FindReplaceController): number {
  * The Find and replace page: a pure renderer of the controller snapshot,
  * plus the ctx wiring (confirm, toasts, links) and focus management.
  */
-export function FindReplaceApp({ ctx, boot }: FindReplaceAppProps) {
-  const copy = useMemo(() => createCopy(ctx.ui.locale), [ctx.ui.locale]);
+export function FindReplaceApp({
+  ctx,
+  boot,
+  excludeUnpublished = false,
+}: FindReplaceAppProps) {
+  const copy = useMemo(
+    () => createCopy(ctx.ui.locale, excludeUnpublished),
+    [ctx.ui.locale, excludeUnpublished],
+  );
 
   return (
     <Canvas ctx={ctx} noAutoResizer>

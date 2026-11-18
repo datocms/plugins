@@ -3,6 +3,8 @@ export type PluginParameters = {
   allowedRoleIds: string[];
   restrictToModels: boolean;
   allowedModelIds: string[];
+  /** Searches leave out records in draft status (never published, or unpublished). */
+  excludeUnpublished: boolean;
 };
 
 export type ModelSummary = {

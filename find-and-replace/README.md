@@ -8,11 +8,13 @@ Searches every text field of every record for a word or pattern and replaces it 
 
 Install **Find and Replace** from **Configuration → Plugins** and, when asked, let it use the current user's API token, which it needs to read and update records. A **Find and Replace** tab then appears in the top navigation.
 
-By default anyone whose role can read and update a model can use it on that model's records. In the plugin settings you can restrict it to some roles or limit which models it can change.
+By default anyone whose role can read and update a model can use it on that model's records. In the plugin settings you can restrict it to some roles, limit which models it can change, or skip unpublished records.
 
 ## Finding text
 
 Type in **Find**. Matches show up grouped by record, with the field, locale and a line of context. The search covers titles, text, slugs, Structured Text, link URLs, SEO fields, the text values of JSON fields, the alt and title text set on asset fields, number fields and text inside blocks at any depth, in every locale. In projects with more than 10,000 records, press Enter to start the search.
+
+With **Skip unpublished records** on in the plugin settings, records that were never published, or were unpublished, aren't searched. Published records with unpublished changes still are, and their latest version is what's searched and replaced.
 
 You can match case, match whole words, or use a regular expression (JavaScript syntax, with `$1`, `$<name>` and `$&` available in the replacement). Without whole-word matching, "Startup" also matches inside "Startups".
 

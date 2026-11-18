@@ -90,7 +90,7 @@ export function Body({
 }: BodyProps) {
   switch (snapshot.body) {
     case 'idle':
-      return <IdleState />;
+      return <IdleState copy={copy} />;
     case 'blank':
       return null;
     case 'spinner':

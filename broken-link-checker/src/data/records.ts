@@ -120,6 +120,9 @@ function pageTotal(
   return total;
 }
 
+/** Leaves out records in draft status (never published, or unpublished). */
+export const PUBLISHED_FIELDS = { _status: { neq: 'draft' } };
+
 /**
  * Reads one bounded page at a time, in ID order; never silently treats a
  * truncated response as complete.
@@ -138,6 +141,7 @@ export async function* readRecords(
   client: Pick<Client, 'items'>,
   modelId: string,
   signal?: AbortSignal,
+  excludeUnpublished = false,
 ): AsyncGenerator<NestedRecord> {
   const seen = new Set<string>();
   let offset = 0;
@@ -157,7 +161,9 @@ export async function* readRecords(
       client.items.rawList({
         nested: true,
         version: 'current',
-        filter: { type: modelId },
+        filter: excludeUnpublished
+          ? { type: modelId, fields: PUBLISHED_FIELDS }
+          : { type: modelId },
         order_by: 'id_ASC',
         page: { offset, limit: RECORDS_PAGE_SIZE },
       }),

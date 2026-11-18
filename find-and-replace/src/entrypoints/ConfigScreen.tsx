@@ -36,6 +36,7 @@ type DraftState = {
   allowedRoleIds: string[];
   restrictToModels: boolean;
   allowedModelIds: string[];
+  excludeUnpublished: boolean;
 };
 
 function toDraftState(params: PluginParameters): DraftState {
@@ -44,6 +45,7 @@ function toDraftState(params: PluginParameters): DraftState {
     allowedRoleIds: params.allowedRoleIds,
     restrictToModels: params.restrictToModels,
     allowedModelIds: params.allowedModelIds,
+    excludeUnpublished: params.excludeUnpublished,
   };
 }
 
@@ -53,6 +55,7 @@ function toPayload(state: DraftState): PluginParameters {
     allowedRoleIds: state.allowedRoleIds,
     restrictToModels: state.restrictToModels,
     allowedModelIds: state.allowedModelIds,
+    excludeUnpublished: state.excludeUnpublished,
   };
 }
 
@@ -130,7 +133,8 @@ function isDraftDirty(draft: DraftState, params: PluginParameters): boolean {
     draft.restrictToRoles !== params.restrictToRoles ||
     !sameIds(draft.allowedRoleIds, params.allowedRoleIds) ||
     draft.restrictToModels !== params.restrictToModels ||
-    !sameIds(draft.allowedModelIds, params.allowedModelIds)
+    !sameIds(draft.allowedModelIds, params.allowedModelIds) ||
+    draft.excludeUnpublished !== params.excludeUnpublished
   );
 }
 
@@ -384,6 +388,21 @@ export default function ConfigScreen({ ctx }: Props) {
               </div>
             )}
           </div>
+          <SwitchField
+            name="excludeUnpublished"
+            id="excludeUnpublished"
+            label="Skip unpublished records"
+            hint="If enabled, records that were never published, or were unpublished, aren't searched. Published records with unpublished changes still are."
+            value={draft.excludeUnpublished}
+            onChange={(excludeUnpublished) =>
+              setDraft((current) => ({ ...current, excludeUnpublished }))
+            }
+            switchInputProps={{
+              name: 'excludeUnpublished',
+              value: draft.excludeUnpublished,
+              disabled: !canEditSchema,
+            }}
+          />
         </FieldGroup>
         {hasRestriction && (
           <OptionsNotice
