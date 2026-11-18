@@ -4,10 +4,10 @@ Add a table of contents to long records: a sidebar panel lists every field of th
 
 (This plugin was formerly called "Field Anchor Menu".)
 
-![A Blog Post record with the Scroll to field panel in the sidebar: the panel lists Title and Content, then Author and Tags under Additional information, then Slug, SEO Tags and SEO Analysis under SEO & Readability. Author is highlighted and the form has scrolled to the Author field](docs/record-panel.png)
+![A Blog Post record with the Scroll to field panel in the sidebar: the panel lists Title and Content, then a box for Additional information with Author and Tags, then a box for SEO & Readability with Slug, SEO Tags and SEO Analysis, each field with the icon of its type. Author is highlighted and the form has scrolled to the Author field](docs/record-panel.png)
 
 - **One click to any field**: no more scrolling past long Structured Text or Modular Content fields.
-- **Follows your form**: fields appear in the same order as in the form, grouped under their fieldsets.
+- **Follows your form**: fields appear in the same order as in the form, grouped in their fieldsets, each with the icon of its type.
 - **Automatic**: the panel appears on every model with enough fields, with no per-model setup.
 - **Stays out of the way on short models**: you choose the minimum number of fields.
 
@@ -21,7 +21,7 @@ Install the plugin from the marketplace. It works straight away with the default
 2. Find the **Scroll to field** panel in the record sidebar, under **Record info**.
 3. Click a field. The form scrolls to it.
 
-Fields that belong to a fieldset are listed under the fieldset's title, so the panel mirrors the sections of the form. Collapse the panel with its arrow when you don't need it.
+Fields that belong to a fieldset are listed in a box with the fieldset's title, so the panel mirrors the sections of the form. Fieldsets with no fields are left out. Collapse the panel with its arrow when you don't need it.
 
 ## Settings
 

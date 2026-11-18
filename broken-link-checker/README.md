@@ -2,7 +2,7 @@
 
 Finds broken links in your DatoCMS content. Scan the whole project to see every bad link and where it's used, or check a single record from its sidebar. The plugin only reads your content and never changes it.
 
-![The Link checker page listing the links that need attention, with a broken link selected: the detail shows its 404 result and the two author records, one German and one English, that use it](docs/project-report.png)
+![The Link checker page listing the links that need attention, with a broken link selected: the detail shows its 404 result and the three author records that use it, each with the field and locale that holds the link](docs/project-report.png)
 
 - **Project scan**: every link in your records, grouped by URL, with each record, field and locale that uses it.
 - **Record check**: check the record you're editing, unsaved changes included, and jump to the field that holds a link.
@@ -19,7 +19,7 @@ Install **Broken Link Checker** from **Configuration → Plugins** and, when ask
 1. Open **Content → Link checker**.
 2. Click **Scan links** and keep the page open while the scan runs.
 3. Select a link to see the site's answer and every record that uses it.
-4. Open a record with its edit button to fix the link, then click **Recheck link**.
+4. Click a record to open it and fix the link, then click **Recheck link**.
 
 The list starts on **Needs attention**. Click the page title to switch to all links or to a single status, and use the search button to filter by URL, model or locale. **Export as CSV** in the **⋮** menu downloads the whole report, whatever the filters. Results disappear when you leave the page, so export them if you want to keep a copy.
 

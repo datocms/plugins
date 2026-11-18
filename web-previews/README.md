@@ -44,7 +44,7 @@ Under **Display**, choose the places that show Web Previews. They're all on by d
 
 Point at a record in **Records on this page** to scroll the page to it and outline it, and click it to open it.
 
-Above the page, type a path to open another page, refresh it, or pick a size: **Fit to window**, a viewport or a **Custom size**. Turn off the **Visual editing** switch to use the page as a visitor (links, menus) without the outlines, or hold Alt (⌥ on a Mac) to hide them for a moment. With several frontends, a menu at the left switches websites.
+Above the page, type a path to open another page, refresh it, or pick a size in the size menu: **Fit to window**, a viewport, or a custom width and height under **Custom size** (click **Apply**). When the page area is narrow, the size menu hides and the page fits the window. Turn off the **Visual editing** switch to use the page as a visitor (links, menus) without the outlines, or hold Alt (⌥ on a Mac) to hide them for a moment. With several frontends, a menu at the left switches websites.
 
 ## Preview a record: the Website preview tab
 
@@ -53,16 +53,22 @@ Above the page, type a path to open another page, refresh it, or pick a size: **
 Open **Website preview** in the sidebar of a record to see its page next to the form. Its bar lets you:
 
 - pick one of the record's links, like the draft or the published version;
-- refresh the page, or pick a size: **Fit to sidebar**, a viewport or a **Custom size**;
+- refresh the page, or pick a size in the size menu: **Fit to sidebar**, a viewport, or a custom width and height under **Custom size**;
 - open the page in the Visual Editing tab (the eye) or in a new browser tab.
 
 Drag the edge of the tab to resize it. A new record shows its preview after its first save.
 
 ## Open a page: preview links
 
-![A blog post with its Preview links card above the title, and the same link in the Preview links panel of the sidebar](docs/preview-links.png)
+![A blog post with its Preview links card above the title, the actions of its Draft version row shown, and the same links in the Preview links panel of the sidebar](docs/preview-links.png)
 
-The **Preview links** card at the top of the form and the panel in the sidebar list the pages of the record, one row per frontend. Click a link to open the page in a new tab. The eye opens it in the Visual Editing tab, and the **⋮** menu holds the record's other links, like **Open Published version**.
+The **Preview links** card at the top of the form and the panel in the sidebar list the pages of the record, one row per link with its label and path, under the name of the frontend when there are several. Point at a row to see its actions:
+
+- show the page in the **Website preview** tab (in the card);
+- edit it in the Visual Editing tab (the eye), for a draft link of a frontend with Visual Editing;
+- open it in a new browser tab.
+
+Click the header of the card to collapse it: closed, it shows the number of links.
 
 ## Good to know
 

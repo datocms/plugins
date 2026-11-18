@@ -2,10 +2,11 @@
 
 Give each record its own checklist. The plugin turns a JSON field into a to-do list in the record form, so editors can see what's still left before they publish.
 
-![A Blog Post record whose Publishing checklist field lists four open tasks, from adding alt text to scheduling the newsletter mention, and below them two completed tasks, Pick a cover image and Proofread the article](docs/record-checklist.png)
+![A Blog Post record whose Publishing checklist field lists four open tasks, from adding alt text to scheduling the newsletter mention, with the drag grip and ⋮ menu showing on the task under the pointer, and below them the open 2 completed tasks card with Pick a cover image and Proofread the article struck through](docs/record-checklist.png)
 
 - **Tick tasks off**: done tasks move to a completed list you can open and close.
-- **Edit in place**: add, rename, reorder and delete tasks right in the field.
+- **Edit in place**: add, rename and delete tasks right in the field.
+- **Drag to reorder**: grab a task and drop it where it belongs.
 - **Same tasks for every record**: start new records with a ready-made checklist through the field's default value.
 - **Saved with the record**: the list is plain JSON in the field, with the date each task was done.
 - **No configuration**: the plugin has no settings and needs no permissions.
@@ -21,21 +22,22 @@ Give each record its own checklist. The plugin turns a JSON field into a to-do l
 
 ## Using the list
 
-An empty field shows **No tasks yet**. Click **Add task** to add the first one, then type its name.
+The open tasks sit in one card, each with a checkbox. An empty field shows **No tasks yet**, and once every task is done it shows **All tasks done**.
 
-- **Add a task**: point just below the last task and click the **+** that appears on the left, labelled **Add task**. A new row opens at the bottom.
-- **Rename a task**: click its name and type.
-- **Mark it done**: click the check in the **Done** column. The task moves to the completed tasks.
-- **Reorder**: use the arrows in the **Order** column.
-- **Delete a task**: point at its row and click the bin icon at the end.
+- **Mark a task done**: click its checkbox or its text. The task moves to the completed tasks.
+- **Add a task**: click **Add task** under the list, type its name and press Enter. Escape cancels.
+- **Reorder**: point at a task, grab the grip that appears on its left and drag the task to its new place.
+- **Rename, move or delete**: point at a task and open its **⋮** menu: **Edit**, **Move up**, **Move down** or **Delete**. **Edit** turns the text into an input: Enter saves, Escape keeps the old name.
 
-![The bottom of the Publishing checklist, with the Add task line showing under the last task](docs/add-task.png)
+![The Publishing checklist with Add task clicked: an input under the last task, with Share the post on social media typed in](docs/add-task.png)
+
+![The ⋮ menu of the Ask Marco for a technical review task, open on Edit, Move up, Move down and Delete](docs/task-menu.png)
 
 Every change is part of the record, like any other field: click **Save** to keep it.
 
 ### Completed tasks
 
-Under the list, **2 completed tasks** (with the current count) opens the done tasks. Their check is highlighted. Click it again to reopen a task: it goes back to the end of the open tasks.
+Done tasks go to a second card under the list, **2 completed tasks** (with the current count). Click its header to open or close it. Completed tasks are struck through; clear a task's checkbox, or click its text, to reopen it: it goes back to the end of the open tasks.
 
 ## Start every record with the same tasks
 

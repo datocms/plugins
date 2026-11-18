@@ -1,32 +1,32 @@
 # Delete Unused Assets
 
-Media libraries fill up with old banners, drafts and files nobody uses anymore. This plugin finds every asset that no record uses, lets you review the list, and deletes the ones you select, right from its settings screen.
+Media libraries fill up with old banners, drafts and files nobody uses anymore. This plugin finds every asset that no record uses, lets you review the list, and deletes the ones you select, from its own page in your environment's configuration.
 
-![The plugin settings after a scan: 47 unused assets with their file sizes, all selected, under a warning that deletion is permanent, and a bar that says 47 of 47 assets selected · 20.15MB with a Delete button](docs/unused-assets.png)
+![The Unused assets page, opened from Asset cleanup in the Configuration sidebar, after a scan: 47 unused assets with a thumbnail and file size each, all selected, under a warning that deletion is permanent, and a floating bar that says 47 of 47 assets selected · 20.52MB with a Delete button](docs/unused-assets.png)
 
-- **One scan, one list**: every unused asset of the environment, with its file size.
+- **One scan, one list**: every unused asset of the environment, with a thumbnail and its file size.
 - **You choose**: everything starts selected; untick what you want to keep, or search by filename.
 - **Checked twice**: right before deleting, each asset is checked again, so anything a record started using in the meantime is kept.
 - **Storage freed**: when it's done, you see how many assets were deleted and how much space that freed.
 
 ## Installation
 
-Install the plugin and allow it to make API calls on your behalf. It lists and deletes assets as you, so it can only do what your role allows. There is nothing to configure.
+Install the plugin and allow it to make API calls on your behalf. It lists and deletes assets as you, so it can only do what your role allows. There is nothing to configure: the plugin's settings screen only links to its page.
 
-Without that permission, the settings screen only shows a message asking for it.
+The page appears in **Configuration**, under **Asset cleanup → Unused assets**, for roles that can edit the schema. Without the API permission, it only shows a message asking for it.
 
 ## Find and delete unused assets
 
-1. Open **Configuration → Plugins → Delete Unused Assets** in the environment you want to clean up.
+1. In the environment you want to clean up, open **Configuration → Unused assets** (under **Asset cleanup**).
 2. Click **Scan for unused assets**. The list shows every unused asset, all selected.
 3. Untick anything you want to keep. Click a filename to open the file in a new tab.
-4. Click **Delete** in the selection bar, then confirm.
+4. Click **Delete** in the selection bar at the bottom of the page, then confirm.
 
 ### Pick assets by filename
 
-Click the search icon above the list to filter it by filename. While a search is active, the checkbox in the header selects or deselects only the matching assets. To delete only those, clear the whole selection first with the **×** in the selection bar, then search and tick the header checkbox.
+Click the search icon in the page's title bar to filter the list by filename. While a search is active, the checkbox in the header selects or deselects only the matching assets. To delete only those, clear the whole selection first with the **×** in the selection bar, then search and tick the header checkbox.
 
-![The list filtered by 2024: 7 of 47 assets, all ticked except brand-guidelines-2024.pdf, and the bar says 6 of 47 assets selected · 3.41MB](docs/search-and-select.png)
+![The list filtered by 2024: 7 of 47 assets, all ticked except brand-guidelines-2024.pdf, and the bar says 6 of 47 assets selected · 3.79MB](docs/search-and-select.png)
 
 Assets that are selected but hidden by the search are still deleted. The selection bar always counts every selected asset, so check it before you click **Delete**.
 
@@ -40,9 +40,9 @@ The plugin deletes assets in batches of 100 and shows its progress: how many wer
 
 ## Understanding the results
 
-When the deletion finishes, a message confirms it and the screen shows what happened. Click **Scan again** to look for more.
+When the deletion finishes, a message confirms it and the page shows what happened. Click **Scan again** to look for more.
 
-![The result: Assets deleted 6, Storage freed 3.41MB, and a Scan again button](docs/summary.png)
+![The result: Assets deleted 6, Storage freed 3.79MB, and a Scan again button](docs/summary.png)
 
 | Line | What it means |
 |---|---|
@@ -59,7 +59,7 @@ Skipped, Failed and Not processed only appear when they aren't zero. A stopped o
 - **No undo**: deleted assets can't be restored.
 - **"Unused" means unused by records**: an asset you only link to from outside DatoCMS (a hard-coded URL on your website, for example) or from an old record version still shows up in the list. Untick it.
 - **One environment at a time**: the scan only covers the environment you're in. Sandbox environments have their own copies of the assets, so deleting in one environment doesn't touch the others.
-- **Large libraries**: the list shows 100 assets per page, and the scan shows how many it has loaded so far.
+- **Large libraries**: the list shows 100 assets at a time, with page controls at the bottom, and the scan shows how many it has loaded so far.
 
 ## Development
 

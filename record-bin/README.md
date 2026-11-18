@@ -1,11 +1,11 @@
 # Record Bin
 
-Deleted a record by mistake? Record Bin keeps a copy of every record deleted from the dashboard in a "🗑 Record Bin" model, so you can put it back with one click.
+Deleted a record by mistake? Record Bin keeps a copy of every record deleted from the dashboard in a "🗑 Record Bin" model, so you can put it back from the copy's ⋮ menu.
 
-![A copy in the Record Bin model: a Restore record button above its label, model, date of deletion and the saved record as JSON](docs/bin-record.png)
+![A copy in the Record Bin model with its ⋮ menu open on Restore record, above its label, model, date of deletion and the saved record as JSON](docs/bin-record.png)
 
 - **A copy before every deletion**: the record is saved to the bin first, and only then deleted.
-- **One-click restore**: **Restore record** puts it back in its model with its original ID.
+- **Restore from the menu**: **Restore record**, in the copy's ⋮ menu, puts it back in its model with its original ID.
 - **Safe by default**: if the copy can't be saved, the deletion is cancelled and the record stays where it was.
 - **Nothing to set up**: the bin model is created the first time you delete a record.
 - **Optional API capture**: also keep records deleted through the API, with a small serverless function you deploy.
@@ -27,21 +27,21 @@ A copy is named after the record's first text value, its model ID and the date o
 ## Restore a record
 
 1. Open the copy in **🗑 Record Bin**.
-2. Click **Restore record**.
+2. Open the ⋮ menu next to its title and choose **Restore record**.
 
-The record comes back in its model with the same ID, so links to it from your website keep working. DatoCMS opens it and the copy leaves the bin. In a model with drafts, it comes back as a draft: publish it again if it was live.
+The record comes back in its model with the same ID, so links to it from your website keep working. You see "The record has been restored.", DatoCMS opens the record and the copy leaves the bin. In a model with drafts, it comes back as a draft: publish it again if it was live.
 
 ### When a restore fails
 
-A restore fails when the record links to something that no longer exists, like a deleted tag or author. The copy stays in the bin and shows what went wrong.
+A restore fails when the record links to something that no longer exists, like a deleted tag or author. The copy stays in the bin and an alert says the record could not be restored.
 
-![A "Couldn't restore the record" message above the Restore record and See the full error buttons](docs/restore-error.png)
+![The alert "The record could not be restored." with its See the full error link](docs/restore-error.png)
 
-**See the full error** shows the API's answer, with the field and the IDs it couldn't find.
+**See the full error**, in the alert, opens the API's answer, with the field and the IDs it couldn't find.
 
-![The Restoration error dialog: the Tags field fails because a linked record is missing](docs/error-modal.png)
+![The Restoration error dialog: "Couldn't restore the record" above the API's answer, where the Tags field fails because a linked record is missing](docs/error-modal.png)
 
-To fix it, restore the missing record first, then try again. You can also remove the missing ID from **Record body**, save the copy and click **Restore record**.
+To fix it, restore the missing record first, then try again. You can also remove the missing ID from **Record body**, save the copy and choose **Restore record** again.
 
 ## Settings
 

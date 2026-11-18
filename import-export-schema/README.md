@@ -2,7 +2,7 @@
 
 Move models, blocks and the plugins their fields use from one DatoCMS project or environment to another. Export them to a JSON file, then import that file wherever you need them. When something in the file already exists there, you decide how to handle it before anything is created.
 
-![The export of the Case Study model: a graph links it to Author, Client, Image block, Key Metric and the Tag editor plugin. Every box is tinted and checked (Starting point, Included or Included as dependency) except Tag editor, which is dashed and marked Not exported. The toolbar reads 3 models, 2 blocks will be exported, 1 not exported, and a legend under the graph explains the boxes and links](docs/export-graph.png)
+![The export of the Case Study model: a graph links it to Author, Client, Image block, Key Metric and the Tag editor plugin. Every box is tinted and checked (Starting point, Included or Included as dependency) except Tag editor, which is dashed and marked Not exported. The toolbar reads 3 models, 2 blocks will be exported, 1 not exported](docs/export-graph.png)
 
 - **See what goes in the file**: a graph shows everything your selection links to, and marks what's exported and what's left out.
 - **Dependencies in one click**: **Add what it uses** adds every model, block and plugin the selection needs.
@@ -21,7 +21,7 @@ To export a single model or block, open it in the **Schema** tab, click the thre
 
 To start from several, go to **Configuration → Schema → Export**, pick them in **What to export** and click **Continue**. The first one you pick is the starting point of the export.
 
-<img src="https://raw.githubusercontent.com/datocms/plugins/master/import-export-schema/docs/choose-models.png" width="714" alt="The Export page: Case Study and Blog Post picked in What to export, a Continue button, and an Entire schema group with Export everything">
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/import-export-schema/docs/choose-models.png" width="711" alt="The Export page: Case Study and Blog Post picked in What to export, a Continue button, and an Entire schema group with Export everything">
 
 To export the whole environment at once, click **Export** next to **Export everything**.
 

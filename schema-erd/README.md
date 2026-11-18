@@ -19,7 +19,7 @@ Install **Schema ERD** from **Configuration → Plugins**. It adds an **ERD gene
 Open **Configuration → Schema ERD**. The plugin loads the fields of every model, counting them as it goes ("12 of 45 models and block models loaded"), then draws the diagram to fit the page.
 
 - **Drag** the diagram to move it, and **scroll** to zoom in on a part of it.
-- **Zoom in** and **Zoom out** step the zoom, **Reset zoom** goes back to the whole diagram, and **Center the diagram** brings it back to the middle of the page.
+- **Zoom in** and **Zoom out** step the zoom, **Fit the whole diagram** zooms out to show all of it in the middle of the page, and **Center the diagram** brings it back to the middle at the current zoom.
 
 The diagram shows the environment you're in, so open the page in a sandbox to review a schema change before you promote it.
 
@@ -36,7 +36,7 @@ The diagram includes **Single link**, **Multiple links**, **Modular content** (s
 
 ## Download the diagram
 
-![The toolbar's Zoom in, Zoom out, Reset zoom and Center the diagram buttons next to Download SVG, with its menu open on Download Graphviz DOT](docs/download-menu.png)
+![The toolbar's Zoom in, Zoom out, Fit the whole diagram and Center the diagram buttons next to Download SVG, with its menu open on Download Graphviz DOT](docs/download-menu.png)
 
 - **Download SVG** saves `schema.svg`, the diagram as you see it, ready for documentation and slides.
 - **Download Graphviz DOT**, in the menu next to it, saves `schema.dot`, the source of the diagram. Open it with [Graphviz](https://graphviz.org/) to change the layout or the styling, or to export it in other formats such as PDF or PNG (`dot -Tpdf schema.dot -o schema.pdf`).
